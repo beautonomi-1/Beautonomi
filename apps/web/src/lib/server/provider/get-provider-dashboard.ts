@@ -10,6 +10,7 @@ import { mapStatusToProvider } from "@/lib/utils/booking-status";
 import { getAvailablePayoutBalance } from "@/lib/provider/available-payout-balance";
 import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
 import { fromBusinessTime, formatInTz, nowInTz, resolveTz } from "@/lib/dates/provider-tz";
+import { buildProviderActivityFeed } from "@/lib/provider/build-provider-activity-feed";
 
 const DASHBOARD_CACHE_TTL_MS = 5000;
 const MAX_DASHBOARD_CACHE_ENTRIES = 400;
@@ -652,59 +653,12 @@ export async function getProviderDashboardResponse(request: NextRequest) {
         })
         .slice(0, 12);
 
-      let recentBookingsQuery = supabaseAdmin
-        .from("bookings")
-        .select("id, status, created_at, location_id, customers:users!bookings_customer_id_fkey(full_name)")
-        .eq("provider_id", providerId)
-        .gte("created_at", subDays(now, 14).toISOString())
-        .order("created_at", { ascending: false })
-        .limit(20);
-      if (locationId) {
-        recentBookingsQuery = recentBookingsQuery.eq("location_id", locationId);
-      }
-      const { data: recentBookings } = await recentBookingsQuery;
-      const activities: Array<{
-        id: string;
-        type: string;
-        description: string;
-        created_at: string;
-        data?: { booking_id?: string; client_name?: string; amount?: number };
-      }> = [];
-      (recentBookings || []).forEach((b: any) => {
-        const clientName = b.customers?.full_name || "Walk-in";
-        const type =
-          b.status === "completed"
-            ? "booking_completed"
-            : b.status === "cancelled"
-              ? "booking_cancelled"
-              : "booking_created";
-        activities.push({
-          id: `booking-${b.id}`,
-          type,
-          description:
-            type === "booking_completed"
-              ? `Booking with ${clientName} completed`
-              : type === "booking_cancelled"
-                ? `Booking with ${clientName} cancelled`
-                : `New booking from ${clientName}`,
-          created_at: b.created_at,
-          data: { booking_id: b.id, client_name: clientName },
-        });
+      const activityPayload = await buildProviderActivityFeed(supabaseAdmin, providerId, {
+        timezone: providerTz,
+        locationId,
+        limit: 10,
       });
-      const paymentActivities = parsedRows
-        .filter((r: any) => r.transaction_type === "provider_earnings" || r.transaction_type === "payout")
-        .sort((a: any, b: any) => b.createdDate.getTime() - a.createdDate.getTime())
-        .slice(0, 10)
-        .map((r: any) => ({
-          id: `payment-${r.booking_id ?? r.created_at}`,
-          type: "payment_received",
-          description: r.transaction_type === "payout" ? "Payout processed" : "Payment received",
-          created_at: r.created_at,
-          data: { booking_id: r.booking_id ?? undefined, amount: Number(r.net ?? r.amount ?? 0) },
-        }));
-      const recentActivity = [...activities, ...paymentActivities]
-        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-        .slice(0, 10);
+      const recentActivity = activityPayload.activities;
 
       const bookingLimit = await checkBookingLimit(providerId, supabaseAdmin);
       bookingEligibility = {

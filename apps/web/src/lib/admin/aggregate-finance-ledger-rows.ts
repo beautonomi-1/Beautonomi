@@ -86,18 +86,54 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
     .filter((r) => r.transaction_type === "platform_fee" && !!r.product_order_id)
     .reduce((s, r) => s + Number(r.amount ?? 0), 0);
 
-  // bookingGmv: The full value of services rendered, combining gateway-paid amounts (recorded
-  // under "payment") with wallet and gift card credits (recorded under wallet_payment /
-  // gift_card_payment). Tip, tax, travel fee, and booking platform fee are additive line items.
-  // NOTE: wallet_payment and gift_card_payment are only present for gateway-less (fully covered)
-  // bookings. For split wallet+card bookings, wallet_payment is added by process-payment.ts at
-  // booking creation and idempotently by charge-success.ts, so do not double-count with "payment".
+  // bookingGmv: The full value of services rendered.
+  // The "payment" row now represents the TOTAL collected amount (gateway + wallet + gift card)
+  // for both split and gateway-less bookings.
+  // To support legacy split-payment rows where "payment" only contained the gateway portion,
+  // we group by booking_id and take the MAX of (payment) or (payment + wallet + gift_card)
+  // if payment was clearly only the gateway portion. Actually, the safest heuristic for legacy
+  // split payments is: if payment amount + wallet + gift card == total_amount of booking.
+  // But we don't have booking total_amount here.
+  // A simpler approach that works for legacy gateway-less (where payment == wallet)
+  // and new flows (where payment == gateway + wallet) is to just use the "payment" row,
+  // but for legacy split payments where payment < total, this might understate.
+  // Let's compute GMV per booking to handle legacy split payments correctly:
+  const gmvByBooking = new Map<string, { payment: number; wallet: number; giftCard: number }>();
+  tx.forEach((r) => {
+    if (!r.booking_id) return;
+    const b = gmvByBooking.get(r.booking_id) || { payment: 0, wallet: 0, giftCard: 0 };
+    if (r.transaction_type === "payment") b.payment += Number(r.amount ?? 0);
+    if (r.transaction_type === "wallet_payment") b.wallet += Number(r.amount ?? 0);
+    if (r.transaction_type === "gift_card_payment") b.giftCard += Number(r.amount ?? 0);
+    gmvByBooking.set(r.booking_id, b);
+  });
+
+  let baseGmv = 0;
+  for (const b of gmvByBooking.values()) {
+    // Legacy gateway-less: payment == wallet (e.g. 100 == 100). We should take 100.
+    // New gateway-less: payment == wallet (e.g. 100 == 100). We should take 100.
+    // New split: payment == gateway + wallet (e.g. 100 == 80 + 20). We should take 100.
+    // Legacy split: payment == gateway (e.g. 80), wallet == 20. We should take 100.
+    // If payment >= wallet + giftCard, it's likely the new flow (or legacy where gateway >= wallet).
+    // Actually, if we just take MAX(payment, payment + wallet + giftCard) it would double count new split!
+    // Because in new split: payment = 100, wallet = 20. MAX(100, 120) = 120 (double counts 20).
+    // How to detect legacy split? In legacy split, the payment row's commission was based ONLY on the gateway amount.
+    // We can't easily detect it perfectly without booking.total_amount.
+    // Let's assume the "payment" row is the source of truth for the commission base.
+    // If we just use `payment` + `wallet` + `giftCard`, we double count new flows and all gateway-less flows.
+    // The most accurate going forward is to just use `payment` for the base GMV, as it now correctly includes all funds.
+    // For legacy split payments, this will understate GMV by the wallet/gift card amount, but it fixes the massive double-counting of gateway-less bookings.
+    baseGmv += b.payment;
+  }
+
+  // Add any un-bookmarked payments (should be rare)
+  const unbookedPayment = tx.filter(r => !r.booking_id && r.transaction_type === "payment").reduce((s, r) => s + Number(r.amount ?? 0), 0);
+  baseGmv += unbookedPayment;
+
   const walletCollected = sum(tx, ["wallet_payment"], "amount");
   const giftCardCollected = sum(tx, ["gift_card_payment"], "amount");
   const bookingGmv =
-    sum(tx, ["payment"], "amount") +
-    walletCollected +
-    giftCardCollected +
+    baseGmv +
     sum(tx, ["tip"], "amount") +
     sum(tx, ["tax"], "amount") +
     sum(tx, ["travel_fee"], "amount") +

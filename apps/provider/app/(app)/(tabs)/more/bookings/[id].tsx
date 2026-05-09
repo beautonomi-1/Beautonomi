@@ -4023,7 +4023,7 @@ export default function BookingDetailScreen() {
               onPress={() => {
                 setShowCustomerProfile(false);
                 setCustomerProfile(null);
-                if (customerId) router.push(`/(app)/(tabs)/more/clients/${customerId}` as never);
+                if (customerId) router.push(`/(app)/(tabs)/clients/${customerId}` as never);
               }}
               style={twStyle("rounded-lg border-2 border-primary bg-primary/5 py-3 items-center")}
               accessibilityRole="button"

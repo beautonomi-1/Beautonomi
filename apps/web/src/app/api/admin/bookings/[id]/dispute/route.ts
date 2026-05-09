@@ -8,6 +8,7 @@ import { sendToUser } from "@/lib/notifications/onesignal";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchBookingInAdminTenant } from "@/lib/tenant/admin-booking-tenant";
+import { slackNotifyDisputeOpened } from "@/lib/integrations/slack/ops-triggers";
 
 const disputeSchema = z.object({
   reason: z.string().min(1, "Reason is required"),
@@ -174,6 +175,13 @@ export async function POST(
     } catch (e) {
       console.warn("Failed to send dispute opened notifications:", e);
     }
+
+    slackNotifyDisputeOpened({
+      tenantId,
+      disputeId: (dispute as DisputeRow).id,
+      bookingId: id,
+      reason,
+    });
 
     return NextResponse.json({
       data: dispute,

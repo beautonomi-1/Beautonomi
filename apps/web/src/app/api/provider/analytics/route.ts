@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
 import { DASHBOARD_REVENUE_TRANSACTION_TYPES } from "@/lib/reports/constants";
 import {
@@ -30,26 +30,24 @@ export async function GET(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
     
-    // Use service role client for better performance
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      }
-    );
+    const supabaseAdmin = getSupabaseAdmin();
 
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
     if (!providerId) {
       return successResponse({
+        period: "month",
+        timezone: "UTC",
+        windows: {
+          current: { fromYmd: "", toYmd: "" },
+          previous: { fromYmd: "", toYmd: "" },
+        },
+        basis: {},
+        trends_meta: { bucket: "month", buckets_count: 0, description: "" },
         revenue: { total: 0, thisMonth: 0, lastMonth: 0, growth: "0", period: "month", all_time: 0, current_period: 0, previous_period: 0 },
         earnings_breakdown: { basis: "", all_time: {}, current_period: {}, expenses: { all_time: 0, current_period: 0 } },
         expenses: { total: 0, this_month: 0, note: "Includes subscription fees, ad campaign payments, and other platform charges" },
         bookings: { total: 0, thisMonth: 0, lastMonth: 0, upcoming: 0, growth: "0" },
-        customers: { total: 0, repeat: 0, new: 0 },
+        customers: { total: 0, repeat: 0, single_booking: 0, new: 0 },
         services: [],
         trends: [],
       });
@@ -317,8 +315,47 @@ export async function GET(request: NextRequest) {
       "Tips are separate `tip` rows (net). Platform retained = `service_fee` + `platform_fee` (absolute). " +
       "Refunds = `refund` rows + negative `provider_earnings`, aligned with the finance page.";
 
+    const curFromYmd = formatDateYmd(thisMonthStart, tz);
+    const curToYmd = formatDateYmd(thisMonthEndDate, tz);
+    const prevFromYmd = formatDateYmd(lastMonthStart, tz);
+    const prevToYmd = formatDateYmd(lastMonthEnd, tz);
+
+    const trendBucketDescription =
+      period === "week"
+        ? "Last 12 ISO weeks (Mon–Sun), provider timezone."
+        : period === "year"
+          ? "Last 5 calendar years."
+          : "Last 12 calendar months.";
+
+    const basis = {
+      ledger_period:
+        "`provider_earnings` net by `finance_transactions.created_at` — same as dashboard revenue cards (platform-settled; direct cash walk-ins often absent).",
+      ledger_all_time: "All-time sum of the same ledger rows through now.",
+      period_window: `${curFromYmd}–${curToYmd} (${tz.replace(/_/g, " ")}) vs prior ${prevFromYmd}–${prevToYmd}.`,
+      bookings_in_period:
+        "Period totals and chart buckets count bookings whose `created_at` falls in the window (not appointment date).",
+      upcoming_bookings: "`confirmed` with `scheduled_at` in the future (any creation date).",
+      customers:
+        "Distinct customers from bookings (scoped to location when filtered). Repeat = 2+ bookings ever with you; single-booking = exactly one — not the same as marketing “new”.",
+      top_services:
+        "Per-offering `SUM(booking_services.price)` for bookings ever created through now — catalog line totals, not ledger settlement (differs from ledger net when discounts/platform economics apply).",
+      trends_revenue: `Chart revenue per bucket: same ledger rule as period headline. ${trendBucketDescription}`,
+      trends_bookings: `Chart bookings per bucket: same created_at rule as period counts. ${trendBucketDescription}`,
+    };
+
     return successResponse({
       period,
+      timezone: tz,
+      windows: {
+        current: { fromYmd: curFromYmd, toYmd: curToYmd },
+        previous: { fromYmd: prevFromYmd, toYmd: prevToYmd },
+      },
+      basis,
+      trends_meta: {
+        bucket: period,
+        buckets_count: trendsData.length,
+        description: trendBucketDescription,
+      },
       revenue: {
         // total: all-time `provider_earnings` net (headline) — use `all_time` for new clients
         total: totalRevenue,
@@ -377,6 +414,7 @@ export async function GET(request: NextRequest) {
       customers: {
         total: uniqueCustomers.size,
         repeat: repeatCustomers,
+        single_booking: uniqueCustomers.size - repeatCustomers,
         new: uniqueCustomers.size - repeatCustomers,
       },
       services: serviceRows

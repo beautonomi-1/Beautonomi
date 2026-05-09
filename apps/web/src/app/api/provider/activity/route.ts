@@ -1,9 +1,14 @@
 import { NextRequest } from "next/server";
-import { requireRoleInApi, getProviderIdForUser, notFoundResponse, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
-import { createClient } from "@supabase/supabase-js";
-import { subDays } from "date-fns";
-import { dateRangeBoundsUtc, formatDateYmd, nowInTz } from "@/lib/dates/provider-tz";
+import {
+  requireRoleInApi,
+  getProviderIdForUser,
+  notFoundResponse,
+  successResponse,
+  handleApiError,
+} from "@/lib/supabase/api-helpers";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
+import { buildProviderActivityFeed } from "@/lib/provider/build-provider-activity-feed";
 
 export async function GET(request: NextRequest) {
   try {
@@ -12,126 +17,23 @@ export async function GET(request: NextRequest) {
       request,
     );
 
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      { auth: { autoRefreshToken: false, persistSession: false } },
-    );
+    const supabaseAdmin = getSupabaseAdmin();
 
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
     if (!providerId) return notFoundResponse("Provider not found");
-    const reportContext = await getProviderReportContext(supabaseAdmin, providerId);
-    const tz = reportContext.timezone;
-    const zNow = nowInTz(tz);
-    const fromYmd = formatDateYmd(subDays(zNow, 13), tz);
-    const todayYmd = formatDateYmd(zNow, tz);
-    const since = new Date(dateRangeBoundsUtc(fromYmd, todayYmd, tz).fromIso);
 
+    const reportContext = await getProviderReportContext(supabaseAdmin, providerId);
     const searchParams = request.nextUrl.searchParams;
     const limit = Math.min(parseInt(searchParams.get("limit") ?? "10", 10), 50);
     const locationId = searchParams.get("location_id");
 
-    let bookingsQuery = supabaseAdmin
-      .from("bookings")
-      .select("id, status, created_at, scheduled_at, location_id, customers(full_name)")
-      .eq("provider_id", providerId)
-      .gte("created_at", since.toISOString())
-      .order("created_at", { ascending: false })
-      .limit(limit * 2);
-    if (locationId) {
-      bookingsQuery = bookingsQuery.eq("location_id", locationId);
-    }
-    const bookingsResult = await bookingsQuery;
-
-    const { data: paymentsData } = await supabaseAdmin
-      .from("finance_transactions")
-      .select("id, transaction_type, amount, net, created_at, booking_id")
-      .eq("provider_id", providerId)
-      .in("transaction_type", ["provider_earnings", "payout"])
-      .gte("created_at", since.toISOString())
-      .order("created_at", { ascending: false })
-      .limit(limit * 2);
-
-    const paymentsResult = { data: paymentsData, error: null as any };
-    if (locationId && paymentsData && paymentsData.length > 0) {
-      const bookingIds = new Set((bookingsResult.data || []).map((b: { id: string }) => b.id));
-      const filtered = paymentsData.filter((p: { booking_id?: string | null; transaction_type?: string }) => {
-        return p.booking_id && bookingIds.has(p.booking_id);
-      });
-      paymentsResult.data = filtered.slice(0, limit);
-    }
-
-    const [reviewsResult] = await Promise.all([
-      supabaseAdmin
-        .from("reviews")
-        .select("id, rating, comment, created_at, customers(full_name)")
-        .eq("provider_id", providerId)
-        .gte("created_at", since.toISOString())
-        .order("created_at", { ascending: false })
-        .limit(5),
-    ]);
-
-    const activities: {
-      id: string;
-      type: string;
-      description: string;
-      created_at: string;
-      data?: { booking_id?: string; client_name?: string; amount?: number };
-    }[] = [];
-
-    (bookingsResult.data || []).forEach((b: any) => {
-      const clientName = b.customers?.full_name || "Walk-in";
-      let type = "booking_created";
-      let desc = `New booking from ${clientName}`;
-
-      if (b.status === "completed") {
-        type = "booking_completed";
-        desc = `Booking with ${clientName} completed`;
-      } else if (b.status === "cancelled") {
-        type = "booking_cancelled";
-        desc = `Booking with ${clientName} cancelled`;
-      }
-
-      activities.push({
-        id: `booking-${b.id}`,
-        type,
-        description: desc,
-        created_at: b.created_at,
-        data: { booking_id: b.id, client_name: clientName },
-      });
+    const payload = await buildProviderActivityFeed(supabaseAdmin, providerId, {
+      timezone: reportContext.timezone,
+      locationId,
+      limit,
     });
 
-    (paymentsResult.data || []).forEach((p: any) => {
-      const amount = Number(p.net ?? p.amount ?? 0);
-      activities.push({
-        id: `payment-${p.id}`,
-        type: "payment_received",
-        description:
-          p.transaction_type === "payout"
-            ? `Payout processed`
-            : `Payment received`,
-        created_at: p.created_at,
-        data: { booking_id: p.booking_id, amount },
-      });
-    });
-
-    (reviewsResult.data || []).forEach((r: any) => {
-      const clientName = r.customers?.full_name || "Client";
-      activities.push({
-        id: `review-${r.id}`,
-        type: "new_review",
-        description: `${clientName} left a ${r.rating}-star review`,
-        created_at: r.created_at,
-        data: { client_name: clientName },
-      });
-    });
-
-    activities.sort(
-      (a, b) =>
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-    );
-
-    return successResponse(activities.slice(0, limit));
+    return successResponse(payload);
   } catch (error) {
     console.error("Error in activity feed:", error);
     return handleApiError(error, "Failed to load activity feed");

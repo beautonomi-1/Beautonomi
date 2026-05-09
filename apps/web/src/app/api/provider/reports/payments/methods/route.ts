@@ -1,20 +1,27 @@
 import { NextRequest } from "next/server";
-import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import {
+  requireRoleInApi,
+  getProviderIdForUser,
+  successResponse,
+  notFoundResponse,
+  handleApiError,
+} from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderReportContext, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
+import { MAX_REPORT_DAYS } from "@/lib/reports/constants";
+import { buildProviderPaymentMethodsReport } from "@/lib/reports/build-payment-methods-report";
 
 /**
  * GET /api/provider/reports/payments/methods
  *
- * Payment method breakdown for the provider portal.
+ * Customer payment method mix for the provider portal: **settlement / capture timestamps**
+ * in the selected range (provider timezone), not appointment scheduled_at.
  *
- * Data sources:
- * - `payment_transactions` (status "success"): all settled Paystack, wallet, gift card, Yoco
- * - `bookings` (wallet_amount): wallet-only bookings that have no payment_transaction row
- *
- * Previously used the `payments` table with `status = "completed"` — but the Paystack webhook
- * sets payments.status to "paid" (not "completed"), so Paystack rows were silently excluded.
- * payment_transactions is the correct source of truth for settled charges.
+ * Composes:
+ * - successful `payment_transactions` in the window (gateway + internal wallet/gift settlement rows);
+ * - completed `booking_payments` in the window (till / manual methods);
+ * - `bookings.wallet_amount` portions when split with a gateway and not double-counted against
+ *   internal wallet/gift `payment_transactions` (same rules as payment summary).
  */
 export async function GET(request: NextRequest) {
   try {
@@ -25,107 +32,45 @@ export async function GET(request: NextRequest) {
     if (!providerId) return notFoundResponse("Provider not found");
     const reportContext = await getProviderReportContext(supabaseAdmin, providerId);
 
+    const { data: providerTenantRow } = await supabaseAdmin
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", providerId)
+      .maybeSingle();
+    const providerTenantId = (providerTenantRow as { tenant_id?: string | null } | null)?.tenant_id ?? null;
+
     const searchParams = request.nextUrl.searchParams;
-    const { fromDate, toDate } = reportDateRangeFromParams(searchParams, reportContext.timezone, {
-      defaultDays: 30,
-    });
+    const { fromDate, toDate, fromYmd, toYmd } = reportDateRangeFromParams(
+      searchParams,
+      reportContext.timezone,
+      { defaultDays: 30, maxDays: MAX_REPORT_DAYS },
+    );
     const locationId = searchParams.get("location_id") || undefined;
 
-    // Get bookings in the period
-    let bookingsQuery = supabaseAdmin
-      .from("bookings")
-      .select("id, wallet_amount, total_amount")
-      .eq("provider_id", providerId)
-      .gte("scheduled_at", fromDate.toISOString())
-      .lte("scheduled_at", toDate.toISOString());
-
-    if (locationId) {
-      bookingsQuery = bookingsQuery.eq("location_id", locationId);
-    }
-
-    const { data: bookings } = await bookingsQuery;
-
-    const bookingIds = (bookings ?? []).map((b) => b.id);
-
-    // Get settled payment_transactions for these bookings
-    let ptRows: Array<{ provider: string; amount: number; net_amount: number; status: string; booking_id: string }> = [];
-    if (bookingIds.length > 0) {
-      const { data: pt } = await supabaseAdmin
-        .from("payment_transactions")
-        .select("provider, amount, net_amount, status, booking_id")
-        .in("booking_id", bookingIds)
-        .eq("status", "success");
-      ptRows = (pt ?? []) as typeof ptRows;
-    }
-
-    type MethodBucket = {
-      method: string;
-      totalCount: number;
-      successfulCount: number;
-      failedCount: number;
-      totalAmount: number;
-      successfulAmount: number;
-      failedAmount: number;
-      averageAmount: number;
-    };
-
-    const methodMap = new Map<string, MethodBucket>();
-
-    const getOrCreate = (method: string): MethodBucket => {
-      if (!methodMap.has(method)) {
-        methodMap.set(method, {
-          method,
-          totalCount: 0,
-          successfulCount: 0,
-          failedCount: 0,
-          totalAmount: 0,
-          successfulAmount: 0,
-          failedAmount: 0,
-          averageAmount: 0,
-        });
-      }
-      return methodMap.get(method)!;
-    };
-
-    // Count payment_transactions (all "success" status = settled)
-    ptRows.forEach((pt) => {
-      const method = pt.provider || "unknown";
-      const bucket = getOrCreate(method);
-      bucket.totalCount += 1;
-      bucket.successfulCount += 1;
-      bucket.totalAmount += Number(pt.amount ?? 0);
-      bucket.successfulAmount += Number(pt.amount ?? 0);
+    const result = await buildProviderPaymentMethodsReport(supabaseAdmin, {
+      providerId,
+      providerTenantId,
+      locationId: locationId ?? null,
+      rangeStartIso: fromDate.toISOString(),
+      rangeEndIso: toDate.toISOString(),
+      timezone: reportContext.timezone,
+      fromYmd,
+      toYmd,
     });
-
-    // Add wallet-only bookings (no payment_transaction row, wallet_amount covers total)
-    // These are bookings where wallet covered 100% (no card leg at all)
-    const ptBookingIds = new Set(ptRows.map((r) => r.booking_id));
-    (bookings ?? []).forEach((b) => {
-      const walletAmt = Number(b.wallet_amount ?? 0);
-      if (walletAmt > 0 && !ptBookingIds.has(b.id)) {
-        const bucket = getOrCreate("wallet");
-        bucket.totalCount += 1;
-        bucket.successfulCount += 1;
-        bucket.totalAmount += walletAmt;
-        bucket.successfulAmount += walletAmt;
-      }
-    });
-
-    const grandTotal = [...methodMap.values()].reduce((s, m) => s + m.totalAmount, 0);
-
-    const methods = [...methodMap.values()]
-      .map((m) => ({
-        ...m,
-        averageAmount: m.totalCount > 0 ? m.totalAmount / m.totalCount : 0,
-        successRate: m.totalCount > 0 ? (m.successfulCount / m.totalCount) * 100 : 0,
-        percentage: grandTotal > 0 ? (m.totalAmount / grandTotal) * 100 : 0,
-      }))
-      .sort((a, b) => b.totalAmount - a.totalAmount);
 
     return successResponse({
-      totalPayments: methods.reduce((s, m) => s + m.totalCount, 0),
-      totalAmount: grandTotal,
-      methods,
+      ...result,
+      /** @deprecated use totalLineItems */
+      totalPayments: result.totalLineItems,
+      methods: result.methods.map((m) => ({
+        ...m,
+        /** @deprecated all included rows are settled or logged completed */
+        successfulCount: m.totalCount,
+        failedCount: 0,
+        successfulAmount: m.totalAmount,
+        failedAmount: 0,
+        successRate: m.totalCount > 0 ? 100 : 0,
+      })),
     });
   } catch (error) {
     return handleApiError(error, "Failed to load payment methods report");

@@ -9,6 +9,7 @@ import {
   Modal,
   Pressable,
   TextInput,
+  RefreshControl,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -25,7 +26,6 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { capitalizeFirst } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
-import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -606,7 +606,15 @@ export default function StaffScheduleScreen() {
         }
       />
 
-      <View style={{ backgroundColor: "#EEF2FF", borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, marginBottom: 12 }}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingBottom: 120 }}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+        }
+      >
+        <View style={{ backgroundColor: "#EEF2FF", borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, marginBottom: 12 }}>
         <Text style={{ fontSize: 13, color: "#3730A3", lineHeight: 18 }}>
           Weekly schedules define normal availability. Date-specific shifts below support split shifts and one-off overrides for busy days, events, or alternate rosters.
         </Text>
@@ -939,21 +947,14 @@ export default function StaffScheduleScreen() {
           </TouchableOpacity>
         </View>
       ) : (
-        <FlatList
-          {...verticalFlatListPerf}
-          data={DAYS}
-          keyExtractor={(day: string) => day}
-          showsVerticalScrollIndicator={false}
-          refreshing={refreshing}
-          onRefresh={handleRefresh}
-          contentContainerStyle={{ paddingBottom: 120 }}
-          ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
-          renderItem={({ item: day }: { item: string }) => {
+        <View style={{ gap: 8 }}>
+          {DAYS.map((day) => {
             const dayShifts = shiftsByDay.get(day) ?? [];
             const hasShifts = dayShifts.length > 0;
 
             return (
               <View
+                key={day}
                 style={twStyle("rounded-xl border border-gray-100 bg-white")}
                 accessibilityLabel={`${day} schedule`}
               >
@@ -1065,9 +1066,10 @@ export default function StaffScheduleScreen() {
                 )}
               </View>
             );
-          }}
-        />
+          })}
+        </View>
       )}
+      </ScrollView>
 
       {/* ════════════════════════════════════════════════════════════ */}
       {/*  Add / Edit Shift Bottom Sheet                              */}

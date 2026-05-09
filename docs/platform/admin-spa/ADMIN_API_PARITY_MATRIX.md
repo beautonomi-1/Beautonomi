@@ -26,7 +26,7 @@
 
 | Theme | Finding | Target (see contract guidelines) |
 |-------|---------|-----------------------------------|
-| **Inventory** | **346** admin `route.ts` handlers; full list in `docs/admin-api-route-taxonomy.csv` | Regenerate CSV when adding routes; CI blocks orphan files. |
+| **Inventory** | **348** admin `route.ts` handlers; full list in `docs/admin-api-route-taxonomy.csv` | Regenerate CSV when adding routes; CI blocks orphan files. |
 | **Response envelope** | Mix of `{ data, error }` (`successResponse` / `errorResponse`) and **raw** `NextResponse.json` (`{ tickets }`, `{ error: string }`, `{ success: true }`, etc.) | New/changed handlers use standard envelope; migrate legacy when touching. |
 | **List shape** | Some lists nest `{ data: rows, meta }` **inside** envelope `data` (e.g. users); others return domain keys at root **without** envelope | Standard: `data: { items, meta }` + outer envelope. |
 | **Pagination** | `page`+`limit` (`getPaginationParams`) vs `offset`+`limit`; default limits vary (20–100) | Standard query params + `meta`; document per row until migrated. |
@@ -184,12 +184,12 @@ Use this table as the **index** for deep-dive sub-tables (§5). **AuthZ column**
 | 97 | `/admin/provider-ops` | W5 | provider_ops | Y | `GET /api/admin/provider-ops/dashboard` | Ops dashboard: stalled/dropped signups, KPIs, lead pipeline, recent activity |
 | 98 | `/admin/provider-ops/tracker` | W5 | provider_ops | Y | `GET /api/admin/provider-ops/tracker`, `GET .../tracker/stats` | Onboarding tracker: real-time signup progress, stall detection, filters by status/step |
 | 99 | `/admin/provider-ops/tracker/[userId]` | W5 | provider_ops | N | `GET .../tracker/:userId`, `PATCH .../draft`, `POST .../note`, `PATCH .../assign`, `POST .../submit` | Detail + admin-assisted onboarding: view/edit draft, add notes, submit on behalf |
-| 100 | `/admin/provider-ops/leads` | W5 | provider_ops | Y | `GET /api/admin/provider-ops/leads` | Lead inbox: list, search, filter by stage/source/country |
+| 100 | `/admin/provider-ops/leads` | W5 | provider_ops | Y | `GET /api/admin/provider-ops/leads`, `GET .../assignable-users` | Lead inbox: list, search, filter by stage/source/country; inline assignee picker |
 | 101 | `/admin/provider-ops/leads/new` | W5 | provider_ops | N | `POST /api/admin/provider-ops/leads`, `POST /api/mapbox/geocode`, `GET .../categories` | Lead creation form: geocoding, category multi-select, phone E.164, duplicate check |
-| 102 | `/admin/provider-ops/leads/[id]` | W5 | provider_ops | N | `GET/PATCH .../leads/:id`, `PATCH .../stage`, `PATCH .../assign`, `GET/POST .../activities` | Lead detail: timeline, stage change, assignment, notes, create-account action |
-| 103 | `/admin/provider-ops/pipeline` | W5 | provider_ops | Y | `GET /api/admin/provider-ops/leads`, `GET .../pipeline/stats`, `PATCH .../leads/:id/stage` | Kanban pipeline board with drag-and-drop stage transitions |
+| 102 | `/admin/provider-ops/leads/[id]` | W5 | provider_ops | N | `GET/PATCH .../leads/:id`, `PATCH .../stage`, `PATCH .../assign`, `GET/POST .../activities`, `GET .../assignable-users` | Lead detail: timeline, stage change, assignment, notes, create-account action |
+| 103 | `/admin/provider-ops/pipeline` | W5 | provider_ops | Y | `GET /api/admin/provider-ops/leads`, `GET .../pipeline/stats`, `PATCH .../leads/:id/stage`, `GET .../assignable-users` | Kanban pipeline board with drag-and-drop stage transitions |
 | 104 | `/admin/provider-ops/activation` | W5 | provider_ops | Y | `GET /api/admin/provider-ops/activation-queue`, `PATCH /api/admin/providers/:id/status` | Activation queue: providers pending approval, activation gates, approve action |
-| 105 | `/admin/provider-ops/reports` | W5 | provider_ops | Y | `GET .../reports/funnel`, `GET .../reports/step-dropoff` | Funnel metrics, step drop-off analysis, lead pipeline, admin productivity |
+| 105 | `/admin/provider-ops/reports` | W5 | provider_ops | Y | `GET .../reports/funnel`, `GET .../reports/step-dropoff`, `GET .../reports/lead-assignees` | Funnel metrics, step drop-off analysis, lead pipeline, admin productivity, lead-assignee report |
 | 106 | `/admin/provider-ops/settings` | W5 | provider_ops | Y | `GET/PATCH /api/admin/provider-ops/settings` | Stall/drop-off thresholds, auto-assignment, SLA rules |
 | 107 | `/admin/provider-ops/providers/[id]` | W5 | provider_ops | N | `GET /api/admin/provider-ops/providers/:id/lifecycle` | Unified lifecycle view: lead → signup → onboarding → activation timeline |
 | 108 | `/admin/provider-ops/duplicates` | W5 | provider_ops | N | `GET /api/admin/provider-ops/dedup-check`, `GET .../duplicates` | Duplicate review queue: match/dismiss potential duplicates |
@@ -294,3 +294,4 @@ Record the test **id** in the **Client method** column. **Envelope:** fixtures M
 | 2026-05-02 | Taxonomy: `+6` Slack integration routes under `/api/admin/integrations/slack/*`; §4 row 61a; §1.1 inventory **344**. |
 | 2026-05-03 | Taxonomy: `+1` route (`GET /api/admin/broadcast/audience-preview`); §4 row 54 broadcast note; §1.1 inventory **345**. |
 | 2026-05-05 | Taxonomy: `+1` route (`GET /api/admin/broadcast/[id]`); §4 row 54 broadcast note updated; §1.1 inventory **346**. |
+| 2026-05-06 | Taxonomy: `+2` routes (`GET /api/admin/provider-ops/assignable-users`, `GET /api/admin/provider-ops/reports/lead-assignees`); §4 rows 100–105 provider-ops notes; §1.1 inventory **348**. |

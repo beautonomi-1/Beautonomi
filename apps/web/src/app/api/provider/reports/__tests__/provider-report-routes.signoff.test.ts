@@ -282,7 +282,10 @@ class Query {
   private filters: Array<{ op: string; field: string; value: any }> = [];
   private selectedOptions: any;
   private rangeLimit: number | null = null;
+  private rangeFrom: number | null = null;
+  private rangeTo: number | null = null;
   private orderField: string | null = null;
+  private orderAscending = false;
 
   constructor(private table: string) {}
 
@@ -317,8 +320,14 @@ class Query {
   or() {
     return this;
   }
-  order(field: string) {
+  order(field: string, opts?: { ascending?: boolean; nullsFirst?: boolean }) {
     this.orderField = field;
+    this.orderAscending = opts?.ascending === true;
+    return this;
+  }
+  range(from: number, to: number) {
+    this.rangeFrom = from;
+    this.rangeTo = to;
     return this;
   }
   limit(value: number) {
@@ -345,7 +354,15 @@ class Query {
       rows = rows.filter((row) => matches(row, filter));
     }
     if (this.orderField) {
-      rows.sort((a, b) => String(b[this.orderField!] ?? "").localeCompare(String(a[this.orderField!] ?? "")));
+      rows.sort((a, b) => {
+        const av = a[this.orderField!];
+        const bv = b[this.orderField!];
+        const cmp = String(av ?? "").localeCompare(String(bv ?? ""));
+        return this.orderAscending ? cmp : -cmp;
+      });
+    }
+    if (this.rangeFrom != null && this.rangeTo != null) {
+      rows = rows.slice(this.rangeFrom, this.rangeTo + 1);
     }
     if (this.rangeLimit != null) rows = rows.slice(0, this.rangeLimit);
     return rows;
@@ -376,10 +393,12 @@ describe("provider report routes sign-off coverage", () => {
     seedDb();
     mockSupabase = createMockSupabase();
     getProviderRevenueMock.mockResolvedValue({
-      totalRevenue: 90,
+      totalRevenue: 122,
       revenueByBooking: new Map([["booking-loc-a", 90]]),
       revenueByProductOrder: new Map([["order-loc-a", 32]]),
-      revenueByDate: new Map([["2026-05-02", 90]]),
+      revenueByDate: new Map([["2026-05-02", 122]]),
+      latestSettlementAtByBooking: new Map([["booking-loc-a", "2026-05-02T12:00:00.000Z"]]),
+      latestSettlementAtByProductOrder: new Map([["order-loc-a", "2026-05-02T11:00:00.000Z"]]),
     });
     getPreviousPeriodRevenueMock.mockResolvedValue(50);
   });
@@ -392,7 +411,7 @@ describe("provider report routes sign-off coverage", () => {
     );
 
     expect(data.totalBookings).toBe(2);
-    expect(data.dailyBookings).toEqual([{ date: "2026-05-02", count: 2, revenue: 90 }]);
+    expect(data.dailyBookings).toEqual([{ date: "2026-05-02", count: 2, revenue: 122 }]);
     expect(getProviderRevenueMock).toHaveBeenCalledWith(
       expect.anything(),
       providerId,

@@ -705,13 +705,26 @@ async function insertNoGatewayLedger(
     providerId: draft.provider_id,
   });
 
+  // Scale commission to the amount actually collected (deposit vs full, wallet/gift card only).
+  // Matches Paystack webhook: net_revenue_ratio × collected_amount (see charge-success.ts).
+  const amountCollected = walletAmountApplied + giftCardAmountApplied;
+  const effectiveAmount =
+    amountCollected > 0 ? amountCollected : v.totalAmount;
+  const bookingTotalForScale = v.totalAmount;
+  const scale =
+    bookingTotalForScale > 0 ? effectiveAmount / bookingTotalForScale : 1;
+  const scaledCommissionBase = Math.max(
+    0,
+    Math.round(v.commissionBase * scale * 100) / 100,
+  );
+
   const platformCommission =
-    commissionRate > 0 ? percentOf(v.commissionBase, commissionRate) : 0;
+    commissionRate > 0 ? percentOf(scaledCommissionBase, commissionRate) : 0;
 
   // provider_earnings represents the service-base share going to the provider, EXCLUDING tip and
   // travel fee — those are inserted as their own finance_transactions rows ("tip", "travel_fee")
   // to match the Paystack webhook path and avoid double-counting in aggregate reports.
-  const providerEarnings = subtractMoney(v.commissionBase, platformCommission);
+  const providerEarnings = subtractMoney(scaledCommissionBase, platformCommission);
 
   // Determine the settlement method label for ledger descriptions and provider field.
   // Priority: wallet > gift_card > package/entitlement (zero-cost)
@@ -737,9 +750,9 @@ async function insertNoGatewayLedger(
   await (supabase.from("payment_transactions") as any).insert({
     booking_id: booking.id,
     reference: internalRef,
-    amount: v.totalAmount,
+    amount: effectiveAmount,
     fees: 0,
-    net_amount: v.totalAmount,
+    net_amount: effectiveAmount,
     status: "success",
     provider: settlementMethod === "wallet_and_gift_card" ? "wallet" : settlementMethod,
     transaction_type: "charge",
@@ -772,7 +785,7 @@ async function insertNoGatewayLedger(
       provider_id: draft.provider_id,
       tenant_id: financeTenantId,
       transaction_type: "payment",
-      amount: v.commissionBase,
+      amount: scaledCommissionBase,
       fees: 0,
       commission: platformCommission,
       net: platformCommission,

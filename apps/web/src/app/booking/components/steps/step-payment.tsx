@@ -759,8 +759,7 @@ export default function StepPayment({
       promotion_code: bookingState.promotions.couponCode || null,
       gift_card_code: bookingState.promotions.giftCardCode || null,
       membership_plan_id: bookingState.promotions.membershipPlanId || null,
-      use_wallet: (bookingState.useWallet ?? false) || (bookingState.promotions.loyaltyPointsUsed ? true : false),
-      loyalty_points_used: bookingState.promotions.loyaltyPointsUsed ?? 0,
+      use_wallet: bookingState.useWallet ?? false,
       hold_id: holdId || null,
       // B11: forward provider form responses and booking custom field values
       // collected on the new "forms" step. API validates these against the

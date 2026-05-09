@@ -10,6 +10,7 @@ import {
   Platform,
   Keyboard,
   Dimensions,
+  useWindowDimensions,
 } from "react-native";
 import Animated, {
   useSharedValue,
@@ -38,17 +39,9 @@ interface BottomSheetProps {
   showHandle?: boolean;
 }
 
-const { height: SCREEN_HEIGHT } = Dimensions.get("window");
-
 const GestureRoot = GestureHandlerRootView as ComponentType<
   PropsWithChildren<{ style?: { flex: number } }>
 >;
-
-const SNAP_HEIGHTS = {
-  auto: SCREEN_HEIGHT * 0.8,
-  half: SCREEN_HEIGHT * 0.55,
-  full: SCREEN_HEIGHT * 0.92,
-};
 
 export function BottomSheet({
   visible,
@@ -60,47 +53,61 @@ export function BottomSheet({
   showHandle = true,
 }: BottomSheetProps) {
   const insets = useSafeAreaInsets();
-  const [keyboardInset, setKeyboardInset] = useState(0);
-  const translateY = useSharedValue(SCREEN_HEIGHT);
+  const { height: screenHeight } = useWindowDimensions();
+  
+  /** Android modals do not lift like iOS KAV; pad container so the sheet stays above the keyboard. */
+  const [androidKeyboardInset, setAndroidKeyboardInset] = useState(0);
+  
+  // Initialize with a large enough value to be off-screen
+  const translateY = useSharedValue(Dimensions.get("window").height * 2);
   const backdropOpacity = useSharedValue(0);
-  const sheetHeight = SNAP_HEIGHTS[snapHeight];
+  
+  const snapHeights = {
+    auto: screenHeight * 0.8,
+    half: screenHeight * 0.55,
+    full: screenHeight * 0.92,
+  };
+  const sheetHeight = snapHeights[snapHeight];
 
   const closeSheet = useCallback(() => {
     Keyboard.dismiss();
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    translateY.value = withTiming(SCREEN_HEIGHT, {
+    translateY.value = withTiming(screenHeight, {
       duration: 250,
       easing: Easing.out(Easing.ease),
     });
     backdropOpacity.value = withTiming(0, { duration: 200 }, () => {
       runOnJS(onClose)();
     });
-  }, [onClose, translateY, backdropOpacity]);
+  }, [onClose, translateY, backdropOpacity, screenHeight]);
 
   useEffect(() => {
     if (visible) {
-      translateY.value = SCREEN_HEIGHT;
+      translateY.value = screenHeight;
       backdropOpacity.value = 0;
       translateY.value = withSpring(0, { damping: 20, stiffness: 90 });
       backdropOpacity.value = withTiming(1, { duration: 250 });
-    } else {
-      setKeyboardInset(0);
     }
-  }, [visible, translateY, backdropOpacity]);
+  }, [visible, translateY, backdropOpacity, screenHeight]);
 
   useEffect(() => {
-    const showEvt = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
-    const hideEvt = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    if (Platform.OS !== "android") return;
+    const showEvt = "keyboardDidShow";
+    const hideEvt = "keyboardDidHide";
     const subShow = Keyboard.addListener(showEvt, (e) => {
       const h = e.endCoordinates?.height;
-      setKeyboardInset(typeof h === "number" && Number.isFinite(h) ? h : 0);
+      setAndroidKeyboardInset(typeof h === "number" && Number.isFinite(h) ? h : 0);
     });
-    const subHide = Keyboard.addListener(hideEvt, () => setKeyboardInset(0));
+    const subHide = Keyboard.addListener(hideEvt, () => setAndroidKeyboardInset(0));
     return () => {
       subShow.remove();
       subHide.remove();
     };
   }, []);
+
+  useEffect(() => {
+    if (!visible) setAndroidKeyboardInset(0);
+  }, [visible]);
 
   const panGesture = Gesture.Pan()
     .onUpdate((e) => {
@@ -124,16 +131,10 @@ export function BottomSheet({
     opacity: backdropOpacity.value,
   }));
 
-  if (!visible) return null;
-
   return (
-    <Modal visible transparent animationType="none" onRequestClose={closeSheet}>
+    <Modal visible={visible} transparent animationType="none" onRequestClose={closeSheet}>
       <GestureRoot style={{ flex: 1 }}>
-        <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior="padding"
-          keyboardVerticalOffset={Platform.OS === "ios" ? Math.max(insets.top, 12) + 8 : Math.max(insets.bottom, 12)}
-        >
+        <View style={{ flex: 1 }}>
           <Animated.View style={[{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0 }, backdropAnimatedStyle]}>
             <Pressable
               style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.4)" }}
@@ -143,66 +144,82 @@ export function BottomSheet({
             />
           </Animated.View>
 
-          <Animated.View
-            style={[
-              { position: "absolute", bottom: 0, left: 0, right: 0, borderTopLeftRadius: 24, borderTopRightRadius: 24 },
-              {
-                maxHeight: sheetHeight,
-                backgroundColor: "#ffffff",
-                shadowColor: "#000",
-                shadowOffset: { width: 0, height: -4 },
-                shadowOpacity: 0.1,
-                shadowRadius: 16,
-                elevation: 16,
-              },
-              sheetAnimatedStyle,
-            ]}
+          {/* Keyboard avoidance applies to the sheet only (not the backdrop), so the form stays above the keyboard. */}
+          <KeyboardAvoidingView
+            style={{ 
+              flex: 1, 
+              justifyContent: "flex-end",
+              paddingBottom: Platform.OS === "android" ? androidKeyboardInset : 0
+            }}
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
+            keyboardVerticalOffset={0}
           >
-            {showHandle && (
-              <GestureDetector gesture={panGesture}>
-                <Animated.View style={{ alignItems: "center", paddingBottom: 4, paddingTop: 12 }}>
-                  <View style={{ height: 4, width: 40, borderRadius: 2, backgroundColor: "#d1d5db" }} />
-                </Animated.View>
-              </GestureDetector>
-            )}
-
-            {title && (
-              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomWidth: 1, borderBottomColor: "#f3f4f6", paddingHorizontal: 20, paddingBottom: 12, paddingTop: 4 }}>
-                <View style={{ marginRight: 12, flex: 1 }}>
-                  <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827" }}>{title}</Text>
-                  {subtitle && (
-                    <Text style={{ marginTop: 2, fontSize: 12, color: "#6b7280" }}>{subtitle}</Text>
-                  )}
-                </View>
-                <TouchableOpacity
-                  onPress={closeSheet}
-                  style={{ minHeight: 44, minWidth: 44, alignItems: "center", justifyContent: "center", borderRadius: 22, backgroundColor: "#f3f4f6" }}
-                  accessibilityLabel="Close"
-                  accessibilityRole="button"
-                >
-                  <Ionicons name="close" size={18} color="#374151" />
-                </TouchableOpacity>
-              </View>
-            )}
-
-            <ScrollView
-              style={{ flex: 1, backgroundColor: "#ffffff" }}
-              contentContainerStyle={{
-                padding: 20,
-                paddingBottom: 40 + keyboardInset + (Platform.OS === "android" ? insets.bottom : 0),
-                backgroundColor: "#ffffff",
-              }}
-              keyboardShouldPersistTaps="handled"
-              keyboardDismissMode="interactive"
-              showsVerticalScrollIndicator={false}
-              bounces={false}
+            {/* Animated sheet - explicit opaque background for form content */}
+            <Animated.View
+              style={[
+                {
+                  width: "100%",
+                  flexShrink: 1,
+                  borderTopLeftRadius: 24,
+                  borderTopRightRadius: 24,
+                  maxHeight: sheetHeight,
+                  backgroundColor: "#ffffff",
+                  shadowColor: "#000",
+                  shadowOffset: { width: 0, height: -4 },
+                  shadowOpacity: 0.1,
+                  shadowRadius: 16,
+                  elevation: 16,
+                },
+                sheetAnimatedStyle,
+              ]}
             >
-              {children}
-            </ScrollView>
+              {/* Drag handle */}
+              {showHandle && (
+                <GestureDetector gesture={panGesture}>
+                  <Animated.View style={{ alignItems: "center", paddingBottom: 4, paddingTop: 12 }}>
+                    <View style={{ height: 4, width: 40, borderRadius: 2, backgroundColor: "#d1d5db" }} />
+                  </Animated.View>
+                </GestureDetector>
+              )}
 
-            <SafeAreaView edges={["bottom"]} />
-          </Animated.View>
-        </KeyboardAvoidingView>
+              {title && (
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomWidth: 1, borderBottomColor: "#f3f4f6", paddingHorizontal: 20, paddingBottom: 12, paddingTop: 4 }}>
+                  <View style={{ marginRight: 12, flex: 1 }}>
+                    <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827" }}>{title}</Text>
+                    {subtitle && (
+                      <Text style={{ marginTop: 2, fontSize: 12, color: "#6b7280" }}>{subtitle}</Text>
+                    )}
+                  </View>
+                  <TouchableOpacity
+                    onPress={closeSheet}
+                    style={{ minHeight: 44, minWidth: 44, alignItems: "center", justifyContent: "center", borderRadius: 22, backgroundColor: "#f3f4f6" }}
+                    accessibilityLabel="Close"
+                    accessibilityRole="button"
+                  >
+                    <Ionicons name="close" size={18} color="#374151" />
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              <ScrollView
+                style={{ flexShrink: 1, backgroundColor: "#ffffff" }}
+                contentContainerStyle={{
+                  padding: 20,
+                  paddingBottom: 40 + insets.bottom,
+                  backgroundColor: "#ffffff",
+                }}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="interactive"
+                showsVerticalScrollIndicator={false}
+                bounces={false}
+              >
+                {children}
+              </ScrollView>
+
+              <SafeAreaView edges={["bottom"]} />
+            </Animated.View>
+          </KeyboardAvoidingView>
+        </View>
       </GestureRoot>
     </Modal>
   );

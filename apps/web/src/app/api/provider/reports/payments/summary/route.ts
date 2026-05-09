@@ -9,6 +9,73 @@ import {
   summarizeLedgerLocationAttribution,
 } from "@/lib/reports/provider-report-utils";
 
+type FinanceRowFull = {
+  transaction_type: string;
+  amount: number;
+  net: number;
+  booking_id: string | null;
+  product_order_id: string | null;
+  created_at: string;
+};
+
+type LedgerParts = { payment: number; wallet: number; gift: number; additional: number };
+
+/** Paystack / Yoco / card terminal — booking may also have wallet_payment + gift_card_payment rows (split). */
+function isGatewayCardCaptureProvider(provider: string | null | undefined): boolean {
+  const p = (provider || "").toLowerCase();
+  return p === "paystack" || p === "yoco" || p === "stripe" || p === "card";
+}
+
+/**
+ * Customer funds represented in finance_transactions without double-counting:
+ * - Split Paystack/Yoco: sum payment + wallet_payment + gift_card_payment (+ additional_charge_payment).
+ * - Wallet / gift-card-only settlement: wallet + gift rows carry customer cash; `payment` rows are commission-base
+ *   allocation — omit `payment` when wallet/gift rows exist and there was no card capture.
+ */
+function sumBookingCustomerFunds(parts: LedgerParts, hasGatewayCardCapture: boolean): number {
+  if (hasGatewayCardCapture) {
+    return parts.payment + parts.wallet + parts.gift + parts.additional;
+  }
+  if (parts.wallet > 0 || parts.gift > 0) {
+    return parts.wallet + parts.gift + parts.additional;
+  }
+  return parts.payment + parts.additional;
+}
+
+function computeCustomerFundsSettledFromLedger(
+  financeRows: FinanceRowFull[],
+  bookingIdsWithGatewayCardCapture: Set<string>,
+): number {
+  const map = new Map<string, LedgerParts>();
+  for (const r of financeRows) {
+    if (!r.booking_id) continue;
+    const cur = map.get(r.booking_id) ?? { payment: 0, wallet: 0, gift: 0, additional: 0 };
+    const amt = Number(r.amount ?? 0);
+    if (r.transaction_type === "payment") cur.payment += amt;
+    else if (r.transaction_type === "wallet_payment") cur.wallet += amt;
+    else if (r.transaction_type === "gift_card_payment") cur.gift += amt;
+    else if (r.transaction_type === "additional_charge_payment") cur.additional += amt;
+    map.set(r.booking_id, cur);
+  }
+  let total = 0;
+  for (const [bid, parts] of map) {
+    total += sumBookingCustomerFunds(parts, bookingIdsWithGatewayCardCapture.has(bid));
+  }
+  for (const r of financeRows) {
+    if (r.booking_id) continue;
+    const amt = Number(r.amount ?? 0);
+    if (
+      r.transaction_type === "payment" ||
+      r.transaction_type === "wallet_payment" ||
+      r.transaction_type === "gift_card_payment" ||
+      r.transaction_type === "additional_charge_payment"
+    ) {
+      total += amt;
+    }
+  }
+  return total;
+}
+
 /**
  * GET /api/provider/reports/payments/summary
  *
@@ -68,14 +135,6 @@ export async function GET(request: NextRequest) {
     const bookingIds = (bookings ?? []).map((b) => b.id);
 
     // ── 2. Finance transactions settled in the period (authoritative ledger) ──
-    type FinanceRow = {
-      transaction_type: string;
-      amount: number;
-      net: number;
-      booking_id: string | null;
-      product_order_id: string | null;
-      created_at: string;
-    };
     const { data: ft } = await supabaseAdmin
       .from("finance_transactions")
       .select("transaction_type, amount, net, booking_id, product_order_id, created_at")
@@ -83,25 +142,34 @@ export async function GET(request: NextRequest) {
       .gte("created_at", fromDate.toISOString())
       .lte("created_at", toDate.toISOString());
     const ledgerLocationAttribution = summarizeLedgerLocationAttribution(
-      (ft ?? []) as FinanceRow[],
+      (ft ?? []) as FinanceRowFull[],
       locationId,
     );
     const financeRows = await filterLedgerRowsForLocation(
       supabaseAdmin,
       providerId,
-      (ft ?? []) as FinanceRow[],
+      (ft ?? []) as FinanceRowFull[],
       locationId,
     );
 
+    const ledgerBookingIds = [...new Set(financeRows.map((r) => r.booking_id).filter(Boolean))] as string[];
+    const bookingIdsForPt = [...new Set([...bookingIds, ...ledgerBookingIds])];
+
     // ── 3. Payment transactions (gateway + no-gateway settlements) ──
     let paymentTxRows: Array<{ provider: string; amount: number; net_amount: number; status: string; booking_id: string | null; metadata: Record<string, unknown> | null }> = [];
-    if (bookingIds.length > 0) {
+    if (bookingIdsForPt.length > 0) {
       const { data: pt } = await supabaseAdmin
         .from("payment_transactions")
         .select("provider, amount, net_amount, status, booking_id, metadata")
-        .in("booking_id", bookingIds)
+        .in("booking_id", bookingIdsForPt)
         .eq("status", "success");
       paymentTxRows = (pt ?? []) as typeof paymentTxRows;
+    }
+
+    const bookingIdsWithGatewayCardCapture = new Set<string>();
+    for (const pt of paymentTxRows) {
+      if (!pt.booking_id) continue;
+      if (isGatewayCardCaptureProvider(pt.provider)) bookingIdsWithGatewayCardCapture.add(pt.booking_id);
     }
 
     // ── Aggregate metrics ──
@@ -111,7 +179,7 @@ export async function GET(request: NextRequest) {
     // GMV = total booking value (all non-cancelled bookings regardless of payment status)
     const gmv = rows.reduce((s, b) => s + Number(b.total_amount ?? 0), 0);
 
-    // Actual collected = settled ledger rows by payment date, not appointment date.
+    // Raw ledger-type sums (audit / reconciliation — not always additive; see settledLedgerAmount).
     const totalPaidFromGateway = financeRows
       .filter((r) => r.transaction_type === "payment")
       .reduce((s, r) => s + Number(r.amount ?? 0), 0);
@@ -121,7 +189,14 @@ export async function GET(request: NextRequest) {
     const totalGiftCardApplied = financeRows
       .filter((r) => r.transaction_type === "gift_card_payment")
       .reduce((s, r) => s + Number(r.amount ?? 0), 0);
-    const settledLedgerAmount = totalPaidFromGateway + totalWalletApplied + totalGiftCardApplied;
+    const totalAdditionalChargePayments = financeRows
+      .filter((r) => r.transaction_type === "additional_charge_payment")
+      .reduce((s, r) => s + Number(r.amount ?? 0), 0);
+
+    const settledLedgerAmount = computeCustomerFundsSettledFromLedger(
+      financeRows,
+      bookingIdsWithGatewayCardCapture,
+    );
 
     // Revenue breakdown by payment method (from payment_transactions)
     const byMethod: Record<string, { count: number; amount: number }> = {};
@@ -131,14 +206,25 @@ export async function GET(request: NextRequest) {
       byMethod[method].count += 1;
       byMethod[method].amount += Number(pt.amount ?? 0);
     });
-    // Add wallet-only bookings (no payment_transaction row but wallet_amount > 0)
-    const walletOnlyBookings = rows.filter(
-      (b) => Number(b.wallet_amount ?? 0) > 0 && Number(b.total_paid ?? 0) === 0
-    );
-    if (walletOnlyBookings.length > 0) {
+    // Booking.wallet_amount: split Paystack+wallet has no separate PT row for wallet — add from booking.
+    // Wallet/gift-only settlements already have a payment_transactions row (internal ref); do not add twice.
+    const walletBookings = rows.filter((b) => Number(b.wallet_amount ?? 0) > 0);
+    if (walletBookings.length > 0) {
       if (!byMethod["wallet"]) byMethod["wallet"] = { count: 0, amount: 0 };
-      walletOnlyBookings.forEach((b) => {
-        byMethod["wallet"].count += 1;
+      walletBookings.forEach((b) => {
+        const hasGatewayPt = paymentTxRows.some(
+          (pt) => pt.booking_id === b.id && isGatewayCardCaptureProvider(pt.provider),
+        );
+        const hasInternalSettlementPt = paymentTxRows.some((pt) => {
+          if (pt.booking_id !== b.id) return false;
+          const p = (pt.provider || "").toLowerCase();
+          return p === "wallet" || p === "gift_card" || p === "wallet_and_gift_card";
+        });
+        if (hasInternalSettlementPt && !hasGatewayPt) return;
+
+        if (Number(b.total_paid ?? 0) === 0) {
+          byMethod["wallet"].count += 1;
+        }
         byMethod["wallet"].amount += Number(b.wallet_amount ?? 0);
       });
     }
@@ -200,9 +286,11 @@ export async function GET(request: NextRequest) {
       .reduce((s, r) => s + Number(r.amount ?? 0), 0);
 
     // Successful vs failed (from payment_transactions)
+    const gatewayChargeCount = paymentTxRows.filter((pt) => isGatewayCardCaptureProvider(pt.provider)).length;
     const successfulPayments = paymentTxRows.length;
     const totalPayments = rows.filter((b) => b.payment_status !== "pending").length;
     const pendingPayments = rows.filter((b) => b.payment_status === "pending").length;
+    const failedPayments = rows.filter((b) => b.payment_status === "failed").length;
 
     // Refunds (from finance_transactions refund rows, amount is now positive absolute value)
     const refundedAmount = financeRows
@@ -215,7 +303,12 @@ export async function GET(request: NextRequest) {
       providerEarnings + tipsCollected + travelFeesCollected + cancellationFeesRetained - refundedAmount;
 
     const averageTransactionValue = totalPayments > 0 ? gmv / totalPayments : 0;
+    const averageBookedValueNonPending = averageTransactionValue;
     const refundRate = settledLedgerAmount > 0 ? (refundedAmount / settledLedgerAmount) * 100 : 0;
+
+    const reportBasis =
+      "Bookings use appointment scheduled dates; ledger rows use settlement timestamps (both in provider timezone). " +
+      "Customer funds settled sums finance_transactions without double-counting wallet-only ledger flows.";
 
     // Walk-in / cash / "other" booking_payments often have no matching `finance_transactions`
     // row (documented gap vs Paystack webhook flow). Surface for provider reconciliation.
@@ -289,13 +382,14 @@ export async function GET(request: NextRequest) {
         ledger_payment_amount: totalPaidFromGateway,
         wallet: totalWalletApplied,
         gift_card: totalGiftCardApplied,
+        additional_charge_payment: totalAdditionalChargePayments,
       },
       basis: {
         grossBookedValue: "Non-cancelled bookings scheduled in the selected provider-timezone period.",
         settledLedgerAmount:
-          "Payment, wallet, and gift-card finance ledger rows created in the selected provider-timezone period. Payment ledger rows are settlement/accounting rows and may not equal full customer gross.",
+          "Customer funds from finance_transactions in the settlement window: Paystack/Yoco splits sum payment + wallet + gift card (+ additional charges); wallet/gift-only bookings count wallet/gift rows only (payment rows there allocate commission, not extra customer cash).",
         customerPaymentsByMethodTotal:
-          "Successful booking payment transactions for bookings scheduled in the selected period, grouped by provider/method.",
+          "Successful payment_transactions plus wallet portions from split bookings where wallet is not duplicated by an internal wallet-settlement row.",
         providerEarnings:
           "Provider_earnings ledger net created in the selected period; may differ from gross collected cash.",
         providerNetActivity:
@@ -306,20 +400,24 @@ export async function GET(request: NextRequest) {
             : "All provider locations and provider-level ledger rows.",
       },
       locationAttribution: ledgerLocationAttribution,
+      reportBasis,
+      timezone: reportContext.timezone,
       // Booking counts
       totalPayments,
       successfulPayments,
+      gatewayChargeCount,
       pendingPayments,
       // Legacy-compatible fields (kept for backward compat with existing portal UI)
       totalAmount: gmv,
       totalCollected: settledLedgerAmount,
       netAmount: providerNetActivity,
       averageTransactionValue,
+      averageBookedValueNonPending,
       refundRate,
       paymentsByMethod,
       paymentsByStatus,
       // Payment-status breakdown
-      failedPayments: 0,
+      failedPayments,
       cashStylePaymentsWithoutLedgerCount,
       cashStylePaymentsWithoutLedgerAmount,
     });

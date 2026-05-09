@@ -1054,30 +1054,27 @@ function resolveConstraintsDb(
   }
 }
 
+export type LoadEffectiveStaffShiftsResult = {
+  staffShifts: StaffShift[];
+  /** After PR7 location-hours resolution (matches `loadAvailabilityConstraints` return semantics). */
+  workHoursEnabledEffective: boolean;
+};
+
 /**
- * Load all constraints for availability calculation
+ * Same effective shift resolution as the public availability engine:
+ * `staff_shifts` → `staff_schedules` → `provider_staff.working_hours` → primary location,
+ * then clamp to location hours. Used by booking validation so checkout cannot disagree with slots.
  */
-export async function loadAvailabilityConstraints(
-  supabase: SupabaseClient,
+export async function loadEffectiveStaffShifts(
+  db: SupabaseClient,
   staffId: string | null,
   date: string,
   providerId?: string,
-  options?: LoadAvailabilityConstraintsOptions
-): Promise<AvailabilityConstraints & {
-  providerSettings?: { avoidGaps: boolean; allowDoubleBookingManual: boolean };
-  workHoursEnabled?: boolean;
-}> {
-  const db = resolveConstraintsDb(supabase, options?.constraintsClient);
-
+  locationId?: string | null
+): Promise<LoadEffectiveStaffShiftsResult> {
   const syntheticProviderId = parseSyntheticProviderStaffId(staffId);
   if (staffId?.startsWith(SYNTHETIC_PROVIDER_STAFF_PREFIX) && !syntheticProviderId) {
-    return {
-      staffShifts: [],
-      timeBlocks: [],
-      existingBookings: [],
-      providerSettings: undefined,
-      workHoursEnabled: false,
-    };
+    return { staffShifts: [], workHoursEnabledEffective: false };
   }
 
   const effectiveStaffId = syntheticProviderId ? null : staffId;
@@ -1092,47 +1089,10 @@ export async function loadAvailabilityConstraints(
     providerId ??
     syntheticProviderId ??
     (effectiveStaffId ? await resolveProviderIdFromStaff(db, effectiveStaffId) : undefined);
-  const selectedLocationId = options?.publicCalendarParity?.locationId ?? null;
 
-  const excludeBookingId = options?.excludeBookingId;
+  const selectedLocationId = locationId ?? null;
 
-  const [
-    shiftsRaw,
-    timeBlocks,
-    existingBookings,
-    providerSettings,
-    holdBlocks,
-    closedPeriodBlocks,
-    groupBookingBlocks,
-  ] = await Promise.all([
-    loadStaffShifts(db, effectiveStaffId, date),
-    loadTimeBlocks(db, effectiveStaffId, date, resolvedProviderId),
-    syntheticProviderId
-      ? loadExistingBookingsForProviderOnDate(db, syntheticProviderId, date, excludeBookingId)
-      : loadExistingBookings(db, effectiveStaffId, date, excludeBookingId),
-    resolvedProviderId ? loadProviderSettings(db, resolvedProviderId) : Promise.resolve(undefined),
-    loadActiveBookingHoldsAsSyntheticBookings(db, {
-      resolvedProviderId,
-      syntheticProviderId,
-      effectiveStaffId,
-      date,
-      excludeHoldId: options?.excludeHoldId,
-    }),
-    resolvedProviderId && !options?.publicCalendarParity
-      ? loadBusinessClosedPeriods(db, resolvedProviderId, date, effectiveStaffId)
-      : Promise.resolve([]),
-    resolvedProviderId
-      ? loadExistingGroupBookingsAsSyntheticBookings(
-          db,
-          resolvedProviderId,
-          date,
-          effectiveStaffId,
-          options?.excludeGroupBookingId,
-        )
-      : Promise.resolve([]),
-  ]);
-
-  let staffShifts = shiftsRaw;
+  let staffShifts = await loadStaffShifts(db, effectiveStaffId, date);
   let skipWorkingHoursFallback = false;
 
   if (workHoursEnabled && effectiveStaffId && staffShifts.length === 0) {
@@ -1169,9 +1129,7 @@ export async function loadAvailabilityConstraints(
   }
 
   // PR 7: work_hours_enabled=false means "use location hours".
-  // Resolve shifts from the primary location so the calculator uses the
-  // shift-based path instead of hardcoded 09:00-18:00.
-  let effectiveWorkHoursEnabled = workHoursEnabled;
+  let workHoursEnabledEffective = workHoursEnabled;
   if (!workHoursEnabled && resolvedProviderId) {
     const fallbackStaffIdForShift =
       effectiveStaffId ?? staffId ?? `${SYNTHETIC_PROVIDER_STAFF_PREFIX}${resolvedProviderId}`;
@@ -1184,18 +1142,91 @@ export async function loadAvailabilityConstraints(
     );
     if (locationShifts.length > 0) {
       staffShifts = locationShifts;
-      effectiveWorkHoursEnabled = true;
+      workHoursEnabledEffective = true;
     }
   }
 
-  // Location operating hours act as a hard ceiling — if the location is
-  // explicitly closed for this day, no slots regardless of staff-level data.
   if (resolvedProviderId && staffShifts.length > 0) {
     const locationWh = await getPrimaryLocationWorkingHours(db, resolvedProviderId, selectedLocationId);
     if (locationWh) {
       staffShifts = constrainShiftsToLocationHours(staffShifts, locationWh, date);
     }
   }
+
+  return { staffShifts, workHoursEnabledEffective };
+}
+
+/**
+ * Load all constraints for availability calculation
+ */
+export async function loadAvailabilityConstraints(
+  supabase: SupabaseClient,
+  staffId: string | null,
+  date: string,
+  providerId?: string,
+  options?: LoadAvailabilityConstraintsOptions
+): Promise<AvailabilityConstraints & {
+  providerSettings?: { avoidGaps: boolean; allowDoubleBookingManual: boolean };
+  workHoursEnabled?: boolean;
+}> {
+  const db = resolveConstraintsDb(supabase, options?.constraintsClient);
+
+  const syntheticProviderId = parseSyntheticProviderStaffId(staffId);
+  if (staffId?.startsWith(SYNTHETIC_PROVIDER_STAFF_PREFIX) && !syntheticProviderId) {
+    return {
+      staffShifts: [],
+      timeBlocks: [],
+      existingBookings: [],
+      providerSettings: undefined,
+      workHoursEnabled: false,
+    };
+  }
+
+  const effectiveStaffId = syntheticProviderId ? null : staffId;
+
+  const resolvedProviderId =
+    providerId ??
+    syntheticProviderId ??
+    (effectiveStaffId ? await resolveProviderIdFromStaff(db, effectiveStaffId) : undefined);
+  const selectedLocationId = options?.publicCalendarParity?.locationId ?? null;
+
+  const excludeBookingId = options?.excludeBookingId;
+
+  const [
+    { staffShifts, workHoursEnabledEffective },
+    timeBlocks,
+    existingBookings,
+    providerSettings,
+    holdBlocks,
+    closedPeriodBlocks,
+    groupBookingBlocks,
+  ] = await Promise.all([
+    loadEffectiveStaffShifts(db, staffId, date, resolvedProviderId, selectedLocationId),
+    loadTimeBlocks(db, effectiveStaffId, date, resolvedProviderId),
+    syntheticProviderId
+      ? loadExistingBookingsForProviderOnDate(db, syntheticProviderId, date, excludeBookingId)
+      : loadExistingBookings(db, effectiveStaffId, date, excludeBookingId),
+    resolvedProviderId ? loadProviderSettings(db, resolvedProviderId) : Promise.resolve(undefined),
+    loadActiveBookingHoldsAsSyntheticBookings(db, {
+      resolvedProviderId,
+      syntheticProviderId,
+      effectiveStaffId,
+      date,
+      excludeHoldId: options?.excludeHoldId,
+    }),
+    resolvedProviderId && !options?.publicCalendarParity
+      ? loadBusinessClosedPeriods(db, resolvedProviderId, date, effectiveStaffId)
+      : Promise.resolve([]),
+    resolvedProviderId
+      ? loadExistingGroupBookingsAsSyntheticBookings(
+          db,
+          resolvedProviderId,
+          date,
+          effectiveStaffId,
+          options?.excludeGroupBookingId,
+        )
+      : Promise.resolve([]),
+  ]);
 
   let parityBookings: BookingService[] = [];
   if (options?.publicCalendarParity && resolvedProviderId) {
@@ -1225,7 +1256,7 @@ export async function loadAvailabilityConstraints(
       ...groupBookingBlocks,
     ],
     providerSettings,
-    workHoursEnabled: effectiveWorkHoursEnabled,
+    workHoursEnabled: workHoursEnabledEffective,
   } as AvailabilityConstraints & {
     providerSettings?: { avoidGaps: boolean; allowDoubleBookingManual: boolean };
     workHoursEnabled?: boolean;

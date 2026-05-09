@@ -26,6 +26,7 @@ export async function GET(
       .select(
         `
         *,
+        assigned_user:users!provider_leads_assigned_to_fkey(id, email, full_name),
         provider_lead_categories (
           global_category_id,
           global_service_categories:global_category_id (id, name, slug, icon)
@@ -161,7 +162,16 @@ export async function PATCH(
 
     const { data: updated, error: fetchErr } = await supabase
       .from("provider_leads")
-      .select("*")
+      .select(
+        `
+        *,
+        assigned_user:users!provider_leads_assigned_to_fkey(id, email, full_name),
+        provider_lead_categories (
+          global_category_id,
+          global_service_categories:global_category_id (id, name, slug, icon)
+        )
+      `,
+      )
       .eq("id", id)
       .eq("tenant_id", tenantId)
       .single();

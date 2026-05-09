@@ -1,6 +1,12 @@
 import { NextRequest } from "next/server";
-import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
-import { createClient } from "@supabase/supabase-js";
+import {
+  requireRoleInApi,
+  getProviderIdForUser,
+  successResponse,
+  notFoundResponse,
+  handleApiError,
+} from "@/lib/supabase/api-helpers";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { startOfWeek, startOfMonth, startOfQuarter, startOfYear } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
 import { formatDateYmd, dateRangeBoundsUtc } from "@/lib/dates/provider-tz";
@@ -15,16 +21,8 @@ import { DASHBOARD_REVENUE_TRANSACTION_TYPES } from "@/lib/reports/constants";
 
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      }
-    );
+    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
+    const supabaseAdmin = getSupabaseAdmin();
 
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
 
@@ -130,14 +128,16 @@ export async function GET(request: NextRequest) {
       timezone: reportContext.timezone,
     };
 
-    const { totalRevenue, revenueByBooking } = await getProviderRevenue(
+    const { totalRevenue, revenueByBooking, revenueByProductOrder } = await getProviderRevenue(
       supabaseAdmin,
       providerId,
       periodStart,
       periodEnd,
       locationId,
-      dashOpts
+      dashOpts,
     );
+    const ledgerEarningsFromBookings = Array.from(revenueByBooking.values()).reduce((s, v) => s + v, 0);
+    const ledgerEarningsFromProductOrders = Array.from(revenueByProductOrder.values()).reduce((s, v) => s + v, 0);
     const totalBookings = bookings?.length || 0;
     const completedBookings = bookings?.filter((b) => b.status === "completed").length || 0;
     const cancelledBookings = bookings?.filter((b) => b.status === "cancelled").length || 0;
@@ -212,9 +212,48 @@ export async function GET(request: NextRequest) {
     );
     const revenueGrowth = prevRevenue > 0 ? ((totalRevenue - prevRevenue) / prevRevenue) * 100 : 0;
 
+    const reportBasis =
+      `Calendar in ${timezone}: ${fromYmd} through ${todayYmd}. ` +
+      `Bookings use bookings.scheduled_at (every status). ` +
+      `Headline revenue sums ledger transaction_type provider_earnings with finance_transactions.created_at in range (dashboard convention — excludes tips/travel rows); includes earnings linked to bookings and to product orders. ` +
+      `Cash or unsupported terminal payments may not produce ledger rows. ` +
+      `Growth compares this window to the immediately prior window of the same length.`;
+
+    const basis = {
+      calendar:
+        period === "week"
+          ? "Week to date (Monday start) through today."
+          : period === "month"
+            ? "Month to date through today."
+            : period === "quarter"
+              ? "Quarter to date through today."
+              : "Year to date through today.",
+      bookings:
+        "Individual bookings with scheduled_at between period start and end of today (location filter when set).",
+      ledgerHeadline:
+        "Sum of net provider_earnings rows in range (settlement timestamp finance_transactions.created_at).",
+      ledgerSplit:
+        "ledgerEarningsFromBookings + ledgerEarningsFromProductOrders equals headline total when every row maps to a booking or order.",
+      avgBookingValue:
+        "Mean of provider_earnings attributed to bookings that have ledger earnings — not booking.total_amount.",
+      payments:
+        "booking_payments rows whose booking_id is in the scheduled bookings query and created_at in range.",
+      netRevenue:
+        "Headline ledger earnings + cancellation_fee net amounts − refund sums in attributed rows. Tips and additional_charge lines are reported separately.",
+      growth:
+        "Prior window ends at period start; same day-count as current window.",
+      staff:
+        "Count of provider_staff for this provider — not scoped to location.",
+    };
+
     return successResponse({
+      timezone,
+      fromYmd,
+      toYmd: todayYmd,
       period,
       totalRevenue,
+      ledgerEarningsFromBookings,
+      ledgerEarningsFromProductOrders,
       cancellationFees: cancellationFeesTotal,
       tipsTotal,
       additionalChargesTotal,
@@ -235,6 +274,9 @@ export async function GET(request: NextRequest) {
       revenueGrowth,
       periodStart: periodStart.toISOString(),
       periodEnd: periodEnd.toISOString(),
+      reportBasis,
+      basis,
+      report_basis: reportBasis,
       locationAttribution: {
         scopedByLocation: Boolean(locationId),
         excludedUnattributedRows:

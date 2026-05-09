@@ -28,10 +28,6 @@ interface PackageReport {
   name: string;
   total_sold: number;
   total_revenue: number;
-  active_count: number;
-  /** null = not computed by the server (avoid fake utilization). */
-  usage_rate: number | null;
-  avg_completion_days: number | null;
   services_included: number;
 }
 
@@ -39,8 +35,6 @@ interface PackageStats {
   total_packages: number;
   total_sold: number;
   total_revenue: number;
-  active_subscriptions: number | null;
-  avg_usage_rate: number | null;
 }
 
 const PERIOD_FILTERS = [
@@ -59,6 +53,11 @@ export default function PackageReportScreen() {
   const { data: reportData, loading, error: dataError, refresh } = useApi<{
     stats: PackageStats;
     packages: PackageReport[];
+    reportBasis?: string;
+    timezone?: string;
+    fromYmd?: string;
+    toYmd?: string;
+    basis?: Record<string, string>;
   }>(packagesUrl);
 
   const handleRefresh = useCallback(async () => {
@@ -72,27 +71,43 @@ export default function PackageReportScreen() {
 
   const stats = reportData?.stats;
   const packages = reportData?.packages ?? [];
+  const basisText =
+    typeof reportData?.reportBasis === "string" && reportData.reportBasis.trim()
+      ? reportData.reportBasis
+      : "";
 
   async function handleExport() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const tz = reportData?.timezone ?? "";
+    const window =
+      typeof reportData?.fromYmd === "string" && typeof reportData?.toYmd === "string"
+        ? `${reportData.fromYmd}–${reportData.toYmd}`
+        : "";
+    const esc = (s: string) => `"${String(s).replace(/"/g, '""')}"`;
+    const header = [
+      `key,value`,
+      `${esc("timezone")},${esc(tz)}`,
+      `${esc("period")},${esc(period)}`,
+      `${esc("calendar_window")},${esc(window)}`,
+      "",
+      "Package,Sold,Booked value,Services in catalog",
+    ].join("\n");
     const rows = packages.map(
       (p) =>
-        `${p.name},${p.total_sold},${formatCurrency(p.total_revenue)},${p.active_count},${
-          p.usage_rate == null ? "" : `${(p.usage_rate * 100).toFixed(0)}%`
-        }`
+        `${esc(p.name)},${p.total_sold},${p.total_revenue},${p.services_included}`,
     );
-    const csv = `Package,Sold,Revenue,Active,Usage Rate\n${rows.join("\n")}`;
+    const csv = `${header}\n${rows.join("\n")}`;
     try {
-      await Share.share({ message: csv, title: "Package Report" });
+      await Share.share({ message: csv, title: "Packages overview" });
     } catch {}
   }
 
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader
-        title="Package Report"
+        title="Packages overview"
         showBack
-        subtitle="Sales & usage analytics"
+        subtitle="Active catalog · booked counts & value in period"
         rightAction={
           <TouchableOpacity
             style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-100")}
@@ -103,16 +118,42 @@ export default function PackageReportScreen() {
         }
       />
 
+      {basisText ? (
+        <View style={twStyle("mb-3 rounded-2xl border border-teal-100 bg-teal-50/90 px-4 py-3")}>
+          <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-teal-900")}>
+            Basis
+          </Text>
+          <Text style={twStyle("mt-2 text-sm leading-5 text-teal-950")}>{basisText}</Text>
+          {reportData?.timezone ? (
+            <Text style={twStyle("mt-2 text-xs text-teal-900/85")}>Timezone · {reportData.timezone}</Text>
+          ) : null}
+        </View>
+      ) : null}
+
       <View style={twStyle("mb-3")}>
         <ReportResponsiveStatRow>
-          <StatCard title="Total Sold" value={String(stats?.total_sold ?? 0)} icon="layers-outline" iconColor="#6366f1" iconBg="bg-indigo-50" compact />
-          <StatCard title="Revenue" value={formatCurrency(stats?.total_revenue ?? 0)} icon="cash-outline" iconColor="#22c55e" iconBg="bg-green-50" compact />
           <StatCard
-            title="Active"
-            value={stats?.active_subscriptions == null ? "—" : String(stats.active_subscriptions)}
-            icon="radio-button-on"
-            iconColor="#f59e0b"
-            iconBg="bg-amber-50"
+            title="In catalog"
+            value={String(stats?.total_packages ?? 0)}
+            icon="layers-outline"
+            iconColor="#6366f1"
+            iconBg="bg-indigo-50"
+            compact
+          />
+          <StatCard
+            title="Bookings"
+            value={String(stats?.total_sold ?? 0)}
+            icon="calendar-outline"
+            iconColor="#0f766e"
+            iconBg="bg-teal-50"
+            compact
+          />
+          <StatCard
+            title="Booked value"
+            value={formatCurrency(stats?.total_revenue ?? 0)}
+            icon="cash-outline"
+            iconColor="#22c55e"
+            iconBg="bg-green-50"
             compact
           />
         </ReportResponsiveStatRow>
@@ -127,7 +168,7 @@ export default function PackageReportScreen() {
       ) : !loading && dataError && !reportData ? (
         <ErrorState message={dataError} onRetry={refresh} />
       ) : packages.length === 0 ? (
-        <EmptyState icon="layers-outline" title="No package data" description="Package sales will appear here" />
+        <EmptyState icon="layers-outline" title="No packages" description="Create active service packages to see them here" />
       ) : (
         <FlatList
           {...verticalFlatListPerf}
@@ -140,20 +181,16 @@ export default function PackageReportScreen() {
           ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
           renderItem={({ item: pkg }: { item: PackageReport }) => (
             <View style={twStyle("rounded-xl border border-gray-100 bg-white p-4")}>
-              <View style={twStyle("flex-row items-start justify-between")}>
+              <View style={twStyle("flex-row items-start justify-between gap-3")}>
                 <View style={twStyle("flex-1")}>
                   <Text style={twStyle("text-sm font-semibold text-gray-900")}>{pkg.name}</Text>
                   <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
-                    {pkg.services_included} services included
+                    {pkg.services_included} services in package
                   </Text>
-                  <View style={twStyle("mt-2 flex-row items-center")}>
-                    <View style={[twStyle("flex-row items-center"), { marginRight: 12 }]}>
-                      <Ionicons name="cart-outline" size={12} color="#6b7280" style={{ marginRight: 4 }} />
-                      <Text style={twStyle("text-xs text-gray-500")}>{pkg.total_sold} sold</Text>
-                    </View>
+                  <View style={twStyle("mt-2 flex-row flex-wrap gap-x-4 gap-y-1")}>
                     <View style={twStyle("flex-row items-center")}>
-                      <Ionicons name="people-outline" size={12} color="#6b7280" style={{ marginRight: 4 }} />
-                      <Text style={twStyle("text-xs text-gray-500")}>{pkg.active_count} active</Text>
+                      <Ionicons name="cart-outline" size={12} color="#6b7280" style={{ marginRight: 4 }} />
+                      <Text style={twStyle("text-xs text-gray-600")}>{pkg.total_sold} bookings</Text>
                     </View>
                   </View>
                 </View>
@@ -161,46 +198,7 @@ export default function PackageReportScreen() {
                   <Text style={twStyle("text-base font-bold text-gray-900")}>
                     {formatCurrency(pkg.total_revenue)}
                   </Text>
-                  <View style={twStyle("mt-1 flex-row items-center")}>
-                    <Text style={[twStyle("text-xs text-gray-500"), { marginRight: 4 }]}>Usage:</Text>
-                    <Text
-                      style={twStyle(
-                        `text-xs font-semibold ${
-                          pkg.usage_rate == null
-                            ? "text-gray-400"
-                            : pkg.usage_rate >= 0.7
-                              ? "text-green-600"
-                              : pkg.usage_rate >= 0.4
-                                ? "text-amber-600"
-                                : "text-red-600"
-                        }`
-                      )}
-                    >
-                      {pkg.usage_rate == null ? "—" : `${(pkg.usage_rate * 100).toFixed(0)}%`}
-                    </Text>
-                  </View>
-                  {/* Usage bar */}
-                  <View style={twStyle("mt-1 h-1.5 w-16 rounded-full bg-gray-100 overflow-hidden")}>
-                    <View
-                      style={[
-                        twStyle(
-                          `h-full rounded-full ${
-                            pkg.usage_rate == null
-                              ? "bg-gray-300"
-                              : pkg.usage_rate >= 0.7
-                                ? "bg-green-500"
-                                : pkg.usage_rate >= 0.4
-                                  ? "bg-amber-500"
-                                  : "bg-red-500"
-                          }`
-                        ),
-                        {
-                          width:
-                            pkg.usage_rate == null ? 0 : `${Math.min(pkg.usage_rate * 100, 100)}%`,
-                        },
-                      ]}
-                    />
-                  </View>
+                  <Text style={twStyle("mt-0.5 text-[10px] text-gray-400")}>booked value</Text>
                 </View>
               </View>
             </View>

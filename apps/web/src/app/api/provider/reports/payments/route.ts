@@ -87,15 +87,6 @@ export async function GET(request: NextRequest) {
         cancellationFeesTotal += Math.abs(val);
       } else if (t.transaction_type === "tip") {
         tipsCollected += Math.abs(val);
-      } else if (t.transaction_type === "wallet_payment" || t.transaction_type === "gift_card_payment") {
-        const method = t.transaction_type === "wallet_payment" ? "wallet" : "gift_card";
-        const amount = Math.abs(Number(t.amount ?? t.net ?? 0));
-        if (amount > 0) {
-          const existing = methodMap.get(method) || { amount: 0, count: 0 };
-          existing.amount += amount;
-          existing.count += 1;
-          methodMap.set(method, existing);
-        }
       }
     });
 

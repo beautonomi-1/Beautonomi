@@ -1,5 +1,7 @@
 /** Canonical Slack routing keys for Beautonomi admin alerts (avoid typos across triggers + UI). */
 export const SLACK_EVENT_KEYS = {
+  SUPPORT_TICKET_CREATED: "support.ticket.created",
+  SUPPORT_TICKET_REPLY: "support.ticket.reply",
   SUPPORT_TICKET_URGENT_CREATED: "support.ticket.urgent_created",
   SUPPORT_TICKET_HIGH_CREATED: "support.ticket.high_priority_created",
   SUPPORT_TICKET_HIGH_UNASSIGNED: "support.ticket.high_priority_unassigned",

@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
 import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
-import { DASHBOARD_REVENUE_TRANSACTION_TYPES, MAX_REPORT_DAYS } from "@/lib/reports/constants";
+import { LEDGER_FULL_PROVIDER_NET_TYPES, MAX_REPORT_DAYS } from "@/lib/reports/constants";
 import { getProviderReportContext, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
 
 export async function GET(request: NextRequest) {
@@ -100,16 +100,23 @@ export async function GET(request: NextRequest) {
     }
 
     // Get provider revenue from finance_transactions (actual earnings - consistent with other reports)
+    const ledgerOpts = {
+      transactionTypes: LEDGER_FULL_PROVIDER_NET_TYPES,
+      timezone: reportContext.timezone,
+    };
     const { revenueByBooking } = await getProviderRevenue(
       supabaseAdmin,
       providerId,
       fromDate,
       toDate,
       locationId ?? null,
-      { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES, timezone: reportContext.timezone }
+      ledgerOpts,
     );
 
-    // Aggregate by service - distribute booking revenue proportionally across services
+    /** Unique bookings per category (a multi-service booking counts once per category it touches). */
+    const categoryBookingSets = new Map<string, Set<string>>();
+
+    // Aggregate by service - distribute booking ledger net proportionally across service lines
     const serviceMap = new Map<string, {
       serviceId: string;
       serviceName: string;
@@ -150,6 +157,9 @@ export async function GET(request: NextRequest) {
           ? Number(bs.price || 0) / totalServicePrice
           : 1 / booking.booking_services.length;
         existing.revenue += bookingRevenue * serviceProportion;
+        const catSet = categoryBookingSets.get(categoryName) ?? new Set<string>();
+        catSet.add(booking.id);
+        categoryBookingSets.set(categoryName, catSet);
         serviceMap.set(serviceId, existing);
       });
     });
@@ -158,6 +168,7 @@ export async function GET(request: NextRequest) {
     const servicePerformance = Array.from(serviceMap.values())
       .map((service) => {
         const bc = service.bookingIds.size;
+        const avgPerBooking = bc > 0 ? service.revenue / bc : 0;
         return {
           serviceId: service.serviceId,
           serviceName: service.serviceName,
@@ -165,16 +176,18 @@ export async function GET(request: NextRequest) {
           duration: service.duration,
           bookings: bc,
           revenue: service.revenue,
-          averagePrice: bc > 0 ? service.revenue / bc : 0,
+          /** Mean ledger net allocated to this service line per booking that included it. */
+          averageRevenuePerBooking: avgPerBooking,
+          /** @deprecated Use averageRevenuePerBooking — kept for CSV/export compat */
+          averagePrice: avgPerBooking,
         };
       })
       .sort((a, b) => b.revenue - a.revenue);
 
-    // Aggregate by category
+    // Aggregate by category (unique bookings per category — not sum of per-service booking counts)
     const categoryPerformanceMap = new Map<string, {
       categoryName: string;
       services: number;
-      bookings: number;
       revenue: number;
     }>();
 
@@ -182,34 +195,42 @@ export async function GET(request: NextRequest) {
       const existing = categoryPerformanceMap.get(service.category) || {
         categoryName: service.category,
         services: 0,
-        bookings: 0,
         revenue: 0,
       };
       existing.services += 1;
-      existing.bookings += service.bookings;
       existing.revenue += service.revenue;
       categoryPerformanceMap.set(service.category, existing);
     });
 
-    const categoryPerformance = Array.from(categoryPerformanceMap.values())
+    const categoryPerformance = Array.from(categoryPerformanceMap.entries())
+      .map(([categoryName, row]) => ({
+        categoryName: row.categoryName,
+        services: row.services,
+        bookings: categoryBookingSets.get(categoryName)?.size ?? 0,
+        revenue: row.revenue,
+      }))
       .sort((a, b) => b.revenue - a.revenue);
 
-    // Summary metrics
+    // Summary metrics — completed bookings in period (each booking counted once)
     const totalServices = servicePerformance.length;
-    const totalBookings = servicePerformance.reduce((sum, s) => sum + s.bookings, 0);
+    const completedBookingsInPeriod = bookings?.length ?? 0;
     const totalRevenue = servicePerformance.reduce((sum, s) => sum + s.revenue, 0);
     const averageServiceRevenue = totalServices > 0 ? totalRevenue / totalServices : 0;
 
     return successResponse({
       totalServices,
-      totalBookings,
+      /** Completed appointments in range (each booking once). */
+      totalBookings: completedBookingsInPeriod,
       totalRevenue,
       averageServiceRevenue,
       topServices: servicePerformance.slice(0, 10),
       categoryPerformance,
       allServices: servicePerformance,
+      ledgerTransactionTypes: [...LEDGER_FULL_PROVIDER_NET_TYPES],
+      basisNote:
+        "Ledger net per completed appointment is split across service lines by each line’s share of the booking’s catalogue subtotal. Uses finance_transactions net for provider_earnings, travel_fee, and tip in the selected period (recognition date). Cash or terminal-only settlements may have no ledger rows.",
       reportBasis:
-        "Service performance uses completed bookings by scheduled date and allocates provider_earnings ledger revenue proportionally across service lines.",
+        "Completed bookings by scheduled date; ledger net allocated by line price share (matches Sales Summary). Includes provider earnings, travel fees, and tips.",
     });
   } catch (error) {
     return handleApiError(error, "SERVICE_PERFORMANCE_ERROR", 500);

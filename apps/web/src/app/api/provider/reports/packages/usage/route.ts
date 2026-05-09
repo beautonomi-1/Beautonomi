@@ -1,35 +1,42 @@
 import { NextRequest } from "next/server";
-import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
-import { createClient } from "@supabase/supabase-js";
+import {
+  requireRoleInApi,
+  getProviderIdForUser,
+  successResponse,
+  notFoundResponse,
+  handleApiError,
+} from "@/lib/supabase/api-helpers";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { MAX_REPORT_DAYS } from "@/lib/reports/constants";
 import { getProviderReportContext, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
+import {
+  asSingleRelation,
+  bookingServiceLineIsPackage,
+  offeringFromBookingService,
+} from "@/lib/reports/normalize-booking-relations";
 
+/**
+ * GET /api/provider/reports/packages/usage
+ *
+ * **Usage** = count of qualifying bookings / group events per package (same inclusion rules as sales, **without** revenue math).
+ * Unique clients = distinct customer_id from individual bookings **plus** participants linked through group_bookings.
+ */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      }
-    );
+    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
+    const supabaseAdmin = getSupabaseAdmin();
 
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
-
     if (!providerId) return notFoundResponse("Provider not found");
 
     const searchParams = request.nextUrl.searchParams;
     const reportContext = await getProviderReportContext(supabaseAdmin, providerId);
-    const { fromDate, toDate } = reportDateRangeFromParams(searchParams, reportContext.timezone, {
+    const { fromDate, toDate, fromYmd, toYmd } = reportDateRangeFromParams(searchParams, reportContext.timezone, {
       defaultDays: 90,
       maxDays: MAX_REPORT_DAYS,
     });
     const locationId = searchParams.get("location_id") || undefined;
 
-    // Get bookings with packages (both via package_id and via booking_services with service_type='package')
     let bookingsQuery = supabaseAdmin
       .from("bookings")
       .select(
@@ -56,7 +63,7 @@ export async function GET(request: NextRequest) {
           full_name,
           email
         )
-      `
+      `,
       )
       .eq("provider_id", providerId)
       .gte("scheduled_at", fromDate.toISOString())
@@ -70,11 +77,7 @@ export async function GET(request: NextRequest) {
     const { data: bookings, error: bookingsError } = await bookingsQuery;
 
     if (bookingsError) {
-      return handleApiError(
-        new Error("Failed to fetch bookings"),
-        "BOOKINGS_FETCH_ERROR",
-        500
-      );
+      return handleApiError(new Error(bookingsError.message || "Failed to fetch bookings"), "BOOKINGS_FETCH_ERROR", 500);
     }
 
     let groupBookingsQuery = supabaseAdmin
@@ -96,7 +99,7 @@ export async function GET(request: NextRequest) {
             customer_id
           )
         )
-      `
+      `,
       )
       .eq("provider_id", providerId)
       .gte("scheduled_at", fromDate.toISOString())
@@ -111,31 +114,35 @@ export async function GET(request: NextRequest) {
     const { data: groupBookings, error: groupBookingsError } = await groupBookingsQuery;
     if (groupBookingsError) {
       return handleApiError(
-        new Error("Failed to fetch group bookings"),
+        new Error(groupBookingsError.message || "Failed to fetch group bookings"),
         "GROUP_BOOKINGS_FETCH_ERROR",
-        500
+        500,
       );
     }
 
-    // Filter for bookings with packages (either via package_id or service_type = 'package')
-    const packageBookings = bookings?.filter((booking) =>
-      booking.package_id || 
-      booking.booking_services?.some((bs: any) => bs.offerings?.service_type === 'package')
-    ) || [];
+    const packageBookings =
+      bookings?.filter(
+        (booking) =>
+          booking.package_id ||
+          booking.booking_services?.some((bs) => bookingServiceLineIsPackage(bs)),
+      ) || [];
 
-    // Aggregate by package
-    const packageMap = new Map<string, {
-      packageId: string;
-      packageName: string;
-      totalUsage: number;
-      uniqueClients: Set<string>;
-      averageUsagePerClient: number;
-    }>();
+    const packageMap = new Map<
+      string,
+      {
+        packageId: string;
+        packageName: string;
+        totalUsage: number;
+        uniqueClients: Set<string>;
+        averageUsagePerClient: number;
+      }
+    >();
 
     packageBookings.forEach((booking) => {
-      // Prefer `bookings.package_id` — do not also count legacy package lines on the same row.
-      if (booking.package_id && (booking as any).service_packages) {
-        const pkg = (booking as any).service_packages;
+      const pkg = asSingleRelation<{ id: string; name?: string }>(
+        (booking as { service_packages?: unknown }).service_packages,
+      );
+      if (booking.package_id && pkg) {
         const packageId = pkg.id;
         const existing = packageMap.get(packageId) || {
           packageId,
@@ -146,34 +153,35 @@ export async function GET(request: NextRequest) {
         };
         existing.totalUsage += 1;
         if (booking.customer_id) {
-          existing.uniqueClients.add(booking.customer_id);
+          existing.uniqueClients.add(booking.customer_id as string);
         }
         packageMap.set(packageId, existing);
         return;
       }
 
-      booking.booking_services?.forEach((bs: any) => {
-        if (bs.offerings?.service_type === "package") {
-          const packageId = bs.offerings.id;
+      booking.booking_services?.forEach((bs: { offerings?: unknown }) => {
+        const off = offeringFromBookingService(bs);
+        if (off?.service_type === "package" && off.id) {
+          const packageId = off.id;
           const existing = packageMap.get(packageId) || {
             packageId,
-            packageName: bs.offerings.title || "Unknown Package",
+            packageName: off.title || "Unknown Package",
             totalUsage: 0,
             uniqueClients: new Set<string>(),
             averageUsagePerClient: 0,
           };
           existing.totalUsage += 1;
           if (booking.customer_id) {
-            existing.uniqueClients.add(booking.customer_id);
+            existing.uniqueClients.add(booking.customer_id as string);
           }
           packageMap.set(packageId, existing);
         }
       });
     });
 
-    (groupBookings || []).forEach((group: any) => {
-      if (!group.package_id || !group.service_packages) return;
-      const pkg = group.service_packages;
+    (groupBookings || []).forEach((group: Record<string, unknown>) => {
+      const pkg = asSingleRelation<{ id: string; name?: string }>(group.service_packages);
+      if (!group.package_id || !pkg) return;
       const packageId = pkg.id;
       const existing = packageMap.get(packageId) || {
         packageId,
@@ -183,7 +191,7 @@ export async function GET(request: NextRequest) {
         averageUsagePerClient: 0,
       };
       existing.totalUsage += 1;
-      (group.booking_participants || []).forEach((participant: any) => {
+      ((group.booking_participants as Array<{ bookings?: { customer_id?: string } }>) || []).forEach((participant) => {
         const customerId = participant.bookings?.customer_id;
         if (customerId) existing.uniqueClients.add(customerId);
       });
@@ -191,26 +199,33 @@ export async function GET(request: NextRequest) {
     });
 
     const packageUsage = Array.from(packageMap.values())
-      .map((pkg) => ({
-        ...pkg,
-        uniqueClientsCount: pkg.uniqueClients.size,
-        averageUsagePerClient: pkg.uniqueClients.size > 0 ? pkg.totalUsage / pkg.uniqueClients.size : 0,
-      }))
+      .map((pkg) => {
+        const uc = pkg.uniqueClients.size;
+        return {
+          packageId: pkg.packageId,
+          packageName: pkg.packageName,
+          totalUsage: pkg.totalUsage,
+          uniqueClientsCount: uc,
+          averageUsagePerClient: uc > 0 ? pkg.totalUsage / uc : 0,
+        };
+      })
       .sort((a, b) => b.totalUsage - a.totalUsage);
 
-    // Aggregate by client
-    const clientMap = new Map<string, {
-      clientId: string;
-      clientName: string;
-      email: string;
-      packagesUsed: number;
-    }>();
+    const clientMap = new Map<
+      string,
+      {
+        clientId: string;
+        clientName: string;
+        email: string;
+        packagesUsed: number;
+      }
+    >();
 
     packageBookings.forEach((booking) => {
-      const clientId = booking.customer_id;
+      const clientId = booking.customer_id as string | undefined;
       if (!clientId) return;
 
-      const client = booking.users as any;
+      const client = booking.users as { full_name?: string; email?: string } | undefined;
       const existing = clientMap.get(clientId) || {
         clientId,
         clientName: client?.full_name || "Unknown",
@@ -221,8 +236,8 @@ export async function GET(request: NextRequest) {
       clientMap.set(clientId, existing);
     });
 
-    (groupBookings || []).forEach((group: any) => {
-      (group.booking_participants || []).forEach((participant: any) => {
+    (groupBookings || []).forEach((group: Record<string, unknown>) => {
+      ((group.booking_participants as Array<{ bookings?: { customer_id?: string } }>) || []).forEach((participant) => {
         const clientId = participant.bookings?.customer_id;
         if (!clientId) return;
         const existing = clientMap.get(clientId) || {
@@ -241,17 +256,43 @@ export async function GET(request: NextRequest) {
       .slice(0, 20);
 
     const totalPackagesUsed = packageUsage.reduce((sum, p) => sum + p.totalUsage, 0);
-    const totalUniqueClients = new Set(
-      packageBookings.map((b) => b.customer_id).filter(Boolean)
-    ).size;
+
+    const uniqueClientIds = new Set<string>();
+    packageBookings.forEach((b) => {
+      if (b.customer_id) uniqueClientIds.add(b.customer_id as string);
+    });
+    (groupBookings || []).forEach((group: Record<string, unknown>) => {
+      ((group.booking_participants as Array<{ bookings?: { customer_id?: string } }>) || []).forEach((participant) => {
+        const cid = participant.bookings?.customer_id;
+        if (cid) uniqueClientIds.add(cid);
+      });
+    });
+    const totalUniqueClients = uniqueClientIds.size;
+
+    const reportBasis =
+      `Period ${fromYmd}–${toYmd} (${reportContext.timezone}). ` +
+      `Usage counts qualifying appointments (and group events) with scheduled_at in range — same package detection as sales: package_id on booking or legacy package-type service lines; group_bookings with package_id. ` +
+      `Per-package “avg per client” is totalUsage ÷ distinct clients who booked that package in the window. ` +
+      `Top clients counts package-included bookings per customer_id (individual + group participants).`;
 
     return successResponse({
+      timezone: reportContext.timezone,
+      fromYmd,
+      toYmd,
+      reportBasis,
+      basis: {
+        usage: "One increment per qualifying booking row or group_booking event per package.",
+        uniqueClients: "Union of customer_id from filtered bookings and from group booking_participants → bookings.customer_id.",
+        topClients: "Up to 20 customers by number of package-included bookings in the window.",
+      },
       totalPackagesUsed,
       totalUniqueClients,
       packageUsage,
       topClients,
+      report_basis: reportBasis,
     });
   } catch (error) {
-    return handleApiError(error, "PACKAGE_USAGE_ERROR", 500);
+    console.error("packages/usage:", error);
+    return handleApiError(error, "Failed to generate package usage report");
   }
 }

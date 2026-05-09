@@ -10,8 +10,14 @@ import { syncVariantOfferings } from "./_helpers/sync-variants";
 
 /**
  * GET /api/provider/services
- * 
- * Get provider's services/offerings
+ *
+ * Get provider's services/offerings.
+ *
+ * Query params:
+ * - `include_variants` — include variant rows when true.
+ * - `include_inactive` — include inactive offerings when true.
+ * - `include_offering_resources=true` — attach `resource_requirements[]` per offering from `offering_resources` + `resources`
+ *   (rooms/equipment linked in catalogue). Defaults off so existing clients are unchanged.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -26,6 +32,7 @@ export async function GET(request: NextRequest) {
 
     const includeVariants = request.nextUrl?.searchParams.get("include_variants") === "true";
     const includeInactive = request.nextUrl?.searchParams.get("include_inactive") === "true";
+    const includeOfferingResources = request.nextUrl?.searchParams.get("include_offering_resources") === "true";
 
     let query = supabase
       .from("offerings")
@@ -61,7 +68,86 @@ export async function GET(request: NextRequest) {
 
     console.log(`Fetched ${(services || []).length} services for provider ${providerId}`);
 
-    return successResponse((services || []) as OfferingCard[]);
+    let payload = (services || []) as OfferingCard[];
+
+    if (includeOfferingResources && payload.length > 0) {
+      const offeringIds = payload.map((s: { id?: string }) => s.id).filter(Boolean) as string[];
+      const { data: orows, error: orErr } = await supabase
+        .from("offering_resources")
+        .select(
+          `
+          offering_id,
+          required,
+          resources (
+            id,
+            name,
+            capacity,
+            is_active,
+            location_id
+          )
+        `,
+        )
+        .in("offering_id", offeringIds);
+
+      if (orErr) {
+        console.warn("include_offering_resources join failed:", orErr.message);
+      } else {
+        const byOffering = new Map<
+          string,
+          Array<{
+            resource_id: string;
+            required: boolean;
+            name: string;
+            capacity: number;
+            is_active: boolean;
+            location_id: string | null;
+          }>
+        >();
+
+        type ResourceEmbed = {
+          id?: string;
+          name?: string | null;
+          capacity?: number | null;
+          is_active?: boolean | null;
+          location_id?: string | null;
+        };
+
+        type OrRow = {
+          offering_id?: string;
+          required?: boolean | null;
+          resources?: ResourceEmbed | ResourceEmbed[] | null;
+        };
+
+        for (const row of (orows || []) as OrRow[]) {
+          const oid = row.offering_id;
+          const rawRes = row.resources;
+          const req = Boolean(row.required);
+          const res: ResourceEmbed | null = Array.isArray(rawRes)
+            ? rawRes[0] ?? null
+            : rawRes ?? null;
+          if (!oid || !res || typeof res !== "object") continue;
+          const rid = String(res.id ?? "");
+          if (!rid) continue;
+          const list = byOffering.get(oid) ?? [];
+          list.push({
+            resource_id: rid,
+            required: req,
+            name: String(res.name ?? "Resource"),
+            capacity: Number(res.capacity ?? 1),
+            is_active: res.is_active !== false,
+            location_id: res.location_id ?? null,
+          });
+          byOffering.set(oid, list);
+        }
+
+        payload = payload.map((s) => ({
+          ...s,
+          resource_requirements: byOffering.get(s.id) ?? [],
+        })) as unknown as OfferingCard[];
+      }
+    }
+
+    return successResponse(payload);
   } catch (error) {
     return handleApiError(error, "Failed to fetch services");
   }

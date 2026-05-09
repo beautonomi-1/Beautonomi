@@ -20,9 +20,16 @@ import { formatCurrencyShort } from "@/lib/format";
 import { trackScreenView } from "@/lib/analytics";
 import { twStyle } from "@/lib/twStyle";
 
-/** Matches GET /api/provider/analytics (after analytics refactor) */
+/** Matches GET /api/provider/analytics */
 export interface AnalyticsData {
   period?: string;
+  timezone?: string;
+  windows?: {
+    current: { fromYmd: string; toYmd: string };
+    previous: { fromYmd: string; toYmd: string };
+  };
+  basis?: Record<string, string>;
+  trends_meta?: { bucket: string; buckets_count: number; description: string };
   revenue: {
     total: number;
     all_time?: number;
@@ -61,7 +68,7 @@ export interface AnalyticsData {
     note?: string;
   };
   bookings: { total: number; thisMonth: number; lastMonth: number; upcoming: number; growth: string };
-  customers: { total: number; repeat: number; new: number };
+  customers: { total: number; repeat: number; new: number; single_booking?: number };
   services: { name: string; count: number; revenue: number }[];
   trends: { month: string; revenue: number; bookings: number }[];
 }
@@ -84,6 +91,12 @@ function periodCompareLabel(period: string): string {
   if (period === "week") return "vs previous week";
   if (period === "year") return "vs previous year";
   return "vs last month";
+}
+
+function trendsSectionTitle(period: string): string {
+  if (period === "week") return "Trends (12 weeks)";
+  if (period === "year") return "Trends (5 years)";
+  return "Trends (12 months)";
 }
 
 export default function AnalyticsScreen() {
@@ -138,7 +151,8 @@ export default function AnalyticsScreen() {
 
   const rev = data?.revenue ?? { total: 0, thisMonth: 0, lastMonth: 0, growth: "0" };
   const book = data?.bookings ?? { total: 0, thisMonth: 0, lastMonth: 0, upcoming: 0, growth: "0" };
-  const cust = data?.customers ?? { total: 0, repeat: 0, new: 0 };
+  const cust = data?.customers ?? { total: 0, repeat: 0, new: 0, single_booking: 0 };
+  const singleBooking = cust.single_booking ?? cust.new;
   const apiPeriod = (data?.period ?? rev.period ?? "month") as string;
   const eb = data?.earnings_breakdown;
   const curEb = eb?.current_period;
@@ -154,7 +168,11 @@ export default function AnalyticsScreen() {
       <ScreenHeader
         title="Analytics"
         showBack
-        subtitle={selectedLocationId ? "Selected location" : "All locations"}
+        subtitle={
+          selectedLocationId
+            ? "Ledger & counts · selected location"
+            : "Ledger & counts · all locations"
+        }
       />
       <View style={{ paddingHorizontal: screenPadding, paddingTop: 8, paddingBottom: 4 }}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: "row", gap: 8 }}>
@@ -178,6 +196,12 @@ export default function AnalyticsScreen() {
             );
           })}
         </ScrollView>
+        {data?.windows?.current?.fromYmd && data?.windows?.current?.toYmd ? (
+          <Text style={twStyle("mt-2 text-xs text-gray-500")}>
+            {data.windows.current.fromYmd} → {data.windows.current.toYmd}
+            {data.timezone ? ` · ${data.timezone.replace(/_/g, " ")}` : ""}
+          </Text>
+        ) : null}
       </View>
       <ScrollView
         style={twStyle("flex-1")}
@@ -197,7 +221,7 @@ export default function AnalyticsScreen() {
                 {formatCurrency(rev.current_period ?? rev.thisMonth ?? 0)}
               </Text>
             </View>
-            <Text style={twStyle("mt-1 text-xs text-gray-500")}>{periodRevenueLabel(apiPeriod)}</Text>
+            <Text style={twStyle("mt-1 text-xs text-gray-500")}>Ledger net · {periodRevenueLabel(apiPeriod)}</Text>
             {hasGrowth && (
               <Text
                 style={twStyle(
@@ -221,9 +245,9 @@ export default function AnalyticsScreen() {
                 {book.upcoming ?? 0}
               </Text>
             </View>
-            <Text style={twStyle("mt-1 text-xs text-gray-500")}>Upcoming bookings</Text>
+            <Text style={twStyle("mt-1 text-xs text-gray-500")}>Upcoming (scheduled)</Text>
             <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
-              {book.thisMonth ?? 0} in this period
+              {book.thisMonth ?? 0} created in period
             </Text>
           </View>
           <View style={twStyle("min-w-[45%] flex-1 rounded-2xl border border-gray-100 bg-white p-4")}>
@@ -235,19 +259,31 @@ export default function AnalyticsScreen() {
                 {cust.total ?? 0}
               </Text>
             </View>
-            <Text style={twStyle("mt-1 text-xs text-gray-500")}>Total customers</Text>
+            <Text style={twStyle("mt-1 text-xs text-gray-500")}>Distinct customers</Text>
             <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
-              {cust.repeat ?? 0} repeat · {cust.new ?? 0} new
+              {cust.repeat ?? 0} repeat · {singleBooking} single-booking
             </Text>
           </View>
         </View>
 
+        {data?.basis && Object.keys(data.basis).length > 0 ? (
+          <View style={twStyle("mb-4 rounded-2xl border border-indigo-100 bg-indigo-50/90 px-4 py-3")}>
+            <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-indigo-900")}>Facts</Text>
+            {Object.entries(data.basis).map(([k, v]) => (
+              <Text key={k} style={twStyle("mt-2 text-xs leading-5 text-indigo-950")}>
+                <Text style={twStyle("font-semibold capitalize text-indigo-950")}>{k.replace(/_/g, " ")}: </Text>
+                {v}
+              </Text>
+            ))}
+          </View>
+        ) : null}
+
         {rev.all_time != null && (
           <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
-            <Text style={twStyle("text-xs font-medium text-gray-500")}>All-time service earnings (headline)</Text>
+            <Text style={twStyle("text-xs font-medium text-gray-500")}>All-time ledger net</Text>
             <Text style={twStyle("mt-1 text-xl font-bold text-gray-900")}>{formatCurrency(rev.all_time)}</Text>
             <Text style={twStyle("mt-1 text-xs text-gray-400")}>
-              Net provider_earnings in the ledger. Direct walk-in cash may be excluded.
+              Sum of provider_earnings in finance_transactions (platform-settled). Cash walk-ins may be absent.
             </Text>
           </View>
         )}
@@ -322,7 +358,10 @@ export default function AnalyticsScreen() {
 
         {services.length > 0 && (
           <>
-            <SectionHeader title="Top services" />
+            <SectionHeader
+              title="Top offerings"
+              subtitle="Catalog line totals (booking_services.price) — not ledger settlement"
+            />
             <View style={twStyle("mb-4 overflow-hidden rounded-2xl border border-gray-100 bg-white")}>
               {services.map((s, i) => (
                 <View
@@ -335,7 +374,7 @@ export default function AnalyticsScreen() {
                     <Text style={twStyle("text-sm font-medium text-gray-900")} numberOfLines={2}>
                       {s.name}
                     </Text>
-                    <Text style={twStyle("text-xs text-gray-500")}>{s.count} bookings</Text>
+                    <Text style={twStyle("text-xs text-gray-500")}>{s.count} bookings · line total</Text>
                   </View>
                   <Text style={twStyle("text-sm font-semibold text-gray-900")}>{formatCurrency(s.revenue)}</Text>
                 </View>
@@ -346,7 +385,10 @@ export default function AnalyticsScreen() {
 
         {trends.length > 0 && (
           <>
-            <SectionHeader title="Trends" />
+            <SectionHeader
+              title={trendsSectionTitle(apiPeriod)}
+              subtitle={data?.trends_meta?.description ?? "Ledger vs bookings created per bucket"}
+            />
             <View style={twStyle("mb-4 overflow-hidden rounded-2xl border border-gray-100 bg-white")}>
               {trends.map((t, i) => (
                 <View

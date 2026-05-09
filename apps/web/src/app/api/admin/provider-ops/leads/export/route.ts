@@ -50,6 +50,7 @@ export async function GET(request: NextRequest) {
     const stage = searchParams.get("stage");
     const source = searchParams.get("source");
     const search = searchParams.get("search")?.trim();
+    const assignedTo = searchParams.get("assigned_to");
     const country = searchParams.get("country");
     const province = searchParams.get("province")?.trim();
     const categoryIds = parseCategoryIds(searchParams);
@@ -129,7 +130,11 @@ export async function GET(request: NextRequest) {
         "Description": lead.description ?? "",
         "Notes": lead.notes ?? "",
         "Tags": Array.isArray(lead.tags) ? lead.tags.join(", ") : "",
-        "Assigned To": lead.assigned_to ?? "",
+        "Assigned To":
+          (lead.assigned_user?.full_name && String(lead.assigned_user.full_name).trim()) ||
+          (lead.assigned_user?.email && String(lead.assigned_user.email).trim()) ||
+          lead.assigned_to ||
+          "",
         "Matched Provider ID": lead.matched_provider_id ?? "",
         "Matched User ID": lead.matched_user_id ?? "",
         "Match Confidence": lead.match_confidence ?? "",

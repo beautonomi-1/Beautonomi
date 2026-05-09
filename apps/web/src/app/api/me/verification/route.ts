@@ -3,6 +3,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, successResponse, handleApiError, getProviderIdForUser } from "@/lib/supabase/api-helpers";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { slackNotifyVerificationNeedsReview } from "@/lib/integrations/slack/ops-triggers";
 
 /**
  * GET /api/me/verification
@@ -240,6 +241,13 @@ export async function POST(request: NextRequest) {
         console.error("Failed to sync provider manual verification status:", providerSyncError);
       }
     }
+
+    slackNotifyVerificationNeedsReview({
+      tenantId,
+      verificationId: verification.id,
+      documentType,
+      source: "manual",
+    });
 
     return successResponse({
       verification_id: verification.id,

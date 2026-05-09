@@ -59,6 +59,25 @@ function coerceRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+/** PostgREST embed for `provider_leads.assigned_to` → `users`. */
+const LEADS_LIST_SELECT = `
+        *,
+        assigned_user:users!provider_leads_assigned_to_fkey(id, email, full_name),
+        provider_lead_categories (
+          global_category_id,
+          global_service_categories:global_category_id (id, name, slug, icon)
+        )
+      `;
+
+function applyAssignedToFilter<T extends { eq: (a: string, b: string) => T; is: (a: string, b: null) => T }>(
+  q: T,
+  assignedTo: string | null,
+): T {
+  if (!assignedTo) return q;
+  if (assignedTo === "unassigned") return q.is("assigned_to", null);
+  return q.eq("assigned_to", assignedTo);
+}
+
 function getProvinceFromLeadRow(row: {
   resolved_location?: unknown;
   suggested_location_text?: string | null;
@@ -117,16 +136,7 @@ export async function GET(request: NextRequest) {
 
     let query = supabase
       .from("provider_leads")
-      .select(
-        `
-        *,
-        provider_lead_categories (
-          global_category_id,
-          global_service_categories:global_category_id (id, name, slug, icon)
-        )
-      `,
-        { count: "exact" }
-      )
+      .select(LEADS_LIST_SELECT, { count: "exact" })
       .eq("tenant_id", tenantId)
       .order("created_at", { ascending: false });
 
@@ -136,9 +146,7 @@ export async function GET(request: NextRequest) {
     if (source && source !== "all") {
       query = query.eq("source", source);
     }
-    if (assignedTo) {
-      query = query.eq("assigned_to", assignedTo);
-    }
+    query = applyAssignedToFilter(query, assignedTo);
     if (country) {
       query = query.eq("country", country);
     }
@@ -170,7 +178,7 @@ export async function GET(request: NextRequest) {
         .select("*", { count: "exact", head: true })
         .eq("tenant_id", tenantId);
       if (source && source !== "all") q = q.eq("source", source);
-      if (assignedTo) q = q.eq("assigned_to", assignedTo);
+      q = applyAssignedToFilter(q, assignedTo);
       if (country) q = q.eq("country", country);
       if (province) {
         const safeProvince = escapeLike(province);
@@ -226,6 +234,7 @@ export async function GET(request: NextRequest) {
       country?: string | null;
       suggested_location_text?: string | null;
       resolved_location?: unknown;
+      assigned_to?: string | null;
     }>;
     const countryCounts = new Map<string, number>();
     const provinceCounts = new Map<string, { count: number; country: string | null }>();
@@ -307,6 +316,34 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    const assigneeIdCounts = new Map<string, number>();
+    for (const row of optionRows) {
+      const aid = typeof row.assigned_to === "string" ? row.assigned_to : "";
+      if (!aid) continue;
+      assigneeIdCounts.set(aid, (assigneeIdCounts.get(aid) ?? 0) + 1);
+    }
+    const assigneeIds = [...assigneeIdCounts.keys()];
+    const assigneeLabels = new Map<string, string>();
+    if (assigneeIds.length > 0) {
+      const { data: userRows } = await supabase
+        .from("users")
+        .select("id, full_name, email")
+        .in("id", assigneeIds);
+      for (const u of userRows ?? []) {
+        const id = typeof u.id === "string" ? u.id : "";
+        const name = typeof u.full_name === "string" ? u.full_name.trim() : "";
+        const email = typeof u.email === "string" ? u.email.trim() : "";
+        assigneeLabels.set(id, name || email || id);
+      }
+    }
+    const assigneesFacets = [...assigneeIdCounts.entries()]
+      .map(([value, count]) => ({
+        value,
+        label: assigneeLabels.get(value) ?? value,
+        count,
+      }))
+      .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+
     return successResponse({
       data: data || [],
       meta: { page, limit, total, has_more: total > page * limit },
@@ -321,6 +358,7 @@ export async function GET(request: NextRequest) {
         categories: [...categoryCounts.values()]
           .map(({ seen: _seen, ...rest }) => rest)
           .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)),
+        assignees: assigneesFacets,
       },
     });
   } catch (error) {

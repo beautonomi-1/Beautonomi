@@ -13,6 +13,7 @@ import { checkPayoutRequestRateLimit } from "@/lib/rate-limit/payout-request";
 import { applyRateLimitHeaders } from "@/lib/rate-limit/headers";
 import { dateRangeBoundsUtc, formatDateYmd, resolveTz } from "@/lib/dates/provider-tz";
 import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
+import { slackNotifyPayoutRequested } from "@/lib/integrations/slack/finance-triggers";
 
 /**
  * GET /api/provider/payouts
@@ -120,7 +121,7 @@ export async function POST(request: NextRequest) {
 
     const { data: prow } = await supabase
       .from("providers")
-      .select("tenant_id, currency, timezone")
+      .select("tenant_id, currency, timezone, business_name")
       .eq("id", providerId)
       .maybeSingle();
     const effectiveTenantId =
@@ -315,6 +316,11 @@ export async function POST(request: NextRequest) {
     } catch {
       // Ignore notification errors
     }
+
+    void slackNotifyPayoutRequested(request, payout as { id: string; provider_id?: string; amount?: number; currency?: string; payout_number?: string }, {
+      tenantId: effectiveTenantId,
+      providerName: (prow as { business_name?: string | null } | null)?.business_name ?? null,
+    });
 
     return successResponse({
       ...payout,

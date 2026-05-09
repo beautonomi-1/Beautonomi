@@ -3,6 +3,15 @@ import { SupabaseClient } from "@supabase/supabase-js";
 import { LEDGER_FULL_PROVIDER_NET_TYPES } from "./constants";
 import { filterLedgerRowsForLocation, reportDateKey } from "./provider-report-utils";
 
+export type ProviderRevenueResult = {
+  totalRevenue: number;
+  revenueByBooking: Map<string, number>;
+  revenueByProductOrder: Map<string, number>;
+  revenueByDate: Map<string, number>;
+  latestSettlementAtByBooking: Map<string, string>;
+  latestSettlementAtByProductOrder: Map<string, string>;
+};
+
 export type ProviderRevenueOptions = {
   /**
    * Defaults to LEDGER_FULL_PROVIDER_NET_TYPES (provider_earnings + travel_fee + tip).
@@ -34,12 +43,7 @@ export async function getProviderRevenue(
   toDate: Date,
   locationId?: string | null,
   options?: ProviderRevenueOptions
-): Promise<{
-  totalRevenue: number;
-  revenueByBooking: Map<string, number>;
-  revenueByProductOrder: Map<string, number>;
-  revenueByDate: Map<string, number>;
-}> {
+): Promise<ProviderRevenueResult> {
   const types =
     options?.transactionTypes?.length && options.transactionTypes.length > 0
       ? [...options.transactionTypes]
@@ -94,11 +98,28 @@ export async function getProviderRevenue(
     revenueByDate.set(date, current + Number(t.net || t.amount || 0));
   });
 
+  /** Latest ledger timestamp per booking/order in this query window (for settlement-date UX). */
+  const latestSettlementAtByBooking = new Map<string, string>();
+  const latestSettlementAtByProductOrder = new Map<string, string>();
+  validTransactions.forEach((t: any) => {
+    const ca = typeof t.created_at === "string" ? t.created_at : String(t.created_at ?? "");
+    if (!ca) return;
+    if (t.booking_id) {
+      const prev = latestSettlementAtByBooking.get(t.booking_id);
+      if (!prev || ca > prev) latestSettlementAtByBooking.set(t.booking_id, ca);
+    } else if (t.product_order_id) {
+      const prev = latestSettlementAtByProductOrder.get(t.product_order_id);
+      if (!prev || ca > prev) latestSettlementAtByProductOrder.set(t.product_order_id, ca);
+    }
+  });
+
   return {
     totalRevenue,
     revenueByBooking,
     revenueByProductOrder,
     revenueByDate,
+    latestSettlementAtByBooking,
+    latestSettlementAtByProductOrder,
   };
 }
 

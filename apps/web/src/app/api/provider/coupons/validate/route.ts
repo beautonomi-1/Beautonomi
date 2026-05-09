@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { validatePromoCode } from "@/lib/promotions/validate";
 import { percentOf } from "@beautonomi/utils";
 
 /**
@@ -52,9 +53,48 @@ export async function GET(request: NextRequest) {
     }
 
     const couponCode = code.trim().toUpperCase();
-    const subtotal = subtotalParam ? parseFloat(subtotalParam) : null;
+    const parsedSubtotal = subtotalParam ? parseFloat(subtotalParam) : null;
+    const subtotal =
+      parsedSubtotal != null && Number.isFinite(parsedSubtotal) ? parsedSubtotal : null;
+    const amountForPromo = subtotal != null && subtotal > 0 ? subtotal : 0;
 
-    // Get coupon by code
+    // Provider-authored codes live in `promotions`; platform coupons live in `coupons`.
+    // Try promotions first (same rules as public checkout / validate-booking).
+    const promoResult = await validatePromoCode(supabaseAdmin, {
+      code: couponCode,
+      amount: amountForPromo,
+      providerId,
+    });
+
+    if (promoResult.valid && promoResult.promotion) {
+      const p = promoResult.promotion;
+      const discountAmount = promoResult.discount.amount;
+      const discountType = p.type === "percentage" ? "percentage" : "fixed";
+
+      return successResponse({
+        valid: true,
+        coupon: {
+          id: p.id,
+          code: p.code,
+          name: p.description ?? undefined,
+          description: p.description,
+          discount_type: discountType,
+          discount_value: p.value,
+          currency: lastResortCurrency,
+          max_discount_amount: p.max_discount_amount,
+        },
+        discount: discountAmount,
+        discount_percentage: discountType === "percentage" ? p.value : null,
+        discount_fixed: discountType === "fixed" ? p.value : null,
+        min_purchase_amount: Number(p.min_purchase_amount ?? p.min_booking_amount ?? 0),
+        message:
+          subtotal != null && subtotal > 0
+            ? `Discount of ${lastResortCurrency} ${discountAmount.toFixed(2)} applied`
+            : `Valid promo: ${discountType === "percentage" ? `${p.value}%` : `${lastResortCurrency} ${p.value}`}`,
+      });
+    }
+
+    // Get coupon by code (platform `coupons` table)
     const { data: coupon, error: couponError } = await supabaseAdmin
       .from('coupons')
       .select('*')

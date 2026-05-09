@@ -635,7 +635,7 @@ export default function ClientsScreen() {
   }
 
   const handleViewClient = useCallback((client: Client) => {
-    router.push(`/(app)/(tabs)/more/clients/${client.id}` as never);
+    router.push(`/(app)/(tabs)/clients/${client.id}` as never);
   }, [router]);
 
   const handleBook = useCallback((client: Client) => {
@@ -646,7 +646,7 @@ export default function ClientsScreen() {
   // provider to the membership management section of the client detail
   // page so they can renew/cancel subscriptions in one tap.
   const handleManageMembership = useCallback((client: Client) => {
-    router.push(`/(app)/(tabs)/more/clients/${client.id}?section=membership` as never);
+    router.push(`/(app)/(tabs)/clients/${client.id}?section=membership` as never);
   }, [router]);
 
   const handleMessage = useCallback(async (client: Client) => {

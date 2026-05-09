@@ -37,6 +37,8 @@ const DATE_RANGES: { label: string; value: ReportDateRangeKey }[] = [
 
 interface RevenueData {
   total_revenue: number;
+  ledger_from_bookings?: number;
+  ledger_from_product_orders?: number;
   cancellation_fees?: number;
   total_revenue_inclusive?: number;
   previous_revenue?: number;
@@ -45,7 +47,13 @@ interface RevenueData {
   daily_trend: { date: string; revenue: number }[];
   avg_per_booking?: number;
   transaction_count?: number;
+  bookings_with_ledger_earnings?: number;
   time_basis_note?: string;
+  timezone?: string;
+  fromYmd?: string;
+  toYmd?: string;
+  reportBasis?: string;
+  basis?: Record<string, string>;
 }
 
 function BarChart({
@@ -129,25 +137,31 @@ export default function RevenueReport() {
 
   const handleExport = useCallback(async () => {
     if (!data) return;
+    const bookingsWithLedger = data.bookings_with_ledger_earnings ?? data.transaction_count;
     const text = [
-      `Revenue Report (${from} to ${to})`,
-      `Service Earnings: ${formatCurrency(data.total_revenue)}`,
-      data.transaction_count ? `Transactions: ${data.transaction_count}` : "",
-      data.avg_per_booking ? `Avg per Booking: ${formatCurrency(data.avg_per_booking)}` : "",
-      data.time_basis_note ? `Basis: ${data.time_basis_note}` : "",
+      `Revenue overview (${from} → ${to}${data.timezone ? ` · ${data.timezone}` : ""})`,
+      `Total ledger net: ${formatCurrency(data.total_revenue)}`,
+      data.ledger_from_bookings != null ? `Booking-linked ledger: ${formatCurrency(data.ledger_from_bookings)}` : "",
+      data.ledger_from_product_orders != null ? `Product-order ledger: ${formatCurrency(data.ledger_from_product_orders)}` : "",
+      (data.cancellation_fees ?? 0) > 0 ? `Cancellation fees: ${formatCurrency(data.cancellation_fees ?? 0)}` : "",
+      `Total incl. cancellation fees: ${formatCurrency(data.total_revenue_inclusive ?? data.total_revenue)}`,
+      bookingsWithLedger != null ? `Bookings with ledger earnings: ${bookingsWithLedger}` : "",
+      data.avg_per_booking ? `Avg booking-linked per earning booking: ${formatCurrency(data.avg_per_booking)}` : "",
+      data.time_basis_note ? `Timing: ${data.time_basis_note}` : "",
+      data.reportBasis ? `Full basis: ${data.reportBasis}` : "",
       "",
-      "By Service:",
+      "By service (booking-linked allocation only):",
       ...data.revenue_by_service.map((s) => `  ${s.service}: ${formatCurrency(s.revenue)}`),
       "",
-      "By Staff:",
+      "By staff (booking-linked allocation only):",
       ...data.revenue_by_staff.map((s) => `  ${s.staff}: ${formatCurrency(s.revenue)}`),
     ].filter(Boolean).join("\n");
-    await Share.share({ message: text, title: "Revenue Report" });
+    await Share.share({ message: text, title: "Revenue overview" });
   }, [data, from, to]);
 
   return (
     <ScreenContainer>
-      <ScreenHeader title="Revenue" showBack subtitle="Ledger earnings trends & breakdowns" />
+      <ScreenHeader title="Revenue" showBack subtitle="Ledger totals, splits, and booking-linked breakdowns" />
 
       <View style={twStyle("mb-3")}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: "row", paddingBottom: 4 }}>
@@ -177,46 +191,112 @@ export default function RevenueReport() {
       {loading && !data && !timedOut && !dataError && <ActivityIndicator style={twStyle("my-8")} color="#22c55e" />}
 
       {!loading && !data && !timedOut && !dataError && (
-        <EmptyState icon="cash-outline" title="No revenue data" description="Revenue data will appear once you have transactions" />
+        <EmptyState icon="cash-outline" title="No revenue data" description="Ledger activity will appear once you have recognized earnings in this window" />
       )}
 
       {data && (
         <View>
-          <View style={[twStyle("rounded-2xl bg-green-50 p-5 items-center"), { marginBottom: 16 }]}>
-            <Text style={twStyle("text-sm text-green-700")}>Service earnings</Text>
-            <Text style={twStyle("text-3xl font-bold text-green-900 mt-1")}>{formatCurrency(data.total_revenue)}</Text>
+          <View
+            style={[
+              twStyle("rounded-2xl border border-green-100 bg-green-50/90 p-5"),
+              { marginBottom: 16, shadowColor: "#14532d", shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } },
+            ]}
+          >
+            <Text style={twStyle("text-center text-xs font-semibold uppercase tracking-wide text-green-800")}>Total ledger net</Text>
+            <Text style={twStyle("mt-1 text-center text-[11px] leading-4 text-green-700")}>
+              Provider earnings (ledger), incl. product orders — recognition time in your timezone
+            </Text>
+            <Text style={twStyle("mt-3 text-center text-3xl font-bold text-green-950")}>{formatCurrency(data.total_revenue)}</Text>
             {data.previous_revenue != null && data.previous_revenue > 0 && (
-              <Text style={twStyle("text-xs text-green-600 mt-1")}>
+              <Text style={twStyle("mt-2 text-center text-xs text-green-700")}>
                 {data.total_revenue >= data.previous_revenue ? "+" : ""}
-                {(((data.total_revenue - data.previous_revenue) / data.previous_revenue) * 100).toFixed(1)}% vs previous period
+                {(((data.total_revenue - data.previous_revenue) / data.previous_revenue) * 100).toFixed(1)}% vs prior equal-length window
               </Text>
             )}
             {data.time_basis_note ? (
-              <Text style={twStyle("mt-2 text-center text-xs leading-4 text-green-700")}>{data.time_basis_note}</Text>
+              <Text style={twStyle("mt-3 text-center text-xs leading-4 text-green-800")}>{data.time_basis_note}</Text>
             ) : null}
           </View>
 
+          {data.basis && Object.keys(data.basis).length > 0 ? (
+            <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3")}>
+              <Text style={twStyle("mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500")}>Definitions</Text>
+              {Object.entries(data.basis).map(([k, v]) => (
+                <Text key={k} style={twStyle("mb-2 text-xs leading-5 text-gray-700")}>
+                  <Text style={twStyle("font-semibold text-gray-900")}>
+                    {k === "headline"
+                      ? "Headline"
+                      : k === "bookingsMix"
+                        ? "Retail / orders"
+                        : k === "breakdown"
+                          ? "Service & staff tables"
+                          : k === "avgPerBooking"
+                            ? "Avg per booking"
+                            : k === "dailyTrend"
+                              ? "Daily chart"
+                              : k}
+                    :{" "}
+                  </Text>
+                  {v}
+                </Text>
+              ))}
+            </View>
+          ) : null}
+
+          {(data.ledger_from_bookings != null || data.ledger_from_product_orders != null) && (
+            <View style={twStyle("mb-3 flex-row gap-2")}>
+              {data.ledger_from_bookings != null ? (
+                <View style={twStyle("flex-1 rounded-xl border border-gray-100 bg-white px-3 py-3")}>
+                  <Text style={twStyle("text-[11px] font-medium text-gray-500")}>Booking-linked ledger</Text>
+                  <Text style={twStyle("mt-1 text-base font-semibold text-gray-900")}>{formatCurrency(data.ledger_from_bookings)}</Text>
+                </View>
+              ) : null}
+              {data.ledger_from_product_orders != null ? (
+                <View style={twStyle("flex-1 rounded-xl border border-gray-100 bg-white px-3 py-3")}>
+                  <Text style={twStyle("text-[11px] font-medium text-gray-500")}>Product-order ledger</Text>
+                  <Text style={twStyle("mt-1 text-base font-semibold text-gray-900")}>{formatCurrency(data.ledger_from_product_orders)}</Text>
+                </View>
+              ) : null}
+            </View>
+          )}
+
           <ReportResponsiveStatRow>
-            {data.transaction_count != null ? (
-              <StatCard title="Transactions" value={String(data.transaction_count)} icon="receipt-outline" iconColor="#3b82f6" iconBg="bg-blue-50" compact />
+            {(data.bookings_with_ledger_earnings ?? data.transaction_count) != null ? (
+              <StatCard
+                title="Bookings w/ earnings"
+                subtitle="Distinct bookings with ledger allocation"
+                value={String(data.bookings_with_ledger_earnings ?? data.transaction_count)}
+                icon="calendar-outline"
+                iconColor="#3b82f6"
+                iconBg="bg-blue-50"
+                compact
+              />
             ) : null}
             {data.avg_per_booking != null ? (
-              <StatCard title="Avg / Booking" value={formatCurrency(data.avg_per_booking)} icon="trending-up-outline" iconColor="#22c55e" iconBg="bg-green-50" compact />
+              <StatCard
+                title="Avg booking-linked"
+                subtitle="Among bookings above only"
+                value={formatCurrency(data.avg_per_booking)}
+                icon="trending-up-outline"
+                iconColor="#22c55e"
+                iconBg="bg-green-50"
+                compact
+              />
             ) : null}
           </ReportResponsiveStatRow>
 
           {((data.cancellation_fees ?? 0) > 0 || (data.total_revenue_inclusive ?? 0) > data.total_revenue) && (
             <View style={twStyle("mt-2")}>
               <ReportResponsiveStatRow>
-                <StatCard title="Cancellation Fees" value={formatCurrency(data.cancellation_fees ?? 0)} icon="close-circle-outline" iconColor="#f59e0b" iconBg="bg-amber-50" compact />
-                <StatCard title="Total (incl. fees)" value={formatCurrency(data.total_revenue_inclusive ?? data.total_revenue)} icon="wallet-outline" iconColor="#6366f1" iconBg="bg-indigo-50" compact />
+                <StatCard title="Cancellation fees" value={formatCurrency(data.cancellation_fees ?? 0)} icon="close-circle-outline" iconColor="#f59e0b" iconBg="bg-amber-50" compact />
+                <StatCard title="Total incl. fees" value={formatCurrency(data.total_revenue_inclusive ?? data.total_revenue)} icon="wallet-outline" iconColor="#6366f1" iconBg="bg-indigo-50" compact />
               </ReportResponsiveStatRow>
             </View>
           )}
 
           {data.daily_trend.length > 0 && (
             <View>
-              <SectionHeader title="Daily Revenue Trend" />
+              <SectionHeader title="Daily ledger (recognition date)" />
               <View style={twStyle("rounded-2xl border border-gray-100 bg-white p-4")}>
                 <BarChart data={data.daily_trend} labelKey="date" valueKey="revenue" color="#22c55e" formatValue={formatCurrency} />
               </View>
@@ -225,7 +305,7 @@ export default function RevenueReport() {
 
           {data.revenue_by_service.length > 0 && (
             <View>
-              <SectionHeader title="Revenue by Service" />
+              <SectionHeader title="By service (booking-linked)" subtitle="Retail-only ledger is not allocated here" />
               <View style={twStyle("rounded-2xl border border-gray-100 bg-white px-4 py-2")}>
                 {data.revenue_by_service.map((s, i) => (
                   <HorizontalBar
@@ -242,7 +322,7 @@ export default function RevenueReport() {
 
           {data.revenue_by_staff.length > 0 && (
             <View>
-              <SectionHeader title="Revenue by Staff" />
+              <SectionHeader title="By staff (booking-linked)" subtitle="Same allocation rules as services" />
               <View style={twStyle("rounded-2xl border border-gray-100 bg-white px-4 py-2")}>
                 {data.revenue_by_staff.map((s, i) => (
                   <HorizontalBar

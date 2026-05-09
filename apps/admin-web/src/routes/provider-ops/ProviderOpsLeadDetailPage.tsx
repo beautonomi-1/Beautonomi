@@ -25,6 +25,19 @@ import {
 } from "lucide-react";
 import { LeadWhatsAppPanel } from "@/components/whatsapp/LeadWhatsAppPanel";
 import { handleLeadConcurrent409 } from "@/lib/handleLeadConcurrentUpdate";
+import { LeadAssigneeInline } from "@/components/provider-ops/LeadAssigneeInline";
+
+function detailAssigneeName(lead: Record<string, unknown>): string {
+  const aid = lead.assigned_to != null ? String(lead.assigned_to) : "";
+  if (!aid) return "Unassigned";
+  const au = lead.assigned_user as { full_name?: string | null; email?: string | null } | null | undefined;
+  if (au && typeof au === "object") {
+    const n = typeof au.full_name === "string" ? au.full_name.trim() : "";
+    const e = typeof au.email === "string" ? au.email.trim() : "";
+    if (n || e) return n || e;
+  }
+  return `${aid.slice(0, 8)}…`;
+}
 
 const STAGES = ["new", "contacted", "qualified", "proposal_sent", "negotiating", "won", "lost", "nurture", "matched"] as const;
 const STAGE_LABELS: Record<string, string> = {
@@ -96,8 +109,6 @@ export function ProviderOpsLeadDetailPage() {
   const { bootstrap } = useAdminSession();
   const myUserId = bootstrap?.userId ?? "";
   const [noteText, setNoteText] = useState("");
-  const [assignInput, setAssignInput] = useState("");
-  const [showAssignForm, setShowAssignForm] = useState(false);
   const [showConvertModal, setShowConvertModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteChannel, setInviteChannel] = useState<"email" | "sms">("email");
@@ -161,17 +172,16 @@ export function ProviderOpsLeadDetailPage() {
   });
 
   const assignMut = useMutation({
-    mutationFn: (assignTo: string) => {
+    mutationFn: (args: { assigned_to: string; assigned_to_name?: string }) => {
       const d = q.data as Record<string, unknown> | undefined;
       const token = typeof d?.updated_at === "string" ? d.updated_at : undefined;
       return adminApi.patchJson(`/api/admin/provider-ops/leads/${id}/assign`, {
-        assigned_to: assignTo,
+        assigned_to: args.assigned_to || null,
+        ...(args.assigned_to_name ? { assigned_to_name: args.assigned_to_name } : {}),
         ...(token ? { expected_updated_at: token } : {}),
       });
     },
     onSuccess: () => {
-      setAssignInput("");
-      setShowAssignForm(false);
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.leadDetail(id!) });
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
       adminToast.success("Lead assigned");
@@ -359,15 +369,25 @@ export function ProviderOpsLeadDetailPage() {
 
       <div className="rounded-xl border border-gray-200 bg-gray-50/90 px-4 py-3 text-sm text-gray-800">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          <span>
-            <span className="text-gray-500">Owner </span>
-            <span className="font-medium text-gray-900">
-              {assignedToId ? (iOwnLead ? "You" : `Staff ${assignedToId.slice(0, 8)}…`) : "Unassigned"}
-            </span>
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <span className="text-gray-500">Owner</span>
+            <LeadAssigneeInline
+              leadId={id!}
+              assignedToId={assignedToId || null}
+              displayName={assignedToId ? (iOwnLead ? "You" : detailAssigneeName(lead)) : "—"}
+              updatedAt={updatedAtRaw}
+              onAssign={(args) =>
+                assignMut.mutate({
+                  assigned_to: args.assigned_to,
+                  assigned_to_name: args.assigned_to_name,
+                })
+              }
+              disabled={assignMut.isPending}
+            />
             {iOwnLead ? (
-              <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">Assigned to you</span>
+              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">Assigned to you</span>
             ) : null}
-          </span>
+          </div>
           <span className="hidden sm:inline text-gray-300" aria-hidden>
             |
           </span>
@@ -394,7 +414,7 @@ export function ProviderOpsLeadDetailPage() {
                 type="button"
                 className={adminToolbarButtonClass(assignMut.isPending || iOwnLead)}
                 disabled={assignMut.isPending || iOwnLead}
-                onClick={() => assignMut.mutate(myUserId)}
+                onClick={() => assignMut.mutate({ assigned_to: myUserId })}
               >
                 Assign to me
               </button>
@@ -403,7 +423,7 @@ export function ProviderOpsLeadDetailPage() {
                   type="button"
                   className={adminToolbarButtonClass(assignMut.isPending)}
                   disabled={assignMut.isPending}
-                  onClick={() => assignMut.mutate("")}
+                  onClick={() => assignMut.mutate({ assigned_to: "" })}
                 >
                   Unassign
                 </button>
@@ -463,41 +483,11 @@ export function ProviderOpsLeadDetailPage() {
           >
             <MessageCircle className="h-4 w-4" />WhatsApp
           </button>
-          <button
-            type="button"
-            onClick={() => setShowAssignForm(!showAssignForm)}
-            className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 touch-manipulation hover:bg-gray-50 transition-colors"
-          >
-            <UserPlus className="h-4 w-4" />Assign
-          </button>
           <button type="button" className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-red-300 bg-white px-4 py-2.5 text-sm font-medium text-red-700 touch-manipulation hover:bg-red-50 transition-colors" onClick={() => { if (confirm("Delete this lead? This action cannot be undone.")) deleteLead.mutate(); }}>
             <Trash2 className="h-4 w-4" />Delete
           </button>
         </div>
       </div>
-
-      {/* Assign form */}
-      {showAssignForm && (
-        <AdminPanel className="!border-blue-200 !bg-blue-50/50">
-          <div className="flex gap-3">
-            <UserPlus className="mt-3 h-4 w-4 shrink-0 text-blue-600" aria-hidden />
-            <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center">
-              <input
-                type="text"
-                placeholder="Enter team member name or ID…"
-                value={assignInput}
-                onChange={(e) => setAssignInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && assignInput.trim() && assignMut.mutate(assignInput.trim())}
-                className="min-h-11 w-full flex-1 rounded-lg border border-blue-200 bg-white px-3 py-2 text-base placeholder:text-gray-400 focus:border-blue-400 focus:outline-none sm:text-sm"
-              />
-              <div className="flex shrink-0 gap-2">
-                <button type="button" disabled={!assignInput.trim() || assignMut.isPending} onClick={() => assignMut.mutate(assignInput.trim())} className="min-h-11 flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 sm:flex-none">Assign</button>
-                <button type="button" onClick={() => setShowAssignForm(false)} className="min-h-11 px-2 text-sm text-gray-500 hover:text-gray-700">Cancel</button>
-              </div>
-            </div>
-          </div>
-        </AdminPanel>
-      )}
 
       {/* Invite result banner */}
       {inviteResult && (
@@ -622,7 +612,11 @@ export function ProviderOpsLeadDetailPage() {
                 <DetailField icon={Globe} label="Country" value={lead.country} />
                 <DetailField icon={ExternalLink} label="Source" value={lead.source} />
                 <DetailField icon={Calendar} label="Created" value={lead.created_at ? new Date(String(lead.created_at)).toLocaleString() : null} />
-                {Boolean(lead.assigned_to) ? <DetailField icon={UserPlus} label="Assigned To" value={lead.assigned_to} /> : null}
+                <DetailField
+                  icon={UserPlus}
+                  label="Assigned To"
+                  value={lead.assigned_to ? detailAssigneeName(lead) : "Unassigned"}
+                />
               </div>
             )}
           </AdminPanel>
@@ -861,7 +855,7 @@ export function ProviderOpsLeadDetailPage() {
               {Boolean(lead.assigned_to) ? (
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-gray-500">Assigned to</span>
-                  <span className="text-xs font-medium text-gray-700">{String(lead.assigned_to)}</span>
+                  <span className="text-xs font-medium text-gray-700">{detailAssigneeName(lead)}</span>
                 </div>
               ) : null}
             </div>

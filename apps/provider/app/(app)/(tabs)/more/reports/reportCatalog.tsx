@@ -28,7 +28,7 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
       {
         id: "sales-summary",
         name: "Sales Summary",
-        description: "Revenue, bookings, and service mix",
+        description: "Ledger net vs recorded takings, bookings, and service mix",
         icon: "stats-chart-outline",
         color: "#16a34a",
         bg: "#dcfce7",
@@ -37,8 +37,8 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
       },
       {
         id: "service-performance",
-        name: "Service Performance",
-        description: "Which services drive revenue",
+        name: "Sales by service",
+        description: "Ledger net allocated per offering",
         icon: "cut-outline",
         color: "#d97706",
         bg: "#fef3c7",
@@ -47,8 +47,8 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
       },
       {
         id: "revenue-trends",
-        name: "Revenue Trends",
-        description: "Trends over time",
+        name: "Revenue trends",
+        description: "Ledger net vs visits by period",
         icon: "trending-up-outline",
         color: "#059669",
         bg: "#d1fae5",
@@ -108,7 +108,7 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
       {
         id: "booking-status",
         name: "Booking Status",
-        description: "Confirmed, completed, pending",
+        description: "Lifecycle counts and ledger net by status",
         icon: "pie-chart-outline",
         color: "#7c3aed",
         bg: "#ede9fe",
@@ -118,7 +118,7 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
       {
         id: "occupancy",
         name: "Occupancy",
-        description: "Capacity and utilization",
+        description: "Booked time vs staff schedule minutes",
         icon: "bar-chart-outline",
         color: "#0d9488",
         bg: "#ccfbf1",
@@ -128,7 +128,7 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
       {
         id: "cancellations",
         name: "Cancellations",
-        description: "Cancelled bookings",
+        description: "Rate, reasons, and ledger net in range",
         icon: "close-circle-outline",
         color: "#dc2626",
         bg: "#fee2e2",
@@ -153,17 +153,17 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
       {
         id: "client-summary",
         name: "Client Summary",
-        description: "New vs returning, top spenders",
+        description: "Distinct clients, first visits, repeat visits in range",
         icon: "people-outline",
         color: "#db2777",
         bg: "#fce7f3",
-        target: "native",
-        screen: "clients",
+        target: "detail",
+        reportId: "client-summary",
       },
       {
         id: "client-retention",
         name: "Client Retention",
-        description: "Repeat visit rates",
+        description: "Repeat share & period-over-period retention",
         icon: "heart-outline",
         color: "#e11d48",
         bg: "#ffe4e6",
@@ -198,17 +198,17 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
       {
         id: "payment-summary",
         name: "Payment Summary",
-        description: "Totals and methods (ledger activity)",
+        description: "Booked value vs settled ledger funds & methods",
         icon: "card-outline",
         color: "#0284c7",
         bg: "#e0f2fe",
-        target: "native",
-        screen: "payments",
+        target: "detail",
+        reportId: "payment-summary",
       },
       {
         id: "end-of-day",
         name: "End of day",
-        description: "Daily cash-up style summary",
+        description: "Recorded takings by capture date (till-style)",
         icon: "today-outline",
         color: "#4338ca",
         bg: "#e0e7ff",
@@ -218,7 +218,7 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
       {
         id: "refunds",
         name: "Refunds",
-        description: "Refund volume and reasons",
+        description: "Ledger refunds & provider earnings reversals",
         icon: "return-down-back-outline",
         color: "#b91c1c",
         bg: "#fee2e2",
@@ -228,7 +228,7 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
       {
         id: "payment-methods",
         name: "Payment Methods",
-        description: "Card, cash, wallet split",
+        description: "Settlement-window mix: gateways, till logs, wallet splits",
         icon: "wallet-outline",
         color: "#0f766e",
         bg: "#ccfbf1",
@@ -238,7 +238,7 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
       {
         id: "payouts",
         name: "Payout earnings (ledger)",
-        description: "Platform-held provider earnings — not bank payout transfers",
+        description: "Ledger earnings by settlement date — not bank payout history",
         icon: "arrow-redo-outline",
         color: "#65a30d",
         bg: "#ecfccb",
@@ -248,7 +248,7 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
       {
         id: "yoco-reconciliation",
         name: "Yoco reconciliation",
-        description: "Terminal sync debugging",
+        description: "Terminal captures vs booking payments (webhook check)",
         icon: "phone-portrait-outline",
         color: "#6b21a8",
         bg: "#f3e8ff",
@@ -273,7 +273,7 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
       {
         id: "product-sales",
         name: "Product Sales",
-        description: "Retail revenue from product orders",
+        description: "Retail lines: appointment add-ons + paid orders (mixed date rules)",
         icon: "bag-outline",
         color: "#4f46e5",
         bg: "#e0e7ff",
@@ -282,8 +282,8 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
       },
       {
         id: "inventory",
-        name: "Inventory",
-        description: "Stock levels by SKU",
+        name: "Product & inventory",
+        description: "Products + variants; retail value & low/out alerts per API rules",
         icon: "layers-outline",
         color: "#6366f1",
         bg: "#e0e7ff",
@@ -293,7 +293,7 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
       {
         id: "top-products",
         name: "Top Products",
-        description: "Best sellers",
+        description: "Ranked by retail line revenue (bookings + paid orders)",
         icon: "ribbon-outline",
         color: "#c026d3",
         bg: "#fae8ff",
@@ -308,7 +308,7 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
       {
         id: "gift-card-report",
         name: "Gift Card Report",
-        description: "Sales and redemptions",
+        description: "Redemptions at your business (same capture rules as web)",
         icon: "gift-outline",
         color: "#a855f7",
         bg: "#f3e8ff",
@@ -323,7 +323,7 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
       {
         id: "package-sales",
         name: "Package Sales",
-        description: "Sold packages and revenue",
+        description: "Booked package line value by catalog package (scheduled window)",
         icon: "pricetag-outline",
         color: "#0f766e",
         bg: "#ccfbf1",
@@ -333,7 +333,7 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
       {
         id: "package-usage",
         name: "Package Usage",
-        description: "Redemptions and balances",
+        description: "Usage events and distinct clients (incl. group participants)",
         icon: "analytics-outline",
         color: "#0e7490",
         bg: "#cffafe",
@@ -343,7 +343,7 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
       {
         id: "packages-native",
         name: "Packages overview",
-        description: "Combined package analytics (app)",
+        description: "Active catalog packages — bookings & booked value in period",
         icon: "layers-outline",
         color: "#14b8a6",
         bg: "#ccfbf1",
@@ -358,7 +358,7 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
       {
         id: "business-overview",
         name: "Business Overview",
-        description: "Operational KPIs (native)",
+        description: "Ledger earnings + scheduled bookings (period to date) — see facts on screen",
         icon: "pie-chart-outline",
         color: "#6366f1",
         bg: "#eef2ff",
@@ -368,7 +368,7 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
       {
         id: "performance-dashboard",
         name: "Performance Dashboard",
-        description: "Snapshot KPIs (web-style report)",
+        description: "Today / week / month ledger + lists (same API as web)",
         icon: "flash-outline",
         color: "#7c3aed",
         bg: "#ede9fe",
@@ -378,7 +378,7 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
       {
         id: "comparison",
         name: "Period Comparison",
-        description: "Compare two periods",
+        description: "Ledger + bookings: current window vs prior full period",
         icon: "git-compare-outline",
         color: "#2563eb",
         bg: "#dbeafe",
@@ -388,7 +388,7 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
       {
         id: "revenue-native",
         name: "Revenue overview (app)",
-        description: "Revenue trends in the app",
+        description: "Ledger net, booking vs product split, booking-linked service/staff mix — same API facts as web",
         icon: "cash-outline",
         color: "#22c55e",
         bg: "#dcfce7",
@@ -403,7 +403,7 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
       {
         id: "analytics-tab",
         name: "Analytics",
-        description: "Charts and trends (separate from ledger reports)",
+        description: "Ledger net, booking counts, catalog offering totals — same facts as web",
         icon: "analytics-outline",
         color: "#8b5cf6",
         bg: "#ede9fe",
@@ -413,7 +413,7 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
       {
         id: "activity-tab",
         name: "Activity",
-        description: "Recent timeline — not a finance export",
+        description: "Rolling timeline: bookings created, ledger earnings & payouts, reviews — same feed as dashboard",
         icon: "pulse-outline",
         color: "#0d9488",
         bg: "#ccfbf1",

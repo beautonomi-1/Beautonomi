@@ -356,6 +356,36 @@ async function sendOneSignalNotification(
   },
   options?: OneSignalSendOptions
 ): Promise<SendNotificationResult> {
+  const chans = payload.channels?.length ? payload.channels : ["push"] as NotificationChannel[];
+  const extIds = payload.include_external_user_ids || [];
+
+  // If we have external IDs and multiple channels, split the request into one per channel.
+  // This ensures we can use the modern alias targeting (`include_aliases.external_id` + `target_channel`)
+  // for each channel, which guarantees delivery to all subscribed devices for the user.
+  // OneSignal API v9/v10 does not allow mixing target sets, and legacy multi-channel targeting
+  // often drops push notifications if the external ID mapping isn't fully synchronized.
+  if (extIds.length > 0 && chans.length > 1) {
+    const results = await Promise.all(
+      chans.map((channel) => {
+        const singleChannelPayload = { ...payload, channels: [channel as NotificationChannel] };
+        return sendOneSignalNotification(singleChannelPayload, options);
+      })
+    );
+
+    const success = results.some((r) => r.success);
+    const errors = results
+      .filter((r) => !r.success)
+      .map((r) => r.error)
+      .filter(Boolean)
+      .join(", ");
+
+    return {
+      success,
+      error: errors || undefined,
+      notification_id: results.find((r) => r.notification_id)?.notification_id,
+    };
+  }
+
   const appType = options?.appType;
   const resolved = await resolveOneSignalCredentials(appType, { tenantId: options?.tenantId });
   const appId = resolved.appId?.replace(/^\uFEFF/, "").trim() || null;

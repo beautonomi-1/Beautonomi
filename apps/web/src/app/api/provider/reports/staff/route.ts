@@ -1,7 +1,16 @@
 import { NextRequest } from "next/server";
-import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import {
+  requireRoleInApi,
+  getProviderIdForUser,
+  successResponse,
+  notFoundResponse,
+  handleApiError,
+} from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
 import { getProviderReportContext, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
+import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
+import { LEDGER_FULL_PROVIDER_NET_TYPES } from "@/lib/reports/constants";
+import { allocateLedgerNetByStaff } from "@/lib/reports/staff-ledger-revenue";
 
 export async function GET(request: NextRequest) {
   try {
@@ -26,20 +35,48 @@ export async function GET(request: NextRequest) {
       .eq("provider_id", providerId)
       .eq("is_active", true);
 
-    let bookingServicesQuery = supabaseAdmin
-      .from("booking_services")
-      .select("staff_id, price, bookings!inner(id, provider_id, status, scheduled_at, location_id)")
-      .eq("bookings.provider_id", providerId)
-      .gte("bookings.scheduled_at", fromDate.toISOString())
-      .lte("bookings.scheduled_at", toDate.toISOString())
-      .not("bookings.status", "in", "(cancelled,no_show)");
-    if (locationId) bookingServicesQuery = bookingServicesQuery.eq("bookings.location_id", locationId);
-    const { data: bookingServices } = await bookingServicesQuery;
+    let bookingsQuery = supabaseAdmin
+      .from("bookings")
+      .select(
+        `
+        id,
+        status,
+        scheduled_at,
+        booking_services (
+          staff_id,
+          price
+        )
+      `,
+      )
+      .eq("provider_id", providerId)
+      .gte("scheduled_at", fromDate.toISOString())
+      .lte("scheduled_at", toDate.toISOString())
+      .not("status", "in", "(cancelled,no_show)");
 
-    // §Provider-audit 2026-04 (round 8): pull staff-specific review ratings
-    // for the same window. Prior output hard-coded `rating: 0` for every
-    // staff member, which rendered a "Ratings" section in the mobile
-    // report showing 0.0 stars for the entire team — deeply misleading.
+    if (locationId) {
+      bookingsQuery = bookingsQuery.eq("location_id", locationId);
+    }
+
+    const { data: bookings, error: bookingsError } = await bookingsQuery;
+
+    if (bookingsError) {
+      return handleApiError(bookingsError, "BOOKINGS_FETCH_ERROR", 500);
+    }
+
+    const { revenueByBooking } = await getProviderRevenue(
+      supabaseAdmin,
+      providerId,
+      fromDate,
+      toDate,
+      locationId,
+      {
+        transactionTypes: LEDGER_FULL_PROVIDER_NET_TYPES,
+        timezone: reportContext.timezone,
+      },
+    );
+
+    const ledgerByStaff = allocateLedgerNetByStaff(revenueByBooking, bookings || []);
+
     const { data: reviews } = await supabaseAdmin
       .from("reviews")
       .select("staff_rating, rating, created_at")
@@ -47,85 +84,83 @@ export async function GET(request: NextRequest) {
       .gte("created_at", fromDate.toISOString())
       .lte("created_at", toDate.toISOString());
 
-    const staffMap = new Map<
-      string,
-      {
-        id: string;
-        name: string;
-        bookingIds: Set<string>;
-        completedBookingIds: Set<string>;
-        revenue: number;
-        ratingSum: number;
-        ratingCount: number;
+    const bookingIdsPerStaff = new Map<string, Set<string>>();
+    const completedIdsPerStaff = new Map<string, Set<string>>();
+
+    for (const b of bookings || []) {
+      const bid = b.id as string;
+      const st = (b as { status?: string }).status;
+      const lines = (b as { booking_services?: Array<{ staff_id?: string | null }> }).booking_services;
+      if (!lines?.length) continue;
+      const staffOnBooking = new Set<string>();
+      for (const line of lines) {
+        if (line.staff_id) staffOnBooking.add(line.staff_id);
       }
-    >();
+      for (const sid of staffOnBooking) {
+        let set = bookingIdsPerStaff.get(sid);
+        if (!set) {
+          set = new Set();
+          bookingIdsPerStaff.set(sid, set);
+        }
+        set.add(bid);
+        if (st === "completed") {
+          let cs = completedIdsPerStaff.get(sid);
+          if (!cs) {
+            cs = new Set();
+            completedIdsPerStaff.set(sid, cs);
+          }
+          cs.add(bid);
+        }
+      }
+    }
 
-    (staffMembers || []).forEach((s: any) => {
-      const name = s.users?.full_name || "Staff";
-      staffMap.set(s.id, {
-        id: s.id,
-        name,
-        bookingIds: new Set(),
-        completedBookingIds: new Set(),
-        revenue: 0,
-        ratingSum: 0,
-        ratingCount: 0,
-      });
-    });
-
-    (bookingServices || []).forEach((bs: any) => {
-      if (!bs.staff_id) return;
-      const bRow = Array.isArray(bs.bookings) ? bs.bookings[0] : bs.bookings;
-      const bookingId = bRow?.id as string | undefined;
-      if (!bookingId) return;
-      const existing = staffMap.get(bs.staff_id) || {
-        id: bs.staff_id,
-        name: "Unassigned",
-        bookingIds: new Set<string>(),
-        completedBookingIds: new Set<string>(),
-        revenue: 0,
-        ratingSum: 0,
-        ratingCount: 0,
-      };
-      existing.bookingIds.add(bookingId);
-      existing.revenue += Number(bs.price || 0);
-      if (bRow?.status === "completed") existing.completedBookingIds.add(bookingId);
-      staffMap.set(bs.staff_id, existing);
-    });
-
-    // `reviews.staff_rating` is JSONB shaped { staff_id, rating } or null.
-    (reviews || []).forEach((r: any) => {
-      const sr = r?.staff_rating;
-      if (!sr || typeof sr !== "object") return;
+    const ratingByStaff = new Map<string, { sum: number; count: number }>();
+    for (const r of reviews || []) {
+      const sr = (r as { staff_rating?: { staff_id?: string; rating?: number }; rating?: number }).staff_rating;
+      if (!sr || typeof sr !== "object") continue;
       const sid = sr.staff_id as string | undefined;
-      const rating = Number(sr.rating ?? r?.rating ?? 0);
-      if (!sid || !Number.isFinite(rating) || rating <= 0) return;
-      const entry = staffMap.get(sid);
-      if (!entry) return;
-      entry.ratingSum += rating;
-      entry.ratingCount += 1;
+      const rating = Number(sr.rating ?? (r as { rating?: number }).rating ?? 0);
+      if (!sid || !Number.isFinite(rating) || rating <= 0) continue;
+      const row = ratingByStaff.get(sid) || { sum: 0, count: 0 };
+      row.sum += rating;
+      row.count += 1;
+      ratingByStaff.set(sid, row);
+    }
+
+    const staff = (staffMembers || []).map((s: { id: string; users?: { full_name?: string } | { full_name?: string }[] }) => {
+      const sid = s.id;
+      const u = s.users;
+      const fullName = Array.isArray(u) ? u[0]?.full_name : u?.full_name;
+      const bookingsCount = bookingIdsPerStaff.get(sid)?.size ?? 0;
+      const completedCount = completedIdsPerStaff.get(sid)?.size ?? 0;
+      const rr = ratingByStaff.get(sid);
+      return {
+        id: sid,
+        name: fullName || "Staff",
+        bookings: bookingsCount,
+        revenue: ledgerByStaff.get(sid) ?? 0,
+        rating: rr && rr.count > 0 ? rr.sum / rr.count : 0,
+        review_count: rr?.count ?? 0,
+        completion_rate: bookingsCount > 0 ? (completedCount / bookingsCount) * 100 : 0,
+      };
     });
 
-    const staff = Array.from(staffMap.values())
-      .map((s) => ({
-        id: s.id,
-        name: s.name,
-        bookings: s.bookingIds.size,
-        revenue: s.revenue,
-        rating: s.ratingCount > 0 ? s.ratingSum / s.ratingCount : 0,
-        review_count: s.ratingCount,
-        completion_rate:
-          s.bookingIds.size > 0 ? (s.completedBookingIds.size / s.bookingIds.size) * 100 : 0,
-      }))
-      .sort((a, b) => b.revenue - a.revenue);
+    staff.sort((a, b) => b.revenue - a.revenue);
 
-    // §Provider-audit 2026-04 (round 8): stopped returning zero-valued
-    // `hours_worked` / `commission` / `total_hours` / `total_commission`
-    // placeholders — the mobile UI surfaces them as real metrics when they
-    // are non-null, so returning a constant 0 looked like "everyone worked
-    // 0 hours". Callers that need per-service-time or commission breakdowns
-    // should use /api/provider/reports/staff/performance instead.
-    return successResponse({ staff });
+    const uniqueBookings = new Set((bookings || []).map((b) => b.id)).size;
+    const totalLedgerNet = staff.reduce((sum, x) => sum + x.revenue, 0);
+
+    return successResponse({
+      staff,
+      summary: {
+        uniqueBookings,
+        totalLedgerNet,
+        staffWithActivity: staff.filter((x) => x.bookings > 0 || x.revenue > 0).length,
+      },
+      ledgerTransactionTypes: [...LEDGER_FULL_PROVIDER_NET_TYPES],
+      basisNote:
+        "Revenue is ledger net (provider earnings, travel fees, tips) allocated by each line’s share of the booking subtotal — same basis as Sales Summary. Visits exclude cancelled and no-show. Reviews match staff_rating in the date window.",
+    });
   } catch (error) {
     console.error("Error in staff report:", error);
     return handleApiError(error, "Failed to generate staff report");

@@ -46,6 +46,16 @@ import { calculateBookingTotals, safeNum } from "@beautonomi/utils";
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
 
+/** From `offering_resources` + `resources` when `include_offering_resources=true` on GET /api/provider/services */
+interface ResourceRequirement {
+  resource_id: string;
+  required: boolean;
+  name: string;
+  capacity?: number;
+  is_active?: boolean;
+  location_id?: string | null;
+}
+
 interface Service {
   id: string;
   title: string;
@@ -63,6 +73,7 @@ interface Service {
   global_category?: { id?: string | null; name?: string | null; title?: string | null } | null;
   provider_categories?: { id?: string | null; name?: string | null; title?: string | null } | null;
   add_ons?: AddOn[];
+  resource_requirements?: ResourceRequirement[];
 }
 
 interface AddOn {
@@ -369,7 +380,9 @@ export default function NewBookingScreen() {
       : "ZA";
 
   // --- API data ---
-  const { data: services, loading: servicesLoading, error: servicesError } = useApi<Service[]>("/api/provider/services?include_variants=true");
+  const { data: services, loading: servicesLoading, error: servicesError } = useApi<Service[]>(
+    "/api/provider/services?include_variants=true&include_offering_resources=true",
+  );
   const teamUrl = selectedLocationId
     ? `/api/provider/team?location_id=${encodeURIComponent(selectedLocationId)}`
     : "/api/provider/team";
@@ -1065,6 +1078,53 @@ export default function NewBookingScreen() {
     membershipPricingPreview?.membershipDiscountAmount,
     membershipPricingPreview?.membershipPlanName,
   ]);
+
+  /** Deduped rooms/equipment linked to selected offerings (offering_resources). */
+  const aggregatedBookingResources = useMemo(() => {
+    if (!services || selectedServices.length === 0) return [];
+    type Agg = {
+      resource_id: string;
+      name: string;
+      required: boolean;
+      serviceTitles: string[];
+      inactive: boolean;
+      locationMismatch: boolean;
+    };
+    const byId = new Map<string, Agg>();
+    for (const sel of selectedServices) {
+      const svc = services.find((x) => x.id === sel.serviceId);
+      if (!svc) continue;
+      const title = svc.variant_name ? `${svc.title} · ${svc.variant_name}` : svc.title;
+      for (const r of svc.resource_requirements ?? []) {
+        const prev = byId.get(r.resource_id);
+        if (!prev) {
+          byId.set(r.resource_id, {
+            resource_id: r.resource_id,
+            name: r.name,
+            required: r.required,
+            serviceTitles: [title],
+            inactive: r.is_active === false,
+            locationMismatch:
+              Boolean(selectedLocationId) &&
+              Boolean(r.location_id) &&
+              r.location_id !== selectedLocationId,
+          });
+        } else {
+          prev.required = prev.required || r.required;
+          if (!prev.serviceTitles.includes(title)) prev.serviceTitles.push(title);
+          if (r.is_active === false) prev.inactive = true;
+          if (
+            Boolean(selectedLocationId) &&
+            Boolean(r.location_id) &&
+            r.location_id !== selectedLocationId
+          ) {
+            prev.locationMismatch = true;
+          }
+        }
+      }
+    }
+    return Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [services, selectedServices, selectedLocationId]);
 
   // Auto-clear promo code when cart items change so stale discount doesn't apply
   useEffect(() => {
@@ -2538,44 +2598,6 @@ export default function NewBookingScreen() {
                   </View>
                 </View>
               )}
-
-              {/* -------- TIP -------- */}
-              <SectionLabel label={`Tip (optional, ${tenantCurrency})`} />
-              <View style={twStyle("mb-4")}>
-                <View style={twStyle("mb-2 flex-row flex-wrap")}>
-                  {TIP_PERCENTAGES.map((pct) => {
-                    const target = pct > 0 ? ((summary.afterDiscount || summary.subtotal) * pct) / 100 : 0;
-                    const isActive = pct === 0 ? safeNum(tipAmount) === 0 : Math.abs(safeNum(tipAmount) - target) < 0.01;
-                    return (
-                      <TouchableOpacity
-                        key={pct}
-                        style={[
-                          twStyle(`rounded-full border px-3 py-2 ${
-                            isActive ? "border-emerald-600 bg-emerald-600" : "border-emerald-200 bg-emerald-50"
-                          }`),
-                          { marginRight: 8, marginBottom: 8 },
-                        ]}
-                        onPress={() => applyTipPercentage(pct)}
-                        accessibilityRole="button"
-                        accessibilityLabel={pct === 0 ? "No tip" : `Tip ${pct} percent`}
-                      >
-                        <Text style={twStyle(`text-xs font-semibold ${isActive ? "text-white" : "text-emerald-700"}`)}>
-                          {pct === 0 ? "No tip" : `${pct}%`}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-                <TextInput
-                  style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
-                  placeholder="Custom amount"
-                  placeholderTextColor="#9ca3af"
-                  value={tipAmount}
-                  onChangeText={setTipAmount}
-                  keyboardType="decimal-pad"
-                  accessibilityLabel="Tip amount"
-                />
-              </View>
             </View>
 
             <View style={twStyle(isTablet ? "flex-1" : "")}>
@@ -2756,6 +2778,51 @@ export default function NewBookingScreen() {
                   })()}
                 </View>
               )}
+
+              {aggregatedBookingResources.length > 0 ? (
+                <View
+                  style={twStyle("mb-4 rounded-2xl border border-teal-100 bg-teal-50/90 px-4 py-3")}
+                  accessibilityLabel="Resource requirements for selected services"
+                >
+                  <View style={twStyle("mb-2 flex-row items-center")}>
+                    <Ionicons name="layers-outline" size={18} color="#0f766e" />
+                    <Text style={twStyle("ml-2 text-sm font-semibold text-teal-900")}>Rooms & equipment</Text>
+                  </View>
+                  <Text style={twStyle("mb-3 text-xs leading-4 text-teal-900/90")}>
+                    These come from each service&apos;s resource links in your catalogue. The schedule checks capacity when you
+                    continue; assignments show on the booking and can be edited after saving.
+                  </Text>
+                  {aggregatedBookingResources.map((r) => (
+                    <View
+                      key={r.resource_id}
+                      style={twStyle(`mb-2 rounded-xl border px-3 py-2 ${
+                        r.inactive || r.locationMismatch ? "border-amber-200 bg-amber-50/80" : "border-teal-100 bg-white/90"
+                      }`)}
+                    >
+                      <Text style={twStyle("text-sm font-medium text-gray-900")}>
+                        {r.name}
+                        <Text style={twStyle("text-xs font-normal text-gray-500")}>
+                          {" "}
+                          · {r.required ? "Required" : "Optional"}
+                        </Text>
+                      </Text>
+                      <Text style={twStyle("mt-0.5 text-xs text-gray-600")}>
+                        Services: {r.serviceTitles.join(", ")}
+                      </Text>
+                      {r.inactive ? (
+                        <Text style={twStyle("mt-1 text-xs text-amber-800")}>
+                          This resource is inactive — reactivate under Resources &amp; forms or update the service link.
+                        </Text>
+                      ) : null}
+                      {r.locationMismatch ? (
+                        <Text style={twStyle("mt-1 text-xs text-amber-800")}>
+                          Linked to a different branch than this booking — confirm capacity or adjust assignments after saving.
+                        </Text>
+                      ) : null}
+                    </View>
+                  ))}
+                </View>
+              ) : null}
 
               {/* -------- PRODUCTS -------- */}
               {productsList.length > 0 && (
@@ -3041,6 +3108,44 @@ export default function NewBookingScreen() {
                     )}
                   </View>
                 )}
+              </View>
+
+              {/* -------- TIP -------- */}
+              <SectionLabel label={`Tip (optional, ${tenantCurrency})`} />
+              <View style={twStyle("mb-4")}>
+                <View style={twStyle("mb-2 flex-row flex-wrap")}>
+                  {TIP_PERCENTAGES.map((pct) => {
+                    const target = pct > 0 ? ((summary.afterDiscount || summary.subtotal) * pct) / 100 : 0;
+                    const isActive = pct === 0 ? safeNum(tipAmount) === 0 : Math.abs(safeNum(tipAmount) - target) < 0.01;
+                    return (
+                      <TouchableOpacity
+                        key={pct}
+                        style={[
+                          twStyle(`rounded-full border px-3 py-2 ${
+                            isActive ? "border-emerald-600 bg-emerald-600" : "border-emerald-200 bg-emerald-50"
+                          }`),
+                          { marginRight: 8, marginBottom: 8 },
+                        ]}
+                        onPress={() => applyTipPercentage(pct)}
+                        accessibilityRole="button"
+                        accessibilityLabel={pct === 0 ? "No tip" : `Tip ${pct} percent`}
+                      >
+                        <Text style={twStyle(`text-xs font-semibold ${isActive ? "text-white" : "text-emerald-700"}`)}>
+                          {pct === 0 ? "No tip" : `${pct}%`}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                <TextInput
+                  style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+                  placeholder="Custom amount"
+                  placeholderTextColor="#9ca3af"
+                  value={tipAmount}
+                  onChangeText={setTipAmount}
+                  keyboardType="decimal-pad"
+                  accessibilityLabel="Tip amount"
+                />
               </View>
 
               {/* -------- REFERRAL SOURCE -------- */}

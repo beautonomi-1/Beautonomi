@@ -11,6 +11,10 @@ import InlineSignupForm from "@/components/global/inline-signup-form";
 import { fetcher } from "@/lib/http/fetcher";
 import logo from "../../../public/images/logo.svg";
 
+/** Public hero when CMS `background_image_url` is empty (learning-center bucket). */
+const DEFAULT_SIGNUP_HERO_IMAGE =
+  "https://ifybcfafrwcpptckznpm.supabase.co/storage/v1/object/public/learning-center/signup%20image.png";
+
 interface SignupPageContent {
   headline?: string;
   sub_heading?: string;
@@ -121,7 +125,7 @@ export default function SignupPage() {
         <div
           className="absolute inset-0 bg-cover bg-center"
           style={{
-            backgroundImage: `url('${content.background_image_url || "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?q=80&w=2000&auto=format&fit=crop"}')`,
+            backgroundImage: `url('${content.background_image_url || DEFAULT_SIGNUP_HERO_IMAGE}')`,
             filter: "grayscale(0.3)",
           }}
         >
@@ -411,12 +415,11 @@ export default function SignupPage() {
 
       {/* Right Column - Lifestyle (1.618fr) */}
       <div className="hidden md:block w-[61.8%] relative overflow-hidden">
-        {/* Background Image with Grayscale Filter */}
-        {/* Note: Replace with your professional beauty industry image featuring a person looking toward the center */}
+        {/* Background image: CMS `background_image_url` or default (learning-center public asset) */}
         <div
           className="absolute inset-0 bg-cover bg-center"
           style={{
-            backgroundImage: `url('${content.background_image_url || "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?q=80&w=2000&auto=format&fit=crop"}')`,
+            backgroundImage: `url('${content.background_image_url || DEFAULT_SIGNUP_HERO_IMAGE}')`,
             filter: "grayscale(0.3)",
           }}
         >

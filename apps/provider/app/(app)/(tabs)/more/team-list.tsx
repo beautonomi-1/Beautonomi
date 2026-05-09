@@ -459,137 +459,11 @@ export default function TeamListScreen() {
       />
 
       <View style={{ flex: 1, minHeight: 0 }}>
-      {!teamAccessLoading && !canManageTeam ? (
-        <View
-          style={twStyle("mb-3 mx-1 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5")}
-        >
-          <Text style={twStyle("text-sm text-amber-900")}>
-            You have read-only team access. Ask an owner or manager with Manage team to add or edit
-            members.
-          </Text>
-        </View>
-      ) : null}
-      {isFreelancer ? (
-        <View
-          style={[
-            twStyle("mb-3 rounded-xl border px-3 py-3"),
-            { borderColor: "rgba(255, 0, 119, 0.2)", backgroundColor: "rgba(255, 0, 119, 0.05)" },
-          ]}
-        >
-          <Text style={twStyle("text-sm text-gray-700")}>
-            <Text style={twStyle("font-semibold text-[#FF0077]")}>You’re set up as a freelancer.</Text>{" "}
-            To add team members and unlock advanced features, upgrade to a salon.
-          </Text>
-          <TouchableOpacity
-            onPress={() => {
-              const base = getWebProviderBaseUrl().replace(/\/$/, "");
-              pushInAppBrowser(router, `${base}/provider/settings/upgrade-to-salon`, "Upgrade");
-            }}
-            style={twStyle("mt-3 self-start rounded-lg bg-[#FF0077] px-4 py-2.5")}
-            accessibilityLabel="Upgrade to salon"
-            accessibilityRole="button"
-          >
-            <Text style={twStyle("text-sm font-semibold text-white")}>Upgrade to salon</Text>
-          </TouchableOpacity>
-        </View>
-      ) : null}
-      {/* ── Summary Stats (aligned with provider web team members) ── */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 4, gap: 12, paddingRight: 4 }}
-        style={twStyle("mb-4")}
-      >
-        <View style={{ width: 132 }}>
-          <StatCard
-            title="Total"
-            value={String(totalCount)}
-            icon="people-outline"
-            compact
-          />
-        </View>
-        <View style={{ width: 132 }}>
-          <StatCard
-            title="Active"
-            value={String(activeCount)}
-            icon="checkmark-circle-outline"
-            iconColor="#22c55e"
-            iconBg="#dcfce7"
-            compact
-          />
-        </View>
-        <View style={{ width: 152 }}>
-          <StatCard
-            title="Service providers"
-            value={String(serviceProvidersCount)}
-            icon="briefcase-outline"
-            iconColor="#9333ea"
-            iconBg="#f3e8ff"
-            compact
-          />
-        </View>
-        <View style={{ width: 132 }}>
-          <StatCard
-            title="On shift"
-            value={String(onShiftCount)}
-            icon="time-outline"
-            iconColor={Colors.primary}
-            iconBg={Colors.primaryLight}
-            compact
-          />
-        </View>
-        <View style={{ width: 132 }}>
-          <StatCard
-            title="Avg rating"
-            value={avgRating == null ? "—" : avgRating.toFixed(1)}
-            icon="star-outline"
-            iconColor="#f59e0b"
-            iconBg="#ffedd5"
-            compact
-          />
-        </View>
-      </ScrollView>
-
-      {/* ── Search & Filter ── */}
-      <View style={twStyle("mb-3")}>
-        <SearchBar
-          placeholder="Search by name, email, role..."
-          value={search}
-          onChangeText={setSearch}
-        />
-      </View>
-      <View style={twStyle("mb-3")}>
-        <FilterChipGroup
-          options={[
-            { label: "All", value: "all" },
-            { label: "Active", value: "active" },
-            { label: "Inactive", value: "inactive" },
-          ]}
-          selected={filter}
-          onSelect={setFilter}
-        />
-      </View>
-      {rosterRedacted ? (
-        <Text style={twStyle("mb-3 text-xs text-gray-500 px-1")}>
-          Colleague emails and phones are hidden. An owner can grant “View team” to show them.
-        </Text>
-      ) : null}
-
       {/* ── Team List ── */}
       {loading && !staff ? (
         <SkeletonList rows={4} />
       ) : staffError && !staff ? (
         <ErrorState message={staffError} onRetry={refresh} />
-      ) : filtered.length === 0 ? (
-        <EmptyState
-          icon="people-outline"
-          title="No team members"
-          description={
-            search || filter !== "all"
-              ? "No results match your search or filter"
-              : "Add team members to manage your staff"
-          }
-        />
       ) : (
         <FlatList
           {...verticalFlatListPerf}
@@ -602,6 +476,138 @@ export default function TeamListScreen() {
           contentContainerStyle={{ paddingBottom: 120 }}
           numColumns={isTablet ? 2 : 1}
           columnWrapperStyle={isTablet ? { marginBottom: 12 } : undefined}
+          ListHeaderComponent={
+            <View style={twStyle("mb-2")}>
+              {!teamAccessLoading && !canManageTeam ? (
+                <View
+                  style={twStyle("mb-3 mx-1 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5")}
+                >
+                  <Text style={twStyle("text-sm text-amber-900")}>
+                    You have read-only team access. Ask an owner or manager with Manage team to add or edit
+                    members.
+                  </Text>
+                </View>
+              ) : null}
+              {isFreelancer ? (
+                <View
+                  style={[
+                    twStyle("mb-3 rounded-xl border px-3 py-3"),
+                    { borderColor: "rgba(255, 0, 119, 0.2)", backgroundColor: "rgba(255, 0, 119, 0.05)" },
+                  ]}
+                >
+                  <Text style={twStyle("text-sm text-gray-700")}>
+                    <Text style={twStyle("font-semibold text-[#FF0077]")}>You’re set up as a freelancer.</Text>{" "}
+                    To add team members and unlock advanced features, upgrade to a salon.
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      const base = getWebProviderBaseUrl().replace(/\/$/, "");
+                      pushInAppBrowser(router, `${base}/provider/settings/upgrade-to-salon`, "Upgrade");
+                    }}
+                    style={twStyle("mt-3 self-start rounded-lg bg-[#FF0077] px-4 py-2.5")}
+                    accessibilityLabel="Upgrade to salon"
+                    accessibilityRole="button"
+                  >
+                    <Text style={twStyle("text-sm font-semibold text-white")}>Upgrade to salon</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+              {/* ── Summary Stats (aligned with provider web team members) ── */}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ paddingBottom: 4, gap: 12, paddingRight: 4 }}
+                style={twStyle("mb-4")}
+              >
+                <View style={{ width: 132 }}>
+                  <StatCard
+                    title="Total"
+                    value={String(totalCount)}
+                    icon="people-outline"
+                    compact
+                  />
+                </View>
+                <View style={{ width: 132 }}>
+                  <StatCard
+                    title="Active"
+                    value={String(activeCount)}
+                    icon="checkmark-circle-outline"
+                    iconColor="#22c55e"
+                    iconBg="#dcfce7"
+                    compact
+                  />
+                </View>
+                <View style={{ width: 152 }}>
+                  <StatCard
+                    title="Service providers"
+                    value={String(serviceProvidersCount)}
+                    icon="briefcase-outline"
+                    iconColor="#9333ea"
+                    iconBg="#f3e8ff"
+                    compact
+                  />
+                </View>
+                <View style={{ width: 132 }}>
+                  <StatCard
+                    title="On shift"
+                    value={String(onShiftCount)}
+                    icon="time-outline"
+                    iconColor={Colors.primary}
+                    iconBg={Colors.primaryLight}
+                    compact
+                  />
+                </View>
+                <View style={{ width: 132 }}>
+                  <StatCard
+                    title="Avg rating"
+                    value={avgRating == null ? "—" : avgRating.toFixed(1)}
+                    icon="star-outline"
+                    iconColor="#f59e0b"
+                    iconBg="#ffedd5"
+                    compact
+                  />
+                </View>
+              </ScrollView>
+
+              {/* ── Search & Filter ── */}
+              <View style={twStyle("mb-3")}>
+                <SearchBar
+                  placeholder="Search by name, email, role..."
+                  value={search}
+                  onChangeText={setSearch}
+                />
+              </View>
+              <View style={twStyle("mb-3")}>
+                <FilterChipGroup
+                  options={[
+                    { label: "All", value: "all" },
+                    { label: "Active", value: "active" },
+                    { label: "Inactive", value: "inactive" },
+                  ]}
+                  selected={filter}
+                  onSelect={setFilter}
+                />
+              </View>
+              {rosterRedacted ? (
+                <Text style={twStyle("mb-3 text-xs text-gray-500 px-1")}>
+                  Colleague emails and phones are hidden. An owner can grant “View team” to show them.
+                </Text>
+              ) : null}
+            </View>
+          }
+          ListEmptyComponent={
+            filtered.length === 0 ? (
+              <EmptyState
+                icon="people-outline"
+                title="No team members"
+                description={
+                  search || filter !== "all"
+                    ? "No results match your search or filter"
+                    : "Add team members to manage your staff"
+                }
+              />
+            ) : null
+          }
           renderItem={({ item: member, index }: { item: StaffMember; index: number }) => (
             <View style={isTablet && index % 2 === 0 ? { marginRight: 12 } : undefined}>
             <TouchableOpacity

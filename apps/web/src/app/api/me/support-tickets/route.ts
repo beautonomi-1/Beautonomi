@@ -103,6 +103,13 @@ export async function POST(request: NextRequest) {
       console.error("Support staff new-ticket notification failed:", staffNotifyErr);
     }
 
+    try {
+      const { slackNotifyNewSupportTicket } = await import("@/lib/integrations/slack/triggers");
+      await slackNotifyNewSupportTicket(request, ticket as { id: string; ticket_number?: string; subject?: string; priority?: string });
+    } catch (slackErr) {
+      console.error("Slack notification failed:", slackErr);
+    }
+
     return successResponse({
       ticket,
       initialMessage: message,

@@ -7,7 +7,7 @@ import { PageHeader } from "@/components/provider/PageHeader";
 import { ReportFilters, DateRange } from "../../components/ReportFilters";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Download, ShoppingBag, DollarSign } from "lucide-react";
+import { Download, ShoppingBag, DollarSign, Hash } from "lucide-react";
 import { fetcher } from "@/lib/http/fetcher";
 import { subDays } from "date-fns";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
@@ -16,6 +16,12 @@ import { useReportLocationQuery } from "@/app/provider/reports/utils/use-report-
 import { exportToCSV, formatReportDataForExport, type ReportRow } from "../../utils/export";
 
 interface TopProductsData {
+  timezone?: string;
+  fromYmd?: string;
+  toYmd?: string;
+  limit?: number;
+  reportBasis?: string;
+  basis?: Record<string, string>;
   topProducts: Array<{
     productId: string;
     productName: string;
@@ -28,6 +34,15 @@ interface TopProductsData {
   totalProductsSold: number;
   totalRevenue: number;
 }
+
+const BASIS_LABELS: Record<string, string> = {
+  bookingLines: "Appointment lines",
+  orderLines: "Retail order lines",
+  revenue: "Line revenue",
+  ranking: "Ranking",
+  timesSold: "Line row count",
+  averages: "Average price",
+};
 
 export default function TopProductsReport() {
   const { selectedLocationId, appendLocation } = useReportLocationQuery();
@@ -50,12 +65,9 @@ export default function TopProductsReport() {
       setError(null);
 
       const params = new URLSearchParams();
-      if (dateRange.from) {
-        params.append("from", dateRange.from.toISOString());
-      }
-      if (dateRange.to) {
-        params.append("to", dateRange.to.toISOString());
-      }
+      if (dateRange.from) params.append("from", dateRange.from.toISOString());
+      if (dateRange.to) params.append("to", dateRange.to.toISOString());
+      params.append("limit", "50");
       appendLocation(params);
 
       const response = await fetcher.get<{ data: TopProductsData }>(
@@ -116,6 +128,12 @@ export default function TopProductsReport() {
     );
   }
 
+  const basisEntries = data.basis
+    ? (Object.entries(data.basis) as [string, string][]).filter(([, v]) => v?.trim())
+    : [];
+
+  const listLimit = typeof data.limit === "number" ? data.limit : data.topProducts.length;
+
   return (
     <SettingsDetailLayout
       breadcrumbs={[
@@ -129,10 +147,10 @@ export default function TopProductsReport() {
       <div className="space-y-6">
         <PageHeader
           title="Top Products"
-          subtitle="Best-selling products by revenue"
+          subtitle="Products ranked by total retail line revenue — appointment add-ons (by scheduled date) and paid product orders (by order date). Same mixed window as Product Sales."
           actions={
-            <Button variant="outline" onClick={handleExport}>
-              <Download className="w-4 h-4 mr-2" />
+            <Button variant="outline" onClick={handleExport} className="gap-2 min-h-[44px] touch-manipulation">
+              <Download className="w-4 h-4" />
               Export
             </Button>
           }
@@ -144,65 +162,106 @@ export default function TopProductsReport() {
           onReset={handleReset}
         />
 
-        {/* Summary Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Card className="border-gray-200">
+        {data.reportBasis ? (
+          <div className="rounded-xl border border-sky-100 bg-sky-50/90 px-4 py-3 text-sm leading-relaxed text-sky-950">
+            <p className="font-medium text-sky-950">What this report counts</p>
+            <p className="mt-1 text-sky-950/95">{data.reportBasis}</p>
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-sky-900/85">
+              {data.timezone ? <span>Timezone · {data.timezone}</span> : null}
+              {data.fromYmd && data.toYmd ? (
+                <span>
+                  Calendar window · {data.fromYmd} – {data.toYmd}
+                </span>
+              ) : null}
+              <span>List cap · top {listLimit} SKUs by revenue</span>
+            </div>
+          </div>
+        ) : null}
+
+        {basisEntries.length > 0 ? (
+          <Card className="border-violet-100 bg-violet-50/40 shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base text-violet-950">Definitions</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm text-violet-950/95">
+              {basisEntries.map(([k, v]) => (
+                <p key={k}>
+                  <span className="font-medium">{BASIS_LABELS[k] ?? k} · </span>
+                  {v}
+                </p>
+              ))}
+            </CardContent>
+          </Card>
+        ) : null}
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Total Products Sold</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">Units sold (all SKUs in window)</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="flex items-center justify-between">
-                <p className="text-2xl font-semibold text-gray-900">{data.totalProductsSold}</p>
-                <ShoppingBag className="w-5 h-5 text-blue-600" />
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-2xl font-semibold tabular-nums text-gray-900">{data.totalProductsSold}</p>
+                <ShoppingBag className="h-5 w-5 shrink-0 text-blue-600" />
               </div>
+              <p className="mt-2 text-xs text-gray-500 leading-snug">
+                Sum of quantities across every product line in range — not only the ranked list.
+              </p>
             </CardContent>
           </Card>
 
-          <Card className="border-gray-200">
+          <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Total Revenue</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">Line revenue (all SKUs in window)</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="flex items-center justify-between">
-                <p className="text-2xl font-semibold text-gray-900">
-                  {fmt(data.totalRevenue)}
-                </p>
-                <DollarSign className="w-5 h-5 text-green-600" />
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-2xl font-semibold tabular-nums text-gray-900">{fmt(data.totalRevenue)}</p>
+                <DollarSign className="h-5 w-5 shrink-0 text-green-600" />
               </div>
+              <p className="mt-2 text-xs text-gray-500 leading-snug">
+                Total of line amounts for all products with any sales in the period.
+              </p>
             </CardContent>
           </Card>
         </div>
 
-        {/* Top Products List */}
-        <Card className="border-gray-200">
+        <Card className="border-gray-200 shadow-sm">
           <CardHeader>
-            <CardTitle>Top Products</CardTitle>
+            <CardTitle>Ranked products</CardTitle>
+            <p className="text-sm font-normal text-gray-500 mt-1">
+              Top {Math.min(data.topProducts.length, listLimit)} shown · sorted by line revenue · avg price is revenue ÷
+              units for that SKU.
+            </p>
           </CardHeader>
           <CardContent>
             {data.topProducts.length === 0 ? (
-              <EmptyReportState title="No products sold" description="No product sales in the selected period." />
+              <EmptyReportState title="No products sold" description="No qualifying product lines in the selected period." />
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {data.topProducts.map((product, index) => (
                   <div
                     key={product.productId}
-                    className="flex items-center justify-between p-3 rounded-lg border border-gray-200"
+                    className="flex flex-col gap-2 rounded-xl border border-gray-100 bg-white p-4 shadow-sm ring-1 ring-gray-100/80 sm:flex-row sm:items-center sm:justify-between"
                   >
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-[#FF0077] text-white font-semibold text-sm">
+                    <div className="flex items-start gap-3 min-w-0">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#FF0077] to-[#D60565] text-sm font-semibold text-white">
                         {index + 1}
                       </div>
-                      <div>
-                        <p className="font-medium text-gray-900">{product.productName}</p>
-                        <p className="text-sm text-gray-600">{product.category}</p>
+                      <div className="min-w-0">
+                        <p className="font-medium text-gray-900 truncate">{product.productName}</p>
+                        <p className="text-sm text-gray-600 capitalize">{product.category}</p>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <p className="font-semibold text-gray-900">
-                        {fmt(product.totalRevenue)}
-                      </p>
+                    <div className="text-left sm:text-right shrink-0">
+                      <p className="text-lg font-semibold tabular-nums text-gray-900">{fmt(product.totalRevenue)}</p>
                       <p className="text-sm text-gray-600">
-                        {product.totalQuantity} sold • {product.timesSold} times
+                        {product.totalQuantity} units · <span className="tabular-nums">{fmt(product.averagePrice)}</span>{" "}
+                        avg / unit
+                      </p>
+                      <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
+                        <Hash className="h-3 w-3 shrink-0" />
+                        {product.timesSold} line rows (booking or order lines, not visits)
                       </p>
                     </div>
                   </div>

@@ -2,9 +2,10 @@ import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { canAccessReportType } from "@/lib/subscriptions/report-gating";
 import { createClient } from "@supabase/supabase-js";
-import { MAX_REPORT_DAYS } from "@/lib/reports/constants";
+import { LEDGER_FULL_PROVIDER_NET_TYPES, MAX_REPORT_DAYS } from "@/lib/reports/constants";
 import { getProviderReportContext, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
 import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
+import { allocateLedgerNetByStaff } from "@/lib/reports/staff-ledger-revenue";
 import { calculateStaffCommission } from "@/lib/payroll/commission-calculator";
 
 export async function GET(request: NextRequest) {
@@ -68,8 +69,8 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get provider revenue from finance_transactions
     const { revenueByBooking } = await getProviderRevenue(supabaseAdmin, providerId, fromDate, toDate, locationId ?? null, {
+      transactionTypes: LEDGER_FULL_PROVIDER_NET_TYPES,
       timezone: reportContext.timezone,
     });
 
@@ -107,6 +108,8 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const ledgerNetByStaff = allocateLedgerNetByStaff(revenueByBooking, bookings || []);
+
     // Get reviews for staff members
     // Note: reviews table has staff_rating as JSONB, not staff_id directly
     const { data: reviews } = await supabaseAdmin
@@ -137,32 +140,7 @@ export async function GET(request: NextRequest) {
       const cancelledBookings = staffBookings.filter((b: any) => b.status === 'cancelled').length;
       const noShows = staffBookings.filter((b: any) => b.status === 'no_show').length;
 
-      // Calculate revenue from finance_transactions, distributed proportionally by service price
-      let totalRevenue = 0;
-      staffBookings.forEach((booking: any) => {
-        const bookingRevenue = revenueByBooking.get(booking.id) || 0;
-        if (!booking.booking_services || !Array.isArray(booking.booking_services)) {
-          return;
-        }
-        // Find services assigned to this staff member
-        const staffServices = booking.booking_services.filter(
-          (service: any) => service.staff_id === staff.id
-        );
-        if (staffServices.length === 0) return;
-
-        // Calculate total price of all services in booking
-        const totalServicePrice = booking.booking_services.reduce(
-          (sum: number, s: any) => sum + Number(s.price || 0),
-          0
-        );
-        // Calculate staff's portion of revenue
-        const staffServicePrice = staffServices.reduce(
-          (sum: number, s: any) => sum + Number(s.price || 0),
-          0
-        );
-        const staffProportion = totalServicePrice > 0 ? staffServicePrice / totalServicePrice : 0;
-        totalRevenue += bookingRevenue * staffProportion;
-      });
+      const totalRevenue = ledgerNetByStaff.get(staff.id) ?? 0;
 
       const averageBookingValue = totalBookings > 0 ? totalRevenue / totalBookings : 0;
 
@@ -223,21 +201,36 @@ export async function GET(request: NextRequest) {
       };
     }));
 
-    // Calculate summary
+    const uniqueAppointmentIds = new Set((bookings || []).map((b: { id: string }) => b.id));
+    const uniqueAppointments = uniqueAppointmentIds.size;
+    const assignmentTouches = staffPerformance.reduce((sum, s) => sum + s.totalBookings, 0);
+
+    const totalReviewsWeighted = staffPerformance.reduce((sum, s) => sum + s.totalReviews, 0);
+    const averageRatingWeighted =
+      totalReviewsWeighted > 0
+        ? staffPerformance.reduce((sum, s) => sum + s.averageRating * s.totalReviews, 0) /
+          totalReviewsWeighted
+        : 0;
+
     const summary = {
       totalStaff: staffPerformance.length,
-      totalBookings: staffPerformance.reduce((sum, s) => sum + s.totalBookings, 0),
+      /** Distinct appointments in range (each booking counted once). */
+      uniqueAppointments,
+      /**
+       * Sum of per-staff booking counts — exceeds unique appointments when
+       * multiple staff share an appointment.
+       */
+      staffAssignmentTouches: assignmentTouches,
       totalRevenue: staffPerformance.reduce((sum, s) => sum + s.totalRevenue, 0),
-      averageRating:
-        staffPerformance.length > 0
-          ? staffPerformance.reduce((sum, s) => sum + s.averageRating, 0) /
-            staffPerformance.length
-          : 0,
+      averageRating: averageRatingWeighted,
     };
 
     return successResponse({
       staffMembers: staffPerformance.sort((a, b) => b.totalRevenue - a.totalRevenue),
       summary,
+      ledgerTransactionTypes: [...LEDGER_FULL_PROVIDER_NET_TYPES],
+      basisNote:
+        "Ledger net uses finance_transactions (provider_earnings, travel_fee, tip) split by line price share. Commission uses provider_earnings only (payroll rules). Average rating is weighted by review count. Unique appointments avoids double-counting shared bookings in the summary.",
     });
   } catch (error) {
     console.error("Error in staff performance report:", error);

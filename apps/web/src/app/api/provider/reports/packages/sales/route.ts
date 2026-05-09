@@ -1,36 +1,43 @@
 import { NextRequest } from "next/server";
-import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
-import { createClient } from "@supabase/supabase-js";
+import {
+  requireRoleInApi,
+  getProviderIdForUser,
+  successResponse,
+  notFoundResponse,
+  handleApiError,
+} from "@/lib/supabase/api-helpers";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { MAX_REPORT_DAYS } from "@/lib/reports/constants";
 import { getProviderReportContext, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
 import { packageReportBookedValue } from "@/lib/reports/package-report-value";
+import {
+  asSingleRelation,
+  bookingServiceLineIsPackage,
+  offeringFromBookingService,
+} from "@/lib/reports/normalize-booking-relations";
 
+/**
+ * GET /api/provider/reports/packages/sales
+ *
+ * Booked package **value** per catalog package from confirm/completed bookings and qualifying group bookings,
+ * windowed by **scheduled_at**. Uses packageReportBookedValue (catalog price or discounted line sum — not booking.total_amount).
+ */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      }
-    );
+    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
+    const supabaseAdmin = getSupabaseAdmin();
 
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
-
     if (!providerId) return notFoundResponse("Provider not found");
 
     const searchParams = request.nextUrl.searchParams;
     const reportContext = await getProviderReportContext(supabaseAdmin, providerId);
-    const { fromDate, toDate } = reportDateRangeFromParams(searchParams, reportContext.timezone, {
+    const { fromDate, toDate, fromYmd, toYmd } = reportDateRangeFromParams(searchParams, reportContext.timezone, {
       defaultDays: 30,
       maxDays: MAX_REPORT_DAYS,
     });
     const locationId = searchParams.get("location_id") || undefined;
 
-    // Get bookings with packages (both via package_id and via booking_services with service_type='package')
     let bookingsQuery = supabaseAdmin
       .from("bookings")
       .select(
@@ -56,7 +63,7 @@ export async function GET(request: NextRequest) {
             service_type
           )
         )
-      `
+      `,
       )
       .eq("provider_id", providerId)
       .gte("scheduled_at", fromDate.toISOString())
@@ -70,11 +77,7 @@ export async function GET(request: NextRequest) {
     const { data: bookings, error: bookingsError } = await bookingsQuery;
 
     if (bookingsError) {
-      return handleApiError(
-        new Error("Failed to fetch bookings"),
-        "BOOKINGS_FETCH_ERROR",
-        500
-      );
+      return handleApiError(new Error(bookingsError.message || "Failed to fetch bookings"), "BOOKINGS_FETCH_ERROR", 500);
     }
 
     let groupBookingsQuery = supabaseAdmin
@@ -95,7 +98,7 @@ export async function GET(request: NextRequest) {
           id,
           price
         )
-      `
+      `,
       )
       .eq("provider_id", providerId)
       .gte("scheduled_at", fromDate.toISOString())
@@ -110,32 +113,38 @@ export async function GET(request: NextRequest) {
     const { data: groupBookings, error: groupBookingsError } = await groupBookingsQuery;
     if (groupBookingsError) {
       return handleApiError(
-        new Error("Failed to fetch group bookings"),
+        new Error(groupBookingsError.message || "Failed to fetch group bookings"),
         "GROUP_BOOKINGS_FETCH_ERROR",
-        500
+        500,
       );
     }
 
-    // Filter for bookings with packages (either via package_id or service_type = 'package')
-    const packageBookings = bookings?.filter((booking) =>
-      booking.package_id || 
-      booking.booking_services?.some((bs: any) => bs.offerings?.service_type === 'package')
-    ) || [];
+    const packageBookings =
+      bookings?.filter(
+        (booking) =>
+          booking.package_id ||
+          booking.booking_services?.some((bs) => bookingServiceLineIsPackage(bs)),
+      ) || [];
 
-    // Aggregate booked package value. Use package/service line prices instead of booking.total_amount
-    // so travel fees, tips, and other booking-level amounts do not inflate package reporting.
-    const packageMap = new Map<string, {
-      packageId: string;
-      packageName: string;
-      bookings: number;
-      revenue: number;
-      averageValue: number;
-    }>();
+    const packageMap = new Map<
+      string,
+      {
+        packageId: string;
+        packageName: string;
+        bookings: number;
+        revenue: number;
+        averageValue: number;
+      }
+    >();
 
     packageBookings.forEach((booking) => {
-      // Prefer package_id row (one booking = one sale); avoid double-counting legacy rows
-      if (booking.package_id && (booking as any).service_packages) {
-        const pkg = (booking as any).service_packages;
+      const pkg = asSingleRelation<{
+        id: string;
+        name?: string;
+        price?: unknown;
+        discount_percentage?: unknown;
+      }>((booking as { service_packages?: unknown }).service_packages);
+      if (booking.package_id && pkg) {
         const packageId = pkg.id;
         const existing = packageMap.get(packageId) || {
           packageId,
@@ -146,40 +155,45 @@ export async function GET(request: NextRequest) {
         };
         existing.bookings += 1;
         const lineSum =
-          ((booking as any).booking_services || []).reduce(
+          ((booking as { booking_services?: { price?: number | null }[] }).booking_services || []).reduce(
             (sum: number, bs: { price?: number | null }) => sum + Number(bs.price || 0),
-            0
+            0,
           ) || 0;
         existing.revenue += packageReportBookedValue({
-          catalogPrice: pkg.price,
-          catalogDiscountPercent: pkg.discount_percentage,
+          catalogPrice: pkg.price as number | null | undefined,
+          catalogDiscountPercent: pkg.discount_percentage as number | null | undefined,
           bookingServicesLineSum: lineSum,
         });
         packageMap.set(packageId, existing);
         return;
       }
 
-      // Legacy: package represented only as line items
-      booking.booking_services?.forEach((bs: any) => {
-        if (bs.offerings?.service_type === "package") {
-          const packageId = bs.offerings.id;
+      booking.booking_services?.forEach((bs: { price?: number | null; offerings?: unknown }) => {
+        const off = offeringFromBookingService(bs);
+        if (off?.service_type === "package" && off.id) {
+          const packageId = off.id;
           const existing = packageMap.get(packageId) || {
             packageId,
-            packageName: bs.offerings.title || "Unknown Package",
+            packageName: off.title || "Unknown Package",
             bookings: 0,
             revenue: 0,
             averageValue: 0,
           };
           existing.bookings += 1;
-          existing.revenue += Number(bs.price || booking.total_amount || 0);
+          existing.revenue += Number(bs.price || (booking as { total_amount?: number }).total_amount || 0);
           packageMap.set(packageId, existing);
         }
       });
     });
 
-    (groupBookings || []).forEach((group: any) => {
-      if (!group.package_id || !group.service_packages) return;
-      const pkg = group.service_packages;
+    (groupBookings || []).forEach((group: Record<string, unknown>) => {
+      const pkg = asSingleRelation<{
+        id: string;
+        name?: string;
+        price?: unknown;
+        discount_percentage?: unknown;
+      }>(group.service_packages);
+      if (!group.package_id || !pkg) return;
       const packageId = pkg.id;
       const existing = packageMap.get(packageId) || {
         packageId,
@@ -190,13 +204,13 @@ export async function GET(request: NextRequest) {
       };
       existing.bookings += 1;
       const lineSum =
-        (group.booking_participants || []).reduce(
+        ((group.booking_participants as { price?: number | null }[]) || []).reduce(
           (sum: number, p: { price?: number | null }) => sum + Number(p.price || 0),
-          0
+          0,
         ) || 0;
       existing.revenue += packageReportBookedValue({
-        catalogPrice: pkg.price,
-        catalogDiscountPercent: pkg.discount_percentage,
+        catalogPrice: pkg.price as number | null | undefined,
+        catalogDiscountPercent: pkg.discount_percentage as number | null | undefined,
         bookingServicesLineSum: lineSum,
       });
       packageMap.set(packageId, existing);
@@ -213,15 +227,32 @@ export async function GET(request: NextRequest) {
     const totalRevenue = packageSales.reduce((sum, p) => sum + p.revenue, 0);
     const averagePackageValue = totalPackagesSold > 0 ? totalRevenue / totalPackagesSold : 0;
 
+    const reportBasis =
+      `Period ${fromYmd}–${toYmd} (${reportContext.timezone}). ` +
+      `Includes bookings with scheduled_at in range, status confirmed or completed, ` +
+      `with package_id set (service_packages join) or legacy booking_services lines whose offering service_type is package. ` +
+      `Plus group_bookings with package_id and status in booked, started, confirmed, completed. ` +
+      `Revenue per row uses packageReportBookedValue (catalog package price when set, else %-discount net on service lines, else sum of line prices / legacy line price) — not booking.total_amount, so tips, travel fees, and unrelated add-ons do not inflate totals.`;
+
     return successResponse({
+      timezone: reportContext.timezone,
+      fromYmd,
+      toYmd,
+      reportBasis,
+      basis: {
+        window: "scheduled_at for both bookings and group_bookings.",
+        bookingStatuses: "Individual bookings: confirmed, completed. Group: booked, started, confirmed, completed.",
+        revenue: "packageReportBookedValue from lib/reports/package-report-value.ts.",
+        counts: "bookings = number of qualifying appointments/group events per package definition.",
+      },
       totalPackagesSold,
       totalRevenue,
       averagePackageValue,
       packageSales,
-      reportBasis:
-        "Package value is based on package/service line prices for confirmed/completed bookings and active group bookings by scheduled date. Booking-level travel fees, tips, add-ons, and Platform Fees are excluded.",
+      report_basis: reportBasis,
     });
   } catch (error) {
-    return handleApiError(error, "PACKAGE_SALES_ERROR", 500);
+    console.error("packages/sales:", error);
+    return handleApiError(error, "Failed to generate package sales report");
   }
 }

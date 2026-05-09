@@ -27,6 +27,12 @@ import {
 import { WhatsAppSendModal } from "@/components/whatsapp/WhatsAppSendModal";
 import { BulkWhatsAppModal } from "@/components/whatsapp/BulkWhatsAppModal";
 import { handleLeadConcurrent409 } from "@/lib/handleLeadConcurrentUpdate";
+import {
+  AssigneeSearchPanel,
+  LeadAssigneeInline,
+  labelOf,
+  type AssignableUser,
+} from "@/components/provider-ops/LeadAssigneeInline";
 
 const PAGE_SIZE = 50;
 /** Keeps inbox + embedded detail panel aligned when multiple admins work the same queue. */
@@ -79,6 +85,7 @@ interface Lead {
   description?: string | null;
   notes?: string | null;
   assigned_to?: string | null;
+  assigned_user?: { id: string; email: string | null; full_name: string | null } | null;
   matched_provider_id?: string | null;
   provider_lead_categories?: LeadCategory[] | unknown;
   /** Wasender reachability check — surfaced as a badge in the inbox. */
@@ -158,6 +165,17 @@ function asLeadCategoryList(raw: unknown): LeadCategory[] {
   return [];
 }
 
+function assigneeDisplayName(lead: Lead): string {
+  if (!lead.assigned_to) return "—";
+  const u = lead.assigned_user;
+  if (u && typeof u === "object") {
+    const n = typeof u.full_name === "string" ? u.full_name.trim() : "";
+    const e = typeof u.email === "string" ? u.email.trim() : "";
+    if (n || e) return n || e;
+  }
+  return `${lead.assigned_to.slice(0, 8)}…`;
+}
+
 function parseCategoryIdsParam(sp: URLSearchParams): string[] {
   const values = [...sp.getAll("category_ids"), ...sp.getAll("category_id")];
   const seen = new Set<string>();
@@ -178,6 +196,7 @@ interface LeadsPayload {
     countries?: Array<{ value: string; label: string; count: number }>;
     provinces?: Array<{ value: string; label: string; count: number; country?: string | null }>;
     categories?: Array<{ id: string; name: string; count: number }>;
+    assignees?: Array<{ value: string; label: string; count: number }>;
   };
 }
 
@@ -202,6 +221,7 @@ export function ProviderOpsLeadsPage() {
   const province = sp.get("province") || "";
   const categoryIds = useMemo(() => parseCategoryIdsParam(sp), [sp]);
   const categoryKey = categoryIds.join(",");
+  const assignedToFilter = sp.get("assigned_to") || "";
   const sortBy = sp.get("sort") || "created_at";
   const sortDir = sp.get("dir") || "desc";
 
@@ -219,8 +239,15 @@ export function ProviderOpsLeadsPage() {
   const resizingRef = useRef(false);
   const [whatsAppLead, setWhatsAppLead] = useState<Lead | null>(null);
   const [showBulkWhatsApp, setShowBulkWhatsApp] = useState(false);
+  const [bulkAssignOpen, setBulkAssignOpen] = useState(false);
 
-  const qk = useMemo(() => adminQueryKeys.providerOps.leads(`s=${stage}|p=${page}|q=${search}|c=${country}|prov=${province}|cat=${categoryKey}|sb=${sortBy}|sd=${sortDir}`), [stage, page, search, country, province, categoryKey, sortBy, sortDir]);
+  const qk = useMemo(
+    () =>
+      adminQueryKeys.providerOps.leads(
+        `s=${stage}|p=${page}|q=${search}|c=${country}|prov=${province}|cat=${categoryKey}|a=${assignedToFilter}|sb=${sortBy}|sd=${sortDir}`,
+      ),
+    [stage, page, search, country, province, categoryKey, assignedToFilter, sortBy, sortDir],
+  );
 
   const q = useQuery({
     queryKey: qk,
@@ -233,6 +260,7 @@ export function ProviderOpsLeadsPage() {
       if (country) p.set("country", country);
       if (province) p.set("province", province);
       categoryIds.forEach((id) => p.append("category_ids", id));
+      if (assignedToFilter) p.set("assigned_to", assignedToFilter);
       if (sortBy) p.set("sort", sortBy);
       if (sortDir) p.set("dir", sortDir);
       return adminApi.getJson<LeadsPayload>(`/api/admin/provider-ops/leads?${p}`, { timeoutMs: 60_000 });
@@ -254,6 +282,7 @@ export function ProviderOpsLeadsPage() {
     [filterOptions?.provinces, country],
   );
   const categoryOptions = filterOptions?.categories ?? [];
+  const assigneeFilterOptions = filterOptions?.assignees ?? [];
   const selectedCategoryNames = categoryIds.map((id) => categoryOptions.find((c) => c.id === id)?.name ?? "selected");
 
   const selectedLead = rows.find((r) => r.id === selectedLeadId) ?? null;
@@ -320,6 +349,56 @@ export function ProviderOpsLeadsPage() {
         return;
       }
       adminToast.error(`Stage update failed: ${e.message}`);
+    },
+  });
+
+  const runBulkAssign = useCallback(
+    async (u: AssignableUser) => {
+      const ids = [...selectedIds];
+      setBulkAssignOpen(false);
+      for (const id of ids) {
+        const row = rows.find((r) => r.id === id);
+        try {
+          await adminApi.patchJson(`/api/admin/provider-ops/leads/${id}/assign`, {
+            assigned_to: u.id,
+            assigned_to_name: labelOf(u),
+            ...(row?.updated_at ? { expected_updated_at: row.updated_at } : {}),
+          });
+        } catch (e) {
+          adminToast.error(e instanceof Error ? e.message : "Assignment failed");
+          void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
+          return;
+        }
+      }
+      adminToast.success(`Assigned ${ids.length} lead(s)`);
+      setSelectedIds(new Set());
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
+    },
+    [selectedIds, rows, qc],
+  );
+
+  const assignLeadMut = useMutation({
+    mutationFn: (args: {
+      leadId: string;
+      assigned_to: string;
+      assigned_to_name?: string;
+      expected_updated_at?: string;
+    }) =>
+      adminApi.patchJson(`/api/admin/provider-ops/leads/${args.leadId}/assign`, {
+        assigned_to: args.assigned_to || null,
+        ...(args.assigned_to_name ? { assigned_to_name: args.assigned_to_name } : {}),
+        ...(args.expected_updated_at ? { expected_updated_at: args.expected_updated_at } : {}),
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
+      adminToast.success("Assignment updated");
+    },
+    onError: (e: Error) => {
+      if (handleLeadConcurrent409(e)) {
+        void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
+        return;
+      }
+      adminToast.error(`Assign failed: ${e.message}`);
     },
   });
 
@@ -492,6 +571,7 @@ export function ProviderOpsLeadsPage() {
       if (country) p.set("country", country);
       if (province) p.set("province", province);
       categoryIds.forEach((id) => p.append("category_ids", id));
+      if (assignedToFilter) p.set("assigned_to", assignedToFilter);
       const res = await fetch(`/api/admin/provider-ops/leads/export?${p}`, { credentials: "include" });
       if (!res.ok) {
         adminToast.error("Export failed — please try again");
@@ -507,7 +587,7 @@ export function ProviderOpsLeadsPage() {
     } finally {
       setExporting(false);
     }
-  }, [stage, search, country, province, categoryKey, categoryIds]);
+  }, [stage, search, country, province, categoryKey, categoryIds, assignedToFilter]);
 
   const handleResizeMouseDown = useCallback(() => {
     resizingRef.current = true;
@@ -575,8 +655,25 @@ export function ProviderOpsLeadsPage() {
           }
         />
       </div>
-      {(country || province || categoryIds.length > 0) && (
+      {(country || province || categoryIds.length > 0 || assignedToFilter) && (
         <div className="mx-1 mb-2 flex flex-wrap items-center gap-1.5">
+          {assignedToFilter ? (
+            <button
+              type="button"
+              onClick={() => {
+                const n = new URLSearchParams(sp);
+                n.delete("assigned_to");
+                n.delete("page");
+                setSp(n, { replace: true });
+              }}
+              className="rounded-full bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-800 ring-1 ring-slate-200"
+            >
+              {assignedToFilter === "unassigned"
+                ? "Assignee: Unassigned"
+                : `Assignee: ${assigneeFilterOptions.find((x) => x.value === assignedToFilter)?.label ?? assignedToFilter.slice(0, 8) + "…"}`}{" "}
+              ×
+            </button>
+          ) : null}
           {country ? (
             <button
               type="button"
@@ -744,6 +841,25 @@ export function ProviderOpsLeadsPage() {
                 </option>
               ))}
             </select>
+            <select
+              value={assignedToFilter}
+              onChange={(e) => {
+                const n = new URLSearchParams(sp);
+                if (e.target.value) n.set("assigned_to", e.target.value);
+                else n.delete("assigned_to");
+                n.delete("page");
+                setSp(n, { replace: true });
+              }}
+              className="min-w-[200px] rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700"
+            >
+              <option value="">All assignees</option>
+              <option value="unassigned">Unassigned</option>
+              {assigneeFilterOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label} ({opt.count})
+                </option>
+              ))}
+            </select>
             <div className="min-w-[240px] rounded-lg border border-gray-300 bg-white p-2">
               <div className="mb-1 text-xs font-medium text-gray-600">Categories</div>
               <div className="max-h-44 space-y-1 overflow-auto pr-1">
@@ -773,8 +889,8 @@ export function ProviderOpsLeadsPage() {
                 })}
               </div>
             </div>
-            {(country || province || categoryIds.length > 0) && (
-              <button type="button" onClick={() => { const n = new URLSearchParams(sp); n.delete("country"); n.delete("province"); n.delete("category_id"); n.delete("category_ids"); n.delete("page"); setSp(n, { replace: true }); }} className="text-xs text-gray-500 hover:text-gray-700 underline">Clear filters</button>
+            {(country || province || categoryIds.length > 0 || assignedToFilter) && (
+              <button type="button" onClick={() => { const n = new URLSearchParams(sp); n.delete("country"); n.delete("province"); n.delete("category_id"); n.delete("category_ids"); n.delete("assigned_to"); n.delete("page"); setSp(n, { replace: true }); }} className="text-xs text-gray-500 hover:text-gray-700 underline">Clear filters</button>
             )}
           </div>
         )}
@@ -806,12 +922,14 @@ export function ProviderOpsLeadsPage() {
               onSort={toggleSort}
               onStageChange={(id, s, expectedAt) => stageChangeMut.mutate({ id, newStage: s, expected_updated_at: expectedAt })}
               onWhatsAppClick={(lead) => setWhatsAppLead(lead)}
+              assignLeadMut={assignLeadMut}
             />
           ) : (
             <LeadCardGrid
               rows={rows}
               selectedLeadId={selectedLeadId}
               onSelectLead={setSelectedLeadId}
+              assignLeadMut={assignLeadMut}
             />
           )}
 
@@ -909,9 +1027,34 @@ export function ProviderOpsLeadsPage() {
         )}
 
       {/* Floating action bar for bulk selection */}
+      {bulkAssignOpen && (
+        <div
+          className="fixed inset-0 z-[110] flex items-center justify-center bg-black/40 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Bulk assign leads"
+          onClick={() => setBulkAssignOpen(false)}
+        >
+          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md">
+            <AssigneeSearchPanel
+              title={`Assign ${selectedIds.size} lead(s) to…`}
+              onClose={() => setBulkAssignOpen(false)}
+              onPick={(user) => void runBulkAssign(user)}
+            />
+          </div>
+        </div>
+      )}
+
       {selectedIds.size > 0 && (
         <div className="fixed bottom-4 left-1/2 z-30 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 flex-wrap items-center justify-center gap-3 rounded-2xl bg-gray-900 px-4 py-3 text-white shadow-2xl transition-all sm:gap-4 sm:px-6">
           <span className="text-sm font-medium">{selectedIds.size} leads selected</span>
+          <button
+            type="button"
+            className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+            onClick={() => setBulkAssignOpen(true)}
+          >
+            <UserPlus className="h-4 w-4" /> Assign to…
+          </button>
           <button
             className="inline-flex items-center gap-2 rounded-xl bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
             onClick={() => setShowBulkWhatsApp(true)}
@@ -979,7 +1122,7 @@ function SortHeader({ label, column, sortBy, sortDir, onSort }: { label: string;
   );
 }
 
-function LeadTable({ rows, selectedLeadId, selectedIds, sortBy, sortDir, onSelectLead, onToggleSelect, onToggleSelectAll, onSort, onStageChange, onWhatsAppClick }: {
+function LeadTable({ rows, selectedLeadId, selectedIds, sortBy, sortDir, onSelectLead, onToggleSelect, onToggleSelectAll, onSort, onStageChange, onWhatsAppClick, assignLeadMut }: {
   rows: Lead[];
   selectedLeadId: string | null;
   selectedIds: Set<string>;
@@ -991,6 +1134,11 @@ function LeadTable({ rows, selectedLeadId, selectedIds, sortBy, sortDir, onSelec
   onSort: (col: string) => void;
   onStageChange: (id: string, stage: string, expectedUpdatedAt?: string) => void;
   onWhatsAppClick?: (lead: Lead) => void;
+  assignLeadMut: {
+    mutate: (args: { leadId: string; assigned_to: string; assigned_to_name?: string; expected_updated_at?: string }) => void;
+    isPending: boolean;
+    variables?: { leadId: string; assigned_to: string; assigned_to_name?: string; expected_updated_at?: string };
+  };
 }) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
 
@@ -1006,6 +1154,7 @@ function LeadTable({ rows, selectedLeadId, selectedIds, sortBy, sortDir, onSelec
             </th>
             <th className="px-3 py-3 text-left"><SortHeader label="Name" column="contact_person_name" sortBy={sortBy} sortDir={sortDir} onSort={onSort} /></th>
             <th className="px-3 py-3 text-left"><SortHeader label="Stage" column="commercial_stage" sortBy={sortBy} sortDir={sortDir} onSort={onSort} /></th>
+            <th className="hidden px-3 py-3 text-left lg:table-cell">Assignee</th>
             <th className="hidden px-3 py-3 text-left md:table-cell"><SortHeader label="Source" column="source" sortBy={sortBy} sortDir={sortDir} onSort={onSort} /></th>
             <th className="hidden px-3 py-3 text-left lg:table-cell">Category</th>
             <th className="hidden px-3 py-3 text-left xl:table-cell">Location</th>
@@ -1085,6 +1234,16 @@ function LeadTable({ rows, selectedLeadId, selectedIds, sortBy, sortDir, onSelec
                     )}
                   </div>
                 </td>
+                <td className="hidden px-3 py-2.5 lg:table-cell" onClick={(e) => e.stopPropagation()}>
+                  <LeadAssigneeInline
+                    leadId={lead.id}
+                    assignedToId={lead.assigned_to ?? null}
+                    displayName={assigneeDisplayName(lead)}
+                    updatedAt={lead.updated_at}
+                    onAssign={(args) => assignLeadMut.mutate(args)}
+                    disabled={assignLeadMut.isPending && assignLeadMut.variables?.leadId === lead.id}
+                  />
+                </td>
                 <td className="hidden px-3 py-2.5 md:table-cell">
                   <span className="inline-block rounded-md border border-gray-200 bg-gray-50 px-2 py-0.5 text-[11px] font-medium text-gray-600">{lead.source}</span>
                 </td>
@@ -1144,7 +1303,16 @@ function LeadTable({ rows, selectedLeadId, selectedIds, sortBy, sortDir, onSelec
 
 // ─── Card grid view ───────────────────────────────────────────────────────────
 
-function LeadCardGrid({ rows, selectedLeadId, onSelectLead }: { rows: Lead[]; selectedLeadId: string | null; onSelectLead: (id: string) => void }) {
+function LeadCardGrid({ rows, selectedLeadId, onSelectLead, assignLeadMut }: {
+  rows: Lead[];
+  selectedLeadId: string | null;
+  onSelectLead: (id: string) => void;
+  assignLeadMut: {
+    mutate: (args: { leadId: string; assigned_to: string; assigned_to_name?: string; expected_updated_at?: string }) => void;
+    isPending: boolean;
+    variables?: { leadId: string; assigned_to: string; assigned_to_name?: string; expected_updated_at?: string };
+  };
+}) {
   return (
     <div className="flex-1 overflow-auto p-3">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -1197,7 +1365,19 @@ function LeadCardGrid({ rows, selectedLeadId, onSelectLead }: { rows: Lead[]; se
                   {cats.map((c) => <span key={c} className="rounded-md bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-600">{c}</span>)}
                 </div>
               )}
-              <div className="mt-2.5 flex items-center justify-between text-[10px] text-gray-400">
+              <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 text-[10px] text-gray-400" onClick={(e) => e.stopPropagation()}>
+                <div className="flex min-w-0 flex-1 items-center justify-end gap-1 sm:justify-start">
+                  <span className="text-gray-500">Owner</span>
+                  <LeadAssigneeInline
+                    leadId={lead.id}
+                    assignedToId={lead.assigned_to ?? null}
+                    displayName={assigneeDisplayName(lead)}
+                    updatedAt={lead.updated_at}
+                    onAssign={(args) => assignLeadMut.mutate(args)}
+                    disabled={assignLeadMut.isPending && assignLeadMut.variables?.leadId === lead.id}
+                    compact
+                  />
+                </div>
                 <span>{new Date(lead.created_at).toLocaleDateString()}</span>
                 {tagCount > 0 && (
                   <span className="flex items-center gap-0.5"><Tag className="h-2.5 w-2.5" />{tagCount}</span>
@@ -1425,7 +1605,11 @@ function DetailPanel({ lead, activities, isLoading, noteText, setNoteText, onAdd
             )}
             <InfoRow icon={MapPin} label="Location" value={lead.suggested_location_text} />
             <InfoRow icon={Calendar} label="Created" value={new Date(lead.created_at).toLocaleString()} />
-            {lead.assigned_to && <InfoRow icon={UserPlus} label="Assigned to" value={lead.assigned_to} />}
+            <InfoRow
+              icon={UserPlus}
+              label="Assigned to"
+              value={lead.assigned_to ? assigneeDisplayName(lead as Lead) : "Unassigned"}
+            />
             <InfoRow icon={ExternalLink} label="Source" value={lead.source} />
             {lead.country && <InfoRow icon={MapPin} label="Country" value={lead.country} />}
           </div>

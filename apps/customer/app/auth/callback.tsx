@@ -57,15 +57,31 @@ export default function AuthCallbackScreen() {
 
       try {
         if (accessToken && refreshToken) {
-          const { error: sessionError } = await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken,
-          });
-          if (sessionError) throw sessionError;
+          try {
+            const { error: sessionError } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken,
+            });
+            if (sessionError) throw sessionError;
+          } catch (err: any) {
+            if (err.message?.includes("Lock") && err.message?.includes("stole it")) {
+              console.warn("Ignored lock error on setSession", err);
+            } else {
+              throw err;
+            }
+          }
         } else if (code) {
-          const { error: exchangeError } =
-            await supabase.auth.exchangeCodeForSession(code);
-          if (exchangeError) throw exchangeError;
+          try {
+            const { error: exchangeError } =
+              await supabase.auth.exchangeCodeForSession(code);
+            if (exchangeError) throw exchangeError;
+          } catch (err: any) {
+            if (err.message?.includes("Lock") && err.message?.includes("stole it")) {
+              console.warn("Ignored lock error on exchangeCodeForSession", err);
+            } else {
+              throw err;
+            }
+          }
         } else if (tokenHash && (type === "signup" || type === "recovery" || type === "email")) {
           const { error: verifyError } = await supabase.auth.verifyOtp({
             token_hash: tokenHash,
