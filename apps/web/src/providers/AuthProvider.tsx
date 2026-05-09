@@ -992,9 +992,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       clearAuthCache();
       clearFetcherCache();
 
-      const { error } = await supabase.auth.signOut();
-      if (error) {
-        console.error("Error signing out from Supabase:", error);
+      // Call server to clear HTTP-only cookies
+      await fetch("/api/auth/sign-out", { method: "POST" }).catch(() => {});
+
+      try {
+        await Promise.race([
+          supabase.auth.signOut(),
+          new Promise<void>((resolve) => setTimeout(resolve, 2800))
+        ]);
+      } catch (error) {
+        console.error("Error signing out from Supabase remotely:", error);
+      }
+      
+      try {
+        await supabase.auth.signOut({ scope: "local" });
+      } catch {
+        // Best-effort local sign-out
       }
 
       setSession(null);
@@ -1050,17 +1063,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   ) => {
     if (!supabase) return;
     try {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            full_name: fullName,
-            phone: phone,
-            role: 'customer', // Default role
+      let data;
+      let error;
+      try {
+        const result = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              full_name: fullName,
+              phone: phone,
+              role: 'customer', // Default role
+            },
           },
-        },
-      });
+        });
+        data = result.data;
+        error = result.error;
+      } catch (err: any) {
+        if (err.message?.includes("Lock") && err.message?.includes("stole it")) {
+          console.warn("Ignored lock error during signUp", err);
+          data = { user: null, session: null };
+          error = null;
+        } else {
+          throw err;
+        }
+      }
 
       if (error) {
         throw error;

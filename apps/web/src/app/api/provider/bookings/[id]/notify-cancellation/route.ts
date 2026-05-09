@@ -48,7 +48,7 @@ export async function POST(
     const result = await sendCancellationNotification(
       id,
       cancellationType,
-      { shouldSend: true }
+      { shouldSend: true, channels: ["push", "email", "sms"] }
     );
 
     return successResponse({ success: result.success, sent: result.sent, error: result.error });

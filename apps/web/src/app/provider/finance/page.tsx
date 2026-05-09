@@ -883,7 +883,11 @@ export default function ProviderFinance() {
             <div>
               <h2 className="text-xl font-semibold">Transaction History</h2>
               {(portalProvider?.locations?.length ?? 0) > 1 && selectedLocationId ? (
-                <p className="text-sm text-gray-500 mt-1">Recent activity across all locations. Earnings above reflect the selected branch.</p>
+                <p className="text-sm text-gray-500 mt-1">
+                  Cards and earnings totals use the selected branch. This ledger list uses{" "}
+                  <span className="font-medium text-gray-600">transaction_feed=all</span> — payouts and other rows without a
+                  single-branch booking can still appear for the whole organization in this date range.
+                </p>
               ) : null}
             </div>
           </div>

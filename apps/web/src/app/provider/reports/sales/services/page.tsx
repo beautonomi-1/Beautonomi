@@ -1,13 +1,13 @@
 "use client";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
-import React, { useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { PageHeader } from "@/components/provider/PageHeader";
 import { ReportFilters, DateRange } from "../../components/ReportFilters";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Download, TrendingUp, DollarSign, Calendar, Package } from "lucide-react";
+import { Download, Layers, CalendarCheck, Wallet, Sparkles, Info } from "lucide-react";
 import { fetcher } from "@/lib/http/fetcher";
 import { subDays } from "date-fns";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
@@ -15,35 +15,33 @@ import { EmptyReportState } from "../../components/EmptyReportState";
 import { useReportLocationQuery } from "@/app/provider/reports/utils/use-report-location-query";
 import { exportToCSV, formatReportDataForExport, type ReportRow } from "../../utils/export";
 
+interface ServiceRow {
+  serviceId: string;
+  serviceName: string;
+  category: string;
+  duration: number;
+  bookings: number;
+  revenue: number;
+  averageRevenuePerBooking?: number;
+  averagePrice?: number;
+}
+
 interface ServicePerformanceData {
   totalServices: number;
   totalBookings: number;
   totalRevenue: number;
   averageServiceRevenue: number;
-  topServices: Array<{
-    serviceId: string;
-    serviceName: string;
-    category: string;
-    duration: number;
-    bookings: number;
-    revenue: number;
-    averagePrice: number;
-  }>;
+  topServices: ServiceRow[];
   categoryPerformance: Array<{
     categoryName: string;
     services: number;
     bookings: number;
     revenue: number;
   }>;
-  allServices: Array<{
-    serviceId: string;
-    serviceName: string;
-    category: string;
-    duration: number;
-    bookings: number;
-    revenue: number;
-    averagePrice: number;
-  }>;
+  allServices: ServiceRow[];
+  ledgerTransactionTypes?: string[];
+  basisNote?: string;
+  reportBasis?: string;
 }
 
 export default function ServicePerformanceReport() {
@@ -100,6 +98,24 @@ export default function ServicePerformanceReport() {
     exportToCSV(exportData, "service-performance-report");
   };
 
+  const totalRev = data?.totalRevenue ?? 0;
+
+  const topWithPct = useMemo(() => {
+    if (!data?.topServices?.length || totalRev <= 0) return [];
+    return data.topServices.map((s) => ({
+      ...s,
+      pct: Math.min(100, Math.max(0, (s.revenue / totalRev) * 100)),
+    }));
+  }, [data?.topServices, totalRev]);
+
+  const categoryWithPct = useMemo(() => {
+    if (!data?.categoryPerformance?.length || totalRev <= 0) return [];
+    return data.categoryPerformance.map((c) => ({
+      ...c,
+      pct: Math.min(100, Math.max(0, (c.revenue / totalRev) * 100)),
+    }));
+  }, [data?.categoryPerformance, totalRev]);
+
   if (isLoading) {
     return (
       <SettingsDetailLayout
@@ -107,7 +123,7 @@ export default function ServicePerformanceReport() {
           { label: "Home", href: "/" },
           { label: "Provider", href: "/provider" },
           { label: "Reports", href: "/provider/reports" },
-          { label: "Service Performance" },
+          { label: "Sales by service" },
         ]}
       >
         <ReportSkeleton />
@@ -122,7 +138,7 @@ export default function ServicePerformanceReport() {
           { label: "Home", href: "/" },
           { label: "Provider", href: "/provider" },
           { label: "Reports", href: "/provider/reports" },
-          { label: "Service Performance" },
+          { label: "Sales by service" },
         ]}
       >
         <EmptyReportState
@@ -139,18 +155,18 @@ export default function ServicePerformanceReport() {
         { label: "Home", href: "/" },
         { label: "Provider", href: "/provider" },
         { label: "Reports", href: "/provider/reports" },
-        { label: "Service Performance" },
+        { label: "Sales by service" },
       ]}
       showCloseButton={false}
     >
-      <div className="space-y-6">
+      <div className="space-y-6" id="service-performance-report">
         <PageHeader
-          title="Service Performance"
-          subtitle="Analyze service popularity and revenue by service"
+          title="Sales by service"
+          subtitle="Ledger net allocated to each offering — completed visits only"
           actions={
-            <Button variant="outline" onClick={handleExport}>
-              <Download className="w-4 h-4 mr-2" />
-              Export
+            <Button variant="outline" className="min-h-[44px] touch-manipulation gap-2" onClick={handleExport}>
+              <Download className="h-4 w-4" />
+              Export CSV
             </Button>
           }
         />
@@ -161,127 +177,179 @@ export default function ServicePerformanceReport() {
           onReset={handleReset}
         />
 
-        {/* Summary Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card className="border-gray-200">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Total Services</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between">
-                <p className="text-2xl font-semibold text-gray-900">{data.totalServices}</p>
-                <Package className="w-5 h-5 text-blue-600" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-gray-200">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Total Bookings</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between">
-                <p className="text-2xl font-semibold text-gray-900">{data.totalBookings}</p>
-                <Calendar className="w-5 h-5 text-purple-600" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-gray-200">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Total Revenue</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between">
-                <p className="text-2xl font-semibold text-gray-900">
-                  {fmt(data.totalRevenue)}
+        {data.basisNote ? (
+          <div className="flex gap-3 rounded-xl border border-violet-200/90 bg-violet-50/95 px-4 py-3 text-sm leading-relaxed text-violet-950">
+            <Info className="mt-0.5 h-5 w-5 shrink-0 text-violet-700" aria-hidden />
+            <div>
+              <p className="font-medium text-violet-900">Accounting basis</p>
+              <p className="mt-1 text-violet-950/95">{data.basisNote}</p>
+              {data.ledgerTransactionTypes?.length ? (
+                <p className="mt-2 text-xs text-violet-800/90">
+                  Ledger types: {data.ledgerTransactionTypes.join(", ")}
                 </p>
-                <DollarSign className="w-5 h-5 text-green-600" />
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+
+        {/* Summary Cards */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Card className="border-gray-200 shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">Distinct offerings</CardTitle>
+              <p className="text-xs text-gray-500">Services sold in this period</p>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-2xl font-semibold tabular-nums tracking-tight text-gray-900">{data.totalServices}</p>
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-50">
+                  <Layers className="h-5 w-5 text-sky-600" />
+                </div>
               </div>
             </CardContent>
           </Card>
 
-          <Card className="border-gray-200">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Avg Service Revenue</CardTitle>
+          <Card className="border-gray-200 shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">Completed appointments</CardTitle>
+              <p className="text-xs text-gray-500">Unique bookings in date range</p>
             </CardHeader>
             <CardContent>
-              <div className="flex items-center justify-between">
-                <p className="text-2xl font-semibold text-gray-900">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-2xl font-semibold tabular-nums tracking-tight text-gray-900">{data.totalBookings}</p>
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-50">
+                  <CalendarCheck className="h-5 w-5 text-violet-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-gray-200 shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">Ledger net (allocated)</CardTitle>
+              <p className="text-xs text-gray-500">Sum of proportional splits</p>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-2xl font-semibold tabular-nums tracking-tight text-gray-900">{fmt(data.totalRevenue)}</p>
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50">
+                  <Wallet className="h-5 w-5 text-emerald-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-gray-200 shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">Avg per offering row</CardTitle>
+              <p className="text-xs text-gray-500">Total ledger ÷ distinct services</p>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-2xl font-semibold tabular-nums tracking-tight text-gray-900">
                   {fmt(data.averageServiceRevenue)}
                 </p>
-                <TrendingUp className="w-5 h-5 text-orange-600" />
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50">
+                  <Sparkles className="h-5 w-5 text-amber-600" />
+                </div>
               </div>
             </CardContent>
           </Card>
         </div>
 
         {/* Top Services */}
-        <Card className="border-gray-200">
+        <Card className="border-gray-200 shadow-sm">
           <CardHeader>
-            <CardTitle>Top Performing Services</CardTitle>
+            <CardTitle className="text-lg">Top services</CardTitle>
+            <p className="text-sm font-normal text-gray-500">
+              Ranked by allocated ledger net. Bar shows share of total on this report.
+            </p>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-2">
             {data.topServices.length === 0 ? (
-              <EmptyReportState title="No services found" description="No services have bookings in the selected period." />
+              <EmptyReportState title="No services" description="No completed bookings with services in the selected period." />
             ) : (
-              <div className="space-y-3">
-                {data.topServices.map((service, index) => (
+              topWithPct.map((service, index) => {
+                const avg =
+                  service.averageRevenuePerBooking ??
+                  service.averagePrice ??
+                  (service.bookings > 0 ? service.revenue / service.bookings : 0);
+                return (
                   <div
                     key={service.serviceId}
-                    className="flex items-center justify-between p-3 rounded-lg border border-gray-200 hover:bg-gray-50"
+                    className="rounded-xl border border-gray-100 bg-white px-4 py-3 shadow-sm transition-colors hover:bg-gray-50/80"
                   >
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary text-white font-semibold text-sm">
-                        {index + 1}
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="flex min-w-0 flex-1 items-start gap-3">
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-900 text-sm font-semibold text-white">
+                          {index + 1}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="font-medium text-gray-900">{service.serviceName}</p>
+                          <p className="text-sm text-gray-500">
+                            {service.category}
+                            {service.duration ? (
+                              <span className="text-gray-400"> · {service.duration} min</span>
+                            ) : null}
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-medium text-gray-900">{service.serviceName}</p>
-                        <p className="text-sm text-gray-600">{service.category}</p>
+                      <div className="text-right">
+                        <p className="font-semibold tabular-nums text-gray-900">{fmt(service.revenue)}</p>
+                        <p className="text-xs tabular-nums text-gray-500">
+                          {service.bookings} visit{service.bookings !== 1 ? "s" : ""} · {fmt(avg)} avg
+                        </p>
+                        <p className="text-xs font-medium tabular-nums text-violet-700">{service.pct.toFixed(1)}% of total</p>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <p className="font-semibold text-gray-900">
-                        {fmt(service.revenue)}
-                      </p>
-                      <p className="text-sm text-gray-600">
-                        {service.bookings} booking{service.bookings !== 1 ? "s" : ""}
-                      </p>
+                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-gray-100">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-violet-500 to-indigo-500"
+                        style={{ width: `${service.pct}%` }}
+                      />
                     </div>
                   </div>
-                ))}
-              </div>
+                );
+              })
             )}
           </CardContent>
         </Card>
 
         {/* Category Performance */}
-        <Card className="border-gray-200">
+        <Card className="border-gray-200 shadow-sm">
           <CardHeader>
-            <CardTitle>Performance by Category</CardTitle>
+            <CardTitle className="text-lg">By category</CardTitle>
+            <p className="text-sm font-normal text-gray-500">
+              Unique visits per category — multi-service bookings count once per category when they include that category.
+            </p>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-3">
             {data.categoryPerformance.length === 0 ? (
-              <EmptyReportState title="No categories found" description="No categories have bookings in the selected period." />
+              <EmptyReportState title="No categories" description="No category data for this period." />
             ) : (
-              <div className="space-y-3">
-                {data.categoryPerformance.map((category) => (
-                  <div
-                    key={category.categoryName}
-                    className="flex items-center justify-between p-3 rounded-lg border border-gray-200"
-                  >
+              categoryWithPct.map((category) => (
+                <div
+                  key={category.categoryName}
+                  className="rounded-xl border border-gray-100 bg-gray-50/40 px-4 py-3"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
                       <p className="font-medium text-gray-900">{category.categoryName}</p>
                       <p className="text-sm text-gray-600">
-                        {category.services} service{category.services !== 1 ? "s" : ""} • {category.bookings} booking{category.bookings !== 1 ? "s" : ""}
+                        {category.services} offering{category.services !== 1 ? "s" : ""} · {category.bookings} visit
+                        {category.bookings !== 1 ? "s" : ""}
                       </p>
                     </div>
-                    <p className="font-semibold text-gray-900">
-                      {fmt(category.revenue)}
-                    </p>
+                    <p className="text-lg font-semibold tabular-nums text-gray-900">{fmt(category.revenue)}</p>
                   </div>
-                ))}
-              </div>
+                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-gray-200/80">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-500"
+                      style={{ width: `${category.pct}%` }}
+                    />
+                  </div>
+                </div>
+              ))
             )}
           </CardContent>
         </Card>

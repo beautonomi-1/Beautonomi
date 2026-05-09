@@ -1129,7 +1129,7 @@ export default function BookingsListScreen() {
             {...horizontalFlatListPerf}
             horizontal
             data={[
-              { label: "New", sub: "Booking", icon: "calendar-outline", route: "/(app)/(tabs)/more/bookings/new", accent: true },
+              { label: "New", sub: "Booking", icon: "calendar-outline", route: "/(app)/(tabs)/bookings/new", accent: true },
               { label: "Walk-in", sub: "Queue", icon: "walk-outline", route: "/(app)/(tabs)/more/waiting-room" },
               { label: "Group", sub: "Booking", icon: "people-outline", route: "/(app)/(tabs)/more/group-bookings" },
               ...(provider?.offers_mobile_services
@@ -1138,7 +1138,7 @@ export default function BookingsListScreen() {
                       label: "House Call",
                       sub: "Mobile",
                       icon: "car-outline",
-                      route: "/(app)/(tabs)/more/bookings/new?location_type=at_home",
+                      route: "/(app)/(tabs)/bookings/new?location_type=at_home",
                     } satisfies QuickActionTile,
                   ]
                 : []),
@@ -1398,7 +1398,16 @@ export default function BookingsListScreen() {
                 </View>
                 <Text style={twStyle("mt-0.5 text-lg font-bold text-gray-900")}>{statsSnapshot.inProgressCount}</Text>
               </View>
-              <View style={[twStyle("flex-[1.3] rounded-xl p-2.5 border"), { backgroundColor: "#fff0f7", borderColor: "#fbcfe8" }]}>
+            </View>
+            <View style={twStyle("mt-2 flex-row gap-2")}>
+              <View style={twStyle("flex-1 rounded-xl border border-emerald-200 bg-emerald-50 p-2.5")}>
+                <View style={twStyle("flex-row items-center gap-1")}>
+                  <Ionicons name="checkmark-circle-outline" size={12} color="#059669" />
+                  <Text style={twStyle("text-[10px] font-semibold uppercase tracking-wide text-emerald-800")}>Completed</Text>
+                </View>
+                <Text style={twStyle("mt-0.5 text-lg font-bold text-gray-900")}>{statsSnapshot.completedCount}</Text>
+              </View>
+              <View style={[twStyle("flex-1 rounded-xl p-2.5 border"), { backgroundColor: "#fff0f7", borderColor: "#fbcfe8" }]}>
                 <View style={twStyle("flex-row items-center gap-1")}>
                   <Ionicons name="cash-outline" size={12} color="#be185d" />
                   <Text style={[twStyle("text-[10px] font-semibold uppercase tracking-wide"), { color: "#be185d" }]}>Revenue</Text>
@@ -1406,15 +1415,6 @@ export default function BookingsListScreen() {
                 <Text style={twStyle("mt-0.5 text-[15px] font-bold text-gray-900")} numberOfLines={1}>
                   {formatCurrency(statsSnapshot.revenue, currency)}
                 </Text>
-              </View>
-            </View>
-            <View style={twStyle("mt-2 flex-row gap-2")}>
-              <View style={twStyle("flex-1 flex-row items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-2.5")}>
-                <Ionicons name="checkmark-circle-outline" size={20} color="#059669" />
-                <View>
-                  <Text style={twStyle("text-[10px] font-semibold uppercase tracking-wide text-emerald-800")}>Completed</Text>
-                  <Text style={twStyle("text-lg font-bold text-gray-900")}>{statsSnapshot.completedCount}</Text>
-                </View>
               </View>
             </View>
           </View>
@@ -1609,7 +1609,7 @@ export default function BookingsListScreen() {
           subtitle={`${viewMode === "day" ? daySummary.label : dateRangeLabel} · ${filtered.length}`}
           rightAction={
             <TouchableOpacity
-              onPress={() => router.push("/(app)/(tabs)/more/bookings/new" as never)}
+              onPress={() => router.push("/(app)/(tabs)/bookings/new" as never)}
               style={twStyle("flex-row items-center rounded-xl bg-indigo-600 px-4 py-2")}
               accessibilityLabel="New booking"
               accessibilityRole="button"
@@ -1670,7 +1670,7 @@ export default function BookingsListScreen() {
               actionLabel={!search && !statusFilter && viewMode === "overview" ? "New booking" : undefined}
               onAction={
                 !search && !statusFilter && viewMode === "overview"
-                  ? () => router.push("/(app)/(tabs)/more/bookings/new" as never)
+                  ? () => router.push("/(app)/(tabs)/bookings/new" as never)
                   : undefined
               }
             />

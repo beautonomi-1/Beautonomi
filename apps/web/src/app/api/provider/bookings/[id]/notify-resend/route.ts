@@ -50,7 +50,7 @@ export async function POST(
       ? { hoursUntil: 24 }
       : undefined;
 
-    const result = await resendNotification(id, type, context);
+    const result = await resendNotification(id, type, context, ["push", "email", "sms"]);
 
     const detail =
       !result.sent && (result.message || result.error)

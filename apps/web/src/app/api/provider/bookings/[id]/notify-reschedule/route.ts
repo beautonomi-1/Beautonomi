@@ -46,7 +46,7 @@ export async function POST(
       id,
       { date: old_date, time: old_time },
       { date: new_date, time: new_time },
-      { shouldSend: true }
+      { shouldSend: true, channels: ["push", "email", "sms"] }
     );
 
     return successResponse({ success: result.success, sent: result.sent, error: result.error });

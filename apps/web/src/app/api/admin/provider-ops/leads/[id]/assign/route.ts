@@ -10,6 +10,13 @@ import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 import { slackNotifyLeadReassigned } from "@/lib/integrations/slack/lead-triggers";
+import { PROVIDER_OPS_ASSIGNABLE_ROLES } from "@/lib/provider-ops/assignable-admin-roles";
+
+function displayNameForUser(row: { full_name?: string | null; email?: string | null }): string {
+  const n = typeof row.full_name === "string" ? row.full_name.trim() : "";
+  const e = typeof row.email === "string" ? row.email.trim() : "";
+  return n || e || "user";
+}
 
 export async function PATCH(
   request: NextRequest,
@@ -47,7 +54,35 @@ export async function PATCH(
       );
     }
 
-    const assignedTo = body.assigned_to || null;
+    let assignedTo: string | null =
+      typeof body.assigned_to === "string" && body.assigned_to.trim() === ""
+        ? null
+        : typeof body.assigned_to === "string"
+          ? body.assigned_to.trim()
+          : body.assigned_to || null;
+
+    let resolvedAssigneeLabel: string | null = null;
+    if (assignedTo) {
+      const { data: assignee, error: assigneeErr } = await supabase
+        .from("users")
+        .select("id, full_name, email, role, deactivated_at")
+        .eq("id", assignedTo)
+        .maybeSingle();
+      if (assigneeErr) throw assigneeErr;
+      if (
+        !assignee ||
+        assignee.deactivated_at != null ||
+        !PROVIDER_OPS_ASSIGNABLE_ROLES.includes(assignee.role as (typeof PROVIDER_OPS_ASSIGNABLE_ROLES)[number])
+      ) {
+        return errorResponse("Invalid or inactive assignee for provider leads", "INVALID_ASSIGNEE", 400);
+      }
+      resolvedAssigneeLabel = displayNameForUser(assignee);
+    }
+
+    const activityAssigneeLabel =
+      typeof body.assigned_to_name === "string" && body.assigned_to_name.trim()
+        ? body.assigned_to_name.trim()
+        : resolvedAssigneeLabel;
 
     const { error } = await supabase
       .from("provider_leads")
@@ -60,7 +95,7 @@ export async function PATCH(
       lead_id: id,
       activity_type: "assignment_changed",
       description: assignedTo
-        ? `Assigned to ${body.assigned_to_name || assignedTo}`
+        ? `Assigned to ${activityAssigneeLabel || assignedTo}`
         : "Unassigned",
       metadata: { assigned_to: assignedTo },
       performed_by: user.id,

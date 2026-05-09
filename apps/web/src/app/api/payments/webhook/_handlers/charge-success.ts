@@ -290,10 +290,18 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
         0),
   );
 
-  // Commission base must be proportional to the ACTUAL charged amount, not the
+  // Split wallet / gift card + card: commission base must reflect all funds applied
+  // to this booking in this transaction (Paystack amount + wallet + gift card),
+  // not the card portion alone — otherwise provider_earnings is understated.
+  const walletAmountFromMeta = Number(metadata?.wallet_amount_applied ?? 0);
+  const giftCardAmountFromMeta = Number(metadata?.gift_card_amount_applied ?? 0);
+  const totalCollectedForCommission =
+    amountInCurrency + walletAmountFromMeta + giftCardAmountFromMeta;
+
+  // Commission base must be proportional to the ACTUAL collected amount, not the
   // full booking total. For deposit payments, metadata.commission_base contains the
   // full booking's commission base, which would overstate revenue. Instead, compute
-  // the net-revenue ratio from booking totals and apply it to the charged amount.
+  // the net-revenue ratio from booking totals and apply it to the collected amount.
   const bookingTotal = Number(bookingData.total_amount || 0);
   const fullCommissionBase = bookingTotal > 0
     ? bookingTotal - tipAmount - taxAmount - travelFee - serviceFeeAmount
@@ -301,7 +309,10 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
   const netRevenueRatio = bookingTotal > 0
     ? Math.max(0, fullCommissionBase / bookingTotal)
     : 1;
-  const commissionBase = Math.max(0, Math.round(amountInCurrency * netRevenueRatio * 100) / 100);
+  const commissionBase = Math.max(
+    0,
+    Math.round(totalCollectedForCommission * netRevenueRatio * 100) / 100,
+  );
 
   const resolvedTenantIdForPlatformSettings =
     bookingData.tenant_id ?? financeTenantId ?? null;
@@ -432,9 +443,17 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
         bookingId: metadata.booking_id,
       });
       if (result.recorded) {
+        const loyaltyDiscountAmount = Number(
+          metadata?.loyalty_discount_amount ??
+            (bookingData as { loyalty_discount_amount?: number }).loyalty_discount_amount ??
+            0,
+        );
         await supabase
           .from("bookings")
-          .update({ loyalty_points_used: loyaltyPointsUsed })
+          .update({
+            loyalty_points_used: loyaltyPointsUsed,
+            loyalty_discount_amount: loyaltyDiscountAmount,
+          })
           .eq("id", metadata.booking_id);
       }
     } catch (loyaltyErr: unknown) {

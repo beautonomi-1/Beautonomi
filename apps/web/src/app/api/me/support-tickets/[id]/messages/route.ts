@@ -113,6 +113,16 @@ export async function POST(
       console.error("Support staff reply notification failed:", notifyErr);
     }
 
+    try {
+      const { slackNotifySupportTicketReply } = await import("@/lib/integrations/slack/triggers");
+      const previewText =
+        message.slice(0, 180) ||
+        (attachments.length ? `Sent ${attachments.length} attachment(s)` : "New reply");
+      await slackNotifySupportTicketReply(request, ticket as { id: string; ticket_number?: string; subject?: string; priority?: string }, previewText);
+    } catch (slackErr) {
+      console.error("Slack reply notification failed:", slackErr);
+    }
+
     return successResponse({ message: newMessage });
   } catch (error) {
     return handleApiError(error, "Failed to add message");

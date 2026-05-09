@@ -1,30 +1,95 @@
 import { NextRequest } from "next/server";
-import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
-import { createClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { subMonths } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
+import {
+  requireRoleInApi,
+  getProviderIdForUser,
+  successResponse,
+  notFoundResponse,
+  handleApiError,
+} from "@/lib/supabase/api-helpers";
+import { createClient } from "@supabase/supabase-js";
 import { dateRangeBoundsUtc, formatDateYmd, formatInTz } from "@/lib/dates/provider-tz";
 import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
 
+const PAGE_SIZE = 1000;
+
+type BookingLite = { customer_id: string | null; scheduled_at: string };
+
+async function fetchCompletedBookings(
+  supabaseAdmin: SupabaseClient,
+  providerId: string,
+  locationId: string | undefined,
+  fromIso: string,
+  toIso: string,
+): Promise<BookingLite[]> {
+  const out: BookingLite[] = [];
+  let offset = 0;
+  for (;;) {
+    let q = supabaseAdmin
+      .from("bookings")
+      .select("customer_id, scheduled_at")
+      .eq("provider_id", providerId)
+      .eq("status", "completed")
+      .gte("scheduled_at", fromIso)
+      .lte("scheduled_at", toIso)
+      .order("id", { ascending: true })
+      .range(offset, offset + PAGE_SIZE - 1);
+    if (locationId) q = q.eq("location_id", locationId);
+    const { data, error } = await q;
+    if (error) throw error;
+    const chunk = (data ?? []) as BookingLite[];
+    out.push(...chunk);
+    if (chunk.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
+  }
+  return out;
+}
+
+export type ClientRetentionPeriodRow = {
+  period: string;
+  /** Share of prior-period clients who also appear in this period (completed visits). */
+  retentionRate: number;
+  /** Distinct customers with ≥1 completed visit in this bucket. */
+  clients: number;
+  /** Distinct customers with ≥1 completed visit in the immediately previous bucket. */
+  clientsInPriorPeriod: number;
+  /** Customers appearing in both this period and the prior bucket. */
+  returnedFromPriorPeriod: number;
+};
+
+export type ClientRetentionResponse = {
+  totalClients: number;
+  /** Clients with exactly one completed visit in the analysis window. */
+  newClients: number;
+  /** Clients with two or more completed visits in the analysis window. */
+  returningClients: number;
+  /** Share of distinct clients who had 2+ completed visits in the window (= returningClients / totalClients). */
+  overallRetentionRate: number;
+  averageVisitsPerClient: number;
+  retentionByPeriod: ClientRetentionPeriodRow[];
+  periodGranularity: "month" | "quarter" | "year";
+  analysisFromYmd: string;
+  analysisToYmd: string;
+  monthsOfHistory: number;
+  basisNote: string;
+  reportBasis: string;
+  timezone: string;
+};
+
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      }
-    );
+    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
+    const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
 
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
-
     if (!providerId) return notFoundResponse("Provider not found");
 
     const searchParams = request.nextUrl.searchParams;
-    const periodParam = searchParams.get("period") || "month"; // month, quarter, year
+    const periodParam = (searchParams.get("period") || "month") as "month" | "quarter" | "year";
     const locationId = searchParams.get("location_id") || undefined;
 
     const reportContext = await getProviderReportContext(supabaseAdmin, providerId);
@@ -38,49 +103,27 @@ export async function GET(request: NextRequest) {
     const fromDate = new Date(fromIso);
     const toDate = new Date(toIso);
 
-    // Get all bookings
-    let bookingsQuery = supabaseAdmin
-      .from("bookings")
-      .select("id, customer_id, scheduled_at, status")
-      .eq("provider_id", providerId)
-      .gte("scheduled_at", fromDate.toISOString())
-      .lte("scheduled_at", toDate.toISOString())
-      .eq("status", "completed");
+    const bookings = await fetchCompletedBookings(supabaseAdmin, providerId, locationId, fromDate.toISOString(), toDate.toISOString());
 
-    if (locationId) {
-      bookingsQuery = bookingsQuery.eq("location_id", locationId);
-    }
-
-    const { data: bookings, error: bookingsError } = await bookingsQuery;
-
-    if (bookingsError) {
-      return handleApiError(
-        new Error("Failed to fetch bookings"),
-        "BOOKINGS_FETCH_ERROR",
-        500
-      );
-    }
-
-    // Group bookings by customer
     const customerBookings = new Map<string, Date[]>();
-    bookings?.forEach((booking) => {
-      if (booking.customer_id) {
-        const dates = customerBookings.get(booking.customer_id) || [];
-        dates.push(new Date(booking.scheduled_at));
-        customerBookings.set(booking.customer_id, dates);
-      }
-    });
+    for (const booking of bookings) {
+      if (!booking.customer_id) continue;
+      const dates = customerBookings.get(booking.customer_id) || [];
+      dates.push(new Date(booking.scheduled_at));
+      customerBookings.set(booking.customer_id, dates);
+    }
 
-    // Calculate retention metrics
     const totalClients = customerBookings.size;
     let returningClients = 0;
     let newClients = 0;
-    const retentionByPeriod: Array<{ period: string; retentionRate: number; clients: number }> = [];
+    customerBookings.forEach((dates) => {
+      if (dates.length > 1) returningClients += 1;
+      else newClients += 1;
+    });
 
-    // Group by period and calculate retention
     const periodMap = new Map<string, Set<string>>();
-    bookings?.forEach((booking) => {
-      if (!booking.customer_id) return;
+    for (const booking of bookings) {
+      if (!booking.customer_id) continue;
       const date = new Date(booking.scheduled_at);
       let periodKey: string;
 
@@ -95,55 +138,63 @@ export async function GET(request: NextRequest) {
         periodKey = formatInTz(date, "yyyy", timezone);
       }
 
-      const clients = periodMap.get(periodKey) || new Set();
+      const clients = periodMap.get(periodKey) || new Set<string>();
       clients.add(booking.customer_id);
       periodMap.set(periodKey, clients);
-    });
+    }
 
-    // Calculate retention rate for each period
     const periods = Array.from(periodMap.keys()).sort();
+    const retentionByPeriod: ClientRetentionPeriodRow[] = [];
+
     periods.forEach((currentPeriod, index) => {
-      if (index === 0) {
-        newClients = periodMap.get(currentPeriod)?.size || 0;
-        return;
-      }
+      if (index === 0) return;
 
-      const previousPeriod = periods[index - 1];
-      const currentClients = periodMap.get(currentPeriod) || new Set();
-      const previousClients = periodMap.get(previousPeriod) || new Set();
+      const previousPeriod = periods[index - 1]!;
+      const currentClients = periodMap.get(currentPeriod) || new Set<string>();
+      const previousClients = periodMap.get(previousPeriod) || new Set<string>();
 
-      // Clients who returned from previous period
-      const returnedClients = Array.from(currentClients).filter((c) => previousClients.has(c));
-      const retentionRate = previousClients.size > 0
-        ? (returnedClients.length / previousClients.size) * 100
-        : 0;
+      const returnedClients = [...currentClients].filter((c) => previousClients.has(c));
+      const retentionRate =
+        previousClients.size > 0
+          ? Math.round((returnedClients.length / previousClients.size) * 1000) / 10
+          : 0;
 
       retentionByPeriod.push({
         period: currentPeriod,
         retentionRate,
         clients: currentClients.size,
+        clientsInPriorPeriod: previousClients.size,
+        returnedFromPriorPeriod: returnedClients.length,
       });
     });
 
-    // Calculate overall retention
-    customerBookings.forEach((dates) => {
-      if (dates.length > 1) {
-        returningClients += 1;
-      } else {
-        newClients += 1;
-      }
-    });
+    const overallRetentionRate =
+      totalClients > 0 ? Math.round((returningClients / totalClients) * 1000) / 10 : 0;
 
-    const overallRetentionRate = totalClients > 0
-      ? (returningClients / totalClients) * 100
-      : 0;
-
-    // Calculate average visits per client
     let totalVisits = 0;
     customerBookings.forEach((dates) => {
       totalVisits += dates.length;
     });
-    const averageVisitsPerClient = totalClients > 0 ? totalVisits / totalClients : 0;
+    const averageVisitsPerClient =
+      totalClients > 0 ? Math.round((totalVisits / totalClients) * 100) / 100 : 0;
+
+    const locPhrase = locationId
+      ? "Bookings are restricted to the selected location."
+      : "Bookings include all locations for this provider.";
+
+    const basisNote = [
+      `Timezone: ${timezone}. Analysis window: ${fromYmd} through ${todayYmd} (inclusive civil dates), bounded by scheduled appointment times converted to UTC.`,
+      `Only bookings with status completed are included (pending, cancelled, or no-show visits are excluded).`,
+      locPhrase,
+      `Distinct clients: customers with at least one completed visit in the window (guest bookings without customer_id are excluded).`,
+      `"New clients" here means exactly one completed visit in this window; "returning clients" means two or more completed visits in this window — not first-ever lifetime cohort.`,
+      `Overall retention % = returning clients ÷ distinct clients (repeat share of your active completed-visit base in this window).`,
+      `Period-over-period retention (chart rows): for each bucket after the first, rate = (customers appearing in both this bucket and the previous bucket) ÷ (customers in the previous bucket).`,
+      `Granularity: ${periodParam === "month" ? "calendar months" : periodParam === "quarter" ? "calendar quarters" : "calendar years"}; lookback spans roughly ${monthsBack} months of history.`,
+    ].join(" ");
+
+    const reportBasis =
+      "Completed visits only; period retention compares each bucket to the immediately previous bucket; overall repeat share counts multi-visit clients in the analysis window.";
 
     return successResponse({
       totalClients,
@@ -152,9 +203,14 @@ export async function GET(request: NextRequest) {
       overallRetentionRate,
       averageVisitsPerClient,
       retentionByPeriod,
-      reportBasis:
-        "Retention is based on completed visits only. Future confirmed bookings are excluded so visit counts and return rates reflect actual completed customer behavior.",
-    });
+      periodGranularity: periodParam,
+      analysisFromYmd: fromYmd,
+      analysisToYmd: todayYmd,
+      monthsOfHistory: monthsBack,
+      basisNote,
+      reportBasis,
+      timezone,
+    } satisfies ClientRetentionResponse);
   } catch (error) {
     return handleApiError(error, "CLIENT_RETENTION_ERROR", 500);
   }

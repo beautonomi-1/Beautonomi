@@ -26,6 +26,7 @@ import {
   CMS_PAGE_CONTENT_GROUP_LABELS,
   CMS_PAGE_CONTENT_GROUP_ORDER,
   CMS_PAGE_SECTION_PRESETS,
+  cmsManageablePageSlugList,
   cmsPageContentGroupForSlug,
   cmsPagePublicApiHint,
   cmsPageSlugTitle,
@@ -260,6 +261,8 @@ export function ContentPagesPage() {
   const [search, setSearch] = useState("");
   /** Narrow the list to one `page_slug` (grouped headers still reflect the same taxonomy). */
   const [pageSlugFilter, setPageSlugFilter] = useState("");
+  /** Pre-fills “New page section” when opening from an empty filtered slug. */
+  const [createInitialOverride, setCreateInitialOverride] = useState<Partial<PageContent> | null>(null);
   const [mutError, setMutError] = useState<string | null>(null);
 
   const invalidate = () => void qc.invalidateQueries({ queryKey: adminQueryKeys.contentPages() });
@@ -270,6 +273,7 @@ export function ContentPagesPage() {
       invalidate();
       setModal(null);
       setMutError(null);
+      setCreateInitialOverride(null);
     },
     onError: (e) => setMutError(e instanceof Error ? e.message : "Failed"),
   });
@@ -326,8 +330,8 @@ export function ContentPagesPage() {
 
   const pageSlugOptions = useMemo(() => {
     const fromData = rows.map((r) => r.page_slug);
-    const fromPresets = Object.keys(CMS_PAGE_SECTION_PRESETS);
-    return [...new Set([...fromPresets, ...fromData])].sort((a, b) => {
+    const canonical = cmsManageablePageSlugList();
+    return [...new Set([...canonical, ...fromData])].sort((a, b) => {
       const ga = cmsPageContentGroupForSlug(a);
       const gb = cmsPageContentGroupForSlug(b);
       const ia = CMS_PAGE_CONTENT_GROUP_ORDER.indexOf(ga);
@@ -496,6 +500,7 @@ export function ContentPagesPage() {
                 onClick={() => {
                   setEditId(null);
                   setMutError(null);
+                  setCreateInitialOverride(null);
                   setModal("create");
                 }}
                 className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-gray-800"
@@ -524,12 +529,13 @@ export function ContentPagesPage() {
       >
         {modal === "create" ? (
           <PageContentForm
-            key="cms-page-create"
-            initial={EMPTY_PAGE_CONTENT_INITIAL}
+            key={`cms-page-create-${createInitialOverride?.page_slug ?? "default"}`}
+            initial={{ ...EMPTY_PAGE_CONTENT_INITIAL, ...createInitialOverride }}
             onSave={(d) => createMut.mutate(d)}
             onCancel={() => {
               setModal(null);
               setMutError(null);
+              setCreateInitialOverride(null);
             }}
             isSaving={createMut.isPending}
             error={mutError}
@@ -553,10 +559,34 @@ export function ContentPagesPage() {
       {rows.length === 0 ? (
         <EmptyState title="No page content sections" description="Create a section to add copy for a page slug." />
       ) : slugFilteredRows.length === 0 ? (
-        <EmptyState
-          title="No matches"
-          description="Try another search, clear the page slug filter, or create a missing section."
-        />
+        pageSlugFilter && !search.trim() ? (
+          <AdminPanel>
+            <EmptyState
+              title={`No sections yet for ${cmsPageSlugTitle(pageSlugFilter)}`}
+              description={`There are no active rows for page slug "${pageSlugFilter}". Create the first section to manage copy like other pages.`}
+            />
+            <div className="mt-4 flex justify-center">
+              <button
+                type="button"
+                onClick={() => {
+                  setEditId(null);
+                  setMutError(null);
+                  setCreateInitialOverride({ page_slug: pageSlugFilter });
+                  setModal("create");
+                }}
+                className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-gray-800"
+              >
+                <Plus className="h-4 w-4" />
+                Create first section for this slug
+              </button>
+            </div>
+          </AdminPanel>
+        ) : (
+          <EmptyState
+            title="No matches"
+            description="Try another search, clear the page slug filter, or create a missing section."
+          />
+        )
       ) : (
         <div className="space-y-10">
           {groupedCmsPanels.map(({ group, panels }) => (

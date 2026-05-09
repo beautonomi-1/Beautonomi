@@ -570,7 +570,7 @@ export default function ChatScreen() {
       }
       let i = 0;
       if (customerId && idx === i++) {
-        router.push(`/(app)/(tabs)/more/clients/${customerId}` as never);
+        router.push(`/(app)/(tabs)/clients/${customerId}` as never);
         return;
       }
       if (customerPhone && idx === i++) { Linking.openURL(`tel:${customerPhone}`); return; }
@@ -589,7 +589,7 @@ export default function ChatScreen() {
         undefined,
         [
           { text: "Cancel", style: "cancel" },
-          ...(customerId ? [{ text: "View booking history", onPress: () => router.push(`/(app)/(tabs)/more/clients/${customerId}` as never) }] : []),
+          ...(customerId ? [{ text: "View booking history", onPress: () => router.push(`/(app)/(tabs)/clients/${customerId}` as never) }] : []),
           ...(customerPhone ? [{ text: "Call", onPress: () => Linking.openURL(`tel:${customerPhone}`) }] : []),
           ...(customerPhone ? [{ text: "Copy phone", onPress: () => Clipboard.setStringAsync(customerPhone) }] : []),
           ...(customerEmail ? [{ text: "Copy email", onPress: () => Clipboard.setStringAsync(customerEmail) }] : []),
@@ -747,6 +747,34 @@ export default function ChatScreen() {
                 const customRequestNavId = customRequestAtt?.request_id ?? customRequestAtt?.id;
                 const files = fileLikeAttachments(msg.attachments);
                 const hasText = !!(msg.content && msg.content.trim());
+
+                const openOfferDetail = (offerId: string) => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  router.push(`/(app)/(tabs)/more/custom-requests/${offerId}` as never);
+                };
+
+                const handleWithdrawOffer = (offerId: string) => {
+                  Alert.alert(
+                    "Withdraw offer",
+                    "Are you sure you want to withdraw this offer? The customer will no longer be able to accept it.",
+                    [
+                      { text: "Cancel", style: "cancel" },
+                      {
+                        text: "Withdraw",
+                        style: "destructive",
+                        onPress: async () => {
+                          const res = await api.post(`/api/provider/custom-requests/${offerId}/withdraw`, {});
+                          if (res.error) {
+                            Alert.alert("Error", typeof res.error === "string" ? res.error : res.error.message || "Failed to withdraw offer");
+                          } else {
+                            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                            void refresh();
+                          }
+                        },
+                      },
+                    ]
+                  );
+                };
 
                 const renderFileRow = (att: FileLikeAttachment, idx: number) => {
                   const key = `${msg.id}-f-${idx}-${att.name || att.url || idx}`;

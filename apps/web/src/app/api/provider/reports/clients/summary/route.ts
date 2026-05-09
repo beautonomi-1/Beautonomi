@@ -1,68 +1,126 @@
 import { NextRequest } from "next/server";
-import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { differenceInCalendarDays } from "date-fns";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  requireRoleInApi,
+  getProviderIdForUser,
+  successResponse,
+  notFoundResponse,
+  handleApiError,
+} from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
 import { MAX_REPORT_DAYS } from "@/lib/reports/constants";
 import { getProviderReportContext, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
 
+const PAGE_SIZE = 1000;
+const REVIEW_IN_CHUNK = 500;
+
+export type ClientSummaryTopClient = {
+  clientId: string;
+  clientName: string;
+  totalBookings: number;
+  totalSpent: number;
+  lastVisit: string;
+  averageRating: number;
+};
+
+export type ClientSummaryResponse = {
+  totalClients: number;
+  /** Customers whose first-ever booking (in this provider / location scope) falls in the reporting window. */
+  newClients: number;
+  /** Customers with more than one booking scheduled in the reporting window. */
+  returningClients: number;
+  /** Mean of per-client sums of booking.total_amount for appointments in the window (not all-time LTV). */
+  averageLifetimeValue: number;
+  averageBookingsPerClient: number;
+  topClients: ClientSummaryTopClient[];
+  clientRetention: {
+    period: string;
+    inclusiveDayCount: number;
+    retentionRate: number;
+  };
+  basisNote: string;
+  reportBasis: string;
+  timezone: string;
+};
+
+type BookingRow = {
+  id: string;
+  customer_id: string | null;
+  scheduled_at: string;
+  total_amount: number | null;
+  status: string;
+};
+
+async function fetchAllBookingsForScope(
+  supabaseAdmin: SupabaseClient,
+  providerId: string,
+  locationId: string | undefined,
+): Promise<BookingRow[]> {
+  const out: BookingRow[] = [];
+  let offset = 0;
+  for (;;) {
+    let q = supabaseAdmin
+      .from("bookings")
+      .select("id, customer_id, scheduled_at, total_amount, status")
+      .eq("provider_id", providerId)
+      .order("id", { ascending: true })
+      .range(offset, offset + PAGE_SIZE - 1);
+    if (locationId) q = q.eq("location_id", locationId);
+    const { data, error } = await q;
+    if (error) throw error;
+    const chunk = (data ?? []) as BookingRow[];
+    out.push(...chunk);
+    if (chunk.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
+  }
+  return out;
+}
+
+function inScheduledWindow(scheduledAt: string, fromIso: string, toIso: string): boolean {
+  return scheduledAt >= fromIso && scheduledAt <= toIso;
+}
+
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      }
-    );
+    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
+    const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
 
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
-
     if (!providerId) return notFoundResponse("Provider not found");
 
     const searchParams = request.nextUrl.searchParams;
     const reportContext = await getProviderReportContext(supabaseAdmin, providerId);
-    const { fromDate, toDate } = reportDateRangeFromParams(searchParams, reportContext.timezone, {
+    const tz = reportContext.timezone;
+    const { fromDate, toDate } = reportDateRangeFromParams(searchParams, tz, {
       defaultDays: 90,
       maxDays: MAX_REPORT_DAYS,
     });
     const locationId = searchParams.get("location_id") || undefined;
 
-    // Get all bookings for this provider (simplified query to avoid nested join issues)
-    let bookingsQuery = supabaseAdmin
-      .from('bookings')
-      .select(`
-        id,
-        customer_id,
-        total_amount,
-        scheduled_at,
-        status
-      `)
-      .eq('provider_id', providerId)
-      .gte('scheduled_at', fromDate.toISOString())
-      .lte('scheduled_at', toDate.toISOString());
-    if (locationId) {
-      bookingsQuery = bookingsQuery.eq("location_id", locationId);
-    }
-    const { data: bookings, error: bookingsError } = await bookingsQuery;
+    const fromIso = fromDate.toISOString();
+    const toIso = toDate.toISOString();
 
-    if (bookingsError) {
-      console.error("Error fetching bookings:", bookingsError);
-      return handleApiError(
-        new Error(`Failed to fetch bookings: ${bookingsError.message}`),
-        'BOOKINGS_FETCH_ERROR',
-        500
-      );
-    }
+    const allBookings = await fetchAllBookingsForScope(supabaseAdmin, providerId, locationId);
 
-    // Get client information separately
-    const clientIds = new Set<string>();
-    bookings?.forEach((booking: any) => {
-      if (booking.customer_id) {
-        clientIds.add(booking.customer_id);
+    const globalFirstScheduled = new Map<string, string>();
+    for (const b of allBookings) {
+      if (!b.customer_id) continue;
+      const prev = globalFirstScheduled.get(b.customer_id);
+      if (!prev || b.scheduled_at < prev) {
+        globalFirstScheduled.set(b.customer_id, b.scheduled_at);
       }
-    });
+    }
+
+    const clientIds = new Set<string>();
+    for (const b of allBookings) {
+      if (!b.customer_id) continue;
+      if (inScheduledWindow(b.scheduled_at, fromIso, toIso)) {
+        clientIds.add(b.customer_id);
+      }
+    }
 
     const clientInfoMap = new Map<string, { full_name: string }>();
     if (clientIds.size > 0) {
@@ -71,30 +129,29 @@ export async function GET(request: NextRequest) {
         .select("id, full_name")
         .in("id", Array.from(clientIds));
 
-      if (clientError) {
-        console.warn("Error fetching clients:", clientError);
-      } else {
-        clients?.forEach((client: any) => {
-          clientInfoMap.set(client.id, {
-            full_name: client.full_name || "Unknown",
-          });
-        });
+      if (!clientError && clients) {
+        for (const client of clients as { id: string; full_name?: string }[]) {
+          clientInfoMap.set(client.id, { full_name: client.full_name || "Unknown" });
+        }
       }
     }
 
-    // Get all unique clients
-    const clientMap = new Map<string, {
+    type ClientAgg = {
       clientId: string;
       clientName: string;
       totalBookings: number;
       totalSpent: number;
       lastVisit: string;
-      firstVisit: string;
-      bookings: any[];
-    }>();
+      firstVisitInWindow: string;
+      bookings: BookingRow[];
+    };
 
-    bookings?.forEach((booking: any) => {
+    const clientMap = new Map<string, ClientAgg>();
+
+    for (const booking of allBookings) {
       const clientId = booking.customer_id;
+      if (!clientId || !inScheduledWindow(booking.scheduled_at, fromIso, toIso)) continue;
+
       const clientInfo = clientInfoMap.get(clientId) || { full_name: "Unknown" };
       const existing = clientMap.get(clientId) || {
         clientId,
@@ -102,7 +159,7 @@ export async function GET(request: NextRequest) {
         totalBookings: 0,
         totalSpent: 0,
         lastVisit: booking.scheduled_at,
-        firstVisit: booking.scheduled_at,
+        firstVisitInWindow: booking.scheduled_at,
         bookings: [],
       };
 
@@ -110,76 +167,78 @@ export async function GET(request: NextRequest) {
       existing.totalSpent += Number(booking.total_amount || 0);
       existing.bookings.push(booking);
 
-      if (new Date(booking.scheduled_at) > new Date(existing.lastVisit)) {
+      if (booking.scheduled_at > existing.lastVisit) {
         existing.lastVisit = booking.scheduled_at;
       }
-      if (new Date(booking.scheduled_at) < new Date(existing.firstVisit)) {
-        existing.firstVisit = booking.scheduled_at;
+      if (booking.scheduled_at < existing.firstVisitInWindow) {
+        existing.firstVisitInWindow = booking.scheduled_at;
       }
 
       clientMap.set(clientId, existing);
-    });
+    }
 
     const clients = Array.from(clientMap.values());
     const totalClients = clients.length;
 
-    // Get new clients (first booking in date range)
-    const newClients = clients.filter((client) => {
-      const firstVisit = new Date(client.firstVisit);
-      return firstVisit >= fromDate && firstVisit <= toDate;
-    }).length;
-
-    // Get returning clients (more than 1 booking)
-    const returningClients = clients.filter((c) => c.totalBookings > 1).length;
-
-    // Calculate averages
-    const averageBookingsPerClient =
-      totalClients > 0
-        ? clients.reduce((sum, c) => sum + c.totalBookings, 0) / totalClients
-        : 0;
-
-    const averageLifetimeValue =
-      totalClients > 0
-        ? clients.reduce((sum, c) => sum + c.totalSpent, 0) / totalClients
-        : 0;
-
-    // Get reviews for completed bookings to calculate average ratings
-    const completedBookingIds = bookings
-      ?.filter((b: any) => b.status === 'completed')
-      .map((b: any) => b.id) || [];
-
-    const reviewsMap = new Map<string, number[]>();
-    
-    if (completedBookingIds.length > 0) {
-      const { data: reviews, error: reviewsError } = await supabaseAdmin
-        .from('reviews')
-        .select('booking_id, rating')
-        .in('booking_id', completedBookingIds)
-        .not('rating', 'is', null);
-
-      if (!reviewsError && reviews) {
-        reviews.forEach((review: any) => {
-          const booking = bookings?.find((b: any) => b.id === review.booking_id);
-          if (booking?.customer_id) {
-            if (!reviewsMap.has(booking.customer_id)) {
-              reviewsMap.set(booking.customer_id, []);
-            }
-            reviewsMap.get(booking.customer_id)!.push(review.rating);
-          }
-        });
+    let newClients = 0;
+    for (const cid of clientIds) {
+      const firstEver = globalFirstScheduled.get(cid);
+      if (firstEver && firstEver >= fromIso && firstEver <= toIso) {
+        newClients += 1;
       }
     }
 
-    // Get top clients by revenue
-    const topClients = clients
+    const returningClients = clients.filter((c) => c.totalBookings > 1).length;
+
+    const averageBookingsPerClient =
+      totalClients > 0 ? Math.round((clients.reduce((sum, c) => sum + c.totalBookings, 0) / totalClients) * 100) / 100 : 0;
+
+    const averageLifetimeValue =
+      totalClients > 0
+        ? Math.round((clients.reduce((sum, c) => sum + c.totalSpent, 0) / totalClients) * 100) / 100
+        : 0;
+
+    const completedBookingIds: string[] = [];
+    for (const b of allBookings) {
+      if (b.status === "completed" && inScheduledWindow(b.scheduled_at, fromIso, toIso)) {
+        completedBookingIds.push(b.id);
+      }
+    }
+
+    const reviewsMap = new Map<string, number[]>();
+    const bookingCustomer = new Map<string, string>();
+    for (const b of allBookings) {
+      if (b.customer_id) bookingCustomer.set(b.id, b.customer_id);
+    }
+
+    for (let i = 0; i < completedBookingIds.length; i += REVIEW_IN_CHUNK) {
+      const chunk = completedBookingIds.slice(i, i + REVIEW_IN_CHUNK);
+      if (chunk.length === 0) continue;
+      const { data: reviews, error: reviewsError } = await supabaseAdmin
+        .from("reviews")
+        .select("booking_id, rating")
+        .in("booking_id", chunk)
+        .not("rating", "is", null);
+
+      if (!reviewsError && reviews) {
+        for (const review of reviews as { booking_id: string; rating: number }[]) {
+          const cid = bookingCustomer.get(review.booking_id);
+          if (!cid) continue;
+          if (!reviewsMap.has(cid)) reviewsMap.set(cid, []);
+          reviewsMap.get(cid)!.push(Number(review.rating));
+        }
+      }
+    }
+
+    const topClients: ClientSummaryTopClient[] = clients
       .sort((a, b) => b.totalSpent - a.totalSpent)
       .slice(0, 10)
       .map((client) => {
-        // Calculate average rating for this client from reviews
         const clientRatings = reviewsMap.get(client.clientId) || [];
-        const averageRating = clientRatings.length > 0
-          ? clientRatings.reduce((sum, rating) => sum + rating, 0) / clientRatings.length
-          : 0;
+        const averageRating =
+          clientRatings.length > 0
+            ? Math.round((clientRatings.reduce((sum, rating) => sum + rating, 0) / clientRatings.length) * 10) / 10
+            : 0;
 
         return {
           clientId: client.clientId,
@@ -187,26 +246,47 @@ export async function GET(request: NextRequest) {
           totalBookings: client.totalBookings,
           totalSpent: client.totalSpent,
           lastVisit: client.lastVisit,
-          averageRating: Math.round(averageRating * 10) / 10, // Round to 1 decimal place
+          averageRating,
         };
       });
 
-    // Calculate retention rate (simplified - clients who returned)
-    const retentionRate =
-      totalClients > 0 ? (returningClients / totalClients) * 100 : 0;
+    const retentionRate = totalClients > 0 ? Math.round((returningClients / totalClients) * 1000) / 10 : 0;
+
+    const inclusiveDayCount = differenceInCalendarDays(toDate, fromDate) + 1;
+
+    const locPhrase = locationId
+      ? "Selected location only; first-ever visit is computed within that location’s bookings."
+      : "All locations; first-ever visit is the earliest scheduled appointment anywhere with your business.";
+
+    const basisNote = [
+      `Reporting timezone: ${tz}. Scheduled window uses bookings.scheduled_at between the inclusive provider-local bounds.`,
+      `Distinct clients: customers with at least one appointment scheduled in this window (guest walk-ins without customer_id are excluded).`,
+      `New clients: customers whose first-ever scheduled booking in this scope falls inside the window (${locPhrase}).`,
+      `Returning (label): customers with two or more appointments scheduled inside this window — not lifetime repeat visits.`,
+      `Average “lifetime value” here is the average of each client’s sum of booking.total_amount for appointments in this window only — not all-time revenue.`,
+      `Retention % = (clients with 2+ bookings in window) ÷ (distinct clients in window).`,
+      `Ratings average review.rating for completed bookings in the window, grouped by customer.`,
+    ].join(" ");
+
+    const reportBasis =
+      "Client counts and spend from bookings in range; new clients use first-ever booking date in scope; retention counts repeat visits inside the range.";
 
     return successResponse({
       totalClients,
       newClients,
       returningClients,
-      averageBookingsPerClient,
       averageLifetimeValue,
+      averageBookingsPerClient,
       topClients,
       clientRetention: {
-        period: `${Math.ceil((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24))} days`,
+        period: `${inclusiveDayCount} days`,
+        inclusiveDayCount,
         retentionRate,
       },
-    });
+      basisNote,
+      reportBasis,
+      timezone: tz,
+    } satisfies ClientSummaryResponse);
   } catch (error) {
     console.error("Error in client summary report:", error);
     return handleApiError(error, "Failed to generate client summary report");

@@ -3,8 +3,9 @@ import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundRespo
 import { createClient } from "@supabase/supabase-js";
 import { subDays } from "date-fns";
 import { getProviderRevenue, getPreviousPeriodRevenue } from "@/lib/reports/revenue-helpers";
-import { DASHBOARD_REVENUE_TRANSACTION_TYPES, MAX_REPORT_DAYS } from "@/lib/reports/constants";
+import { LEDGER_FULL_PROVIDER_NET_TYPES, MAX_REPORT_DAYS } from "@/lib/reports/constants";
 import { getProviderReportContext, reportDateRangeFromParams, reportDateKey } from "@/lib/reports/provider-report-utils";
+import { getRecordedTakingsForRange } from "@/lib/reports/recorded-takings";
 
 export async function GET(request: NextRequest) {
   try {
@@ -104,22 +105,38 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const dashOpts = { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES, timezone: reportContext.timezone };
+    /** Full booking-linked provider net in ledger: earnings + travel + tips (see lib/reports/constants). */
+    const ledgerOpts = { transactionTypes: LEDGER_FULL_PROVIDER_NET_TYPES, timezone: reportContext.timezone };
 
-    // Get provider revenue — same net as main dashboard revenue cards
-    const { totalRevenue, revenueByBooking, revenueByDate } = await getProviderRevenue(
+    const {
+      totalRevenue,
+      revenueByBooking,
+      revenueByProductOrder,
+      revenueByDate,
+    } = await getProviderRevenue(
       supabaseAdmin,
       providerId,
       fromDate,
       toDate,
       locationId || undefined,
-      dashOpts
+      ledgerOpts
     );
 
+    let appointmentLedgerRevenue = 0;
+    revenueByBooking.forEach((v) => {
+      appointmentLedgerRevenue += v;
+    });
+    let retailLedgerRevenue = 0;
+    revenueByProductOrder.forEach((v) => {
+      retailLedgerRevenue += v;
+    });
+
     const totalBookings = bookings?.length || 0;
-    const bookingsWithLedgerRevenue = [...revenueByBooking.values()].filter((v) => v > 0).length;
+    const bookingsWithLedgerActivity = [...revenueByBooking.entries()].filter(([, v]) => v > 0).length;
+    const retailOrderCount = revenueByProductOrder.size;
+    /** Average net ledger amount per appointment that has any recognized ledger activity in range. */
     const averageBookingValue =
-      bookingsWithLedgerRevenue > 0 ? totalRevenue / bookingsWithLedgerRevenue : 0;
+      bookingsWithLedgerActivity > 0 ? appointmentLedgerRevenue / bookingsWithLedgerActivity : 0;
 
     // Get previous period for comparison
     const prevRevenue = await getPreviousPeriodRevenue(
@@ -128,7 +145,7 @@ export async function GET(request: NextRequest) {
       fromDate,
       toDate,
       locationId || undefined,
-      dashOpts
+      ledgerOpts
     );
 
     const periodDays = Math.ceil(
@@ -203,13 +220,24 @@ export async function GET(request: NextRequest) {
       });
     });
 
-    const revenueByService = Array.from(revenueByServiceMap.entries())
+    let revenueByService = Array.from(revenueByServiceMap.entries())
       .map(([serviceName, data]) => ({
         serviceName,
         revenue: data.revenue,
         bookings: data.bookingIds.size,
       }))
       .sort((a, b) => b.revenue - a.revenue);
+
+    if (retailLedgerRevenue > 0) {
+      revenueByService = [
+        ...revenueByService,
+        {
+          serviceName: "Retail & product orders (ledger)",
+          revenue: retailLedgerRevenue,
+          bookings: retailOrderCount,
+        },
+      ].sort((a, b) => b.revenue - a.revenue);
+    }
 
     // Revenue by staff (use booking revenue from finance_transactions)
     const revenueByStaffMap = new Map<
@@ -254,15 +282,43 @@ export async function GET(request: NextRequest) {
       }))
       .sort((a, b) => b.revenue - a.revenue);
 
+    const recorded = await getRecordedTakingsForRange(supabaseAdmin, {
+      providerId,
+      rangeStartIso: fromDate.toISOString(),
+      rangeEndIso: toDate.toISOString(),
+      locationId: locationId || undefined,
+    });
+
     return successResponse({
       totalRevenue,
+      appointmentLedgerRevenue,
+      retailLedgerRevenue,
+      retailOrderCount,
       totalBookings,
+      bookingsWithLedgerActivity,
       averageBookingValue,
       revenueGrowth,
       bookingsGrowth,
       revenueByDay,
       revenueByService,
       revenueByStaff,
+      ledgerTransactionTypes: [...LEDGER_FULL_PROVIDER_NET_TYPES],
+      recordedTakings: {
+        total: recorded.totalRecorded,
+        byPaymentMethod: recorded.byPaymentMethod,
+        bookingPaymentsTotal: recorded.bookingPaymentsTotal,
+        walletTotal: recorded.walletTotal,
+        retailAndLegacySalesTotal: recorded.salesTotal,
+        tipsTotal: recorded.tipsTotal,
+        cancellationFeesTotal: recorded.cancellationFeesTotal,
+        bookingCount: recorded.bookingCount,
+        salesCount: recorded.salesCount,
+        locationAttribution: recorded.locationAttribution,
+      },
+      recordedTakingsBasisNote:
+        "Recorded takings sum what was logged in-app: completed booking_payments (by payment date), wallet amounts on appointments scheduled in range, completed legacy sales and walk-in product orders (by sale/paid date), plus ledger tips and cancellation fees in range. This is cash-register style and can differ from ledger net when cash or terminal payments never settled through the platform.",
+      basisNote:
+        "Totals use finance_transactions net amounts (recognized when recorded). Includes provider earnings, travel fees, and tips for appointments; plus retail/product orders settled through the platform. Scheduled appointment counts use service dates (all statuses). Revenue-by-day uses ledger dates; per-day booking counts use appointment dates — they will not always match. Service/staff splits allocate each booking’s ledger net by line-item price share (variants use each line’s offering title). Compare recorded takings for salon-logged cash and terminal amounts.",
     });
   } catch (error) {
     console.error("Error in sales summary report:", error);

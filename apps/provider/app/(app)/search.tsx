@@ -69,7 +69,7 @@ export default function SearchScreen() {
     (s: SearchSuggestion) => {
       Keyboard.dismiss();
       if (s.type === "client") {
-        router.push(`/(app)/(tabs)/more/clients/${s.id}` as never);
+        router.push(`/(app)/(tabs)/clients/${s.id}` as never);
       } else if (s.type === "appointment") {
         if (s.is_group_booking && s.group_booking_id) {
           router.push({

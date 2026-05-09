@@ -20,6 +20,9 @@ const PROVIDER_SETTINGS_ROLES = [
 
 const patchSchema = z.object({
   gift_cards_enabled: z.boolean(),
+  custom_min_value: z.number().nullable().optional(),
+  custom_max_value: z.number().nullable().optional(),
+  custom_expiry_months: z.number().nullable().optional(),
 });
 
 /**
@@ -46,7 +49,7 @@ export async function GET(request: NextRequest) {
 
     const { data: provider, error } = await supabase
       .from("providers")
-      .select("gift_cards_enabled")
+      .select("gift_cards_enabled, custom_gift_card_min_value, custom_gift_card_max_value, custom_gift_card_expiry_months")
       .eq("id", providerId)
       .single();
 
@@ -64,6 +67,12 @@ export async function GET(request: NextRequest) {
       enabled: enabled ?? false,
       terms: platformDefaults.gift_card_terms ?? null,
       isUsingPlatformDefault,
+      min_value: (platformDefaults as any).gift_card_min_value ?? 50,
+      max_value: (platformDefaults as any).gift_card_max_value ?? 5000,
+      default_expiry_months: (platformDefaults as any).gift_card_expiry_months ?? 36,
+      custom_min_value: provider?.custom_gift_card_min_value ?? null,
+      custom_max_value: provider?.custom_gift_card_max_value ?? null,
+      custom_expiry_months: provider?.custom_gift_card_expiry_months ?? null,
     });
   } catch (error) {
     return handleApiError(error, "Failed to load gift card settings");
@@ -95,10 +104,13 @@ export async function PATCH(request: NextRequest) {
       .from("providers")
       .update({
         gift_cards_enabled: body.gift_cards_enabled,
+        custom_gift_card_min_value: body.custom_min_value ?? null,
+        custom_gift_card_max_value: body.custom_max_value ?? null,
+        custom_gift_card_expiry_months: body.custom_expiry_months ?? null,
         updated_at: new Date().toISOString(),
       })
       .eq("id", providerId)
-      .select("gift_cards_enabled")
+      .select("gift_cards_enabled, custom_gift_card_min_value, custom_gift_card_max_value, custom_gift_card_expiry_months")
       .single();
 
     if (error) {

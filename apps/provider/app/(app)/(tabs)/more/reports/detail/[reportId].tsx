@@ -19,6 +19,26 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { FilterChipGroup } from "@/components/ui/FilterChip";
 import { ReportPayloadView } from "@/features/reports/ReportPayloadView";
+import { SalesSummaryReportView } from "@/features/reports/SalesSummaryReportView";
+import { RevenueTrendsReportView } from "@/features/reports/RevenueTrendsReportView";
+import { BookingStatusReportView } from "@/features/reports/BookingStatusReportView";
+import { OccupancyReportView } from "@/features/reports/OccupancyReportView";
+import { CancellationsReportView } from "@/features/reports/CancellationsReportView";
+import { ClientSummaryReportView } from "@/features/reports/ClientSummaryReportView";
+import { ClientRetentionReportView } from "@/features/reports/ClientRetentionReportView";
+import { PaymentSummaryReportView } from "@/features/reports/PaymentSummaryReportView";
+import { EndOfDayReportView } from "@/features/reports/EndOfDayReportView";
+import { RefundsReportView } from "@/features/reports/RefundsReportView";
+import { PaymentMethodsReportView } from "@/features/reports/PaymentMethodsReportView";
+import { PayoutsReportView } from "@/features/reports/PayoutsReportView";
+import { YocoReconciliationReportView } from "@/features/reports/YocoReconciliationReportView";
+import { InventoryReportView } from "@/features/reports/InventoryReportView";
+import { ProductSalesReportView } from "@/features/reports/ProductSalesReportView";
+import { TopProductsReportView } from "@/features/reports/TopProductsReportView";
+import { PackageSalesReportView } from "@/features/reports/PackageSalesReportView";
+import { PackageUsageReportView } from "@/features/reports/PackageUsageReportView";
+import { PerformanceDashboardReportView } from "@/features/reports/PerformanceDashboardReportView";
+import { PeriodComparisonReportView } from "@/features/reports/PeriodComparisonReportView";
 import {
   REPORT_DETAIL_REGISTRY,
   type ReportDetailDefinition,
@@ -215,7 +235,50 @@ export default function ReportDetailScreen() {
       {loading && !data && <ActivityIndicator style={twStyle("my-8")} color={Colors.primary} />}
       {error && !data && <ErrorState message={error} onRetry={refresh} />}
 
-      {data != null && !loading && <ReportPayloadView data={data} />}
+      {data != null && !loading &&
+        (reportId === "sales-summary" ? (
+          <SalesSummaryReportView data={data} />
+        ) : reportId === "revenue-trends" ? (
+          <RevenueTrendsReportView data={data} />
+        ) : reportId === "booking-status" ? (
+          <BookingStatusReportView data={data} />
+        ) : reportId === "occupancy" ? (
+          <OccupancyReportView data={data} />
+        ) : reportId === "cancellations" ? (
+          <CancellationsReportView data={data} />
+        ) : reportId === "client-summary" ? (
+          <ClientSummaryReportView data={data} />
+        ) : reportId === "client-retention" ? (
+          <ClientRetentionReportView data={data} />
+        ) : reportId === "payment-summary" ? (
+          <PaymentSummaryReportView data={data} />
+        ) : reportId === "end-of-day" ? (
+          <EndOfDayReportView data={data} />
+        ) : reportId === "refunds" ? (
+          <RefundsReportView data={data} />
+        ) : reportId === "payment-methods" ? (
+          <PaymentMethodsReportView data={data} />
+        ) : reportId === "payouts" ? (
+          <PayoutsReportView data={data} />
+        ) : reportId === "yoco-reconciliation" ? (
+          <YocoReconciliationReportView data={data} />
+        ) : reportId === "inventory" ? (
+          <InventoryReportView data={data} />
+        ) : reportId === "product-sales" ? (
+          <ProductSalesReportView data={data} />
+        ) : reportId === "top-products" ? (
+          <TopProductsReportView data={data} />
+        ) : reportId === "package-sales" ? (
+          <PackageSalesReportView data={data} />
+        ) : reportId === "package-usage" ? (
+          <PackageUsageReportView data={data} />
+        ) : reportId === "performance-dashboard" ? (
+          <PerformanceDashboardReportView data={data} />
+        ) : reportId === "comparison" ? (
+          <PeriodComparisonReportView data={data} />
+        ) : (
+          <ReportPayloadView data={data} />
+        ))}
     </ScreenContainer>
   );
 }

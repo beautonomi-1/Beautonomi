@@ -1,6 +1,12 @@
 import { NextRequest } from "next/server";
-import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
-import { createClient } from "@supabase/supabase-js";
+import {
+  requireRoleInApi,
+  getProviderIdForUser,
+  successResponse,
+  notFoundResponse,
+  handleApiError,
+} from "@/lib/supabase/api-helpers";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   endOfMonth,
   endOfQuarter,
@@ -18,25 +24,22 @@ import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
 import { DASHBOARD_REVENUE_TRANSACTION_TYPES } from "@/lib/reports/constants";
 import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
 
+function sumMapValues(m: Map<string, number>): number {
+  return Array.from(m.values()).reduce((s, v) => s + v, 0);
+}
+
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      }
-    );
+    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
+    const supabaseAdmin = getSupabaseAdmin();
 
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
 
     if (!providerId) return notFoundResponse("Provider not found");
 
     const searchParams = request.nextUrl.searchParams;
-    const period = searchParams.get("period") || "month"; // month, quarter, year
+    const periodParam = searchParams.get("period") || "month";
+    const period = ["month", "quarter", "year"].includes(periodParam) ? periodParam : "month";
     const locationId = searchParams.get("location_id") || undefined;
 
     const reportContext = await getProviderReportContext(supabaseAdmin, providerId);
@@ -48,6 +51,8 @@ export async function GET(request: NextRequest) {
     let currentToDate: Date;
     let previousFromDate: Date;
     let previousToDate: Date;
+    let currentLabel = "";
+    let previousLabel = "";
 
     switch (period) {
       case "month": {
@@ -55,12 +60,14 @@ export async function GET(request: NextRequest) {
         const cur = dateRangeBoundsUtc(curFrom, todayYmd, tz);
         currentFromDate = new Date(cur.fromIso);
         currentToDate = new Date(cur.toIso);
+        currentLabel = "Month to date (this calendar month through today)";
         const prevMonth = subMonths(zNow, 1);
         const pFrom = formatDateYmd(startOfMonth(prevMonth), tz);
         const pTo = formatDateYmd(endOfMonth(prevMonth), tz);
         const prev = dateRangeBoundsUtc(pFrom, pTo, tz);
         previousFromDate = new Date(prev.fromIso);
         previousToDate = new Date(prev.toIso);
+        previousLabel = "Full prior calendar month";
         break;
       }
       case "quarter": {
@@ -68,12 +75,14 @@ export async function GET(request: NextRequest) {
         const cur = dateRangeBoundsUtc(curFrom, todayYmd, tz);
         currentFromDate = new Date(cur.fromIso);
         currentToDate = new Date(cur.toIso);
+        currentLabel = "Quarter to date (this calendar quarter through today)";
         const prevQ = subQuarters(zNow, 1);
         const pFrom = formatDateYmd(startOfQuarter(prevQ), tz);
         const pTo = formatDateYmd(endOfQuarter(prevQ), tz);
         const prev = dateRangeBoundsUtc(pFrom, pTo, tz);
         previousFromDate = new Date(prev.fromIso);
         previousToDate = new Date(prev.toIso);
+        previousLabel = "Full prior calendar quarter";
         break;
       }
       case "year": {
@@ -81,49 +90,58 @@ export async function GET(request: NextRequest) {
         const cur = dateRangeBoundsUtc(curFrom, todayYmd, tz);
         currentFromDate = new Date(cur.fromIso);
         currentToDate = new Date(cur.toIso);
+        currentLabel = "Year to date (this calendar year through today)";
         const prevY = subYears(zNow, 1);
         const pFrom = formatDateYmd(startOfYear(prevY), tz);
         const pTo = formatDateYmd(endOfYear(prevY), tz);
         const prev = dateRangeBoundsUtc(pFrom, pTo, tz);
         previousFromDate = new Date(prev.fromIso);
         previousToDate = new Date(prev.toIso);
+        previousLabel = "Full prior calendar year";
         break;
       }
       default: {
-        const curFrom = formatDateYmd(subMonths(zNow, 1), tz);
+        const curFrom = formatDateYmd(startOfMonth(zNow), tz);
         const cur = dateRangeBoundsUtc(curFrom, todayYmd, tz);
         currentFromDate = new Date(cur.fromIso);
         currentToDate = new Date(cur.toIso);
-        const pFrom = formatDateYmd(subMonths(zNow, 2), tz);
-        const pTo = formatDateYmd(subMonths(zNow, 1), tz);
+        currentLabel = "Month to date";
+        const prevMonth = subMonths(zNow, 1);
+        const pFrom = formatDateYmd(startOfMonth(prevMonth), tz);
+        const pTo = formatDateYmd(endOfMonth(prevMonth), tz);
         const prev = dateRangeBoundsUtc(pFrom, pTo, tz);
         previousFromDate = new Date(prev.fromIso);
         previousToDate = new Date(prev.toIso);
-        break;
+        previousLabel = "Full prior calendar month";
       }
     }
 
     const dashOpts = { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES, timezone: tz };
 
-    const { totalRevenue: currentRevenue } = await getProviderRevenue(
+    const currentRev = await getProviderRevenue(
       supabaseAdmin,
       providerId,
       currentFromDate,
       currentToDate,
       locationId ?? null,
-      dashOpts
+      dashOpts,
     );
-
-    const { totalRevenue: previousRevenue } = await getProviderRevenue(
+    const previousRev = await getProviderRevenue(
       supabaseAdmin,
       providerId,
       previousFromDate,
       previousToDate,
       locationId ?? null,
-      dashOpts
+      dashOpts,
     );
 
-    // Get current period bookings (for counts and status)
+    const currentRevenue = currentRev.totalRevenue;
+    const previousRevenue = previousRev.totalRevenue;
+    const currentLedgerBookings = sumMapValues(currentRev.revenueByBooking);
+    const currentLedgerOrders = sumMapValues(currentRev.revenueByProductOrder);
+    const previousLedgerBookings = sumMapValues(previousRev.revenueByBooking);
+    const previousLedgerOrders = sumMapValues(previousRev.revenueByProductOrder);
+
     let currentBookingsQuery = supabaseAdmin
       .from("bookings")
       .select("id, status, customer_id, scheduled_at")
@@ -138,7 +156,6 @@ export async function GET(request: NextRequest) {
 
     const { data: currentBookings } = await currentBookingsQuery;
 
-    // Get previous period bookings (for counts and status)
     let previousBookingsQuery = supabaseAdmin
       .from("bookings")
       .select("id, status, customer_id, scheduled_at")
@@ -153,46 +170,93 @@ export async function GET(request: NextRequest) {
 
     const { data: previousBookings } = await previousBookingsQuery;
 
-    // Calculate current period metrics
     const currentBookingsCount = currentBookings?.length || 0;
     const currentCompleted = currentBookings?.filter((b) => b.status === "completed").length || 0;
     const currentClients = new Set(currentBookings?.map((b) => b.customer_id).filter(Boolean)).size;
-    const currentAverageValue = currentBookingsCount > 0 ? currentRevenue / currentBookingsCount : 0;
 
-    // Calculate previous period metrics
     const previousBookingsCount = previousBookings?.length || 0;
     const previousCompleted = previousBookings?.filter((b) => b.status === "completed").length || 0;
     const previousClients = new Set(previousBookings?.map((b) => b.customer_id).filter(Boolean)).size;
-    const previousAverageValue = previousBookingsCount > 0 ? previousRevenue / previousBookingsCount : 0;
 
-    // Calculate growth
+    /** Booking-linked ledger only ÷ scheduled appointment count (excl. cancelled/no-show). */
+    const averageLedgerPerScheduledBooking = (count: number, ledgerBookings: number) =>
+      count > 0 ? ledgerBookings / count : 0;
+
+    const currentAvg = averageLedgerPerScheduledBooking(currentBookingsCount, currentLedgerBookings);
+    const previousAvg = averageLedgerPerScheduledBooking(previousBookingsCount, previousLedgerBookings);
+
     const revenueGrowth = previousRevenue > 0 ? ((currentRevenue - previousRevenue) / previousRevenue) * 100 : 0;
-    const bookingsGrowth = previousBookingsCount > 0 ? ((currentBookingsCount - previousBookingsCount) / previousBookingsCount) * 100 : 0;
-    const clientsGrowth = previousClients > 0 ? ((currentClients - previousClients) / previousClients) * 100 : 0;
+    const bookingsGrowth =
+      previousBookingsCount > 0 ? ((currentBookingsCount - previousBookingsCount) / previousBookingsCount) * 100 : 0;
+    const clientsGrowth =
+      previousClients > 0 ? ((currentClients - previousClients) / previousClients) * 100 : 0;
+    const averageLedgerGrowth =
+      previousAvg > 0 ? ((currentAvg - previousAvg) / previousAvg) * 100 : 0;
+
+    const curFromYmd = formatDateYmd(currentFromDate, tz);
+    const curToYmd = formatDateYmd(currentToDate, tz);
+    const prevFromYmd = formatDateYmd(previousFromDate, tz);
+    const prevToYmd = formatDateYmd(previousToDate, tz);
+
+    const reportBasis =
+      `Timezone ${tz}. ` +
+      `Current column: ${currentLabel.toLowerCase()} — ${curFromYmd} through ${curToYmd}. ` +
+      `Previous column: ${previousLabel.toLowerCase()} — ${prevFromYmd} through ${prevToYmd}. ` +
+      `Until the period ends, current and previous ranges differ in length (period-to-date vs a complete prior calendar period). ` +
+      `Ledger headline revenue sums provider_earnings with finance_transactions.created_at in each range (includes product-order earnings). ` +
+      `Booking-linked ledger split is used for “avg per booking”. ` +
+      `Scheduled booking counts use bookings.scheduled_at and exclude cancelled and no_show. ` +
+      `Distinct clients = unique customer_id on those bookings.`;
+
+    const basis = {
+      currentWindow: currentLabel,
+      previousWindow: previousLabel,
+      ledgerHeadline:
+        "Sum of net provider_earnings rows in range (settlement timestamp created_at). Includes earnings linked to bookings and product orders.",
+      averagePerBooking:
+        "Ledger attributed to bookings ÷ count of scheduled appointments (non-cancelled/no-show). Not booking.total_amount.",
+      bookings:
+        "scheduled_at within each window; statuses cancelled and no_show excluded.",
+      growth:
+        "Percent change when prior value > 0; otherwise 0 (avoid misleading lifts from a zero baseline).",
+    };
 
     return successResponse({
+      timezone: tz,
       period,
+      windows: {
+        current: { fromYmd: curFromYmd, toYmd: curToYmd, description: currentLabel },
+        previous: { fromYmd: prevFromYmd, toYmd: prevToYmd, description: previousLabel },
+      },
       current: {
         revenue: currentRevenue,
+        ledgerFromBookings: currentLedgerBookings,
+        ledgerFromProductOrders: currentLedgerOrders,
         bookings: currentBookingsCount,
         completed: currentCompleted,
         clients: currentClients,
-        averageValue: currentAverageValue,
+        averageLedgerPerScheduledBooking: currentAvg,
+        averageValue: currentAvg,
       },
       previous: {
         revenue: previousRevenue,
+        ledgerFromBookings: previousLedgerBookings,
+        ledgerFromProductOrders: previousLedgerOrders,
         bookings: previousBookingsCount,
         completed: previousCompleted,
         clients: previousClients,
-        averageValue: previousAverageValue,
+        averageLedgerPerScheduledBooking: previousAvg,
+        averageValue: previousAvg,
       },
       growth: {
         revenue: revenueGrowth,
         bookings: bookingsGrowth,
         clients: clientsGrowth,
+        averageLedgerPerScheduledBooking: averageLedgerGrowth,
       },
-      reportBasis:
-        "Comparison revenue uses provider_earnings ledger rows. Booking and client counts exclude cancelled/no-show bookings in each calendar period.",
+      reportBasis,
+      basis,
+      report_basis: reportBasis,
     });
   } catch (error) {
     return handleApiError(error, "BUSINESS_COMPARISON_ERROR", 500);

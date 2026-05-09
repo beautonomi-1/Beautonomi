@@ -7,40 +7,15 @@ import { PageHeader } from "@/components/provider/PageHeader";
 import { ReportFilters, DateRange } from "../../components/ReportFilters";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Download, XCircle, DollarSign, AlertTriangle } from "lucide-react";
+import { Download, XCircle, DollarSign, AlertTriangle, Info, CalendarDays } from "lucide-react";
 import { fetcher } from "@/lib/http/fetcher";
 import { subDays, format } from "date-fns";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
 import { EmptyReportState } from "../../components/EmptyReportState";
 import { useReportLocationQuery } from "@/app/provider/reports/utils/use-report-location-query";
-import { exportToCSV, formatReportDataForExport, type ReportRow } from "../../utils/export";
-
-interface CancellationsData {
-  totalCancelled: number;
-  totalBookings: number;
-  cancellationRate: number;
-  lostRevenue: number;
-  cancellationReasons: Array<{
-    reason: string;
-    count: number;
-    percentage: number;
-  }>;
-  dailyBreakdown: Array<{
-    date: string;
-    count: number;
-  }>;
-  recentCancellations: Array<{
-    id: string;
-    total_amount: number;
-    scheduled_at: string;
-    cancelled_at: string;
-    cancellation_reason: string;
-    users: {
-      full_name: string;
-      email: string;
-    } | null;
-  }>;
-}
+import { exportToCSV, exportToPDF, formatReportDataForExport, type ReportRow } from "../../utils/export";
+import type { CancellationsReportResponse } from "@/app/api/provider/reports/bookings/cancellations/route";
+import { CancellationsDailyChart, CancellationsReasonsChart } from "./components/CancellationsCharts";
 
 export default function CancellationsReport() {
   const { selectedLocationId, appendLocation } = useReportLocationQuery();
@@ -49,7 +24,7 @@ export default function CancellationsReport() {
     from: subDays(new Date(), 30),
     to: new Date(),
   });
-  const [data, setData] = useState<CancellationsData | null>(null);
+  const [data, setData] = useState<CancellationsReportResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -71,7 +46,7 @@ export default function CancellationsReport() {
       }
       appendLocation(params);
 
-      const response = await fetcher.get<{ data: CancellationsData }>(
+      const response = await fetcher.get<{ data: CancellationsReportResponse }>(
         `/api/provider/reports/bookings/cancellations?${params.toString()}`
       );
       setData(response.data);
@@ -90,10 +65,14 @@ export default function CancellationsReport() {
     });
   };
 
-  const handleExport = () => {
+  const handleExportCsv = () => {
     if (!data) return;
     const exportData = formatReportDataForExport(data as unknown as ReportRow, "cancellations", exportCurrency);
     exportToCSV(exportData, "cancellations-report");
+  };
+
+  const handleExportPdf = () => {
+    exportToPDF("cancellations-report", "cancellations-report", "Cancellations report");
   };
 
   if (isLoading) {
@@ -139,150 +118,205 @@ export default function CancellationsReport() {
       ]}
       showCloseButton={false}
     >
-      <div className="space-y-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <PageHeader
           title="Cancellations"
-          subtitle="Track booking cancellations and lost revenue"
-          actions={
-            <Button variant="outline" onClick={handleExport}>
-              <Download className="w-4 h-4 mr-2" />
-              Export
-            </Button>
-          }
+          subtitle="Scheduled-window counts, reasons, and ledger-linked amounts posted in range"
         />
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={handleExportCsv} className="rounded-xl">
+            <Download className="mr-2 h-4 w-4" />
+            CSV
+          </Button>
+          <Button variant="outline" onClick={handleExportPdf} className="rounded-xl">
+            Print / PDF
+          </Button>
+        </div>
+      </div>
 
-        <ReportFilters
-          dateRange={dateRange}
-          onDateRangeChange={setDateRange}
-          onReset={handleReset}
-        />
+      <div className="mt-6 space-y-6">
+        <ReportFilters dateRange={dateRange} onDateRangeChange={setDateRange} onReset={handleReset} />
 
-        {/* Summary Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card className="border-gray-200">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Total Cancelled</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between">
-                <p className="text-2xl font-semibold text-gray-900">{data.totalCancelled}</p>
-                <XCircle className="w-5 h-5 text-red-600" />
+        <div id="cancellations-report" className="space-y-6">
+          {data.basisNote ? (
+            <div className="flex gap-3 rounded-xl border border-sky-200/90 bg-sky-50/95 px-4 py-3 text-sm leading-relaxed text-sky-950">
+              <Info className="mt-0.5 h-5 w-5 shrink-0 text-sky-700" aria-hidden />
+              <div>
+                <p className="font-medium text-sky-900">Facts & definitions</p>
+                <p className="mt-1">{data.basisNote}</p>
+                {data.ledgerTransactionTypes?.length ? (
+                  <p className="mt-2 text-xs text-sky-900/85">
+                    Ledger net types for “lost revenue”: {data.ledgerTransactionTypes.join(", ")}
+                  </p>
+                ) : null}
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          ) : null}
 
-          <Card className="border-gray-200">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Cancellation Rate</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between">
-                <p className="text-2xl font-semibold text-gray-900">
-                  {data.cancellationRate.toFixed(1)}%
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <Card className="border-gray-200 shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-gray-600">Cancelled (scheduled in window)</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-2xl font-semibold tabular-nums tracking-tight text-gray-900">{data.totalCancelled}</p>
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-50">
+                    <XCircle className="h-5 w-5 text-red-600" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-gray-200 shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-gray-600">Cancellation rate</CardTitle>
+                <p className="text-xs text-gray-500">Share of all appointments in window</p>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-2xl font-semibold tabular-nums tracking-tight text-orange-800">
+                    {data.cancellationRate.toFixed(1)}%
+                  </p>
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-50">
+                    <AlertTriangle className="h-5 w-5 text-orange-600" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-gray-200 shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-gray-600">Ledger net (in window)</CardTitle>
+                <p className="text-xs text-gray-500">Posted transactions for cancelled bookings</p>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-2xl font-semibold tabular-nums tracking-tight text-gray-900">{fmt(data.lostRevenue)}</p>
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-50">
+                    <DollarSign className="h-5 w-5 text-rose-700" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-gray-200 shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-gray-600">Appointments in window</CardTitle>
+                <p className="text-xs text-gray-500">Denominator for rate · {data.timezone ?? ""}</p>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-2xl font-semibold tabular-nums tracking-tight text-gray-900">{data.totalBookings}</p>
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gray-100">
+                    <CalendarDays className="h-5 w-5 text-gray-700" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+            <Card className="border-gray-200 shadow-sm">
+              <CardHeader>
+                <CardTitle className="text-lg">Cancellations by day</CardTitle>
+                <p className="text-sm font-normal text-gray-500">
+                  Bucketed by cancellation local date (fallback: scheduled date if cancel time missing).
                 </p>
-                <AlertTriangle className="w-5 h-5 text-orange-600" />
-              </div>
+              </CardHeader>
+              <CardContent>
+                <CancellationsDailyChart rows={data.dailyBreakdown} />
+              </CardContent>
+            </Card>
+
+            <Card className="border-gray-200 shadow-sm">
+              <CardHeader>
+                <CardTitle className="text-lg">Reason mix</CardTitle>
+                <p className="text-sm font-normal text-gray-500">Percent of cancellations in this range (top 10 shown).</p>
+              </CardHeader>
+              <CardContent>
+                <CancellationsReasonsChart rows={data.cancellationReasons} />
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card className="border-gray-200 shadow-sm">
+            <CardHeader>
+              <CardTitle className="text-lg">All reasons</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {data.cancellationReasons.length === 0 ? (
+                <EmptyReportState title="No cancellation reasons" description="No cancellation reasons recorded." />
+              ) : (
+                <div className="overflow-x-auto rounded-xl border border-gray-100">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-200 bg-gray-50/80">
+                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Reason</th>
+                        <th className="px-4 py-3 text-right font-semibold text-gray-700">Count</th>
+                        <th className="px-4 py-3 text-right font-semibold text-gray-700">Share</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.cancellationReasons.map((reason) => (
+                        <tr key={reason.reason} className="border-b border-gray-50 hover:bg-gray-50/60">
+                          <td className="px-4 py-3 font-medium text-gray-900">{reason.reason}</td>
+                          <td className="px-4 py-3 text-right tabular-nums text-gray-800">{reason.count}</td>
+                          <td className="px-4 py-3 text-right tabular-nums text-gray-600">{reason.percentage.toFixed(1)}%</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </CardContent>
           </Card>
 
-          <Card className="border-gray-200">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Lost Revenue</CardTitle>
+          <Card className="border-gray-200 shadow-sm">
+            <CardHeader>
+              <CardTitle className="text-lg">Recent cancellations</CardTitle>
+              <p className="text-sm font-normal text-gray-500">Newest first — detail sample for quick review.</p>
             </CardHeader>
             <CardContent>
-              <div className="flex items-center justify-between">
-                <p className="text-2xl font-semibold text-gray-900">
-                  {fmt(data.lostRevenue)}
-                </p>
-                <DollarSign className="w-5 h-5 text-red-600" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-gray-200">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Total Bookings</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between">
-                <p className="text-2xl font-semibold text-gray-900">{data.totalBookings}</p>
-                <XCircle className="w-5 h-5 text-gray-600" />
-              </div>
+              {data.recentCancellations.length === 0 ? (
+                <EmptyReportState title="No cancellations" description="No cancellations in the selected period." />
+              ) : (
+                <div className="space-y-3">
+                  {data.recentCancellations.map((booking) => (
+                    <div
+                      key={String(booking.id)}
+                      className="flex flex-col gap-2 rounded-xl border border-gray-100 bg-gray-50/40 p-4 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div>
+                        <p className="font-medium text-gray-900">
+                          {(booking.users as { full_name?: string } | null)?.full_name ?? "Unknown client"}
+                        </p>
+                        <p className="text-sm text-gray-600">
+                          {booking.scheduled_at
+                            ? format(new Date(String(booking.scheduled_at)), "MMM dd, yyyy 'at' h:mm a")
+                            : "—"}
+                        </p>
+                        {booking.cancellation_reason ? (
+                          <p className="mt-1 text-xs text-gray-500">Reason: {String(booking.cancellation_reason)}</p>
+                        ) : null}
+                      </div>
+                      <div className="text-left sm:text-right">
+                        <p className="font-semibold tabular-nums text-gray-900">
+                          {fmt(Number(booking.total_amount ?? 0))}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {booking.cancelled_at || booking.scheduled_at
+                            ? format(new Date(String(booking.cancelled_at || booking.scheduled_at)), "MMM dd, yyyy")
+                            : ""}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
-
-        {/* Cancellation Reasons */}
-        <Card className="border-gray-200">
-          <CardHeader>
-            <CardTitle>Cancellation Reasons</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {data.cancellationReasons.length === 0 ? (
-              <EmptyReportState title="No cancellation reasons" description="No cancellation reasons available." />
-            ) : (
-              <div className="space-y-3">
-                {data.cancellationReasons.map((reason) => (
-                  <div
-                    key={reason.reason}
-                    className="flex items-center justify-between p-3 rounded-lg border border-gray-200"
-                  >
-                    <div>
-                      <p className="font-medium text-gray-900">{reason.reason}</p>
-                      <p className="text-sm text-gray-600">
-                        {reason.percentage.toFixed(1)}% of cancellations
-                      </p>
-                    </div>
-                    <p className="font-semibold text-gray-900">{reason.count} cancellations</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Recent Cancellations */}
-        <Card className="border-gray-200">
-          <CardHeader>
-            <CardTitle>Recent Cancellations</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {data.recentCancellations.length === 0 ? (
-              <EmptyReportState title="No cancellations" description="No cancellations in the selected period." />
-            ) : (
-              <div className="space-y-3">
-                {data.recentCancellations.map((booking) => (
-                  <div
-                    key={booking.id}
-                    className="flex items-center justify-between p-3 rounded-lg border border-gray-200"
-                  >
-                    <div>
-                      <p className="font-medium text-gray-900">
-                        {booking.users?.full_name || "Unknown Client"}
-                      </p>
-                      <p className="text-sm text-gray-600">
-                        {format(new Date(booking.scheduled_at), "MMM dd, yyyy 'at' h:mm a")}
-                      </p>
-                      {booking.cancellation_reason && (
-                        <p className="text-xs text-gray-500 mt-1">
-                          Reason: {booking.cancellation_reason}
-                        </p>
-                      )}
-                    </div>
-                    <div className="text-right">
-                      <p className="font-semibold text-gray-900">
-                        {fmt(Number(booking.total_amount || 0))}
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        {format(new Date(booking.cancelled_at || booking.scheduled_at), "MMM dd")}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
       </div>
     </SettingsDetailLayout>
   );

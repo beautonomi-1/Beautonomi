@@ -11,6 +11,7 @@ import {
   fetchOpenSafetyEventsGlobal,
   fetchOpenSafetyEventsForTenant,
 } from "@/lib/admin/safety-events-tenant-scope";
+import { USER_VERIFICATION_QUEUE_STATUSES } from "@/lib/admin/verification-queue-statuses";
 
 /**
  * GET /api/admin/activity
@@ -63,7 +64,7 @@ export async function GET(request: NextRequest) {
         .from('user_verifications')
         .select('id, user_id, document_type, status, submitted_at, created_at')
         .eq('tenant_id', tenantId)
-        .eq('status', 'pending')
+        .in('status', [...USER_VERIFICATION_QUEUE_STATUSES])
         .order('submitted_at', { ascending: false })
         .limit(10),
       
@@ -292,7 +293,7 @@ export async function GET(request: NextRequest) {
               ? `${user.full_name || user.email} submitted ${verification.document_type ?? "identity"} verification`
               : `New ${verification.document_type ?? "identity"} verification submitted`,
             timestamp: verification.submitted_at || verification.created_at,
-            link: `/admin/verifications?status=pending`,
+            link: `/admin/verifications`,
             priority: 'high',
           });
         });

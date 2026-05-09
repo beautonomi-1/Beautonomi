@@ -15,6 +15,9 @@ export interface PlatformSalesDefaults {
   receipt_footer?: string | null;
   gift_cards_enabled?: boolean;
   gift_card_terms?: string | null;
+  gift_card_min_value?: number;
+  gift_card_max_value?: number;
+  gift_card_expiry_months?: number;
   service_charge_name?: string;
   service_charge_rate?: number;
   upselling_enabled?: boolean;
@@ -43,6 +46,9 @@ const DEFAULT_SALES_SETTINGS: PlatformSalesSettings = {
     receipt_footer: null,
     gift_cards_enabled: false,
     gift_card_terms: null,
+    gift_card_min_value: 50,
+    gift_card_max_value: 5000,
+    gift_card_expiry_months: 36,
     service_charge_name: "Service Charge",
     service_charge_rate: 0,
     upselling_enabled: false,

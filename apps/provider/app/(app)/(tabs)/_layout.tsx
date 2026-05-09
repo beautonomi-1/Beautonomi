@@ -15,7 +15,7 @@ import { useApi } from "@/hooks/useApi";
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
-type HubTab = "bookings" | "chats" | "more";
+type HubTab = "bookings" | "chats" | "more" | "clients";
 
 type ProviderNavCounts = {
   pending_bookings: number;
@@ -210,6 +210,7 @@ export default function TabsLayout() {
           title: t("provider.clients"),
           tabBarIcon: ({ focused }) => <TabIcon name={focused ? "people" : "people-outline"} focused={focused} />,
         }}
+        listeners={makeHubTabListener("clients", "/(app)/(tabs)/clients", router)}
       />
       <Tabs.Screen
         name="chats"

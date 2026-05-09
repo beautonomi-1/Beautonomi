@@ -19,8 +19,9 @@ import {
 } from "@beautonomi/utils";
 import { sumChainedBlockedMinutes } from "@/lib/booking-slot-math/blocked-window-minutes";
 import { applyPublicBookingHoldSnapshotToDraft } from "@/lib/bookings/apply-hold-snapshot-to-draft";
-import { formatInTimeZone, toZonedTime } from "date-fns-tz";
+import { formatInTimeZone } from "date-fns-tz";
 import { normalizeProviderTimezone } from "@/lib/availability/time-utils";
+import { loadEffectiveStaffShifts } from "@/lib/availability/load-constraints";
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 
@@ -1999,13 +2000,9 @@ export async function validateBooking(
   }
 
   // ── Working hours guard (defense in depth) ────────────────────────────────
-  // Verify each service segment (+ travel buffer for the last at_home segment) fits within working hours.
+  // Same shift resolution as GET availability (`loadEffectiveStaffShifts`): staff_shifts →
+  // staff_schedules → working_hours → location hours, then clamp to location window.
   {
-    const DAY_KEYS_GUARD = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const;
-    const { resolveWorkingHoursDayForSingleStaffOrSyntheticSolo } = await import(
-      "@/lib/provider-booking/resolve-working-hours-single-staff-or-synthetic"
-    );
-
     const providerTz =
       normalizeProviderTimezone((provider as { timezone?: string | null }).timezone) ?? "UTC";
 
@@ -2014,6 +2011,30 @@ export async function validateBooking(
       const [h, m] = hm.split(":").map((x) => parseInt(x, 10));
       return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
     };
+
+    const wallTimeToMinutes = (t: string): number => {
+      const parts = String(t).split(":").map((x) => parseInt(x, 10));
+      const h = parts[0] ?? 0;
+      const m = parts[1] ?? 0;
+      return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
+    };
+
+    const segmentFitsAtLeastOneShift = (
+      segStartMin: number,
+      segEndMin: number,
+      shifts: { start_time: string; end_time: string }[],
+    ): boolean => {
+      for (const shift of shifts) {
+        const openMin = wallTimeToMinutes(shift.start_time);
+        const closeMin = wallTimeToMinutes(shift.end_time);
+        if (closeMin > openMin && segStartMin >= openMin && segEndMin <= closeMin) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    const shiftCache = new Map<string, Awaited<ReturnType<typeof loadEffectiveStaffShifts>>>();
 
     for (let i = 0; i < bookingServicesData.length; i++) {
       const line = bookingServicesData[i];
@@ -2026,38 +2047,49 @@ export async function validateBooking(
       const effectiveSegEnd = new Date(segEnd.getTime() + (buf + travelTail) * 60000);
 
       const staffIdForGuard = line.staff_id ?? `provider-${draft.provider_id}`;
-      const dayIdx = toZonedTime(segStart, providerTz).getDay();
-      const dayKey = DAY_KEYS_GUARD[dayIdx];
+      const localDate = formatInTimeZone(segStart, providerTz, "yyyy-MM-dd");
 
-      const wh = await resolveWorkingHoursDayForSingleStaffOrSyntheticSolo(
-        supabaseAdmin,
-        draft.provider_id,
-        staffIdForGuard,
-        dayKey,
-      );
+      const cacheKey = `${staffIdForGuard}|${localDate}`;
+      let resolved = shiftCache.get(cacheKey);
+      if (!resolved) {
+        resolved = await loadEffectiveStaffShifts(
+          supabaseAdmin,
+          staffIdForGuard,
+          localDate,
+          draft.provider_id,
+          locationIdForCalendar,
+        );
+        shiftCache.set(cacheKey, resolved);
+      }
 
-      if (wh && wh.is_open !== false && wh.open_time && wh.close_time) {
-        const parseHHMM = (t: string): number => {
-          const [h, m] = t.split(":").map(Number);
-          return (h || 0) * 60 + (m || 0);
-        };
-        const openMin = parseHHMM(wh.open_time);
-        const closeMin = parseHHMM(wh.close_time);
-        const segStartMin = minutesFromInstantInZone(segStart);
-        const segEndMin = minutesFromInstantInZone(effectiveSegEnd);
+      const { staffShifts, workHoursEnabledEffective } = resolved;
 
-        if (closeMin > openMin && (segStartMin < openMin || segEndMin > closeMin)) {
-          console.warn(
-            `[validateBooking] shift-guard: segment ${segStart.toISOString()}–${effectiveSegEnd.toISOString()} ` +
-            `outside working hours ${wh.open_time}–${wh.close_time} for staff ${staffIdForGuard}`
-          );
-          return handleApiError(
-            new Error("Booking falls outside working hours"),
-            "This time slot is no longer available. Please select another time.",
-            "CONFLICT",
-            409,
-          );
-        }
+      if (staffShifts.length === 0 || !workHoursEnabledEffective) {
+        console.warn(
+          `[validateBooking] shift-guard: no effective shifts for staff ${staffIdForGuard} on ${localDate}`,
+        );
+        return handleApiError(
+          new Error("Booking falls outside working hours"),
+          "This time slot is no longer available. Please select another time.",
+          "CONFLICT",
+          409,
+        );
+      }
+
+      const segStartMin = minutesFromInstantInZone(segStart);
+      const segEndMin = minutesFromInstantInZone(effectiveSegEnd);
+
+      if (!segmentFitsAtLeastOneShift(segStartMin, segEndMin, staffShifts)) {
+        console.warn(
+          `[validateBooking] shift-guard: segment ${segStart.toISOString()}–${effectiveSegEnd.toISOString()} ` +
+            `outside resolved shifts for staff ${staffIdForGuard} on ${localDate}`,
+        );
+        return handleApiError(
+          new Error("Booking falls outside working hours"),
+          "This time slot is no longer available. Please select another time.",
+          "CONFLICT",
+          409,
+        );
       }
     }
   }

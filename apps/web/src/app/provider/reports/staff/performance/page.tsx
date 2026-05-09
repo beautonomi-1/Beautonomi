@@ -8,7 +8,7 @@ import { ReportFilters, DateRange } from "../../components/ReportFilters";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Download, Users, Clock, DollarSign, Star } from "lucide-react";
+import { Download, Users, CalendarRange, Wallet, Star, Info } from "lucide-react";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { subDays } from "date-fns";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
@@ -16,6 +16,7 @@ import { EmptyReportState } from "../../components/EmptyReportState";
 import { SubscriptionGate } from "@/components/provider/SubscriptionGate";
 import { useReportLocationQuery } from "@/app/provider/reports/utils/use-report-location-query";
 import { exportToCSV, exportToPDF, formatReportDataForExport, type ReportRow } from "../../utils/export";
+import { StaffLedgerBarChart } from "../components/StaffLedgerBarChart";
 
 interface StaffPerformanceData {
   staffMembers: Array<{
@@ -36,10 +37,15 @@ interface StaffPerformanceData {
   }>;
   summary: {
     totalStaff: number;
-    totalBookings: number;
+    uniqueAppointments: number;
+    staffAssignmentTouches?: number;
     totalRevenue: number;
     averageRating: number;
+    /** @deprecated API versions before unique appointments */
+    totalBookings?: number;
   };
+  basisNote?: string;
+  ledgerTransactionTypes?: string[];
 }
 
 export default function StaffPerformanceReport() {
@@ -151,7 +157,7 @@ export default function StaffPerformanceReport() {
         <div className="space-y-6">
           <PageHeader
             title="Staff Performance"
-            subtitle="Track team member productivity and performance"
+            subtitle="Ledger net by team member — aligned with Sales Summary"
           />
           <SubscriptionGate
             feature="Staff Performance Reports"
@@ -195,7 +201,7 @@ export default function StaffPerformanceReport() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <PageHeader
             title="Staff Performance"
-            subtitle="Track team member productivity and performance"
+            subtitle="Ledger net by team member — aligned with Sales Summary"
           />
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => handleExport("csv")} className="gap-2 min-h-[44px] touch-manipulation">
@@ -221,78 +227,115 @@ export default function StaffPerformanceReport() {
           onStaffChange={setSelectedStaff}
         />
 
+        {data.basisNote ? (
+          <div className="flex gap-3 rounded-xl border border-violet-200/90 bg-violet-50/95 px-4 py-3 text-sm leading-relaxed text-violet-950">
+            <Info className="mt-0.5 h-5 w-5 shrink-0 text-violet-700" aria-hidden />
+            <div>
+              <p className="font-medium text-violet-900">Facts & definitions</p>
+              <p className="mt-1">{data.basisNote}</p>
+              {data.ledgerTransactionTypes?.length ? (
+                <p className="mt-2 text-xs text-violet-900/85">
+                  Ledger allocation includes: {data.ledgerTransactionTypes.join(", ")}
+                </p>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+
         {/* Summary Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card className="border-gray-200">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">
-                Total Staff
-              </CardTitle>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Card className="border-gray-200 shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">Team size</CardTitle>
+              <p className="text-xs text-gray-500">In report scope</p>
             </CardHeader>
             <CardContent>
-              <div className="flex items-center gap-2">
-                <Users className="w-5 h-5 text-blue-600" />
-                <p className="text-2xl font-semibold text-gray-900">
-                  {data.summary.totalStaff}
-                </p>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-2xl font-semibold tabular-nums tracking-tight text-gray-900">{data.summary.totalStaff}</p>
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-50">
+                  <Users className="h-5 w-5 text-sky-600" />
+                </div>
               </div>
             </CardContent>
           </Card>
 
-          <Card className="border-gray-200">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">
-                Total Bookings
-              </CardTitle>
+          <Card className="border-gray-200 shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">Unique appointments</CardTitle>
+              <p className="text-xs text-gray-500">Each booking once — not double-counted for co-staffed visits</p>
             </CardHeader>
             <CardContent>
-              <div className="flex items-center gap-2">
-                <Clock className="w-5 h-5 text-purple-600" />
-                <p className="text-2xl font-semibold text-gray-900">
-                  {data.summary.totalBookings}
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-2xl font-semibold tabular-nums tracking-tight text-gray-900">
+                  {data.summary.uniqueAppointments ?? data.summary.totalBookings ?? "—"}
                 </p>
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-teal-50">
+                  <CalendarRange className="h-5 w-5 text-teal-600" />
+                </div>
               </div>
             </CardContent>
           </Card>
 
-          <Card className="border-gray-200">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">
-                Total Revenue
-              </CardTitle>
+          <Card className="border-gray-200 shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">Ledger net (total)</CardTitle>
+              <p className="text-xs text-gray-500">Sum of per-staff allocated net</p>
             </CardHeader>
             <CardContent>
-              <div className="flex items-center gap-2">
-                <DollarSign className="w-5 h-5 text-green-600" />
-                <p className="text-2xl font-semibold text-gray-900">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-2xl font-semibold tabular-nums tracking-tight text-gray-900">
                   {fmt(data.summary.totalRevenue)}
                 </p>
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-50">
+                  <Wallet className="h-5 w-5 text-violet-600" />
+                </div>
               </div>
             </CardContent>
           </Card>
 
-          <Card className="border-gray-200">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">
-                Average Rating
-              </CardTitle>
+          <Card className="border-gray-200 shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">Avg rating</CardTitle>
+              <p className="text-xs text-gray-500">Weighted by review count</p>
             </CardHeader>
             <CardContent>
-              <div className="flex items-center gap-2">
-                <Star className="w-5 h-5 text-yellow-600" />
-                <p className="text-2xl font-semibold text-gray-900">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-2xl font-semibold tabular-nums tracking-tight text-gray-900">
                   {data.summary.averageRating.toFixed(1)}
                 </p>
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50">
+                  <Star className="h-5 w-5 text-amber-500" />
+                </div>
               </div>
             </CardContent>
           </Card>
         </div>
 
+        {data.staffMembers?.length ? (
+          <Card className="border-gray-200 shadow-sm">
+            <CardHeader>
+              <CardTitle className="text-lg">Ledger net by staff</CardTitle>
+              <p className="text-sm font-normal text-gray-500">Horizontal bars — violet scale by share of top earner.</p>
+            </CardHeader>
+            <CardContent className="pt-2">
+              <StaffLedgerBarChart
+                rows={data.staffMembers.map((s) => ({
+                  staffName: s.staffName,
+                  totalRevenue: s.totalRevenue,
+                }))}
+              />
+            </CardContent>
+          </Card>
+        ) : null}
+
         {/* Staff Performance Table */}
         {data.staffMembers && data.staffMembers.length > 0 ? (
-          <Card className="border-gray-200">
+          <Card className="border-gray-200 shadow-sm">
             <CardHeader>
-              <CardTitle>Staff Performance Details</CardTitle>
+              <CardTitle className="text-lg">Detail by team member</CardTitle>
+              <p className="text-sm font-normal text-gray-500">
+                Commission follows payroll rules (provider_earnings base). “Avg value” is ledger net ÷ that staff’s appointment count.
+              </p>
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto">
@@ -309,10 +352,10 @@ export default function StaffPerformanceReport() {
                       Completed
                     </th>
                     <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">
-                      Revenue
+                      Ledger net
                     </th>
                     <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">
-                      Avg Value
+                      Avg / appointment
                     </th>
                     <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">
                       Rating
@@ -399,9 +442,12 @@ export default function StaffPerformanceReport() {
             </CardContent>
           </Card>
         ) : (
-          <Card className="border-gray-200">
+          <Card className="border-gray-200 shadow-sm">
             <CardHeader>
-              <CardTitle>Staff Performance Details</CardTitle>
+              <CardTitle className="text-lg">Detail by team member</CardTitle>
+              <p className="text-sm font-normal text-gray-500">
+                Commission follows payroll rules (provider_earnings base). “Avg value” is ledger net ÷ that staff’s appointment count.
+              </p>
             </CardHeader>
             <CardContent>
               <p className="text-sm text-gray-600 text-center py-8">

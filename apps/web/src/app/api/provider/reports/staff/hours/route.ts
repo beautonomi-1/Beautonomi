@@ -42,7 +42,8 @@ export async function GET(request: NextRequest) {
         )
       `
       )
-      .eq("provider_id", providerId);
+      .eq("provider_id", providerId)
+      .eq("is_active", true);
 
     if (staffId) {
       staffQuery = staffQuery.eq("id", staffId);

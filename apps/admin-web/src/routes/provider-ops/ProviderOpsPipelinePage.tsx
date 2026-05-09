@@ -16,6 +16,7 @@ import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminToast } from "@/lib/adminToast";
 import { handleLeadConcurrent409 } from "@/lib/handleLeadConcurrentUpdate";
 import { GripVertical, Mail, Phone, MapPin, Tag, Calendar } from "lucide-react";
+import { LeadAssigneeInline } from "@/components/provider-ops/LeadAssigneeInline";
 
 const PIPELINE_PAGE_SIZE = 120;
 const OPS_PIPELINE_REFETCH_MS = 45_000;
@@ -52,6 +53,8 @@ interface Lead {
   whatsapp_status?: "unknown" | "verified" | "not_found" | "check_failed" | null;
   provider_lead_categories?: LeadCategory[];
   updated_at?: string;
+  assigned_to?: string | null;
+  assigned_user?: { id: string; email: string | null; full_name: string | null } | null;
 }
 
 interface LeadsPayload {
@@ -62,6 +65,7 @@ interface LeadsPayload {
     countries?: Array<{ value: string; label: string; count: number }>;
     provinces?: Array<{ value: string; label: string; count: number; country?: string | null }>;
     categories?: Array<{ id: string; name: string; count: number }>;
+    assignees?: Array<{ value: string; label: string; count: number }>;
   };
 }
 
@@ -87,6 +91,17 @@ function WhatsAppStatusChip({ status }: { status?: Lead["whatsapp_status"] }) {
   };
   const item = config[s] || config.unknown;
   return <span className={cn("rounded px-1.5 py-0.5 text-[9px] font-medium", item.className)}>{item.label}</span>;
+}
+
+function assigneeDisplayName(lead: Lead): string {
+  if (!lead.assigned_to) return "—";
+  const u = lead.assigned_user;
+  if (u && typeof u === "object") {
+    const n = u.full_name?.trim() || "";
+    const e = u.email?.trim() || "";
+    if (n || e) return n || e;
+  }
+  return `${lead.assigned_to.slice(0, 8)}…`;
 }
 
 function applyLeadStageInCache(
@@ -116,16 +131,19 @@ export function ProviderOpsPipelinePage() {
 
   const country = sp.get("country") || "";
   const province = sp.get("province") || "";
+  const assignedToFilter = sp.get("assigned_to") || "";
   const categoryIds = useMemo(() => parseCategoryIdsParam(sp), [sp]);
   const categoryKey = categoryIds.join(",");
-  const qk = adminQueryKeys.providerOps.leads(`pipeline-board|country=${country}|province=${province}|category=${categoryKey}`);
+  const qk = adminQueryKeys.providerOps.leads(
+    `pipeline-board|country=${country}|province=${province}|category=${categoryKey}|assigned=${assignedToFilter}`,
+  );
 
   const q = useInfiniteQuery({
     queryKey: qk,
     initialPageParam: 1,
     queryFn: ({ pageParam }) =>
       adminApi.getJson<LeadsPayload>(
-        `/api/admin/provider-ops/leads?page=${pageParam}&limit=${PIPELINE_PAGE_SIZE}${country ? `&country=${encodeURIComponent(country)}` : ""}${province ? `&province=${encodeURIComponent(province)}` : ""}${categoryIds.map((id) => `&category_ids=${encodeURIComponent(id)}`).join("")}`,
+        `/api/admin/provider-ops/leads?page=${pageParam}&limit=${PIPELINE_PAGE_SIZE}${country ? `&country=${encodeURIComponent(country)}` : ""}${province ? `&province=${encodeURIComponent(province)}` : ""}${assignedToFilter ? `&assigned_to=${encodeURIComponent(assignedToFilter)}` : ""}${categoryIds.map((id) => `&category_ids=${encodeURIComponent(id)}`).join("")}`,
         { timeoutMs: 60_000 },
       ),
     getNextPageParam: (lastPage) => (lastPage.meta.has_more ? lastPage.meta.page + 1 : undefined),
@@ -143,7 +161,32 @@ export function ProviderOpsPipelinePage() {
     (opt) => !country || !opt.country || opt.country === country,
   );
   const categoryOptions = filterOptions?.categories ?? [];
+  const assigneeFilterOptions = filterOptions?.assignees ?? [];
   const selectedCategoryNames = categoryIds.map((id) => categoryOptions.find((c) => c.id === id)?.name ?? "selected");
+
+  const assignLeadMut = useMutation({
+    mutationFn: (args: {
+      leadId: string;
+      assigned_to: string;
+      assigned_to_name?: string;
+      expected_updated_at?: string;
+    }) =>
+      adminApi.patchJson(`/api/admin/provider-ops/leads/${args.leadId}/assign`, {
+        assigned_to: args.assigned_to || null,
+        ...(args.assigned_to_name ? { assigned_to_name: args.assigned_to_name } : {}),
+        ...(args.expected_updated_at ? { expected_updated_at: args.expected_updated_at } : {}),
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
+    },
+    onError: (e: Error) => {
+      if (handleLeadConcurrent409(e)) {
+        void qc.invalidateQueries({ queryKey: qk });
+        return;
+      }
+      adminToast.error(`Assign failed: ${e.message}`);
+    },
+  });
 
   const stageMut = useMutation({
     mutationFn: ({
@@ -279,8 +322,24 @@ export function ProviderOpsPipelinePage() {
           title="Pipeline Board"
           description={`${totalLeads} leads total · ${loadedCount} loaded across ${PIPELINE_STAGES.length} stages · Drag to update status · Swipe columns on mobile`}
         />
-        {(country || province || categoryIds.length > 0) ? (
+        {(country || province || categoryIds.length > 0 || assignedToFilter) ? (
           <div className="mt-2 flex flex-wrap items-center gap-1.5 px-1">
+            {assignedToFilter ? (
+              <button
+                type="button"
+                onClick={() => {
+                  const next = new URLSearchParams(sp);
+                  next.delete("assigned_to");
+                  setSp(next, { replace: true });
+                }}
+                className="rounded-full bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-800 ring-1 ring-slate-200"
+              >
+                {assignedToFilter === "unassigned"
+                  ? "Assignee: Unassigned"
+                  : `Assignee: ${assigneeFilterOptions.find((x) => x.value === assignedToFilter)?.label ?? assignedToFilter.slice(0, 8) + "…"}`}{" "}
+                ×
+              </button>
+            ) : null}
             {country ? (
               <button
                 type="button"
@@ -355,6 +414,24 @@ export function ProviderOpsPipelinePage() {
               <option key={opt.value} value={opt.value}>{opt.label} ({opt.count})</option>
             ))}
           </select>
+          <select
+            value={assignedToFilter}
+            onChange={(e) => {
+              const next = new URLSearchParams(sp);
+              if (e.target.value) next.set("assigned_to", e.target.value);
+              else next.delete("assigned_to");
+              setSp(next, { replace: true });
+            }}
+            className="min-w-[180px] rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs text-gray-700"
+          >
+            <option value="">All assignees</option>
+            <option value="unassigned">Unassigned</option>
+            {assigneeFilterOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label} ({opt.count})
+              </option>
+            ))}
+          </select>
           <div className="min-w-[220px] rounded-lg border border-gray-300 bg-white p-2">
             <div className="mb-1 text-[11px] font-medium text-gray-600">Categories</div>
             <div className="max-h-36 space-y-1 overflow-auto pr-1">
@@ -384,7 +461,7 @@ export function ProviderOpsPipelinePage() {
               })}
             </div>
           </div>
-          {(country || province || categoryIds.length > 0) ? (
+          {(country || province || categoryIds.length > 0 || assignedToFilter) ? (
             <button
               type="button"
               className="text-xs text-gray-500 underline hover:text-gray-700"
@@ -394,6 +471,7 @@ export function ProviderOpsPipelinePage() {
                 next.delete("province");
                 next.delete("category_ids");
                 next.delete("category_id");
+                next.delete("assigned_to");
                 setSp(next, { replace: true });
               }}
             >
@@ -573,6 +651,17 @@ export function ProviderOpsPipelinePage() {
                               </option>
                             ))}
                           </select>
+                          <div className="mt-2 flex justify-end">
+                            <LeadAssigneeInline
+                              leadId={lead.id}
+                              assignedToId={lead.assigned_to ?? null}
+                              displayName={assigneeDisplayName(lead)}
+                              updatedAt={lead.updated_at}
+                              onAssign={(args) => assignLeadMut.mutate(args)}
+                              disabled={assignLeadMut.isPending && assignLeadMut.variables?.leadId === lead.id}
+                              compact
+                            />
+                          </div>
                         </div>
                       </div>
                     </div>

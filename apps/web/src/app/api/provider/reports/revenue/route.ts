@@ -6,7 +6,7 @@ import {
   successResponse,
   handleApiError,
 } from "@/lib/supabase/api-helpers";
-import { createClient } from "@supabase/supabase-js";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderRevenue, getPreviousPeriodRevenue } from "@/lib/reports/revenue-helpers";
 import { DASHBOARD_REVENUE_TRANSACTION_TYPES } from "@/lib/reports/constants";
 import {
@@ -21,11 +21,7 @@ export async function GET(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
 
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      { auth: { autoRefreshToken: false, persistSession: false } },
-    );
+    const supabaseAdmin = getSupabaseAdmin();
     const sp = request.nextUrl.searchParams;
     const locationId = sp.get("location_id") || null;
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
@@ -36,7 +32,8 @@ export async function GET(request: NextRequest) {
 
     const dashOpts = { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES, timezone: reportContext.timezone };
 
-    const [{ totalRevenue, revenueByBooking, revenueByDate }, previousRevenue, cancelFeeResult] = await Promise.all([
+    const [{ totalRevenue, revenueByBooking, revenueByProductOrder, revenueByDate }, previousRevenue, cancelFeeResult] =
+      await Promise.all([
       getProviderRevenue(supabaseAdmin, providerId, fromDate, toDate, locationId, dashOpts),
       getPreviousPeriodRevenue(supabaseAdmin, providerId, fromDate, toDate, locationId, dashOpts),
       supabaseAdmin
@@ -121,18 +118,55 @@ export async function GET(request: NextRequest) {
       if (v > 0) bookingCountWithRevenue += 1;
     });
 
+    const ledgerFromBookings = Array.from(revenueByBooking.values()).reduce((s, v) => s + v, 0);
+    const ledgerFromProductOrders = Array.from(revenueByProductOrder.values()).reduce((s, v) => s + v, 0);
+
+    const avgLedgerPerBookingWithEarnings =
+      bookingCountWithRevenue > 0 ? ledgerFromBookings / bookingCountWithRevenue : 0;
+
+    const reportBasis =
+      `Window ${fromYmd}–${toYmd} (${reportContext.timezone}). ` +
+      `Headline total_revenue sums provider_earnings ledger rows (finance_transactions.created_at) — includes product-order earnings. ` +
+      `Cancellation fees from cancellation_fee rows add to total_revenue_inclusive. ` +
+      `Service and staff breakdowns allocate **booking-linked** ledger only across booking_services lines by price share — retail-only ledger does not appear there. ` +
+      `Daily trend rolls up ledger net by calendar day (recognition date). ` +
+      `avg_per_booking is mean booking-linked ledger ÷ count of bookings with positive ledger allocation — not booking.total_amount. ` +
+      `previous_revenue compares the immediately prior equal-length window ending at period start.`;
+
+    const basis = {
+      headline:
+        "provider_earnings transaction_type; settlement timestamp finance_transactions.created_at.",
+      bookingsMix:
+        "Product-order earnings appear in headline total and daily trend but not in per-service/staff booking allocation.",
+      breakdown:
+        "Per-service/staff uses ledger attributed to each booking, split by line prices.",
+      avgPerBooking:
+        "Sum(provider_earnings allocated to bookings) ÷ bookings with any ledger allocation.",
+      dailyTrend: "revenueByDate keys — same ledger rules as headline.",
+    };
+
     return successResponse({
+      timezone: reportContext.timezone,
+      fromYmd,
+      toYmd,
       total_revenue: totalRevenue,
+      ledger_from_bookings: ledgerFromBookings,
+      ledger_from_product_orders: ledgerFromProductOrders,
       cancellation_fees: cancellationFees,
       total_revenue_inclusive: totalRevenue + cancellationFees,
       previous_revenue: previousRevenue,
       revenue_by_service,
       revenue_by_staff,
       daily_trend,
-      avg_per_booking: bookingCountWithRevenue > 0 ? totalRevenue / bookingCountWithRevenue : 0,
+      avg_per_booking: avgLedgerPerBookingWithEarnings,
       transaction_count: bookingCountWithRevenue,
+      bookings_with_ledger_earnings: bookingCountWithRevenue,
       time_basis: "ledger_created_at",
-      time_basis_note: "Revenue from finance_transactions.created_at (payment date). Booking dates shown for service breakdown are scheduled_at.",
+      time_basis_note:
+        "Headline revenue uses finance_transactions.created_at. Service/staff tables allocate booking-linked ledger by scheduled booking (scheduled_at).",
+      reportBasis,
+      basis,
+      report_basis: reportBasis,
       locationAttribution: cancellationFeeLocationAttribution,
     });
   } catch (error) {

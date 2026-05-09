@@ -55,18 +55,34 @@ export interface SignInData {
 export async function signUp(data: SignUpData) {
   const supabase = getSupabaseClient();
 
-  const { data: authData, error: authError } = await supabase.auth.signUp({
-    email: data.email,
-    password: data.password,
-    options: {
-      data: {
-        full_name: data.fullName,
-        phone: data.phone,
-        role: data.role || 'customer',
+  let authData;
+  let authError;
+  try {
+    const result = await supabase.auth.signUp({
+      email: data.email,
+      password: data.password,
+      options: {
+        data: {
+          full_name: data.fullName,
+          phone: data.phone,
+          role: data.role || 'customer',
+        },
+        ...(data.emailRedirectTo ? { emailRedirectTo: data.emailRedirectTo } : {}),
       },
-      ...(data.emailRedirectTo ? { emailRedirectTo: data.emailRedirectTo } : {}),
-    },
-  });
+    });
+    authData = result.data;
+    authError = result.error;
+  } catch (err: any) {
+    if (err.message?.includes("Lock") && err.message?.includes("stole it")) {
+      console.warn("Ignored lock error during signUp", err);
+      // We don't have the session data if it threw, but the user was likely created.
+      // Return empty data so the fallback login can take over.
+      authData = { user: null, session: null };
+      authError = null;
+    } else {
+      throw err;
+    }
+  }
 
   if (authError) {
     const errorMessage = authError.message || 'Unknown error occurred during signup';
@@ -128,10 +144,19 @@ export async function signIn(data: SignInData) {
   const user = json?.data?.user;
 
   if (session?.access_token && session?.refresh_token && supabase) {
-    await supabase.auth.setSession({
-      access_token: session.access_token,
-      refresh_token: session.refresh_token,
-    });
+    try {
+      await supabase.auth.setSession({
+        access_token: session.access_token,
+        refresh_token: session.refresh_token,
+      });
+    } catch (err: any) {
+      if (err.message?.includes("Lock") && err.message?.includes("stole it")) {
+        // Ignore lock errors on setSession since cookies are already set by the server
+        console.warn("Ignored lock error on setSession", err);
+      } else {
+        throw err;
+      }
+    }
   }
 
   return {

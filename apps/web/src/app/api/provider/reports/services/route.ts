@@ -3,6 +3,10 @@ import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundRespo
 import { createClient } from "@supabase/supabase-js";
 import { getProviderReportContext, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
 
+/**
+ * Legacy aggregate by catalogue line-item gross (`booking_services.price`).
+ * For platform-aligned ledger net by offering, use `GET /api/provider/reports/sales/services`.
+ */
 export async function GET(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);

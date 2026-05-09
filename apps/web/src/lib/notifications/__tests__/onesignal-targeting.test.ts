@@ -6,7 +6,7 @@
  * in the same request, which OneSignal v9/v10 doesn't support reliably.
  * The new contract is:
  *   1. external IDs + single channel  → `include_aliases.external_id` + `target_channel`
- *   2. external IDs + multi channel   → `include_external_user_ids` + `channel_for_external_user_ids`
+ *   2. external IDs + multi channel   → split into one Create Message request per channel (each uses alias + target_channel)
  *   3. only subscription IDs          → `include_subscription_ids`
  */
 
@@ -116,7 +116,7 @@ describe("applyOneSignalTargeting (regression for sub+ext mix)", () => {
     expect(body.include_aliases).toBeDefined();
   });
 
-  it("falls back to include_external_user_ids + channel_for_external_user_ids for multi-channel sends", async () => {
+  it("splits multi-channel sends into one request per channel (alias + target_channel each)", async () => {
     hoisted.getSupabaseAdminMock.mockReturnValue(mockAdmin([]));
 
     const { sendToUsers } = await import("@/lib/notifications/onesignal");
@@ -127,10 +127,22 @@ describe("applyOneSignalTargeting (regression for sub+ext mix)", () => {
       { appType: "customer" },
     );
 
-    const body = lastFetchBody();
-    expect(body.include_external_user_ids).toEqual(["cccccccc-cccc-cccc-cccc-cccccccccccc"]);
-    expect(body.channel_for_external_user_ids).toEqual(["push", "email"]);
-    expect(body.include_aliases).toBeUndefined();
-    expect(body.target_channel).toBeUndefined();
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+    expect(fetchMock.mock.calls.length).toBe(2);
+
+    const bodyPush = JSON.parse(
+      String((fetchMock.mock.calls[0][1] as { body?: string }).body ?? "{}"),
+    ) as Record<string, unknown>;
+    const bodyEmail = JSON.parse(
+      String((fetchMock.mock.calls[1][1] as { body?: string }).body ?? "{}"),
+    ) as Record<string, unknown>;
+
+    expect(bodyPush.include_aliases).toEqual({ external_id: ["cccccccc-cccc-cccc-cccc-cccccccccccc"] });
+    expect(bodyPush.target_channel).toBe("push");
+    expect(bodyPush.include_external_user_ids).toBeUndefined();
+
+    expect(bodyEmail.include_aliases).toEqual({ external_id: ["cccccccc-cccc-cccc-cccc-cccccccccccc"] });
+    expect(bodyEmail.target_channel).toBe("email");
+    expect(bodyEmail.include_external_user_ids).toBeUndefined();
   });
 });

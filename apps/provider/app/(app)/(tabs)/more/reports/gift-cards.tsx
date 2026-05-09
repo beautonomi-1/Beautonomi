@@ -33,6 +33,7 @@ interface GiftCardReport {
   recipient_name: string | null;
   purchased_at: string;
   redeemed_at: string | null;
+  captured_at?: string | null;
   expires_at: string | null;
 }
 
@@ -62,6 +63,8 @@ export default function GiftCardReportScreen() {
   const { data: reportData, loading, error: dataError, refresh } = useApi<{
     stats: GiftCardStats;
     cards: GiftCardReport[];
+    reportBasis?: string;
+    basis?: Record<string, string>;
   }>(giftCardsUrl);
 
   const handleRefresh = useCallback(async () => {
@@ -75,14 +78,15 @@ export default function GiftCardReportScreen() {
 
   const stats = reportData?.stats;
   const cards = reportData?.cards ?? [];
+  const basis = typeof reportData?.reportBasis === "string" ? reportData.reportBasis : "";
 
   async function handleExport() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const rows = cards.map(
       (c) =>
-        `${c.code},${c.purchaser_name ?? ""},${c.recipient_name ?? ""},${formatCurrency(c.initial_value)},${formatCurrency(c.remaining_value)},${c.status},${formatDate(c.purchased_at)}`
+        `${c.code},${c.purchaser_name ?? ""},${c.recipient_name ?? ""},${formatCurrency(c.initial_value)},${formatCurrency(c.remaining_value)},${c.status},${formatDate(c.purchased_at)},${c.redeemed_at ?? c.captured_at ?? ""}`
     );
-    const csv = `Code,Purchaser,Recipient,Value,Remaining,Status,Date\n${rows.join("\n")}`;
+    const csv = `Code,Purchaser,Recipient,Value,Remaining,Status,Purchased,Capture\n${rows.join("\n")}`;
     try {
       await Share.share({ message: csv, title: "Gift Card Report" });
     } catch {}
@@ -91,9 +95,9 @@ export default function GiftCardReportScreen() {
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader
-        title="Gift Card Report"
+        title="Gift cards"
         showBack
-        subtitle="Sales & redemption analytics"
+        subtitle="Redemptions at your business (platform sells cards)"
         rightAction={
           <TouchableOpacity
             style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-100")}
@@ -104,18 +108,25 @@ export default function GiftCardReportScreen() {
         }
       />
 
+      {basis ? (
+        <View style={twStyle("mb-3 rounded-2xl border border-sky-100 bg-sky-50/95 px-4 py-3")}>
+          <Text style={twStyle("text-xs font-semibold uppercase text-sky-900")}>What this counts</Text>
+          <Text style={twStyle("mt-1 text-sm leading-5 text-sky-950")}>{basis}</Text>
+        </View>
+      ) : null}
+
       <View style={twStyle("mb-3")}>
         <ReportResponsiveStatRow>
           <StatCard
-            title="Total Sold"
-            value={String(stats?.total_sold ?? 0)}
+            title="Redemption rows"
+            value={String(stats?.total_sold ?? stats?.total_redeemed ?? 0)}
             icon="gift-outline"
             iconColor="#a855f7"
             iconBg="bg-purple-50"
             compact
           />
           <StatCard
-            title="Revenue"
+            title="Redeemed value"
             value={formatCurrency(stats?.total_revenue ?? 0)}
             icon="cash-outline"
             iconColor="#22c55e"
@@ -123,40 +134,11 @@ export default function GiftCardReportScreen() {
             compact
           />
           <StatCard
-            title="Outstanding"
-            value={formatCurrency(stats?.total_outstanding ?? 0)}
-            icon="hourglass-outline"
-            iconColor="#f59e0b"
-            iconBg="bg-amber-50"
-            compact
-          />
-        </ReportResponsiveStatRow>
-      </View>
-
-      <View style={twStyle("mb-3")}>
-        <ReportResponsiveStatRow>
-          <StatCard
-            title="Redeemed"
-            value={formatCurrency(stats?.total_redeemed ?? 0)}
-            icon="checkmark-circle-outline"
-            iconColor="#6366f1"
-            iconBg="bg-indigo-50"
-            compact
-          />
-          <StatCard
-            title="Avg Value"
+            title="Avg / row"
             value={formatCurrency(stats?.avg_value ?? 0)}
             icon="analytics-outline"
             iconColor="#3b82f6"
             iconBg="bg-blue-50"
-            compact
-          />
-          <StatCard
-            title="Active"
-            value={String(stats?.active_count ?? 0)}
-            icon="radio-button-on"
-            iconColor="#10b981"
-            iconBg="bg-emerald-50"
             compact
           />
         </ReportResponsiveStatRow>
@@ -171,7 +153,11 @@ export default function GiftCardReportScreen() {
       ) : !loading && dataError && !reportData ? (
         <ErrorState message={dataError} onRetry={refresh} />
       ) : cards.length === 0 ? (
-        <EmptyState icon="gift-outline" title="No gift card data" description="Gift card transactions will appear here" />
+        <EmptyState
+          icon="gift-outline"
+          title="No gift card redemptions"
+          description="Captured redemptions in this period will appear here."
+        />
       ) : (
         <FlatList
           {...verticalFlatListPerf}
@@ -191,19 +177,22 @@ export default function GiftCardReportScreen() {
                     {card.purchaser_name ? `By ${card.purchaser_name}` : ""}
                     {card.recipient_name ? ` → ${card.recipient_name}` : ""}
                   </Text>
-                  <Text style={twStyle("mt-0.5 text-xs text-gray-400")}>{formatDate(card.purchased_at)}</Text>
+                  <Text style={twStyle("mt-0.5 text-xs text-gray-400")}>
+                    Capture · {formatDate(card.redeemed_at ?? card.captured_at ?? card.purchased_at)}
+                  </Text>
                 </View>
                 <View style={twStyle("items-end")}>
                   <Text style={twStyle("text-sm font-bold text-gray-900")}>{formatCurrency(card.initial_value)}</Text>
-                  <Text style={twStyle("text-xs text-gray-500")}>
-                    {formatCurrency(card.remaining_value)} left
-                  </Text>
-                  <View style={twStyle(`mt-1 rounded-full px-2 py-0.5 ${
-                    card.status === "active" ? "bg-green-50" : card.status === "redeemed" ? "bg-blue-50" : "bg-gray-100"
-                  }`)}>
-                    <Text style={twStyle(`text-[10px] font-medium capitalize ${
-                      card.status === "active" ? "text-green-700" : card.status === "redeemed" ? "text-blue-700" : "text-gray-500"
-                    }`)}>
+                  <View
+                    style={twStyle(`mt-1 rounded-full px-2 py-0.5 ${
+                      card.status === "active" ? "bg-green-50" : card.status === "redeemed" ? "bg-blue-50" : "bg-gray-100"
+                    }`)}
+                  >
+                    <Text
+                      style={twStyle(`text-[10px] font-medium capitalize ${
+                        card.status === "active" ? "text-green-700" : card.status === "redeemed" ? "text-blue-700" : "text-gray-500"
+                      }`)}
+                    >
                       {card.status}
                     </Text>
                   </View>

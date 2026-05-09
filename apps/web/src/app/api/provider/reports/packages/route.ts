@@ -6,24 +6,28 @@ import {
   notFoundResponse,
   handleApiError,
 } from "@/lib/supabase/api-helpers";
-import { createClient } from "@supabase/supabase-js";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { subMonths } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
 import { dateRangeBoundsUtc, formatDateYmd } from "@/lib/dates/provider-tz";
 import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
 import { packageReportBookedValue } from "@/lib/reports/package-report-value";
+import {
+  asSingleRelation,
+  bookingServiceLineIsPackage,
+  offeringFromBookingService,
+} from "@/lib/reports/normalize-booking-relations";
 
+/**
+ * GET /api/provider/reports/packages
+ *
+ * **Overview**: every **active** catalog `service_packages` row with aggregated booked value and counts
+ * in the selected period (same booking/group rules as …/packages/sales). Rows with zero sales still appear with zeros.
+ */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(
-      ["provider_owner", "provider_staff", "superadmin"],
-      request
-    );
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      { auth: { autoRefreshToken: false, persistSession: false } }
-    );
+    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
+    const supabaseAdmin = getSupabaseAdmin();
 
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
     if (!providerId) return notFoundResponse("Provider not found");
@@ -39,12 +43,16 @@ export async function GET(request: NextRequest) {
 
     let fromDate: Date;
     let toDate: Date;
+    let fromYmd = "";
+    let toYmd = todayYmd;
     if (period === "all") {
       fromDate = new Date(0);
       toDate = new Date();
+      fromYmd = "1970-01-01";
+      toYmd = todayYmd;
     } else {
       const monthsBack = period === "year" ? 12 : period === "quarter" ? 3 : 1;
-      const fromYmd = formatDateYmd(subMonths(zNow, monthsBack), tz);
+      fromYmd = formatDateYmd(subMonths(zNow, monthsBack), tz);
       const { fromIso, toIso } = dateRangeBoundsUtc(fromYmd, todayYmd, tz);
       fromDate = new Date(fromIso);
       toDate = new Date(toIso);
@@ -61,7 +69,7 @@ export async function GET(request: NextRequest) {
         package_id,
         service_packages:package_id (id, name, price, discount_percentage),
         booking_services (id, price, offering_id, offerings:offering_id (id, title, service_type))
-      `
+      `,
       )
       .eq("provider_id", providerId)
       .in("status", ["confirmed", "completed"]);
@@ -85,7 +93,7 @@ export async function GET(request: NextRequest) {
         package_id,
         service_packages:package_id (id, name, price, discount_percentage),
         booking_participants (id, price)
-      `
+      `,
       )
       .eq("provider_id", providerId)
       .in("status", ["booked", "started", "confirmed", "completed"])
@@ -101,19 +109,19 @@ export async function GET(request: NextRequest) {
     if (groupBookingsError) throw groupBookingsError;
 
     const packageBookings = (bookings || []).filter(
-      (b: any) =>
-        b.package_id ||
-        b.booking_services?.some((bs: any) => bs.offerings?.service_type === "package")
+      (b) => b.package_id || b.booking_services?.some((bs) => bookingServiceLineIsPackage(bs)),
     );
 
-    const packageMap = new Map<
-      string,
-      { id: string; name: string; sold: number; revenue: number }
-    >();
+    const packageMap = new Map<string, { id: string; name: string; sold: number; revenue: number }>();
 
-    packageBookings.forEach((booking: any) => {
-      if (booking.package_id && booking.service_packages) {
-        const pkg = booking.service_packages;
+    packageBookings.forEach((booking: Record<string, unknown>) => {
+      const pkg = asSingleRelation<{
+        id: string;
+        name?: string;
+        price?: unknown;
+        discount_percentage?: unknown;
+      }>(booking.service_packages);
+      if (booking.package_id && pkg) {
         const existing = packageMap.get(pkg.id) || {
           id: pkg.id,
           name: pkg.name || "Unknown Package",
@@ -122,37 +130,43 @@ export async function GET(request: NextRequest) {
         };
         existing.sold += 1;
         const lineSum =
-          (booking.booking_services || []).reduce(
+          ((booking.booking_services as { price?: number | null }[]) || []).reduce(
             (sum: number, bs: { price?: number | null }) => sum + Number(bs.price || 0),
-            0
+            0,
           ) || 0;
         existing.revenue += packageReportBookedValue({
-          catalogPrice: pkg.price,
-          catalogDiscountPercent: pkg.discount_percentage,
+          catalogPrice: pkg.price as number | null | undefined,
+          catalogDiscountPercent: pkg.discount_percentage as number | null | undefined,
           bookingServicesLineSum: lineSum,
         });
         packageMap.set(pkg.id, existing);
       } else {
-        booking.booking_services?.forEach((bs: any) => {
-          if (bs.offerings?.service_type === "package") {
-            const pid = bs.offerings.id;
+        (booking.booking_services as Array<{ price?: number | null; offerings?: unknown }> | undefined)?.forEach((bs) => {
+          const off = offeringFromBookingService(bs);
+          if (off?.service_type === "package" && off.id) {
+            const pid = off.id;
             const existing = packageMap.get(pid) || {
               id: pid,
-              name: bs.offerings.title || "Unknown Package",
+              name: off.title || "Unknown Package",
               sold: 0,
               revenue: 0,
             };
             existing.sold += 1;
-            existing.revenue += Number(bs.price || booking.total_amount || 0);
+            existing.revenue += Number(bs.price || (booking.total_amount as number) || 0);
             packageMap.set(pid, existing);
           }
         });
       }
     });
 
-    (groupBookings || []).forEach((group: any) => {
-      if (!group.package_id || !group.service_packages) return;
-      const pkg = group.service_packages;
+    (groupBookings || []).forEach((group: Record<string, unknown>) => {
+      const pkg = asSingleRelation<{
+        id: string;
+        name?: string;
+        price?: unknown;
+        discount_percentage?: unknown;
+      }>(group.service_packages);
+      if (!group.package_id || !pkg) return;
       const existing = packageMap.get(pkg.id) || {
         id: pkg.id,
         name: pkg.name || "Unknown Package",
@@ -161,13 +175,13 @@ export async function GET(request: NextRequest) {
       };
       existing.sold += 1;
       const lineSum =
-        (group.booking_participants || []).reduce(
+        ((group.booking_participants as { price?: number | null }[]) || []).reduce(
           (sum: number, p: { price?: number | null }) => sum + Number(p.price || 0),
-          0
+          0,
         ) || 0;
       existing.revenue += packageReportBookedValue({
-        catalogPrice: pkg.price,
-        catalogDiscountPercent: pkg.discount_percentage,
+        catalogPrice: pkg.price as number | null | undefined,
+        catalogDiscountPercent: pkg.discount_percentage as number | null | undefined,
         bookingServicesLineSum: lineSum,
       });
       packageMap.set(pkg.id, existing);
@@ -184,30 +198,22 @@ export async function GET(request: NextRequest) {
       name: string;
       total_sold: number;
       total_revenue: number;
-      active_count: number;
-      usage_rate: number | null;
-      avg_completion_days: number | null;
       services_included: number;
     }[] = [];
 
-    (servicePackages || []).forEach((spkg: any) => {
+    (servicePackages || []).forEach((spkg: { id: string; name?: string; service_package_items?: unknown[] }) => {
       const agg = packageMap.get(spkg.id) || {
         id: spkg.id,
         name: spkg.name || "Unknown",
         sold: 0,
         revenue: 0,
       };
-      const itemsCount = Array.isArray(spkg.service_package_items)
-        ? spkg.service_package_items.length
-        : 0;
+      const itemsCount = Array.isArray(spkg.service_package_items) ? spkg.service_package_items.length : 0;
       packagesList.push({
         id: agg.id,
         name: agg.name,
         total_sold: agg.sold,
         total_revenue: agg.revenue,
-        active_count: agg.sold,
-        usage_rate: null,
-        avg_completion_days: null,
         services_included: itemsCount,
       });
     });
@@ -215,13 +221,26 @@ export async function GET(request: NextRequest) {
     const total_sold = packagesList.reduce((s, p) => s + p.total_sold, 0);
     const total_revenue = packagesList.reduce((s, p) => s + p.total_revenue, 0);
 
+    const reportBasis =
+      period === "all"
+        ? `All time (scheduled_at unfiltered for bookings query; group bookings same). Lists each active catalog package with booked counts/value using the same packageReportBookedValue rules as Package Sales.`
+        : `Calendar period derived in ${tz}: roughly last ${period === "year" ? "12 months" : period === "quarter" ? "quarter" : "month"} through today. Window uses scheduled_at bounds.`;
+
     return successResponse({
+      timezone: tz,
+      period,
+      fromYmd: period === "all" ? fromYmd : fromYmd,
+      toYmd,
+      reportBasis,
+      basis: {
+        catalog: "Rows from service_packages where is_active for this provider.",
+        aggregates: "Per-package booked event count and revenue in period (zeros if none).",
+        revenue: "Same packageReportBookedValue helper as …/packages/sales.",
+      },
       stats: {
         total_packages: packagesList.length,
         total_sold,
         total_revenue,
-        active_subscriptions: null,
-        avg_usage_rate: null,
       },
       packages: packagesList.sort((a, b) => b.total_revenue - a.total_revenue),
     });

@@ -31,8 +31,8 @@ const reportCategories = [
     color: "text-green-600 bg-green-50",
     reports: [
       { id: "sales-summary", name: "Sales Summary", href: "/provider/reports/sales/summary" },
-      { id: "service-performance", name: "Service Performance", href: "/provider/reports/sales/services" },
-      { id: "revenue-trends", name: "Revenue Trends", href: "/provider/reports/sales/trends" },
+      { id: "service-performance", name: "Sales by service", href: "/provider/reports/sales/services" },
+      { id: "revenue-trends", name: "Revenue trends", href: "/provider/reports/sales/trends" },
     ],
   },
   {
@@ -97,19 +97,19 @@ const reportCategories = [
     color: "text-indigo-600 bg-indigo-50",
     reports: [
       { id: "product-sales", name: "Product Sales", href: "/provider/reports/products/sales" },
-      { id: "inventory", name: "Inventory", href: "/provider/reports/products/inventory" },
+      { id: "inventory", name: "Product & inventory", href: "/provider/reports/products/inventory" },
       { id: "top-products", name: "Top Products", href: "/provider/reports/products/top" },
     ],
   },
   {
     id: "gift-cards",
     title: "Gift Card Reports",
-    description: "Track gift card sales and redemptions",
+    description: "Platform gift cards redeemed at your locations (capture-time facts)",
     icon: Gift,
     color: "text-rose-600 bg-rose-50",
     reports: [
-      { id: "gift-card-sales", name: "Gift Card Sales", href: "/provider/reports/gift-cards/sales" },
-      { id: "gift-card-redemptions", name: "Redemptions", href: "/provider/reports/gift-cards/redemptions" },
+      { id: "gift-card-sales", name: "Redemption summary", href: "/provider/reports/gift-cards/sales" },
+      { id: "gift-card-redemptions", name: "Recent captures", href: "/provider/reports/gift-cards/redemptions" },
     ],
   },
   {
@@ -127,7 +127,7 @@ const reportCategories = [
   {
     id: "business",
     title: "Business overview",
-    description: "Dashboard metrics, performance snapshot, and period comparison",
+    description: "Ledger-based overview, performance dashboard, and period comparison",
     icon: BarChart3,
     color: "text-violet-600 bg-violet-50",
     reports: [
@@ -216,7 +216,7 @@ export default function ReportsPage() {
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600 mb-1">Total Revenue</p>
+                  <p className="text-sm text-gray-600 mb-1">Ledger earnings (MTD)</p>
                   <p className="text-2xl font-semibold text-gray-900">
                     {isLoadingStats ? (
                       <span className="text-gray-400">Loading...</span>
@@ -235,7 +235,7 @@ export default function ReportsPage() {
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600 mb-1">Total Bookings</p>
+                  <p className="text-sm text-gray-600 mb-1">Scheduled bookings (MTD)</p>
                   <p className="text-2xl font-semibold text-gray-900">
                     {isLoadingStats ? (
                       <span className="text-gray-400">Loading...</span>
@@ -254,7 +254,7 @@ export default function ReportsPage() {
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600 mb-1">Active Clients</p>
+                  <p className="text-sm text-gray-600 mb-1">Distinct clients (MTD)</p>
                   <p className="text-2xl font-semibold text-gray-900">
                     {isLoadingStats ? (
                       <span className="text-gray-400">Loading...</span>
@@ -273,7 +273,7 @@ export default function ReportsPage() {
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600 mb-1">Growth Rate</p>
+                  <p className="text-sm text-gray-600 mb-1">Ledger growth vs prior</p>
                   <p className="text-2xl font-semibold text-gray-900">
                     {isLoadingStats ? (
                       <span className="text-gray-400">Loading...</span>

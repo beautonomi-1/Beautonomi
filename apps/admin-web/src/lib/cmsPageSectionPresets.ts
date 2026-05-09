@@ -47,8 +47,67 @@ export const CMS_PAGE_SECTION_PRESETS: Record<string, { value: string; label: st
     { value: "hero_image", label: "Hero image URL" },
   ],
   "terms-and-condition": [
-    { value: "title", label: "Page title" },
-    { value: "intro", label: "Intro (HTML)" },
+    { value: "hero_title", label: "Page title (H1)" },
+    { value: "page_title", label: "Alternate page title" },
+    { value: "intro_heading", label: "Intro block — heading" },
+    { value: "intro", label: "Intro — HTML" },
+    { value: "hero_description", label: "Intro — HTML (alternate key)" },
+    { value: "hero_content", label: "Intro — HTML (alternate key)" },
+    { value: "sections", label: "Body sections (JSON array of {title, content})" },
+    { value: "sidebar_heading", label: "Sidebar — heading" },
+    { value: "sidebar_description", label: "Sidebar — description" },
+    { value: "hero_image", label: "Hero image URL" },
+    { value: "supplemental_policies", label: "Supplemental policies (JSON)" },
+    { value: "related_articles", label: "Related articles (JSON)" },
+    { value: "title", label: "Legacy — page title" },
+  ],
+  /** Same section keys as terms-and-condition; live route `/terms-and-condition` reads that slug. */
+  "terms-of-service": [
+    { value: "hero_title", label: "Page title (H1)" },
+    { value: "page_title", label: "Alternate page title" },
+    { value: "intro_heading", label: "Intro block — heading" },
+    { value: "intro", label: "Intro — HTML" },
+    { value: "hero_description", label: "Intro — HTML (alternate key)" },
+    { value: "hero_content", label: "Intro — HTML (alternate key)" },
+    { value: "sections", label: "Body sections (JSON array of {title, content})" },
+    { value: "sidebar_heading", label: "Sidebar — heading" },
+    { value: "sidebar_description", label: "Sidebar — description" },
+    { value: "hero_image", label: "Hero image URL" },
+    { value: "supplemental_policies", label: "Supplemental policies (JSON)" },
+    { value: "related_articles", label: "Related articles (JSON)" },
+  ],
+  "cookie-policy": [
+    { value: "hero_title", label: "Page title (H1)" },
+    { value: "page_title", label: "Alternate page title" },
+    { value: "intro_heading", label: "Intro block — heading" },
+    { value: "intro", label: "Intro — HTML" },
+    { value: "hero_description", label: "Intro — HTML (alternate key)" },
+    { value: "hero_content", label: "Intro — HTML (alternate key)" },
+    { value: "sections", label: "Body sections (JSON array of {title, content})" },
+    { value: "sidebar_heading", label: "Sidebar — heading" },
+    { value: "sidebar_description", label: "Sidebar — description" },
+    { value: "hero_image", label: "Hero image URL" },
+  ],
+  "beautonomi-friendly": [
+    { value: "hero_title", label: "Hero — title (use line breaks for stacked lines)" },
+    { value: "hero_subtitle", label: "Hero — subtitle" },
+    { value: "cta_label", label: "Primary CTA label" },
+    { value: "cta_href", label: "Primary CTA URL (text)" },
+  ],
+  career: [
+    { value: "careers_portal_url", label: "Careers portal URL (Ashby etc., text)" },
+    { value: "hero_eyebrow", label: "Hero — eyebrow" },
+    { value: "hero_title", label: "Hero — title" },
+    { value: "hero_subtitle", label: "Hero — subtitle" },
+    { value: "hero_cta_label", label: "Hero — primary CTA label" },
+    { value: "value_cards", label: "Value cards (JSON)" },
+    { value: "highlight_cards", label: "Highlight cards (JSON)" },
+    { value: "carousel_slides", label: "Life-at carousel (JSON array of {image_url, alt})" },
+  ],
+  release: [
+    { value: "hero_title", label: "Hero — title" },
+    { value: "hero_description", label: "Hero — description" },
+    { value: "body_html", label: "Main body (HTML)" },
   ],
   "why-beautonomi": [
     { value: "hero_title", label: "Hero — title" },
@@ -77,8 +136,21 @@ export const CMS_PAGE_SECTION_PRESETS: Record<string, { value: string; label: st
     { value: "currency_note", label: "Hero — currency / footnote (e.g. All prices in ZAR)" },
   ],
   signup: [
-    { value: "hero_title", label: "Hero — title" },
-    { value: "hero_description", label: "Hero — description" },
+    { value: "headline", label: "Headline (main title)" },
+    { value: "sub_heading", label: "Sub-heading" },
+    { value: "provider_card_title", label: "Provider card — title" },
+    { value: "provider_card_micro_copy", label: "Provider card — micro copy" },
+    { value: "provider_card_description", label: "Provider card — description" },
+    { value: "provider_card_badge", label: "Provider card — badge (e.g. Most popular)" },
+    { value: "customer_card_title", label: "Customer card — title" },
+    { value: "customer_card_description", label: "Customer card — description" },
+    { value: "customer_card_sub_description", label: "Customer card — sub description" },
+    { value: "background_image_url", label: "Right hero — background image URL (content type: image)" },
+    { value: "footer_text", label: "Footer legal copy (HTML)" },
+    { value: "testimonial_quote", label: "Right panel — testimonial quote" },
+    { value: "testimonial_attribution", label: "Right panel — testimonial attribution" },
+    { value: "testimonial_pure_commerce", label: "Right panel — Pure Commerce line" },
+    { value: "testimonial_yoco_support", label: "Right panel — Yoco / support line" },
   ],
   resources: [
     { value: "hero_title", label: "Hero — title" },
@@ -120,6 +192,7 @@ const SLUG_TO_GROUP: Record<string, CmsPageContentGroupId> = {
   resources: "marketing",
   "beautonomi-friendly": "marketing",
   release: "marketing",
+  career: "marketing",
   help: "help_account",
   about: "help_account",
   signup: "help_account",
@@ -144,11 +217,29 @@ const CMS_PAGE_SLUG_TITLES: Record<string, string> = {
   signup: "Customer signup",
   "beautonomi-friendly": "Beautonomi friendly",
   release: "Release notes",
+  career: "Careers",
 };
 
 /** Human title for UI; falls back to slug with spaces. */
 export function cmsPageSlugTitle(pageSlug: string): string {
   return CMS_PAGE_SLUG_TITLES[pageSlug] ?? pageSlug.replace(/-/g, " ");
+}
+
+/** Slugs listed in Content → Pages filters even when no `page_content` rows exist yet. */
+export function cmsManageablePageSlugList(): string[] {
+  const combined = new Set<string>([
+    ...Object.keys(CMS_PAGE_SECTION_PRESETS),
+    ...Object.keys(SLUG_TO_GROUP),
+    ...Object.keys(CMS_PAGE_SLUG_TITLES),
+  ]);
+  return [...combined].sort((a, b) => {
+    const ga = cmsPageContentGroupForSlug(a);
+    const gb = cmsPageContentGroupForSlug(b);
+    const ia = CMS_PAGE_CONTENT_GROUP_ORDER.indexOf(ga);
+    const ib = CMS_PAGE_CONTENT_GROUP_ORDER.indexOf(gb);
+    if (ia !== ib) return ia - ib;
+    return a.localeCompare(b);
+  });
 }
 
 /** Preset label for a section key on a given page, or null if unknown. */
@@ -160,22 +251,31 @@ export function cmsSectionPresetLabel(pageSlug: string, sectionKey: string): str
 
 /** Optional public API hint for legal pages (operators often verify copy against the live route). */
 export function cmsPagePublicApiHint(pageSlug: string): string | null {
+  if (pageSlug === "terms-of-service") {
+    return "Live route `/terms-and-condition` loads slug terms-and-condition (not terms-of-service). Prefer editing terms-and-condition, or duplicate rows.";
+  }
   if (
     pageSlug === "privacy-policy" ||
     pageSlug === "terms-and-condition" ||
-    pageSlug === "terms-of-service" ||
     pageSlug === "cookie-policy" ||
-    pageSlug === "why-beautonomi"
+    pageSlug === "why-beautonomi" ||
+    pageSlug === "beautonomi-friendly"
   ) {
     return `GET /api/public/content/pages/${pageSlug}`;
   }
   if (pageSlug === "become-a-partner" || pageSlug === "career") {
     return `GET /api/public/pages/${pageSlug}`;
   }
+  if (pageSlug === "about") {
+    return "Live /about reads `about_us_content`, not `page_content`.";
+  }
   if (pageSlug === "pricing") {
     return `Hero copy: GET /api/public/pages/pricing · Plan cards: pricing_plans + pricing_plan_features (Admin → Plans)`;
   }
-  if (pageSlug === "resources" || pageSlug === "help" || pageSlug === "signup") {
+  if (pageSlug === "signup") {
+    return "GET /api/public/signup-content";
+  }
+  if (pageSlug === "resources" || pageSlug === "help") {
     return `GET /api/public/page-content?page_slug=${pageSlug}`;
   }
   return null;

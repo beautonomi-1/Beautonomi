@@ -131,7 +131,7 @@ export function WaitingRoomPanel({
     setLoadingIds(prev => new Set(prev).add(`notify-${appointment.id}`));
     try {
       const { resendAppointmentNotification } = await import("@/app/actions/notifications");
-      const result = await resendAppointmentNotification(appointment.id, "reminder");
+      const result = await resendAppointmentNotification(appointment.id, "reminder", undefined, ["push", "email", "sms"]);
       if (result.success) {
         toast.success(`Notified ${appointment.client_name}`);
       } else {
@@ -180,7 +180,7 @@ export function WaitingRoomPanel({
       // Send no-show notification
       try {
         const { sendCancellationNotificationAction } = await import("@/app/actions/notifications");
-        await sendCancellationNotificationAction(appointment.id, "no_show", true);
+        await sendCancellationNotificationAction(appointment.id, "no_show", true, ["push", "email", "sms"]);
       } catch (e) {
         console.warn("Failed to send no-show notification:", e);
       }
@@ -210,7 +210,7 @@ export function WaitingRoomPanel({
       // Send cancellation notification
       try {
         const { sendCancellationNotificationAction } = await import("@/app/actions/notifications");
-        await sendCancellationNotificationAction(appointment.id, "late_cancel", true);
+        await sendCancellationNotificationAction(appointment.id, "late_cancel", true, ["push", "email", "sms"]);
       } catch (e) {
         console.warn("Failed to send cancellation notification:", e);
       }

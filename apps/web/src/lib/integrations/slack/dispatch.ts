@@ -1,6 +1,41 @@
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import type { SlackEventKey } from "@/lib/integrations/slack/event-keys";
+import { SLACK_EVENT_KEYS, type SlackEventKey } from "@/lib/integrations/slack/event-keys";
 import { slackChatPostMessage } from "@/lib/integrations/slack/slack-api";
+
+/**
+ * If an event has no Slack routing rule, try alternate keys so ops can map one channel
+ * (e.g. `dispute.new`) for multiple trust/safety queues without duplicating config rows.
+ */
+function resolveSlackRouteRule(
+  routing: Record<string, RouteRule>,
+  eventKey: SlackEventKey,
+): RouteRule | null {
+  const direct = routing[eventKey];
+  if (direct?.enabled && direct.channel_id) return direct;
+
+  const fallbacks: Partial<Record<SlackEventKey, SlackEventKey[]>> = {
+    /** Same #support-tickets as high/urgent when only those are configured */
+    [SLACK_EVENT_KEYS.SUPPORT_TICKET_CREATED]: [
+      SLACK_EVENT_KEYS.SUPPORT_TICKET_HIGH_CREATED,
+      SLACK_EVENT_KEYS.SUPPORT_TICKET_URGENT_CREATED,
+    ],
+    [SLACK_EVENT_KEYS.SUPPORT_TICKET_REPLY]: [
+      SLACK_EVENT_KEYS.SUPPORT_TICKET_HIGH_CREATED,
+      SLACK_EVENT_KEYS.SUPPORT_TICKET_URGENT_CREATED,
+    ],
+    [SLACK_EVENT_KEYS.SAFETY_USER_REPORT]: [SLACK_EVENT_KEYS.DISPUTE_NEW],
+    [SLACK_EVENT_KEYS.SAFETY_ADVERSE_REPORT]: [SLACK_EVENT_KEYS.DISPUTE_NEW],
+    [SLACK_EVENT_KEYS.VERIFICATION_PENDING]: [SLACK_EVENT_KEYS.DISPUTE_NEW],
+    [SLACK_EVENT_KEYS.VERIFICATION_STUCK]: [SLACK_EVENT_KEYS.DISPUTE_NEW],
+    [SLACK_EVENT_KEYS.FINANCE_PAYOUT_REQUESTED]: [SLACK_EVENT_KEYS.FINANCE_PAYOUT_EXCEPTION],
+  };
+
+  for (const alt of fallbacks[eventKey] ?? []) {
+    const r = routing[alt];
+    if (r?.enabled && r.channel_id) return r;
+  }
+  return null;
+}
 
 type RouteRule = {
   enabled?: boolean;
@@ -66,7 +101,7 @@ export async function tryNotifySlackEvent(params: {
   }
 
   const routing = (row.routing || {}) as Record<string, RouteRule>;
-  const rule = routing[params.eventKey];
+  const rule = resolveSlackRouteRule(routing, params.eventKey);
   if (!rule?.enabled || !rule.channel_id) {
     await logDelivery(supabase, {
       tenantId: params.tenantId,

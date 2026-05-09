@@ -1,36 +1,169 @@
 import { NextRequest } from "next/server";
-import { requireRoleInApi, getProviderIdForUser, notFoundResponse, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  requireRoleInApi,
+  getProviderIdForUser,
+  notFoundResponse,
+  successResponse,
+  handleApiError,
+} from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
 import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
-import { DASHBOARD_REVENUE_TRANSACTION_TYPES, MAX_REPORT_DAYS, MAX_BOOKINGS_FOR_REPORT } from "@/lib/reports/constants";
+import { LEDGER_FULL_PROVIDER_NET_TYPES, MAX_REPORT_DAYS } from "@/lib/reports/constants";
 import { getProviderReportContext, reportDateKey, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
+
+const PAGE_SIZE = 1000;
+const RECENT_LIMIT = 25;
+
+export type CancellationsReportResponse = {
+  totalCancelled: number;
+  totalBookings: number;
+  cancellationRate: number;
+  lostRevenue: number;
+  cancellationReasons: Array<{ reason: string; count: number; percentage: number }>;
+  dailyBreakdown: Array<{ date: string; count: number }>;
+  recentCancellations: Array<Record<string, unknown>>;
+  reportBasis: string;
+  basisNote: string;
+  ledgerTransactionTypes: string[];
+  timezone: string;
+};
+
+type LightCancelRow = {
+  id: string;
+  cancellation_reason: string | null;
+  cancelled_at: string | null;
+  scheduled_at: string | null;
+};
+
+async function fetchAllCancelledLight(
+  supabaseAdmin: SupabaseClient,
+  params: {
+    providerId: string;
+    fromIso: string;
+    toIso: string;
+    locationId?: string;
+  },
+): Promise<LightCancelRow[]> {
+  const out: LightCancelRow[] = [];
+  let offset = 0;
+  for (;;) {
+    let q = supabaseAdmin
+      .from("bookings")
+      .select("id, cancellation_reason, cancelled_at, scheduled_at")
+      .eq("provider_id", params.providerId)
+      .eq("status", "cancelled")
+      .gte("scheduled_at", params.fromIso)
+      .lte("scheduled_at", params.toIso)
+      .order("id", { ascending: true })
+      .range(offset, offset + PAGE_SIZE - 1);
+    if (params.locationId) q = q.eq("location_id", params.locationId);
+    const { data, error } = await q;
+    if (error) throw error;
+    const chunk = (data ?? []) as LightCancelRow[];
+    out.push(...chunk);
+    if (chunk.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
+  }
+  return out;
+}
 
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
+    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
 
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      }
-    );    const searchParams = request.nextUrl.searchParams;
+    const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+    const searchParams = request.nextUrl.searchParams;
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
     if (!providerId) return notFoundResponse("Provider not found");
 
     const reportContext = await getProviderReportContext(supabaseAdmin, providerId);
-    const { fromDate, toDate } = reportDateRangeFromParams(searchParams, reportContext.timezone, {
+    const tz = reportContext.timezone;
+    const { fromDate, toDate } = reportDateRangeFromParams(searchParams, tz, {
       defaultDays: 30,
       maxDays: MAX_REPORT_DAYS,
     });
     const locationId = searchParams.get("location_id") || undefined;
 
-    // Get cancelled bookings (simplified query to avoid nested join issues)
-    let cancelledBookingsQuery = supabaseAdmin
+    const fromIso = fromDate.toISOString();
+    const toIso = toDate.toISOString();
+
+    const lightRows = await fetchAllCancelledLight(supabaseAdmin, {
+      providerId,
+      fromIso,
+      toIso,
+      locationId,
+    });
+
+    let allBookingsCountQuery = supabaseAdmin
+      .from("bookings")
+      .select("id", { count: "exact", head: true })
+      .eq("provider_id", providerId)
+      .gte("scheduled_at", fromIso)
+      .lte("scheduled_at", toIso);
+
+    if (locationId) {
+      allBookingsCountQuery = allBookingsCountQuery.eq("location_id", locationId);
+    }
+
+    const { count: allBookingsCount } = await allBookingsCountQuery;
+
+    const totalBookings = allBookingsCount ?? 0;
+    const totalCancelled = lightRows.length;
+    const cancellationRate = totalBookings > 0 ? Math.round((totalCancelled / totalBookings) * 1000) / 10 : 0;
+
+    const cancelledIds = lightRows.map((r) => r.id);
+
+    const ledgerOpts = {
+      transactionTypes: LEDGER_FULL_PROVIDER_NET_TYPES,
+      timezone: tz,
+    };
+
+    const { revenueByBooking } = await getProviderRevenue(
+      supabaseAdmin,
+      providerId,
+      fromDate,
+      toDate,
+      locationId ?? null,
+      ledgerOpts,
+    );
+
+    let lostRevenue = 0;
+    for (const bookingId of cancelledIds) {
+      lostRevenue += revenueByBooking.get(bookingId) || 0;
+    }
+
+    const reasonMap = new Map<string, number>();
+    for (const booking of lightRows) {
+      const rawReason = booking.cancellation_reason;
+      const reason =
+        rawReason == null || String(rawReason).trim() === "" ? "No reason provided" : String(rawReason).trim();
+      reasonMap.set(reason, (reasonMap.get(reason) || 0) + 1);
+    }
+
+    const cancellationReasons = Array.from(reasonMap.entries())
+      .map(([reason, count]) => ({
+        reason,
+        count,
+        percentage: totalCancelled > 0 ? Math.round((count / totalCancelled) * 1000) / 10 : 0,
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    const dailyCancellations = new Map<string, number>();
+    for (const booking of lightRows) {
+      const anchor = booking.cancelled_at || booking.scheduled_at;
+      const date = anchor ? reportDateKey(new Date(anchor), tz) : reportDateKey(fromDate, tz);
+      dailyCancellations.set(date, (dailyCancellations.get(date) || 0) + 1);
+    }
+
+    const dailyBreakdown = Array.from(dailyCancellations.entries())
+      .map(([date, count]) => ({ date, count }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    const clientIds = new Set<string>();
+    let recentQuery = supabaseAdmin
       .from("bookings")
       .select(
         `
@@ -40,36 +173,33 @@ export async function GET(request: NextRequest) {
         cancelled_at,
         cancellation_reason,
         customer_id
-      `
+      `,
       )
       .eq("provider_id", providerId)
       .eq("status", "cancelled")
-      .gte("scheduled_at", fromDate.toISOString())
-      .lte("scheduled_at", toDate.toISOString())
+      .gte("scheduled_at", fromIso)
+      .lte("scheduled_at", toIso)
       .order("cancelled_at", { ascending: false })
-      .limit(MAX_BOOKINGS_FOR_REPORT);
+      .limit(RECENT_LIMIT);
 
     if (locationId) {
-      cancelledBookingsQuery = cancelledBookingsQuery.eq("location_id", locationId);
+      recentQuery = recentQuery.eq("location_id", locationId);
     }
 
-    const { data: cancelledBookings, error: bookingsError } = await cancelledBookingsQuery;
+    const { data: recentRows, error: recentErr } = await recentQuery;
+    if (recentErr) throw recentErr;
 
-    if (bookingsError) {
-      console.error("Error fetching cancelled bookings:", bookingsError);
-      return handleApiError(
-        new Error(`Failed to fetch cancelled bookings: ${bookingsError.message}`),
-        "BOOKINGS_FETCH_ERROR",
-        500
-      );
-    }
+    const recentBookings = (recentRows ?? []) as Array<{
+      id: string;
+      total_amount?: number;
+      scheduled_at?: string;
+      cancelled_at?: string | null;
+      cancellation_reason?: string | null;
+      customer_id?: string | null;
+    }>;
 
-    // Get client information separately
-    const clientIds = new Set<string>();
-    cancelledBookings?.forEach((booking: any) => {
-      if (booking.customer_id) {
-        clientIds.add(booking.customer_id);
-      }
+    recentBookings.forEach((b) => {
+      if (b.customer_id) clientIds.add(b.customer_id);
     });
 
     const clientMap = new Map<string, { full_name: string; email: string }>();
@@ -79,10 +209,8 @@ export async function GET(request: NextRequest) {
         .select("id, full_name, email")
         .in("id", Array.from(clientIds));
 
-      if (clientError) {
-        console.warn("Error fetching clients:", clientError);
-      } else {
-        clients?.forEach((client: any) => {
+      if (!clientError) {
+        clients?.forEach((client: { id: string; full_name?: string; email?: string }) => {
           clientMap.set(client.id, {
             full_name: client.full_name || "Unknown",
             email: client.email || "",
@@ -91,92 +219,30 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Get exact counts for cancellation rate. The recent cancellation list above is capped
-    // for payload size, but headline rates must not be capped.
-    let allBookingsCountQuery = supabaseAdmin
-      .from("bookings")
-      .select("id", { count: "exact", head: true })
-      .eq("provider_id", providerId)
-      .gte("scheduled_at", fromDate.toISOString())
-      .lte("scheduled_at", toDate.toISOString());
-
-    let cancelledCountQuery = supabaseAdmin
-      .from("bookings")
-      .select("id", { count: "exact", head: true })
-      .eq("provider_id", providerId)
-      .eq("status", "cancelled")
-      .gte("scheduled_at", fromDate.toISOString())
-      .lte("scheduled_at", toDate.toISOString());
-
-    if (locationId) {
-      allBookingsCountQuery = allBookingsCountQuery.eq("location_id", locationId);
-      cancelledCountQuery = cancelledCountQuery.eq("location_id", locationId);
-    }
-
-    const [{ count: allBookingsCount }, { count: cancelledCount }] = await Promise.all([
-      allBookingsCountQuery,
-      cancelledCountQuery,
-    ]);
-
-    const totalBookings = allBookingsCount || 0;
-    const totalCancelled = cancelledCount || 0;
-    const cancellationRate = totalBookings > 0 ? (totalCancelled / totalBookings) * 100 : 0;
-    
-    // Calculate lost revenue from finance_transactions (what provider would have earned)
-    const cancelledBookingIds = cancelledBookings?.map((b) => b.id) || [];
-    let lostRevenue = 0;
-    if (cancelledBookingIds.length > 0) {
-      const { revenueByBooking } = await getProviderRevenue(
-        supabaseAdmin,
-        providerId,
-        fromDate,
-        toDate,
-        locationId ?? null,
-        { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES }
-      );
-      // Sum revenue for cancelled bookings (if they had finance_transactions)
-      cancelledBookingIds.forEach((bookingId) => {
-        lostRevenue += revenueByBooking.get(bookingId) || 0;
-      });
-    }
-
-    // Group by reason
-    const reasonMap = new Map<string, number>();
-    cancelledBookings?.forEach((booking) => {
-      const reason = booking.cancellation_reason || "No reason provided";
-      reasonMap.set(reason, (reasonMap.get(reason) || 0) + 1);
-    });
-
-    const cancellationReasons = Array.from(reasonMap.entries())
-      .map(([reason, count]) => ({
-        reason,
-        count,
-        percentage: totalCancelled > 0 ? (count / totalCancelled) * 100 : 0,
-      }))
-      .sort((a, b) => b.count - a.count);
-
-    // Group by day
-    const dailyCancellations = new Map<string, number>();
-    cancelledBookings?.forEach((booking) => {
-      const date = reportDateKey(booking.cancelled_at || booking.scheduled_at, reportContext.timezone);
-      dailyCancellations.set(date, (dailyCancellations.get(date) || 0) + 1);
-    });
-
-    const dailyBreakdown = Array.from(dailyCancellations.entries())
-      .map(([date, count]) => ({ date, count }))
-      .sort((a, b) => a.date.localeCompare(b.date));
-
-    // Enrich recent cancellations with client info (match frontend expected format)
-    const recentCancellations = cancelledBookings?.slice(0, 20).map((booking: any) => {
+    const recentCancellations = recentBookings.map((booking) => {
       const clientInfo = booking.customer_id ? clientMap.get(booking.customer_id) : null;
       return {
         ...booking,
-        users: clientInfo ? {
-          full_name: clientInfo.full_name,
-          email: clientInfo.email,
-        } : null,
+        users: clientInfo
+          ? {
+              full_name: clientInfo.full_name,
+              email: clientInfo.email,
+            }
+          : null,
       };
-    }) || [];
+    });
+
+    const reportBasis =
+      "Cancellation rate = cancelled appointments ÷ all appointments, both filtered by scheduled date in your window. Lost revenue sums ledger net posted in the window for those cancellations.";
+
+    const basisNote = [
+      `Timezone for chart dates: ${tz}.`,
+      `Denominator (total bookings) and numerator (cancelled count) both use bookings.scheduled_at within the reporting window (all statuses included in the denominator).`,
+      `Reason mix and daily counts include every cancelled booking in that scheduled window — not a sample.`,
+      `Daily breakdown buckets each cancellation by provider-local calendar day of cancelled_at when set; otherwise scheduled_at (same-day fallback when cancel timestamp missing).`,
+      `Lost revenue sums finance_transactions net for booking_ids in this cancelled set, where transactions have created_at in the reporting window and types: ${LEDGER_FULL_PROVIDER_NET_TYPES.join(", ")}. Cash or offline settlements may have no ledger rows. Refunds or reversals in-period reduce this figure.`,
+      `Recent cancellations lists up to ${RECENT_LIMIT} rows ordered by cancelled_at (newest first).`,
+    ].join(" ");
 
     return successResponse({
       totalCancelled,
@@ -186,9 +252,11 @@ export async function GET(request: NextRequest) {
       cancellationReasons,
       dailyBreakdown,
       recentCancellations,
-      reportBasis:
-        "Cancellation rate uses exact booking counts for the selected scheduled-date range. Recent cancellations are capped for display.",
-    });
+      reportBasis,
+      basisNote,
+      ledgerTransactionTypes: [...LEDGER_FULL_PROVIDER_NET_TYPES],
+      timezone: tz,
+    } satisfies CancellationsReportResponse);
   } catch (error) {
     return handleApiError(error, "CANCELLATIONS_ERROR", 500);
   }

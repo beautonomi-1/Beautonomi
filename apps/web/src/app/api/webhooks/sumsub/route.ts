@@ -17,6 +17,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHmac, timingSafeEqual } from "crypto";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { slackNotifyVerificationNeedsReview } from "@/lib/integrations/slack/ops-triggers";
 
 export async function POST(request: NextRequest) {
   try {
@@ -79,6 +80,14 @@ export async function POST(request: NextRequest) {
       const isApproved = status === "approved";
       const isRejected = status === "rejected";
 
+      const { data: userRow } = await supabase
+        .from("users")
+        .select("preferred_home_tenant_id")
+        .eq("id", userId)
+        .maybeSingle();
+      const tenantIdForVerification =
+        (userRow as { preferred_home_tenant_id?: string | null } | null)?.preferred_home_tenant_id ?? null;
+
       // Update the users table (primary source of truth for customer KYC)
       await supabase
         .from("users")
@@ -90,7 +99,7 @@ export async function POST(request: NextRequest) {
         .eq("id", userId);
 
       // Upsert into user_verifications so it shows up in the admin queue
-      await supabase.from("user_verifications").upsert(
+      const { error: uvErr } = await supabase.from("user_verifications").upsert(
         {
           user_id: userId,
           document_type: "sumsub",
@@ -99,12 +108,41 @@ export async function POST(request: NextRequest) {
           document_url: null,
           submitted_at: now,
           reviewed_at: isApproved || isRejected ? now : null,
+          tenant_id: tenantIdForVerification,
         },
-        { onConflict: "user_id,document_type" }
+        { onConflict: "user_id,document_type" },
       );
+
+      if (uvErr) {
+        console.error("Sumsub webhook: user_verifications upsert failed", uvErr);
+      }
+
+      const { data: uvRow } = await supabase
+        .from("user_verifications")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("document_type", "sumsub")
+        .maybeSingle();
+
+      if (status === "in_progress" && tenantIdForVerification && uvRow?.id) {
+        slackNotifyVerificationNeedsReview({
+          tenantId: tenantIdForVerification,
+          verificationId: uvRow.id,
+          documentType: "sumsub",
+          source: "sumsub_customer",
+        });
+      }
     } else if (externalUserId) {
       // ── Provider ────────────────────────────────────────────────────────
       const providerId = externalUserId;
+      const { data: provRow } = await supabase
+        .from("providers")
+        .select("tenant_id, business_name")
+        .eq("id", providerId)
+        .maybeSingle();
+      const providerTenantId =
+        (provRow as { tenant_id?: string | null; business_name?: string | null } | null)?.tenant_id ?? null;
+
       await supabase.from("provider_verification_status").upsert(
         {
           provider_id: providerId,
@@ -116,6 +154,18 @@ export async function POST(request: NextRequest) {
         },
         { onConflict: "provider_id" }
       );
+
+      if (status === "in_progress" && providerTenantId) {
+        slackNotifyVerificationNeedsReview({
+          tenantId: providerTenantId,
+          verificationId: providerId,
+          documentType: "sumsub",
+          source: "sumsub_provider",
+          detail: (provRow as { business_name?: string | null } | null)?.business_name ?? null,
+          actionUrl: `/providers/${providerId}`,
+          entityType: "provider_verification",
+        });
+      }
     } else {
       console.warn("Sumsub webhook: no externalUserId — ignoring");
     }

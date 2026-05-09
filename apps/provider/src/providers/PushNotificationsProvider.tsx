@@ -242,7 +242,7 @@ function handleNotificationRoute(data: Record<string, unknown>) {
       case "client_note":
         if (clientId || genericId) {
           router.push({
-            pathname: "/(app)/(tabs)/more/clients/[id]",
+            pathname: "/(app)/(tabs)/clients/[id]",
             params: { id: clientId || genericId },
           });
         } else {

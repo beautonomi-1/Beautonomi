@@ -452,97 +452,6 @@ export default function StepPromotions({
         )}
       </div>
 
-      {/* Loyalty Points */}
-      {/* §Release-audit 2026-04: previously hidden when loyaltyBalance === 0,
-       * which meant signed-in users with no points never saw the loyalty
-       * section — including the educational copy explaining that bookings
-       * earn points. Always render for logged-in users; show an empty-state
-       * card when balance is 0. */}
-      {user && (
-        <div className="space-y-3">
-          <Label className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-            <Star className="w-4 h-4" />
-            Loyalty Points
-          </Label>
-          {loyaltyBalance <= 0 ? (
-            <div className="p-4 bg-blue-50/60 border border-blue-200/70 rounded-lg">
-              <p className="text-sm font-medium text-blue-900 mb-1">
-                You don&apos;t have any loyalty points yet
-              </p>
-              <p className="text-xs text-blue-800/90">
-                You&apos;ll earn points every time you complete a booking. Use them
-                on a future booking to get money off.
-              </p>
-            </div>
-          ) : (
-          <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <p className="text-sm font-medium text-blue-900 mb-2">
-              You have {loyaltyBalance.toLocaleString()} points
-            </p>
-            <p className="text-xs text-blue-700 mb-1">
-              Value: {formatCurrency(loyaltyBalance / redemptionRate, tenantCurrency)} ({redemptionRate} points = 1{" "}
-              {bookingState.selectedServices[0]?.currency || tenantCurrency})
-            </p>
-            {bookingSubtotalForLoyalty > 0 && (
-              <p className="text-xs text-blue-800/90 mb-3">
-                Max redeemable on this booking: {Math.min(maxRedeemablePointsOnBooking, loyaltyBalance).toLocaleString()}{" "}
-                points
-                {maxRedemptionPercentage < 100 ? ` (up to ${maxRedemptionPercentage}% of order subtotal)` : ""}
-                {minRedemptionPoints > 0 ? ` · Min ${minRedemptionPoints} points to redeem` : ""}
-              </p>
-            )}
-            {bookingState.promotions.loyaltyPointsUsed ? (
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-blue-900">
-                  Using {bookingState.promotions.loyaltyPointsUsed.toLocaleString()} points
-                  {bookingState.promotions.loyaltyDiscount != null &&
-                  bookingState.promotions.loyaltyDiscount > 0 ? (
-                    <>
-                      {" "}
-                      · −
-                      {formatCurrency(
-                        bookingState.promotions.loyaltyDiscount,
-                        tenantCurrency,
-                      )}
-                    </>
-                  ) : null}
-                </span>
-                <button
-                  onClick={() => removePromotion("loyalty")}
-                  className="text-sm text-blue-700 underline touch-target"
-                >
-                  Remove
-                </button>
-              </div>
-            ) : (
-              <div className="flex gap-2">
-                <Input
-                  type="number"
-                  value={loyaltyPoints || ""}
-                  onChange={(e) => setLoyaltyPoints(parseInt(e.target.value, 10) || 0)}
-                  placeholder="Enter points to use"
-                  max={Math.min(loyaltyBalance, maxRedeemablePointsOnBooking || loyaltyBalance)}
-                  min={0}
-                  className="flex-1 touch-target"
-                />
-                <Button
-                  onClick={() => void handleLoyaltyApply()}
-                  disabled={
-                    isValidating ||
-                    loyaltyPoints <= 0 ||
-                    loyaltyPoints > loyaltyBalance ||
-                    (maxRedeemablePointsOnBooking > 0 && loyaltyPoints > maxRedeemablePointsOnBooking)
-                  }
-                  className="bg-primary hover:bg-primary-hover touch-target"
-                >
-                  {isValidating ? "..." : "Use"}
-                </Button>
-              </div>
-            )}
-          </div>
-          )}
-        </div>
-      )}
 
       {/* Summary */}
       <div className="p-4 bg-gray-50 rounded-lg space-y-2">
@@ -560,12 +469,6 @@ export default function StepPromotions({
           <div className="flex justify-between text-sm text-green-600">
             <span>Gift Card</span>
             <span>-{formatCurrency(bookingState.promotions.giftCardAmount, tenantCurrency)}</span>
-          </div>
-        )}
-        {bookingState.promotions.loyaltyDiscount && (
-          <div className="flex justify-between text-sm text-green-600">
-            <span>Loyalty Points</span>
-            <span>-{formatCurrency(bookingState.promotions.loyaltyDiscount, tenantCurrency)}</span>
           </div>
         )}
         {bookingState.promotions.membershipDiscount && (

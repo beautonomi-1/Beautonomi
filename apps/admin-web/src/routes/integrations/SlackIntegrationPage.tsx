@@ -33,6 +33,8 @@ type SlackConfig = {
 };
 
 const EVENT_LABELS: Record<string, string> = {
+  "support.ticket.created": "Support: new ticket (standard/medium priority)",
+  "support.ticket.reply": "Support: new reply on ticket",
   "support.ticket.urgent_created": "Support: urgent ticket created",
   "support.ticket.high_priority_created": "Support: high-priority ticket created",
   "support.ticket.high_priority_unassigned": "Support: high/urgent unassigned",
@@ -62,11 +64,39 @@ const EVENT_LABELS: Record<string, string> = {
   "report.finance_exceptions_digest": "Reports: finance exceptions digest",
 };
 
+/** Mirrors apps/web default-routing.ts defaultDedupeWindowSeconds for consistent DB/API/UI saves. */
+function defaultDedupeForSlackKey(key: string): number {
+  if (key.includes(".queue.") || key.includes(".pipeline.") || key.includes("digest")) {
+    return 86_400;
+  }
+  if (
+    key.includes("stale") ||
+    key.includes("overdue") ||
+    key.includes("blocked") ||
+    key.includes("reconciliation")
+  ) {
+    return 21_600;
+  }
+  if (
+    key.includes("payout") ||
+    key.includes("refund") ||
+    key.includes("dispute") ||
+    key.includes("verification")
+  ) {
+    return 3_600;
+  }
+  return 900;
+}
+
 const BLANK_ROUTING = (): Record<string, RouteRule> =>
   Object.fromEntries(
     Object.keys(EVENT_LABELS).map((k) => [
       k,
-      { enabled: false, channel_id: null, dedupe_window_seconds: 900 },
+      {
+        enabled: false,
+        channel_id: null,
+        dedupe_window_seconds: defaultDedupeForSlackKey(k),
+      },
     ]),
   );
 
@@ -213,7 +243,7 @@ export function SlackIntegrationPage() {
     <div className="space-y-6">
       <AdminPageHeader
         title="Slack"
-        description="Connect a Slack workspace for high-signal Support, Ops, Finance, Disputes, Safety, Verification, and digest alerts. Configure channels per event — defaults stay quiet to avoid noise."
+        description="Connect a Slack workspace for high-signal Support, Ops, Finance, Disputes, Safety, Verification, and digest alerts. Configure channels per event — defaults stay quiet to avoid noise. Standard-priority tickets (support.ticket.created) and ticket replies (support.ticket.reply) can use the same channel as high-priority; the server also falls back to the high/urgent rule if these keys are unset."
         actions={
           <div className="flex flex-wrap gap-2">
             <select
@@ -278,7 +308,7 @@ export function SlackIntegrationPage() {
               const rule = routingDraft[key] ?? {
                 enabled: false,
                 channel_id: null,
-                dedupe_window_seconds: 900,
+                dedupe_window_seconds: defaultDedupeForSlackKey(key),
               };
               return (
                 <div key={key} className="rounded-xl border border-gray-200 bg-gray-50/80 p-3">

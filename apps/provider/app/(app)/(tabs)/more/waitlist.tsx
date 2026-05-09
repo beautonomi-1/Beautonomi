@@ -269,7 +269,7 @@ export default function WaitlistScreen() {
       if (entry.location_id) q.set("location_id", entry.location_id);
       q.set("walk_in", "true");
       setSelected(null);
-      router.push(`/(app)/(tabs)/more/bookings/new?${q.toString()}` as never);
+      router.push(`/(app)/(tabs)/bookings/new?${q.toString()}` as never);
     },
     [router],
   );

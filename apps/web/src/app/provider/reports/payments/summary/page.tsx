@@ -36,6 +36,7 @@ interface PaymentSummaryData {
   providerNetActivity?: number;
   successfulPayments: number;
   failedPayments: number;
+  gatewayChargeCount?: number;
   refundedAmount: number;
   netAmount: number;
   paymentsByMethod: Array<{
@@ -50,13 +51,22 @@ interface PaymentSummaryData {
     amount: number;
   }>;
   averageTransactionValue: number;
+  averageBookedValueNonPending?: number;
   refundRate: number;
+  reportBasis?: string;
+  timezone?: string;
   basis?: {
     grossBookedValue?: string;
     settledLedgerAmount?: string;
     customerPaymentsByMethodTotal?: string;
     providerEarnings?: string;
     providerNetActivity?: string;
+  };
+  collectionBreakdown?: {
+    ledger_payment_amount?: number;
+    wallet?: number;
+    gift_card?: number;
+    additional_charge_payment?: number;
   };
   /** Walk-in / cash `booking_payments` in range with no matching `finance_transactions` payment row. */
   cashStylePaymentsWithoutLedgerCount?: number;
@@ -163,7 +173,7 @@ export default function PaymentSummaryReport() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <PageHeader
             title="Payment Summary"
-            subtitle="Booked value, settlement ledger activity, provider earnings, and payment methods"
+            subtitle="Appointment gross vs ledger-settled customer funds (different dates — see facts below)"
           />
           <Button 
             variant="outline" 
@@ -185,6 +195,21 @@ export default function PaymentSummaryReport() {
           onDateRangeChange={setDateRange}
           onReset={handleReset}
         />
+
+        {(data.reportBasis || data.timezone) && (
+          <Alert className="border-sky-200 bg-sky-50 text-sky-950">
+            <Info className="h-4 w-4 text-sky-800" />
+            <div>
+              <AlertTitle className="text-sky-950">How this report is built</AlertTitle>
+              <AlertDescription className="text-sky-950/90 space-y-1 text-sm leading-relaxed">
+                {data.reportBasis ? <p>{data.reportBasis}</p> : null}
+                {data.timezone ? (
+                  <p className="text-xs text-sky-900/85">Provider timezone for ranges: {data.timezone}</p>
+                ) : null}
+              </AlertDescription>
+            </div>
+          </Alert>
+        )}
 
         {(data.cashStylePaymentsWithoutLedgerCount ?? 0) > 0 && (
           <Alert className="border-amber-200 bg-amber-50 text-amber-950">
@@ -218,7 +243,7 @@ export default function PaymentSummaryReport() {
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-gray-600">
-                Total Payments
+                Bookings (excl. pending payment)
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -228,6 +253,9 @@ export default function PaymentSummaryReport() {
                   {data.totalPayments}
                 </p>
               </div>
+              <p className="text-xs text-gray-500 mt-2">
+                Scheduled in range · status ≠ pending
+              </p>
             </CardContent>
           </Card>
 
@@ -244,6 +272,7 @@ export default function PaymentSummaryReport() {
                   {fmt(grossBookedValue)}
                 </p>
               </div>
+              <p className="text-xs text-gray-500 mt-2">Sum of booking totals (non-cancelled)</p>
             </CardContent>
           </Card>
 
@@ -260,13 +289,14 @@ export default function PaymentSummaryReport() {
                   {fmt(providerNetActivity)}
                 </p>
               </div>
+              <p className="text-xs text-gray-500 mt-2">Earnings + tips + travel + cancel fees − refunds (ledger)</p>
             </CardContent>
           </Card>
 
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-gray-600">
-                Refunded
+                Refunded (ledger)
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -276,48 +306,62 @@ export default function PaymentSummaryReport() {
                   {fmt(data.refundedAmount)}
                 </p>
               </div>
+              <p className="text-xs text-gray-500 mt-2">
+                Refund rate vs settled funds: {data.refundRate.toFixed(1)}%
+              </p>
             </CardContent>
           </Card>
         </div>
 
         {/* Secondary Metrics */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card className="border-gray-200">
+          <Card className="border-gray-200 border-l-4 border-l-blue-500">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-gray-600">
-                Settled ledger amount
+                Customer funds settled
               </CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-2xl font-semibold text-gray-900">
                 {fmt(settledLedgerAmount)}
               </p>
-              <p className="text-xs text-gray-500 mt-2">
-                Payment, wallet, and gift-card ledger rows
+              <p className="text-xs text-gray-500 mt-2 leading-relaxed">
+                Finance ledger in the settlement window — Paystack/Yoco splits sum card + wallet + gift
+                card; wallet-only flows count wallet/gift rows without double-counting the commission
+                “payment” row.
               </p>
+              {data.collectionBreakdown ? (
+                <p className="text-[11px] text-gray-400 mt-3 font-mono leading-relaxed">
+                  Raw ledger lines: payment {fmt(data.collectionBreakdown.ledger_payment_amount ?? 0)} · wallet{" "}
+                  {fmt(data.collectionBreakdown.wallet ?? 0)} · gift card {fmt(data.collectionBreakdown.gift_card ?? 0)}
+                  {data.collectionBreakdown.additional_charge_payment != null &&
+                  data.collectionBreakdown.additional_charge_payment > 0
+                    ? ` · add-on charges ${fmt(data.collectionBreakdown.additional_charge_payment)}`
+                    : ""}{" "}
+                  (informational — headline uses deduped total)
+                </p>
+              ) : null}
             </CardContent>
           </Card>
 
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-gray-600">
-                Provider earnings
+                Provider earnings (ledger)
               </CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-2xl font-semibold text-gray-900">
                 {fmt(providerEarnings)}
               </p>
-              <p className="text-xs text-gray-500 mt-2">
-                Net provider_earnings ledger rows
-              </p>
+              <p className="text-xs text-gray-500 mt-2">provider_earnings rows in range (includes reversals)</p>
             </CardContent>
           </Card>
 
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-gray-600">
-                Successful Payments
+                Payment transaction rows
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -330,10 +374,10 @@ export default function PaymentSummaryReport() {
                 </div>
               </div>
               <p className="text-xs text-gray-500 mt-2">
-                {data.totalPayments > 0
-                  ? ((data.successfulPayments / data.totalPayments) * 100).toFixed(1)
-                  : 0}
-                % booking-payment coverage
+                Successful rows in{" "}
+                <code className="text-[11px]">payment_transactions</code> for bookings in range (includes
+                wallet-settlement refs). Card / terminal captures:{" "}
+                <strong>{data.gatewayChargeCount ?? 0}</strong>.
               </p>
             </CardContent>
           </Card>
@@ -341,7 +385,7 @@ export default function PaymentSummaryReport() {
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-gray-600">
-                Failed Payments
+                Booking payment failed
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -354,7 +398,7 @@ export default function PaymentSummaryReport() {
                 </div>
               </div>
               <p className="text-xs text-gray-500 mt-2">
-                {data.refundRate.toFixed(1)}% refund rate
+                Bookings with payment_status = failed (scheduled in range)
               </p>
             </CardContent>
           </Card>
@@ -362,18 +406,21 @@ export default function PaymentSummaryReport() {
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-gray-600">
-                Avg Transaction
+                Avg gross / booking
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between">
                 <p className="text-2xl font-semibold text-gray-900">
-                  {fmt(data.averageTransactionValue)}
+                  {fmt(data.averageBookedValueNonPending ?? data.averageTransactionValue)}
                 </p>
                 <div className="p-2 bg-blue-50 rounded-lg">
                   <DollarSign className="w-4 h-4 text-blue-600" />
                 </div>
               </div>
+              <p className="text-xs text-gray-500 mt-2">
+                Gross booked value ÷ bookings excluding pending — not average settled cash
+              </p>
             </CardContent>
           </Card>
         </div>

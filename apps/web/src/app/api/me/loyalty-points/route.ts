@@ -116,8 +116,26 @@ export async function GET(request: NextRequest) {
     // Fallback to legacy (loyalty_point_transactions) when ledger balance is 0 or ledger failed
     if (available_balance === 0 && recent_transactions.length === 0) {
       try {
-        const { data: legacyBalance } = await supabase.rpc("get_user_loyalty_balance", { p_user_id: user.id });
-        available_balance = Number(legacyBalance) || 0;
+        const { data: legacyBalance, error: legacyBalanceError } = await supabase.rpc("get_user_loyalty_balance", { p_user_id: user.id });
+        if (legacyBalanceError) {
+          // Manual fallback if RPC fails
+          const { data: txs } = await supabase
+            .from("loyalty_point_transactions")
+            .select("points, transaction_type, expires_at")
+            .eq("user_id", user.id);
+          if (txs) {
+            available_balance = txs.reduce((sum, t) => {
+              const isExpired = t.expires_at && new Date(t.expires_at) < new Date();
+              if (isExpired) return sum;
+              if (t.transaction_type === "earned" || t.transaction_type === "adjusted") return sum + Number(t.points || 0);
+              if (t.transaction_type === "redeemed" || t.transaction_type === "expired") return sum - Number(t.points || 0);
+              return sum;
+            }, 0);
+            available_balance = Math.max(available_balance, 0);
+          }
+        } else {
+          available_balance = Number(legacyBalance) || 0;
+        }
 
         const { data: activeRule } = await supabase
           .from("loyalty_rules")

@@ -8,6 +8,7 @@ import {
   getProviderIdForUser,
 } from "@/lib/supabase/api-helpers";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { slackNotifyUserReportCreated } from "@/lib/integrations/slack/ops-triggers";
 
 /**
  * POST /api/reports
@@ -188,6 +189,14 @@ export async function POST(request: NextRequest) {
 
     if (error) return handleApiError(error, "Failed to create report");
     if (!row) return errorResponse("Failed to create report", "INTERNAL_ERROR", 500);
+
+    if (reportTenantId) {
+      slackNotifyUserReportCreated({
+        tenantId: reportTenantId,
+        reportId: row.id,
+        reportType: String(row.report_type),
+      });
+    }
 
     return successResponse(
       {

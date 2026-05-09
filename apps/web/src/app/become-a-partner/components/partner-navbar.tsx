@@ -26,7 +26,7 @@ export default function PartnerNavbar() {
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [loginModalMode, setLoginModalMode] = useState<"login" | "signup">("login");
   const router = useRouter();
-  useAuth();
+  const { user, role, isLoading } = useAuth();
   const { getSectionContent } = usePageContent("become-a-partner");
   const topBannerEnabledRaw = getSectionContent("top_banner_enabled")?.trim().toLowerCase();
   const topBannerEnabled = topBannerEnabledRaw ? TOP_BANNER_ENABLED_VALUES.has(topBannerEnabledRaw) : false;
@@ -48,7 +48,15 @@ export default function PartnerNavbar() {
   const handleSignUpClick = (e: React.MouseEvent) => {
     e.preventDefault();
     setIsMenuOpen(false);
-    // Navigate to signup page with provider type
+    if (isLoading) return;
+    if (user) {
+      if (role === "provider_owner" || role === "provider_staff") {
+        router.push("/provider/dashboard");
+      } else {
+        router.push("/provider/onboarding");
+      }
+      return;
+    }
     router.push("/signup?type=provider");
   };
 

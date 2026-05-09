@@ -68,9 +68,18 @@ const PERIOD_FILTERS = [
 
 /** Overview API response shape (business/overview) */
 type OverviewResponse = {
+  timezone?: string;
+  fromYmd?: string;
+  toYmd?: string;
   period?: string;
+  reportBasis?: string;
+  basis?: Record<string, string>;
   totalRevenue?: number;
+  ledgerEarningsFromBookings?: number;
+  ledgerEarningsFromProductOrders?: number;
   cancellationFees?: number;
+  tipsTotal?: number;
+  additionalChargesTotal?: number;
   netRevenue?: number;
   totalBookings?: number;
   completedBookings?: number;
@@ -90,9 +99,15 @@ type OverviewResponse = {
   periodEnd?: string;
 };
 
+function daysInOverviewPeriod(o: OverviewResponse): number {
+  if (!o.periodStart || !o.periodEnd) return 1;
+  const ms = new Date(o.periodEnd).getTime() - new Date(o.periodStart).getTime();
+  return Math.max(1, Math.ceil(ms / 86_400_000));
+}
+
 function mapOverviewToBusinessReport(overview: OverviewResponse | null): BusinessReport | null {
   if (!overview) return null;
-  const days = overview.period === "year" ? 365 : overview.period === "quarter" ? 92 : overview.period === "week" ? 7 : 30;
+  const days = daysInOverviewPeriod(overview);
   return {
     revenue: {
       total: overview.totalRevenue ?? 0,
@@ -146,14 +161,16 @@ export default function BusinessReportScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (!report) return;
     const lines = [
-      `Business Report — ${period}`,
+      `Business overview — ${period}`,
+      overview?.fromYmd && overview?.toYmd ? `Window: ${overview.fromYmd} → ${overview.toYmd}` : "",
+      overview?.timezone ? `Timezone: ${overview.timezone}` : "",
       "",
-      `Service Earnings: ${formatCurrency(report.revenue.total)}`,
-      `Growth: ${report.revenue.growth_percentage >= 0 ? "+" : ""}${report.revenue.growth_percentage.toFixed(1)}%`,
-      `Bookings: ${report.bookings.total} (${report.bookings.completion_rate.toFixed(0)}% completion)`,
-      `Unique Clients: ${report.clients.total}`,
-      `Avg Booking Value: ${formatCurrency(report.clients.avg_booking_value)}`,
-    ];
+      `Ledger earnings (provider_earnings): ${formatCurrency(report.revenue.total)}`,
+      `Growth vs prior window: ${report.revenue.growth_percentage >= 0 ? "+" : ""}${report.revenue.growth_percentage.toFixed(1)}%`,
+      `Scheduled bookings: ${report.bookings.total} (${report.bookings.completion_rate.toFixed(0)}% completion)`,
+      `Distinct clients: ${report.clients.total}`,
+      `Avg ledger per booking (with earnings): ${formatCurrency(report.clients.avg_booking_value)}`,
+    ].filter(Boolean);
     try {
       await Share.share({ message: lines.join("\n"), title: "Business Report" });
     } catch (err) {
@@ -200,7 +217,7 @@ export default function BusinessReportScreen() {
       <ScreenHeader
         title="Business Overview"
         showBack
-        subtitle="Calendar-period performance"
+        subtitle="Ledger + scheduled bookings · period to date"
         rightAction={
           <TouchableOpacity
             style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-100")}
@@ -215,12 +232,25 @@ export default function BusinessReportScreen() {
         <FilterChipGroup options={PERIOD_FILTERS} selected={period} onSelect={setPeriod} />
       </View>
 
+      {overview?.reportBasis ? (
+        <View style={twStyle("mb-4 rounded-2xl border border-sky-100 bg-sky-50/95 px-4 py-3")}>
+          <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-sky-900")}>What this counts</Text>
+          <Text style={twStyle("mt-2 text-sm leading-5 text-sky-950")}>{overview.reportBasis}</Text>
+          {overview.fromYmd && overview.toYmd ? (
+            <Text style={twStyle("mt-2 text-xs text-sky-900/85")}>
+              {overview.fromYmd} → {overview.toYmd}
+              {overview.timezone ? ` · ${overview.timezone}` : ""}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
+
       {/* Revenue */}
-      <SectionHeader title="Earnings" />
+      <SectionHeader title="Ledger earnings" />
       <View style={twStyle("mb-4")}>
         <ReportResponsiveStatRow>
           <StatCard
-            title="Service Earnings"
+            title="Ledger headline"
             value={formatCurrency(r?.revenue.total ?? 0)}
             icon="cash-outline"
             iconColor="#22c55e"
@@ -228,7 +258,7 @@ export default function BusinessReportScreen() {
             compact
           />
           <StatCard
-            title="Growth"
+            title="Vs prior window"
             value={`${(r?.revenue.growth_percentage ?? 0) >= 0 ? "+" : ""}${(r?.revenue.growth_percentage ?? 0).toFixed(1)}%`}
             icon="trending-up-outline"
             iconColor={(r?.revenue.growth_percentage ?? 0) >= 0 ? "#22c55e" : "#ef4444"}
@@ -304,7 +334,7 @@ export default function BusinessReportScreen() {
       )}
 
       {/* Bookings */}
-      <SectionHeader title="Bookings" />
+      <SectionHeader title="Scheduled bookings" />
       <View style={twStyle("mb-4")}>
         <ReportResponsiveStatRow>
           <StatCard title="Total" value={String(r?.bookings.total ?? 0)} icon="calendar-outline" iconColor="#3b82f6" iconBg="bg-blue-50" compact />
@@ -323,7 +353,7 @@ export default function BusinessReportScreen() {
           <Text style={twStyle("text-sm font-medium text-amber-600")}>{r?.bookings.no_show ?? 0}</Text>
         </View>
         <View style={twStyle("flex-row justify-between")}>
-          <Text style={twStyle("text-sm text-gray-500")}>Avg Per Day</Text>
+          <Text style={twStyle("text-sm text-gray-500")}>Avg per calendar day</Text>
           <Text style={twStyle("text-sm font-medium text-gray-700")}>{(r?.bookings.avg_per_day ?? 0).toFixed(1)}</Text>
         </View>
       </View>
@@ -343,7 +373,14 @@ export default function BusinessReportScreen() {
       <View style={twStyle("mb-4")}>
         <ReportResponsiveStatRow>
           <StatCard title="Unique Clients" value={String(r?.clients.total ?? 0)} icon="people-outline" iconColor="#ec4899" iconBg="bg-pink-50" compact />
-          <StatCard title="Avg Booking" value={formatCurrency(r?.clients.avg_booking_value ?? 0)} icon="cash-outline" iconColor="#6366f1" iconBg="bg-indigo-50" compact />
+          <StatCard
+            title="Avg ledger / booking"
+            value={formatCurrency(r?.clients.avg_booking_value ?? 0)}
+            icon="cash-outline"
+            iconColor="#6366f1"
+            iconBg="bg-indigo-50"
+            compact
+          />
         </ReportResponsiveStatRow>
       </View>
 

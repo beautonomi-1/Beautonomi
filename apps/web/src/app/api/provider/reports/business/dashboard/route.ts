@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { requireRoleInApi, successResponse, handleApiError, getProviderIdForUser } from "@/lib/supabase/api-helpers";
 import { canAccessReport } from "@/lib/subscriptions/report-gating";
-import { createClient } from "@supabase/supabase-js";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { startOfMonth, endOfMonth } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
 import {
@@ -10,39 +10,32 @@ import {
   formatDateYmd,
   startOfWeekInTz,
 } from "@/lib/dates/provider-tz";
-import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
+import { getProviderRevenue, type ProviderRevenueResult } from "@/lib/reports/revenue-helpers";
 import { DASHBOARD_REVENUE_TRANSACTION_TYPES } from "@/lib/reports/constants";
 import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
 
+function sumLedgerSplits(result: ProviderRevenueResult) {
+  const ledgerFromBookings = Array.from(result.revenueByBooking.values()).reduce((s, v) => s + v, 0);
+  const ledgerFromProductOrders = Array.from(result.revenueByProductOrder.values()).reduce((s, v) => s + v, 0);
+  return { ledgerFromBookings, ledgerFromProductOrders };
+}
+
 export async function GET(request: NextRequest) {
   try {
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      }
-    );
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
+    const supabaseAdmin = getSupabaseAdmin();
+    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
 
-    // Check subscription allows basic reports
     const accessCheck = await canAccessReport(user.id, "basic");
     if (!accessCheck.allowed) {
       return accessCheck.error!;
     }
 
-    const providerId = user.role === 'superadmin'
-      ? request.nextUrl.searchParams.get('provider_id')
-      : await getProviderIdForUser(user.id, supabaseAdmin);
+    const providerId =
+      user.role === "superadmin"
+        ? request.nextUrl.searchParams.get("provider_id")
+        : await getProviderIdForUser(user.id, supabaseAdmin);
     if (!providerId) {
-      return handleApiError(
-        new Error('Provider profile not found'),
-        'NOT_FOUND',
-        404
-      );
+      return handleApiError(new Error("Provider profile not found"), "NOT_FOUND", 404);
     }
 
     const locationId = request.nextUrl.searchParams.get("location_id") || null;
@@ -71,34 +64,14 @@ export async function GET(request: NextRequest) {
 
     const dashOpts = { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES, timezone: tz };
 
-    const { totalRevenue: todayRevenue } = await getProviderRevenue(
-      supabaseAdmin,
-      providerId,
-      startOfToday,
-      endOfToday,
-      locationId,
-      dashOpts
-    );
+    const todayResult = await getProviderRevenue(supabaseAdmin, providerId, startOfToday, endOfToday, locationId, dashOpts);
+    const weekResult = await getProviderRevenue(supabaseAdmin, providerId, weekStart, weekEnd, locationId, dashOpts);
+    const monthResult = await getProviderRevenue(supabaseAdmin, providerId, monthStart, monthEnd, locationId, dashOpts);
 
-    const { totalRevenue: weekRevenue } = await getProviderRevenue(
-      supabaseAdmin,
-      providerId,
-      weekStart,
-      weekEnd,
-      locationId,
-      dashOpts
-    );
+    const todaySplits = sumLedgerSplits(todayResult);
+    const weekSplits = sumLedgerSplits(weekResult);
+    const monthSplits = sumLedgerSplits(monthResult);
 
-    const { totalRevenue: monthRevenue } = await getProviderRevenue(
-      supabaseAdmin,
-      providerId,
-      monthStart,
-      monthEnd,
-      locationId,
-      dashOpts
-    );
-
-    // Get bookings for different periods (for counts and status)
     let todayBq = supabaseAdmin
       .from("bookings")
       .select("id, status, scheduled_at")
@@ -129,21 +102,17 @@ export async function GET(request: NextRequest) {
     if (locationId) monthBq = monthBq.eq("location_id", locationId);
     const { data: monthBookings } = await monthBq;
 
-    // Calculate today's metrics
     const todayBookingsCount = todayBookings?.length || 0;
     const todayCompleted = todayBookings?.filter((b) => b.status === "completed").length || 0;
 
-    // Calculate week's metrics
     const weekBookingsCount = weekBookings?.length || 0;
 
-    // Calculate month's metrics
     const monthBookingsCount = monthBookings?.length || 0;
     const monthClients = new Set(monthBookings?.map((b) => b.customer_id).filter(Boolean)).size;
 
-    // Get upcoming bookings
     let upBq = supabaseAdmin
       .from("bookings")
-      .select("id, scheduled_at, status")
+      .select("id, scheduled_at, status, total_amount")
       .eq("provider_id", providerId)
       .in("status", ["pending", "confirmed", "checked_in", "in_progress"])
       .gte("scheduled_at", now.toISOString())
@@ -152,10 +121,9 @@ export async function GET(request: NextRequest) {
     if (locationId) upBq = upBq.eq("location_id", locationId);
     const { data: upcomingBookings } = await upBq;
 
-    // Get recent bookings
     let recBq = supabaseAdmin
       .from("bookings")
-      .select("id, scheduled_at, status")
+      .select("id, scheduled_at, status, total_amount")
       .eq("provider_id", providerId)
       .not("status", "in", "(cancelled,no_show)")
       .lte("scheduled_at", now.toISOString())
@@ -164,25 +132,61 @@ export async function GET(request: NextRequest) {
     if (locationId) recBq = recBq.eq("location_id", locationId);
     const { data: recentBookings } = await recBq;
 
+    const reportBasis =
+      `Provider timezone ${tz}. ` +
+      `Ledger headline revenue sums finance_transactions with transaction_type provider_earnings and created_at in each window (platform-settled earnings; excludes tips/travel rows). ` +
+      `Cash or unsupported terminal paths may not produce ledger rows. ` +
+      `Booking counts use bookings.scheduled_at and exclude cancelled and no_show only (includes pending, confirmed, completed, etc.). ` +
+      `Month distinct clients = unique customer_id on those month bookings. ` +
+      `Upcoming = next 10 bookings with status in pending/confirmed/checked_in/in_progress and scheduled_at ≥ now. ` +
+      `Recent = last 10 past bookings (scheduled_at ≤ now) excluding cancelled/no_show. ` +
+      `Listed booking amounts are booking.total_amount snapshots, not ledger totals.`;
+
+    const basis = {
+      ledgerHeadline:
+        "Sum of net provider_earnings rows per window (finance_transactions.created_at). Product-order earnings included in headline.",
+      bookingCounts:
+        "scheduled_at inside window; statuses cancelled and no_show excluded from counts.",
+      todayWindow: "Calendar day bounds in provider TZ.",
+      weekWindow: "Monday–Sunday calendar week containing today (provider TZ).",
+      monthWindow: "Full calendar month containing today (provider TZ).",
+      upcomingList: "Soonest future appointments in qualifying statuses (max 10).",
+      recentList: "Most recent past appointments excluding cancelled/no_show (max 10).",
+      bookedAmountColumn: "booking.total_amount — informational; not ledger earnings.",
+    };
+
     return successResponse({
+      timezone: tz,
+      windows: {
+        today: { fromYmd: todayYmd, toYmd: todayYmd },
+        week: { fromYmd: weekStartYmd, toYmd: weekEndYmd },
+        month: { fromYmd: monthStartYmd, toYmd: monthEndYmd },
+      },
       today: {
-        revenue: todayRevenue,
+        revenue: todayResult.totalRevenue,
+        ledgerFromBookings: todaySplits.ledgerFromBookings,
+        ledgerFromProductOrders: todaySplits.ledgerFromProductOrders,
         bookings: todayBookingsCount,
         completed: todayCompleted,
       },
       week: {
-        revenue: weekRevenue,
+        revenue: weekResult.totalRevenue,
+        ledgerFromBookings: weekSplits.ledgerFromBookings,
+        ledgerFromProductOrders: weekSplits.ledgerFromProductOrders,
         bookings: weekBookingsCount,
       },
       month: {
-        revenue: monthRevenue,
+        revenue: monthResult.totalRevenue,
+        ledgerFromBookings: monthSplits.ledgerFromBookings,
+        ledgerFromProductOrders: monthSplits.ledgerFromProductOrders,
         bookings: monthBookingsCount,
         clients: monthClients,
       },
       upcomingBookings: upcomingBookings || [],
       recentBookings: recentBookings || [],
-      reportBasis:
-        "Dashboard revenue uses provider_earnings ledger rows. Booking/client counts exclude cancelled and no-show bookings.",
+      reportBasis,
+      basis,
+      report_basis: reportBasis,
     });
   } catch (error) {
     return handleApiError(error, "BUSINESS_DASHBOARD_ERROR", 500);

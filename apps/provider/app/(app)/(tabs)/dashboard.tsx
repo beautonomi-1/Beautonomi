@@ -132,6 +132,22 @@ interface ActivityItem {
   };
 }
 
+/** GET /api/provider/activity — structured payload (legacy clients received a bare array). */
+interface ActivityFeedApiPayload {
+  activities: ActivityItem[];
+  basis?: Record<string, string>;
+  timezone?: string;
+  window?: { fromYmd: string; toYmd: string };
+}
+
+function unwrapActivityFeedPayload(
+  data: ActivityFeedApiPayload | ActivityItem[] | null | undefined,
+): ActivityItem[] {
+  if (data == null) return [];
+  if (Array.isArray(data)) return data;
+  return data.activities ?? [];
+}
+
 const DATE_RANGE_OPTIONS = [
   { label: "Today", value: "today" },
   { label: "This Week", value: "week" },
@@ -152,7 +168,10 @@ function getActivityIcon(type: string): {
     case "booking_cancelled":
       return { name: "close-circle-outline", color: "#ef4444", bg: "#fef2f2" };
     case "payment_received":
+    case "ledger_earnings":
       return { name: "cash-outline", color: "#22c55e", bg: "#f0fdf4" };
+    case "payout_sent":
+      return { name: "arrow-forward-circle-outline", color: "#7c3aed", bg: "#f5f3ff" };
     case "new_review":
       return { name: "star-outline", color: "#f59e0b", bg: "#fffbeb" };
     case "new_client":
@@ -341,17 +360,6 @@ export default function DashboardScreen() {
   }, [provider?.timezone]);
 
   const {
-    data: fallbackTodayBookings,
-    error: fallbackTodayBookingsError,
-    refresh: refreshFallbackTodayBookings,
-  } = useApi<Booking[]>(
-    `/api/provider/bookings?start_date=${today}&end_date=${today}${locQ}`,
-    {
-      enabled: isFocused && metrics !== null && !hasBundledInsights,
-      staleTimeMs: 15_000,
-    },
-  );
-  const {
     data: fallbackUpcomingBookings,
     error: fallbackUpcomingError,
     refresh: refreshFallbackUpcoming,
@@ -384,10 +392,10 @@ export default function DashboardScreen() {
     },
   );
   const {
-    data: fallbackRecentActivity,
+    data: fallbackActivityPayload,
     error: fallbackActivityError,
     refresh: refreshFallbackActivity,
-  } = useApi<ActivityItem[]>(
+  } = useApi<ActivityFeedApiPayload | ActivityItem[]>(
     `/api/provider/activity?limit=10${locQ}`,
     {
       enabled: isFocused && secondaryEnabled && metrics !== null && !hasBundledInsights,
@@ -405,14 +413,13 @@ export default function DashboardScreen() {
     staleTimeMs: 60_000,
   });
 
-  const todayBookings = metrics?.insights?.today_bookings ?? fallbackTodayBookings ?? null;
   const upcomingBookings = metrics?.insights?.upcoming_bookings ?? fallbackUpcomingBookings ?? null;
-  const todayBookingsError = hasBundledInsights ? null : fallbackTodayBookingsError;
   const upcomingError = hasBundledInsights ? null : fallbackUpcomingError;
 
   const weeklyRevenue = metrics?.insights?.weekly_revenue ?? fallbackWeeklyRevenue ?? null;
   const topServices = metrics?.insights?.top_services ?? fallbackTopServices ?? null;
-  const recentActivity = metrics?.insights?.recent_activity ?? fallbackRecentActivity ?? null;
+  const recentActivity =
+    metrics?.insights?.recent_activity ?? unwrapActivityFeedPayload(fallbackActivityPayload);
   const bookingEligibility = metrics?.booking_eligibility ?? fallbackBookingEligibility ?? null;
   const topServicesError = hasBundledInsights ? null : fallbackTopServicesError;
   const activityError = hasBundledInsights ? null : fallbackActivityError;
@@ -420,7 +427,7 @@ export default function DashboardScreen() {
   const refreshRealtimeDashboardData = useCallback(() => {
     const tasks = [refreshMetrics()];
     if (!hasBundledInsights) {
-      tasks.push(refreshFallbackTodayBookings(), refreshFallbackUpcoming());
+      tasks.push(refreshFallbackUpcoming());
       if (secondaryEnabled) {
         tasks.push(refreshFallbackWeekly(), refreshFallbackTopServices(), refreshFallbackActivity());
       }
@@ -433,7 +440,6 @@ export default function DashboardScreen() {
     refreshMetrics,
     hasBundledInsights,
     hasBundledBookingEligibility,
-    refreshFallbackTodayBookings,
     refreshFallbackUpcoming,
     refreshFallbackWeekly,
     refreshFallbackTopServices,
@@ -447,7 +453,7 @@ export default function DashboardScreen() {
     try {
       const tasks = [refreshMetrics()];
       if (!hasBundledInsights) {
-        tasks.push(refreshFallbackTodayBookings(), refreshFallbackUpcoming());
+        tasks.push(refreshFallbackUpcoming());
         if (secondaryEnabled) {
           tasks.push(refreshFallbackWeekly(), refreshFallbackTopServices(), refreshFallbackActivity());
         }
@@ -463,7 +469,6 @@ export default function DashboardScreen() {
     refreshMetrics,
     hasBundledInsights,
     hasBundledBookingEligibility,
-    refreshFallbackTodayBookings,
     refreshFallbackUpcoming,
     refreshFallbackWeekly,
     refreshFallbackTopServices,
@@ -1166,7 +1171,7 @@ export default function DashboardScreen() {
           <Ionicons name="hourglass-outline" size={24} color="#9ca3af" />
           <Text style={{ marginTop: 8, fontSize: 13, color: Colors.gray[500] }}>Preparing recent activity…</Text>
         </View>
-      ) : activityError && !recentActivity ? (
+      ) : activityError && !hasBundledInsights && fallbackActivityPayload == null ? (
         <TouchableOpacity onPress={refreshFallbackActivity} activeOpacity={0.7} style={{ alignItems: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: "#fecaca", backgroundColor: "#fef2f2", paddingVertical: 16 }}>
           <Ionicons name="alert-circle-outline" size={22} color="#ef4444" />
           <Text style={{ marginTop: 4, fontSize: 12, color: "#ef4444" }}>Failed to load · Tap to retry</Text>
@@ -1221,90 +1226,6 @@ export default function DashboardScreen() {
               </TouchableOpacity>
             );
           })}
-        </View>
-      )}
-
-      {/* Today's Appointments (existing) */}
-      <SectionHeader
-        title="Today's Appointments"
-        actionLabel="See All"
-        onAction={() => router.push("/(app)/(tabs)/bookings" as never)}
-      />
-      {todayBookingsError && !todayBookings ? (
-        <TouchableOpacity onPress={refreshFallbackTodayBookings} activeOpacity={0.7} style={{ alignItems: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: "#fecaca", backgroundColor: "#fef2f2", paddingVertical: 16 }}>
-          <Ionicons name="alert-circle-outline" size={22} color="#ef4444" />
-          <Text style={{ marginTop: 4, fontSize: 12, color: "#ef4444" }}>Failed to load appointments · Tap to retry</Text>
-        </TouchableOpacity>
-      ) : !todayBookings || todayBookings.length === 0 ? (
-        <View style={{ alignItems: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingVertical: 32 }}>
-          <Ionicons name="calendar-outline" size={32} color="#d1d5db" />
-          <Text style={{ marginTop: 8, fontSize: 14, color: Colors.gray[400] }}>
-            No appointments today
-          </Text>
-        </View>
-      ) : (
-        <View style={[ isTablet ? { flexDirection: "row", flexWrap: "wrap" } : {} ]}>
-          {todayBookings
-            .slice(0, isTablet ? 6 : 4)
-            .map((booking) => (
-              <TouchableOpacity
-                key={booking.id}
-                style={[
-                  { borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16 },
-                  isTablet ? { width: "48%", marginRight: 12, marginBottom: 12 } : { marginBottom: 8 },
-                ]}
-                onPress={() =>
-                  openBookingSurface(booking)
-                }
-                accessibilityLabel={`Today: ${booking.customers?.full_name ?? "Walk-in"}`}
-                accessibilityRole="button"
-              >
-                <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
-                  <View style={{ flex: 1 }}>
-                    <View style={{ flexDirection: "row", alignItems: "center" }}>
-                      <Avatar name={booking.customers?.full_name ?? "Guest"} size="sm" />
-                      <View style={{ marginLeft: 10, flex: 1 }}>
-                        <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }} numberOfLines={1}>
-                          {booking.customers?.full_name ?? "Walk-in"}
-                        </Text>
-                        <Text style={{ fontSize: 12, color: Colors.gray[500] }}>
-                          {formatRelativeDate(booking.scheduled_at)}
-                        </Text>
-                      </View>
-                    </View>
-                    <View style={{ marginTop: 8 }}>
-                      {booking.services?.slice(0, 2).map((s, i) => (
-                        <Text key={i} style={{ fontSize: 12, color: Colors.gray[600] }} numberOfLines={1}>
-                          {s.name ?? s.offering_name ?? "Service"}
-                          {s.guest_name ? ` (${s.guest_name})` : ""} ({formatDuration(s.duration_minutes)})
-                        </Text>
-                      ))}
-                    </View>
-                    {booking.is_group_booking && booking.group_booking_ref && (
-                      <Text style={{ marginTop: 4, fontSize: 10, color: Colors.gray[500] }} numberOfLines={1}>
-                        Group: {booking.group_booking_ref}
-                      </Text>
-                    )}
-                    {booking.package_name ? (
-                      <Text style={{ marginTop: 4, fontSize: 10, color: Colors.gray[600] }} numberOfLines={1}>
-                        Package: {booking.package_name}
-                      </Text>
-                    ) : null}
-                    {(booking.products?.length ?? 0) > 0 ? (
-                      <Text style={{ marginTop: 4, fontSize: 10, color: Colors.gray[600] }} numberOfLines={1}>
-                        {booking.products!.length} product{booking.products!.length === 1 ? "" : "s"}
-                      </Text>
-                    ) : null}
-                  </View>
-                  <View style={{ alignItems: "flex-end" }}>
-                    <Badge status={booking.status} />
-                    <Text style={{ marginTop: 8, fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>
-                      {formatCurrency(booking.total_amount, booking.currency)}
-                    </Text>
-                  </View>
-                </View>
-              </TouchableOpacity>
-            ))}
         </View>
       )}
 

@@ -108,6 +108,8 @@ const LoginAccount = ({
   const [dialogPhoneValue, setDialogPhoneValue] = useState("");
   const [isSendingPhoneOtp, setIsSendingPhoneOtp] = useState(false);
   const [isVerifyingPhoneOtp, setIsVerifyingPhoneOtp] = useState(false);
+  const [isSigningOutGlobal, setIsSigningOutGlobal] = useState(false);
+  const { signOut } = useAuth();
 
   useEffect(() => {
     if (!user) return;
@@ -353,6 +355,27 @@ const LoginAccount = ({
     }
   };
 
+  const handleGlobalSignOut = async () => {
+    if (!window.confirm("This will end every active session across all your phones, tablets and browsers. You'll need to log in again everywhere. Are you sure?")) {
+      return;
+    }
+    setIsSigningOutGlobal(true);
+    try {
+      const res = await fetch("/api/auth/sign-out-global", {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Could not sign out everywhere");
+      }
+      await signOut();
+    } catch (error: any) {
+      toast.error(error.message || "Could not sign out everywhere");
+    } finally {
+      setIsSigningOutGlobal(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-zinc-50/50 py-6 md:py-8">
       <div className="w-full max-w-7xl mx-auto px-4 md:px-6 lg:px-8">
@@ -547,6 +570,28 @@ const LoginAccount = ({
                 a static "Coming soon" placeholder. Hidden until OAuth
                 linking is wired to /api/auth/identities (or similar).
               */}
+
+              {/* Active Sessions Section */}
+              <div
+                className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-6 mb-6"
+              >
+                <div className="flex justify-between items-center">
+                  <div>
+                    <h2 className="text-xl font-semibold tracking-tighter mb-2 text-gray-900">Active sessions</h2>
+                    <p className="text-sm text-gray-600 font-light">
+                      Sign out from this app and every other phone, tablet or browser where your Beautonomi account is signed in.
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    onClick={handleGlobalSignOut}
+                    disabled={isSigningOutGlobal}
+                    className="text-gray-900 border-gray-300 hover:bg-gray-50"
+                  >
+                    {isSigningOutGlobal ? "Signing out..." : "Sign out from all devices"}
+                  </Button>
+                </div>
+              </div>
 
               {/* Account Deactivation Section */}
               <div

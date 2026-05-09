@@ -3300,12 +3300,6 @@ export default function BookCheckoutScreen() {
                   <Text style={{ fontSize: 13, color: "#059669" }}>-{formatCurrency(membershipDiscountAmount, currency)}</Text>
                 </View>
               )}
-              {loyaltyDiscountAmount > 0 && (
-                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-                  <Text style={{ fontSize: 13, color: "#059669" }}>{t("checkout.loyaltyLabel")}</Text>
-                  <Text style={{ fontSize: 13, color: "#059669" }}>-{formatCurrency(loyaltyDiscountAmount, currency)}</Text>
-                </View>
-              )}
               <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
                 <Text style={{ fontSize: 13, color: "#6B7280" }}>{t("checkout.afterDiscounts")}</Text>
                 <Text style={{ fontSize: 13, color: "#111827", fontWeight: "600" }}>{formatCurrency(subtotalAfterLoyalty, currency)}</Text>
@@ -3521,91 +3515,6 @@ export default function BookCheckoutScreen() {
                 <Text style={{ fontSize: 12, color: "#059669", marginTop: 6 }}>
                   Promo applied — {formatCurrency(effectivePromoDiscount, currency)} off
                 </Text>
-              ) : null}
-              {user ? (
-                <View style={{ marginTop: 14 }}>
-                  <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 8 }}>Loyalty points</Text>
-                  <Text style={{ fontSize: 12, color: "#6B7280", marginBottom: 8 }}>
-                    Balance {loyaltyBalance.toLocaleString()} pts
-                    {maxRedeemablePointsOnBooking > 0
-                      ? ` · Up to ${maxRedeemablePointsOnBooking.toLocaleString()} pts on this booking (after % cap)`
-                      : ""}
-                  </Text>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                    <TextInput
-                      value={loyaltyPointsInput}
-                      onChangeText={(v) => {
-                        setLoyaltyPointsInput(v.replace(/[^\d]/g, ""));
-                        setLoyaltyError(null);
-                      }}
-                      placeholder="Points to use"
-                      keyboardType="number-pad"
-                      editable={loyaltyBalance > 0 && bookingSubtotalForLoyalty > 0}
-                      style={{
-                        flex: 1,
-                        backgroundColor: "#F9FAFB",
-                        borderWidth: 1,
-                        borderColor: loyaltyError ? "#DC2626" : "#E5E7EB",
-                        borderRadius: 12,
-                        paddingHorizontal: 14,
-                        paddingVertical: 12,
-                        fontSize: 15,
-                        color: "#111827",
-                      }}
-                      placeholderTextColor="#9CA3AF"
-                    />
-                    <TouchableOpacity
-                      onPress={() => {
-                        if (loyaltyDiscountAmount > 0) {
-                          setLoyaltyPointsApplied(0);
-                          setLoyaltyDiscountAmount(0);
-                          setLoyaltyPointsInput("");
-                          setLoyaltyError(null);
-                          haptic.light();
-                        } else {
-                          void applyLoyaltyPoints();
-                        }
-                      }}
-                      disabled={
-                        loyaltyValidating ||
-                        (loyaltyDiscountAmount <= 0 && (loyaltyBalance <= 0 || !loyaltyPointsInput.trim()))
-                      }
-                      style={{
-                        backgroundColor:
-                          loyaltyPointsInput.trim() || loyaltyDiscountAmount > 0 ? Colors.primary : "#E5E7EB",
-                        paddingHorizontal: 16,
-                        paddingVertical: 12,
-                        borderRadius: 12,
-                        justifyContent: "center",
-                        minWidth: 72,
-                        alignItems: "center",
-                      }}
-                    >
-                      {loyaltyValidating ? (
-                        <ActivityIndicator size="small" color="#fff" />
-                      ) : (
-                        <Text style={{ color: "#fff", fontWeight: "600", fontSize: 14 }}>
-                          {loyaltyDiscountAmount > 0 ? "Clear" : "Use"}
-                        </Text>
-                      )}
-                    </TouchableOpacity>
-                  </View>
-                  {loyaltyError ? (
-                    <Text style={{ fontSize: 12, color: "#DC2626", marginTop: 6 }}>{loyaltyError}</Text>
-                  ) : loyaltyDiscountAmount > 0 ? (
-                    <Text style={{ fontSize: 12, color: "#059669", marginTop: 6 }}>
-                      −{formatCurrency(loyaltyDiscountAmount, currency)} applied ({loyaltyPointsApplied.toLocaleString()} pts)
-                    </Text>
-                  ) : loyaltyBalance <= 0 ? (
-                    <Text style={{ fontSize: 11, color: "#6B7280", marginTop: 4 }}>
-                      You&apos;ll earn points after this booking — use them for money off next time.
-                    </Text>
-                  ) : minRedemptionPoints > 0 ? (
-                    <Text style={{ fontSize: 11, color: "#9CA3AF", marginTop: 4 }}>
-                      Min. {minRedemptionPoints} pts per redemption when eligible
-                    </Text>
-                  ) : null}
-                </View>
               ) : null}
             </View>
 

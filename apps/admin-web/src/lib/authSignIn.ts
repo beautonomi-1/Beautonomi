@@ -60,10 +60,18 @@ export async function signInWithPassword({ email, password }: SignInCredentials)
 
   const session = json?.data?.session;
   if (session?.access_token && session?.refresh_token && supabase) {
-    await supabase.auth.setSession({
-      access_token: session.access_token,
-      refresh_token: session.refresh_token,
-    });
+    try {
+      await supabase.auth.setSession({
+        access_token: session.access_token,
+        refresh_token: session.refresh_token,
+      });
+    } catch (err: any) {
+      if (err.message?.includes("Lock") && err.message?.includes("stole it")) {
+        console.warn("Ignored lock error on setSession", err);
+      } else {
+        throw err;
+      }
+    }
   }
 
   return json.data;

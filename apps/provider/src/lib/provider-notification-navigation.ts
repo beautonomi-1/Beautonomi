@@ -247,9 +247,9 @@ export function navigateFromProviderNotification(router: Router, n: ProviderNoti
     if (link.includes("clients")) {
       const clientMatch = link.match(/\/([a-f0-9-]+)$/);
       if (clientMatch) {
-        router.push(`/(app)/(tabs)/more/clients/${clientMatch[1]}` as never);
+        router.push(`/(app)/(tabs)/clients/${clientMatch[1]}` as never);
       } else {
-        router.push("/(app)/(tabs)/more/clients" as never);
+        router.push("/(app)/(tabs)/clients" as never);
       }
       return;
     }

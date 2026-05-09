@@ -6,6 +6,7 @@ import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchAllProviderIdsForTenant } from "@/lib/tenant/admin-tenant-scope";
 import { fetchOrphanRefundPaymentTxsForTenant } from "@/lib/admin/payment-transactions-tenant-scope";
 import { countAllOpenSafetyEvents, countOpenSafetyEventsForTenant } from "@/lib/admin/safety-events-tenant-scope";
+import { USER_VERIFICATION_QUEUE_STATUSES } from "@/lib/admin/verification-queue-statuses";
 
 /**
  * GET /api/admin/nav-counts
@@ -43,20 +44,31 @@ export async function GET(request: NextRequest) {
       supabase
         .from("user_verifications")
         .select("id", { count: "exact", head: true })
-        .eq("status", "pending")
+        .in("status", [...USER_VERIFICATION_QUEUE_STATUSES])
         .eq("tenant_id", tenantId),
       supabase
         .from("payouts")
         .select("id, providers!inner(tenant_id)", { count: "exact", head: true })
         .in("status", ["pending", "processing"])
         .eq("providers.tenant_id", tenantId),
-      tenantProviderIds.length > 0
-        ? supabase
+      (async () => {
+        if (isSuperadmin || user.role === "support_agent") {
+          const { count } = await supabase
+            .from("support_tickets")
+            .select("id", { count: "exact", head: true })
+            .in("status", ["open", "in_progress"]);
+          return { count: count ?? 0 };
+        }
+        if (tenantProviderIds.length > 0) {
+          const { count } = await supabase
             .from("support_tickets")
             .select("id", { count: "exact", head: true })
             .in("status", ["open", "in_progress"])
-            .in("provider_id", tenantProviderIds)
-        : Promise.resolve({ count: 0 }),
+            .in("provider_id", tenantProviderIds);
+          return { count: count ?? 0 };
+        }
+        return { count: 0 };
+      })(),
       (async () => {
         const { count: bookingPending } = await supabase
           .from("payment_transactions")

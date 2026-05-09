@@ -368,19 +368,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const accessToken = params.get("access_token");
           const refreshToken = params.get("refresh_token");
           if (accessToken && refreshToken) {
-            const { error: sessionError } = await supabase.auth.setSession({
-              access_token: accessToken,
-              refresh_token: refreshToken,
-            });
-            if (sessionError)
-              return { error: new Error(sessionError.message) };
+            try {
+              const { error: sessionError } = await supabase.auth.setSession({
+                access_token: accessToken,
+                refresh_token: refreshToken,
+              });
+              if (sessionError)
+                return { error: new Error(sessionError.message) };
+            } catch (err: any) {
+              if (err.message?.includes("Lock") && err.message?.includes("stole it")) {
+                console.warn("Ignored lock error on setSession", err);
+              } else {
+                throw err;
+              }
+            }
           } else {
             const code = new URL(url).searchParams.get("code");
             if (code) {
-              const { error: exchangeError } =
-                await supabase.auth.exchangeCodeForSession(code);
-              if (exchangeError)
-                return { error: new Error(exchangeError.message) };
+              try {
+                const { error: exchangeError } =
+                  await supabase.auth.exchangeCodeForSession(code);
+                if (exchangeError)
+                  return { error: new Error(exchangeError.message) };
+              } catch (err: any) {
+                if (err.message?.includes("Lock") && err.message?.includes("stole it")) {
+                  console.warn("Ignored lock error on exchangeCodeForSession", err);
+                } else {
+                  throw err;
+                }
+              }
             } else {
               return { error: new Error("No tokens received from OAuth") };
             }

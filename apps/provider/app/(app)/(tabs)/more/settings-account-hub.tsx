@@ -79,7 +79,7 @@ const SETTINGS_CATEGORIES: SettingsCategory[] = [
     title: "Clients",
     description: "Client management and preferences",
     items: [
-      { title: "Client list", description: "View and manage clients", href: "/provider/settings/clients/list", mobileRoute: "/(app)/(tabs)/more/clients" },
+      { title: "Client list", description: "View and manage clients", href: "/provider/settings/clients/list", mobileRoute: "/(app)/(tabs)/clients" },
       { title: "Referral sources", description: "Track where clients come from", href: "/provider/settings/clients/referrals", mobileRoute: "/(app)/(tabs)/more/settings/referral-sources" },
       { title: "Cancellation reasons", description: "Manage cancellation reasons", href: "/provider/settings/clients/cancellation-reasons", mobileRoute: "/(app)/(tabs)/more/settings/cancellation-reasons" },
       { title: "Cancellation policies", description: "Refund and cancellation policies", href: "/provider/settings/cancellation-policies", mobileRoute: "/(app)/(tabs)/more/settings/cancellation-policies" },

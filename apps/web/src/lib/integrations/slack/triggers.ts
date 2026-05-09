@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
-import { SLACK_EVENT_KEYS } from "@/lib/integrations/slack/event-keys";
+import { SLACK_EVENT_KEYS, type SlackEventKey } from "@/lib/integrations/slack/event-keys";
 import { tryNotifySlackEvent } from "@/lib/integrations/slack/dispatch";
 
 function eventEnv(): "production" | "staging" | "development" {
@@ -20,21 +20,49 @@ export async function slackNotifyNewSupportTicket(
   }
 ) {
   const tenantId = await resolveAdminApiTenantId(request);
-  const priority = String(ticket.priority || "");
-  if (priority !== "urgent" && priority !== "high") return;
+  const priority = String(ticket.priority || "medium");
   const env = eventEnv();
+  
+  let eventKey: SlackEventKey = SLACK_EVENT_KEYS.SUPPORT_TICKET_CREATED;
+  if (priority === "urgent") eventKey = SLACK_EVENT_KEYS.SUPPORT_TICKET_URGENT_CREATED;
+  else if (priority === "high") eventKey = SLACK_EVENT_KEYS.SUPPORT_TICKET_HIGH_CREATED;
+
   void tryNotifySlackEvent({
     tenantId,
     environment: env,
-    eventKey:
-      priority === "urgent"
-        ? SLACK_EVENT_KEYS.SUPPORT_TICKET_URGENT_CREATED
-        : SLACK_EVENT_KEYS.SUPPORT_TICKET_HIGH_CREATED,
+    eventKey,
     dedupeKey: `ticket:${ticket.id}:created:${priority}`,
     entityType: "support_ticket",
     entityId: ticket.id,
-    title: `${priority === "urgent" ? "Urgent" : "High-priority"} support ticket ${ticket.ticket_number || ticket.id}`,
+    title: `New support ticket ${ticket.ticket_number || ticket.id} (${priority})`,
     detailLines: [ticket.subject || "(no subject)", `Priority: ${priority}`, "Action: triage and assign an owner"],
+    actionUrl: `/support-tickets/${ticket.id}`,
+  });
+}
+
+export async function slackNotifySupportTicketReply(
+  request: NextRequest,
+  ticket: {
+    id: string;
+    ticket_number?: string | null;
+    subject?: string | null;
+    priority?: string | null;
+  },
+  messagePreview: string
+) {
+  const tenantId = await resolveAdminApiTenantId(request);
+  const priority = String(ticket.priority || "medium");
+  const env = eventEnv();
+
+  void tryNotifySlackEvent({
+    tenantId,
+    environment: env,
+    eventKey: SLACK_EVENT_KEYS.SUPPORT_TICKET_REPLY,
+    dedupeKey: `ticket:${ticket.id}:reply:${Date.now()}`,
+    entityType: "support_ticket",
+    entityId: ticket.id,
+    title: `New reply on ticket ${ticket.ticket_number || ticket.id}`,
+    detailLines: [ticket.subject || "(no subject)", `Preview: ${messagePreview}`],
     actionUrl: `/support-tickets/${ticket.id}`,
   });
 }

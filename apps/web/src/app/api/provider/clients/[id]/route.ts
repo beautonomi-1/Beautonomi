@@ -684,7 +684,7 @@ export async function PATCH(
         // Silently ignore identity writes for registered customers so a
         // provider saving `notes` + auto-echoed `date_of_birth` doesn't
         // 403. The mobile `Edit` button is hidden for registered clients
-        // (see apps/provider/app/(app)/(tabs)/more/clients/[id].tsx),
+        // (see apps/provider/app/(app)/(tabs)/clients/[id].tsx),
         // and provider-web should hide identity inputs the same way.
         console.info(
           "[provider/clients PATCH] dropping identity-field writes for registered customer",
