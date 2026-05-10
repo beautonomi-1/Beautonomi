@@ -33,6 +33,15 @@ import {
   normalizeProviderCreateDiscounts,
   sumExplicitProviderAddonsSubtotal,
 } from "@/lib/bookings/provider-booking-finance";
+import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
+import { validateProviderBookingProducts } from "@/lib/bookings/validate-provider-booking-products";
+
+function sumUnpaidAdditionalCharges(charges: unknown): number {
+  if (!Array.isArray(charges)) return 0;
+  return charges
+    .filter((charge: any) => charge?.status !== "paid" && charge?.status !== "rejected")
+    .reduce((sum: number, charge: any) => sum + Number(charge?.amount ?? 0), 0);
+}
 
 // Map frontend status to database enum values
 // Frontend: booked, started, completed, cancelled, no_show
@@ -368,6 +377,16 @@ async function handleGetProviderBookings(request: NextRequest) {
       const recurringSeries = Array.isArray(booking.recurring_appointments)
         ? booking.recurring_appointments[0]
         : booking.recurring_appointments;
+      const unpaidAdditionalCharges = sumUnpaidAdditionalCharges(booking.additional_charges);
+      const outstandingBalance = computeBookingOutstandingDisplay({
+        totalAmount: Number(booking.total_amount ?? 0),
+        totalPaid: Number(booking.total_paid ?? 0),
+        totalRefunded: Number(booking.total_refunded ?? 0),
+        walletAmount: Number(booking.wallet_amount ?? 0),
+        giftCardAmount: Number(booking.gift_card_amount ?? 0),
+        unpaidAdditionalCharges,
+        paymentStatus: booking.payment_status,
+      });
 
       return {
         id: booking.id,
@@ -440,6 +459,7 @@ async function handleGetProviderBookings(request: NextRequest) {
         currency: booking.currency || lastResortCurrency,
         payment_status: booking.payment_status,
         payment_method: null, // payment_method_id is the actual column
+        outstanding_balance: outstandingBalance,
         additional_charges: booking.additional_charges || [],
         special_requests: booking.special_requests || null,
         loyalty_points_earned: booking.loyalty_points_earned || 0,
@@ -448,6 +468,10 @@ async function handleGetProviderBookings(request: NextRequest) {
         updated_at: booking.updated_at,
         // Include current_stage for Mangomint-style status/color (client_arrived → WAITING, etc.)
         current_stage: booking.current_stage || null,
+        arrival_otp_pending: Boolean((booking as any).arrival_otp_pending),
+        qr_arrival_pending: Boolean((booking as any).qr_arrival_pending),
+        arrival_otp_verified: Boolean((booking as any).arrival_otp_verified),
+        qr_code_verified: Boolean((booking as any).qr_code_verified),
         // Include joined data for UI convenience (provider portal calendar uses these)
         customers: booking.customers || null,
         locations: booking.locations || null,
@@ -531,7 +555,7 @@ async function handleGetProviderBookings(request: NextRequest) {
       groupIds.length
         ? supabaseAdmin
             .from("bookings")
-            .select("id, group_booking_id, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status, status")
+            .select("id, group_booking_id, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status, status, additional_charges(amount,status)")
             .eq("provider_id", providerId)
             .in("group_booking_id", groupIds)
         : Promise.resolve({ data: [] as any[] }),
@@ -557,11 +581,12 @@ async function handleGetProviderBookings(request: NextRequest) {
       const paidAfterRefunds = Math.max(0, Number(child.total_paid ?? 0) - Number(child.total_refunded ?? 0));
       const walletGiftCoverage = Number(child.wallet_amount ?? 0) + Number(child.gift_card_amount ?? 0);
       const childCoverage = Math.max(paidAfterRefunds, walletGiftCoverage);
+      const childUnpaidCharges = sumUnpaidAdditionalCharges(child.additional_charges);
       groupPaymentById.set(child.group_booking_id, {
         totalPaid: prev.totalPaid + Number(child.total_paid ?? 0),
         totalRefunded: prev.totalRefunded + Number(child.total_refunded ?? 0),
         walletGiftCoverage: prev.walletGiftCoverage + walletGiftCoverage,
-        coverage: prev.coverage + childCoverage,
+        coverage: prev.coverage + childCoverage - childUnpaidCharges,
         paymentStatus: prev.paymentStatus,
       });
     }
@@ -603,7 +628,7 @@ async function handleGetProviderBookings(request: NextRequest) {
       const groupPaymentStatus =
         total > 0 && balanceDue <= 0
           ? "paid"
-          : payment.coverage > 0
+          : payment.totalPaid > 0 || payment.walletGiftCoverage > 0
             ? "partially_paid"
             : "pending";
       const staffName = group.staff_id ? groupStaffName.get(group.staff_id) ?? null : null;
@@ -668,6 +693,7 @@ async function handleGetProviderBookings(request: NextRequest) {
         balance_due: balanceDue,
         currency: lastResortCurrency,
         payment_status: groupPaymentStatus,
+        outstanding_balance: balanceDue,
         payment_method: null,
         special_requests: group.notes || null,
         loyalty_points_earned: 0,
@@ -1085,6 +1111,19 @@ async function handleCreateProviderBooking(request: NextRequest) {
         422,
       );
     }
+    const productValidation = await validateProviderBookingProducts(
+      supabaseAdmin,
+      providerId,
+      Array.isArray(body.products) ? body.products : [],
+    );
+    if (productValidation.ok === false) {
+      return errorResponse(
+        productValidation.message,
+        productValidation.code,
+        productValidation.code === "PRODUCT_VALIDATION_FAILED" ? 503 : 400,
+      );
+    }
+    const validatedProducts = productValidation.products;
     // Catalog package: validate lines against `service_package_items`, then discount SERVICES-only
     // subtotal (matches public `validate-booking.ts`).
     const bookingLocationTypeForPkg = body.location_type || "at_salon";
@@ -1512,8 +1551,12 @@ async function handleCreateProviderBooking(request: NextRequest) {
         );
       }
 
-      // Fetch created booking and set provider-only fields not in RPC
-      const { data: createdBooking, error: fetchErr } = await supabaseAdmin
+      const createdBookingId = String(bookingId);
+
+      // Set provider-only fields not handled by the locking RPC. Keep this
+      // separate from the reload so an embedded-select/schema issue cannot
+      // turn a successfully-created booking into a partial failure.
+      const { error: postRpcUpdateErr } = await supabaseAdmin
         .from("bookings")
         .update({
           booking_source: bookingSource,
@@ -1521,26 +1564,42 @@ async function handleCreateProviderBooking(request: NextRequest) {
           discount_reason: body.discount_reason ?? null,
           ...(providerFormResponses ? { provider_form_responses: providerFormResponses } : {}),
         })
-        .eq("id", bookingId)
-        .select(
-          `
-          *,
-          customers:users!bookings_customer_id_fkey(id, full_name, email, phone),
-          locations:provider_locations(id, name, address_line1, city)
-        `
-        )
-        .single();
+        .eq("id", createdBookingId);
 
-      if (fetchErr || !createdBooking) {
-        console.error("Failed to fetch/update booking after RPC:", fetchErr);
-        // The booking row was created by the RPC; it can be found in the calendar.
-        return errorResponse(
-          "Booking was saved but could not be fully loaded after creation. Please check your calendar to confirm it was created.",
-          "DB_FETCH_ERROR",
-          500,
-        );
+      if (postRpcUpdateErr) {
+        console.warn("Booking created, but provider-only post-RPC fields could not be patched:", {
+          bookingId: createdBookingId,
+          error: postRpcUpdateErr,
+        });
       }
+
+      const { data: createdBooking, error: fetchErr } = await supabaseAdmin
+        .from("bookings")
+        .select("*")
+        .eq("id", createdBookingId)
+        .maybeSingle();
+
+      if (fetchErr) {
+        console.warn("Booking created, but post-RPC reload failed; using request payload fallback:", {
+          bookingId: createdBookingId,
+          error: fetchErr,
+        });
+      }
+
       booking = createdBooking;
+      if (!booking) {
+        booking = {
+          ...bookingData,
+          id: createdBookingId,
+          booking_number: null,
+          booking_source: bookingSource,
+          referral_source_id: referralSourceId,
+          discount_reason: body.discount_reason ?? null,
+          provider_form_responses: providerFormResponses ?? null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+      }
       console.log("Booking created successfully via RPC:", booking.id);
 
       // §Provider-audit 2026-04: RPC `create_booking_with_locking` does not
@@ -1578,11 +1637,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
       const { data: insertedBooking, error } = await supabaseAdmin
         .from("bookings")
         .insert(bookingData)
-        .select(`
-          *,
-          customers:users!bookings_customer_id_fkey(id, full_name, email, phone),
-          locations:provider_locations(id, name, address_line1, city)
-        `)
+        .select("*")
         .single();
 
       if (error) {
@@ -1703,15 +1758,16 @@ async function handleCreateProviderBooking(request: NextRequest) {
     }
 
     // Create booking_products records for each product
-    if (body.products && Array.isArray(body.products) && body.products.length > 0) {
+    if (validatedProducts.length > 0) {
       const primaryStaffId = body.team_member_id || body.staff_id || null;
-      const bookingProductsData = body.products.map((product: any) => ({
+      const bookingProductsData = validatedProducts.map((product) => ({
         booking_id: booking.id,
-        product_id: product.productId || product.product_id,
-        product_variant_id: product.productVariantId ?? null,
-        quantity: product.quantity || 1,
-        unit_price: product.unitPrice || product.unit_price || 0,
-        total_price: product.totalPrice || product.total_price || (product.unitPrice || product.unit_price || 0) * (product.quantity || 1),
+        product_id: product.productId,
+        product_variant_id: product.productVariantId,
+        quantity: product.quantity,
+        unit_price: product.unitPrice,
+        total_price: product.totalPrice,
+        currency: product.currency || booking.currency || lastResortCurrency,
         staff_id: primaryStaffId,
       }));
 
@@ -1761,7 +1817,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
         try {
           const { data: pendingProducts } = await supabaseAdmin
             .from("booking_products")
-            .select("id, product_id, product_variant_id, quantity")
+            .select("id, product_id, product_variant_id, quantity, products:products!booking_products_product_id_fkey(track_stock_quantity)")
             .eq("booking_id", booking.id)
             .is("stock_deducted_at", null);
           if (Array.isArray(pendingProducts) && pendingProducts.length > 0) {
@@ -1771,8 +1827,10 @@ async function handleCreateProviderBooking(request: NextRequest) {
               product_id: string | null;
               product_variant_id?: string | null;
               quantity: number | null;
+              products?: { track_stock_quantity?: boolean | null } | null;
             }>) {
               if (!row.product_id || !row.quantity || row.quantity <= 0) continue;
+              if (row.products?.track_stock_quantity === false) continue;
               const { error: decErr } = row.product_variant_id
                 ? await (supabaseAdmin.rpc as any)("decrement_product_variant_stock", {
                   p_variant_id: row.product_variant_id,
@@ -1787,7 +1845,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
                   `[provider/bookings create] decrement_product_stock failed for booking ${booking.id}, row ${row.id}:`,
                   decErr,
                 );
-                continue;
+                throw new Error(decErr.message || "Product stock could not be deducted");
               }
               await supabaseAdmin
                 .from("booking_products")
@@ -1799,6 +1857,15 @@ async function handleCreateProviderBooking(request: NextRequest) {
           console.error(
             "[provider/bookings create] failed to deduct retail stock:",
             stockErr,
+          );
+          await supabaseAdmin.from("product_orders").delete().eq("booking_id", booking.id);
+          await supabaseAdmin.from("bookings").delete().eq("id", booking.id);
+          return errorResponse(
+            stockErr instanceof Error
+              ? stockErr.message
+              : "Product stock could not be deducted for this completed booking.",
+            "INSUFFICIENT_STOCK",
+            400,
           );
         }
       }

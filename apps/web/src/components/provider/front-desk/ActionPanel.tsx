@@ -8,6 +8,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { MessageCircle, Phone, Copy, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
 import type { FrontDeskBooking } from "@/lib/front-desk/types";
 import { copyTextToClipboard } from "@/lib/browser/clipboard";
 import { WorkflowStepper } from "./WorkflowStepper";
@@ -66,6 +67,15 @@ export function ActionPanel({ booking, onClose, onActionComplete, onCompleteRequ
         .reduce((sum: number, charge: any) => sum + Number(charge?.amount || 0), 0)
     : 0;
   const folioTotal = Number(booking.total_amount || 0) + unpaidAdditionalCharges;
+  const outstandingBalance = computeBookingOutstandingDisplay({
+    totalAmount: Number(booking.total_amount || 0),
+    totalPaid: Number((booking as any).total_paid || 0),
+    totalRefunded: Number((booking as any).total_refunded || 0),
+    walletAmount: Number((booking as any).wallet_amount || 0),
+    giftCardAmount: Number((booking as any).gift_card_amount || 0),
+    unpaidAdditionalCharges,
+    paymentStatus: (booking as any).payment_status,
+  });
 
   const handleCopyPhone = async () => {
     if (phone) {
@@ -259,8 +269,13 @@ export function ActionPanel({ booking, onClose, onActionComplete, onCompleteRequ
                     })
                   }
                 >
-                  Mark completed (cash / offline)
+                  {outstandingBalance > 0 ? "Complete without recording payment" : "Mark completed"}
                 </Button>
+                {outstandingBalance > 0 ? (
+                  <p className="text-[11px] font-medium leading-4 text-amber-700">
+                    This only changes booking status. Use the payment buttons above to record cash, card, or offline payment.
+                  </p>
+                ) : null}
               </div>
             ) : nextStep ? (
               <Button

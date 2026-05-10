@@ -64,6 +64,7 @@ import {
   ARRIVAL_PIN_PROVIDER_HEADING,
   ARRIVAL_PIN_PROVIDER_SUBTEXT,
   ARRIVAL_PIN_TOAST_PROVIDER_INCOMPLETE,
+  getBookingPaymentDisplay,
 } from "@beautonomi/utils";
 import {
   Dialog,
@@ -1037,6 +1038,12 @@ export default function ProviderBookingDetail() {
     unpaidAdditionalCharges: unpaidChargesTotal,
     paymentStatus: b.payment_status,
   });
+  const paymentDisplay = getBookingPaymentDisplay({
+    paymentStatus: b.payment_status,
+    outstandingBalance: outstanding,
+    paymentOption: (b as unknown as Record<string, unknown>).payment_option as string | null | undefined,
+    depositRequired: (b as unknown as Record<string, unknown>).deposit_required as boolean | null | undefined,
+  });
   const netPaidAfterRefunds = totalPaid - totalRefunded;
   const maxRefundable = Math.max(0, netPaidAfterRefunds);
   const canMarkPaid = outstanding > 0 && (b.status === "completed" || isStarted);
@@ -1766,14 +1773,16 @@ export default function ProviderBookingDetail() {
               <span>Payment Status</span>
               <span
                 className={`font-medium ${
-                  booking.payment_status === "paid"
+                  paymentDisplay.tone === "success"
                     ? "text-green-600"
-                    : booking.payment_status === "pending"
+                    : paymentDisplay.tone === "warning"
                     ? "text-yellow-600"
-                    : "text-red-600"
+                    : paymentDisplay.tone === "danger"
+                      ? "text-red-600"
+                      : "text-gray-600"
                 }`}
               >
-                {booking.payment_status}
+                {paymentDisplay.label}
               </span>
             </div>
           </div>
@@ -1949,7 +1958,7 @@ export default function ProviderBookingDetail() {
             )}
             {totalPaid > 0 && (
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Paid via card/gateway</span>
+                <span className="text-gray-600">Payments recorded</span>
                 <span className="font-medium text-green-600">{formatMoney(totalPaid)}</span>
               </div>
             )}
@@ -1963,12 +1972,6 @@ export default function ProviderBookingDetail() {
               <div className="flex justify-between text-sm border-t pt-2">
                 <span className="text-gray-700 font-medium">Outstanding</span>
                 <span className="font-bold text-amber-600">{formatMoney(outstanding)}</span>
-              </div>
-            )}
-            {outstanding < 0 && (
-              <div className="flex justify-between text-sm border-t pt-2">
-                <span className="text-gray-700 font-medium">Overpaid / credit</span>
-                <span className="font-medium text-blue-700">{formatMoney(-outstanding)}</span>
               </div>
             )}
           </div>

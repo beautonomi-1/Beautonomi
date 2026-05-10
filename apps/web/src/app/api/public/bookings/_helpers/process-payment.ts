@@ -16,6 +16,7 @@ import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id
 import { resolveCommissionPercentageForProvider } from "@/lib/finance/resolve-commission-percentage";
 import { percentOf, subtractMoney } from "@beautonomi/utils";
 import { resolvePaymentTenantForBookingRequest } from "@/lib/bookings/resolve-payment-tenant";
+import { recordBookingPaystackPayment } from "@/lib/bookings/record-booking-paystack-payment";
 import { syncBookingAfterPaystackSuccess } from "@/lib/bookings/sync-booking-after-paystack-success";
 import { ensureWalletGiftBookingPayments } from "@/lib/bookings/ensure-wallet-gift-booking-payments";
 import { getPlatformPaymentTypesForTenant } from "@/lib/payments/platform-payment-types";
@@ -433,7 +434,7 @@ export async function processPayment(
               ? { subscribe_recurring_frequency: validatedDraft.subscribe_recurring!.frequency }
               : {}),
           },
-          { tenantId: flagTenantId }
+          { tenantId: flagTenantId, reference }
         );
       } catch (chargeErr) {
         // §Risk-hardening 2026-04: Paystack saved-card charge threw before we
@@ -470,39 +471,27 @@ export async function processPayment(
       // not. Wrap the whole tail in try/catch and log loudly.
       try {
         const chargeData = chargeResult.data as { id?: number; reference?: string; amount?: number };
-        const paystackPaymentProviderId =
-          typeof chargeData?.reference === "string" && chargeData.reference.trim()
-            ? chargeData.reference.trim()
-            : chargeData?.id !== undefined && chargeData?.id !== null
-              ? String(chargeData.id)
-              : null;
-        if (paystackPaymentProviderId) {
-          const { data: existingBp } = await supabaseAdmin
-            .from("booking_payments")
-            .select("id")
-            .eq("payment_provider", "paystack")
-            .eq("payment_provider_id", paystackPaymentProviderId)
-            .maybeSingle();
-          if (!existingBp) {
-            const amountMajor =
-              typeof chargeData.amount === "number" ? chargeData.amount / 100 : amountToCollect;
-            const bookingTenantId = booking.tenant_id ?? null;
-            await supabaseAdmin.from("booking_payments").insert({
-              booking_id: booking.id,
-              ...(bookingTenantId ? { tenant_id: bookingTenantId } : {}),
-              amount: amountMajor,
-              payment_method: "card",
-              payment_provider: "paystack",
-              payment_provider_id: paystackPaymentProviderId,
-              status: "completed",
-              notes: `Saved card charge. Ref: ${chargeData.reference ?? ""}`,
-              payment_provider_data: {
-                source: "process_payment_saved_card",
-                reference: chargeData.reference,
-                paystack_transaction_id: chargeData.id,
-              },
-            });
-          }
+        const amountMajor =
+          typeof chargeData.amount === "number" ? chargeData.amount / 100 : amountToCollect;
+        const recordedPayment = await recordBookingPaystackPayment(supabaseAdmin, {
+          bookingId: booking.id,
+          tenantId: booking.tenant_id ?? null,
+          reference: chargeData.reference ?? reference,
+          transactionId: chargeData.id ?? null,
+          amountMajor,
+          source: "process_payment_saved_card",
+          paymentOption: v.provider.requires_deposit ? paymentOption : "full",
+          requiresDeposit: Boolean(v.provider.requires_deposit),
+          paymentMethodId: savedPaymentMethodId,
+          notes: `Saved card charge. Ref: ${chargeData.reference ?? reference}`,
+        });
+        if (recordedPayment.ok === false) {
+          console.error("[process-payment] failed to record saved-card booking_payments row after charge", {
+            bookingId: booking.id,
+            reference: chargeData.reference ?? reference,
+            reason: recordedPayment.reason,
+            error: recordedPayment.error,
+          });
         }
 
         try {

@@ -444,6 +444,8 @@ function statusColor(status: string): string {
     case "started":
       return "bg-amber-100";
     case "waiting":
+    case "pending":
+    case "pending_payment":
       return "bg-amber-100";
     case "checked_in":
       return "bg-primary/10";
@@ -467,6 +469,8 @@ function statusTextColor(status: string): string {
     case "started":
       return "text-amber-800";
     case "waiting":
+    case "pending":
+    case "pending_payment":
       return "text-amber-800";
     case "checked_in":
       return "text-primary";
@@ -1242,8 +1246,8 @@ export default function BookingDetailScreen() {
   const arrivalOtpPending = b.arrival_otp_pending === true;
   const qrArrivalPending = b.qr_arrival_pending === true;
 
-  const isActive = ["pending", "booked", "confirmed", "waiting", "checked_in"].includes(b.status);
-  const isStarted = ["started", "in_progress"].includes(b.status);
+  const isActive = ["pending", "confirmed", "waiting", "checked_in"].includes(currentDbStatus);
+  const isStarted = currentDbStatus === "in_progress";
   const totalAmount = b.total_amount ?? 0;
   const totalPaid = b.total_paid ?? 0;
   const totalRefunded = b.total_refunded ?? 0;
@@ -1715,8 +1719,9 @@ export default function BookingDetailScreen() {
         return;
       }
       const version = (b as BookingDetail & { version?: number }).version;
-      const { error: err } = await patchMutation(`/api/provider/bookings/${id}`, {
+      const { error: err, errorCode } = await patchMutation(`/api/provider/bookings/${id}`, {
         scheduled_at: newScheduledAt,
+        travel_buffer: rescheduleIsHome ? rescheduleTravelBufferMinutes : 0,
         ...(version !== undefined && { version }),
       });
       if (err) {
@@ -1727,7 +1732,7 @@ export default function BookingDetailScreen() {
             [{ text: "Cancel", style: "cancel" }, { text: "Refresh", onPress: () => refresh() }]
           );
         } else {
-          Alert.alert("Error", err);
+          Alert.alert("Reschedule not changed", mapProviderBookingActionError(err, errorCode));
         }
         setRescheduling(false);
         return;
@@ -1940,9 +1945,9 @@ export default function BookingDetailScreen() {
       if (sent === false) {
         const reason =
           payload?.detail ||
-          payload?.message ||
           payload?.error ||
-          "No channel accepted the message (check customer email/phone and notification settings).";
+          payload?.message ||
+          "The notification could not be delivered. Check the customer's contact details and try again.";
         Alert.alert("Not sent", reason);
         return;
       }
@@ -2369,8 +2374,13 @@ export default function BookingDetailScreen() {
                   <Text style={twStyle("text-xs font-medium text-primary")}>Provider</Text>
                 </View>
               )}
-              <View style={twStyle(`rounded-full px-2 py-1 ${statusColor(b.status)}`)}>
-                <Text style={twStyle(`text-xs font-semibold ${statusTextColor(b.status)}`)}>
+              {b.booking_source === "online" && !b.is_group_booking && (
+                <View style={[twStyle("rounded-full bg-blue-100 px-2 py-1"), { marginRight: 6 }]}>
+                  <Text style={twStyle("text-xs font-medium text-blue-800")}>Online</Text>
+                </View>
+              )}
+              <View style={twStyle(`rounded-full px-2 py-1 ${statusColor(currentDbStatus)}`)}>
+                <Text style={twStyle(`text-xs font-semibold ${statusTextColor(currentDbStatus)}`)}>
                   {labelForDbStatus(currentDbStatus)}
                 </Text>
               </View>
@@ -2415,17 +2425,21 @@ export default function BookingDetailScreen() {
             <View style={twStyle("rounded-xl bg-gray-50 px-3 py-2")}>
               <Text style={twStyle("text-[11px] font-semibold uppercase text-gray-500")}>Type</Text>
               <Text style={twStyle("mt-0.5 text-sm font-semibold text-gray-900")}>
+                {isAtHome ? "House call" : b.booking_source === "walk_in" ? "Walk-in / salon" : "Salon"}
+              </Text>
+            </View>
+            <View style={twStyle("rounded-xl bg-gray-50 px-3 py-2")}>
+              <Text style={twStyle("text-[11px] font-semibold uppercase text-gray-500")}>Channel</Text>
+              <Text style={twStyle("mt-0.5 text-sm font-semibold text-gray-900")}>
                 {b.is_group_booking
                   ? "Group"
-                  : recurringDetails
-                    ? "Recurring"
-                    : b.booking_source === "walk_in"
-                      ? "Walk-in"
-                      : b.booking_source === "provider"
-                        ? "Provider"
-                        : isAtHome
-                          ? "House call"
-                          : "Salon"}
+                  : b.booking_source === "walk_in"
+                    ? "Walk-in"
+                    : b.booking_source === "provider"
+                      ? "Provider-created"
+                      : b.booking_source === "online"
+                        ? "Online"
+                        : "Booking"}
               </Text>
             </View>
             <View style={twStyle("rounded-xl bg-gray-50 px-3 py-2")}>

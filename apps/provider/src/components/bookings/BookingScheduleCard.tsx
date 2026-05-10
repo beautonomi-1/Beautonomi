@@ -33,7 +33,11 @@ export interface BookingScheduleCardBooking {
   total_amount: number | null;
   total_paid?: number | null;
   total_refunded?: number | null;
+  wallet_amount?: number | null;
+  gift_card_amount?: number | null;
+  outstanding_balance?: number | null;
   payment_status?: string | null;
+  additional_charges?: Array<{ amount?: number | string | null; status?: string | null }> | null;
   location_type?: "at_salon" | "at_home" | null;
   is_group_booking?: boolean;
   is_recurring?: boolean;
@@ -119,10 +123,19 @@ function getPaymentLabel(
 ): { label: string; tone: "paid" | "partial" | "due" } | null {
   const status = (b.payment_status || "").toLowerCase();
   const total = Number(b.total_amount ?? 0);
-  const paid = Number(b.total_paid ?? 0) - Number(b.total_refunded ?? 0);
-  if (status === "paid" || (total > 0 && paid >= total)) return { label: "Paid", tone: "paid" };
-  if (paid > 0) return { label: "Part paid", tone: "partial" };
-  if (total > 0) return { label: "Payment due", tone: "due" };
+  const paidAfterRefunds = Math.max(0, Number(b.total_paid ?? 0) - Number(b.total_refunded ?? 0));
+  const walletGiftCoverage = Math.max(0, Number(b.wallet_amount ?? 0) + Number(b.gift_card_amount ?? 0));
+  const unpaidAdditionalCharges = Array.isArray(b.additional_charges)
+    ? b.additional_charges
+        .filter((charge) => charge?.status !== "paid" && charge?.status !== "rejected")
+        .reduce((sum, charge) => sum + Number(charge?.amount ?? 0), 0)
+    : 0;
+  const outstanding = b.outstanding_balance == null
+    ? Math.max(0, total - Math.max(paidAfterRefunds, walletGiftCoverage) + unpaidAdditionalCharges)
+    : Math.max(0, Number(b.outstanding_balance));
+  if (status === "paid" || (total > 0 && outstanding <= 0)) return { label: "Paid", tone: "paid" };
+  if (paidAfterRefunds > 0 || walletGiftCoverage > 0) return { label: "Part paid", tone: "partial" };
+  if (total > 0 || outstanding > 0) return { label: "Payment due", tone: "due" };
   return null;
 }
 
@@ -146,7 +159,8 @@ export function BookingScheduleCard({
   const statusAnimStyle = useAnimatedStyle(() => ({ opacity: statusOpacity.value }));
   const customerName = booking.customers?.full_name || "Customer";
   const serviceName = serviceSummary(booking.services);
-  const ns = normalizeBookingStatus(booking.status);
+  const displayStatus = booking.db_status || booking.status;
+  const ns = normalizeBookingStatus(displayStatus);
   const st = STATUS_STYLE[ns] ?? { bg: Colors.gray[100], text: Colors.gray[700] };
   const payment = getPaymentLabel(booking);
   const paymentStyle = payment ? pillColors(payment.tone) : null;
@@ -161,6 +175,8 @@ export function BookingScheduleCard({
     booking.is_recurring || booking.recurring_series_id ? { label: "Repeats", icon: "repeat-outline" as const } : null,
     booking.is_group_booking ? { label: "Group", icon: "people-outline" as const } : null,
     booking.booking_source === "walk_in" ? { label: "Walk-in", icon: "walk-outline" as const } : null,
+    booking.booking_source === "provider" ? { label: "Provider", icon: "person-outline" as const } : null,
+    booking.booking_source === "online" ? { label: "Online", icon: "globe-outline" as const } : null,
     booking.custom_offer ? { label: "Custom", icon: "pricetag-outline" as const } : null,
   ].filter(Boolean) as { label: string; icon: keyof typeof Ionicons.glyphMap }[];
   const visibleTraits = traits.slice(0, 2);
@@ -230,7 +246,7 @@ export function BookingScheduleCard({
               >
                 <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: st.text, marginRight: 6 }} />
                 <Text style={[twStyle("text-[11px] font-bold"), { color: st.text }]} numberOfLines={1}>
-                  {formatBookingStatusLabel(booking.status)}
+                  {formatBookingStatusLabel(displayStatus)}
                 </Text>
               </AnimatedRe.View>
             </View>

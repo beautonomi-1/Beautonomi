@@ -483,7 +483,7 @@ export async function POST(
 
       const { data: bookings, error: bookingsError } = await admin
         .from("bookings")
-        .select("id, tenant_id, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, status")
+        .select("id, tenant_id, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, status, additional_charges(amount,status)")
         .eq("group_booking_id", id)
         .eq("provider_id", providerId)
         .not("status", "in", "(cancelled,no_show)");
@@ -492,12 +492,18 @@ export async function POST(
       const paymentProvider = paymentMethod === "cash" ? "cash" : "other";
       const rows = (bookings ?? [])
         .map((booking: any) => {
+          const unpaidAdditionalCharges = Array.isArray(booking.additional_charges)
+            ? booking.additional_charges
+                .filter((charge: any) => charge?.status !== "paid" && charge?.status !== "rejected")
+                .reduce((sum: number, charge: any) => sum + Number(charge?.amount || 0), 0)
+            : 0;
           const remaining = computeWalletGiftCoverageOutstanding({
             totalAmount: Number(booking.total_amount ?? 0),
             totalPaid: Number(booking.total_paid ?? 0),
             totalRefunded: Number(booking.total_refunded ?? 0),
             walletAmount: Number(booking.wallet_amount ?? 0),
             giftCardAmount: Number(booking.gift_card_amount ?? 0),
+            unpaidAdditionalCharges,
           });
           if (remaining <= 0) return null;
           return {

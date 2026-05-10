@@ -89,6 +89,9 @@ export function PaymentActions({
   if (variant === "footer") {
     return (
       <>
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
+          Balance due: {currency} {remaining.toFixed(2)}
+        </div>
         <div className="grid grid-cols-2 gap-4">
           <button
             type="button"

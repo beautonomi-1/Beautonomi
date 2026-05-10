@@ -22,6 +22,7 @@ import { Colors, Shadows } from "@/constants/colors";
 import { BookingCardSkeleton } from "@/components/Skeleton";
 import { supabase } from "@/lib/supabase/client";
 import { getTenantLocaleTag } from "@/lib/locale";
+import { getBookingLifecycleDisplay, getBookingPaymentDisplay } from "@beautonomi/utils";
 
 type BookingsTabType = "upcoming" | "past" | "cancelled";
 
@@ -60,7 +61,7 @@ function formatTime(s: string) {
 
 const STATUS_STYLES: Record<string, { bg: string; text: string; label?: string }> = {
   confirmed: { bg: "#DCFCE7", text: "#15803D" },
-  pending: { bg: "#FEF9C3", text: "#A16207" },
+  pending: { bg: "#FEF9C3", text: "#A16207", label: "Awaiting provider" },
   pending_payment: { bg: "#FEF3C7", text: "#92400E", label: "Pending Payment" },
   cancelled: { bg: "#FEE2E2", text: "#B91C1C" },
   completed: { bg: "#DBEAFE", text: "#1E40AF" },
@@ -119,7 +120,18 @@ function BookingCard({ booking, onPress }: { booking: Booking; onPress: () => vo
     "Beauty Service";
   const statusEntry = STATUS_STYLES[booking.status] ?? { bg: Colors.gray[100], text: Colors.gray[700] };
   const statusStyle = statusEntry;
-  const statusLabel = statusEntry.label || booking.status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  const lifecycleDisplay = getBookingLifecycleDisplay({
+    status: booking.status,
+    providerName: name,
+  });
+  const paymentDisplay = getBookingPaymentDisplay({
+    paymentStatus: (booking as unknown as { payment_status?: string }).payment_status,
+    paymentProvider: (booking as unknown as { payment_provider?: string }).payment_provider,
+    outstandingBalance: (booking as unknown as { outstanding_balance?: number }).outstanding_balance,
+    paymentOption: (booking as unknown as { payment_option?: string }).payment_option,
+    depositRequired: (booking as unknown as { deposit_required?: boolean }).deposit_required,
+  });
+  const statusLabel = statusEntry.label || lifecycleDisplay.label;
 
   return (
     <AnimatedPressable
@@ -163,6 +175,11 @@ function BookingCard({ booking, onPress }: { booking: Booking; onPress: () => vo
               <Text style={{ fontSize: 11, fontWeight: "600", color: "#db2777" }}>
                 {booking.group_booking_ref ? `Group · ${booking.group_booking_ref}` : "Group booking"}
               </Text>
+            </View>
+          )}
+          {(paymentDisplay.isPaymentSettled || paymentDisplay.isDepositPaid) && (
+            <View style={{ backgroundColor: "#ECFDF5", borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4 }}>
+              <Text style={{ fontSize: 11, fontWeight: "600", color: "#047857" }}>{paymentDisplay.label}</Text>
             </View>
           )}
           {!booking.is_group_booking && booking.booking_source === "walk_in" && (

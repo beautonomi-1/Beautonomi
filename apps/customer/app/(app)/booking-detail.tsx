@@ -43,6 +43,8 @@ import {
   ARRIVAL_PIN_FALLBACK_LABEL,
   ARRIVAL_PIN_LENGTH_HINT,
   ARRIVAL_PIN_PLACEHOLDER,
+  getBookingLifecycleDisplay,
+  getBookingPaymentDisplay,
   getCustomerEtaUiParts,
   normalizeProviderTimezone,
 } from "@beautonomi/utils";
@@ -965,6 +967,17 @@ export default function BookingDetailScreen() {
   if (!booking) return null;
 
   const provider = booking.provider;
+  const lifecycleDisplay = getBookingLifecycleDisplay({
+    status: booking.status,
+    providerName: provider?.business_name,
+  });
+  const paymentDisplay = getBookingPaymentDisplay({
+    paymentStatus: booking.payment_status,
+    paymentProvider: (booking as any).payment_provider,
+    outstandingBalance: (booking as any).outstanding_balance,
+    paymentOption: (booking as any).payment_option,
+    depositRequired: (booking as any).deposit_required,
+  });
   const location = booking.location;
   const services = booking.services ?? booking.booking_services ?? [];
   const isActive = ["pending", "confirmed", "started", "in_progress", "waiting", "checked_in"].includes(booking.status);
@@ -1293,17 +1306,44 @@ export default function BookingDetailScreen() {
       <ScrollView style={{ flex: 1, backgroundColor: Colors.white }} contentContainerStyle={{ padding: contentPadding, paddingBottom: 48, ...constraint }} accessibilityLabel="Booking details" accessibilityRole="none">
         {/* Acceptance / confirmation strip (for confirmed/pending/started) */}
         {isActive && (
-          <View style={{ marginBottom: 16, borderRadius: 16, backgroundColor: "#F0FDF4", borderWidth: 1, borderColor: "#BBF7D0", padding: 16 }}>
+          <View
+            style={{
+              marginBottom: 16,
+              borderRadius: 16,
+              backgroundColor: lifecycleDisplay.isAwaitingProviderConfirmation ? "#FFFBEB" : "#F0FDF4",
+              borderWidth: 1,
+              borderColor: lifecycleDisplay.isAwaitingProviderConfirmation ? "#FDE68A" : "#BBF7D0",
+              padding: 16,
+            }}
+          >
             <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "#DCFCE7", alignItems: "center", justifyContent: "center", marginRight: 12 }}>
-                <Ionicons name="checkmark-circle" size={24} color="#16a34a" />
+              <View
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 20,
+                  backgroundColor: lifecycleDisplay.isAwaitingProviderConfirmation ? "#FEF3C7" : "#DCFCE7",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginRight: 12,
+                }}
+              >
+                <Ionicons
+                  name={lifecycleDisplay.isAwaitingProviderConfirmation ? "time-outline" : "checkmark-circle"}
+                  size={24}
+                  color={lifecycleDisplay.isAwaitingProviderConfirmation ? "#D97706" : "#16a34a"}
+                />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>
-                  {booking.status === "pending" ? "Booking pending" : booking.status === "waiting" ? "Checked in — waiting" : booking.status === "checked_in" ? "You're checked in" : booking.status === "in_progress" || booking.status === "started" ? "Service in progress" : "Booking confirmed"} {formatTime(booking.selected_datetime, booking.display_time_zone)}
+                  {lifecycleDisplay.title} {formatTime(booking.selected_datetime, booking.display_time_zone)}
                 </Text>
                 <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 2 }}>
-                  {booking.status === "pending" ? `Awaiting confirmation from ${provider?.business_name || "your provider"}.` : booking.status === "waiting" ? "The provider will be with you shortly." : booking.status === "checked_in" ? "You've arrived. The provider knows you're here." : `Your booking with ${provider?.business_name || "your provider"} is confirmed.`}
+                  {booking.status === "waiting"
+                    ? "The provider will be with you shortly."
+                    : booking.status === "checked_in"
+                      ? "You've arrived. The provider knows you're here."
+                      : `${lifecycleDisplay.description}${paymentDisplay.isPaymentSettled || paymentDisplay.isDepositPaid ? ` ${paymentDisplay.label}.` : ""}`}
                 </Text>
               </View>
             </View>
@@ -1352,7 +1392,9 @@ export default function BookingDetailScreen() {
                       ? "Booking cancelled"
                       : booking.status === "no_show"
                         ? "Marked as no-show"
-                        : isProviderArrived
+                        : booking.status === "pending"
+                          ? "Awaiting provider confirmation"
+                          : isProviderArrived
                           ? "Provider has arrived"
                           : isProviderEnRoute
                             ? "Provider on the way"
@@ -1614,14 +1656,16 @@ export default function BookingDetailScreen() {
                     ]
                   : isAtHome
                     ? [
-                        { key: "confirmed", label: "Booking confirmed", done: ["pending", "confirmed", "started", "completed", "in_progress"].includes(booking.status) || isProviderEnRoute || isProviderArrived },
+                        { key: "received", label: "Request received", done: true },
+                        { key: "confirmed", label: "Confirmed by provider", done: ["confirmed", "started", "completed", "in_progress"].includes(booking.status) || isProviderEnRoute || isProviderArrived },
                         { key: "en_route", label: "Provider en route", done: isProviderEnRoute || isProviderArrived || ["started", "completed", "in_progress"].includes(booking.status) },
                         { key: "arrived", label: "Provider arrived", done: isProviderArrived || ["started", "completed", "in_progress"].includes(booking.status) },
                         { key: "in_progress", label: "Service in progress", done: ["started", "completed", "in_progress"].includes(booking.status) },
                         { key: "completed", label: "Completed", done: booking.status === "completed" },
                       ]
                     : [
-                        { key: "confirmed", label: "Booking confirmed", done: ["pending", "confirmed", "started", "completed", "in_progress"].includes(booking.status) },
+                        { key: "received", label: "Request received", done: true },
+                        { key: "confirmed", label: "Confirmed by provider", done: ["confirmed", "started", "completed", "in_progress"].includes(booking.status) },
                         { key: "preparing", label: "Preparing for your visit", done: ["confirmed", "started", "completed", "in_progress"].includes(booking.status) },
                         { key: "in_progress", label: "Service in progress", done: ["started", "completed", "in_progress"].includes(booking.status) },
                         { key: "completed", label: "Completed", done: booking.status === "completed" },

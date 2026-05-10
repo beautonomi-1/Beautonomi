@@ -14,6 +14,7 @@ import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { useTenantLocaleTag } from "@/hooks/useTenantLocaleTag";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { isPaidBookingPaymentStatus } from "@/lib/payments/booking-payment-status";
+import { getBookingLifecycleDisplay, getBookingPaymentDisplay } from "@beautonomi/utils";
 
 /** Normalize `/api/bookings/.../receipt` JSON (flat `{ receipt }` vs `{ data: { receipt } }`). */
 function unwrapReceiptResponse(body: unknown): Receipt | null {
@@ -83,6 +84,7 @@ interface Receipt {
   discount_reason?: string | null;
   total: number;
   currency?: string;
+  status?: string;
   payment_status: string;
   amount_paid?: number;
   total_refunded?: number;
@@ -259,6 +261,17 @@ export default function ReceiptPage() {
     );
   }
 
+  const lifecycleDisplay = getBookingLifecycleDisplay({
+    status: receipt.status,
+    providerName: receipt.provider?.business_name,
+  });
+  const paymentDisplay = getBookingPaymentDisplay({
+    paymentStatus: receipt.payment_status,
+    outstandingBalance: receipt.balance_due,
+    paymentOption: receipt.payment_option,
+    depositRequired: receipt.deposit_required,
+  });
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-rose-50/60 via-white to-slate-50 px-4 py-8 print:min-h-0 print:bg-white print:p-0">
       <div className="container mx-auto max-w-4xl print:max-w-none print:p-0">
@@ -294,18 +307,24 @@ export default function ReceiptPage() {
               </div>
               <Badge
                 className={
-                  receipt.payment_status === "paid"
+                  paymentDisplay.tone === "success"
                     ? "w-fit border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-800"
-                    : receipt.payment_status === "pending"
+                    : paymentDisplay.tone === "warning"
                     ? "w-fit border border-amber-200 bg-amber-50 px-3 py-1 text-amber-800"
                     : "w-fit border border-red-200 bg-red-50 px-3 py-1 text-red-800"
                 }
               >
-                {receipt.payment_status === "paid" && <CheckCircle2 className="mr-1 h-3 w-3" />}
-                {(receipt.payment_status || "pending").charAt(0).toUpperCase() +
-                  (receipt.payment_status || "pending").slice(1)}
+                {paymentDisplay.isPaymentSettled && <CheckCircle2 className="mr-1 h-3 w-3" />}
+                {paymentDisplay.label}
               </Badge>
             </div>
+            {lifecycleDisplay.isAwaitingProviderConfirmation && (
+              <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 print:border-slate-200 print:bg-white print:text-slate-700">
+                {paymentDisplay.isPaymentSettled || paymentDisplay.isDepositPaid
+                  ? `${paymentDisplay.label}. ${lifecycleDisplay.description}`
+                  : lifecycleDisplay.description}
+              </p>
+            )}
           </CardHeader>
           <CardContent className="space-y-7 p-8 print:p-0 print:pt-5">
             <div className="grid gap-4 sm:grid-cols-3 print:grid-cols-3">

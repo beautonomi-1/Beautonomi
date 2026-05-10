@@ -11,6 +11,7 @@ import { getGoogleCalendarUrl, getOutlookCalendarUrl, downloadICS } from "@/lib/
 import { formatCurrency } from "@/lib/utils";
 import { formatBookingDateInTimeZone, formatBookingTimeInTimeZone } from "@/lib/bookings/display-datetime";
 import { DEFAULT_BOOKING_DISPLAY_TIMEZONE } from "@/lib/bookings/display-invariants";
+import { getBookingLifecycleDisplay, getBookingPaymentDisplay } from "@beautonomi/utils";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import BeautonomiHeader from "@/components/layout/beautonomi-header";
 import { useRefreshAmplitudeIdentify } from "@/hooks/useAmplitude";
@@ -200,13 +201,17 @@ export default function BookingConfirmationPage() {
     const timeLine = formatBookingTimeInTimeZone(booking.selected_datetime, tz);
     const totalStr = formatCurrency(booking.total_amount, booking.currency);
     const providerName = booking.provider?.business_name || "the provider";
+    const lifecycleDisplay = getBookingLifecycleDisplay({
+      status: booking.status,
+      providerName,
+    });
     const text = [
       `Booking #${booking.booking_number} — ${providerName}.`,
       `${dateLine}, ${timeLine}.`,
       `${booking.services.length} service(s). Total ${totalStr}.`,
     ].join(" ");
     const shareData = {
-      title: `Booking Confirmation - ${booking.booking_number}`,
+      title: `${lifecycleDisplay.title} - ${booking.booking_number}`,
       text,
       url: window.location.href,
     };
@@ -317,11 +322,9 @@ export default function BookingConfirmationPage() {
                 <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-100 mb-4">
                   <CheckCircle className="w-8 h-8 text-green-600" />
                 </div>
-                <h1 className="text-2xl font-semibold text-gray-900 mb-2">
-                  Booking Confirmed!
-                </h1>
+                <h1 className="text-2xl font-semibold text-gray-900 mb-2">Booking submitted</h1>
                 <p className="text-gray-500 text-sm mb-6">
-                  Your booking was created successfully. We could not load the full details right now — check your email for a confirmation, or view your bookings below.
+                  Your booking was created successfully. We could not load the full details right now — check your email, or view your bookings below.
                 </p>
                 <div className="flex flex-col sm:flex-row gap-3 justify-center">
                   <Button
@@ -355,6 +358,15 @@ export default function BookingConfirmationPage() {
   const bookingDateRaw = booking.selected_datetime;
   const bookingTz = booking.display_time_zone || DEFAULT_BOOKING_DISPLAY_TIMEZONE;
   const bookingDate = new Date(bookingDateRaw);
+  const lifecycleDisplay = getBookingLifecycleDisplay({
+    status: booking.status,
+    providerName: booking.provider?.business_name,
+  });
+  const paymentDisplay = getBookingPaymentDisplay({
+    paymentStatus: booking.payment_status,
+    paymentProvider: booking.payment_provider,
+    outstandingBalance: booking.outstanding_balance,
+  });
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -373,21 +385,21 @@ export default function BookingConfirmationPage() {
             transition={{ type: "spring", stiffness: 200, damping: 15 }}
             className="inline-block mb-4"
           >
-            {booking.status === "confirmed" || booking.status === "completed" ? (
+            {lifecycleDisplay.tone === "success" || lifecycleDisplay.tone === "info" ? (
               <CheckCircle className="w-20 h-20 text-green-500" />
             ) : (
               <AlertCircle className="w-20 h-20 text-yellow-500" />
             )}
           </motion.div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            {booking.status === "confirmed" || booking.status === "completed"
-              ? "Booking Confirmed!"
-              : "Booking Received!"}
+            {lifecycleDisplay.title}
           </h1>
           <p className="text-gray-600">
-            {booking.status === "confirmed" || booking.status === "completed"
-              ? <>Your booking has been confirmed. We&apos;ve sent a confirmation to{" "}{booking.client_info?.email || "your email"}.</>
-              : "Your payment was received. Your booking is awaiting provider confirmation — you'll be notified once it's confirmed."}
+            {paymentDisplay.isPaymentSettled || paymentDisplay.isDepositPaid
+              ? `${paymentDisplay.description} ${lifecycleDisplay.description}`
+              : lifecycleDisplay.isPaymentInProgress
+                ? "We are still confirming your payment. You will be notified once it is complete."
+                : lifecycleDisplay.description}
           </p>
           {booking.status === "pending" && (
             <div className="mt-3 inline-flex items-center gap-2 bg-yellow-50 border border-yellow-200 rounded-full px-4 py-1.5 text-sm text-yellow-800">
@@ -718,8 +730,8 @@ export default function BookingConfirmationPage() {
               ) : (
                 <p className="text-sm text-gray-500 mt-1">
                   Payment status:{" "}
-                  <span className={booking.payment_status === "paid" ? "text-green-600 font-medium" : "text-yellow-600 font-medium"}>
-                    {booking.payment_status === "paid" ? "Paid in full" : booking.payment_status === "partially_paid" ? "Partially paid" : "Pending"}
+                  <span className={paymentDisplay.tone === "success" ? "text-green-600 font-medium" : "text-yellow-600 font-medium"}>
+                    {paymentDisplay.label}
                   </span>
                 </p>
               )}

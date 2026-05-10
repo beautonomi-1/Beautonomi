@@ -156,9 +156,11 @@ interface Product {
   name: string;
   price: number;
   currency: string;
+  quantity?: number | null;
+  track_stock_quantity?: boolean | null;
   /** Retail category string (from products table / API). */
   category?: string | null;
-  variants?: { id: string; name: string; price: number }[];
+  variants?: { id: string; name: string; price: number; quantity?: number | null }[];
 }
 
 interface SelectedProduct {
@@ -168,8 +170,19 @@ interface SelectedProduct {
   productVariantName?: string;
   quantity: number;
   unitPrice: number;
+  maxStock?: number | null;
   /** See `SelectedService.fromPackageId`. */
   fromPackageId?: string;
+}
+
+function stockLimitForProductLine(
+  product: Product,
+  variant?: { quantity?: number | null } | null,
+): number | null {
+  if (product.track_stock_quantity === false) return null;
+  const raw = variant ? variant.quantity : product.quantity;
+  const stock = Number(raw ?? 0);
+  return Number.isFinite(stock) ? Math.max(0, Math.floor(stock)) : 0;
 }
 
 interface PackageItem {
@@ -567,6 +580,25 @@ export default function NewBookingScreen() {
   );
   const [selectedProducts, setSelectedProducts] = useState<SelectedProduct[]>([]);
   const [showProductPicker, setShowProductPicker] = useState(false);
+  useEffect(() => {
+    if (productsList.length === 0 || selectedProducts.length === 0) return;
+    setSelectedProducts((prev) => {
+      const next: SelectedProduct[] = [];
+      for (const line of prev) {
+        const product = productsList.find((p) => p.id === line.productId);
+        if (!product) continue;
+        const variant = product.variants?.find((v) => v.id === line.productVariantId) ?? null;
+        const maxStock = stockLimitForProductLine(product, variant);
+        if (maxStock === 0) continue;
+        next.push({
+          ...line,
+          maxStock,
+          quantity: maxStock == null ? line.quantity : Math.min(line.quantity, maxStock),
+        });
+      }
+      return next;
+    });
+  }, [productsList, selectedProducts.length]);
 
   // --- Packages ---
   const packagesUrl = selectedLocationId
@@ -1514,6 +1546,7 @@ export default function NewBookingScreen() {
       ? selectedProducts.filter((p) => p.fromPackageId !== selectedPackageId)
       : [...selectedProducts];
     const skippedServiceNames: string[] = [];
+    const skippedProductNames: string[] = [];
 
     pkg.items.forEach((item) => {
       if (item.offering_id && item.offering) {
@@ -1537,12 +1570,19 @@ export default function NewBookingScreen() {
       } else if (item.product_id && item.product) {
         const prod = item.product;
         const catalogueProduct = productsList.find((p) => p.id === item.product_id);
+        const maxStock = catalogueProduct ? stockLimitForProductLine(catalogueProduct) : null;
+        const quantity = Math.max(1, Math.floor(item.quantity || 1));
+        if (maxStock !== null && quantity > maxStock) {
+          skippedProductNames.push(catalogueProduct?.name ?? prod.name ?? "Product");
+          return;
+        }
         const unitPrice = catalogueProduct?.price ?? prod.retail_price ?? 0;
         nextProducts.push({
           productId: item.product_id!,
           productName: catalogueProduct?.name ?? prod.name ?? "Product",
-          quantity: item.quantity || 1,
+          quantity,
           unitPrice,
+          maxStock,
           fromPackageId: pkg.id,
         });
       }
@@ -1555,6 +1595,12 @@ export default function NewBookingScreen() {
       Alert.alert(
         "Some services were skipped",
         `The following services are not in your active catalogue and were skipped:\n\n• ${skippedServiceNames.join("\n• ")}`,
+      );
+    }
+    if (skippedProductNames.length > 0) {
+      Alert.alert(
+        "Some products were skipped",
+        `These package products are out of stock or below the package quantity:\n\n• ${skippedProductNames.join("\n• ")}`,
       );
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -3050,8 +3096,13 @@ export default function NewBookingScreen() {
                           <Text style={twStyle("text-center text-base font-bold text-gray-950")}>{p.quantity}</Text>
                         </View>
                         <TouchableOpacity
-                          onPress={() => setSelectedProducts((prev) => prev.map((pp, i) => i === idx ? { ...pp, quantity: pp.quantity + 1 } : pp))}
-                          style={twStyle("h-7 w-7 items-center justify-center rounded-md border border-gray-200")}
+                          onPress={() => setSelectedProducts((prev) => prev.map((pp, i) => {
+                            if (i !== idx) return pp;
+                            const nextQty = pp.maxStock == null ? pp.quantity + 1 : Math.min(pp.quantity + 1, pp.maxStock);
+                            return { ...pp, quantity: nextQty };
+                          }))}
+                          disabled={p.maxStock != null && p.quantity >= p.maxStock}
+                          style={twStyle(`h-7 w-7 items-center justify-center rounded-md border border-gray-200 ${p.maxStock != null && p.quantity >= p.maxStock ? "opacity-40" : ""}`)}
                           accessibilityLabel="Increase quantity"
                         >
                           <Ionicons name="add" size={14} color="#6b7280" />
@@ -3709,12 +3760,15 @@ export default function NewBookingScreen() {
                     <Text style={twStyle("px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide")}>{product.name}</Text>
                     {product.variants.map((v) => {
                       const alreadyAdded = selectedProducts.some((sp) => sp.productId === product.id && sp.productVariantId === v.id);
+                      const maxStock = stockLimitForProductLine(product, v);
+                      const isOutOfStock = maxStock === 0;
                       return (
                         <TouchableOpacity
                           key={v.id}
-                          style={twStyle(`flex-row items-center justify-between px-4 py-3 border-b border-gray-100 ${alreadyAdded ? "bg-primary/10" : ""}`)}
+                          style={twStyle(`flex-row items-center justify-between px-4 py-3 border-b border-gray-100 ${alreadyAdded ? "bg-primary/10" : ""} ${isOutOfStock ? "opacity-45" : ""}`)}
+                          disabled={isOutOfStock}
                           onPress={() => {
-                            if (!alreadyAdded) {
+                            if (!alreadyAdded && !isOutOfStock) {
                               setSelectedProducts((prev) => [...prev, {
                                 productId: product.id,
                                 productName: product.name,
@@ -3722,12 +3776,20 @@ export default function NewBookingScreen() {
                                 productVariantName: v.name,
                                 quantity: 1,
                                 unitPrice: v.price,
+                                maxStock,
                               }]);
                             }
                             setShowProductPicker(false);
                           }}
                         >
-                          <Text style={twStyle("text-sm text-gray-900")}>{v.name}</Text>
+                          <View>
+                            <Text style={twStyle("text-sm text-gray-900")}>{v.name}</Text>
+                            {maxStock != null ? (
+                              <Text style={twStyle(`text-xs ${isOutOfStock ? "text-red-600" : "text-gray-500"}`)}>
+                                {isOutOfStock ? "Out of stock" : `${maxStock} in stock`}
+                              </Text>
+                            ) : null}
+                          </View>
                           <Text style={twStyle("text-sm font-medium text-gray-700")}>{formatCurrency(v.price, tenantCurrency)}</Text>
                         </TouchableOpacity>
                       );
@@ -3736,23 +3798,34 @@ export default function NewBookingScreen() {
                 );
               }
               const alreadyAdded = selectedProducts.some((sp) => sp.productId === product.id && !sp.productVariantId);
+              const maxStock = stockLimitForProductLine(product);
+              const isOutOfStock = maxStock === 0;
               return (
                 <TouchableOpacity
                   key={product.id}
-                  style={twStyle(`flex-row items-center justify-between px-4 py-3 border-b border-gray-100 ${alreadyAdded ? "bg-primary/10" : ""}`)}
+                  style={twStyle(`flex-row items-center justify-between px-4 py-3 border-b border-gray-100 ${alreadyAdded ? "bg-primary/10" : ""} ${isOutOfStock ? "opacity-45" : ""}`)}
+                  disabled={isOutOfStock}
                   onPress={() => {
-                    if (!alreadyAdded) {
+                    if (!alreadyAdded && !isOutOfStock) {
                       setSelectedProducts((prev) => [...prev, {
                         productId: product.id,
                         productName: product.name,
                         quantity: 1,
                         unitPrice: product.price,
+                        maxStock,
                       }]);
                     }
                     setShowProductPicker(false);
                   }}
                 >
-                  <Text style={twStyle("text-sm text-gray-900")}>{product.name}</Text>
+                  <View>
+                    <Text style={twStyle("text-sm text-gray-900")}>{product.name}</Text>
+                    {maxStock != null ? (
+                      <Text style={twStyle(`text-xs ${isOutOfStock ? "text-red-600" : "text-gray-500"}`)}>
+                        {isOutOfStock ? "Out of stock" : `${maxStock} in stock`}
+                      </Text>
+                    ) : null}
+                  </View>
                   <Text style={twStyle("text-sm font-medium text-gray-700")}>{formatCurrency(product.price, tenantCurrency)}</Text>
                 </TouchableOpacity>
               );

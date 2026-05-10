@@ -1,6 +1,9 @@
 import { useState, useCallback } from "react";
 import { useApiMutation } from "@/hooks/useApi";
-import { dbTargetToPatchStatusField } from "@/lib/provider-booking-status-transitions";
+import {
+  dbTargetToPatchStatusField,
+  optimisticBookingFieldsForDbTarget,
+} from "@/lib/provider-booking-status-transitions";
 
 export interface UseBookingStatusActionsOptions<T extends { id: string; status: string }> {
   bookings: T[] | null;
@@ -28,7 +31,7 @@ export function useBookingStatusActions<T extends { id: string; status: string }
       if (bookings) {
         mutate(
           bookings.map((b) =>
-            b.id === bookingId ? ({ ...b, status: dbTarget } as T) : b,
+            b.id === bookingId ? ({ ...b, ...optimisticBookingFieldsForDbTarget(dbTarget) } as T) : b,
           ),
         );
       }

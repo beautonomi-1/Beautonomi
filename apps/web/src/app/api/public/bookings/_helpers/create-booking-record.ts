@@ -440,7 +440,7 @@ export async function createBookingRecord(
       total_price: Number(product.totalPrice),
       currency: v.currency,
       staff_id: primaryStaffId,
-      stock_deducted_at: product.productVariantId || v.productById.get(product.productId ?? product.product_id ?? "")?.track_stock_quantity
+      stock_deducted_at: v.productById.get(product.productId ?? product.product_id ?? "")?.track_stock_quantity
         ? stockDeductedAt
         : null,
     }));
@@ -452,34 +452,23 @@ export async function createBookingRecord(
 
     // Update stock (variant or product-level)
     for (const product of products) {
+      const pid = product.productId ?? product.product_id;
+      const productData = pid ? v.productById.get(pid) : undefined;
+      if (productData?.track_stock_quantity !== true) continue;
+
       if (product.productVariantId) {
-        try {
-          await (adminSupabase.rpc as any)("decrement_product_variant_stock", {
-            p_variant_id: product.productVariantId,
+        const { error: variantStockError } = await (adminSupabase.rpc as any)("decrement_product_variant_stock", {
+          p_variant_id: product.productVariantId,
+          p_quantity: product.quantity,
+        });
+        if (variantStockError) throw variantStockError;
+      } else {
+        if (pid) {
+          const { error: stockError } = await adminSupabase.rpc("decrement_product_stock", {
+            p_product_id: pid,
             p_quantity: product.quantity,
           });
-        } catch {
-          const { data: vrow } = await adminSupabase
-            .from("product_variants")
-            .select("quantity")
-            .eq("id", product.productVariantId)
-            .single();
-          if (vrow) {
-            await adminSupabase
-              .from("product_variants")
-              .update({ quantity: Math.max(0, (vrow.quantity ?? 0) - product.quantity) })
-              .eq("id", product.productVariantId);
-          }
-        }
-      } else {
-        const pid = product.productId ?? product.product_id;
-        const productData = pid ? v.productById.get(pid) : undefined;
-        if (productData?.track_stock_quantity && pid) {
-          const newQuantity = (productData.quantity || 0) - product.quantity;
-          await adminSupabase
-            .from("products")
-            .update({ quantity: Math.max(0, newQuantity) })
-            .eq("id", pid);
+          if (stockError) throw stockError;
         }
       }
     }

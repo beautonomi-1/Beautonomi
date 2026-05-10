@@ -30,6 +30,20 @@ function sentFromTemplateResult(result: SendNotificationResult): boolean {
   return true;
 }
 
+function messageFromTemplateResult(
+  result: SendNotificationResult,
+  sentMessage: string,
+  fallbackMessage: string,
+): string {
+  if (sentFromTemplateResult(result)) return sentMessage;
+  if (result.error) return result.error;
+  if (result.message) return result.message;
+  if (result.notification_id === "suppressed-quiet-hours") {
+    return "Customer quiet hours are active, so external channels were suppressed.";
+  }
+  return fallbackMessage;
+}
+
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -133,7 +147,11 @@ export async function sendConfirmationNotification(
       success: result.success,
       sent: sentFromTemplateResult(result),
       error: result.error,
-      message: result.success ? "Client notified with confirmation" : undefined,
+      message: messageFromTemplateResult(
+        result,
+        "Client notified with confirmation",
+        "Confirmation could not be delivered through external channels.",
+      ),
     };
   } catch (error) {
     console.error("Failed to send confirmation notification:", error);
@@ -232,7 +250,11 @@ export async function sendReminderNotification(
       success: result.success,
       sent: sentFromTemplateResult(result),
       error: result.error,
-      message: result.success ? "Reminder sent to client" : undefined,
+      message: messageFromTemplateResult(
+        result,
+        "Reminder sent to client",
+        "Reminder could not be delivered through external channels.",
+      ),
     };
   } catch (error) {
     console.error("Failed to send reminder notification:", error);

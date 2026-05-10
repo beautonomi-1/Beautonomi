@@ -22,6 +22,7 @@ import {
 import { getGoogleCalendarUrl } from "@/lib/calendar/ics";
 import type { Booking } from "@/types/beautonomi";
 import { formatBookingDateInTimeZone, formatBookingTimeInTimeZone } from "@/lib/bookings/display-datetime";
+import { getBookingLifecycleDisplay, getBookingPaymentDisplay } from "@beautonomi/utils";
 
 /** Booking as returned from GET /api/me/bookings/:id (includes expanded provider, location, etc.) */
 type BookingDetail = Booking & {
@@ -272,6 +273,17 @@ export default function BookingDetailPage() {
     (booking.outstanding_balance ?? 0) > 0 &&
     (booking.payment_status === "pending" || booking.payment_status === "partially_paid");
   const providerName = booking.provider?.business_name ?? "your provider";
+  const lifecycleDisplay = getBookingLifecycleDisplay({
+    status: booking.status,
+    providerName,
+  });
+  const paymentDisplay = getBookingPaymentDisplay({
+    paymentStatus: booking.payment_status,
+    paymentProvider: (booking as unknown as Record<string, unknown>).payment_provider as string | undefined,
+    outstandingBalance: booking.outstanding_balance,
+    paymentOption: (booking as unknown as Record<string, unknown>).payment_option as string | undefined,
+    depositRequired: (booking as unknown as Record<string, unknown>).deposit_required as boolean | undefined,
+  });
 
   const scheduledAt = booking.selected_datetime ?? booking.scheduled_at;
   const totalDurationMinutes = booking.services?.reduce((sum, s) => sum + (s.duration_minutes ?? 0), 0) ?? 0;
@@ -308,16 +320,29 @@ export default function BookingDetailPage() {
       )}
 
       {isActive && (
-        <div className="mb-6 rounded-2xl border border-green-200 bg-green-50 p-4">
+        <div
+          className={`mb-6 rounded-2xl border p-4 ${
+            lifecycleDisplay.isAwaitingProviderConfirmation
+              ? "border-yellow-200 bg-yellow-50"
+              : "border-green-200 bg-green-50"
+          }`}
+        >
           <div className="flex items-start gap-3">
-            <CheckCircle2 className="h-10 w-10 shrink-0 text-green-600" />
+            <CheckCircle2
+              className={`h-10 w-10 shrink-0 ${
+                lifecycleDisplay.isAwaitingProviderConfirmation ? "text-yellow-600" : "text-green-600"
+              }`}
+            />
             <div>
               <p className="font-semibold text-gray-900">
-                Booking confirmed {formatTime(booking.scheduled_at)}
+                {lifecycleDisplay.title} {formatTime(booking.scheduled_at)}
               </p>
               <p className="text-sm text-gray-600 mt-0.5">
-                Your booking with {providerName} is confirmed.
+                {lifecycleDisplay.description}
               </p>
+              {(paymentDisplay.isPaymentSettled || paymentDisplay.isDepositPaid) && (
+                <p className="text-sm text-gray-600 mt-1">{paymentDisplay.label}.</p>
+              )}
               {helpUrl && (
                 <a
                   href={helpUrl}
@@ -352,7 +377,7 @@ export default function BookingDetailPage() {
                 : "bg-gray-100 text-gray-800"
             }`}
           >
-            {booking.status}
+            {lifecycleDisplay.label}
           </span>
         </div>
       </div>
@@ -766,8 +791,10 @@ export default function BookingDetailPage() {
             <span className="font-medium capitalize">
               {isCashBooking
                 ? "Cash"
-                : booking.payment_status === "paid"
+                : paymentDisplay.isPaymentSettled
                 ? "Online"
+                : paymentDisplay.isDepositPaid
+                ? "Online (deposit paid)"
                 : "Online (pending)"}
             </span>
           </div>
@@ -775,22 +802,14 @@ export default function BookingDetailPage() {
             <span>Payment status</span>
             <span
               className={`font-medium ${
-                booking.payment_status === "paid"
+                paymentDisplay.tone === "success"
                   ? "text-green-600"
-                  : booking.payment_status === "pending"
+                  : paymentDisplay.tone === "warning"
                   ? "text-yellow-600"
                   : "text-red-600"
               }`}
             >
-              {booking.payment_status === "paid"
-                ? "Paid"
-                : booking.payment_status === "partially_paid"
-                ? "Partially paid"
-                : booking.payment_status === "pending"
-                ? isCashBooking
-                  ? "Pay on arrival"
-                  : "Pending"
-                : booking.payment_status}
+              {paymentDisplay.label}
             </span>
           </div>
           {booking.loyalty_points_earned > 0 && booking.status === "completed" && (

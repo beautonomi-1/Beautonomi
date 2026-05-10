@@ -559,7 +559,7 @@ export default function BookingsListScreen() {
       const prev = map.get(key) ?? { bookings: 0, hasPending: false, blocks: 0, isClosed: false };
       map.set(key, {
         bookings: prev.bookings + 1,
-        hasPending: prev.hasPending || ["pending", "pending_payment"].includes(normalizeBookingStatus(b.status)),
+        hasPending: prev.hasPending || ["pending", "pending_payment", "waiting"].includes(normalizeBookingStatus(b.db_status || b.status)),
         blocks: prev.blocks,
         isClosed: prev.isClosed,
       });
@@ -724,9 +724,9 @@ export default function BookingsListScreen() {
     let inProgressCount = 0;
     let completedCount = 0;
     for (const b of allBookings) {
-      const s = (b.status || "").toLowerCase();
+      const s = normalizeBookingStatus(b.db_status || b.status);
       if (s === "pending" || s === "pending_payment") pendingCount += 1;
-      if (s === "in_progress" || s === "started") inProgressCount += 1;
+      if (s === "in_progress" || s === "started" || s === "waiting" || s === "checked_in") inProgressCount += 1;
       if (s === "completed") completedCount += 1;
       const ts = b.scheduled_at ? new Date(b.scheduled_at).getTime() : 0;
       if (ts >= start && ts < end) {

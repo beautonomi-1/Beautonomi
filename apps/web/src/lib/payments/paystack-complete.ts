@@ -724,7 +724,7 @@ export async function chargeAuthorization(
   email: string,
   amount: number,
   metadata?: Record<string, unknown>,
-  options?: { tenantId?: string | null }
+  options?: { tenantId?: string | null; reference?: string | null }
 ): Promise<PaystackResponse<Transaction>> {
   return paystackRequest("/transaction/charge_authorization", {
     method: "POST",
@@ -732,6 +732,7 @@ export async function chargeAuthorization(
       authorization_code: authorizationCode,
       email,
       amount,
+      ...(options?.reference ? { reference: options.reference } : {}),
       metadata,
     },
     tenantId: options?.tenantId,

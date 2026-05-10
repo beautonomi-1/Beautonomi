@@ -69,7 +69,7 @@ export async function POST(
     // Verify booking exists and belongs to provider
     const { data: booking, error: bookingError } = await supabase
       .from("bookings")
-      .select("id, status, tenant_id, total_amount, total_refunded, payment_status, provider_id, customer_id, booking_number, ref_number, total_paid, wallet_amount, gift_card_amount, tip_amount, travel_fee, tax_amount, service_fee_amount, booking_source, location_id, location_type")
+      .select("id, status, tenant_id, total_amount, total_refunded, payment_status, provider_id, customer_id, booking_number, ref_number, total_paid, wallet_amount, gift_card_amount, tip_amount, travel_fee, tax_amount, service_fee_amount, booking_source, location_id, location_type, additional_charges(amount,status)")
       .eq("id", bookingId)
       .eq("provider_id", providerId)
       .single();
@@ -167,8 +167,20 @@ export async function POST(
     const walletGiftCoverage = walletAlreadyApplied + giftCardAlreadyApplied;
     const coverage = Math.max(effectivePaid, walletGiftCoverage);
     const remainingBalance = bookingTotal - coverage;
+    const unpaidAdditionalCharges = Array.isArray((booking as any).additional_charges)
+      ? (booking as any).additional_charges
+          .filter((charge: any) => charge?.status !== "paid" && charge?.status !== "rejected")
+          .reduce((sum: number, charge: any) => sum + Number(charge?.amount || 0), 0)
+      : 0;
     
     if (remainingBalance <= 0) {
+      if (unpaidAdditionalCharges > 0) {
+        return errorResponse(
+          `Base booking is settled, but ${formatMoney(unpaidAdditionalCharges)} in additional charges is still unpaid. Settle those charges from the Additional Charges section.`,
+          "ADDITIONAL_CHARGES_DUE",
+          400
+        );
+      }
       return errorResponse(
         "Booking is already fully paid (including wallet/gift card credits)",
         "ALREADY_PAID",

@@ -64,6 +64,7 @@ type BookingReceiptRow = {
   id: string;
   tenant_id?: string | null;
   booking_number?: string | null;
+  status?: string | null;
   created_at?: string | null;
   scheduled_at?: string | null;
   customer_id: string;
@@ -445,6 +446,7 @@ export async function GET(
       package_id: packageActuallyApplied ? rawPkgId : null,
       package_name: packageActuallyApplied ? (pkgJoined?.name ?? null) : null,
       booking_number: booking.booking_number,
+      status: booking.status,
       booking_date: booking.created_at,
       service_date: booking.scheduled_at,
       customer: booking.customer,

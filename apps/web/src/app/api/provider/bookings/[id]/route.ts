@@ -34,6 +34,7 @@ import {
 } from "@/lib/bookings/display-invariants";
 import { resolveBookingDisplayTimeZone } from "@/lib/bookings/display-datetime";
 import { syncAppointmentProductOrder } from "@/lib/orders/sync-appointment-product-order";
+import { validateProviderBookingProducts } from "@/lib/bookings/validate-provider-booking-products";
 
 function mapStatusToDatabase(frontendStatus: string): string {
   return mapStatusFromProvider(frontendStatus as ProviderBookingStatus);
@@ -635,6 +636,7 @@ export async function PATCH(
       current_stage,
       send_arrival_notification,
       referral_source_id,
+      travel_buffer,
     } = body;
     
     // Check if any updateable field is provided
@@ -801,8 +803,14 @@ export async function PATCH(
         staffIdsCsv: staffIdsCsvGrid,
         locationId: effLocationId,
         excludeBookingId: id,
+        excludeGroupBookingId: (currentBooking as { group_booking_id?: string | null }).group_booking_id ?? undefined,
         mode,
-        travelBufferRaw: mode === "mobile" ? null : "0",
+        travelBufferRaw:
+          travel_buffer !== undefined && travel_buffer !== null
+            ? String(travel_buffer)
+            : mode === "mobile"
+              ? null
+              : "0",
         minNoticeMinutes: 0,
         maxAdvanceDays: 365,
         resourceOfferingIds,
@@ -833,6 +841,37 @@ export async function PATCH(
             payment_status: paymentStatus,
           },
         );
+      }
+
+      if (requestedDbStatus === "completed") {
+        const { data: bookingProductRows, error: bookingProductsLookupError } = await supabaseAdminPatch
+          .from("booking_products")
+          .select("product_id, product_variant_id, quantity")
+          .eq("booking_id", id)
+          .is("stock_deducted_at", null);
+        if (bookingProductsLookupError) {
+          return errorResponse(
+            "We couldn't verify product stock for this booking. Please try again.",
+            "PRODUCT_VALIDATION_FAILED",
+            503,
+          );
+        }
+        const stockValidation = await validateProviderBookingProducts(
+          supabaseAdminPatch,
+          providerId,
+          (bookingProductRows ?? []).map((row: any) => ({
+            productId: row.product_id,
+            productVariantId: row.product_variant_id,
+            quantity: row.quantity,
+          })),
+        );
+        if (stockValidation.ok === false) {
+          return errorResponse(
+            stockValidation.message,
+            stockValidation.code,
+            stockValidation.code === "PRODUCT_VALIDATION_FAILED" ? 503 : 400,
+          );
+        }
       }
     }
 
@@ -1227,7 +1266,8 @@ export async function PATCH(
           total_price,
           products:products!booking_products_product_id_fkey(id, name, retail_price),
           product_variant:product_variants(id, option_values)
-        )
+        ),
+        additional_charges(amount,status)
       `
       )
       .eq("id", id)
@@ -1276,7 +1316,8 @@ export async function PATCH(
               id,
               description
             )
-          )
+          ),
+          additional_charges(amount,status)
         `
         )
         .eq("id", id)
@@ -1356,7 +1397,8 @@ export async function PATCH(
               id,
               description
             )
-          )
+          ),
+          additional_charges(amount,status)
         `
         )
         .eq("id", id)
@@ -1376,6 +1418,39 @@ export async function PATCH(
 
     // Update products if provided
     if (products !== undefined && Array.isArray(products)) {
+      const currentStatusForProducts = String((currentBooking as BookingRow).status ?? "");
+      if (["completed", "cancelled", "no_show"].includes(currentStatusForProducts)) {
+        return errorResponse(
+          "Products cannot be edited after a booking is completed or closed. Create a sale/refund adjustment instead.",
+          "PRODUCT_EDIT_LOCKED",
+          400,
+        );
+      }
+      const { data: deductedProductRows } = await supabaseAdminPatch
+        .from("booking_products")
+        .select("id")
+        .eq("booking_id", id)
+        .not("stock_deducted_at", "is", null)
+        .limit(1);
+      if ((deductedProductRows ?? []).length > 0) {
+        return errorResponse(
+          "Products on this booking already affected stock. Create a sale/refund adjustment instead of editing the booking products.",
+          "PRODUCT_EDIT_LOCKED",
+          400,
+        );
+      }
+      const productValidation = await validateProviderBookingProducts(
+        supabaseAdminPatch,
+        providerId,
+        products,
+      );
+      if (productValidation.ok === false) {
+        return errorResponse(
+          productValidation.message,
+          productValidation.code,
+          productValidation.code === "PRODUCT_VALIDATION_FAILED" ? 503 : 400,
+        );
+      }
       // Delete existing products
       await supabaseAdminPatch
         .from("booking_products")
@@ -1391,14 +1466,13 @@ export async function PATCH(
           .not("staff_id", "is", null)
           .limit(1);
         const primaryStaffId = bookingServices?.[0]?.staff_id ?? null;
-        type ProductUpdateInput = { productId: string; productVariantId?: string | null; quantity?: number; unitPrice?: number; totalPrice?: number };
-        const productsToInsert = products.map((product: ProductUpdateInput) => ({
+        const productsToInsert = productValidation.products.map((product) => ({
           booking_id: id,
           product_id: product.productId,
-          product_variant_id: product.productVariantId ?? null,
-          quantity: product.quantity ?? 1,
-          unit_price: product.unitPrice ?? 0,
-          total_price: product.totalPrice || (product.unitPrice || 0) * (product.quantity || 1),
+          product_variant_id: product.productVariantId,
+          quantity: product.quantity,
+          unit_price: product.unitPrice,
+          total_price: product.totalPrice,
           staff_id: primaryStaffId,
         }));
 
@@ -1408,7 +1482,11 @@ export async function PATCH(
 
         if (productsError) {
           console.error("Error updating booking_products:", productsError);
-          // Non-fatal - booking was updated successfully
+          return errorResponse(
+            "The booking was updated, but product items could not be saved. Please try again.",
+            "BOOKING_PRODUCTS_FAILED",
+            422,
+          );
         }
       }
 
@@ -1614,7 +1692,7 @@ export async function PATCH(
           try {
             const { data: pendingProducts } = await supabaseAdmin
               .from("booking_products")
-              .select("id, product_id, product_variant_id, quantity")
+              .select("id, product_id, product_variant_id, quantity, products:products!booking_products_product_id_fkey(track_stock_quantity)")
               .eq("booking_id", id)
               .is("stock_deducted_at", null);
             if (Array.isArray(pendingProducts) && pendingProducts.length > 0) {
@@ -1624,8 +1702,10 @@ export async function PATCH(
                 product_id: string | null;
                 product_variant_id?: string | null;
                 quantity: number | null;
+                products?: { track_stock_quantity?: boolean | null } | null;
               }>) {
                 if (!row.product_id || !row.quantity || row.quantity <= 0) continue;
+                if (row.products?.track_stock_quantity === false) continue;
                 const { error: decErr } = row.product_variant_id
                   ? await (supabaseAdmin.rpc as any)("decrement_product_variant_stock", {
                     p_variant_id: row.product_variant_id,
@@ -1643,7 +1723,7 @@ export async function PATCH(
                     `[provider PATCH complete] decrement_product_stock failed for booking ${id}, row ${row.id}:`,
                     decErr,
                   );
-                  continue;
+                  throw new Error(decErr.message || "Product stock could not be deducted");
                 }
                 await supabaseAdmin
                   .from("booking_products")
@@ -1893,6 +1973,13 @@ export async function PATCH(
 
     // Transform the fetched booking to match Booking type (same as GET endpoint)
     const bookingData = updatedBooking as BookingDbRow;
+    const patchUnpaidCharges = Array.isArray((bookingData as any).additional_charges)
+      ? (bookingData as any).additional_charges
+          .filter((charge: any) => charge?.status !== "paid" && charge?.status !== "rejected")
+          .reduce((sum: number, charge: any) => sum + Number(charge?.amount || 0), 0)
+      : 0;
+    const patchWalletAmount = Number((bookingData as any).wallet_amount ?? 0);
+    const patchGiftCardAmount = Number((bookingData as any).gift_card_amount ?? 0);
     const transformedBooking: Booking = {
       id: bookingData.id,
       booking_number: bookingData.booking_number,
@@ -1982,9 +2069,21 @@ export async function PATCH(
       total_amount: bookingData.total_amount || 0,
       total_paid: bookingData.total_paid || 0,
       total_refunded: bookingData.total_refunded || 0,
+      wallet_amount: patchWalletAmount,
+      gift_card_amount: patchGiftCardAmount,
       currency: bookingData.currency || lastResortCurrency,
       payment_status: bookingData.payment_status,
       payment_method: null,
+      additional_charges: (bookingData as any).additional_charges || [],
+      outstanding_balance: computeBookingOutstandingDisplay({
+        totalAmount: Number(bookingData.total_amount || 0),
+        totalPaid: Number(bookingData.total_paid || 0),
+        totalRefunded: Number(bookingData.total_refunded || 0),
+        walletAmount: patchWalletAmount,
+        giftCardAmount: patchGiftCardAmount,
+        unpaidAdditionalCharges: patchUnpaidCharges,
+        paymentStatus: bookingData.payment_status,
+      }),
       special_requests: bookingData.special_requests || null,
       loyalty_points_earned: bookingData.loyalty_points_earned || 0,
       created_at: bookingData.created_at,
@@ -2051,6 +2150,6 @@ export async function PATCH(
     invalidateProviderBookingsReadCache(providerId);
     return successResponse({ booking: transformedBooking });
   } catch (error) {
-    return handleApiError(error, "Failed to update booking");
+    return handleApiError(error, "The booking could not be updated. Please refresh and try again.");
   }
 }

@@ -18,6 +18,7 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { syncAppointmentProductOrder } from "@/lib/orders/sync-appointment-product-order";
 import { notifyReviewReminder } from "@/lib/notifications";
 import { insertNotification } from "@/lib/notifications/insert-notification";
+import { validateProviderBookingProducts } from "@/lib/bookings/validate-provider-booking-products";
 
 /**
  * POST /api/provider/bookings/[id]/complete-service
@@ -112,6 +113,35 @@ export async function POST(
       );
     }
 
+    const { data: bookingProductRows, error: bookingProductsLookupError } = await supabaseAdminBranch
+      .from("booking_products")
+      .select("product_id, product_variant_id, quantity")
+      .eq("booking_id", id)
+      .is("stock_deducted_at", null);
+    if (bookingProductsLookupError) {
+      return errorResponse(
+        "We couldn't verify product stock for this booking. Please try again.",
+        "PRODUCT_VALIDATION_FAILED",
+        503,
+      );
+    }
+    const stockValidation = await validateProviderBookingProducts(
+      supabaseAdminBranch,
+      providerId,
+      (bookingProductRows ?? []).map((row: any) => ({
+        productId: row.product_id,
+        productVariantId: row.product_variant_id,
+        quantity: row.quantity,
+      })),
+    );
+    if (stockValidation.ok === false) {
+      return errorResponse(
+        stockValidation.message,
+        stockValidation.code,
+        stockValidation.code === "PRODUCT_VALIDATION_FAILED" ? 503 : 400,
+      );
+    }
+
     // Create booking event
     const { error: eventError } = await supabase
       .from("booking_events")
@@ -183,7 +213,7 @@ export async function POST(
         const supabaseAdmin = getSupabaseAdmin();
         const { data: pendingProducts } = await supabaseAdmin
           .from("booking_products")
-          .select("id, product_id, product_variant_id, quantity")
+          .select("id, product_id, product_variant_id, quantity, products:products!booking_products_product_id_fkey(track_stock_quantity)")
           .eq("booking_id", id)
           .is("stock_deducted_at", null);
         if (Array.isArray(pendingProducts) && pendingProducts.length > 0) {
@@ -193,8 +223,10 @@ export async function POST(
             product_id: string | null;
             product_variant_id?: string | null;
             quantity: number | null;
+            products?: { track_stock_quantity?: boolean | null } | null;
           }>) {
             if (!row.product_id || !row.quantity || row.quantity <= 0) continue;
+            if (row.products?.track_stock_quantity === false) continue;
             const { error: decErr } = row.product_variant_id
               ? await (supabaseAdmin.rpc as any)("decrement_product_variant_stock", {
                 p_variant_id: row.product_variant_id,
@@ -212,7 +244,7 @@ export async function POST(
                 `[complete-service] decrement_product_stock failed for booking ${id}, row ${row.id}:`,
                 decErr,
               );
-              continue;
+              throw new Error(decErr.message || "Product stock could not be deducted");
             }
             await supabaseAdmin
               .from("booking_products")

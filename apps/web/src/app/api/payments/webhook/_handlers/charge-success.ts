@@ -32,6 +32,7 @@ import {
 } from "@/lib/orders/product-order-lifecycle";
 import { tryCreateCustomerRecurringFromPaystackChargeMetadata } from "@/lib/recurring/try-create-recurring-from-paystack-metadata";
 import { applyWalletTopupFromSuccessfulPaystackCharge } from "@/lib/wallet/apply-wallet-topup-from-paystack-success";
+import { recordBookingPaystackPayment } from "@/lib/bookings/record-booking-paystack-payment";
 import { syncBookingAfterPaystackSuccess } from "@/lib/bookings/sync-booking-after-paystack-success";
 import { patchCustomOfferMessageAttachments } from "@/lib/custom-offers/sync-offer-message-attachments";
 import { finalizeCustomOfferPaymentFromPaystackEvent } from "@/lib/custom-offers/finalize-custom-offer-payment";
@@ -259,6 +260,28 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
 
   if (alreadySettledPaymentTx) {
     console.log(`[charge-success] Paystack ref ${reference} already settled — skipping (idempotent retry).`);
+    const amountInCurrency = convertFromSmallestUnit(amount || 0);
+    if (amountInCurrency > 0) {
+      const recordedPayment = await recordBookingPaystackPayment(supabase, {
+        bookingId: metadata.booking_id,
+        tenantId: bookingData.tenant_id ?? financeTenantId ?? null,
+        reference,
+        transactionId: null,
+        amountMajor: amountInCurrency,
+        source: "paystack_webhook_idempotent_repair",
+        paymentOption: typeof metadata?.payment_option === "string" ? metadata.payment_option : null,
+        requiresDeposit: Boolean(metadata?.requires_deposit),
+        saveCard: Boolean(metadata?.save_card),
+        notes: `Payment received via Paystack webhook retry. Ref: ${reference}`,
+      });
+      if (recordedPayment.ok === false) {
+        console.error("[charge-success] idempotent booking_payments repair failed:", recordedPayment);
+      }
+    }
+    await syncBookingAfterPaystackSuccess(supabase, metadata.booking_id, {
+      paymentReference: reference,
+      paymentProvider: "paystack",
+    });
     try {
       await tryCreateCustomerRecurringFromPaystackChargeMetadata(
         supabase,
@@ -339,37 +362,22 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
   // This keeps bookings.total_paid / payment_status aligned even if redirect verify is skipped.
   // Idempotency is enforced by migration 380 unique index on (payment_provider, payment_provider_id).
   if (amountInCurrency > 0) {
-    const { data: existingBookingPayment } = await supabase
-      .from("booking_payments")
-      .select("id")
-      .eq("payment_provider", "paystack")
-      .eq("payment_provider_id", reference)
-      .maybeSingle();
-
-    if (!existingBookingPayment) {
-      const { error: bookingPaymentInsertError } = await supabase
-        .from("booking_payments")
-        .insert({
-          booking_id: metadata.booking_id,
-          tenant_id: financeTenantId,
-          amount: amountInCurrency,
-          payment_method: "card",
-          payment_provider: "paystack",
-          payment_provider_id: reference,
-          payment_provider_data: {
-            source: "paystack_webhook",
-            payment_option: stdPaymentOption,
-            requires_deposit: stdRequiresDeposit,
-            save_card: Boolean(metadata?.save_card),
-          },
-          status: "completed",
-          notes: stdIsDeposit
-            ? `Deposit payment received via Paystack webhook. Ref: ${reference}`
-            : `Payment received via Paystack webhook. Ref: ${reference}`,
-        });
-      if (bookingPaymentInsertError && bookingPaymentInsertError.code !== "23505") {
-        console.error("[charge-success] booking_payments insert failed:", bookingPaymentInsertError);
-      }
+    const recordedPayment = await recordBookingPaystackPayment(supabase, {
+      bookingId: metadata.booking_id,
+      tenantId: financeTenantId,
+      reference,
+      transactionId: null,
+      amountMajor: amountInCurrency,
+      source: "paystack_webhook",
+      paymentOption: stdPaymentOption,
+      requiresDeposit: stdRequiresDeposit,
+      saveCard: Boolean(metadata?.save_card),
+      notes: stdIsDeposit
+        ? `Deposit payment received via Paystack webhook. Ref: ${reference}`
+        : `Payment received via Paystack webhook. Ref: ${reference}`,
+    });
+    if (recordedPayment.ok === false) {
+      console.error("[charge-success] booking_payments insert failed:", recordedPayment);
     }
   }
 
