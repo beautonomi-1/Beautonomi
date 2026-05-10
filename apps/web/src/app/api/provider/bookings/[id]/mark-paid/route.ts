@@ -157,7 +157,16 @@ export async function POST(
     const giftCardAlreadyApplied = Number((booking as any).gift_card_amount || 0);
     const bookingTotal = booking.total_amount || 0;
     const effectivePaid = Math.max(0, currentTotalPaid - totalRefunded);
-    const remainingBalance = bookingTotal - effectivePaid - walletAlreadyApplied - giftCardAlreadyApplied;
+    /**
+     * §Finance-truth 2026-05: post-migration 582 `total_paid` already includes
+     * wallet + gift booking_payments rows, so subtracting wallet/gift again
+     * double-subtracts and lets us under-charge the remaining balance.
+     * Use the LARGER of effective_paid and (wallet+gift) to remain correct
+     * for legacy rows that pre-date 582 yet had no synthetic booking_payments.
+     */
+    const walletGiftCoverage = walletAlreadyApplied + giftCardAlreadyApplied;
+    const coverage = Math.max(effectivePaid, walletGiftCoverage);
+    const remainingBalance = bookingTotal - coverage;
     
     if (remainingBalance <= 0) {
       return errorResponse(

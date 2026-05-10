@@ -10,7 +10,7 @@ import {
   Switch,
 } from "react-native";
 import type { Router } from "expo-router";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApiMutation } from "@/hooks/useApi";
@@ -183,6 +183,7 @@ function timeToHhMmSs(hhmm: string): string {
 
 export default function RecurringAppointmentsScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ series_id?: string }>();
   const { selectedLocationId } = useProvider();
   const { screenPadding } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
@@ -265,6 +266,13 @@ export default function RecurringAppointmentsScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setViewItem(item);
   }, []);
+
+  useEffect(() => {
+    const seriesId = typeof params.series_id === "string" ? params.series_id : "";
+    if (!seriesId || !data?.data?.length || viewItem?.id === seriesId) return;
+    const match = data.data.find((item) => item.id === seriesId);
+    if (match) setViewItem(match);
+  }, [data?.data, params.series_id, viewItem?.id]);
 
   useEffect(() => {
     if (!viewItem) return;

@@ -80,14 +80,22 @@ function resolveProductLines(row: SeriesRow): ProductLine[] {
     });
 }
 
-function resolveAddonLines(row: SeriesRow): AddonLine[] {
-  const meta = row.metadata as { addons?: Array<Record<string, unknown>> } | null;
-  if (!Array.isArray(meta?.addons)) return [];
-  return meta.addons
+export function resolveAddonLines(row: Pick<SeriesRow, "metadata">): AddonLine[] {
+  const meta = row.metadata as {
+    addons?: Array<Record<string, unknown>>;
+    cart_items?: Array<Record<string, unknown>>;
+  } | null;
+  const explicitAddons = Array.isArray(meta?.addons) ? meta.addons : [];
+  const cartItemAddons = Array.isArray(meta?.cart_items)
+    ? meta.cart_items.filter((item) => item?.type === "addon")
+    : [];
+  const addonRows = explicitAddons.length > 0 ? explicitAddons : cartItemAddons;
+  if (addonRows.length === 0) return [];
+  return addonRows
     .filter((item) => typeof (item.addon_id ?? item.addonId) === "string")
     .map((item) => {
       const quantity = Math.max(1, Math.floor(Number(item.quantity || 1)) || 1);
-      const price = Number(item.price ?? 0) || 0;
+      const price = Number(item.price ?? item.unit_price ?? item.total ?? 0) || 0;
       return {
         addon_id: String(item.addon_id ?? item.addonId),
         quantity,

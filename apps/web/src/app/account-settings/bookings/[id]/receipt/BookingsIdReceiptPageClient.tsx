@@ -13,6 +13,7 @@ import Link from "next/link";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { useTenantLocaleTag } from "@/hooks/useTenantLocaleTag";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { isPaidBookingPaymentStatus } from "@/lib/payments/booking-payment-status";
 
 /** Normalize `/api/bookings/.../receipt` JSON (flat `{ receipt }` vs `{ data: { receipt } }`). */
 function unwrapReceiptResponse(body: unknown): Receipt | null {
@@ -97,8 +98,41 @@ interface Receipt {
     status: string;
     paid_at?: string | null;
   }>;
+  /**
+   * §Finance-truth 2026-05: completed booking_payments rows so the receipt
+   * can render the canonical "Payments" breakdown (wallet + gift + card)
+   * matching the PDF and provider/customer mobile detail screens.
+   */
+  transactions?: Array<{
+    id?: string;
+    amount?: number | string;
+    payment_method?: string | null;
+    payment_provider?: string | null;
+    status?: string | null;
+    created_at?: string | null;
+  }>;
   receipt_header?: string | null;
   receipt_footer?: string | null;
+}
+
+function paymentMethodWebLabel(
+  paymentMethod?: string | null,
+  paymentProvider?: string | null,
+): string {
+  const m = String(paymentMethod ?? "").toLowerCase();
+  const p = String(paymentProvider ?? "").toLowerCase();
+  if (m === "wallet" || p === "wallet") return "Wallet";
+  if (m === "gift_card" || p === "gift_card") return "Gift card";
+  if (m === "cash" || p === "cash") return "Cash";
+  if (m === "bank_transfer") return "EFT";
+  if (m === "card") {
+    if (p === "yoco") return "Card (Yoco)";
+    if (p === "other") return "Card (manual)";
+    return "Card";
+  }
+  if (m === "saved_card" || m === "new_card") return "Card";
+  if (m === "other") return p ? `Other (${p})` : "Other";
+  return paymentMethod ? String(paymentMethod) : "Payment";
 }
 
 export default function ReceiptPage() {
@@ -440,6 +474,40 @@ export default function ReceiptPage() {
                 </div>
               )}
             </div>
+
+            {/* §Finance-truth 2026-05: Payments breakdown (one row per
+                completed booking_payments). Matches PDF + mobile so wallet,
+                gift card, card, cash, and EFT splits are all visible. */}
+            {(() => {
+              const completed = (receipt.transactions || []).filter(
+                (t) => isPaidBookingPaymentStatus(t.status),
+              );
+              if (completed.length === 0) return null;
+              return (
+                <div className="rounded-2xl border border-slate-200 p-5 print:rounded-lg">
+                  <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-700">
+                    Payments
+                  </h3>
+                  <div className="space-y-2">
+                    {completed.map((t, i) => (
+                      <div key={t.id ?? `pay-${i}`} className="flex justify-between text-sm">
+                        <span className="text-slate-700">
+                          {paymentMethodWebLabel(t.payment_method ?? null, t.payment_provider ?? null)}
+                          {t.created_at && (
+                            <span className="ml-2 text-xs text-slate-500">
+                              {new Date(t.created_at).toLocaleDateString()}
+                            </span>
+                          )}
+                        </span>
+                        <span className="font-medium text-slate-900">
+                          {formatCurrency(Number(t.amount || 0))}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
 
             {(receipt.additional_charges?.length ?? 0) > 0 && (
               <div className="rounded-2xl border border-slate-200 p-5 print:rounded-lg">

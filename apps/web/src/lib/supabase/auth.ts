@@ -173,6 +173,19 @@ export async function signIn(data: SignInData) {
 }
 
 /**
+ * Send a numeric email OTP for passwordless sign-in (no magic link).
+ * Omit `emailRedirectTo` so Supabase sends a code when Email OTP is enabled in Auth settings.
+ * New accounts are created on successful verification (`shouldCreateUser: true`).
+ */
+export async function sendEmailSignInOtp(email: string) {
+  const supabase = getSupabaseClient();
+  return supabase.auth.signInWithOtp({
+    email: email.trim(),
+    options: { shouldCreateUser: true },
+  });
+}
+
+/**
  * Sign out current user (client-side)
  */
 export async function signOut() {

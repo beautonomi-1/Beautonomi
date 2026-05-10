@@ -225,7 +225,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const e164 = normalizeSupabaseAuthPhone(raw);
     const { error } = await supabase.auth.signInWithOtp({
       phone: e164,
-      options: { channel: "sms", shouldCreateUser: false },
+      options: { channel: "sms", shouldCreateUser: true },
     });
     return { error: error ? new Error(error.message) : null };
   }, []);
@@ -252,9 +252,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
       return { error: new Error("Enter a valid email address") };
     }
+    // Email OTP (no magic link): omit emailRedirectTo so Supabase sends a code when OTP is enabled in Auth settings.
     const { error } = await supabase.auth.signInWithOtp({
       email: trimmed,
-      options: { emailRedirectTo: getRedirectUrl(), shouldCreateUser: false },
+      options: { shouldCreateUser: true },
     });
     return { error: error ? new Error(error.message) : null };
   }, []);

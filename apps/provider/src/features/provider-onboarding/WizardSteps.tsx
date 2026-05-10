@@ -12,9 +12,11 @@ import {
   Modal,
   Image,
   useWindowDimensions,
+  Platform,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import * as Haptics from "expo-haptics";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase/client";
@@ -197,6 +199,9 @@ function Step2Identity() {
     <View style={twStyle("gap-4")}>
       <View>
         <Text style={twStyle(labelCls)}>Full name</Text>
+        <Text style={twStyle("text-xs text-gray-500 mb-2 leading-relaxed")}>
+          If you signed up with phone, email code, or Google, add the name clients should see — you can change it anytime.
+        </Text>
         <TextInput
           value={formData.owner_name || ""}
           onChangeText={(t) => updateFormData({ owner_name: t, phone_verified: false })}
@@ -1151,6 +1156,27 @@ const DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday"
 function Step12Hours() {
   const { formData, updateFormData } = useOnboardingWizard();
   const oh = formData.operating_hours || {};
+  const isFreelancer = formData.business_type === "mobile" || formData.team_size === "freelancer";
+
+  const [showPicker, setShowPicker] = useState<"open" | "close" | null>(null);
+  const [pickerDay, setPickerDay] = useState<string | null>(null);
+  const [pickerTime, setPickerTime] = useState<string>("09:00");
+
+  useEffect(() => {
+    if (isFreelancer && (!formData.operating_hours || Object.keys(formData.operating_hours).length === 0)) {
+      updateFormData({
+        operating_hours: {
+          monday: { open: "08:00", close: "20:00", closed: false },
+          tuesday: { open: "08:00", close: "20:00", closed: false },
+          wednesday: { open: "08:00", close: "20:00", closed: false },
+          thursday: { open: "08:00", close: "20:00", closed: false },
+          friday: { open: "08:00", close: "20:00", closed: false },
+          saturday: { open: "09:00", close: "18:00", closed: false },
+          sunday: { open: "10:00", close: "16:00", closed: false },
+        },
+      });
+    }
+  }, [isFreelancer, formData.operating_hours, updateFormData]);
 
   const setDay = (day: string, patch: Partial<{ open: string; close: string; closed: boolean }>) => {
     const cur = oh[day] || { open: "09:00", close: "18:00", closed: false };
@@ -1159,8 +1185,39 @@ function Step12Hours() {
     });
   };
 
+  const handleTimeChange = (_: any, d?: Date) => {
+    if (Platform.OS !== "ios") {
+      setShowPicker(null);
+      setPickerDay(null);
+    }
+    if (d && pickerDay && showPicker) {
+      const timeStr = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+      setDay(pickerDay, { [showPicker]: timeStr });
+      setPickerTime(timeStr);
+    }
+  };
+
   return (
     <View style={twStyle("gap-3")}>
+      <View style={twStyle(`rounded-2xl border p-4 ${isFreelancer ? "border-emerald-200 bg-emerald-50" : "border-gray-200 bg-gray-50"}`)}>
+        <View style={twStyle("flex-row items-start gap-2")}>
+          <Ionicons name="information-circle" size={20} color={isFreelancer ? "#047857" : "#4b5563"} />
+          <Text style={twStyle(`flex-1 text-sm leading-5 ${isFreelancer ? "text-emerald-900" : "text-gray-800"}`)}>
+            {isFreelancer ? (
+              <Text>
+                <Text style={twStyle("font-bold")}>Freelancer hours: </Text>
+                We started you on broad weekday hours (8:00–20:00); tweak them to match how you actually work. You can change this anytime in Settings.
+              </Text>
+            ) : (
+              <Text>
+                <Text style={twStyle("font-bold")}>Location Booking Window: </Text>
+                Clients only see slots inside these hours for the salon. You can set individual staff schedules later under Settings.
+              </Text>
+            )}
+          </Text>
+        </View>
+      </View>
+
       {DAYS.map((day) => {
         const h = oh[day] || { open: "09:00", close: "18:00", closed: false };
         return (
@@ -1176,22 +1233,43 @@ function Step12Hours() {
               </View>
             </View>
             {!h.closed ? (
-              <View style={twStyle("mt-2 flex-row gap-2")}>
-                <TextInput
-                  value={h.open}
-                  onChangeText={(t) => setDay(day, { open: t })}
-                  style={twStyle(`${inputCls} flex-1`)}
-                />
-                <TextInput
-                  value={h.close}
-                  onChangeText={(t) => setDay(day, { close: t })}
-                  style={twStyle(`${inputCls} flex-1`)}
-                />
+              <View style={twStyle("mt-3 flex-row gap-2")}>
+                <TouchableOpacity
+                  onPress={() => {
+                    setPickerDay(day);
+                    setShowPicker("open");
+                    setPickerTime(h.open || "09:00");
+                  }}
+                  style={twStyle("flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-gray-50 py-3")}
+                >
+                  <Ionicons name="time-outline" size={16} color="#6b7280" />
+                  <Text style={twStyle("ml-2 text-base font-medium text-gray-900")}>{h.open || "09:00"}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => {
+                    setPickerDay(day);
+                    setShowPicker("close");
+                    setPickerTime(h.close || "18:00");
+                  }}
+                  style={twStyle("flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-gray-50 py-3")}
+                >
+                  <Ionicons name="time-outline" size={16} color="#6b7280" />
+                  <Text style={twStyle("ml-2 text-base font-medium text-gray-900")}>{h.close || "18:00"}</Text>
+                </TouchableOpacity>
               </View>
             ) : null}
           </View>
         );
       })}
+
+      {showPicker && pickerDay && (
+        <DateTimePicker
+          value={new Date(`2000-01-01T${pickerTime}:00`)}
+          mode="time"
+          display={Platform.OS === "ios" ? "spinner" : "default"}
+          onChange={handleTimeChange}
+        />
+      )}
     </View>
   );
 }

@@ -13,12 +13,15 @@ import {
   drawPdfHeader,
   drawPdfInfoGrid,
   drawPdfLineItems,
+  drawPdfPayments,
   drawPdfSectionTitle,
   drawPdfTotals,
+  formatPaymentMethodLabel,
   formatPdfDate,
   moneyPdf,
 } from "@/lib/receipts/pdf-design";
 import { assertReceiptInvariant } from "@/lib/bookings/display-invariants";
+import { isPaidBookingPaymentStatus } from "@/lib/payments/booking-payment-status";
 
 // Wave 2.5 (audit 2026-04 final 100/100): 60s serverless budget +
 // Supabase Storage-backed cache for finalized receipts. Cold cost is
@@ -219,14 +222,35 @@ export async function GET(
         ...(r.deposit_required && r.payment_option === "deposit"
           ? [{ label: `Deposit${r.deposit_percentage ? ` (${r.deposit_percentage}%)` : ""}`, value: money(r.deposit_amount) }]
           : []),
-        ...(Number(r.wallet_amount || 0) > 0 ? [{ label: "Wallet applied", value: `-${money(r.wallet_amount)}`, tone: "success" as const }] : []),
-        ...(Number(r.gift_card_amount || 0) > 0 ? [{ label: "Gift card applied", value: `-${money(r.gift_card_amount)}`, tone: "success" as const }] : []),
+        // §Finance-truth 2026-05: wallet/gift are payment lines (rendered in the
+        // Payments section below). Showing them as negative deductions from total
+        // here while ALSO including them in `amount_paid` (which migration 582 makes
+        // total_paid include) double-counts. Refunds and amount_paid stay summary lines.
         ...(Number(r.total_refunded || 0) > 0 ? [{ label: "Refunded", value: `-${money(r.total_refunded)}`, tone: "warning" as const }] : []),
         ...(Number(r.amount_paid || 0) > 0 ? [{ label: "Amount paid", value: money(r.amount_paid) }] : []),
         ...(Number(r.balance_due || 0) > 0 ? [{ label: "Balance due", value: money(r.balance_due), tone: "danger" as const }] : []),
       ],
       { label: "Total", value: money(r.total_amount) },
     );
+
+    // Payments section (Finance-truth 2026-05): one row per paid
+    // booking_payments row with method label, so wallet+card / gift+card splits,
+    // deposits, and balance settlements are visible to the provider.
+    const completedPayments = (r.transactions || []).filter(
+      (t) => isPaidBookingPaymentStatus(t.status),
+    );
+    if (completedPayments.length > 0) {
+      doc.moveDown(0.4);
+      drawPdfPayments(
+        doc,
+        completedPayments.map((t) => ({
+          label: formatPaymentMethodLabel(t.payment_method ?? null, t.payment_provider ?? null),
+          detail: t.created_at ? formatPdfDate(t.created_at) : null,
+          amount: money(Number(t.amount || 0)),
+          tone: "success" as const,
+        })),
+      );
+    }
 
     assertReceiptInvariant("provider-booking-receipt-pdf", {
       total: Number(r.total_amount ?? 0),
@@ -236,6 +260,7 @@ export async function GET(
       fees: Number(r.service_fee_amount ?? 0),
       tip_amount: Number(r.tip_amount ?? 0),
       discount: Number(r.discount_amount ?? 0),
+      promotion_discount_amount: Number(r.promotion_discount_amount ?? 0),
       membership_discount_amount: Number(r.membership_discount_amount ?? 0),
       loyalty_discount_amount: Number(r.loyalty_discount_amount ?? 0),
       cancellation_fee: Number(r.cancellation_fee ?? 0),
@@ -360,6 +385,14 @@ type ReceiptData = {
     postal_code?: string;
   };
   notes?: string | null;
+  transactions?: Array<{
+    id?: string;
+    amount?: number | string;
+    payment_method?: string | null;
+    payment_provider?: string | null;
+    status?: string | null;
+    created_at?: string | null;
+  }>;
   receipt_header?: string | null;
   receipt_footer?: string | null;
 };

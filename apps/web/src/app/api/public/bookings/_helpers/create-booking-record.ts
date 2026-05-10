@@ -40,7 +40,16 @@ export async function createBookingRecord(
     booking_source: "online",
     scheduled_at: draft.selected_datetime,
     package_id: draft.package_id ?? null,
-    subtotal: v.subtotal,
+    /**
+     * §Finance-truth 2026-05: persisted `subtotal` is the canonical sum of line items
+     * BEFORE any discount (services + addons + products). The catalog package discount
+     * is surfaced in `discount_amount` so the invariant
+     *   subtotal + travel + tax + platform_fee + tip - all_discounts - cancellation ≈ total_amount
+     * holds across customer/provider receipts and admin reports. Previously `v.subtotal`
+     * was post-package while `discount_amount` ALSO carried the package amount, which
+     * double-subtracted the package discount on every reconciliation surface.
+     */
+    subtotal: v.subtotal + v.packageDiscountAmount,
     travel_fee: v.travelFee,
     platform_fee_config_id: v.serviceFeeConfigId,
     platform_fee_percentage: v.serviceFeePercentage,
@@ -54,7 +63,8 @@ export async function createBookingRecord(
     tip_amount: v.tipAmount,
     tax_amount: v.taxAmount,
     tax_rate: v.taxRate ?? null,
-    discount_amount: v.packageDiscountAmount + v.promoDiscountAmount,
+    // Package/manual catalog discount only; promo is promotion_discount_amount.
+    discount_amount: v.packageDiscountAmount,
     discount_code: v.promoCode || null,
     promotion_discount_amount: v.promoDiscountAmount,
     membership_discount_amount: v.membershipDiscountAmount,

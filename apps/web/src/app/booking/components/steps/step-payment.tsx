@@ -24,7 +24,7 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { subscribeRecurringEligible } from "@/lib/recurring/subscribe-recurring-eligibility";
 import { formatLocalDateYYYYMMDD } from "@/lib/dates/format-local-date-yyyymmdd";
 import { reconcileBookingInstantWithSlotLabel } from "@/lib/bookings/reconcile-booking-instant-with-slot-label";
-import { getHoldTimeRemaining, serverNowToClockOffsetMs } from "@beautonomi/utils";
+import { getHoldTimeRemaining, percentOf, serverNowToClockOffsetMs } from "@beautonomi/utils";
 
 type PublicBookingCreateResult = {
   booking_id: string;
@@ -97,7 +97,6 @@ function getSubtotalAfterDiscounts(state: BookingState): number {
   const subtotal = services + addons + products + travelFee;
   const discounts =
     (state.promotions.couponDiscount || 0) +
-    (state.promotions.giftCardAmount || 0) +
     (state.promotions.loyaltyDiscount || 0) +
     (state.promotions.membershipDiscount || 0);
   return Math.max(0, subtotal - discounts);
@@ -641,7 +640,6 @@ export default function StepPayment({
     travelFeeBreakdown: bookingState.address?.breakdown || [],
     subtotal: 0,
     discounts: (bookingState.promotions.couponDiscount || 0) +
-      (bookingState.promotions.giftCardAmount || 0) +
       (bookingState.promotions.loyaltyDiscount || 0) +
       (bookingState.promotions.membershipDiscount || 0),
     subtotalAfterDiscounts: 0,
@@ -759,6 +757,9 @@ export default function StepPayment({
       promotion_code: bookingState.promotions.couponCode || null,
       gift_card_code: bookingState.promotions.giftCardCode || null,
       membership_plan_id: bookingState.promotions.membershipPlanId || null,
+      ...(bookingState.promotions.loyaltyPointsUsed != null && bookingState.promotions.loyaltyPointsUsed > 0
+        ? { loyalty_points_used: bookingState.promotions.loyaltyPointsUsed }
+        : {}),
       use_wallet: bookingState.useWallet ?? false,
       hold_id: holdId || null,
       // B11: forward provider form responses and booking custom field values
@@ -861,6 +862,14 @@ export default function StepPayment({
       toast.error("Please enter a gift card code in the promotions step");
       return;
     }
+      if (paymentMethod === "giftcard") {
+        const depositAmount = percentOf(totals.total, depositPercentage);
+        const amountDueNow = paymentOption === "deposit" ? depositAmount : totals.total;
+        if ((bookingState.promotions.giftCardAmount || 0) + 0.005 < amountDueNow) {
+          toast.error("This gift card does not cover the amount due now. Use card payment to combine a gift card with another tender.");
+          return;
+        }
+      }
 
     if (cancellationPolicy && !acceptedCancellationPolicy) {
       toast.error("Please accept the cancellation policy to continue");
@@ -1042,8 +1051,13 @@ export default function StepPayment({
       }
 
       // Fallback: initialize payment client-side if API did not return payment_url
-      const depositAmount = Math.ceil((totals.total * depositPercentage) / 100);
-      const amountToCharge = paymentOption === "deposit" ? depositAmount : totals.total;
+      const depositAmount = percentOf(totals.total, depositPercentage);
+      const amountDueNow = paymentOption === "deposit" ? depositAmount : totals.total;
+      const giftCardApplied = Math.min(bookingState.promotions.giftCardAmount || 0, amountDueNow);
+      const walletApplied = paymentMethod === "card" && useWallet
+        ? Math.min(walletBalance, Math.max(0, amountDueNow - giftCardApplied))
+        : 0;
+      const amountToCharge = Math.max(0, amountDueNow - giftCardApplied - walletApplied);
       const freqFallback = bookingState.recurringFrequency || "weekly";
       const paystackFallbackRecurring =
         user &&
@@ -1415,12 +1429,6 @@ export default function StepPayment({
               <span>-{formatCurrency(bookingState.promotions.couponDiscount, totals.currency)}</span>
             </div>
           )}
-          {bookingState.promotions.giftCardAmount > 0 && (
-            <div className="flex justify-between text-sm text-green-600">
-              <span>Gift Card</span>
-              <span>-{formatCurrency(bookingState.promotions.giftCardAmount, totals.currency)}</span>
-            </div>
-          )}
           {bookingState.promotions.loyaltyDiscount > 0 && (
             <div className="flex justify-between text-sm text-green-600">
               <span>Loyalty Points</span>
@@ -1467,10 +1475,25 @@ export default function StepPayment({
             <span>{formatCurrency(totals.total, totals.currency)}</span>
           </div>
 
+          {bookingState.promotions.giftCardAmount > 0 && (() => {
+            const depositAmount = percentOf(totals.total, depositPercentage);
+            const amountDueNow = paymentOption === "deposit" ? depositAmount : totals.total;
+            const giftCardApplied = Math.min(bookingState.promotions.giftCardAmount || 0, amountDueNow);
+            return (
+              <div className="flex justify-between text-sm text-blue-700">
+                <span>Gift card tender</span>
+                <span>−{formatCurrency(giftCardApplied, totals.currency)}</span>
+              </div>
+            );
+          })()}
+
           {/* Wallet split — show breakdown of what wallet covers vs what Paystack charges */}
           {paymentMethod === "card" && useWallet && walletBalance > 0 && (() => {
-            const walletApplied = Math.min(walletBalance, totals.total);
-            const paystackRemainder = Math.max(0, totals.total - walletApplied);
+            const depositAmount = percentOf(totals.total, depositPercentage);
+            const amountDueNow = paymentOption === "deposit" ? depositAmount : totals.total;
+            const giftCardApplied = Math.min(bookingState.promotions.giftCardAmount || 0, amountDueNow);
+            const walletApplied = Math.min(walletBalance, Math.max(0, amountDueNow - giftCardApplied));
+            const paystackRemainder = Math.max(0, amountDueNow - giftCardApplied - walletApplied);
             return (
               <div className="mt-3 pt-3 border-t border-dashed border-gray-300 space-y-1.5">
                 <div className="flex justify-between text-sm text-green-700">
@@ -2008,8 +2031,16 @@ export default function StepPayment({
       <div className="sticky bottom-0 bg-white border-t border-gray-200 -mx-4 px-4 py-4 safe-area-bottom">
         {(() => {
           const selectedCard = usingSavedCard ? savedCards.find((c) => c.id === selectedCardId) : null;
-          const depositAmount = Math.ceil((totals.total * depositPercentage) / 100);
-          const chargeAmount = paymentOption === "deposit" ? depositAmount : totals.total;
+          const depositAmount = percentOf(totals.total, depositPercentage);
+          const amountDueNow = paymentOption === "deposit" ? depositAmount : totals.total;
+          const giftCardApplied = Math.min(bookingState.promotions.giftCardAmount || 0, amountDueNow);
+          const walletApplied = paymentMethod === "card" && useWallet
+            ? Math.min(walletBalance, Math.max(0, amountDueNow - giftCardApplied))
+            : 0;
+          const chargeAmount = Math.max(0, amountDueNow - giftCardApplied - walletApplied);
+          const giftCardOnlyUnderfunded =
+            paymentMethod === "giftcard" &&
+            ((bookingState.promotions.giftCardAmount || 0) + 0.005 < amountDueNow);
           
           return (
             <Button
@@ -2022,6 +2053,7 @@ export default function StepPayment({
                 !holdId ||
                 !holdExpiresAt ||
                 !bookingState.clientInfo ||
+                giftCardOnlyUnderfunded ||
                 (cancellationPolicy != null && !acceptedCancellationPolicy)
               }
               className="w-full h-14 text-base font-semibold bg-primary hover:bg-primary-hover disabled:opacity-50 touch-target flex items-center justify-center gap-2"
@@ -2039,7 +2071,7 @@ export default function StepPayment({
               ) : paymentMethod === "giftcard" ? (
                 <>
                   <Gift className="w-5 h-5" />
-                  Pay with Gift Card
+                  Pay {formatCurrency(amountDueNow, totals.currency)} with Gift Card
                 </>
               ) : usingSavedCard && selectedCard ? (
                 <>
@@ -2054,7 +2086,9 @@ export default function StepPayment({
               ) : (
                 <>
                   <CreditCard className="w-5 h-5" />
-                  Pay {formatCurrency(totals.total, totals.currency)}
+                  {chargeAmount <= 0
+                    ? "Complete booking"
+                    : `Pay ${formatCurrency(chargeAmount, totals.currency)}`}
                 </>
               )}
             </Button>

@@ -17,6 +17,7 @@ import { resolveCommissionPercentageForProvider } from "@/lib/finance/resolve-co
 import { percentOf, subtractMoney } from "@beautonomi/utils";
 import { resolvePaymentTenantForBookingRequest } from "@/lib/bookings/resolve-payment-tenant";
 import { syncBookingAfterPaystackSuccess } from "@/lib/bookings/sync-booking-after-paystack-success";
+import { ensureWalletGiftBookingPayments } from "@/lib/bookings/ensure-wallet-gift-booking-payments";
 import { getPlatformPaymentTypesForTenant } from "@/lib/payments/platform-payment-types";
 import { insertCustomerRecurringSeriesFromPaidBooking } from "@/lib/recurring/insert-customer-recurring-from-paid-booking";
 import { subscribeRecurringEligible } from "@/lib/recurring/subscribe-recurring-eligibility";
@@ -180,6 +181,12 @@ export async function processPayment(
   // Capture gift card immediately if no card payment or nothing left
   if (giftCardAmountApplied > 0 && (paymentMethod !== "card" || amountToCollect <= 0)) {
     await (supabase.rpc as any)("capture_gift_card_redemption", { p_booking_id: booking.id });
+    await ensureWalletGiftBookingPayments(supabaseAdmin, {
+      bookingId: booking.id,
+      tenantId: booking.tenant_id,
+      walletAmount: 0,
+      giftCardAmount: giftCardAmountApplied,
+    });
   }
 
   // ── Wallet application ───────────────────────────────────────────────────
@@ -224,6 +231,13 @@ export async function processPayment(
           .update({ wallet_amount: walletAmountApplied })
           .eq("id", booking.id);
 
+        await ensureWalletGiftBookingPayments(supabaseAdmin, {
+          bookingId: booking.id,
+          tenantId: booking.tenant_id,
+          walletAmount: walletAmountApplied,
+          giftCardAmount: 0,
+        });
+
         amountToCollect = Math.max(0, amountToCollect - walletAmountApplied);
       }
     } catch (e: any) {
@@ -254,25 +268,29 @@ export async function processPayment(
 
     const loyaltyPointsRedeemed = v.loyaltyPointsRedeemed ?? 0;
     if (loyaltyPointsRedeemed > 0) {
+      // Ledger first: do not mark the booking as redeemed unless the points
+      // deduction was recorded (or this is a true idempotent replay).
+      const redemptionResult = await recordLoyaltyRedemption(supabaseAdmin, {
+        customerId: v.customerId,
+        points: loyaltyPointsRedeemed,
+        description: `Redeemed for booking ${booking.booking_number}`,
+        bookingId: booking.id,
+      });
+      if (!redemptionResult.recorded && redemptionResult.reason !== "already_redeemed") {
+        console.error("Loyalty points deduction (no-gateway path):", redemptionResult.reason);
+        return handleApiError(
+          new Error("Loyalty points could not be redeemed"),
+          "We could not redeem your loyalty points. Please try again.",
+          "LOYALTY_REDEMPTION_FAILED",
+          500,
+        );
+      }
       await (supabase.from("bookings") as any)
         .update({
           loyalty_points_used: loyaltyPointsRedeemed,
           loyalty_discount_amount: v.loyaltyDiscountAmount ?? 0,
         })
         .eq("id", booking.id);
-      try {
-        // §Customer-audit 2026-04: write to BOTH ledger and legacy so
-        // `get_customer_available_points` reflects the deduction on the next
-        // booking. Previously only the legacy table was updated.
-        await recordLoyaltyRedemption(supabase, {
-          customerId: v.customerId,
-          points: loyaltyPointsRedeemed,
-          description: `Redeemed for booking ${booking.booking_number}`,
-          bookingId: booking.id,
-        });
-      } catch (e: any) {
-        console.error("Loyalty points deduction (no-gateway path):", e?.message || e);
-      }
     }
 
     const effectivePaymentStatus = isDepositPayment ? "partially_paid" : "paid";
@@ -285,6 +303,13 @@ export async function processPayment(
         status: shouldAutoConfirmStatus ? "confirmed" : "pending",
       })
       .eq("id", booking.id);
+
+    await ensureWalletGiftBookingPayments(supabaseAdmin, {
+      bookingId: booking.id,
+      tenantId: booking.tenant_id,
+      walletAmount: walletAmountApplied,
+      giftCardAmount: giftCardAmountApplied,
+    });
 
     // ── Ledger entries (no gateway fees) ─────────────────────────────────
     await insertNoGatewayLedger(supabase, {
@@ -609,6 +634,7 @@ export async function processPayment(
           payment_reference: reference,
           payment_provider: "paystack",
           payment_status: "pending",
+          status: "pending_payment",
         })
         .eq("id", booking.id);
 

@@ -51,18 +51,10 @@ export async function POST(request: NextRequest) {
       return badRequestResponse("Loyalty points system not configured");
     }
 
-    // Get customer's available balance. During migration, points may exist in
-    // either the new ledger or the legacy transaction store; the loyalty page
-    // already surfaces both, so checkout must accept the same balance.
-    const [ledgerBalanceResult, legacyBalanceResult] = await Promise.all([
-      supabase.rpc('get_customer_available_points', { customer_uuid: user.id }),
-      supabase.rpc('get_user_loyalty_balance', { p_user_id: user.id }),
-    ]);
-
-    const available_balance = Math.max(
-      Number(ledgerBalanceResult.data) || 0,
-      Number(legacyBalanceResult.data) || 0,
-    );
+    const { data: ledgerBal } = await supabase.rpc("get_customer_available_points", {
+      customer_uuid: user.id,
+    });
+    const available_balance = Number(ledgerBal) || 0;
 
     // Validation
     const errors = [];

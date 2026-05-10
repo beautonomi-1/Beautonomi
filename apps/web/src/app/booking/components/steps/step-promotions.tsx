@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Ticket, Gift, Star, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,8 +48,19 @@ export default function StepPromotions({
     tenantCurrency;
 
   /** Services + add-ons + products + travel — must match payment step `getSubtotalAfterDiscounts` inputs (excludes tax & Platform Fee). */
+  const servicesTotal =
+    bookingState.isGroupBooking && bookingState.groupParticipants?.length
+      ? bookingState.groupParticipants.reduce((total, participant) => {
+          const participantTotal = participant.serviceIds.reduce((sum, serviceId) => {
+            const service = bookingState.selectedServices.find((s) => s.id === serviceId);
+            return sum + (service?.price || 0);
+          }, 0);
+          return total + participantTotal;
+        }, 0)
+      : bookingState.selectedServices.reduce((sum, s) => sum + s.price, 0);
+
   const cartTotal =
-    bookingState.selectedServices.reduce((sum, s) => sum + s.price, 0) +
+    servicesTotal +
     bookingState.selectedAddons.reduce((sum, a) => sum + a.price, 0) +
     bookingState.selectedProducts.reduce((sum, p) => sum + p.price * p.quantity, 0) +
     (bookingState.address?.travelFee || 0);
@@ -58,25 +69,22 @@ export default function StepPromotions({
     0,
     cartTotal -
       (bookingState.promotions.couponDiscount || 0) -
-      (bookingState.promotions.giftCardAmount || 0) -
       (bookingState.promotions.loyaltyDiscount || 0) -
       (bookingState.promotions.membershipDiscount || 0)
   );
 
-  /** Subtotal before loyalty — must match server `validate-booking` / `calculate-redemption` cap basis (after coupon, gift, membership). */
+  /** Subtotal before loyalty — must match server `validate-booking` / `calculate-redemption` cap basis (after coupon + membership; gift cards are tender). */
   const bookingSubtotalForLoyalty = useMemo(
     () =>
       Math.max(
         0,
         cartTotal -
           (bookingState.promotions.couponDiscount || 0) -
-          (bookingState.promotions.giftCardAmount || 0) -
           (bookingState.promotions.membershipDiscount || 0),
       ),
     [
       cartTotal,
       bookingState.promotions.couponDiscount,
-      bookingState.promotions.giftCardAmount,
       bookingState.promotions.membershipDiscount,
     ],
   );
@@ -328,6 +336,50 @@ export default function StepPromotions({
     }
   };
 
+  const promotionsRef = useRef(bookingState.promotions);
+  promotionsRef.current = bookingState.promotions;
+
+  const cartFingerprint = useMemo(
+    () =>
+      [
+        ...bookingState.selectedServices.map((s) => `${s.id}:${s.price}`),
+        ...bookingState.selectedAddons.map((a) => `${a.id}:${a.price}`),
+        ...bookingState.selectedProducts.map((p) => `${p.id}:${p.quantity}:${p.price}`),
+        String(bookingState.address?.travelFee ?? 0),
+      ].join("|"),
+    [
+      bookingState.selectedServices,
+      bookingState.selectedAddons,
+      bookingState.selectedProducts,
+      bookingState.address?.travelFee,
+    ],
+  );
+
+  const prevCartFingerprintRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (prevCartFingerprintRef.current === null) {
+      prevCartFingerprintRef.current = cartFingerprint;
+      return;
+    }
+    if (prevCartFingerprintRef.current !== cartFingerprint) {
+      prevCartFingerprintRef.current = cartFingerprint;
+      const p = promotionsRef.current;
+      if (p.couponCode || (p.couponDiscount || 0) > 0) {
+        setCouponCode("");
+        updateBookingState({
+          promotions: {
+            ...p,
+            couponCode: undefined,
+            couponDiscount: undefined,
+          },
+        });
+        toast.message("Cart changed — coupon removed. Re-enter a code if it still applies.");
+      }
+    }
+    // Intentionally cartFingerprint only: clear coupon when cart composition/amounts change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cartFingerprint]);
+
   return (
     <div className="px-4 py-6 space-y-6">
       <div>
@@ -466,9 +518,9 @@ export default function StepPromotions({
           </div>
         )}
         {bookingState.promotions.giftCardAmount && (
-          <div className="flex justify-between text-sm text-green-600">
-            <span>Gift Card</span>
-            <span>-{formatCurrency(bookingState.promotions.giftCardAmount, tenantCurrency)}</span>
+          <div className="flex justify-between text-sm text-blue-700">
+            <span>Gift card tender</span>
+            <span>Applies at payment</span>
           </div>
         )}
         {bookingState.promotions.membershipDiscount && (

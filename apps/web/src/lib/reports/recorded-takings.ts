@@ -11,6 +11,7 @@ import {
   summarizeLedgerLocationAttribution,
   type LedgerLocationAttributionSummary,
 } from "@/lib/reports/provider-report-utils";
+import { PAID_BOOKING_PAYMENT_STATUSES } from "@/lib/payments/booking-payment-status";
 
 export const RECORDED_TAKINGS_PAYMENT_METHODS = [
   "cash",
@@ -79,7 +80,7 @@ export async function getRecordedTakingsForRange(
   let bpQuery = supabaseAdmin
     .from("booking_payments")
     .select("booking_id, amount, payment_method")
-    .eq("status", "completed")
+    .in("status", [...PAID_BOOKING_PAYMENT_STATUSES])
     .gte("created_at", rangeStartIso)
     .lte("created_at", rangeEndIso);
   if (providerTenantId) {

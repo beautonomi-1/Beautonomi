@@ -994,18 +994,29 @@ export default function BookingDetailScreen() {
         ? rawPlatformFeePercentage * 100
         : rawPlatformFeePercentage
       : 0;
+  const packageName = (booking as { package_name?: string | null }).package_name;
+  const promotionDiscountAmount = Number((booking as any).promotion_discount_amount || 0);
+  const loyaltyDiscountAmount = Number((booking as any).loyalty_discount_amount || 0);
+  const membershipDiscountAmount = Number((booking as any).membership_discount_amount || 0);
+  const genericDiscountAmount =
+    packageName ||
+    promotionDiscountAmount > 0 ||
+    loyaltyDiscountAmount > 0 ||
+    membershipDiscountAmount > 0
+      ? 0
+      : Math.max(0, Number(booking.discount_amount || 0));
 
   /** Subtotal / tax / fees / total — same figures as Receipt (Details tab parity). */
   const renderPaymentBreakdownCore = () => (
     <>
-      {(booking as { package_name?: string | null }).package_name ? (
+      {packageName ? (
         <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
           <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Package</Text>
           <Text
             style={{ fontSize: 14, color: Colors.gray[700], flex: 1, textAlign: "right", marginLeft: 12 }}
             numberOfLines={2}
           >
-            {(booking as { package_name?: string | null }).package_name}
+            {packageName}
           </Text>
         </View>
       ) : null}
@@ -1014,7 +1025,7 @@ export default function BookingDetailScreen() {
           <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Subtotal</Text>
           <Text style={{ fontSize: 14, color: Colors.gray[700] }}>
             {booking.currency}{" "}
-            {Math.max(0, Number(booking.subtotal) - Number((booking as any).travel_fee || 0)).toFixed(2)}
+            {(Number(booking.subtotal) || 0).toFixed(2)}
           </Text>
         </View>
       )}
@@ -1026,13 +1037,13 @@ export default function BookingDetailScreen() {
           <Text style={{ fontSize: 14, color: Colors.gray[700] }}>{booking.currency} {Number(booking.tax_amount).toFixed(2)}</Text>
         </View>
       )}
-      {booking.discount_amount > 0 && (
+      {genericDiscountAmount > 0 && (
         <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
           <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Discount</Text>
-          <Text style={{ fontSize: 14, color: "#16a34a" }}>-{booking.currency} {Number(booking.discount_amount).toFixed(2)}</Text>
+          <Text style={{ fontSize: 14, color: "#16a34a" }}>-{booking.currency} {genericDiscountAmount.toFixed(2)}</Text>
         </View>
       )}
-      {Number((booking as any).loyalty_discount_amount) > 0 && (
+      {loyaltyDiscountAmount > 0 && (
         <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
           <Text style={{ fontSize: 14, color: Colors.gray[500] }}>
             Loyalty
@@ -1040,19 +1051,19 @@ export default function BookingDetailScreen() {
               ? ` (${Number((booking as any).loyalty_points_used).toLocaleString()} pts)`
               : ""}
           </Text>
-          <Text style={{ fontSize: 14, color: "#16a34a" }}>-{booking.currency} {Number((booking as any).loyalty_discount_amount).toFixed(2)}</Text>
+          <Text style={{ fontSize: 14, color: "#16a34a" }}>-{booking.currency} {loyaltyDiscountAmount.toFixed(2)}</Text>
         </View>
       )}
-      {Number((booking as any).membership_discount_amount) > 0 && (
+      {membershipDiscountAmount > 0 && (
         <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
           <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Membership</Text>
-          <Text style={{ fontSize: 14, color: "#16a34a" }}>-{booking.currency} {Number((booking as any).membership_discount_amount).toFixed(2)}</Text>
+          <Text style={{ fontSize: 14, color: "#16a34a" }}>-{booking.currency} {membershipDiscountAmount.toFixed(2)}</Text>
         </View>
       )}
-      {Number((booking as any).promotion_discount_amount) > 0 && (
+      {promotionDiscountAmount > 0 && (
         <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
           <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Promotion</Text>
-          <Text style={{ fontSize: 14, color: "#16a34a" }}>-{booking.currency} {Number((booking as any).promotion_discount_amount).toFixed(2)}</Text>
+          <Text style={{ fontSize: 14, color: "#16a34a" }}>-{booking.currency} {promotionDiscountAmount.toFixed(2)}</Text>
         </View>
       )}
       {Number((booking as any).travel_fee) > 0 && (
@@ -1075,12 +1086,6 @@ export default function BookingDetailScreen() {
           <Text style={{ fontSize: 14, color: Colors.gray[700] }}>{booking.currency} {Number((booking as any).tip_amount).toFixed(2)}</Text>
         </View>
       )}
-      {Number((booking as any).gift_card_amount) > 0 && (
-        <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
-          <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Gift card</Text>
-          <Text style={{ fontSize: 14, color: "#16a34a" }}>-{booking.currency} {Number((booking as any).gift_card_amount).toFixed(2)}</Text>
-        </View>
-      )}
       {Number((booking as any).cancellation_fee) > 0 && (
         <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
           <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Cancellation fee</Text>
@@ -1101,20 +1106,63 @@ export default function BookingDetailScreen() {
           </Text>
         </View>
       )}
-      {Number((booking as any).wallet_amount || 0) > 0 && (
-        <View style={{ marginTop: 6, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-          <Text style={{ fontSize: 13, color: "#059669" }}>Wallet credit applied</Text>
-          <Text style={{ fontSize: 13, fontWeight: "600", color: "#059669" }}>-{booking.currency} {Number((booking as any).wallet_amount).toFixed(2)}</Text>
-        </View>
-      )}
-      {Number((booking as any).total_paid || 0) > 0 && (
-        <View style={{ marginTop: 4, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-          <Text style={{ fontSize: 13, color: Colors.gray[600] }}>
-            {Number((booking as any).wallet_amount || 0) > 0 ? "Paid via card" : "Amount paid"}
-          </Text>
-          <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[700] }}>{booking.currency} {Number((booking as any).total_paid).toFixed(2)}</Text>
-        </View>
-      )}
+      {/* §Finance-truth 2026-05: payments breakdown — wallet/gift are payment
+          methods, not discounts. Migration 582 makes `total_paid` include
+          wallet/gift settlement amounts, so we show the canonical breakdown
+          (wallet → gift card → card/online → total paid) rather than treating
+          wallet/gift as deductions from total. */}
+      {(() => {
+        const walletPaid = Number((booking as any).wallet_amount || 0);
+        const giftPaid = Number((booking as any).gift_card_amount || 0);
+        const totalPaid = Number((booking as any).total_paid || 0);
+        const otherPaid = Math.max(0, totalPaid - walletPaid - giftPaid);
+        if (walletPaid <= 0 && giftPaid <= 0 && totalPaid <= 0) return null;
+        return (
+          <View style={{ marginTop: 8 }}>
+            {walletPaid > 0 && (
+              <View style={{ marginTop: 4, flexDirection: "row", justifyContent: "space-between" }}>
+                <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Paid (wallet)</Text>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[700] }}>
+                  {booking.currency} {walletPaid.toFixed(2)}
+                </Text>
+              </View>
+            )}
+            {giftPaid > 0 && (
+              <View style={{ marginTop: 4, flexDirection: "row", justifyContent: "space-between" }}>
+                <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Paid (gift card)</Text>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[700] }}>
+                  {booking.currency} {giftPaid.toFixed(2)}
+                </Text>
+              </View>
+            )}
+            {otherPaid > 0 && (
+              <View style={{ marginTop: 4, flexDirection: "row", justifyContent: "space-between" }}>
+                <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Paid (card / other)</Text>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[700] }}>
+                  {booking.currency} {otherPaid.toFixed(2)}
+                </Text>
+              </View>
+            )}
+            {totalPaid > 0 && (
+              <View
+                style={{
+                  marginTop: 6,
+                  paddingTop: 6,
+                  borderTopWidth: 1,
+                  borderTopColor: Colors.gray[100],
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                }}
+              >
+                <Text style={{ fontSize: 13, color: Colors.gray[600], fontWeight: "600" }}>Total paid</Text>
+                <Text style={{ fontSize: 13, fontWeight: "700", color: Colors.gray[700] }}>
+                  {booking.currency} {totalPaid.toFixed(2)}
+                </Text>
+              </View>
+            )}
+          </View>
+        );
+      })()}
       {booking.payment_status && (
         <View style={{ marginTop: 8, flexDirection: "row", alignItems: "center" }}>
           <View
@@ -1660,14 +1708,26 @@ export default function BookingDetailScreen() {
                   if (Number((booking as any).tip_amount) > 0) {
                     paymentExtras.push(`Tip: ${cur} ${Number((booking as any).tip_amount).toFixed(2)}`);
                   }
-                  if (Number((booking as any).gift_card_amount) > 0) {
-                    paymentExtras.push(`Gift card: -${cur} ${Number((booking as any).gift_card_amount).toFixed(2)}`);
-                  }
                   if (Number((booking as any).loyalty_discount_amount) > 0) {
                     paymentExtras.push(`Loyalty: -${cur} ${Number((booking as any).loyalty_discount_amount).toFixed(2)}`);
                   }
+                  // §Finance-truth 2026-05: wallet/gift are payment lines, not
+                  // discounts — they go into a "Paid via" block below total.
+                  const paidViaLines: string[] = [];
+                  if (Number((booking as any).gift_card_amount) > 0) {
+                    paidViaLines.push(`Gift card: ${cur} ${Number((booking as any).gift_card_amount).toFixed(2)}`);
+                  }
                   if (Number((booking as any).wallet_amount) > 0) {
-                    paymentExtras.push(`Wallet: -${cur} ${Number((booking as any).wallet_amount).toFixed(2)}`);
+                    paidViaLines.push(`Wallet: ${cur} ${Number((booking as any).wallet_amount).toFixed(2)}`);
+                  }
+                  const cardPaidEstimate = Math.max(
+                    0,
+                    Number((booking as any).total_paid ?? 0) -
+                      Number((booking as any).wallet_amount ?? 0) -
+                      Number((booking as any).gift_card_amount ?? 0),
+                  );
+                  if (cardPaidEstimate > 0.005) {
+                    paidViaLines.push(`Card / other: ${cur} ${cardPaidEstimate.toFixed(2)}`);
                   }
                   if (typeof booking.outstanding_balance === "number" && booking.outstanding_balance > 0) {
                     paymentExtras.push(`Outstanding: ${cur} ${Number(booking.outstanding_balance).toFixed(2)}`);
@@ -1689,6 +1749,9 @@ export default function BookingDetailScreen() {
                     ...(paymentExtras.length > 0 ? ["", ...paymentExtras] : []),
                     ``,
                     `Total: ${cur} ${Number(booking.total_amount || 0).toFixed(2)}`,
+                    ...(paidViaLines.length > 0
+                      ? ["", "Paid via:", ...paidViaLines.map((l) => `• ${l}`)]
+                      : []),
                     ``,
                     `View: ${APP_URL}/account-settings/bookings/${booking.id}`,
                   ];

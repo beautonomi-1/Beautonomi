@@ -158,7 +158,8 @@ export default function InAppBrowserScreen() {
           renderLoading={() => (
             <View style={styles.loading}>
               <ActivityIndicator size="large" color={Colors.primary} />
-              <Text style={styles.loadingText}>Loading…</Text>
+              <Text style={styles.loadingTitle}>Please wait</Text>
+              <Text style={styles.loadingText}>Opening secure payment…{"\n"}Do not close this screen.</Text>
             </View>
           )}
         />
@@ -199,7 +200,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: Colors.white,
   },
-  loadingText: { marginTop: 12, color: Colors.gray[500] },
+  loadingTitle: { marginTop: 16, fontSize: 18, fontWeight: "800", color: Colors.gray[900] },
+  loadingText: { marginTop: 10, fontSize: 14, fontWeight: "500", color: Colors.gray[600], textAlign: "center", paddingHorizontal: 28, lineHeight: 20 },
   centered: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 },
   loadError: {
     position: "absolute",

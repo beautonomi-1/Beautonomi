@@ -90,7 +90,7 @@ export async function GET(
       id, slug, business_name, business_type, description,
       rating_average, review_count, thumbnail_url, avatar_url,
       gallery, is_featured, is_verified, currency,
-      years_in_business, tax_rate_percent, tips_enabled, timezone, website,
+      years_in_business, tax_rate_percent, tax_inclusive, tips_enabled, timezone, website,
       social_media_links, accepts_custom_requests,
       response_rate, response_time_hours, languages_spoken,
       offers_mobile_services, minimum_mobile_booking_amount,
@@ -427,6 +427,7 @@ export async function GET(
       /** Expose to clients so booking pages can add noindex when provider opted out */
       seo_indexable: includeInSearchEngines,
       tax_rate_percent: providerData.tax_rate_percent ?? 0,
+      tax_inclusive: Boolean((providerData as { tax_inclusive?: boolean | null }).tax_inclusive),
       tips_enabled: providerData.tips_enabled ?? true,
       timezone: providerData.timezone ?? "Africa/Johannesburg",
       profile_promotions,

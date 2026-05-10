@@ -13,6 +13,7 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { parseReceiptDownloadToken } from "@/lib/receipts/receipt-download-token";
 import { groupPackageTotal, groupProductLineTotal } from "@/lib/bookings/group-booking-package-pricing";
 import { computeCatalogPackageServiceDiscount } from "@beautonomi/utils";
+import { isPaidBookingPaymentStatus } from "@/lib/payments/booking-payment-status";
 
 type ParticipantRow = {
   id: string;
@@ -212,13 +213,17 @@ export async function GET(
     );
     const childDiscountAmount = childRows.reduce((sum, b) => sum + num(b.discount_amount), 0);
     const amountPaid = childRows.reduce((sum, b) => {
-      const completedPayments = (b.booking_payments || [])
-        .filter((p) => p.status === "completed")
+      const paidViaRows = (b.booking_payments || [])
+        .filter((p) => isPaidBookingPaymentStatus(p.status))
         .reduce((s, p) => s + num(p.amount), 0);
-      return sum + completedPayments + num(b.wallet_amount) + num(b.gift_card_amount);
+      const paidAfterRefunds = Math.max(0, paidViaRows - num(b.total_refunded));
+      const legacyWalletGift = Math.max(0, num(b.wallet_amount) + num(b.gift_card_amount));
+      return sum + Math.max(paidAfterRefunds, legacyWalletGift);
     }, 0);
     const totalRefunded = childRows.reduce((sum, b) => sum + num(b.total_refunded), 0);
-    const balanceDue = Math.max(0, (childRows.length > 0 ? childTotalAmount : groupTotal) - amountPaid + totalRefunded);
+    const baseTotal = childRows.length > 0 ? childTotalAmount : groupTotal;
+    const netCollected = Math.max(0, amountPaid - totalRefunded);
+    const balanceDue = Math.max(0, baseTotal - netCollected);
     const paymentStatus =
       childRows.length === 0
         ? "not invoiced"
@@ -245,9 +250,15 @@ export async function GET(
         tax_amount: child ? num(child.tax_amount) : null,
         platform_fee_amount: child ? num(child.platform_fee_amount ?? child.service_fee_amount) : null,
         amount_paid: child
-          ? (child.booking_payments || [])
-              .filter((payment) => payment.status === "completed")
-              .reduce((sum, payment) => sum + num(payment.amount), 0) + num(child.wallet_amount) + num(child.gift_card_amount)
+          ? Math.max(
+              Math.max(
+                0,
+                (child.booking_payments || [])
+                  .filter((payment) => isPaidBookingPaymentStatus(payment.status))
+                  .reduce((sum, payment) => sum + num(payment.amount), 0) - num(child.total_refunded),
+              ),
+              Math.max(0, num(child.wallet_amount) + num(child.gift_card_amount)),
+            )
           : null,
         refunded: child ? num(child.total_refunded) : null,
       };

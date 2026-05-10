@@ -15,6 +15,7 @@ import {
 import { resolvePaymentTenantForBookingRequest } from "@/lib/bookings/resolve-payment-tenant";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
 
 /**
  * POST /api/me/bookings/[id]/pay-remaining
@@ -73,8 +74,15 @@ export async function POST(
     const unpaidAdditionalCharges = ((booking as unknown as { additional_charges?: AcRow[] }).additional_charges ?? [])
       .filter((ac) => ac.status !== "paid" && ac.status !== "rejected")
       .reduce((sum, ac) => sum + Number(ac.amount ?? 0), 0);
-    const effectivePaid = Math.max(0, totalPaid - totalRefunded);
-    const remaining = totalAmount + unpaidAdditionalCharges - effectivePaid - walletAmount - giftCardAmount;
+    const remaining = computeBookingOutstandingDisplay({
+      totalAmount,
+      totalPaid,
+      totalRefunded,
+      walletAmount,
+      giftCardAmount,
+      unpaidAdditionalCharges,
+      paymentStatus: booking.payment_status,
+    });
 
     if (remaining <= 0) {
       return errorResponse(
@@ -86,7 +94,7 @@ export async function POST(
 
     const ps = booking.payment_status as string;
     /** Outstanding Paystack / online payment: deposit (partial) or not yet paid (pending). */
-    if (ps !== "partially_paid" && ps !== "pending") {
+    if (ps !== "partially_paid" && ps !== "pending" && ps !== "partially_refunded") {
       return errorResponse(
         "Online payment is not available for this booking’s current payment state",
         "INVALID_STATUS",

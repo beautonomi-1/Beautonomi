@@ -79,7 +79,17 @@ export async function POST(
       // If neither exists (simple confirmation mode), allow service start
       const hasVerificationMethod = bookingData.arrival_otp || bookingData.qr_code_data;
       if (hasVerificationMethod && !bookingData.arrival_otp_verified && !bookingData.qr_code_verified) {
-        return errorResponse("Customer must verify provider arrival before starting service", "VERIFICATION_NOT_COMPLETE", 400);
+        return errorResponse(
+          "Customer must verify provider arrival by PIN or QR before starting service.",
+          "VERIFICATION_NOT_COMPLETE",
+          400,
+          {
+            location_type: bookingData.location_type,
+            current_stage: bookingData.current_stage,
+            arrival_otp_verified: bookingData.arrival_otp_verified === true,
+            qr_code_verified: bookingData.qr_code_verified === true,
+          },
+        );
       }
     }
 
@@ -91,7 +101,18 @@ export async function POST(
       bookingData.status !== "checked_in" &&
       bookingData.current_stage !== "provider_arrived"
     ) {
-      return errorResponse("Booking must be confirmed and provider must have arrived", "INVALID_STATUS", 400);
+      return errorResponse(
+        "Booking must be confirmed, checked in, or marked arrived before service can start.",
+        bookingData.location_type === "at_home" ? "HOUSECALL_STAGE_REQUIRED" : "INVALID_STATUS_TRANSITION",
+        400,
+        {
+          current_status: bookingData.status,
+          current_stage: bookingData.current_stage,
+          location_type: bookingData.location_type,
+          allowed_statuses: ["confirmed", "booked", "waiting", "checked_in"],
+          allowed_stage: "provider_arrived",
+        },
+      );
     }
 
     // Create booking event

@@ -10,7 +10,8 @@ export type CustomOfferAttachmentMessageStatus =
   | "paid"
   | "expired"
   | "withdrawn"
-  | "declined";
+  | "declined"
+  | "finalize_failed";
 
 export type PatchCustomOfferMessageAttachmentsInput = {
   status: CustomOfferAttachmentMessageStatus;
@@ -43,6 +44,9 @@ export function applyCustomOfferAttachmentPatch(
   } else if (patch.status === "paid") {
     next.withdrawn = false;
     next.expired = false;
+  } else if (patch.status === "finalize_failed") {
+    next.withdrawn = false;
+    next.expired = false;
   }
 
   if (patch.bookingId !== undefined) {
@@ -54,7 +58,7 @@ export function applyCustomOfferAttachmentPatch(
 
 /**
  * Patch every message attachment blob that references this `offer_id`.
- * Uses a narrow `ilike` pre-filter when supported to avoid full-table scans.
+ * Prefer JSONB containment (`@>`) via PostgREST `cs` so we hit `idx_messages_attachments_gin` (migration 587).
  */
 export async function patchCustomOfferMessageAttachments(
   admin: SupabaseClient,
@@ -63,15 +67,29 @@ export async function patchCustomOfferMessageAttachments(
 ): Promise<void> {
   let rows: { id: string; attachments: unknown }[] | null = null;
 
-  const { data: filtered, error: filterErr } = await admin
+  const containmentFilter = [{ type: "custom_offer", offer_id: offerId }] as unknown as Record<string, unknown>;
+  const { data: byContain, error: containErr } = await admin
     .from("messages")
     .select("id, attachments")
     .not("attachments", "is", null)
-    .ilike("attachments", `%${offerId}%`);
+    .contains("attachments", containmentFilter);
 
-  if (!filterErr && Array.isArray(filtered)) {
-    rows = filtered as { id: string; attachments: unknown }[];
+  if (!containErr && Array.isArray(byContain) && byContain.length > 0) {
+    rows = byContain as { id: string; attachments: unknown }[];
   }
+
+  if (!rows || rows.length === 0) {
+    const { data: filtered, error: filterErr } = await admin
+      .from("messages")
+      .select("id, attachments")
+      .not("attachments", "is", null)
+      .ilike("attachments", `%${offerId}%`);
+
+    if (!filterErr && Array.isArray(filtered) && filtered.length > 0) {
+      rows = filtered as { id: string; attachments: unknown }[];
+    }
+  }
+
   if (!rows || rows.length === 0) {
     const { data: all, error: allErr } = await admin.from("messages").select("id, attachments").not("attachments", "is", null);
     if (allErr) {

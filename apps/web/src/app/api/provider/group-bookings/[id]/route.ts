@@ -11,6 +11,7 @@ import {
   groupProductLineTotal,
   validateAndPriceGroupPackage,
 } from "@/lib/bookings/group-booking-package-pricing";
+import { computeWalletGiftCoverageOutstanding } from "@/lib/bookings/provider-booking-finance";
 
 /**
  * GET /api/provider/group-bookings/[id]
@@ -36,6 +37,7 @@ export async function GET(
         *,
         bookings:bookings(
           id, booking_number, ref_number, status, scheduled_at, total_amount,
+          total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status,
           customer:users!bookings_customer_id_fkey(id, full_name, email, phone, avatar_url)
         ),
         service_packages:package_id(id, name),
@@ -56,9 +58,38 @@ export async function GET(
     const pkg = Array.isArray((groupBooking as any).service_packages)
       ? (groupBooking as any).service_packages[0]
       : (groupBooking as any).service_packages;
+    const bookingPaymentById = new Map(
+      (((groupBooking as any).bookings ?? []) as any[]).map((booking: any) => {
+        const paidAfterRefunds = Math.max(
+          0,
+          Number(booking.total_paid ?? 0) - Number(booking.total_refunded ?? 0),
+        );
+        const walletGiftCoverage =
+          Number(booking.wallet_amount ?? 0) + Number(booking.gift_card_amount ?? 0);
+        const coverage = Math.max(paidAfterRefunds, walletGiftCoverage);
+        const balanceDue = Math.max(0, Number(booking.total_amount ?? 0) - coverage);
+        return [
+          booking.id,
+          {
+            payment_status:
+              booking.payment_status || (balanceDue <= 0 && Number(booking.total_amount ?? 0) > 0 ? "paid" : coverage > 0 ? "partially_paid" : "pending"),
+            paid: Number(booking.total_amount ?? 0) > 0 && balanceDue <= 0,
+            balance_due: balanceDue,
+            total_paid: Number(booking.total_paid ?? 0),
+            total_refunded: Number(booking.total_refunded ?? 0),
+            wallet_gift_coverage: walletGiftCoverage,
+          },
+        ];
+      }),
+    );
+    const participants = (((groupBooking as any).booking_participants ?? []) as any[]).map((participant) => ({
+      ...participant,
+      ...(participant.booking_id ? bookingPaymentById.get(participant.booking_id) ?? {} : {}),
+    }));
 
     return successResponse({
       ...groupBooking,
+      booking_participants: participants,
       package_name: pkg?.name ?? null,
     });
   } catch (error) {
@@ -461,13 +492,13 @@ export async function POST(
       const paymentProvider = paymentMethod === "cash" ? "cash" : "other";
       const rows = (bookings ?? [])
         .map((booking: any) => {
-          const remaining = Math.max(
-            0,
-            Number(booking.total_amount ?? 0) -
-              Math.max(0, Number(booking.total_paid ?? 0) - Number(booking.total_refunded ?? 0)) -
-              Number(booking.wallet_amount ?? 0) -
-              Number(booking.gift_card_amount ?? 0),
-          );
+          const remaining = computeWalletGiftCoverageOutstanding({
+            totalAmount: Number(booking.total_amount ?? 0),
+            totalPaid: Number(booking.total_paid ?? 0),
+            totalRefunded: Number(booking.total_refunded ?? 0),
+            walletAmount: Number(booking.wallet_amount ?? 0),
+            giftCardAmount: Number(booking.gift_card_amount ?? 0),
+          });
           if (remaining <= 0) return null;
           return {
             booking_id: booking.id,

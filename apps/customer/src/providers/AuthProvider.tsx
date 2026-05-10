@@ -275,9 +275,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signInWithOtp = useCallback(async (phone: string) => {
     const raw = phone.startsWith("+") ? phone : `+${phone}`;
     const e164 = normalizeSupabaseAuthPhone(raw);
+    // Unified auth: verifying an OTP creates the account if it doesn't exist (Airbnb-style).
     const { error } = await supabase.auth.signInWithOtp({
       phone: e164,
-      options: { channel: "sms", shouldCreateUser: false },
+      options: { channel: "sms", shouldCreateUser: true },
     });
     return { error: error ? new Error(error.message) : null };
   }, []);
@@ -307,9 +308,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
       return { error: new Error("Enter a valid email address") };
     }
+    // Email OTP (no magic link): omit emailRedirectTo so Supabase delivers a 6-digit code instead.
+    // shouldCreateUser: true so verifying the code creates the account.
     const { error } = await supabase.auth.signInWithOtp({
       email: trimmed,
-      options: { emailRedirectTo: getRedirectUrl(), shouldCreateUser: false },
+      options: { shouldCreateUser: true },
     });
     return { error: error ? new Error(error.message) : null };
   }, []);

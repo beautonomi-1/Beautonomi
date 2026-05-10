@@ -55,6 +55,28 @@ export function isValidProviderBookingStatusTransition(
   return (allowed as readonly string[]).includes(to);
 }
 
+export function getProviderBookingStatusTransitionBlockReason(
+  from: string,
+  to: string,
+  context: { payment_status?: string | null } = {}
+): string {
+  if (TERMINAL_BOOKING_STATUSES.includes(from as BookingStatus)) {
+    return `${from} bookings are final and cannot be changed.`;
+  }
+  if (from === "pending_payment") {
+    const paidNote =
+      context.payment_status === "paid"
+        ? " Payment status is settled, but this booking is still recorded as pending payment; refresh or contact support if this looks stale."
+        : "";
+    return `This booking is waiting for payment verification and can only be cancelled until payment clears.${paidNote}`;
+  }
+  const allowed = PROVIDER_BOOKING_STATUS_TRANSITIONS[from as BookingStatus] ?? [];
+  if (allowed.length > 0) {
+    return `Cannot change this booking from ${from} to ${to}. Allowed next statuses: ${allowed.join(", ")}.`;
+  }
+  return `Cannot change this booking from ${from} to ${to}.`;
+}
+
 /**
  * Admin may set any valid status from non-terminal states (e.g. correct mistakes,
  * force completion). Transitions from terminal states are blocked except no-op (from === to).

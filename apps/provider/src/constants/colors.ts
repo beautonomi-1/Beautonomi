@@ -9,6 +9,8 @@ export const Colors = {
   primary: "#FF0077",
   primaryLight: "rgba(255, 0, 119, 0.05)",
   primaryMedium: "rgba(255, 0, 119, 0.12)",
+  primarySoft: "#FFE7F1",
+  primaryRing: "rgba(255, 0, 119, 0.35)",
 
   white: "#FFFFFF",
   black: "#000000",

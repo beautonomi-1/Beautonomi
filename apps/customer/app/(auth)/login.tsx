@@ -114,10 +114,11 @@ function validatePhoneDigits(digits: string, countryCode: string): string | null
 }
 
 /**
- * §Release-audit 2026-04: Supabase returns one of several messages when a
- * signInWithOtp call is made with `shouldCreateUser: false` and the user
- * doesn't yet exist. Normalise the check so both phone and email login
- * flows can funnel new users to signup instead of a terse red error.
+ * §QA 2026-05: with the unified passwordless flow, OTP sign-in auto-creates
+ * accounts (`shouldCreateUser: true`) so this branch is mostly defensive —
+ * it still fires when the platform admin has explicitly disabled signups
+ * ("signups not allowed" / "signup is disabled") so the user gets a clear
+ * "create an account first" path rather than a raw red Alert.
  */
 function isUserNotFoundOtpError(message: string | undefined | null): boolean {
   if (!message) return false;
@@ -301,11 +302,10 @@ export default function LoginScreen() {
     try {
       const { error } = await signInWithOtp(e164);
       if (error) {
-        // §Release-audit 2026-04: Supabase signInWithOtp uses
-        // `shouldCreateUser: false` on the login screen, so "user not
-        // found" / "signups not allowed" are the expected error when a
-        // new customer tries to sign in by phone. Offer a path to signup
-        // instead of a blanket red Alert that dead-ends them.
+        // §QA 2026-05: with the unified flow, OTP auto-creates accounts.
+        // This branch only fires when the platform admin disabled signups
+        // ("signups not allowed" / "signup is disabled") — funnel the user
+        // to the signup screen with prefilled phone instead of a dead-end.
         if (isUserNotFoundOtpError(error.message)) {
           const refParam = typeof params.ref === "string" ? params.ref.trim() : undefined;
           Alert.alert(
@@ -420,9 +420,9 @@ export default function LoginScreen() {
     try {
       const { error } = await signInWithOtpEmail(trimmed);
       if (error) {
-        // §Release-audit 2026-04: same UX as phone — email OTP also uses
-        // `shouldCreateUser: false`, so convert the "no user" response
-        // into a "Create account?" prompt that keeps the typed email.
+        // §QA 2026-05: with the unified flow, email OTP auto-creates
+        // accounts. This branch only fires when the platform admin disabled
+        // signups — funnel to /signup with the typed email pre-filled.
         if (isUserNotFoundOtpError(error.message)) {
           const refParam = typeof params.ref === "string" ? params.ref.trim() : undefined;
           Alert.alert(

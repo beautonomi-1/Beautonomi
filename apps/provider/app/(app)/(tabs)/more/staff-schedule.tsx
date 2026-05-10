@@ -6,16 +6,18 @@ import {
   FlatList,
   Alert,
   ScrollView,
-  Modal,
-  Pressable,
+  Platform,
   TextInput,
   RefreshControl,
+  ActionSheetIOS,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
+import { useProvider } from "@/providers/ProviderContext";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Avatar } from "@/components/ui/Avatar";
@@ -44,10 +46,12 @@ interface Shift {
   id: string | null;
   staff_id: string;
   day_of_week: string;
-  start_time: string;
-  end_time: string;
+  start_time: string | null;
+  end_time: string | null;
   date?: string;
   notes?: string | null;
+  /** From GET /api/provider/staff/[id]/shifts — false means day off placeholder */
+  is_working?: boolean;
 }
 
 interface ScheduledShift {
@@ -122,6 +126,29 @@ function timeToMinutes(t: string | null | undefined): number {
   return h * 60 + m;
 }
 
+/**
+ * Duration in minutes, treating end < start as an overnight shift that
+ * crosses midnight (adds 24h). end == start is treated as zero (caller
+ * decides whether that's invalid).
+ */
+function shiftDurationMinutes(
+  start: string | null | undefined,
+  end: string | null | undefined,
+): number {
+  const s = timeToMinutes(start);
+  const e = timeToMinutes(end);
+  if (e === s) return 0;
+  if (e > s) return e - s;
+  return 24 * 60 - s + e;
+}
+
+function isOvernight(
+  start: string | null | undefined,
+  end: string | null | undefined,
+): boolean {
+  return timeToMinutes(end) < timeToMinutes(start);
+}
+
 const EMPTY_SHIFT_FORM: ShiftFormData = {
   staff_id: "",
   day_of_week: "Monday",
@@ -137,11 +164,45 @@ function formatDateLocal(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-function startOfWeekLocal(d: Date): Date {
-  const out = new Date(d);
-  out.setHours(0, 0, 0, 0);
-  out.setDate(out.getDate() - out.getDay());
-  return out;
+/**
+ * Get the {y, m, d} parts of a Date in the given IANA timezone. Falls back to
+ * the device's local time when no timezone is provided. Used to anchor week
+ * navigation to the provider's calendar rather than the device clock.
+ */
+function ymdInTz(d: Date, tz?: string | null): { y: number; m: number; d: number } {
+  if (tz) {
+    try {
+      const parts = new Intl.DateTimeFormat("en-CA", {
+        timeZone: tz,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).formatToParts(d);
+      const y = Number(parts.find((p) => p.type === "year")?.value);
+      const m = Number(parts.find((p) => p.type === "month")?.value);
+      const day = Number(parts.find((p) => p.type === "day")?.value);
+      if (Number.isFinite(y) && Number.isFinite(m) && Number.isFinite(day)) {
+        return { y, m, d: day };
+      }
+    } catch {
+      // fall through to local
+    }
+  }
+  return { y: d.getFullYear(), m: d.getMonth() + 1, d: d.getDate() };
+}
+
+/**
+ * Monday-anchored start of week. We use Monday-first to match the
+ * /api/provider/shifts handler (it expands `week_start` to Mon→Sun in the
+ * provider timezone) and to align with the rest of the provider portal.
+ */
+function startOfWeekMondayInTz(d: Date, tz?: string | null): Date {
+  const { y, m, d: day } = ymdInTz(d, tz);
+  const local = new Date(y, m - 1, day, 0, 0, 0, 0);
+  // JS getDay(): 0=Sun…6=Sat → convert to Mon=0..Sun=6.
+  const dow = (local.getDay() + 6) % 7;
+  local.setDate(local.getDate() - dow);
+  return local;
 }
 
 const EMPTY_DATE_SHIFT_FORM: DateShiftFormData = {
@@ -153,150 +214,6 @@ const EMPTY_DATE_SHIFT_FORM: DateShiftFormData = {
 };
 
 /* ------------------------------------------------------------------ */
-/*  Time Picker Modal                                                  */
-/* ------------------------------------------------------------------ */
-
-function TimePicker({
-  visible,
-  value,
-  onSelect,
-  onClose,
-  title,
-}: {
-  visible: boolean;
-  value: string;
-  onSelect: (time: string) => void;
-  onClose: () => void;
-  title?: string;
-}) {
-  const parsed = parseTime(value);
-  const [hour, setHour] = useState(parsed.h);
-  const [minute, setMinute] = useState(parsed.m);
-
-  useEffect(() => {
-    if (visible) {
-      const p = parseTime(value);
-      setHour(p.h);
-      setMinute(p.m);
-    }
-  }, [visible, value]);
-
-  function handleConfirm() {
-    onSelect(`${pad(hour)}:${pad(minute)}`);
-    onClose();
-  }
-
-  return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onClose}
-      presentationStyle="overFullScreen"
-      statusBarTranslucent
-    >
-      <Pressable
-        style={[twStyle("flex-1 items-center justify-center bg-black/40"), { zIndex: 10000, elevation: 10000 }]}
-        onPress={onClose}
-      >
-        <Pressable
-          style={[twStyle("mx-6 w-80 rounded-2xl bg-white p-6"), { zIndex: 10001, elevation: 10001 }]}
-          onPress={() => {}}
-          accessibilityLabel="Time picker dialog"
-        >
-          <Text style={twStyle("mb-4 text-center text-lg font-semibold text-gray-900")}>
-            {title ?? "Select Time"}
-          </Text>
-
-          <View style={twStyle("flex-row justify-center")}>
-            {/* Hour */}
-            <View style={[twStyle("items-center"), { marginRight: 16 }]}>
-              <Text style={twStyle("mb-2 text-xs font-medium text-gray-500")}>
-                Hour
-              </Text>
-              <ScrollView
-                style={twStyle("h-40 w-16 rounded-xl bg-gray-50")}
-                showsVerticalScrollIndicator={false}
-                accessibilityLabel="Hour selector"
-              >
-                {HOURS.map((h) => (
-                  <TouchableOpacity
-                    key={h}
-                    style={twStyle(`items-center py-2 ${hour === h ? "rounded-lg bg-indigo-600" : ""}`)}
-                    onPress={() => setHour(h)}
-                    accessibilityLabel={`Hour ${h}`}
-                    accessibilityRole="button"
-                  >
-                    <Text
-                      style={twStyle(`text-base font-medium ${hour === h ? "text-white" : "text-gray-700"}`)}
-                    >
-                      {pad(h)}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-
-            <Text style={[twStyle("self-center text-2xl font-bold text-gray-400"), { marginRight: 16 }]}>
-              :
-            </Text>
-
-            {/* Minute */}
-            <View style={twStyle("items-center")}>
-              <Text style={twStyle("mb-2 text-xs font-medium text-gray-500")}>
-                Min
-              </Text>
-              <View style={twStyle("w-16 rounded-xl bg-gray-50")}>
-                {MINUTES.map((m) => (
-                  <TouchableOpacity
-                    key={m}
-                    style={twStyle(`items-center py-3 ${minute === m ? "rounded-lg bg-indigo-600" : ""}`)}
-                    onPress={() => setMinute(m)}
-                    accessibilityLabel={`Minute ${pad(m)}`}
-                    accessibilityRole="button"
-                  >
-                    <Text
-                      style={twStyle(`text-base font-medium ${minute === m ? "text-white" : "text-gray-700"}`)}
-                    >
-                      {pad(m)}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-          </View>
-
-          {/* Preview */}
-          <Text style={twStyle("mt-4 text-center text-xl font-bold text-gray-900")}>
-            {formatTimeLabel(`${pad(hour)}:${pad(minute)}`)}
-          </Text>
-
-          {/* Actions */}
-          <View style={twStyle("mt-5 flex-row")}>
-            <TouchableOpacity
-              style={[twStyle("flex-1 items-center rounded-xl border border-gray-200 py-3"), { marginRight: 12 }]}
-              onPress={onClose}
-              accessibilityLabel="Cancel time selection"
-              accessibilityRole="button"
-            >
-              <Text style={twStyle("font-medium text-gray-600")}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={twStyle("flex-1 items-center rounded-xl bg-indigo-600 py-3")}
-              onPress={handleConfirm}
-              accessibilityLabel="Confirm time selection"
-              accessibilityRole="button"
-            >
-              <Text style={twStyle("font-medium text-white")}>Confirm</Text>
-            </TouchableOpacity>
-          </View>
-        </Pressable>
-      </Pressable>
-    </Modal>
-  );
-}
-
-/* ------------------------------------------------------------------ */
 /*  Screen                                                             */
 /* ------------------------------------------------------------------ */
 
@@ -304,17 +221,36 @@ export default function StaffScheduleScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ staffId?: string }>();
   useResponsive();
+  const { provider } = useProvider();
+  const providerTz = provider?.timezone ?? null;
   const [refreshing, setRefreshing] = useState(false);
   const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null);
   const [shiftFormOpen, setShiftFormOpen] = useState(false);
   const [dateShiftFormOpen, setDateShiftFormOpen] = useState(false);
   const [editingShift, setEditingShift] = useState<Shift | null>(null);
+  /** When set, the date-shift sheet edits an existing date-specific shift via PATCH. */
+  const [editingDateShift, setEditingDateShift] = useState<ScheduledShift | null>(null);
   const [form, setForm] = useState<ShiftFormData>(EMPTY_SHIFT_FORM);
   const [dateForm, setDateForm] = useState<DateShiftFormData>(EMPTY_DATE_SHIFT_FORM);
-  const [weekStart, setWeekStart] = useState(() => startOfWeekLocal(new Date()));
+  const [weekStart, setWeekStart] = useState(() =>
+    startOfWeekMondayInTz(new Date(), providerTz),
+  );
   const [pickerField, setPickerField] = useState<
-    "start_time" | "end_time" | "date_start_time" | "date_end_time" | null
+    "start_time" | "end_time" | "date" | "date_start_time" | "date_end_time" | null
   >(null);
+
+  /* If the provider timezone arrives after first render and changes the
+     "today" calendar day, snap the visible week to the correct Monday so
+     the rendered range matches what the API expects. */
+  useEffect(() => {
+    if (!providerTz) return;
+    const expected = startOfWeekMondayInTz(new Date(), providerTz);
+    if (formatDateLocal(expected) !== formatDateLocal(weekStart)) {
+      setWeekStart(expected);
+    }
+    // We only want to react to the timezone arriving, not every weekStart change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [providerTz]);
 
   /* ── Data ── */
   const {
@@ -345,18 +281,22 @@ export default function StaffScheduleScreen() {
   const { execute: saveShift, loading: creating } = useApiMutation("post");
   const { execute: deleteShift, loading: deleting } = useApiMutation("delete");
   const { execute: saveDateShift, loading: savingDateShift } = useApiMutation("post");
+  const { execute: patchDateShift, loading: patchingDateShift } = useApiMutation("patch");
   const { execute: deleteDateShift } = useApiMutation("delete");
 
-  const isSaving = creating || deleting || savingDateShift;
+  const isSaving = creating || deleting || savingDateShift || patchingDateShift;
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await Promise.all([refreshStaff(), refreshShifts(), refreshScheduledShifts()]);
+      await Promise.all([
+        refreshStaff(),
+        ...(selectedStaffId ? [refreshShifts(), refreshScheduledShifts()] : []),
+      ]);
     } finally {
       setRefreshing(false);
     }
-  }, [refreshStaff, refreshShifts, refreshScheduledShifts]);
+  }, [refreshStaff, refreshShifts, refreshScheduledShifts, selectedStaffId]);
 
   /* ── Select staff from route param or first member ── */
   useEffect(() => {
@@ -375,7 +315,10 @@ export default function StaffScheduleScreen() {
     DAYS.forEach((day) => map.set(day, []));
 
     const filteredShifts = (shifts ?? []).filter(
-      (s) => !selectedStaffId || s.staff_id === selectedStaffId,
+      (s) =>
+        (!selectedStaffId || s.staff_id === selectedStaffId) &&
+        Boolean(s.start_time && s.end_time) &&
+        s.is_working !== false,
     );
 
     for (const shift of filteredShifts) {
@@ -392,6 +335,80 @@ export default function StaffScheduleScreen() {
     [staff, selectedStaffId],
   );
 
+  const copyWeeklyScheduleToTarget = useCallback(
+    async (targetStaffId: string, targetName: string) => {
+      const currentShifts = shifts ?? [];
+      const working = currentShifts.filter(
+        (s) => s.start_time && s.end_time && s.is_working !== false,
+      );
+      if (working.length === 0) {
+        Alert.alert("No shifts", "This staff member has no weekly shifts to copy.");
+        return;
+      }
+      let failed = 0;
+      for (const shift of working) {
+        const { error: err } = await saveShift(`/api/provider/staff/${targetStaffId}/shifts`, {
+          day_of_week: shift.day_of_week,
+          start_time: shift.start_time as string,
+          end_time: shift.end_time as string,
+        });
+        if (err) failed++;
+      }
+      if (failed > 0) {
+        Alert.alert("Partial failure", `${failed} shift(s) could not be copied. Please try again.`);
+      } else {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setSelectedStaffId(targetStaffId);
+        Alert.alert("Done", `Weekly schedule copied to ${targetName}.`);
+      }
+    },
+    [shifts, saveShift],
+  );
+
+  const promptCopyScheduleTarget = useCallback(() => {
+    const otherStaff = (staff ?? []).filter((s) => s.is_active && s.id !== selectedStaffId);
+    if (otherStaff.length === 0) return;
+    const run = (target: StaffMember) => {
+      Alert.alert(
+        "Copy schedule",
+        `Copy ${selectedStaff?.name ?? "this staff member"}'s weekly schedule to ${target.name}? Existing weekly rows for the same days will be updated.`,
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Copy",
+            onPress: () => void copyWeeklyScheduleToTarget(target.id, target.name),
+          },
+        ],
+      );
+    };
+    if (otherStaff.length === 1) {
+      run(otherStaff[0]!);
+      return;
+    }
+    if (Platform.OS === "ios") {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ["Cancel", ...otherStaff.map((s) => s.name)],
+          cancelButtonIndex: 0,
+          title: "Copy weekly schedule to",
+        },
+        (buttonIndex) => {
+          if (buttonIndex <= 0) return;
+          const target = otherStaff[buttonIndex - 1];
+          if (target) run(target);
+        },
+      );
+    } else {
+      Alert.alert("Copy weekly schedule to", "Choose a team member", [
+        { text: "Cancel", style: "cancel" },
+        ...otherStaff.map((s) => ({
+          text: s.name,
+          onPress: () => run(s),
+        })),
+      ]);
+    }
+  }, [staff, selectedStaffId, selectedStaff, copyWeeklyScheduleToTarget]);
+
   /* ── Handlers ── */
   function openAddShift(day?: string) {
     setEditingShift(null);
@@ -404,10 +421,34 @@ export default function StaffScheduleScreen() {
   }
 
   function openAddDateShift(date?: string) {
+    setEditingDateShift(null);
+    const todayInTz = (() => {
+      const { y, m, d } = ymdInTz(new Date(), providerTz);
+      return `${y}-${pad(m)}-${pad(d)}`;
+    })();
     setDateForm({
       ...EMPTY_DATE_SHIFT_FORM,
       staff_id: selectedStaffId ?? "",
-      date: date ?? formatDateLocal(new Date()),
+      date: date ?? todayInTz,
+    });
+    setDateShiftFormOpen(true);
+  }
+
+  function openEditDateShift(shift: ScheduledShift) {
+    if (!shift.id || shift.is_synthetic || shift.source !== "shift") {
+      Alert.alert(
+        "Weekly template",
+        "This row comes from weekly hours or location hours. Add a date-specific shift to override it.",
+      );
+      return;
+    }
+    setEditingDateShift(shift);
+    setDateForm({
+      staff_id: shift.team_member_id,
+      date: shift.date,
+      start_time: shift.start_time,
+      end_time: shift.end_time,
+      notes: shift.notes ?? "",
     });
     setDateShiftFormOpen(true);
   }
@@ -417,8 +458,8 @@ export default function StaffScheduleScreen() {
     setForm({
       staff_id: shift.staff_id,
       day_of_week: shift.day_of_week,
-      start_time: shift.start_time,
-      end_time: shift.end_time,
+      start_time: shift.start_time ?? "09:00",
+      end_time: shift.end_time ?? "17:00",
       notes: shift.notes ?? "",
     });
     setShiftFormOpen(true);
@@ -428,7 +469,14 @@ export default function StaffScheduleScreen() {
     if (!form.staff_id) return "Please select a staff member";
     const startMin = timeToMinutes(form.start_time);
     const endMin = timeToMinutes(form.end_time);
-    if (endMin <= startMin) return "End time must be after start time";
+    // Weekly schedule rows are stored per day_of_week with a `start_time <
+    // end_time` DB constraint, so an overnight slot has to be split into two
+    // separate days. Steer the user to date-specific shifts instead of
+    // silently failing at the database layer.
+    if (endMin < startMin) {
+      return "Overnight weekly shifts aren't supported. Add a date-specific shift for that night instead.";
+    }
+    if (endMin === startMin) return "End time must be after start time";
     return null;
   }
 
@@ -437,7 +485,10 @@ export default function StaffScheduleScreen() {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dateForm.date)) return "Enter a valid date";
     const startMin = timeToMinutes(dateForm.start_time);
     const endMin = timeToMinutes(dateForm.end_time);
-    if (endMin <= startMin) return "End time must be after start time";
+    // For date-specific shifts an end-time earlier than start-time is treated
+    // as an overnight shift that wraps past midnight (the staff_shifts table
+    // has no `start < end` constraint). Only zero-length is rejected.
+    if (endMin === startMin) return "End time must be after start time";
     return null;
   }
 
@@ -493,21 +544,38 @@ export default function StaffScheduleScreen() {
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const { error } = await saveDateShift("/api/provider/shifts", {
-      staff_id: dateForm.staff_id,
-      date: dateForm.date,
-      start_time: dateForm.start_time,
-      end_time: dateForm.end_time,
-      notes: dateForm.notes.trim() || undefined,
-      is_recurring: false,
-      recurring_pattern: null,
-    });
-    if (error) {
-      Alert.alert("Error", error);
-      return;
+    if (editingDateShift?.id) {
+      const { error } = await patchDateShift(
+        `/api/provider/shifts/${editingDateShift.id}`,
+        {
+          date: dateForm.date,
+          start_time: dateForm.start_time,
+          end_time: dateForm.end_time,
+          notes: dateForm.notes.trim() || null,
+        },
+      );
+      if (error) {
+        Alert.alert("Error", error);
+        return;
+      }
+    } else {
+      const { error } = await saveDateShift("/api/provider/shifts", {
+        staff_id: dateForm.staff_id,
+        date: dateForm.date,
+        start_time: dateForm.start_time,
+        end_time: dateForm.end_time,
+        notes: dateForm.notes.trim() || undefined,
+        is_recurring: false,
+        recurring_pattern: null,
+      });
+      if (error) {
+        Alert.alert("Error", error);
+        return;
+      }
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setDateShiftFormOpen(false);
+    setEditingDateShift(null);
     refreshScheduledShifts();
   }
 
@@ -566,14 +634,12 @@ export default function StaffScheduleScreen() {
     );
   }
 
-  /* ── Total weekly hours ── */
+  /* ── Total weekly hours (treats end < start as overnight wrap) ── */
   const totalWeeklyHours = useMemo(() => {
     let totalMinutes = 0;
     shiftsByDay.forEach((dayShifts) => {
       for (const shift of dayShifts) {
-        const start = timeToMinutes(shift.start_time);
-        const end = timeToMinutes(shift.end_time);
-        if (end > start) totalMinutes += end - start;
+        totalMinutes += shiftDurationMinutes(shift.start_time, shift.end_time);
       }
     });
     return (totalMinutes / 60).toFixed(1);
@@ -651,6 +717,13 @@ export default function StaffScheduleScreen() {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={{ paddingVertical: 4 }}
           >
+            {(staff ?? []).filter((s) => s.is_active).length === 0 ? (
+              <View style={twStyle("rounded-xl border border-amber-100 bg-amber-50 px-4 py-3")}>
+                <Text style={twStyle("text-sm text-amber-900")}>
+                  No active team members. Add someone from Team, then set their weekly hours here.
+                </Text>
+              </View>
+            ) : null}
             {(staff ?? [])
               .filter((s) => s.is_active)
               .map((member) => {
@@ -725,7 +798,8 @@ export default function StaffScheduleScreen() {
 
       {/* ── Quick Actions ── */}
       {selectedStaffId && (
-        <View style={twStyle("mb-4 flex-row")}>
+        <View style={twStyle("mb-4")}>
+          <View style={twStyle("flex-row")}>
           <TouchableOpacity
             style={[twStyle("flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-white py-2.5"), { marginRight: 8 }]}
             onPress={() => {
@@ -798,51 +872,19 @@ export default function StaffScheduleScreen() {
             <Ionicons name="time-outline" size={16} color="#8b5cf6" />
             <Text style={twStyle("ml-1.5 text-xs font-medium text-violet-600")}>Extended Hours</Text>
           </TouchableOpacity>
-          {(staff?.length ?? 0) > 1 && (
+          </View>
+          {(staff ?? []).filter((s) => s.is_active && s.id !== selectedStaffId).length > 0 ? (
             <TouchableOpacity
-              style={twStyle("flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-white py-2.5")}
+              style={twStyle("mt-2 flex-row items-center justify-center rounded-xl border border-gray-200 bg-white py-2.5")}
               onPress={() => {
-                const otherStaff = (staff ?? []).filter((s) => s.id !== selectedStaffId);
-                if (otherStaff.length === 0) return;
-                Alert.alert(
-                  "Copy Schedule",
-                  `Copy ${selectedStaff?.name}'s schedule to another staff member? Select from the staff list after copying.`,
-                  [
-                    { text: "Cancel", style: "cancel" },
-                    {
-                      text: "Copy",
-                      onPress: async () => {
-                        const currentShifts = shifts ?? [];
-                        if (currentShifts.length === 0) {
-                          Alert.alert("No shifts", "This staff member has no shifts to copy.");
-                          return;
-                        }
-                        const targetId = otherStaff[0].id;
-                        let failed = 0;
-                        for (const shift of currentShifts) {
-                          const { error: err } = await saveShift(`/api/provider/staff/${targetId}/shifts`, {
-                            day_of_week: shift.day_of_week,
-                            start_time: shift.start_time,
-                            end_time: shift.end_time,
-                          });
-                          if (err) failed++;
-                        }
-                        if (failed > 0) {
-                          Alert.alert("Partial failure", `${failed} shift(s) could not be copied. Please try again.`);
-                        } else {
-                          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                          Alert.alert("Done", `Schedule copied to ${otherStaff[0].name}`);
-                        }
-                      },
-                    },
-                  ]
-                );
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                promptCopyScheduleTarget();
               }}
             >
               <Ionicons name="copy-outline" size={16} color="#0ea5e9" />
-              <Text style={twStyle("ml-1.5 text-xs font-medium text-sky-600")}>Copy</Text>
+              <Text style={twStyle("ml-1.5 text-xs font-medium text-sky-600")}>Copy weekly schedule to…</Text>
             </TouchableOpacity>
-          )}
+          ) : null}
         </View>
       )}
 
@@ -875,11 +917,20 @@ export default function StaffScheduleScreen() {
                 setWeekStart(next);
               }}
               style={twStyle("h-9 w-9 items-center justify-center rounded-lg bg-gray-50")}
+              accessibilityLabel="Previous week"
+              accessibilityRole="button"
             >
               <Ionicons name="chevron-back" size={18} color="#6b7280" />
             </TouchableOpacity>
             <Text style={twStyle("text-xs font-medium text-gray-600")}>
-              Week of {weekStart.toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+              {(() => {
+                const end = new Date(weekStart);
+                end.setDate(end.getDate() + 6);
+                const sameMonth = end.getMonth() === weekStart.getMonth();
+                const startStr = weekStart.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+                const endStr = end.toLocaleDateString(undefined, sameMonth ? { day: "numeric" } : { month: "short", day: "numeric" });
+                return `Mon ${startStr} – Sun ${endStr}`;
+              })()}
             </Text>
             <TouchableOpacity
               onPress={() => {
@@ -888,6 +939,8 @@ export default function StaffScheduleScreen() {
                 setWeekStart(next);
               }}
               style={twStyle("h-9 w-9 items-center justify-center rounded-lg bg-gray-50")}
+              accessibilityLabel="Next week"
+              accessibilityRole="button"
             >
               <Ionicons name="chevron-forward" size={18} color="#6b7280" />
             </TouchableOpacity>
@@ -915,12 +968,23 @@ export default function StaffScheduleScreen() {
                   </Text>
                   <Text style={twStyle("text-xs text-gray-600")}>
                     {formatTimeLabel(shift.start_time)} - {formatTimeLabel(shift.end_time)}
+                    {isOvernight(shift.start_time, shift.end_time) ? " (next day)" : ""}
                     {shift.notes ? ` · ${shift.notes}` : ""}
                   </Text>
                 </View>
                 <TouchableOpacity
+                  onPress={() => openEditDateShift(shift)}
+                  style={[twStyle("h-8 w-8 items-center justify-center rounded-lg bg-white"), { marginRight: 4 }]}
+                  accessibilityLabel="Edit date-specific shift"
+                  accessibilityRole="button"
+                >
+                  <Ionicons name="create-outline" size={15} color="#6b7280" />
+                </TouchableOpacity>
+                <TouchableOpacity
                   onPress={() => handleDeleteDateShift(shift)}
                   style={twStyle("h-8 w-8 items-center justify-center rounded-lg bg-white")}
+                  accessibilityLabel="Delete date-specific shift"
+                  accessibilityRole="button"
                 >
                   <Ionicons name="trash-outline" size={15} color="#dc2626" />
                 </TouchableOpacity>
@@ -1019,12 +1083,9 @@ export default function StaffScheduleScreen() {
                           </Text>
                         )}
                         <Text style={twStyle("mt-0.5 text-[10px] text-gray-400")}>
-                          {(
-                            (timeToMinutes(shift.end_time) -
-                              timeToMinutes(shift.start_time)) /
-                            60
-                          ).toFixed(1)}
+                          {(shiftDurationMinutes(shift.start_time, shift.end_time) / 60).toFixed(1)}
                           h shift
+                          {isOvernight(shift.start_time, shift.end_time) ? " · ends next day" : ""}
                         </Text>
                       </View>
                       <View style={twStyle("flex-row items-center")}>
@@ -1181,20 +1242,74 @@ export default function StaffScheduleScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Duration preview */}
-        {timeToMinutes(form.end_time) > timeToMinutes(form.start_time) && (
+        {pickerField === "start_time" && (
+          <DateTimePicker
+            value={new Date(`2000-01-01T${form.start_time}:00`)}
+            mode="time"
+            display={Platform.OS === "ios" ? "spinner" : "default"}
+            onChange={(_: any, d?: Date) => {
+              if (Platform.OS !== "ios") setPickerField(null);
+              if (d) {
+                setForm((prev) => ({
+                  ...prev,
+                  start_time: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
+                }));
+              }
+            }}
+          />
+        )}
+
+        {pickerField === "end_time" && (
+          <DateTimePicker
+            value={new Date(`2000-01-01T${form.end_time}:00`)}
+            mode="time"
+            display={Platform.OS === "ios" ? "spinner" : "default"}
+            onChange={(_: any, d?: Date) => {
+              if (Platform.OS !== "ios") setPickerField(null);
+              if (d) {
+                setForm((prev) => ({
+                  ...prev,
+                  end_time: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
+                }));
+              }
+            }}
+          />
+        )}
+
+        {/* Duration preview / overnight notice */}
+        {timeToMinutes(form.end_time) > timeToMinutes(form.start_time) ? (
           <View style={twStyle("mb-4 flex-row items-center rounded-xl bg-indigo-50 px-4 py-2.5")}>
             <Ionicons name="hourglass-outline" size={16} color="#6366f1" />
             <Text style={twStyle("ml-2 text-sm font-medium text-indigo-700")}>
               {(
-                (timeToMinutes(form.end_time) -
-                  timeToMinutes(form.start_time)) /
+                (timeToMinutes(form.end_time) - timeToMinutes(form.start_time)) /
                 60
               ).toFixed(1)}{" "}
               hours shift
             </Text>
           </View>
-        )}
+        ) : timeToMinutes(form.end_time) < timeToMinutes(form.start_time) ? (
+          <View style={twStyle("mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3")}>
+            <Text style={twStyle("text-sm font-semibold text-amber-900")}>
+              Overnight weekly shifts are not supported
+            </Text>
+            <Text style={twStyle("mt-1 text-xs text-amber-800")}>
+              The weekly schedule stores one slot per day. For shifts that cross midnight, add a date-specific shift below — those support overnight times.
+            </Text>
+            <TouchableOpacity
+              style={twStyle("mt-2 self-start rounded-lg bg-amber-600 px-3 py-1.5")}
+              onPress={() => {
+                setShiftFormOpen(false);
+                openAddDateShift();
+              }}
+              accessibilityRole="button"
+            >
+              <Text style={twStyle("text-xs font-semibold text-white")}>
+                Add date-specific shift instead
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
 
         {/* Notes */}
         <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
@@ -1233,51 +1348,82 @@ export default function StaffScheduleScreen() {
 
       <BottomSheet
         visible={dateShiftFormOpen}
-        onClose={() => setDateShiftFormOpen(false)}
-        title="Add date-specific shift"
-        subtitle="Use this for split shifts, special event rosters, or one-off overrides."
+        onClose={() => {
+          setDateShiftFormOpen(false);
+          setEditingDateShift(null);
+        }}
+        title={editingDateShift ? "Edit date-specific shift" : "Add date-specific shift"}
+        subtitle={
+          editingDateShift
+            ? "Update times, date or notes for this one-off shift."
+            : "Use this for split shifts, special event rosters, or one-off overrides."
+        }
       >
-        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Staff Member *</Text>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={twStyle("mb-4")}
-        >
-          {(staff ?? [])
-            .filter((s) => s.is_active)
-            .map((member) => {
-              const isSelected = dateForm.staff_id === member.id;
-              return (
-                <TouchableOpacity
-                  key={member.id}
-                  style={[
-                    twStyle(
-                      `flex-row items-center rounded-xl px-3 py-2 ${
-                        isSelected ? "bg-pink-600" : "border border-gray-200 bg-gray-50"
-                      }`,
-                    ),
-                    { marginRight: 8 },
-                  ]}
-                  onPress={() => setDateForm((prev) => ({ ...prev, staff_id: member.id }))}
-                  accessibilityRole="button"
-                >
-                  <Avatar name={member.name} imageUrl={member.avatar_url} size="sm" />
-                  <Text style={twStyle(`ml-2 text-sm font-medium ${isSelected ? "text-white" : "text-gray-700"}`)}>
-                    {member.name}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-        </ScrollView>
+        {editingDateShift ? null : (
+          <>
+            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Staff Member *</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={twStyle("mb-4")}
+            >
+              {(staff ?? [])
+                .filter((s) => s.is_active)
+                .map((member) => {
+                  const isSelected = dateForm.staff_id === member.id;
+                  return (
+                    <TouchableOpacity
+                      key={member.id}
+                      style={[
+                        twStyle(
+                          `flex-row items-center rounded-xl px-3 py-2 ${
+                            isSelected ? "bg-pink-600" : "border border-gray-200 bg-gray-50"
+                          }`,
+                        ),
+                        { marginRight: 8 },
+                      ]}
+                      onPress={() => setDateForm((prev) => ({ ...prev, staff_id: member.id }))}
+                      accessibilityRole="button"
+                    >
+                      <Avatar name={member.name} imageUrl={member.avatar_url} size="sm" />
+                      <Text style={twStyle(`ml-2 text-sm font-medium ${isSelected ? "text-white" : "text-gray-700"}`)}>
+                        {member.name}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+            </ScrollView>
+          </>
+        )}
 
         <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Date *</Text>
-        <TextInput
-          style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
-          placeholder="YYYY-MM-DD"
-          value={dateForm.date}
-          onChangeText={(text) => setDateForm((prev) => ({ ...prev, date: text }))}
+        <TouchableOpacity
+          onPress={() => setPickerField("date")}
+          style={twStyle("mb-4 flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
           accessibilityLabel="Shift date"
-        />
+        >
+          <Ionicons name="calendar-outline" size={20} color="#db2777" />
+          <Text style={twStyle("ml-2 text-base text-gray-900")}>
+            {dateForm.date}
+          </Text>
+        </TouchableOpacity>
+
+        {pickerField === "date" && (
+          <DateTimePicker
+            value={new Date(`${dateForm.date}T12:00:00`)}
+            mode="date"
+            display={Platform.OS === "ios" ? "spinner" : "default"}
+            onChange={(_: any, d?: Date) => {
+              if (Platform.OS !== "ios") setPickerField(null);
+              if (d) {
+                setDateForm((prev) => ({
+                  ...prev,
+                  date: formatDateLocal(d),
+                }));
+              }
+            }}
+          />
+        )}
 
         <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Shift Times *</Text>
         <View style={twStyle("mb-4 flex-row items-center")}>
@@ -1302,6 +1448,50 @@ export default function StaffScheduleScreen() {
           </TouchableOpacity>
         </View>
 
+        {pickerField === "date_start_time" && (
+          <DateTimePicker
+            value={new Date(`2000-01-01T${dateForm.start_time}:00`)}
+            mode="time"
+            display={Platform.OS === "ios" ? "spinner" : "default"}
+            onChange={(_: any, d?: Date) => {
+              if (Platform.OS !== "ios") setPickerField(null);
+              if (d) {
+                setDateForm((prev) => ({
+                  ...prev,
+                  start_time: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
+                }));
+              }
+            }}
+          />
+        )}
+
+        {pickerField === "date_end_time" && (
+          <DateTimePicker
+            value={new Date(`2000-01-01T${dateForm.end_time}:00`)}
+            mode="time"
+            display={Platform.OS === "ios" ? "spinner" : "default"}
+            onChange={(_: any, d?: Date) => {
+              if (Platform.OS !== "ios") setPickerField(null);
+              if (d) {
+                setDateForm((prev) => ({
+                  ...prev,
+                  end_time: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
+                }));
+              }
+            }}
+          />
+        )}
+
+        {timeToMinutes(dateForm.end_time) !== timeToMinutes(dateForm.start_time) && (
+          <View style={twStyle("mb-4 flex-row items-center rounded-xl bg-pink-50 px-4 py-2.5")}>
+            <Ionicons name="hourglass-outline" size={16} color="#db2777" />
+            <Text style={twStyle("ml-2 text-sm font-medium text-pink-700")}>
+              {(shiftDurationMinutes(dateForm.start_time, dateForm.end_time) / 60).toFixed(1)} hours
+              {isOvernight(dateForm.start_time, dateForm.end_time) ? " · ends next day" : ""}
+            </Text>
+          </View>
+        )}
+
         <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Notes (optional)</Text>
         <TextInput
           style={[
@@ -1317,39 +1507,20 @@ export default function StaffScheduleScreen() {
         />
 
         <ActionButton
-          label={savingDateShift ? "Saving…" : "Add date-specific shift"}
+          label={
+            savingDateShift || patchingDateShift
+              ? "Saving…"
+              : editingDateShift
+                ? "Update date-specific shift"
+                : "Add date-specific shift"
+          }
           onPress={handleSaveDateShift}
-          loading={savingDateShift}
+          loading={savingDateShift || patchingDateShift}
           fullWidth
         />
       </BottomSheet>
 
       {/* Time Picker */}
-      <TimePicker
-        visible={pickerField !== null}
-        value={
-          pickerField === "start_time"
-            ? form.start_time
-            : pickerField === "end_time"
-              ? form.end_time
-              : pickerField === "date_start_time"
-                ? dateForm.start_time
-                : pickerField === "date_end_time"
-                  ? dateForm.end_time
-              : "09:00"
-        }
-        title={pickerField === "start_time" || pickerField === "date_start_time" ? "Start Time" : "End Time"}
-        onSelect={(time) => {
-          if (pickerField === "start_time" || pickerField === "end_time") {
-            setForm((prev) => ({ ...prev, [pickerField]: time }));
-          } else if (pickerField === "date_start_time") {
-            setDateForm((prev) => ({ ...prev, start_time: time }));
-          } else if (pickerField === "date_end_time") {
-            setDateForm((prev) => ({ ...prev, end_time: time }));
-          }
-        }}
-        onClose={() => setPickerField(null)}
-      />
     </ScreenContainer>
   );
 }

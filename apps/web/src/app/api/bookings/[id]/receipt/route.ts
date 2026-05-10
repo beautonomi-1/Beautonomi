@@ -3,10 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, userHasProviderAccessAdmin } from "@/lib/supabase/api-helpers";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
-import {
-  computeBookingOutstandingDisplay,
-  computePackageAppliedForDisplay,
-} from "@/lib/bookings/display-invariants";
+import { computeBookingReceiptFinancials } from "@/lib/receipts/build-booking-receipt";
 import { parseReceiptDownloadToken } from "@/lib/receipts/receipt-download-token";
 
 type BookingServiceRow = {
@@ -95,6 +92,7 @@ type BookingReceiptRow = {
   booking_products?: BookingProductRow[] | null;
   booking_payments?: unknown[] | null;
   additional_charges?: AdditionalChargeRow[] | null;
+  custom_offer?: unknown | null;
 };
 
 export async function GET(
@@ -259,6 +257,14 @@ export async function GET(
           requested_at,
           paid_at
         ),
+        custom_offer:custom_offers!bookings_custom_offer_id_fkey(
+          id,
+          notes,
+          request:custom_requests(
+            id,
+            description
+          )
+        ),
         service_packages:package_id(id, name)
       `)
       .eq("id", bookingId)
@@ -344,46 +350,41 @@ export async function GET(
       ) || 0;
 
     const linesSubtotal = servicesTotal + productsTotal + addonsTotal;
-    const storedSubtotal = booking.subtotal != null ? Number(booking.subtotal) : null;
-    const subtotal = storedSubtotal != null && !Number.isNaN(storedSubtotal) ? storedSubtotal : linesSubtotal;
+    const finances = computeBookingReceiptFinancials({
+      row: bookingRaw as Record<string, unknown>,
+      linesSubtotal,
+      booking_payments: (booking.booking_payments || []) as Array<{ amount?: number; status?: string }>,
+      additional_charges: booking.additional_charges || [],
+    });
+    const {
+      subtotal,
+      tax,
+      platformFee,
+      platformFeePercentage,
+      travelFee,
+      tipAmount,
+      discount,
+      promotionDiscount,
+      membershipDiscount,
+      loyaltyDiscount,
+      loyaltyPointsUsed,
+      rawPkgId,
+      packageActuallyApplied,
+      packageDiscount,
+      discountTotal,
+      cancellationFee,
+      totalFromRow,
+      amountPaid,
+      walletCredit,
+      giftCardCredit,
+      totalPaidRow,
+      totalRefundedRow,
+      balanceDue,
+    } = finances;
 
-    const tax = Number(booking.tax_amount || 0);
-    // Use || (not ??) so a platform_fee_amount of 0 (DEFAULT on older rows) falls
-    // through to the legacy service_fee_amount column which holds the real value.
-    const platformFee = Number((bookingRaw as Record<string, unknown>).platform_fee_amount || booking.service_fee_amount || 0);
-    const platformFeePercentage = Number(
-      (bookingRaw as Record<string, unknown>).platform_fee_percentage ||
-        (bookingRaw as Record<string, unknown>).service_fee_percentage ||
-        0,
-    );
-    const travelFee = Number(booking.travel_fee || 0);
-    const tipAmount = Number(booking.tip_amount || 0);
-    const discount = Number(booking.discount_amount || 0);
-    const promotionDiscount = Number(booking.promotion_discount_amount || 0);
-    const membershipDiscount = Number(booking.membership_discount_amount || 0);
-    const loyaltyDiscount = Number(booking.loyalty_discount_amount || 0);
-    const loyaltyPointsUsed = Number(booking.loyalty_points_used || booking.loyalty_points_redeemed || 0);
-    const rawPkgId = (bookingRaw as Record<string, unknown>).package_id;
     const spJoin = (bookingRaw as { service_packages?: { id?: string; name?: string } | { id?: string; name?: string }[] })
       .service_packages;
     const pkgJoined = Array.isArray(spJoin) ? spJoin[0] : spJoin;
-    const entitlementIdRaw = (bookingRaw as Record<string, unknown>).customer_package_entitlement_id;
-    const packageActuallyApplied = computePackageAppliedForDisplay({
-      package_id: typeof rawPkgId === "string" ? rawPkgId : null,
-      customer_package_entitlement_id:
-        typeof entitlementIdRaw === "string" ? entitlementIdRaw : null,
-      discount_amount: discount,
-      promotion_discount_amount: promotionDiscount,
-    });
-    const packageDiscount =
-      packageActuallyApplied ? Math.max(0, discount - promotionDiscount) : 0;
-    const discountTotal = discount + membershipDiscount + loyaltyDiscount;
-    const cancellationFee = Number(booking.cancellation_fee || 0);
-
-    const totalFromRow =
-      booking.total_amount != null && !Number.isNaN(Number(booking.total_amount))
-        ? Number(booking.total_amount)
-        : subtotal + tax + platformFee + travelFee + tipAmount - discountTotal - cancellationFee;
 
     const additionalCharges = (booking.additional_charges || []).map((ac: AdditionalChargeRow) => ({
       id: ac.id,
@@ -435,26 +436,6 @@ export async function GET(
     };
 
     const bRaw = bookingRaw as Record<string, unknown>;
-    const completedPayments = (booking.booking_payments || []) as Array<{ amount?: number; status?: string }>;
-    const paymentsPaid = completedPayments
-      .filter((p) => p.status === "completed")
-      .reduce((sum, p) => sum + Number(p.amount || 0), 0);
-    const walletCredit = Number(bRaw.wallet_amount ?? 0);
-    const giftCardCredit = Number(bRaw.gift_card_amount ?? 0);
-    const totalPaidRow = Number(bRaw.total_paid ?? 0);
-    const totalRefundedRow = Number(bRaw.total_refunded ?? 0);
-    const amountPaid = paymentsPaid + walletCredit + giftCardCredit;
-    const balanceDue = computeBookingOutstandingDisplay({
-      totalAmount: totalFromRow,
-      totalPaid: totalPaidRow,
-      totalRefunded: totalRefundedRow,
-      walletAmount: walletCredit,
-      giftCardAmount: giftCardCredit,
-      unpaidAdditionalCharges: additionalCharges
-        .filter((ac) => ac.status !== "paid" && ac.status !== "rejected")
-        .reduce((sum, ac) => sum + Number(ac.amount || 0), 0),
-      paymentStatus: booking.payment_status,
-    });
     const depositRequired = Boolean(bRaw.deposit_required);
     const depositAmount = Number(bRaw.deposit_amount || 0);
     const depositPercentage = Number(bRaw.deposit_percentage || 0);
@@ -505,7 +486,7 @@ export async function GET(
             (bp.unit_price || bp.products?.retail_price || 0) * (bp.quantity || 1),
         };
       }) || [],
-      subtotal: Math.max(0, subtotal - travelFee),
+      subtotal: Math.max(0, subtotal),
       tax,
       tax_rate: Number(bRaw.tax_rate || 0),
       platform_fee_amount: platformFee,
@@ -540,6 +521,7 @@ export async function GET(
       deposit_amount: depositAmount,
       deposit_percentage: depositPercentage,
       payment_option: paymentOption,
+      custom_offer: booking.custom_offer || null,
       transactions: booking.booking_payments || [],
       additional_charges: additionalCharges,
       receipt_header: (providerForReceipt.receipt_header as string) || null,

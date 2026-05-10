@@ -168,7 +168,7 @@ export async function GET(
         ...(Number(receipt.delivery_fee || 0) > 0 ? [{ label: "Delivery", value: moneyPdf(receipt.delivery_fee, currency) }] : []),
         ...(Number(receipt.tax || 0) > 0 ? [{ label: "Tax", value: moneyPdf(receipt.tax, currency) }] : []),
         ...(Number(receipt.platform_fee || 0) > 0 ? [{ label: "Platform fee (customer-paid, retained by platform)", value: moneyPdf(receipt.platform_fee, currency) }] : []),
-        ...(Number(receipt.wallet_amount || 0) > 0 ? [{ label: "Customer wallet applied", value: `-${moneyPdf(receipt.wallet_amount, currency)}`, tone: "success" as const }] : []),
+        ...(Number(receipt.wallet_amount || 0) > 0 ? [{ label: "Paid from wallet", value: moneyPdf(receipt.wallet_amount, currency), tone: "success" as const }] : []),
       ],
       { label: "Total", value: moneyPdf(receipt.total, currency) },
     );

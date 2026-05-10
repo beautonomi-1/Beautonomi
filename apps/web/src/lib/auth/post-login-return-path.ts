@@ -2,6 +2,25 @@ import type { Portal } from "@/lib/auth/role";
 import { getDefaultRouteForPortal } from "@/lib/auth/role";
 
 /**
+ * Treat a `?next=`/`?redirect=` query value as safe only when it is a true same-origin path.
+ * Rejects protocol-relative URLs (`//evil.com`), absolute URLs, and `javascript:` URIs that
+ * would otherwise satisfy a naive `startsWith("/")` check and become an open-redirect vector.
+ */
+export function isSafeRelativeRedirect(value: string | null | undefined): boolean {
+  if (!value) return false;
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("/")) return false;
+  if (trimmed.startsWith("//")) return false;
+  if (trimmed.startsWith("/\\")) return false;
+  if (/^\/\s*[a-z][a-z0-9+\-.]*:/i.test(trimmed)) return false;
+  return true;
+}
+
+export function sanitizeRelativeRedirect(value: string | null | undefined): string | null {
+  return isSafeRelativeRedirect(value) ? (value as string).trim() : null;
+}
+
+/**
  * Customer-centric return URLs (saved as `next` / `redirect` during browsing).
  * Provider accounts should not land here after signing in from the provider portal
  * or when OAuth carries these as `next`.

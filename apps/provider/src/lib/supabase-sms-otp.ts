@@ -1,6 +1,6 @@
 /**
  * Supabase Auth OTP length: SMS, phone_change, and email OTP are all 6-digit in hosted Auth.
- * Login-only UIs should pass `shouldCreateUser: false` on `signInWithOtp` so OTP does not register new users.
+ * Unified welcome screens use `shouldCreateUser: true` so OTP verification can create an account.
  * @see https://supabase.com/docs/guides/auth/passwordless-login/auth-email-otp
  */
 export const SUPABASE_AUTH_OTP_LENGTH = 6;

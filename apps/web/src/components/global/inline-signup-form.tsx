@@ -23,7 +23,16 @@ import {
   signInWithOAuth,
   resendVerificationEmail,
   buildEmailConfirmationRedirectUrl,
+  sendEmailSignInOtp,
 } from "@/lib/supabase/auth";
+import { getSupabaseClient } from "@/lib/supabase/client";
+import { OtpDigitInput } from "@/components/ui/otp-digit-input";
+import {
+  SUPABASE_AUTH_OTP_LENGTH,
+  normalizeSupabaseAuthPhone,
+  normalizeSupabaseSmsOtpToken,
+  isCompleteSupabaseSmsOtp,
+} from "@/lib/supabase/auth-sms-otp";
 import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import { useTranslation } from "@beautonomi/i18n";
@@ -66,7 +75,21 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
   const { refreshUser, role: _contextRole, user } = useAuth();
   
   const [isLoading, setIsLoading] = useState(false);
-  const [showEmailForm, setShowEmailForm] = useState(true);
+  /** false = unified welcome (phone OTP + social); true = email flows */
+  const [showEmailForm, setShowEmailForm] = useState(false);
+  const [signupEmailMode, setSignupEmailMode] = useState<"otp" | "password">("otp");
+  const [signupPhoneOtpSent, setSignupPhoneOtpSent] = useState(false);
+  const [signupPhoneOtpCode, setSignupPhoneOtpCode] = useState("");
+  const [sentPhoneE164Signup, setSentPhoneE164Signup] = useState("");
+  const [signupEmailOtpSent, setSignupEmailOtpSent] = useState(false);
+  const [signupEmailOtpCode, setSignupEmailOtpCode] = useState("");
+  const [sentEmailSignupOtp, setSentEmailSignupOtp] = useState("");
+  /** Resend cooldowns prevent users from spamming Supabase's hard rate-limits. */
+  const SIGNUP_RESEND_COOLDOWN_SECONDS = 30;
+  const [signupPhoneResendCooldown, setSignupPhoneResendCooldown] = useState(0);
+  const [signupEmailResendCooldown, setSignupEmailResendCooldown] = useState(0);
+  const [signupPhoneResending, setSignupPhoneResending] = useState(false);
+  const [signupEmailResending, setSignupEmailResending] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
@@ -116,14 +139,41 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
     });
   }, []);
 
-  // Close form and call onAuthSuccess when user becomes authenticated
   useEffect(() => {
-    if (user && onAuthSuccess) {
-      setTimeout(() => {
-        onAuthSuccess();
-      }, 300);
+    if (signupPhoneResendCooldown <= 0) return;
+    const id = window.setInterval(
+      () => setSignupPhoneResendCooldown((s) => (s > 0 ? s - 1 : 0)),
+      1000,
+    );
+    return () => window.clearInterval(id);
+  }, [signupPhoneResendCooldown]);
+
+  useEffect(() => {
+    if (signupEmailResendCooldown <= 0) return;
+    const id = window.setInterval(
+      () => setSignupEmailResendCooldown((s) => (s > 0 ? s - 1 : 0)),
+      1000,
+    );
+    return () => window.clearInterval(id);
+  }, [signupEmailResendCooldown]);
+
+  // §QA 2026-05: when the user becomes authenticated (e.g. OAuth round-trip lands
+  // back on /signup, or the session loads after refresh), forward them to the right
+  // onboarding destination instead of leaving them stranded on the signup form.
+  useEffect(() => {
+    if (!user) return;
+    if (onAuthSuccess) {
+      const t = setTimeout(() => onAuthSuccess(), 300);
+      return () => clearTimeout(t);
     }
-  }, [user, onAuthSuccess]);
+    const target =
+      redirectUrl && redirectUrl.startsWith("/") && !redirectUrl.startsWith("//")
+        ? redirectUrl
+        : redirectContext === "provider"
+          ? "/provider/onboarding"
+          : "/onboarding";
+    router.replace(target);
+  }, [user, onAuthSuccess, redirectContext, redirectUrl, router]);
 
   // After login/signup: attach referral if ref was stored (e.g. from email verification return)
   useEffect(() => {
@@ -137,10 +187,6 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
   const handleEmailContinue = () => {
     setAwaitingEmailVerification(false);
     setError(null);
-    if (!fullName?.trim()) {
-      setError("Full name is required");
-      return;
-    }
     if (!email?.trim()) {
       setError("Email is required");
       return;
@@ -159,10 +205,6 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
     const trimmedEmail = email.trim();
     const trimmedPassword = password.trim();
 
-    if (!fullName?.trim()) {
-      setError("Full name is required");
-      return;
-    }
     if (!trimmedEmail) {
       setError("Email is required");
       return;
@@ -210,7 +252,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
       const signupResult = await signUpAuth({
         email: trimmedEmail,
         password: trimmedPassword,
-        fullName: fullName?.trim(),
+        fullName: fullName?.trim() || undefined,
         phone: phone?.trim() && isCompleteE164(phone) ? phone.trim() : undefined,
         role: userRole,
         emailRedirectTo: buildEmailConfirmationRedirectUrl({ redirectContext, redirectUrl }),
@@ -362,13 +404,189 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
     }
   };
 
-  // §Customer-launch (audit 2026-04): phone sign-up was never actually
-  // wired on this form — the stub surfaced a "coming soon" toast then
-  // switched back to the email form, which confused new users.  The
-  // "Continue with Phone" button has been removed, and any lingering
-  // call-sites simply route the user to the email flow.
-  const handlePhoneAuth = () => {
-    setShowEmailForm(true);
+  const finishOtpSignupSession = async () => {
+    await refreshUser();
+    try {
+      await fetcher.patch("/api/me/profile", {
+        signup_source: signupSource || undefined,
+        preferred_language: preferredLanguage,
+      });
+    } catch {
+      // Non-blocking
+    }
+    if (referralCode?.trim()) {
+      try {
+        await fetcher.post("/api/me/referrals/attach", { referral_code: referralCode.trim() });
+      } catch {
+        // Non-blocking
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    if (redirectContext === "provider") {
+      router.push("/provider/onboarding");
+    } else if (redirectUrl) {
+      router.push(redirectUrl);
+    } else {
+      router.push("/onboarding");
+    }
+    onAuthSuccess?.();
+  };
+
+  const handlePhoneSendSignupOtp = async () => {
+    setError(null);
+    if (!agreeTerms) {
+      setError(
+        "Please confirm you have read and agree to the Terms of Service and Privacy Policy (including product analytics and optional session replay while signed in).",
+      );
+      return;
+    }
+    const trimmed = phone.replace(/\s/g, "").trim();
+    if (!isCompleteE164(trimmed)) {
+      setError("Enter a valid phone number with country code.");
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const supabase = getSupabaseClient();
+      const normalized = normalizeSupabaseAuthPhone(trimmed);
+      const { error } = await supabase.auth.signInWithOtp({
+        phone: normalized,
+        options: { channel: "sms", shouldCreateUser: true },
+      });
+      if (error) throw error;
+      setSentPhoneE164Signup(normalized);
+      setSignupPhoneOtpSent(true);
+      setSignupPhoneOtpCode("");
+      setSignupPhoneResendCooldown(SIGNUP_RESEND_COOLDOWN_SECONDS);
+      toast.success("Check your phone for the verification code");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Failed to send code";
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleResendPhoneSignupOtp = async () => {
+    if (!sentPhoneE164Signup || signupPhoneResendCooldown > 0) return;
+    setSignupPhoneResending(true);
+    setError(null);
+    try {
+      const supabase = getSupabaseClient();
+      const { error } = await supabase.auth.signInWithOtp({
+        phone: sentPhoneE164Signup,
+        options: { channel: "sms", shouldCreateUser: true },
+      });
+      if (error) throw error;
+      setSignupPhoneOtpCode("");
+      setSignupPhoneResendCooldown(SIGNUP_RESEND_COOLDOWN_SECONDS);
+      toast.success("A new verification code has been sent");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Failed to resend code";
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setSignupPhoneResending(false);
+    }
+  };
+
+  const handleResendEmailSignupOtp = async () => {
+    if (!sentEmailSignupOtp || signupEmailResendCooldown > 0) return;
+    setSignupEmailResending(true);
+    setError(null);
+    try {
+      const { error } = await sendEmailSignInOtp(sentEmailSignupOtp);
+      if (error) throw error;
+      setSignupEmailOtpCode("");
+      setSignupEmailResendCooldown(SIGNUP_RESEND_COOLDOWN_SECONDS);
+      toast.success("A new verification code has been sent");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Failed to resend code";
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setSignupEmailResending(false);
+    }
+  };
+
+  const handleVerifyPhoneSignupOtp = async (codeOverride?: string) => {
+    const token = normalizeSupabaseSmsOtpToken(codeOverride ?? signupPhoneOtpCode);
+    if (!sentPhoneE164Signup || !isCompleteSupabaseSmsOtp(token)) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const supabase = getSupabaseClient();
+      const { error } = await supabase.auth.verifyOtp({
+        phone: sentPhoneE164Signup,
+        token,
+        type: "sms",
+      });
+      if (error) throw error;
+      toast.success("Account ready!");
+      await finishOtpSignupSession();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Invalid code";
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleEmailSendSignupOtp = async () => {
+    setError(null);
+    if (!agreeTerms) {
+      setError(
+        "Please confirm you have read and agree to the Terms of Service and Privacy Policy (including product analytics and optional session replay while signed in).",
+      );
+      return;
+    }
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail || !EMAIL_RE.test(trimmedEmail)) {
+      setError("Please enter a valid email address");
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const { error } = await sendEmailSignInOtp(trimmedEmail);
+      if (error) throw error;
+      setSentEmailSignupOtp(trimmedEmail);
+      setSignupEmailOtpSent(true);
+      setSignupEmailOtpCode("");
+      setSignupEmailResendCooldown(SIGNUP_RESEND_COOLDOWN_SECONDS);
+      toast.success("Check your email for the verification code");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Failed to send email code";
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleVerifyEmailSignupOtp = async (codeOverride?: string) => {
+    const token = normalizeSupabaseSmsOtpToken(codeOverride ?? signupEmailOtpCode);
+    if (!sentEmailSignupOtp || !isCompleteSupabaseSmsOtp(token)) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const supabase = getSupabaseClient();
+      const { error } = await supabase.auth.verifyOtp({
+        email: sentEmailSignupOtp,
+        token,
+        type: "email",
+      });
+      if (error) throw error;
+      toast.success("Account ready!");
+      await finishOtpSignupSession();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Invalid code";
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleSocialOAuth = async (provider: "google" | "apple") => {
@@ -376,8 +594,20 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
     setError(null);
 
     try {
-      const currentUrl = typeof window !== 'undefined' ? window.location.href : '';
-      await signInWithOAuth(provider, currentUrl);
+      // Route OAuth through the dedicated /auth/callback handler so the server can
+      // exchange the code, persist the session via cookies, and forward the user to
+      // the correct onboarding destination based on persona. Returning to
+      // /signup?type=... lands the user on the same form with an active session
+      // but no redirect — the previous behaviour silently stranded users.
+      const origin = typeof window !== "undefined" ? window.location.origin : "";
+      const next =
+        redirectUrl && redirectUrl.startsWith("/") && !redirectUrl.startsWith("//")
+          ? redirectUrl
+          : redirectContext === "provider"
+            ? "/provider/onboarding"
+            : "/onboarding";
+      const callbackUrl = `${origin}/auth/callback?next=${encodeURIComponent(next)}`;
+      await signInWithOAuth(provider, callbackUrl);
       toast.info(
         provider === "google" ? "Redirecting to Google..." : "Redirecting to Apple...",
       );
@@ -402,7 +632,12 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
       ) : (
         <h2 className="text-xl sm:text-2xl font-bold mb-6 sm:mb-8">Welcome to Beautonomi</h2>
       )}
-      
+      {!awaitingEmailVerification && (
+        <p className="text-sm text-gray-500 mb-4 -mt-2">
+          Create your account with phone, email code, Google, or Apple — add your full name later in onboarding if you like.
+        </p>
+      )}
+
       {/* Error Message */}
       {error && !awaitingEmailVerification && (
         <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
@@ -429,32 +664,185 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
         </div>
       )}
 
-      {/* Phone Input (Default) */}
-      {!showEmailForm && (
+      {/* Unified welcome — phone OTP, social, email code */}
+      {!showEmailForm && !awaitingEmailVerification && (
         <>
-          <div className="mb-4">
-            <PhoneInput
-              inputId="inline-signup-phone"
-              label="Phone number"
-              value={phone}
-              onChange={setPhone}
-              placeholder="Phone number"
-              required
+          <div className="mb-4 flex items-start gap-3">
+            <Checkbox
+              id="signup-agree-terms-unified"
+              checked={agreeTerms}
+              onCheckedChange={(c) => setAgreeTerms(c === true)}
+              className="mt-0.5"
+              aria-describedby="signup-terms-unified-text"
             />
+            <label htmlFor="signup-agree-terms-unified" id="signup-terms-unified-text" className="text-xs text-gray-600 cursor-pointer leading-relaxed">
+              I have read and agree to the{" "}
+              <Link href="/terms-and-condition" className="text-primary font-medium underline hover:no-underline" target="_blank" rel="noopener noreferrer">
+                Terms of Service
+              </Link>{" "}
+              and{" "}
+              <Link href="/privacy-policy" className="text-primary font-medium underline hover:no-underline" target="_blank" rel="noopener noreferrer">
+                Privacy Policy
+              </Link>
+              .
+            </label>
           </div>
-          
-          <p className="text-xs text-gray-600 mb-6">
-            {"We'll"} call or text you to confirm your number. Standard message and data rates apply.{" "}
-            <Link href="/privacy-policy" className="font-semibold underline hover:text-primary">Privacy Policy</Link>
-          </p>
-          
-          <Button 
-            className="w-full bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary text-white h-12 text-base font-medium mb-6"
-            onClick={handlePhoneAuth}
+
+          {socialAuth.google && (
+            <Button
+              variant="outline"
+              className="w-full mb-3 flex items-center justify-start gap-3 px-4 h-12 hover:bg-gray-50 border-gray-300 text-base"
+              onClick={() => void handleSocialOAuth("google")}
+              disabled={isLoading}
+            >
+              <FaGoogle className="text-lg" />
+              <span>Continue with Google</span>
+            </Button>
+          )}
+          {socialAuth.apple && (
+            <Button
+              variant="outline"
+              className="w-full mb-3 flex items-center justify-start gap-3 px-4 h-12 hover:bg-gray-50 border-gray-300 text-base"
+              onClick={() => void handleSocialOAuth("apple")}
+              disabled={isLoading}
+            >
+              <FaApple className="text-lg" />
+              <span>Continue with Apple</span>
+            </Button>
+          )}
+
+          <div className="flex items-center my-6">
+            <div className="flex-grow border-t border-gray-300" />
+            <span className="flex-shrink mx-4 text-sm text-gray-600">or</span>
+            <div className="flex-grow border-t border-gray-300" />
+          </div>
+
+          {!signupPhoneOtpSent ? (
+            <>
+              <div className="mb-4">
+                <PhoneInput
+                  inputId="inline-signup-phone"
+                  label="Phone number"
+                  value={phone}
+                  onChange={setPhone}
+                  placeholder="Phone number"
+                  required
+                />
+              </div>
+              <p className="text-xs text-gray-600 mb-4">
+                We&apos;ll text a {SUPABASE_AUTH_OTP_LENGTH}-digit code. Standard rates apply.{" "}
+                <Link href="/privacy-policy" className="font-semibold underline hover:text-primary">
+                  Privacy Policy
+                </Link>
+              </p>
+              <Button
+                className="w-full bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary text-white h-12 text-base font-medium mb-4"
+                onClick={() => void handlePhoneSendSignupOtp()}
+                disabled={isLoading}
+              >
+                {isLoading ? "Sending…" : "Text me a code"}
+              </Button>
+            </>
+          ) : (
+            <div className="space-y-4 mb-4">
+              <p className="text-sm text-gray-600">
+                Enter the {SUPABASE_AUTH_OTP_LENGTH}-digit code sent to{" "}
+                <span className="font-semibold text-gray-900">{sentPhoneE164Signup}</span>
+              </p>
+              <OtpDigitInput
+                value={signupPhoneOtpCode}
+                onChange={setSignupPhoneOtpCode}
+                onComplete={(code) => {
+                  if (!isLoading && isCompleteSupabaseSmsOtp(code)) void handleVerifyPhoneSignupOtp(code);
+                }}
+                disabled={isLoading}
+                autoFocus
+                label="Phone verification code"
+                length={SUPABASE_AUTH_OTP_LENGTH}
+              />
+              <div className="flex items-center justify-end text-xs">
+                <button
+                  type="button"
+                  onClick={() => void handleResendPhoneSignupOtp()}
+                  disabled={signupPhoneResending || isLoading || signupPhoneResendCooldown > 0}
+                  className="font-medium text-primary hover:underline disabled:opacity-50 disabled:no-underline"
+                >
+                  {signupPhoneResending
+                    ? "Resending..."
+                    : signupPhoneResendCooldown > 0
+                      ? `Resend in ${signupPhoneResendCooldown}s`
+                      : "Resend code"}
+                </button>
+              </div>
+              <Button
+                className="w-full bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary text-white h-12 text-base font-medium"
+                onClick={() => void handleVerifyPhoneSignupOtp()}
+                disabled={isLoading || !isCompleteSupabaseSmsOtp(signupPhoneOtpCode)}
+              >
+                {isLoading ? "Verifying…" : "Verify & continue"}
+              </Button>
+              <button
+                type="button"
+                className="w-full text-sm text-gray-500 hover:text-gray-700"
+                onClick={() => {
+                  setSignupPhoneOtpSent(false);
+                  setSignupPhoneOtpCode("");
+                  setSentPhoneE164Signup("");
+                  setSignupPhoneResendCooldown(0);
+                  setError(null);
+                }}
+              >
+                Use a different number
+              </button>
+            </div>
+          )}
+
+          <div className="flex items-center my-6">
+            <div className="flex-grow border-t border-gray-300" />
+            <span className="flex-shrink mx-4 text-sm text-gray-600">or</span>
+            <div className="flex-grow border-t border-gray-300" />
+          </div>
+          <Button
+            variant="outline"
+            className="w-full mb-3 flex items-center justify-start gap-3 px-4 h-12 hover:bg-gray-50 border-gray-300 text-base"
+            onClick={() => {
+              setShowEmailForm(true);
+              setSignupEmailMode("otp");
+              setSignupEmailOtpSent(false);
+              setSignupEmailOtpCode("");
+              setSentEmailSignupOtp("");
+              setError(null);
+            }}
             disabled={isLoading}
           >
-            {isLoading ? "Processing..." : "Continue"}
+            <CiMail className="text-lg" />
+            <span>Continue with email code</span>
           </Button>
+          <Button
+            variant="outline"
+            className="w-full mb-3 flex items-center justify-start gap-3 px-4 h-12 hover:bg-gray-50 border-gray-300 text-base"
+            onClick={() => {
+              setShowEmailForm(true);
+              setSignupEmailMode("password");
+              setShowPasswordField(false);
+              setSignupEmailOtpSent(false);
+              setError(null);
+            }}
+            disabled={isLoading}
+          >
+            <span>Sign up with email &amp; password</span>
+          </Button>
+          <div className="text-center mt-6">
+            <button
+              type="button"
+              onClick={() => {
+                window.open(PLATFORM_CONTACT_HREF, "_blank");
+              }}
+              className="text-sm text-gray-600 hover:text-gray-900 underline"
+            >
+              Need help?
+            </button>
+          </div>
         </>
       )}
 
@@ -527,23 +915,156 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
         </div>
       )}
 
-      {/* Email Form */}
-      {showEmailForm && !awaitingEmailVerification && (
+      {/* Email code signup */}
+      {showEmailForm && signupEmailMode === "otp" && !awaitingEmailVerification && (
         <>
-          {/* Step 1: Email Input */}
-          {!showPasswordField && (
+          <button
+            type="button"
+            className="mb-4 text-sm font-semibold text-primary hover:underline"
+            onClick={() => {
+              setShowEmailForm(false);
+              setSignupEmailOtpSent(false);
+              setSignupEmailOtpCode("");
+              setSentEmailSignupOtp("");
+              setError(null);
+            }}
+          >
+            ← Back to phone &amp; social
+          </button>
+          {!signupEmailOtpSent ? (
             <>
               <div className="mb-4">
-                <Label className={labelClass}>Full name</Label>
+                <Label className={labelClass}>Email</Label>
                 <Input
-                  type="text"
+                  type="email"
                   className={`${fieldClass} h-12`}
-                  placeholder="Full name"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  autoComplete="name"
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  autoComplete="email"
+                  inputMode="email"
                 />
               </div>
+              <div className="mb-4">
+                <Label className={labelClass}>{t("auth.preferredLanguage")}</Label>
+                <Select value={preferredLanguage} onValueChange={setPreferredLanguage}>
+                  <SelectTrigger className={`w-full h-12 rounded-lg ${fieldClass}`}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {supportedLanguages.map((lang) => (
+                      <SelectItem key={lang.code} value={lang.code}>
+                        {lang.nativeName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="mb-4">
+                <Label className={labelClass}>
+                  {t("auth.howHearAboutUs")} <span className="text-gray-500 font-normal">(optional)</span>
+                </Label>
+                <Select
+                  value={signupSource ?? RADIX_SELECT_NONE}
+                  onValueChange={(v) => setSignupSource(v === RADIX_SELECT_NONE ? null : v)}
+                >
+                  <SelectTrigger className={`w-full h-12 rounded-lg ${fieldClass}`}>
+                    <SelectValue placeholder={t("auth.signupSourceSkip")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={RADIX_SELECT_NONE}>{t("auth.signupSourceSkip")}</SelectItem>
+                    {SIGNUP_SOURCE_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {t(opt.labelKey)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <p className="text-xs text-gray-500 mb-4">
+                We&apos;ll send a {SUPABASE_AUTH_OTP_LENGTH}-digit code to your inbox (not a magic link).
+              </p>
+              <Button
+                className="w-full bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary text-white h-12 text-base font-medium mb-4"
+                onClick={() => void handleEmailSendSignupOtp()}
+                disabled={isLoading || !email?.trim()}
+              >
+                {isLoading ? "Sending…" : "Send email code"}
+              </Button>
+            </>
+          ) : (
+            <div className="space-y-4">
+              <p className="text-sm text-gray-600">
+                Enter the {SUPABASE_AUTH_OTP_LENGTH}-digit code sent to{" "}
+                <span className="font-semibold text-gray-900">{sentEmailSignupOtp}</span>
+              </p>
+              <OtpDigitInput
+                value={signupEmailOtpCode}
+                onChange={setSignupEmailOtpCode}
+                onComplete={(code) => {
+                  if (!isLoading && isCompleteSupabaseSmsOtp(code)) void handleVerifyEmailSignupOtp(code);
+                }}
+                disabled={isLoading}
+                autoFocus
+                label="Email verification code"
+                length={SUPABASE_AUTH_OTP_LENGTH}
+              />
+              <div className="flex items-center justify-end text-xs">
+                <button
+                  type="button"
+                  onClick={() => void handleResendEmailSignupOtp()}
+                  disabled={signupEmailResending || isLoading || signupEmailResendCooldown > 0}
+                  className="font-medium text-primary hover:underline disabled:opacity-50 disabled:no-underline"
+                >
+                  {signupEmailResending
+                    ? "Resending..."
+                    : signupEmailResendCooldown > 0
+                      ? `Resend in ${signupEmailResendCooldown}s`
+                      : "Resend code"}
+                </button>
+              </div>
+              <Button
+                className="w-full bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary text-white h-12 text-base font-medium"
+                onClick={() => void handleVerifyEmailSignupOtp()}
+                disabled={isLoading || !isCompleteSupabaseSmsOtp(signupEmailOtpCode)}
+              >
+                {isLoading ? "Verifying…" : "Verify & continue"}
+              </Button>
+              <button
+                type="button"
+                className="w-full text-sm text-gray-500 hover:text-gray-700"
+                onClick={() => {
+                  setSignupEmailOtpSent(false);
+                  setSignupEmailOtpCode("");
+                  setSentEmailSignupOtp("");
+                  setSignupEmailResendCooldown(0);
+                  setError(null);
+                }}
+              >
+                Use a different email
+              </button>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Email + password signup (legacy path) */}
+      {showEmailForm && signupEmailMode === "password" && !awaitingEmailVerification && (
+        <>
+          <button
+            type="button"
+            className="mb-4 text-sm font-semibold text-primary hover:underline"
+            onClick={() => {
+              setShowEmailForm(false);
+              setShowPasswordField(false);
+              setPassword("");
+              setError(null);
+            }}
+          >
+            ← Back to phone &amp; social
+          </button>
+          {!showPasswordField && (
+            <>
               <div className="mb-4">
                 <Label className={labelClass}>Email</Label>
                 <Input
@@ -571,64 +1092,13 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
                   </SelectContent>
                 </Select>
               </div>
-              <Button 
+              <Button
                 className="w-full bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary text-white h-12 text-base font-medium mb-6"
                 onClick={handleEmailContinue}
-                disabled={isLoading || !email?.trim() || !fullName?.trim()}
+                disabled={isLoading || !email?.trim()}
               >
                 Continue
               </Button>
-              
-              {/* Separator */}
-              <div className="flex items-center my-6">
-                <div className="flex-grow border-t border-gray-300"></div>
-                <span className="flex-shrink mx-4 text-sm text-gray-600">or</span>
-                <div className="flex-grow border-t border-gray-300"></div>
-              </div>
-
-              {/* Social Login Options */}
-              {socialAuth.google && (
-                <Button
-                  variant="outline"
-                  className="w-full mb-3 flex items-center justify-start gap-3 px-4 h-12 hover:bg-gray-50 border-gray-300 text-base"
-                  onClick={() => void handleSocialOAuth("google")}
-                  disabled={isLoading}
-                >
-                  <FaGoogle className="text-lg" />
-                  <span>Continue with Google</span>
-                </Button>
-              )}
-
-              {socialAuth.apple && (
-                <Button
-                  variant="outline"
-                  className="w-full mb-3 flex items-center justify-start gap-3 px-4 h-12 hover:bg-gray-50 border-gray-300 text-base"
-                  onClick={() => void handleSocialOAuth("apple")}
-                  disabled={isLoading}
-                >
-                  <FaApple className="text-lg" />
-                  <span>Continue with Apple</span>
-                </Button>
-              )}
-
-              {/*
-                §Customer-launch (audit 2026-04): removed the "Continue with
-                Phone" CTA — the underlying handler (handlePhoneAuth) was a
-                toast-only stub that redirected back to the email form. The
-                phone-OTP login still lives on /login for existing accounts.
-              */}
-              
-              {/* Need help link */}
-              <div className="text-center mt-6">
-                <button
-                  onClick={() => {
-                    window.open(PLATFORM_CONTACT_HREF, "_blank");
-                  }}
-                  className="text-sm text-gray-600 hover:text-gray-900 underline"
-                >
-                  Need help?
-                </button>
-              </div>
             </>
           )}
 
@@ -742,58 +1212,6 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
               </div>
             </>
           )}
-        </>
-      )}
-
-      {/* Separator for phone form */}
-      {!showEmailForm && (
-        <div className="flex items-center my-6">
-          <div className="flex-grow border-t border-gray-300"></div>
-          <span className="flex-shrink mx-4 text-sm text-gray-600">or</span>
-          <div className="flex-grow border-t border-gray-300"></div>
-        </div>
-      )}
-
-      {/* Social Login Options for phone form */}
-      {!showEmailForm && (
-        <>
-          {socialAuth.google && (
-            <Button
-              variant="outline"
-              className="w-full mb-3 flex items-center justify-start gap-3 px-4 h-12 hover:bg-gray-50 border-gray-300 text-base"
-              onClick={() => void handleSocialOAuth("google")}
-              disabled={isLoading}
-            >
-              <FaGoogle className="text-lg" />
-              <span>Continue with Google</span>
-            </Button>
-          )}
-
-          {socialAuth.apple && (
-            <Button
-              variant="outline"
-              className="w-full mb-3 flex items-center justify-start gap-3 px-4 h-12 hover:bg-gray-50 border-gray-300 text-base"
-              onClick={() => void handleSocialOAuth("apple")}
-              disabled={isLoading}
-            >
-              <FaApple className="text-lg" />
-              <span>Continue with Apple</span>
-            </Button>
-          )}
-          
-          <Button
-            variant="outline"
-            className="w-full mb-3 flex items-center justify-start gap-3 px-4 h-12 hover:bg-gray-50 border-gray-300 text-base"
-            onClick={() => {
-              setShowEmailForm(true);
-              setAwaitingEmailVerification(false);
-              setError(null);
-            }}
-            disabled={isLoading}
-          >
-            <CiMail className="text-lg" />
-            <span>Continue with email</span>
-          </Button>
         </>
       )}
     </div>

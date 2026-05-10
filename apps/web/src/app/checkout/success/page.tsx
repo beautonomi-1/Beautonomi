@@ -6,6 +6,8 @@ import Link from "next/link";
 import { Calendar, Plus, MapPin, Clock, Download, ExternalLink, Smartphone } from "lucide-react";
 import { getGoogleCalendarUrl, getOutlookCalendarUrl } from "@/lib/calendar/ics";
 import { clearBeautonomiHoldClientMarkers } from "@/lib/booking/clear-hold-client-markers";
+import { getSupabaseClient } from "@/lib/supabase/client";
+import { PaymentLoadingHero } from "@/components/ui/payment-loading-hero";
 
 /** Beautonomi primary (use CSS var in styles for single source) */
 const ACCENT = "var(--primary, #FF0077)";
@@ -13,8 +15,8 @@ const BG = "#F3F4F6";
 const TEXT_PRIMARY = "#111827";
 const TEXT_SECONDARY = "#6B7280";
 
-const POLL_INTERVAL_MS = 2000;
-const POLL_MAX_ATTEMPTS = 15;
+const POLL_INTERVAL_MS = 1500;
+const POLL_MAX_ATTEMPTS = 20;
 
 function formatMoney(amount: number, currency: string | undefined): string {
   const cur = (currency || "").trim();
@@ -54,6 +56,7 @@ function CheckoutSuccessContent() {
 
   /** Local dev / no webhook: finalize payment via Paystack verify (records booking_payments + confirms booking). */
   const paystackVerifyStarted = useRef(false);
+  const customOfferVerifyStarted = useRef(false);
 
   useEffect(() => {
     clearBeautonomiHoldClientMarkers();
@@ -92,6 +95,48 @@ function CheckoutSuccessContent() {
     };
     void run();
   }, [isWaitlist, isCustomOffer, paystackReference, bookingId]);
+
+  /** Custom-offer Paystack return: trigger verify so booking finalizes without waiting only on webhooks. */
+  useEffect(() => {
+    if (!isCustomOffer || !offerId) return;
+    const ref = paystackReference?.trim();
+    if (!ref || customOfferVerifyStarted.current) return;
+    customOfferVerifyStarted.current = true;
+    void fetch(`/api/paystack/verify?reference=${encodeURIComponent(ref)}`, {
+      credentials: "include",
+      headers: { Accept: "application/json" },
+    }).catch(() => {
+      customOfferVerifyStarted.current = false;
+    });
+  }, [isCustomOffer, offerId, paystackReference]);
+
+  /** Realtime: booking_id appears as soon as the webhook / verify path finishes. */
+  useEffect(() => {
+    if (!isCustomOffer || !offerId) return;
+    const sb = getSupabaseClient();
+    const channel = sb
+      .channel(`custom-offer-checkout-success-${offerId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "custom_offers",
+          filter: `id=eq.${offerId}`,
+        },
+        (payload) => {
+          const bid = (payload.new as { booking_id?: string | null })?.booking_id;
+          if (typeof bid === "string" && bid.length > 0) {
+            setCustomOfferBookingId(bid);
+            setCustomOfferPollingComplete(true);
+          }
+        },
+      )
+      .subscribe();
+    return () => {
+      void sb.removeChannel(channel);
+    };
+  }, [isCustomOffer, offerId]);
 
   useEffect(() => {
     if (!isCustomOffer || !offerId) {
@@ -487,7 +532,7 @@ function CheckoutSuccessContent() {
         {bookingForCalendar && !isWaitlist && (() => {
           const cur = bookingForCalendar.currency;
           const travel = Number(bookingForCalendar.travel_fee ?? 0);
-          const sub = Math.max(0, Number(bookingForCalendar.subtotal ?? 0) - travel);
+          const sub = Math.max(0, Number(bookingForCalendar.subtotal ?? 0));
           const tax = Number(bookingForCalendar.tax_amount ?? 0);
           const taxRate = Number(bookingForCalendar.tax_rate ?? 0);
           // platform_fee_amount is the canonical name; service_fee_amount is the legacy alias
@@ -758,12 +803,10 @@ export default function CheckoutSuccessPage() {
   return (
     <Suspense
       fallback={
-        <div
-          className="min-h-screen flex items-center justify-center px-4"
-          style={{ backgroundColor: BG }}
-        >
-          <div className="w-8 h-8 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: ACCENT }} />
-        </div>
+        <PaymentLoadingHero
+          title="Loading confirmation…"
+          subtitle="Hang tight — we are checking your payment and booking."
+        />
       }
     >
       <CheckoutSuccessContent />

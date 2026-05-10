@@ -23,6 +23,7 @@ import { format } from "date-fns";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { percentOf } from "@beautonomi/utils";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -2113,7 +2114,7 @@ export function AppointmentSidebar({
 
       // Deposit fields — when provider chooses to collect deposit only
       if (collectDeposit && depositSettings.required && formData.totalAmount > 0) {
-        const depositAmount = Math.ceil((formData.totalAmount * depositSettings.percentage) / 100);
+        const depositAmount = percentOf(formData.totalAmount, depositSettings.percentage);
         (appointmentData as any).deposit_required = true;
         (appointmentData as any).deposit_percentage = depositSettings.percentage;
         (appointmentData as any).deposit_amount = depositAmount;
@@ -5410,13 +5411,13 @@ export function AppointmentSidebar({
                     <div className="flex justify-between">
                       <span>Deposit ({depositSettings.percentage}%)</span>
                       <span className="font-medium text-gray-700">
-                        {formatMoney(Math.ceil((formData.totalAmount * depositSettings.percentage) / 100))}
+                        {formatMoney(percentOf(formData.totalAmount, depositSettings.percentage))}
                       </span>
                     </div>
                     <div className="flex justify-between">
                       <span>Balance due later</span>
                       <span className="font-medium text-gray-700">
-                        {formatMoney(formData.totalAmount - Math.ceil((formData.totalAmount * depositSettings.percentage) / 100))}
+                        {formatMoney(formData.totalAmount - percentOf(formData.totalAmount, depositSettings.percentage))}
                       </span>
                     </div>
                   </div>

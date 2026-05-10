@@ -13,11 +13,12 @@ import { Label } from "@/components/ui/label";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { OtpDigitInput } from "@/components/ui/otp-digit-input";
 import { useAuth } from "@/providers/AuthProvider";
-import { signInWithOAuth } from "@/lib/supabase/auth";
+import { signInWithOAuth, sendEmailSignInOtp } from "@/lib/supabase/auth";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import {
   SUPABASE_AUTH_OTP_LENGTH,
   SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS,
+  SUPABASE_AUTH_EMAIL_OTP_EXPIRY_SECONDS,
   normalizeSupabaseAuthPhone,
   normalizeSupabaseSmsOtpToken,
   isCompleteSupabaseSmsOtp,
@@ -25,20 +26,52 @@ import {
 import { toast } from "sonner";
 import logo from "../../../public/images/logo.svg";
 import type { UserRole } from "@/types/beautonomi";
-import { isCustomerSkewedPostLoginPath } from "@/lib/auth/post-login-return-path";
+import {
+  isCustomerSkewedPostLoginPath,
+  sanitizeRelativeRedirect,
+} from "@/lib/auth/post-login-return-path";
+import { isCompleteE164 } from "@/lib/phone";
+
+/**
+ * Translate Supabase auth error strings to user-friendly copy.
+ * Falls back to the original message so engineers can still debug.
+ */
+function friendlyAuthErrorMessage(raw: string, channel: "phone" | "email"): string {
+  const lower = raw.toLowerCase();
+  if (
+    lower.includes("for security purposes") ||
+    lower.includes("rate limit") ||
+    lower.includes("too many requests")
+  ) {
+    return "Too many attempts. Please wait a moment before trying again.";
+  }
+  if (lower.includes("invalid phone")) return "That phone number doesn't look right. Double-check the country code.";
+  if (lower.includes("invalid email")) return "That email address doesn't look right.";
+  if (lower.includes("signups not allowed") || lower.includes("signup is disabled")) {
+    return channel === "phone"
+      ? "Phone sign-ups are currently disabled. Try email or social sign-in."
+      : "Email sign-ups are currently disabled. Try phone or social sign-in.";
+  }
+  if (lower.includes("user not found")) {
+    return "We couldn't find an account. New here? Verify the code to create one.";
+  }
+  return raw;
+}
 
 export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { t } = useTranslation();
   const { refreshUser, role: contextRole, signIn: signInWithSession } = useAuth();
-  const nextUrl = searchParams.get("next") || searchParams.get("redirect") || "";
+  const rawNext = searchParams.get("next") || searchParams.get("redirect") || "";
+  const nextUrl = sanitizeRelativeRedirect(rawNext) ?? "";
   const initialAuthError = searchParams.get("error")?.trim() || null;
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [showEmailLogin, setShowEmailLogin] = useState(false);
+  /** Primary path: phone OTP, email OTP (code), or legacy email+password. */
+  const [primaryLogin, setPrimaryLogin] = useState<"phone" | "email_otp" | "email_password">("phone");
   const [phoneFull, setPhoneFull] = useState("");
   const [otpSent, setOtpSent] = useState(false);
   const [otpCode, setOtpCode] = useState("");
@@ -46,14 +79,27 @@ export default function LoginPage() {
   const [otpExpiresAt, setOtpExpiresAt] = useState<number | null>(null);
   const [otpSecondsLeft, setOtpSecondsLeft] = useState(0);
   const [otpResending, setOtpResending] = useState(false);
+  const [emailOtpSent, setEmailOtpSent] = useState(false);
+  const [emailOtpCode, setEmailOtpCode] = useState("");
+  const [sentEmailForOtp, setSentEmailForOtp] = useState("");
+  const [emailOtpExpiresAt, setEmailOtpExpiresAt] = useState<number | null>(null);
+  const [emailOtpSecondsLeft, setEmailOtpSecondsLeft] = useState(0);
+  const [emailOtpResending, setEmailOtpResending] = useState(false);
   const [loading, setLoading] = useState(false);
   const [formError, setFormError] = useState<string | null>(initialAuthError);
+  const [phoneInputError, setPhoneInputError] = useState<string | null>(null);
+  const [emailInputError, setEmailInputError] = useState<string | null>(null);
+  const [passwordFailedSuggestOtp, setPasswordFailedSuggestOtp] = useState(false);
+  /** Seconds left before OTP resend is enabled. Prevents spamming Supabase rate-limits. */
+  const RESEND_COOLDOWN_SECONDS = 30;
+  const [otpResendCooldown, setOtpResendCooldown] = useState(0);
+  const [emailOtpResendCooldown, setEmailOtpResendCooldown] = useState(0);
   const passwordRef = useRef<HTMLInputElement>(null);
 
   const getRedirectUrl = () => {
     if (typeof window === "undefined") return "/auth/callback";
     const base = window.location.origin;
-    const next = nextUrl && nextUrl.startsWith("/") ? nextUrl : "/";
+    const next = sanitizeRelativeRedirect(nextUrl) ?? "/";
     return `${base}/auth/callback?next=${encodeURIComponent(next)}`;
   };
 
@@ -94,7 +140,7 @@ export default function LoginPage() {
   };
 
   const redirectByRole = async (finalRole: string) => {
-    const next = nextUrl && nextUrl.startsWith("/") ? nextUrl : null;
+    const next = sanitizeRelativeRedirect(nextUrl);
     let nextPathname: string | null = null;
     if (next) {
       try {
@@ -172,6 +218,32 @@ export default function LoginPage() {
     return () => window.clearInterval(id);
   }, [otpExpiresAt]);
 
+  React.useEffect(() => {
+    if (!emailOtpExpiresAt) {
+      setEmailOtpSecondsLeft(0);
+      return;
+    }
+    const tick = () => {
+      const remaining = Math.max(0, Math.ceil((emailOtpExpiresAt - Date.now()) / 1000));
+      setEmailOtpSecondsLeft(remaining);
+    };
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, [emailOtpExpiresAt]);
+
+  React.useEffect(() => {
+    if (otpResendCooldown <= 0) return;
+    const id = window.setInterval(() => setOtpResendCooldown((s) => (s > 0 ? s - 1 : 0)), 1000);
+    return () => window.clearInterval(id);
+  }, [otpResendCooldown]);
+
+  React.useEffect(() => {
+    if (emailOtpResendCooldown <= 0) return;
+    const id = window.setInterval(() => setEmailOtpResendCooldown((s) => (s > 0 ? s - 1 : 0)), 1000);
+    return () => window.clearInterval(id);
+  }, [emailOtpResendCooldown]);
+
   const routeAfterAuth = async (loginResult?: any) => {
     let userRole =
       (await resolveRoleFast()) ||
@@ -199,11 +271,13 @@ export default function LoginPage() {
 
   const handlePhoneSendOtp = async () => {
     const normalizedPhone = (phoneFull || "").replace(/\s/g, "").trim();
-    const looksValid = normalizedPhone.startsWith("+") && normalizedPhone.length >= 11;
-    if (!looksValid) {
-      setFormError("Please enter a valid phone number with country code.");
+    if (!isCompleteE164(normalizedPhone)) {
+      const msg = "Please enter a valid phone number with country code (e.g. +27 82 345 6789).";
+      setPhoneInputError(msg);
+      setFormError(msg);
       return;
     }
+    setPhoneInputError(null);
     setLoading(true);
     setFormError(null);
     try {
@@ -211,18 +285,19 @@ export default function LoginPage() {
       const phone = normalizeSupabaseAuthPhone(normalizedPhone);
       const { error } = await supabase.auth.signInWithOtp({
         phone,
-        options: { channel: "sms", shouldCreateUser: false },
+        options: { channel: "sms", shouldCreateUser: true },
       });
       if (error) throw error;
       setSentPhoneE164(phone);
       setOtpSent(true);
       setOtpCode("");
       setOtpExpiresAt(Date.now() + SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS * 1000);
+      setOtpResendCooldown(RESEND_COOLDOWN_SECONDS);
       toast.success("Check your phone for the verification code");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to send OTP";
-      setFormError(msg);
-      toast.error(msg);
+      setFormError(friendlyAuthErrorMessage(msg, "phone"));
+      toast.error(friendlyAuthErrorMessage(msg, "phone"));
     } finally {
       setLoading(false);
     }
@@ -251,24 +326,117 @@ export default function LoginPage() {
     }
   };
 
+  const resetPhoneOtpFlow = () => {
+    setOtpSent(false);
+    setOtpCode("");
+    setSentPhoneE164("");
+    setOtpExpiresAt(null);
+  };
+
+  const resetEmailOtpFlow = () => {
+    setEmailOtpSent(false);
+    setEmailOtpCode("");
+    setSentEmailForOtp("");
+    setEmailOtpExpiresAt(null);
+  };
+
+  const handleEmailSendOtp = async () => {
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) {
+      const msg = "Please enter your email";
+      setEmailInputError(msg);
+      setFormError(msg);
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      const msg = "Please enter a valid email address";
+      setEmailInputError(msg);
+      setFormError(msg);
+      return;
+    }
+    setEmailInputError(null);
+    setLoading(true);
+    setFormError(null);
+    try {
+      const { error } = await sendEmailSignInOtp(trimmedEmail);
+      if (error) throw error;
+      setSentEmailForOtp(trimmedEmail);
+      setEmailOtpSent(true);
+      setEmailOtpCode("");
+      setEmailOtpExpiresAt(Date.now() + SUPABASE_AUTH_EMAIL_OTP_EXPIRY_SECONDS * 1000);
+      setEmailOtpResendCooldown(RESEND_COOLDOWN_SECONDS);
+      toast.success("Check your email for the verification code");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to send email code";
+      setFormError(friendlyAuthErrorMessage(msg, "email"));
+      toast.error(friendlyAuthErrorMessage(msg, "email"));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyEmailOtp = async (codeOverride?: string) => {
+    const token = normalizeSupabaseSmsOtpToken(codeOverride ?? emailOtpCode);
+    if (!sentEmailForOtp || !isCompleteSupabaseSmsOtp(token)) return;
+    setLoading(true);
+    setFormError(null);
+    try {
+      const supabase = getSupabaseClient();
+      const { error } = await supabase.auth.verifyOtp({
+        email: sentEmailForOtp,
+        token,
+        type: "email",
+      });
+      if (error) throw error;
+      await routeAfterAuth();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Invalid code";
+      setFormError(msg);
+      toast.error(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResendEmailOtp = async () => {
+    if (!sentEmailForOtp || emailOtpResendCooldown > 0) return;
+    setEmailOtpResending(true);
+    setFormError(null);
+    try {
+      const { error } = await sendEmailSignInOtp(sentEmailForOtp);
+      if (error) throw error;
+      setEmailOtpCode("");
+      setEmailOtpExpiresAt(Date.now() + SUPABASE_AUTH_EMAIL_OTP_EXPIRY_SECONDS * 1000);
+      setEmailOtpResendCooldown(RESEND_COOLDOWN_SECONDS);
+      toast.success("A new verification code has been sent");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to resend code";
+      setFormError(friendlyAuthErrorMessage(msg, "email"));
+      toast.error(friendlyAuthErrorMessage(msg, "email"));
+    } finally {
+      setEmailOtpResending(false);
+    }
+  };
+
   const handleResendPhoneOtp = async () => {
-    if (!sentPhoneE164) return;
+    if (!sentPhoneE164 || otpResendCooldown > 0) return;
     setOtpResending(true);
     setFormError(null);
     try {
       const supabase = getSupabaseClient();
       const { error } = await supabase.auth.signInWithOtp({
         phone: normalizeSupabaseAuthPhone(sentPhoneE164),
-        options: { channel: "sms", shouldCreateUser: false },
+        options: { channel: "sms", shouldCreateUser: true },
       });
       if (error) throw error;
       setOtpCode("");
       setOtpExpiresAt(Date.now() + SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS * 1000);
+      setOtpResendCooldown(RESEND_COOLDOWN_SECONDS);
       toast.success("A new verification code has been sent");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to resend code";
-      setFormError(msg);
-      toast.error(msg);
+      setFormError(friendlyAuthErrorMessage(msg, "phone"));
+      toast.error(friendlyAuthErrorMessage(msg, "phone"));
     } finally {
       setOtpResending(false);
     }
@@ -277,6 +445,7 @@ export default function LoginPage() {
   async function handleEmailLogin(e: React.FormEvent) {
     e.preventDefault();
     setFormError(null);
+    setPasswordFailedSuggestOtp(false);
     const trimmedEmail = email.trim();
     if (!trimmedEmail) {
       setFormError("Please enter your email");
@@ -293,6 +462,14 @@ export default function LoginPage() {
       await routeAfterAuth();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Login failed. Please try again.";
+      const lower = msg.toLowerCase();
+      // Accounts created via OTP/social have no password — guide users to email-code login.
+      const looksLikeOtpOnlyAccount =
+        lower.includes("invalid login credentials") ||
+        lower.includes("invalid_credentials") ||
+        lower.includes("email not confirmed") ||
+        lower.includes("email_not_confirmed");
+      setPasswordFailedSuggestOtp(looksLikeOtpOnlyAccount);
       setFormError(msg);
       toast.error(msg);
     } finally {
@@ -332,20 +509,37 @@ export default function LoginPage() {
           </div>
         </div>
         <h1 className="text-center text-[28px] font-extrabold text-gray-900 mb-1" id="login-heading">
-          {t("auth.login")}
+          Welcome
         </h1>
         <p className="text-center text-[14px] text-gray-500 mb-7">
-          Welcome back to Beautonomi
+          Sign in or create an account — phone, email code, social, or password.
         </p>
 
         {formError && (
           <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3.5 mb-4" role="alert">
             <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
-            <p className="text-sm text-red-800">{formError}</p>
+            <div className="flex-1">
+              <p className="text-sm text-red-800">{formError}</p>
+              {passwordFailedSuggestOtp && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPasswordFailedSuggestOtp(false);
+                    resetPhoneOtpFlow();
+                    resetEmailOtpFlow();
+                    setPrimaryLogin("email_otp");
+                    setFormError(null);
+                  }}
+                  className="mt-1.5 inline-block text-xs font-semibold text-primary underline hover:no-underline"
+                >
+                  No password? Sign in with an email code instead →
+                </button>
+              )}
+            </div>
           </div>
         )}
 
-        {!showEmailLogin && !otpSent && (
+        {primaryLogin === "phone" && !otpSent && (
           <div className="space-y-4">
             <div>
               <Label className="text-xs font-medium text-gray-700 mb-1.5 block">
@@ -355,13 +549,20 @@ export default function LoginPage() {
                 inputId="login-phone"
                 label=""
                 value={phoneFull}
-                onChange={setPhoneFull}
+                onChange={(v) => {
+                  setPhoneFull(v);
+                  if (phoneInputError) setPhoneInputError(null);
+                }}
                 defaultCountryCode="+27"
                 placeholder="e.g. 82 123 4567"
               />
-              <p className="mt-2 text-xs text-gray-500">
-                We&apos;ll send a {SUPABASE_AUTH_OTP_LENGTH}-digit code via SMS.
-              </p>
+              {phoneInputError ? (
+                <p className="mt-1.5 text-xs text-red-600" role="alert">{phoneInputError}</p>
+              ) : (
+                <p className="mt-2 text-xs text-gray-500">
+                  We&apos;ll send a {SUPABASE_AUTH_OTP_LENGTH}-digit code via SMS.
+                </p>
+              )}
             </div>
             <Button
               type="button"
@@ -372,13 +573,13 @@ export default function LoginPage() {
               {loading ? (
                 <span className="inline-block h-5 w-5 border-2 border-white border-t-transparent rounded-full animate-spin" aria-hidden />
               ) : (
-                "Continue with OTP"
+                "Continue with phone"
               )}
             </Button>
           </div>
         )}
 
-        {!showEmailLogin && otpSent && (
+        {primaryLogin === "phone" && otpSent && (
           <div className="space-y-4">
             <p className="text-sm text-gray-600">
               Enter the {SUPABASE_AUTH_OTP_LENGTH}-digit code sent to{" "}
@@ -405,10 +606,14 @@ export default function LoginPage() {
               <button
                 type="button"
                 onClick={() => void handleResendPhoneOtp()}
-                disabled={otpResending || loading}
+                disabled={otpResending || loading || otpResendCooldown > 0}
                 className="font-medium text-primary hover:underline disabled:opacity-50 disabled:no-underline"
               >
-                {otpResending ? "Resending..." : "Resend code"}
+                {otpResending
+                  ? "Resending..."
+                  : otpResendCooldown > 0
+                    ? `Resend in ${otpResendCooldown}s`
+                    : "Resend code"}
               </button>
             </div>
             <Button
@@ -427,10 +632,7 @@ export default function LoginPage() {
               type="button"
               className="w-full text-sm text-gray-500 hover:text-gray-700"
               onClick={() => {
-                setOtpSent(false);
-                setOtpCode("");
-                setSentPhoneE164("");
-                setOtpExpiresAt(null);
+                resetPhoneOtpFlow();
                 setFormError(null);
               }}
             >
@@ -439,7 +641,115 @@ export default function LoginPage() {
           </div>
         )}
 
-        {showEmailLogin && (
+        {primaryLogin === "email_otp" && !emailOtpSent && (
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="login-email-otp" className="text-xs font-medium text-gray-700 mb-1.5 block">
+                Email
+              </Label>
+              <div className="flex items-center rounded-xl border border-gray-200 bg-gray-100 px-3.5 gap-2.5">
+                <Mail className="h-[18px] w-[18px] text-gray-400 flex-shrink-0" aria-hidden />
+                <Input
+                  id="login-email-otp"
+                  type="email"
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    if (emailInputError) setEmailInputError(null);
+                  }}
+                  className="flex-1 border-0 bg-transparent h-12 px-2.5 text-[13px] text-gray-700 placeholder:text-gray-400 focus-visible:ring-0"
+                  autoComplete="email"
+                  inputMode="email"
+                  aria-required="true"
+                />
+              </div>
+              {emailInputError ? (
+                <p className="mt-1.5 text-xs text-red-600" role="alert">{emailInputError}</p>
+              ) : (
+                <p className="mt-2 text-xs text-gray-500">
+                  We&apos;ll email a {SUPABASE_AUTH_OTP_LENGTH}-digit code (not a magic link). Same flow for new and returning users.
+                </p>
+              )}
+            </div>
+            <Button
+              type="button"
+              disabled={loading}
+              onClick={() => void handleEmailSendOtp()}
+              className="w-full h-12 rounded-xl text-base font-bold bg-primary hover:bg-primary-hover text-white"
+            >
+              {loading ? (
+                <span className="inline-block h-5 w-5 border-2 border-white border-t-transparent rounded-full animate-spin" aria-hidden />
+              ) : (
+                "Send email code"
+              )}
+            </Button>
+          </div>
+        )}
+
+        {primaryLogin === "email_otp" && emailOtpSent && (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">
+              Enter the {SUPABASE_AUTH_OTP_LENGTH}-digit code sent to{" "}
+              <span className="font-semibold text-gray-900">{sentEmailForOtp}</span>
+            </p>
+            <OtpDigitInput
+              value={emailOtpCode}
+              onChange={setEmailOtpCode}
+              onComplete={(code) => {
+                if (!loading && isCompleteSupabaseSmsOtp(code)) void handleVerifyEmailOtp(code);
+              }}
+              disabled={loading}
+              autoFocus
+              label="Email verification code"
+              length={SUPABASE_AUTH_OTP_LENGTH}
+            />
+            <div className="flex items-center justify-between gap-3 text-xs">
+              <span className="text-gray-500">
+                Code expires in{" "}
+                <span className="font-semibold text-gray-700">
+                  {formatOtpCountdown(emailOtpSecondsLeft)}
+                </span>
+              </span>
+              <button
+                type="button"
+                onClick={() => void handleResendEmailOtp()}
+                disabled={emailOtpResending || loading || emailOtpResendCooldown > 0}
+                className="font-medium text-primary hover:underline disabled:opacity-50 disabled:no-underline"
+              >
+                {emailOtpResending
+                  ? "Resending..."
+                  : emailOtpResendCooldown > 0
+                    ? `Resend in ${emailOtpResendCooldown}s`
+                    : "Resend code"}
+              </button>
+            </div>
+            <Button
+              type="button"
+              disabled={loading || !isCompleteSupabaseSmsOtp(emailOtpCode)}
+              onClick={() => void handleVerifyEmailOtp()}
+              className="w-full h-12 rounded-xl text-base font-bold bg-primary hover:bg-primary-hover text-white"
+            >
+              {loading ? (
+                <span className="inline-block h-5 w-5 border-2 border-white border-t-transparent rounded-full animate-spin" aria-hidden />
+              ) : (
+                "Verify & Continue"
+              )}
+            </Button>
+            <button
+              type="button"
+              className="w-full text-sm text-gray-500 hover:text-gray-700"
+              onClick={() => {
+                resetEmailOtpFlow();
+                setFormError(null);
+              }}
+            >
+              Use a different email
+            </button>
+          </div>
+        )}
+
+        {primaryLogin === "email_password" && (
           <form onSubmit={handleEmailLogin} className="space-y-4">
           <div>
             <Label htmlFor="login-email" className="text-xs font-medium text-gray-700 mb-1.5 block">
@@ -534,24 +844,65 @@ export default function LoginPage() {
             <FaApple className="text-lg" aria-hidden />
             <span>{t("auth.continueWithApple")}</span>
           </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => setShowEmailLogin((v) => !v)}
-            className="w-full h-12 rounded-xl border-gray-200 justify-center gap-2.5"
-          >
-            <Mail className="h-4 w-4" aria-hidden />
-            <span>{showEmailLogin ? "Back to phone OTP" : "Continue with Email & Password"}</span>
-          </Button>
+          {primaryLogin !== "phone" && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                resetEmailOtpFlow();
+                setPrimaryLogin("phone");
+                setFormError(null);
+                setPasswordFailedSuggestOtp(false);
+              }}
+              className="w-full h-12 rounded-xl border-gray-200 justify-center gap-2.5"
+            >
+              <span>Continue with phone</span>
+            </Button>
+          )}
+          {primaryLogin !== "email_otp" && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                resetPhoneOtpFlow();
+                resetEmailOtpFlow();
+                setPrimaryLogin("email_otp");
+                setFormError(null);
+                setPasswordFailedSuggestOtp(false);
+              }}
+              className="w-full h-12 rounded-xl border-gray-200 justify-center gap-2.5"
+            >
+              <Mail className="h-4 w-4" aria-hidden />
+              <span>Continue with email code</span>
+            </Button>
+          )}
+          {primaryLogin !== "email_password" && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                resetPhoneOtpFlow();
+                resetEmailOtpFlow();
+                setPrimaryLogin("email_password");
+                setFormError(null);
+                setPasswordFailedSuggestOtp(false);
+              }}
+              className="w-full h-12 rounded-xl border-gray-200 justify-center gap-2.5"
+            >
+              <Lock className="h-4 w-4" aria-hidden />
+              <span>Sign in with password</span>
+            </Button>
+          )}
         </div>
         <p className="text-center text-sm text-gray-500 mt-6">
-          {t("auth.dontHaveAccount")}{" "}
+          New here? Use phone, email code, or Google — we&apos;ll create your account when you verify. Or{" "}
           <Link
             href={nextUrl ? `/signup?next=${encodeURIComponent(nextUrl)}` : "/signup"}
             className="font-bold text-primary"
           >
             {t("auth.signup")}
           </Link>
+          {" "}for the full signup form.
         </p>
       </div>
     </div>

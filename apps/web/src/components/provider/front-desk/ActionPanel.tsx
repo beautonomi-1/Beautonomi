@@ -60,6 +60,12 @@ export function ActionPanel({ booking, onClose, onActionComplete, onCompleteRequ
   const badge = booking.operationalBadge || "confirmed";
   const locationType = (booking as any).location_type as string | undefined;
   const isAtHome = locationType === "at_home";
+  const unpaidAdditionalCharges = Array.isArray((booking as any).additional_charges)
+    ? (booking as any).additional_charges
+        .filter((charge: any) => charge?.status !== "paid" && charge?.status !== "rejected")
+        .reduce((sum: number, charge: any) => sum + Number(charge?.amount || 0), 0)
+    : 0;
+  const folioTotal = Number(booking.total_amount || 0) + unpaidAdditionalCharges;
 
   const handleCopyPhone = async () => {
     if (phone) {
@@ -177,9 +183,11 @@ export function ActionPanel({ booking, onClose, onActionComplete, onCompleteRequ
             )}
             <div className="pt-4 border-t border-[#0F172A]/[0.08]">
               <div className="flex justify-between items-baseline">
-                <span className="text-sm text-[#0F172A]/60">Total</span>
+                <span className="text-sm text-[#0F172A]/60">
+                  {unpaidAdditionalCharges > 0 ? "Total incl. open charges" : "Total"}
+                </span>
                 <span className="text-lg font-semibold text-[#0F172A]">
-                  {booking.currency} {Number(booking.total_amount || 0).toFixed(2)}
+                  {booking.currency} {folioTotal.toFixed(2)}
                 </span>
               </div>
             </div>
@@ -226,6 +234,11 @@ export function ActionPanel({ booking, onClose, onActionComplete, onCompleteRequ
                   bookingId={booking.id}
                   totalAmount={Number(booking.total_amount || 0)}
                   totalPaid={Number((booking as any).total_paid || 0)}
+                  totalRefunded={Number((booking as any).total_refunded || 0)}
+                  walletAmount={Number((booking as any).wallet_amount || 0)}
+                  giftCardAmount={Number((booking as any).gift_card_amount || 0)}
+                  unpaidAdditionalCharges={unpaidAdditionalCharges}
+                  paymentStatus={(booking as any).payment_status}
                   currency={booking.currency || tenantCurrency}
                   onComplete={onActionComplete}
                   variant="footer"

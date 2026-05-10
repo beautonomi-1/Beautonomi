@@ -3,6 +3,28 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, successResponse, handleApiError, getProviderIdForUser } from "@/lib/supabase/api-helpers";
 import { recalculateProviderGamification } from "@/lib/services/provider-gamification";
+import { sumProviderGamificationLedgerNet } from "@/lib/provider/sum-gamification-ledger-net";
+
+const PROVIDER_POINTS_SELECT = `
+        id,
+        total_points,
+        lifetime_points,
+        current_tier_points,
+        badge_earned_at,
+        badge_expires_at,
+        last_calculated_at,
+        provider_badges!provider_points_current_badge_id_fkey (
+          id,
+          name,
+          slug,
+          description,
+          icon_url,
+          tier,
+          color,
+          requirements,
+          benefits
+        )
+      `;
 
 /**
  * GET /api/provider/gamification
@@ -91,49 +113,56 @@ export async function GET(request: NextRequest) {
       throw badgesError;
     }
 
-    // Get provider stats - calculate directly from source data for accuracy
+    // Stats shown here must match what badge eligibility uses (`providers` + completed bookings).
     const supabaseAdmin = getSupabaseAdmin();
-    
-    // Calculate total bookings directly from bookings table
-    const { count: totalBookingsCount } = await supabaseAdmin
-      .from('bookings')
-      .select('*', { count: 'exact', head: true })
-      .eq('provider_id', providerId);
-    
-    // Calculate reviews and rating directly from reviews table
-    const { data: reviewsData, count: reviewCount } = await supabaseAdmin
-      .from('reviews')
-      .select('rating', { count: 'exact' })
-      .eq('provider_id', providerId);
-    
-    let averageRating = 0;
-    if (reviewsData && reviewsData.length > 0) {
-      const sum = reviewsData.reduce((acc, review) => acc + (Number(review.rating) || 0), 0);
-      averageRating = sum / reviewsData.length;
-    }
-    
-    // Calculate net earnings from finance_transactions for accuracy:
-    // Sum provider_earnings (positive) + refund impact (negative) + cancellation_fee (positive).
-    // This matches the payout balance logic so gamification reflects real financial position.
-    const { data: ledgerRows } = await supabaseAdmin
-      .from('finance_transactions')
-      .select('net, transaction_type')
-      .eq('provider_id', providerId)
-      .in('transaction_type', ['provider_earnings', 'refund', 'cancellation_fee']);
-    
-    let totalEarnings = 0;
-    if (ledgerRows) {
-      totalEarnings = ledgerRows.reduce((sum, row) => {
-        return sum + (Number(row.net ?? 0) || 0);
-      }, 0);
-      // Floor at zero: gamification should never show negative earnings (edge case with large refunds)
-      totalEarnings = Math.max(0, totalEarnings);
+
+    const { count: completedBookingsCount } = await supabaseAdmin
+      .from("bookings")
+      .select("id", { count: "exact", head: true })
+      .eq("provider_id", providerId)
+      .eq("status", "completed");
+
+    const completedBookings = completedBookingsCount ?? 0;
+
+    const { data: provRow } = await supabaseAdmin
+      .from("providers")
+      .select("total_bookings, review_count, rating_average")
+      .eq("id", providerId)
+      .maybeSingle();
+
+    const totalEarnings = await sumProviderGamificationLedgerNet(supabaseAdmin, providerId);
+
+    const storedBookings = Number(provRow?.total_bookings ?? 0);
+    const reviewCount = Number(provRow?.review_count ?? 0);
+    const ratingAverage = Number(provRow?.rating_average ?? 0);
+
+    let effectivePointsData = pointsData;
+
+    if (provRow && storedBookings !== completedBookings) {
+      const { error: syncBookingsError } = await supabaseAdmin
+        .from("providers")
+        .update({ total_bookings: completedBookings })
+        .eq("id", providerId);
+
+      if (!syncBookingsError) {
+        await recalculateProviderGamification(providerId);
+        const { data: refreshedPoints, error: refetchError } = await supabase
+          .from("provider_points")
+          .select(PROVIDER_POINTS_SELECT)
+          .eq("provider_id", providerId)
+          .maybeSingle();
+        if (!refetchError) {
+          effectivePointsData = refreshedPoints;
+        }
+      }
     }
 
     // Calculate progress to next badge
     let progressToNextBadge = null;
-    
-    const badge = Array.isArray(pointsData?.provider_badges) ? pointsData?.provider_badges?.[0] : pointsData?.provider_badges;
+
+    const badge = Array.isArray(effectivePointsData?.provider_badges)
+      ? effectivePointsData?.provider_badges?.[0]
+      : effectivePointsData?.provider_badges;
     // Progress must work when provider_points row is missing (treat as 0 points until first sync).
     if (allBadges) {
       const currentTier = badge?.tier || 0;
@@ -142,7 +171,7 @@ export async function GET(request: NextRequest) {
       if (nextBadgeCandidate) {
         const _nextBadge = nextBadgeCandidate;
         const requiredPoints = (nextBadgeCandidate.requirements as any)?.points || 0;
-        const currentPoints = pointsData?.total_points || 0;
+        const currentPoints = effectivePointsData?.total_points || 0;
         const progress = requiredPoints > 0 
           ? Math.min(100, Math.round((currentPoints / requiredPoints) * 100))
           : 0;
@@ -158,10 +187,10 @@ export async function GET(request: NextRequest) {
 
     return successResponse({
       points: {
-        total: pointsData?.total_points || 0,
-        lifetime: pointsData?.lifetime_points || 0,
-        current_tier: pointsData?.current_tier_points || 0,
-        last_calculated: pointsData?.last_calculated_at,
+        total: effectivePointsData?.total_points || 0,
+        lifetime: effectivePointsData?.lifetime_points || 0,
+        current_tier: effectivePointsData?.current_tier_points || 0,
+        last_calculated: effectivePointsData?.last_calculated_at,
       },
       current_badge: badge ? {
         id: badge.id,
@@ -173,16 +202,16 @@ export async function GET(request: NextRequest) {
         color: badge.color,
         requirements: badge.requirements,
         benefits: badge.benefits,
-        earned_at: pointsData.badge_earned_at,
-        expires_at: pointsData.badge_expires_at,
+        earned_at: effectivePointsData?.badge_earned_at,
+        expires_at: effectivePointsData?.badge_expires_at,
       } : null,
       milestones: milestones || [],
       transactions: transactions || [],
       progress_to_next_badge: progressToNextBadge,
       provider_stats: {
-        total_bookings: totalBookingsCount || 0,
-        review_count: reviewCount || 0,
-        rating_average: averageRating,
+        total_bookings: completedBookings,
+        review_count: reviewCount,
+        rating_average: ratingAverage,
         total_earnings: totalEarnings,
       },
     });
@@ -230,23 +259,17 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Sync denormalized providers stats before recalculation so badge checks use fresh data
-    const [bookingCountRes, reviewsRes] = await Promise.all([
-      supabaseAdmin.from("bookings").select("id", { count: "exact", head: true }).eq("provider_id", providerId),
-      supabaseAdmin.from("reviews").select("rating", { count: "exact" }).eq("provider_id", providerId),
-    ]);
-    const freshBookings = bookingCountRes.count || 0;
-    const freshReviewCount = reviewsRes.count || 0;
-    let freshRating = 0;
-    if (reviewsRes.data && reviewsRes.data.length > 0) {
-      freshRating = reviewsRes.data.reduce((s, r) => s + Number(r.rating || 0), 0) / reviewsRes.data.length;
-    }
+    // Sync completed booking count only; review_count and rating_average are maintained by DB triggers.
+    const { count: completedBookings } = await supabaseAdmin
+      .from("bookings")
+      .select("id", { count: "exact", head: true })
+      .eq("provider_id", providerId)
+      .eq("status", "completed");
+
     await supabaseAdmin
       .from("providers")
       .update({
-        total_bookings: freshBookings,
-        review_count: freshReviewCount,
-        rating_average: Math.round(freshRating * 100) / 100,
+        total_bookings: completedBookings ?? 0,
       })
       .eq("id", providerId);
 

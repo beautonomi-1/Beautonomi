@@ -96,6 +96,8 @@ export async function syncBookingAfterPaystackSuccess(
         updates.confirmed_at = now;
       }
     }
+  } else if (row.status === "pending_payment") {
+    updates.status = "pending";
   }
   // When requireConfirmationForBookings is true, leave status as pending until provider confirms.
 

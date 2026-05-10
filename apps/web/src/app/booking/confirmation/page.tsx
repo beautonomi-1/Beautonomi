@@ -580,7 +580,7 @@ export default function BookingConfirmationPage() {
             {/* Price breakdown — matches checkout when fees/taxes/loyalty apply */}
             {(() => {
               const travel = booking.travel_fee ?? 0;
-              const sub = Math.max(0, (booking.subtotal ?? 0) - travel);
+              const sub = Math.max(0, Number(booking.subtotal ?? 0));
               const tax = booking.tax_amount ?? 0;
               const taxRate = booking.tax_rate ?? 0;
               const svcFee =

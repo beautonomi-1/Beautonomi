@@ -34,6 +34,7 @@ import { tryCreateCustomerRecurringFromPaystackChargeMetadata } from "@/lib/recu
 import { applyWalletTopupFromSuccessfulPaystackCharge } from "@/lib/wallet/apply-wallet-topup-from-paystack-success";
 import { syncBookingAfterPaystackSuccess } from "@/lib/bookings/sync-booking-after-paystack-success";
 import { patchCustomOfferMessageAttachments } from "@/lib/custom-offers/sync-offer-message-attachments";
+import { finalizeCustomOfferPaymentFromPaystackEvent } from "@/lib/custom-offers/finalize-custom-offer-payment";
 
 async function lastResortCurrencyFromTenantId(
   tenantId: string | null | undefined,
@@ -455,10 +456,26 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
             loyalty_discount_amount: loyaltyDiscountAmount,
           })
           .eq("id", metadata.booking_id);
+      } else if (result.reason !== "already_redeemed") {
+        await supabase
+          .from("bookings")
+          .update({
+            loyalty_points_used: 0,
+            loyalty_discount_amount: 0,
+          })
+          .eq("id", metadata.booking_id);
+        console.error("Loyalty points deduction failed:", result.reason || "not_recorded");
       }
     } catch (loyaltyErr: unknown) {
       const msg = loyaltyErr instanceof Error ? loyaltyErr.message : String(loyaltyErr);
       console.error("Loyalty points deduction failed:", msg);
+      await supabase
+        .from("bookings")
+        .update({
+          loyalty_points_used: 0,
+          loyalty_discount_amount: 0,
+        })
+        .eq("id", metadata.booking_id);
     }
   }
 
@@ -1332,599 +1349,38 @@ async function processFailedPayment(data: PaystackChargeData, supabase: Supabase
 
 // ─── Custom Offer ────────────────────────────────────────────────────────────
 
+/**
+ * Thin wrapper around `finalizeCustomOfferPayment`.
+ *
+ * The actual finalize logic (booking creation, ledger entries, gift-card capture,
+ * loyalty redemption, conversation messaging, push notifications) lives in
+ * `@/lib/custom-offers/finalize-custom-offer-payment` so the same code path is
+ * shared by the Paystack webhook, the `transaction/verify` short-circuit, and
+ * the zero-Paystack path in `POST /api/me/custom-offers/:id/pay` (when
+ * wallet + gift card cover the entire collectable).
+ */
 async function handleCustomOfferSuccess(
   payload: { reference: string; metadata: any; amount?: number; fees?: number; customer?: any },
-  supabase: SupabaseClient,
+  _supabase: SupabaseClient,
 ) {
-  const offerId = payload.metadata.custom_offer_id as string;
-  if (!offerId) return;
+  const offerId = payload.metadata?.custom_offer_id as string | undefined;
+  if (!offerId || !payload.reference) return;
 
-  // Use admin client to bypass RLS (required for booking creation)
   const adminSupabase = getSupabaseAdmin();
-
-  const { data: offerRow } = await adminSupabase
-    .from("custom_offers")
-    .select("*, request:custom_requests(*)")
-    .eq("id", offerId)
-    .single();
-  if (!offerRow) return;
-  type OfferRow = { id?: string; status?: string; booking_id?: string; duration_minutes?: number; price?: number; currency?: string; scheduled_at?: string; location_id?: string | null; staff_id?: string | null; request?: CustomRequestRow; travel_fee?: number };
-  type CustomRequestRow = { provider_id?: string; customer_id?: string; service_name?: string; description?: string; location_type?: string; preferred_start_at?: string; address_line1?: string; address_line2?: string; address_city?: string; address_state?: string; address_country?: string; address_postal_code?: string; service_category_id?: string; id?: string };
-  const offer = offerRow as OfferRow;
-  const req = offer.request as CustomRequestRow | undefined;
-  if (!req) return;
-
-  const { data: provForCurrency } = await adminSupabase
-    .from("providers")
-    .select("tenant_id")
-    .eq("id", req.provider_id ?? "")
-    .maybeSingle();
-  const offerCurrencyFallback = await lastResortCurrencyFromTenantId(
-    (provForCurrency as { tenant_id?: string } | null)?.tenant_id,
-  );
-
-  // Idempotency: if booking already created, just ensure status is paid
-  if (offer.status === "paid") return;
-  if (offer.status === "withdrawn" || offer.status === "expired") {
-    console.warn(`[handleCustomOfferSuccess] offer ${offerId} is ${offer.status}; skipping booking creation`);
-    return;
-  }
-
-  const { data: existingOfferTx } = await adminSupabase
-    .from("payment_transactions")
-    .select("id")
-    .eq("provider", "paystack")
-    .eq("reference", payload.reference)
-    .maybeSingle();
-  if (existingOfferTx) return;
-
-  const amountInCurrency = convertFromSmallestUnit(payload.amount || 0);
-  const feesInCurrency = convertFromSmallestUnit(payload.fees || 0);
-  const netAmount = amountInCurrency - feesInCurrency;
-
-  const meta = payload.metadata || {};
-  const travelFee = Number(meta.travel_fee ?? offer.travel_fee ?? 0) >= 0 ? Number(meta.travel_fee ?? offer.travel_fee ?? 0) : 0;
-  const tipAmount = Number(meta.tip_amount ?? 0);
-  const taxAmount = Number(meta.tax_amount ?? 0);
-  const taxRate = Number(meta.tax_rate ?? 0);
-  const serviceFeeAmount = Number(meta.service_fee_amount ?? 0);
-  const _serviceFeePercentage = Number(meta.service_fee_percentage ?? 0);
-  const promotionDiscountAmount = Number(meta.promotion_discount_amount ?? 0);
-  const promotionId = meta.promotion_id && String(meta.promotion_id).trim() ? meta.promotion_id : null;
-  const coPaymentOption = String(meta.payment_option || "full");
-  const coTotalAmount = Number(meta.total_amount || 0);
-  const coDepositAmount = Number(meta.deposit_amount || 0);
-  const coDepositPct = Number(meta.deposit_percentage || 0);
-  const coRequiresDeposit = Boolean(meta.requires_deposit);
-  const isDepositPayment = coPaymentOption === "deposit" && coDepositAmount > 0;
-
-  const offeringTitle = (req.service_name && String(req.service_name).trim()) ? String(req.service_name).trim() : "Custom Service";
-  const { data: createdOffering, error: offeringError } = await adminSupabase
-    .from("offerings")
-    .insert({
-      provider_id: req.provider_id,
-      master_service_id: null,
-      title: offeringTitle,
-      description: req.description,
-      category_id: req.service_category_id || null,
-      subcategory_id: null,
-      duration_minutes: offer.duration_minutes,
-      buffer_minutes: 0,
-      price: offer.price,
-      currency: offer.currency || offerCurrencyFallback,
-      supports_at_home: req.location_type === "at_home",
-      supports_at_salon: req.location_type === "at_salon",
-      is_active: false,
-      display_order: 0,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .select()
-    .single();
-
-  if (offeringError || !createdOffering) {
-    console.error("Failed to create offering for custom offer:", offeringError);
-    return;
-  }
-
-  // Create booking: use offer scheduled_at, then request preferred_start_at, else start of next hour (so it shows on calendar)
-  let scheduledAt: string;
-  if (offer.scheduled_at) {
-    scheduledAt = new Date(offer.scheduled_at).toISOString();
-  } else if (req.preferred_start_at) {
-    scheduledAt = new Date(req.preferred_start_at).toISOString();
-  } else {
-    const nextHour = new Date(Date.now() + 60 * 60 * 1000);
-    nextHour.setMinutes(0, 0, 0);
-    scheduledAt = nextHour.toISOString();
-  }
-  const bookingSubtotal = Number(offer.price || 0);
-
-  const bookingInsert: any = {
-    booking_number: "",
-    customer_id: req.customer_id,
-    provider_id: req.provider_id,
-    custom_offer_id: offerId,
-    status: "confirmed",
-    location_type: req.location_type || "at_salon",
-    location_id: req.location_type === "at_salon" && offer.location_id ? offer.location_id : null,
-    scheduled_at: scheduledAt,
-    subtotal: bookingSubtotal,
-    tip_amount: tipAmount,
-    discount_amount: promotionDiscountAmount,
-    tax_rate: taxRate,
-    tax_amount: taxAmount,
-    service_fee_percentage: _serviceFeePercentage,
-    service_fee_amount: serviceFeeAmount,
-    total_amount: isDepositPayment ? coTotalAmount : amountInCurrency,
-    currency: offer.currency || offerCurrencyFallback,
-    payment_status: isDepositPayment ? "partially_paid" : "paid",
-    ...(coRequiresDeposit ? {
-      deposit_required: true,
-      deposit_percentage: coDepositPct,
-      deposit_amount: coDepositAmount,
-      payment_option: coPaymentOption,
-    } : {}),
-    payment_reference: payload.reference,
-    payment_date: new Date().toISOString(),
-    payment_provider: "paystack",
-    booking_source: "online",
-    special_requests: `Custom order: ${req.description}`,
-    loyalty_points_earned: 0,
-    loyalty_points_used: 0,
-    promotion_id: promotionId,
-    promotion_discount_amount: promotionDiscountAmount,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  };
-  if (req.location_type === "at_home" && (req.address_line1 || req.address_city || req.address_country)) {
-    bookingInsert.address_line1 = req.address_line1 ?? null;
-    bookingInsert.address_line2 = req.address_line2 ?? null;
-    bookingInsert.address_city = req.address_city ?? null;
-    bookingInsert.address_state = req.address_state ?? null;
-    bookingInsert.address_country = req.address_country ?? null;
-    bookingInsert.address_postal_code = req.address_postal_code ?? null;
-  }
-  if (travelFee > 0) {
-    bookingInsert.travel_fee = travelFee;
-  }
-
-  /**
-   * §Release-audit 2026-04: previously this insert went straight to
-   * `bookings` with no conflict check. If a regular booking had been made
-   * on the same staff/provider in the meantime, we'd silently double-book
-   * the slot. Run a focused conflict check before insert; if there's a
-   * conflict, push the booking out to the next free hour rather than
-   * dropping it on the floor (the customer has already paid).
-   */
-  const _start = new Date(scheduledAt);
-  const _end = new Date(_start.getTime() + Number(offer.duration_minutes || 60) * 60 * 1000);
-  const _staffId = offer.staff_id || null;
-  let conflictResolved = false;
-  try {
-    const { checkBookingConflict, checkBookingConflictForProvider } = await import(
-      "@/lib/bookings/conflict-check"
-    );
-    const conflictResult = _staffId
-      ? await checkBookingConflict(adminSupabase, _staffId, _start, _end, 0)
-      : await checkBookingConflictForProvider(adminSupabase, req.provider_id, _start, _end, 0);
-    if (conflictResult.hasConflict) {
-      console.warn(
-        "[handleCustomOfferSuccess] booking conflict detected, deferring to next available hour",
-        { offerId: offer.id, provider_id: req.provider_id, original: scheduledAt, conflicts: conflictResult.conflictingBookings },
-      );
-      const next = new Date(Math.max(_end.getTime(), Date.now()) + 60 * 60 * 1000);
-      next.setMinutes(0, 0, 0);
-      scheduledAt = next.toISOString();
-      bookingInsert.scheduled_at = scheduledAt;
-      bookingInsert.status = "pending"; // requires provider re-confirm at the new time
-      bookingInsert.special_requests = `Custom order: ${req.description} — auto-rescheduled (slot conflict)`;
-      conflictResolved = true;
-    }
-  } catch (conflictErr) {
-    console.error("[handleCustomOfferSuccess] conflict check failed; proceeding anyway:", conflictErr);
-  }
-
-  const { data: booking, error: bookingError } = await adminSupabase
-    .from("bookings")
-    .insert(bookingInsert)
-    .select()
-    .single();
-
-  if (bookingError || !booking) {
-    console.error("Failed to create booking for custom offer:", bookingError);
-    return;
-  }
-
-  // Booking service row
-  const start = new Date(scheduledAt);
-  const end = new Date(start.getTime() + Number(offer.duration_minutes || 60) * 60 * 1000);
-  const assignedStaffId = offer.staff_id || null;
-  // Surface conflict in audit trail for visibility (no-op on insert if table missing).
-  if (conflictResolved) {
-    try {
-      await adminSupabase.from("booking_events").insert({
-        booking_id: booking.id,
-        event_type: "auto_rescheduled",
-        event_data: {
-          reason: "custom_offer_payment_slot_conflict",
-          new_scheduled_at: scheduledAt,
-        },
-      });
-    } catch {
-      /* booking_events optional in test fixtures */
-    }
-  }
-
-  const { error: bookingServiceError } = await adminSupabase
-    .from("booking_services")
-    .insert({
-      booking_id: booking.id,
-      offering_id: createdOffering.id,
-      staff_id: assignedStaffId,
-      duration_minutes: Number(offer.duration_minutes || 60),
-      price: bookingSubtotal,
-      currency: offer.currency || offerCurrencyFallback,
-      scheduled_start_at: start.toISOString(),
-      scheduled_end_at: end.toISOString(),
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    });
-
-  if (bookingServiceError) {
-    console.error("Failed to create booking service for custom offer:", bookingServiceError);
-  }
-
-  // Update custom offer status and link booking
-  await adminSupabase
-    .from("custom_offers")
-    .update({
-      status: "paid",
-      booking_id: booking.id,
-      paid_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", offerId);
-
-  await patchCustomOfferMessageAttachments(adminSupabase, offerId, {
-    status: "paid",
-    bookingId: booking.id,
-  });
-
-  // Create payments row so booking has a consistent payment record (reports, portal)
-  await adminSupabase.from("payments").insert({
-    booking_id: booking.id,
-    user_id: req.customer_id,
-    provider_id: req.provider_id,
-    payment_number: "",
-    amount: amountInCurrency,
-    currency: offer.currency || offerCurrencyFallback,
-    status: "paid",
-    payment_provider: "paystack",
-    payment_provider_transaction_id: payload.reference,
-    payment_provider_response: {},
-    processed_at: new Date().toISOString(),
-    description: isDepositPayment ? `Custom offer deposit payment` : `Custom offer payment`,
-    metadata: { custom_offer_id: offerId, payment_option: coPaymentOption },
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  });
-
-  // Create booking_payments row so custom offer payments are visible in
-  // EOD reports, receipt amount_paid calculations, and provider dashboards.
-  const paystackTxId = payload.reference || null;
-  try {
-    await adminSupabase.from("booking_payments").insert({
-      booking_id: booking.id,
-      ...(booking.tenant_id ? { tenant_id: booking.tenant_id } : {}),
-      amount: amountInCurrency,
-      payment_method: "card",
-      payment_provider: "paystack",
-      payment_provider_id: paystackTxId,
-      status: "completed",
-      notes: isDepositPayment
-        ? `Custom offer deposit payment. Ref: ${paystackTxId ?? ""}`
-        : `Custom offer payment. Ref: ${paystackTxId ?? ""}`,
-      payment_provider_data: {
-        source: "custom_offer_webhook",
-        custom_offer_id: offerId,
-        payment_option: coPaymentOption,
-      },
-    });
-  } catch (bpErr: unknown) {
-    console.error("[custom-offer] booking_payments insert failed:", bpErr);
-  }
-
-  // Commission + ledger entries (use metadata.commission_base when present for tax/fee-aware base)
-  const commissionRate = await resolveCommissionPercentageForProvider(adminSupabase, {
-    tenantId: (provForCurrency as { tenant_id?: string | null } | null)?.tenant_id ?? null,
-    providerId: req.provider_id ?? null,
-  });
-  const rawCommissionBase = Number(meta.commission_base) > 0
-    ? Number(meta.commission_base)
-    : Math.max(0, bookingSubtotal - promotionDiscountAmount);
-  const commissionBase = isDepositPayment && coTotalAmount > 0
-    ? Math.max(0, Math.round((amountInCurrency * (rawCommissionBase / coTotalAmount)) * 100) / 100)
-    : rawCommissionBase;
-  const platformCommission = percentOf(commissionBase, commissionRate);
-  const providerEarnings = subtractMoney(commissionBase, platformCommission);
-
-  await adminSupabase.from("payment_transactions").insert({
-    booking_id: booking.id,
+  const result = await finalizeCustomOfferPaymentFromPaystackEvent(adminSupabase, {
     reference: payload.reference,
-    amount: amountInCurrency,
-    fees: feesInCurrency,
-    net_amount: netAmount,
-    status: "success",
-    provider: "paystack",
-    metadata: { custom_offer_id: offerId, customer_email: payload.customer?.email },
-    created_at: new Date().toISOString(),
+    metadata: payload.metadata ?? {},
+    amount: payload.amount,
+    fees: payload.fees,
+    customer: payload.customer,
   });
 
-  const customOfferFinanceTenantId = await resolveTenantIdForFinanceLedger(adminSupabase, {
-    tenant_id: (booking as { tenant_id?: string | null }).tenant_id,
-    provider_id: req.provider_id,
-  });
-
-  await adminSupabase.from("finance_transactions").insert([
-    {
-      booking_id: booking.id,
-      provider_id: req.provider_id,
-      tenant_id: customOfferFinanceTenantId,
-      transaction_type: "payment",
-      amount: commissionBase,
-      fees: feesInCurrency,
-      commission: platformCommission,
-      net: platformCommission,
-      description: `Custom order payment [custom_offer:${offerId}]`,
-      created_at: new Date().toISOString(),
-    },
-    {
-      booking_id: booking.id,
-      provider_id: req.provider_id,
-      tenant_id: customOfferFinanceTenantId,
-      transaction_type: "provider_earnings",
-      amount: providerEarnings,
-      fees: 0,
-      commission: 0,
-      net: providerEarnings,
-      description: `Provider earnings (custom order) [custom_offer:${offerId}]`,
-      created_at: new Date().toISOString(),
-    },
-  ]);
-
-  // Booking-level ledger entries: only create when amount > 0 (aligned with standard booking flow).
-  // Use correct `net` values: tip and travel_fee flow to provider; tax and platform_fee do not.
-  const extraRows: any[] = [];
-  if (serviceFeeAmount > 0) {
-    extraRows.push({
-      booking_id: booking.id,
-      provider_id: req.provider_id,
-      tenant_id: customOfferFinanceTenantId,
-      transaction_type: "platform_fee",
-      amount: serviceFeeAmount,
-      fees: 0,
-      commission: 0,
-      net: serviceFeeAmount,
-      description: `Platform fee (custom order) [custom_offer:${offerId}]`,
-      created_at: new Date().toISOString(),
+  if (!result.ok) {
+    console.warn("[handleCustomOfferSuccess] finalize did not succeed", {
+      offerId,
+      reference: payload.reference,
+      reason: result.reason,
     });
-  }
-  if (tipAmount > 0) {
-    extraRows.push({
-      booking_id: booking.id,
-      provider_id: req.provider_id,
-      tenant_id: customOfferFinanceTenantId,
-      transaction_type: "tip",
-      amount: tipAmount,
-      fees: 0,
-      commission: 0,
-      net: tipAmount,
-      description: `Tip (custom order) [custom_offer:${offerId}]`,
-      created_at: new Date().toISOString(),
-    });
-  }
-  if (taxAmount > 0) {
-    extraRows.push({
-      booking_id: booking.id,
-      provider_id: req.provider_id,
-      tenant_id: customOfferFinanceTenantId,
-      transaction_type: "tax",
-      amount: taxAmount,
-      fees: 0,
-      commission: 0,
-      net: 0,
-      description: `Tax (custom order) [custom_offer:${offerId}]`,
-      created_at: new Date().toISOString(),
-    });
-  }
-  if (travelFee > 0) {
-    extraRows.push({
-      booking_id: booking.id,
-      provider_id: req.provider_id,
-      tenant_id: customOfferFinanceTenantId,
-      transaction_type: "travel_fee",
-      amount: travelFee,
-      fees: 0,
-      commission: 0,
-      net: travelFee,
-      description: `Travel fee (custom order) [custom_offer:${offerId}]`,
-      created_at: new Date().toISOString(),
-    });
-  }
-  if (promotionDiscountAmount > 0) {
-    extraRows.push({
-      booking_id: booking.id,
-      provider_id: req.provider_id,
-      tenant_id: customOfferFinanceTenantId,
-      transaction_type: "promotion_discount",
-      amount: promotionDiscountAmount,
-      fees: 0,
-      commission: 0,
-      net: -promotionDiscountAmount,
-      description: `Promotion discount (custom order) [custom_offer:${offerId}]`,
-      created_at: new Date().toISOString(),
-    });
-  }
-  if (extraRows.length > 0) {
-    await adminSupabase.from("finance_transactions").insert(extraRows);
-  }
-
-  // Record promotion usage (idempotent)
-  if (promotionId && promotionDiscountAmount > 0) {
-    try {
-      await adminSupabase
-        .from("promotion_usage")
-        .insert({
-          promotion_id: promotionId,
-          user_id: req.customer_id,
-          booking_id: booking.id,
-          discount_amount: promotionDiscountAmount,
-          used_at: new Date().toISOString(),
-        })
-        .select("id")
-        .single();
-      const { data: promoRow } = await adminSupabase
-        .from("promotions")
-        .select("usage_count")
-        .eq("id", promotionId)
-        .single();
-      const nextCount = Number(promoRow?.usage_count || 0) + 1;
-      await adminSupabase
-        .from("promotions")
-        .update({ usage_count: nextCount })
-        .eq("id", promotionId);
-    } catch (promoErr: unknown) {
-      const msg = promoErr instanceof Error ? promoErr.message : String(promoErr);
-      if (!msg.toLowerCase().includes("duplicate") && !msg.toLowerCase().includes("unique")) {
-        console.error("Error recording custom offer promotion usage:", promoErr);
-      }
-    }
-  }
-
-  // Update custom request status to fulfilled
-  await adminSupabase
-    .from("custom_requests")
-    .update({ status: "fulfilled", updated_at: new Date().toISOString() })
-    .eq("id", req.id);
-
-  // Post a "paid + booking created" message into conversation (best-effort)
-  try {
-    if (booking) {
-      const { data: providerRow } = await adminSupabase
-        .from("providers")
-        .select("user_id")
-        .eq("id", req.provider_id)
-        .single();
-      const providerUserId = (providerRow as { user_id?: string } | null)?.user_id as string | undefined;
-
-      const { data: conv } = await adminSupabase
-        .from("conversations")
-        .select("id, booking_id")
-        .eq("customer_id", req.customer_id)
-        .eq("provider_id", req.provider_id)
-        .order("created_at", { ascending: true })
-        .limit(1)
-        .maybeSingle();
-
-      const convId = (conv as { id?: string } | null)?.id;
-      if (convId) {
-        if (!(conv as { booking_id?: string } | null)?.booking_id) {
-          await adminSupabase
-            .from("conversations")
-            .update({ booking_id: booking.id, updated_at: new Date().toISOString() })
-            .eq("id", convId);
-        }
-
-        if (providerUserId) {
-          await adminSupabase.from("messages").insert({
-            conversation_id: convId,
-            sender_id: providerUserId,
-            sender_role: "provider_owner",
-            content: `Payment received — booking created${booking.booking_number ? ` (#${booking.booking_number})` : ""}.`,
-            attachments: [
-              {
-                type: "custom_offer_paid",
-                offer_id: offerId,
-                booking_id: booking.id,
-                booking_number: booking.booking_number || null,
-              },
-            ],
-            is_read: false,
-            created_at: new Date().toISOString(),
-          });
-        }
-
-      }
-    }
-  } catch {
-    // ignore messaging failures
-  }
-
-  // Notify both parties (best-effort)
-  try {
-    const { sendToUser } = await import("@/lib/notifications/onesignal");
-    const { insertNotification } = await import("@/lib/notifications/insert-notification");
-    const { data: providerRow } = await supabase
-      .from("providers")
-      .select("user_id")
-      .eq("id", req.provider_id)
-      .single();
-    const providerUserId = (providerRow as { user_id?: string } | null)?.user_id;
-    const bookingId = (booking as { id?: string })?.id;
-    const baseData = {
-      type: "custom_order_paid" as const,
-      custom_offer_id: offerId,
-      booking_id: bookingId,
-    };
-    if (req.customer_id) {
-      const customerBookingUrl = bookingId
-        ? `/account-settings/bookings/${bookingId}`
-        : "/account-settings/bookings";
-      const customerOfferContext = `/account-settings/custom-requests?offer=${encodeURIComponent(offerId)}`;
-      await sendToUser(
-        req.customer_id,
-        {
-          title: "Custom Order Paid",
-          message: "Your custom order has been paid and a booking has been created.",
-          data: baseData,
-          url: customerBookingUrl,
-        },
-        ["push"],
-        { appType: "customer" },
-      );
-      await insertNotification({
-        user_id: req.customer_id,
-        type: "custom_offer",
-        title: "Booking Confirmed",
-        message: "Your custom offer is paid and your booking is confirmed.",
-        data: { ...baseData, custom_requests_url: customerOfferContext },
-        action_url: customerBookingUrl,
-      });
-    }
-    if (providerUserId) {
-      await sendToUser(
-        providerUserId,
-        {
-          title: "Custom Order Paid",
-          message: "Your custom order has been paid and a booking has been created.",
-          data: baseData,
-          url: bookingId ? `/provider/bookings/${bookingId}` : "/provider/bookings",
-        },
-        ["push"],
-        { appType: "provider" },
-      );
-      await insertNotification({
-        user_id: providerUserId,
-        type: "custom_offer",
-        title: "Custom Offer Paid",
-        message: "A client paid your custom offer. Booking confirmed.",
-        data: baseData,
-        action_url: bookingId ? `/provider/bookings/${bookingId}` : "/provider/bookings",
-      });
-    }
-  } catch {
-    // ignore
   }
 }
 
@@ -1949,13 +1405,53 @@ async function handleCustomOfferFailed(
   await patchCustomOfferMessageAttachments(admin, offerId, { status: "pending" });
 
   try {
-    const { data: offerRow } = await supabase
+    const { data: offerRow } = await admin
       .from("custom_offers")
-      .select("id, request:custom_requests(customer_id)")
+      .select("id, tenant_id, provider_id, currency, request:custom_requests(customer_id)")
       .eq("id", offerId)
       .maybeSingle();
-    const customerId = (offerRow as { request?: { customer_id?: string } } | null)?.request?.customer_id;
+    const offer = offerRow as {
+      tenant_id?: string | null;
+      provider_id?: string | null;
+      currency?: string | null;
+      request?: { customer_id?: string | null } | null;
+    } | null;
+    const customerId = offer?.request?.customer_id;
     if (!customerId) return;
+
+    const walletAmountApplied = Number(payload.metadata?.wallet_amount_applied ?? 0);
+    if (walletAmountApplied > 0) {
+      const referenceType = `custom_offer_payment_failed:${payload.reference || offerId}`;
+      const { data: wallet } = await admin
+        .from("user_wallets")
+        .select("id")
+        .eq("user_id", customerId)
+        .maybeSingle();
+      const { data: existingRefund } = wallet?.id
+        ? await admin
+            .from("wallet_transactions")
+            .select("id")
+            .eq("wallet_id", wallet.id)
+            .eq("reference_id", offerId)
+            .eq("reference_type", referenceType)
+            .maybeSingle()
+        : { data: null };
+      if (!existingRefund) {
+        const walletTenantId = await resolveTenantIdForFinanceLedger(admin, {
+          tenant_id: offer?.tenant_id ?? null,
+          provider_id: offer?.provider_id ?? null,
+        });
+        await admin.rpc("wallet_credit_admin", {
+          p_user_id: customerId,
+          p_amount: walletAmountApplied,
+          p_currency: String(payload.metadata?.currency ?? offer?.currency ?? LAST_RESORT_CURRENCY),
+          p_description: `Wallet refund (custom offer payment failed)`,
+          p_reference_id: offerId,
+          p_reference_type: referenceType,
+          p_tenant_id: walletTenantId,
+        });
+      }
+    }
 
     const { sendToUser } = await import("@/lib/notifications/onesignal");
     const { insertNotification } = await import("@/lib/notifications/insert-notification");

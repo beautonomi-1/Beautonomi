@@ -262,7 +262,7 @@ export async function GET(
     }
 
     // Filter by resource availability: union required resources across offerings (multi-service).
-    // Use slot.end for the occupancy window — same as duration_minutes + buffer_minutes used for staff conflicts.
+    // Include at-home travel buffer in the occupancy window so resource checks match staff conflict windows.
     const resourceCheckOfferingIds =
       orderedOfferingIds.length > 0
         ? orderedOfferingIds
@@ -289,7 +289,7 @@ export async function GET(
           const availableSlots: AvailabilitySlot[] = [];
           for (const slot of slots) {
             const startAt = new Date(slot.start);
-            const endAt = new Date(slot.end);
+            const endAt = new Date(new Date(slot.end).getTime() + travelBufferMinutes * 60000);
             const check = await checkResourceAvailability(supabase, resourceIds, startAt, endAt);
             if (check.available) {
               availableSlots.push(slot);

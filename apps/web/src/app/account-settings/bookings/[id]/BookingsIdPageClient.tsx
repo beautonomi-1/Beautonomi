@@ -580,7 +580,7 @@ export default function BookingDetailPage() {
           <div className="flex justify-between">
             <span className="text-gray-600">Subtotal</span>
             <span className="font-medium">
-              {booking.currency} {Math.max(0, booking.subtotal - (booking.travel_fee || 0)).toFixed(2)}
+              {booking.currency} {(Number(booking.subtotal) || 0).toFixed(2)}
             </span>
           </div>
           {booking.travel_fee > 0 && (
@@ -625,22 +625,11 @@ export default function BookingDetailPage() {
               </span>
             </div>
           )}
-          {booking.gift_card_amount > 0 && (
-            <div className="flex justify-between">
-              <span className="text-gray-600">Gift card</span>
-              <span className="font-medium text-green-600">
-                -{booking.currency} {booking.gift_card_amount.toFixed(2)}
-              </span>
-            </div>
-          )}
-          {booking.wallet_amount > 0 && (
-            <div className="flex justify-between">
-              <span className="text-gray-600">Wallet credit</span>
-              <span className="font-medium text-green-600">
-                -{booking.currency} {booking.wallet_amount.toFixed(2)}
-              </span>
-            </div>
-          )}
+          {/* §Finance-truth 2026-05: wallet/gift are payment instruments, not
+              discounts. Migration 582 makes `total_paid` include wallet + gift,
+              so rendering them above total here would conflict with the "Paid
+              via" breakdown rendered below total. We surface them only in the
+              payments section so customers see one consistent reconciliation. */}
           {booking.tax_amount > 0 && (
             <div className="flex justify-between">
               <span className="text-gray-600">Tax{booking.tax_rate > 0 ? ` (${booking.tax_rate}%)` : ""}</span>
@@ -693,14 +682,53 @@ export default function BookingDetailPage() {
               </span>
             </div>
           </div>
-          {booking.total_paid > 0 && (
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Amount paid</span>
-              <span className="font-medium text-green-600">
-                {booking.currency} {booking.total_paid.toFixed(2)}
-              </span>
-            </div>
-          )}
+          {/* §Finance-truth 2026-05: payments breakdown — wallet/gift are
+              payment methods, not discounts. We split total_paid into wallet,
+              gift, and card/other so customers see exactly how the booking
+              was settled, never doubling up with the "applied" deduction lines. */}
+          {(() => {
+            const walletPaid = Number(booking.wallet_amount || 0);
+            const giftPaid = Number(booking.gift_card_amount || 0);
+            const totalPaid = Number(booking.total_paid || 0);
+            const otherPaid = Math.max(0, totalPaid - walletPaid - giftPaid);
+            if (totalPaid <= 0 && walletPaid <= 0 && giftPaid <= 0) return null;
+            return (
+              <div className="pt-2">
+                {walletPaid > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Paid (wallet)</span>
+                    <span className="font-medium text-gray-700">
+                      {booking.currency} {walletPaid.toFixed(2)}
+                    </span>
+                  </div>
+                )}
+                {giftPaid > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Paid (gift card)</span>
+                    <span className="font-medium text-gray-700">
+                      {booking.currency} {giftPaid.toFixed(2)}
+                    </span>
+                  </div>
+                )}
+                {otherPaid > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Paid (card / other)</span>
+                    <span className="font-medium text-gray-700">
+                      {booking.currency} {otherPaid.toFixed(2)}
+                    </span>
+                  </div>
+                )}
+                {totalPaid > 0 && (
+                  <div className="flex justify-between text-sm font-semibold border-t mt-1 pt-1">
+                    <span className="text-gray-700">Total paid</span>
+                    <span className="text-green-600">
+                      {booking.currency} {totalPaid.toFixed(2)}
+                    </span>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
           {booking.outstanding_balance !== undefined && booking.outstanding_balance > 0 && (
             <div className="pt-2 border-t">
               <div className="flex justify-between">

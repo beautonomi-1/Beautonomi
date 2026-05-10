@@ -4,11 +4,16 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser, successResponse, errorResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import {
+  getProviderBookingStatusTransitionBlockReason,
+  isValidProviderBookingStatusTransition,
+} from "@/lib/bookings/booking-status-transitions";
 
 /** Booking row shape from bulk select (id, status, version, customer_id, loyalty_points_earned, booking_number; subtotal/currency optional if expanded) */
 type BulkBookingRow = {
   id: string;
   status?: string;
+  payment_status?: string | null;
   version?: number;
   customer_id?: string;
   loyalty_points_earned?: number;
@@ -53,7 +58,7 @@ export async function POST(request: NextRequest) {
     // Verify all bookings belong to provider
     const { data: bookings, error: checkError } = await supabaseAdmin
       .from("bookings")
-      .select("id, status, version, customer_id, loyalty_points_earned, booking_number, subtotal, currency")
+      .select("id, status, payment_status, version, customer_id, loyalty_points_earned, booking_number, subtotal, currency")
       .eq("provider_id", providerId)
       .in("id", booking_ids);
 
@@ -83,6 +88,17 @@ export async function POST(request: NextRequest) {
     for (const booking of bookings) {
       const row = booking as BulkBookingRow;
       try {
+        const targetStatus = action.toLowerCase() === "delete" ? "cancelled" : newStatus;
+        if (!isValidProviderBookingStatusTransition(row.status ?? "", targetStatus)) {
+          results.failed.push({
+            id: booking.id,
+            reason: getProviderBookingStatusTransitionBlockReason(row.status ?? "unknown", targetStatus, {
+              payment_status: row.payment_status,
+            }),
+          });
+          continue;
+        }
+
         if (action.toLowerCase() === "delete") {
           // Soft delete by updating status
           const { error: deleteError } = await supabaseAdmin
@@ -130,82 +146,36 @@ export async function POST(request: NextRequest) {
           }
 
           const customerId = row.customer_id;
-          if (newStatus === "completed" && customerId) {
-            const subtotal = row.subtotal ?? 0;
-            if (subtotal > 0) {
-              try {
-                const { calculateLoyaltyPoints } = await import("@/lib/loyalty/calculate-points");
-                const { data: existingTransaction } = await supabaseAdmin
-                  .from("loyalty_point_transactions")
-                  .select("id")
-                  .eq("reference_id", booking.id)
-                  .eq("reference_type", "booking")
-                  .eq("transaction_type", "earned")
-                  .maybeSingle();
-
-                if (!existingTransaction) {
-                  const currency = row.currency ?? lastResortCurrency;
-                  const pointsEarned = await calculateLoyaltyPoints(subtotal, supabaseAdmin, currency);
-
-                  if (pointsEarned > 0) {
-                    const { error: loyaltyError } = await supabaseAdmin
-                      .from("loyalty_point_transactions")
-                      .insert({
-                        user_id: customerId,
-                        transaction_type: "earned",
-                        points: pointsEarned,
-                        description: `Points earned for completed booking ${row.booking_number ?? booking.id}`,
-                        reference_id: booking.id,
-                        reference_type: "booking",
-                        expires_at: null,
-                      });
-
-                    if (!loyaltyError) {
-                      // Update booking with loyalty_points_earned
-                      await supabaseAdmin
-                        .from("bookings")
-                        .update({ loyalty_points_earned: pointsEarned })
-                        .eq("id", booking.id);
-                        
-                      console.log(`Awarded ${pointsEarned} loyalty points to customer for completed booking ${booking.id}`);
-                    }
-                  }
-                }
-              } catch (loyaltyError) {
-                console.error(`Failed to award loyalty points for booking ${booking.id}:`, loyaltyError);
-              }
-            }
-          } else if (newStatus === "cancelled") {
+          // Completed bookings: loyalty earn is handled by DB trigger on status -> completed.
+          if (newStatus === "cancelled") {
             const loyaltyPointsEarned = row.loyalty_points_earned ?? 0;
             if (loyaltyPointsEarned > 0 && customerId) {
               try {
-                // Check if points were already earned (transaction exists)
-                const { data: existingTransaction } = await supabaseAdmin
-                  .from("loyalty_point_transactions")
-                  .select("id, points")
-                  .eq("reference_id", booking.id)
-                  .eq("reference_type", "booking")
-                  .eq("transaction_type", "earned")
+                const { data: existingClaw } = await supabaseAdmin
+                  .from("loyalty_points_ledger")
+                  .select("id")
+                  .eq("booking_id", booking.id)
+                  .eq("customer_id", customerId)
+                  .contains("metadata", { source: "booking_cancel_earn_clawback" })
                   .maybeSingle();
 
-                if (existingTransaction) {
-                  // Create a reversal transaction to deduct the points
-                  await supabaseAdmin
-                    .from("loyalty_point_transactions")
-                    .insert({
-                      user_id: customerId,
-                      transaction_type: "redeemed",
-                      points: loyaltyPointsEarned,
-                      description: `Points reversed for cancelled booking ${row.booking_number ?? booking.id}`,
-                      reference_id: booking.id,
-                      reference_type: "booking",
-                      expires_at: null,
-                    });
-
-                  console.log(`Reversed ${loyaltyPointsEarned} loyalty points for cancelled booking ${booking.id}`);
+                if (!existingClaw) {
+                  const { error: clawErr } = await (supabaseAdmin.rpc as any)("append_loyalty_ledger_entry", {
+                    p_customer_id: customerId,
+                    p_transaction_type: "adjusted",
+                    p_points_amount: -loyaltyPointsEarned,
+                    p_booking_id: booking.id,
+                    p_description: `Points reversed for cancelled booking ${row.booking_number ?? booking.id}`,
+                    p_metadata: { source: "booking_cancel_earn_clawback" },
+                    p_expires_at: null,
+                  });
+                  if (clawErr) {
+                    console.error(`Loyalty clawback RPC failed for booking ${booking.id}:`, clawErr);
+                  } else {
+                    console.log(`Reversed ${loyaltyPointsEarned} loyalty points for cancelled booking ${booking.id}`);
+                  }
                 }
               } catch (loyaltyError) {
-                // Log but don't fail the cancellation if loyalty reversal fails
                 console.error(`Failed to reverse loyalty points for booking ${booking.id}:`, loyaltyError);
               }
             }

@@ -22,7 +22,7 @@ export function useBookingStatusActions<T extends { id: string; status: string }
   const { execute: patchBookingMutation } = useApiMutation<unknown>("patch");
 
   const applyStatus = useCallback(
-    async (bookingId: string, dbTarget: string): Promise<{ error: string | null }> => {
+    async (bookingId: string, dbTarget: string): Promise<{ error: string | null; errorCode?: string | null }> => {
       setPendingIds((prev) => new Set(prev).add(bookingId));
       const previousBookings = bookings;
       if (bookings) {
@@ -38,7 +38,7 @@ export function useBookingStatusActions<T extends { id: string; status: string }
           if (res.error) {
             if (previousBookings) mutate(previousBookings);
             await refresh();
-            return { error: res.error };
+            return { error: res.error, errorCode: res.errorCode };
           }
           await refresh();
           return { error: null };
@@ -48,7 +48,7 @@ export function useBookingStatusActions<T extends { id: string; status: string }
           if (res.error) {
             if (previousBookings) mutate(previousBookings);
             await refresh();
-            return { error: res.error };
+            return { error: res.error, errorCode: res.errorCode };
           }
           await refresh();
           return { error: null };
@@ -58,7 +58,7 @@ export function useBookingStatusActions<T extends { id: string; status: string }
         if (res.error) {
           if (previousBookings) mutate(previousBookings);
           await refresh();
-          return { error: res.error ?? null };
+          return { error: res.error ?? null, errorCode: res.errorCode };
         }
         await refresh();
         return { error: null };

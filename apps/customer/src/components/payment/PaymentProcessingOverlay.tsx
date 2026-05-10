@@ -5,13 +5,19 @@ import { Colors } from "@/constants/colors";
 export interface PaymentProcessingOverlayProps {
   visible: boolean;
   message?: string;
+  /** Override default bank-confirmation hint (e.g. order placement, opening browser). */
+  hint?: string | null;
 }
 
 /**
  * Full-screen blocking overlay while Paystack / server confirmation runs.
  * Keeps users from assuming the app froze when only the primary button showed a spinner.
  */
-export function PaymentProcessingOverlay({ visible, message = "Processing payment…" }: PaymentProcessingOverlayProps) {
+export function PaymentProcessingOverlay({
+  visible,
+  message = "Processing payment…",
+  hint,
+}: PaymentProcessingOverlayProps) {
   const pulse = useRef(new Animated.Value(0.4)).current;
 
   useEffect(() => {
@@ -34,7 +40,12 @@ export function PaymentProcessingOverlay({ visible, message = "Processing paymen
         </Animated.View>
         <Text style={styles.title}>Please wait</Text>
         <Text style={styles.message}>{message}</Text>
-        <Text style={styles.hint}>Do not close the app — we are confirming with your bank.</Text>
+        <Text style={styles.hint}>
+          {hint === null
+            ? ""
+            : hint ??
+              "Do not close the app — we are confirming with your bank."}
+        </Text>
       </View>
     </Modal>
   );

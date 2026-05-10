@@ -36,12 +36,6 @@ export async function POST(request: NextRequest) {
       (redeemUserRow as { preferred_home_tenant_id?: string | null } | null)?.preferred_home_tenant_id ??
       null;
 
-    // §Customer-audit 2026-04: check the canonical ledger first, then fall
-    // back to the legacy balance function so users whose points come from
-    // either source can redeem correctly. Previously this only consulted
-    // `get_user_loyalty_balance`, so users who had earned via the ledger
-    // (most recent path) saw "Insufficient points" even with a positive
-    // balance shown in the UI.
     let currentBalance = 0;
     try {
       const { data: ledgerBalance } = await supabase.rpc(
@@ -51,13 +45,6 @@ export async function POST(request: NextRequest) {
       currentBalance = Number(ledgerBalance) || 0;
     } catch {
       currentBalance = 0;
-    }
-    if (currentBalance <= 0) {
-      const { data: legacyBalance } = await supabase.rpc(
-        "get_user_loyalty_balance",
-        { p_user_id: user.id },
-      );
-      currentBalance = Math.max(currentBalance, Number(legacyBalance) || 0);
     }
 
     if (validated.points > currentBalance) {
@@ -108,6 +95,30 @@ export async function POST(request: NextRequest) {
       provider_id: null,
     });
 
+    const redemptionDescription =
+      validated.description ||
+      `Redeemed ${validated.points} points for ${redemptionValue.toFixed(2)} ${currency} wallet credit`;
+
+    const redemptionResult = await recordLoyaltyRedemption(adminSupabase, {
+      customerId: user.id,
+      points: validated.points,
+      description: redemptionDescription,
+      metadata: {
+        source: "self_service_wallet_redeem",
+        wallet_credit_amount: redemptionValue,
+        currency,
+      },
+    });
+
+    if (!redemptionResult.recorded) {
+      return handleApiError(
+        new Error(`Loyalty ledger redemption failed: ${redemptionResult.reason ?? "unknown"}`),
+        "Redemption failed. Please try again.",
+        "LOYALTY_LEDGER_FAILED",
+        500
+      );
+    }
+
     const { error: walletError } = await (adminSupabase.rpc as any)("wallet_credit_admin", {
       p_user_id: user.id,
       p_amount: redemptionValue,
@@ -119,6 +130,19 @@ export async function POST(request: NextRequest) {
     });
 
     if (walletError) {
+      await (adminSupabase.rpc as any)("append_loyalty_ledger_entry", {
+        p_customer_id: user.id,
+        p_transaction_type: "adjusted",
+        p_points_amount: validated.points,
+        p_booking_id: null,
+        p_description: `Reversed failed wallet credit for loyalty redemption: ${validated.points} points`,
+        p_metadata: {
+          source: "self_service_wallet_redeem_compensation",
+          failed_wallet_credit_amount: redemptionValue,
+          currency,
+        },
+        p_expires_at: null,
+      });
       console.error("Failed to credit wallet on loyalty redeem:", walletError);
       return handleApiError(
         walletError instanceof Error ? walletError : new Error("Wallet credit failed"),
@@ -127,21 +151,6 @@ export async function POST(request: NextRequest) {
         500
       );
     }
-
-    const redemptionDescription =
-      validated.description ||
-      `Redeemed ${validated.points} points for ${redemptionValue.toFixed(2)} ${currency} wallet credit`;
-
-    await recordLoyaltyRedemption(adminSupabase, {
-      customerId: user.id,
-      points: validated.points,
-      description: redemptionDescription,
-      metadata: {
-        source: "self_service_wallet_redeem",
-        wallet_credit_amount: redemptionValue,
-        currency,
-      },
-    });
 
     return successResponse({
       transaction: null,

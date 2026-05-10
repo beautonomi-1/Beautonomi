@@ -19,35 +19,12 @@ import { syncAppointmentProductOrder } from "@/lib/orders/sync-appointment-produ
 import { notifyReviewReminder } from "@/lib/notifications";
 import { insertNotification } from "@/lib/notifications/insert-notification";
 
-function resolveLoyaltyBaseAmount(booking: {
-  subtotal?: number | null;
-  total_amount?: number | null;
-  tax_amount?: number | null;
-  service_fee_amount?: number | null;
-  tip_amount?: number | null;
-  travel_fee?: number | null;
-  discount_amount?: number | null;
-}): number {
-  const subtotal = Number(booking.subtotal ?? 0);
-  if (subtotal > 0) return subtotal;
-
-  const total = Number(booking.total_amount ?? 0);
-  if (total <= 0) return 0;
-
-  const tax = Number(booking.tax_amount ?? 0);
-  const serviceFee = Number(booking.service_fee_amount ?? 0);
-  const tip = Number(booking.tip_amount ?? 0);
-  const travel = Number(booking.travel_fee ?? 0);
-  const discount = Number(booking.discount_amount ?? 0);
-  return Math.max(0, total - tax - serviceFee - tip - travel + discount);
-}
-
 /**
  * POST /api/provider/bookings/[id]/complete-service
  *
- * Mark service as completed. Awards both provider reward points and
- * customer loyalty points (only on completion), and deducts any product
- * stock tied to the booking.
+ * Mark service as completed. Awards provider reward points; customer loyalty
+ * earn is applied by DB trigger on `bookings.status -> completed`. Deducts
+ * any product stock tied to the booking.
  *
  * Requires `edit_appointments`, matching booking status update permissions.
  */
@@ -122,7 +99,17 @@ export async function POST(
       bookingData.status === "in_progress" ||
       bookingData.current_stage === "service_started";
     if (!validForCompletion) {
-      return errorResponse("Service must be started before completing", "INVALID_STATUS", 400);
+      return errorResponse(
+        "Service must be started before completing.",
+        "INVALID_STATUS_TRANSITION",
+        400,
+        {
+          current_status: bookingData.status,
+          current_stage: bookingData.current_stage,
+          required_status: "in_progress",
+          required_stage: "service_started",
+        },
+      );
     }
 
     // Create booking event
@@ -183,26 +170,8 @@ export async function POST(
         console.error('Failed to check milestones:', err)
       );
 
-      // Award customer loyalty points for completed booking (using loyalty_rules)
-      const customerId = (updatedBooking as any).customer_id;
-      const loyaltyBaseAmount = resolveLoyaltyBaseAmount(updatedBooking as any);
-      if (loyaltyBaseAmount > 0 && customerId) {
-        try {
-          const supabaseAdmin = await getSupabaseAdmin();
-          const { recordLoyaltyEarned } = await import("@/lib/loyalty/record-earned");
-          const currency = (updatedBooking as any).currency || lastResortCurrency;
-          
-          await recordLoyaltyEarned(supabaseAdmin, {
-            customerId,
-            baseAmount: loyaltyBaseAmount,
-            currency,
-            bookingId: id,
-            bookingNumber: (updatedBooking as any).booking_number,
-          });
-        } catch (err) {
-          console.error('Failed to award customer loyalty points on completion:', err);
-        }
-      }
+      // Customer loyalty earn is handled by DB trigger `award_loyalty_points_on_booking_completion`
+      // (migration 585) on `bookings.status -> completed`.
 
       // §Provider-audit 2026-04 (round 2): deduct retail stock for any
       // products attached to this booking. Mirrors the logic in

@@ -215,7 +215,7 @@ function Step1Name({
     <StepShell
       icon={<User className="h-7 w-7" />}
       title="What should we call you?"
-      subtitle="This is how you'll appear to beauty providers"
+      subtitle="If you signed up with phone, email code, or Google, tell us your preferred name here — this is how you'll appear to beauty providers."
     >
       <div className="space-y-4">
         {email && (
@@ -802,7 +802,11 @@ function CustomerOnboardingWizard() {
           // Preferred name: use existing preferred_name, or derive first name from full_name
           const pname = (p?.preferred_name as string | null) || "";
           const fullFirst = ((p?.full_name as string | null) || "").split(" ")[0] || "";
-          if (!draft.preferredName) setPreferredName(pname || fullFirst);
+          const emailLocal =
+            !pname && !fullFirst && user?.email
+              ? user.email.split("@")[0]?.replace(/[.+_-]/g, " ").trim() || ""
+              : "";
+          if (!draft.preferredName) setPreferredName(pname || fullFirst || emailLocal);
           // Avatar
           if (p?.avatar_url && !draft.avatarUrl) setAvatarUrl(p.avatar_url as string);
           // DOB
@@ -838,7 +842,7 @@ function CustomerOnboardingWizard() {
 
     init();
     return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- init once per login; `user` identity may churn without a new id
   }, [user]);
 
   // ── Auto-save draft ──

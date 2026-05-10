@@ -45,6 +45,7 @@ export interface ValidatedBookingData {
   promoDiscountAmount: number;
   promotionId: string | null;
   promoCode: string;
+  /** Sum of line items only (services after package + add-ons + products). Excludes travel, promo, membership, loyalty. */
   subtotal: number;
 
   membershipPlanId: string | null;
@@ -1200,8 +1201,9 @@ export async function validateBooking(
   let promotionId: string | null = null;
   let promoDiscountAmount = 0;
   const promoCode = (validatedDraft.promotion_code || "").toString().trim().toUpperCase();
-  const prePromoSubtotal =
-    Math.max(0, servicesSubtotal - packageDiscountAmount) + addonsSubtotal + productsSubtotal + travelFee;
+  const linesSubtotalBeforePromo =
+    Math.max(0, servicesSubtotal - packageDiscountAmount) + addonsSubtotal + productsSubtotal;
+  const prePromoSubtotal = linesSubtotalBeforePromo + travelFee;
 
   if (promoCode) {
     const providerId = draft.provider_id as string | undefined;
@@ -1286,15 +1288,17 @@ export async function validateBooking(
     }
   }
 
-  const subtotal = Math.max(0, prePromoSubtotal - promoDiscountAmount);
+  const combinedAfterPromo = Math.max(0, prePromoSubtotal - promoDiscountAmount);
+  /** Persisted booking.subtotal: lines only (after catalog package on services), before promo/membership/loyalty. */
+  const subtotal = linesSubtotalBeforePromo;
 
   // ── Minimum mobile booking amount ────────────────────────────────────────
   if (draft.location_type === "at_home" && provider.minimum_mobile_booking_amount) {
     const minimumAmount = Number(provider.minimum_mobile_booking_amount);
-    if (minimumAmount > 0 && subtotal < minimumAmount) {
+    if (minimumAmount > 0 && combinedAfterPromo < minimumAmount) {
       return handleApiError(
         new Error(`Minimum order amount for house calls is ${minimumAmount.toFixed(2)} ${currency}`),
-        `Minimum order amount for house calls is ${minimumAmount.toFixed(2)} ${currency}. Your current order is ${subtotal.toFixed(2)} ${currency}. Please add more services or book at the salon instead.`,
+        `Minimum order amount for house calls is ${minimumAmount.toFixed(2)} ${currency}. Your current order is ${combinedAfterPromo.toFixed(2)} ${currency}. Please add more services or book at the salon instead.`,
         "MINIMUM_ORDER_NOT_MET",
         400
       );
@@ -1316,13 +1320,13 @@ export async function validateBooking(
     supabase,
     customerId,
     providerId: draft.provider_id,
-    subtotal,
+    subtotal: combinedAfterPromo,
   });
   const membershipPlanId = membershipResolved.membershipPlanId;
   const membershipId = membershipResolved.membershipId;
   const membershipDiscountAmount = membershipResolved.membershipDiscountAmount;
 
-  const subtotalAfterMembership = Math.max(0, subtotal - membershipDiscountAmount);
+  const subtotalAfterMembership = Math.max(0, combinedAfterPromo - membershipDiscountAmount);
   const commissionBase = Math.max(0, commissionBaseBeforeMembership - membershipDiscountAmount);
 
   // ── Tips / Tax ───────────────────────────────────────────────────────────
@@ -1361,106 +1365,7 @@ export async function validateBooking(
     taxIncluded = Boolean((provider as any)?.tax_inclusive ?? false);
   }
 
-  // Inclusive tax: tax is already embedded in the service prices — extract it from subtotal.
-  // Formula: tax_amount = subtotal - (subtotal / (1 + rate/100))
-  // Exclusive tax (default): tax_amount = subtotal × rate/100 (added on top).
-  let taxAmount = 0;
-  if (taxRate > 0) {
-    if (taxIncluded) {
-      taxAmount = subtotalAfterMembership - subtotalAfterMembership / (1 + taxRate / 100);
-    } else {
-      taxAmount = percentOf(subtotalAfterMembership, taxRate);
-    }
-  }
-
-  // ── Platform Fee ─────────────────────────────────────────────────────────
-  let serviceFeeAmount = 0;
-  let serviceFeePercentage = 0;
-  let serviceFeeConfigId: string | null = null;
-
-  if ((provider as any)?.customer_fee_config_id) {
-    const { data: feeConfig } = await supabase
-      .from("platform_fee_config")
-      .select("id, fee_type, fee_percentage, fee_fixed_amount, min_booking_amount, max_fee_amount")
-      .eq("id", (provider as any).customer_fee_config_id)
-      .eq("is_active", true)
-      .single();
-
-    if (feeConfig) {
-      serviceFeeConfigId = feeConfig.id;
-      const minBookingAmount = Number(feeConfig.min_booking_amount || 0);
-
-      if (subtotalAfterMembership >= minBookingAmount) {
-        if (feeConfig.fee_type === "percentage") {
-          serviceFeePercentage = Number(feeConfig.fee_percentage || 0);
-          serviceFeeAmount = percentOf(subtotalAfterMembership, serviceFeePercentage);
-          if (feeConfig.max_fee_amount) {
-            serviceFeeAmount = Math.min(serviceFeeAmount, Number(feeConfig.max_fee_amount));
-          }
-        } else if (feeConfig.fee_type === "fixed_amount") {
-          serviceFeeAmount = Number(feeConfig.fee_fixed_amount || 0);
-        }
-      }
-    }
-  }
-
-  // Fallback to platform settings if no provider fee config
-  let showServiceFeeToCustomer = true; // default: show — prevents hidden charges
-  if (serviceFeeAmount === 0 && !serviceFeeConfigId) {
-    const scopedSettings = await fetchScopedSingle<Record<string, unknown>>({
-      supabase: supabaseAdmin,
-      table: "platform_settings",
-      tenantId: provider.tenant_id || marketTenantId || "",
-      select: "settings",
-      apply: (q) => q.eq("is_active", true),
-      orderBy: { column: "updated_at", ascending: false },
-    });
-    const settings = (scopedSettings.data as { settings?: Record<string, unknown> } | null)?.settings;
-    const payoutSettings = (settings as Record<string, any> | undefined)?.payouts || {};
-    // Default to "fixed" (R0) when platform not configured — never default to percentage
-    const serviceFeeType = payoutSettings.platform_service_fee_type || "fixed";
-    const fallbackFeePercentage = payoutSettings.platform_service_fee_percentage ?? 0;
-    const fallbackFeeFixed = payoutSettings.platform_service_fee_fixed ?? 0;
-
-    // Respect the show_service_fee_to_customer admin setting
-    if (payoutSettings.show_service_fee_to_customer === false) {
-      showServiceFeeToCustomer = false;
-    }
-
-    if (serviceFeeType === "percentage") {
-      serviceFeePercentage = fallbackFeePercentage;
-      serviceFeeAmount = percentOf(subtotalAfterMembership, serviceFeePercentage);
-    } else {
-      serviceFeeAmount = fallbackFeeFixed;
-    }
-  } else if (serviceFeeConfigId) {
-    // Provider-specific fee config: always show since it's explicitly configured per provider
-    showServiceFeeToCustomer = true;
-  }
-
-  // For tax-inclusive pricing, subtotalAfterMembership already embeds VAT — do NOT add
-  // taxAmount again (it is the extracted portion for display/reporting only).
-  // For tax-exclusive pricing, tax is on top of the subtotal.
-  const totalAmount = taxIncluded
-    ? sumMoney(subtotalAfterMembership, tipAmount, serviceFeeAmount)
-    : sumMoney(subtotalAfterMembership, tipAmount, taxAmount, serviceFeeAmount);
-
-  // ── Loyalty points ───────────────────────────────────────────────────────
-  let loyaltyPointsEarned = 0;
-  const { data: loyaltyRule } = await supabase
-    .from("loyalty_rules")
-    .select("points_per_currency_unit, currency")
-    .eq("is_active", true)
-    .eq("currency", currency)
-    .order("effective_from", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (loyaltyRule?.points_per_currency_unit) {
-    loyaltyPointsEarned = Math.floor(totalAmount * Number(loyaltyRule.points_per_currency_unit));
-  }
-
-  // ── Loyalty redemption ──────────────────────────────────────────────────
+  // ── Loyalty redemption (before tax & platform fee; matches checkout parity) ──
   let loyaltyDiscountAmount = 0;
   let loyaltyPointsRedeemed = 0;
   const loyaltyPointsRequested = Number(validatedDraft.loyalty_points_used ?? 0);
@@ -1518,14 +1423,10 @@ export async function validateBooking(
       );
     }
 
-    const [ledgerBalanceResult, legacyBalanceResult] = await Promise.all([
-      supabase.rpc("get_customer_available_points" as any, { customer_uuid: customerId }),
-      supabase.rpc("get_user_loyalty_balance" as any, { p_user_id: customerId }),
-    ]);
-    const availableBalance = Math.max(
-      Number(ledgerBalanceResult.data) || 0,
-      Number(legacyBalanceResult.data) || 0,
-    );
+    const { data: ledgerBal } = await supabase.rpc("get_customer_available_points" as any, {
+      customer_uuid: customerId,
+    });
+    const availableBalance = Number(ledgerBal) || 0;
 
     if (pointsToRedeem > availableBalance) {
       return handleApiError(
@@ -1541,7 +1442,99 @@ export async function validateBooking(
     loyaltyDiscountAmount = Math.round(discount * 100) / 100;
   }
 
-  const totalAmountAfterLoyalty = Math.max(0, totalAmount - loyaltyDiscountAmount);
+  const baseAfterLoyalty = Math.max(0, subtotalAfterMembership - loyaltyDiscountAmount);
+
+  let taxAmount = 0;
+  if (taxRate > 0) {
+    if (taxIncluded) {
+      taxAmount = baseAfterLoyalty - baseAfterLoyalty / (1 + taxRate / 100);
+    } else {
+      taxAmount = percentOf(baseAfterLoyalty, taxRate);
+    }
+  }
+
+  // ── Platform Fee ─────────────────────────────────────────────────────────
+  let serviceFeeAmount = 0;
+  let serviceFeePercentage = 0;
+  let serviceFeeConfigId: string | null = null;
+
+  if ((provider as any)?.customer_fee_config_id) {
+    const { data: feeConfig } = await supabase
+      .from("platform_fee_config")
+      .select("id, fee_type, fee_percentage, fee_fixed_amount, min_booking_amount, max_fee_amount")
+      .eq("id", (provider as any).customer_fee_config_id)
+      .eq("is_active", true)
+      .single();
+
+    if (feeConfig) {
+      serviceFeeConfigId = feeConfig.id;
+      const minBookingAmount = Number(feeConfig.min_booking_amount || 0);
+
+      if (baseAfterLoyalty >= minBookingAmount) {
+        if (feeConfig.fee_type === "percentage") {
+          serviceFeePercentage = Number(feeConfig.fee_percentage || 0);
+          serviceFeeAmount = percentOf(baseAfterLoyalty, serviceFeePercentage);
+          if (feeConfig.max_fee_amount) {
+            serviceFeeAmount = Math.min(serviceFeeAmount, Number(feeConfig.max_fee_amount));
+          }
+        } else if (feeConfig.fee_type === "fixed_amount") {
+          serviceFeeAmount = Number(feeConfig.fee_fixed_amount || 0);
+        }
+      }
+    }
+  }
+
+  // Fallback to platform settings if no provider fee config
+  let showServiceFeeToCustomer = true; // default: show — prevents hidden charges
+  if (serviceFeeAmount === 0 && !serviceFeeConfigId) {
+    const scopedSettings = await fetchScopedSingle<Record<string, unknown>>({
+      supabase: supabaseAdmin,
+      table: "platform_settings",
+      tenantId: provider.tenant_id || marketTenantId || "",
+      select: "settings",
+      apply: (q) => q.eq("is_active", true),
+      orderBy: { column: "updated_at", ascending: false },
+    });
+    const settings = (scopedSettings.data as { settings?: Record<string, unknown> } | null)?.settings;
+    const payoutSettings = (settings as Record<string, any> | undefined)?.payouts || {};
+    // Default to "fixed" (R0) when platform not configured — never default to percentage
+    const serviceFeeType = payoutSettings.platform_service_fee_type || "fixed";
+    const fallbackFeePercentage = payoutSettings.platform_service_fee_percentage ?? 0;
+    const fallbackFeeFixed = payoutSettings.platform_service_fee_fixed ?? 0;
+
+    // Respect the show_service_fee_to_customer admin setting
+    if (payoutSettings.show_service_fee_to_customer === false) {
+      showServiceFeeToCustomer = false;
+    }
+
+    if (serviceFeeType === "percentage") {
+      serviceFeePercentage = fallbackFeePercentage;
+      serviceFeeAmount = percentOf(baseAfterLoyalty, serviceFeePercentage);
+    } else {
+      serviceFeeAmount = fallbackFeeFixed;
+    }
+  } else if (serviceFeeConfigId) {
+    // Provider-specific fee config: always show since it's explicitly configured per provider
+    showServiceFeeToCustomer = true;
+  }
+
+  const totalAmount = taxIncluded
+    ? sumMoney(baseAfterLoyalty, tipAmount, serviceFeeAmount)
+    : sumMoney(baseAfterLoyalty, tipAmount, taxAmount, serviceFeeAmount);
+
+  let loyaltyPointsEarned = 0;
+  const { data: loyaltyRule } = await supabase
+    .from("loyalty_rules")
+    .select("points_per_currency_unit, currency")
+    .eq("is_active", true)
+    .eq("currency", currency)
+    .order("effective_from", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (loyaltyRule?.points_per_currency_unit) {
+    loyaltyPointsEarned = Math.floor(totalAmount * Number(loyaltyRule.points_per_currency_unit));
+  }
 
   // ── Appointment status ───────────────────────────────────────────────────
   const { determineAppointmentStatusFromDB } = await import(
@@ -1833,6 +1826,49 @@ export async function validateBooking(
             409
           );
         }
+      }
+
+      const fullStart = new Date(snapshotLines[0].scheduled_start_at);
+      const lastSnapshotLine = snapshotLines[snapshotLines.length - 1];
+      const fullEnd = new Date(lastSnapshotLine.scheduled_end_at);
+      if (groupTotalDurationMinutes != null && groupTotalDurationMinutes > 0) {
+        fullEnd.setTime(Math.max(fullEnd.getTime(), fullStart.getTime() + groupTotalDurationMinutes * 60000));
+      }
+      const rangeStart = new Date(fullStart.getTime() - 24 * 60 * 60 * 1000);
+      const rangeEnd = new Date(fullEnd.getTime() + 24 * 60 * 60 * 1000);
+      const { data: groupBlockers, error: groupBlockersError } = await supabaseAdmin
+        .from("group_bookings")
+        .select("id, staff_id, scheduled_at, duration_minutes, status")
+        .eq("provider_id", draft.provider_id)
+        .gte("scheduled_at", rangeStart.toISOString())
+        .lte("scheduled_at", rangeEnd.toISOString());
+
+      if (groupBlockersError) {
+        throw groupBlockersError;
+      }
+
+      const requestedStaffIds = new Set(
+        snapshotLines.map((line) => line.staff_id).filter((staffId): staffId is string => typeof staffId === "string" && staffId.length > 0),
+      );
+      const conflictsWithGroupBooking = (groupBlockers || []).some((group: any) => {
+        const groupStatus = String(group.status || "").toLowerCase();
+        if (groupStatus === "cancelled" || groupStatus === "canceled" || groupStatus === "no_show") return false;
+        const groupStart = new Date(group.scheduled_at);
+        if (!Number.isFinite(groupStart.getTime())) return false;
+        const groupDuration = Math.max(1, Number(group.duration_minutes || 60));
+        const groupEnd = new Date(groupStart.getTime() + groupDuration * 60000);
+        const staffId = typeof group.staff_id === "string" ? group.staff_id : null;
+        const sameStaffOrProviderWide = !staffId || requestedStaffIds.size === 0 || requestedStaffIds.has(staffId);
+        return sameStaffOrProviderWide && groupStart < fullEnd && groupEnd > fullStart;
+      });
+
+      if (conflictsWithGroupBooking) {
+        return handleApiError(
+          new Error("This time slot is no longer available. Please select another time."),
+          "This time slot is no longer available. Please select another time.",
+          "CONFLICT",
+          409
+        );
       }
 
       const segConflict = await checkBookingSnapshotSegmentConflicts(
@@ -2130,7 +2166,7 @@ export async function validateBooking(
     serviceFeeConfigId,
     showServiceFeeToCustomer,
 
-    totalAmount: totalAmountAfterLoyalty,
+    totalAmount,
     loyaltyPointsEarned,
     loyaltyDiscountAmount,
     loyaltyPointsRedeemed,

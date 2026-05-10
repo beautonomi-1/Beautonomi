@@ -133,6 +133,12 @@ export default function WhatsAppChat({
   const [isAcceptingOffer, setIsAcceptingOffer] = useState(false);
   const [decliningOfferId, setDecliningOfferId] = useState<string | null>(null);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  /** When message attachment JSON lags behind DB (e.g. after payment). */
+  const [offerStatusById, setOfferStatusById] = useState<
+    Record<string, { status: string; booking_id: string | null }>
+  >({});
+  const offerStatusByIdRef = useRef(offerStatusById);
+  offerStatusByIdRef.current = offerStatusById;
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -276,7 +282,7 @@ export default function WhatsAppChat({
     setIsAcceptingOffer(true);
     try {
       const res = await fetcher.post<{ data: { payment_url?: string; charged?: boolean } }>(
-        `/api/me/custom-offers/${offerId}/accept`,
+        `/api/me/custom-offers/${offerId}/pay`,
         { payment_option: paymentOption },
       );
       const url = res.data?.payment_url;
@@ -440,6 +446,7 @@ export default function WhatsAppChat({
     if (conversation) {
       setHasInitiallyScrolled(false);
       setShouldAutoScroll(false);
+      setOfferStatusById({});
       loadMessages();
       let cancelled = false;
       let unsubscribe: (() => void) | null = null;
@@ -461,8 +468,62 @@ export default function WhatsAppChat({
     } else {
       setMessages([]);
       setHasInitiallyScrolled(false);
+      setOfferStatusById({});
     }
   }, [conversation?.id]);
+
+  // Re-fetch custom offer rows when bubbles still show pending / payment_pending (stale attachments).
+  useEffect(() => {
+    if (!messages.length) return;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      const base = isProviderChat ? "/api/provider/custom-offers" : "/api/me/custom-offers";
+      const offerIds = new Set<string>();
+      for (const message of messages) {
+        const first = message.attachments?.[0];
+        if (!first || first.type !== "custom_offer" || !first.offer_id) continue;
+        const st = (first.status || "").toLowerCase();
+        if (st === "pending" || st === "payment_pending" || !st) {
+          const known = offerStatusByIdRef.current[first.offer_id];
+          const knownSt = (known?.status || "").toLowerCase();
+          if (
+            knownSt === "paid" ||
+            knownSt === "declined" ||
+            knownSt === "withdrawn" ||
+            knownSt === "expired"
+          ) {
+            continue;
+          }
+          offerIds.add(first.offer_id);
+        }
+      }
+      if (offerIds.size === 0 || cancelled) return;
+      void (async () => {
+        const patch: Record<string, { status: string; booking_id: string | null }> = {};
+        await Promise.all(
+          [...offerIds].map(async (oid) => {
+            try {
+              const res = await fetcher.get<{ data: { status?: string; booking_id?: string | null } }>(
+                `${base}/${encodeURIComponent(oid)}`,
+              );
+              const row = res.data;
+              if (!row?.status) return;
+              patch[oid] = { status: row.status, booking_id: row.booking_id ?? null };
+            } catch {
+              /* ignore */
+            }
+          }),
+        );
+        if (!cancelled && Object.keys(patch).length > 0) {
+          setOfferStatusById((prev) => ({ ...prev, ...patch }));
+        }
+      })();
+    }, 400);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [messages, isProviderChat]);
 
   const scrollToBottom = (smooth: boolean = true) => {
     // Scroll the messages container, not the entire page
@@ -981,15 +1042,22 @@ export default function WhatsAppChat({
                   message.attachments.length > 0 &&
                   message.attachments[0]?.type === "custom_offer" ? (() => {
                     const att = message.attachments[0];
-                    const isWithdrawn = att.withdrawn || att.status === "withdrawn";
-                    const isDeclined = att.status === "declined";
-                    const isExpired = att.expired || att.status === "expired";
-                    const isPaid = att.status === "paid" || !!att.booking_id;
-                    const isPaymentPending = att.status === "payment_pending";
-                    const isInactive = isWithdrawn || isExpired || isPaid || isDeclined;
+                    const oid = att.offer_id ?? "";
+                    const ov = oid ? offerStatusById[oid] : undefined;
+                    const effStatus = (ov?.status ?? att.status ?? "").toLowerCase();
+                    const effBookingId = ov?.booking_id ?? att.booking_id ?? null;
+                    const isWithdrawn = att.withdrawn || effStatus === "withdrawn";
+                    const isDeclined = effStatus === "declined";
+                    const isExpired = att.expired || effStatus === "expired";
+                    const isFinalizeFailed = effStatus === "finalize_failed";
+                    const isPaid = effStatus === "paid" || !!effBookingId;
+                    const isPaymentPending = effStatus === "payment_pending";
+                    const isInactive =
+                      isWithdrawn || isExpired || isPaid || isDeclined || isFinalizeFailed;
                     const canAccept = !isProviderChat && !isInactive && !isPaymentPending;
                     const canDecline = !isProviderChat && !isInactive && !isPaymentPending && !!att.offer_id;
                     const canRetract = isProviderChat && !isWithdrawn && !isExpired && !isPaid && !isDeclined;
+                    const canViewBooking = Boolean(isPaid && effBookingId);
                     return (
                     <div className="space-y-2">
                       {message.content && (
@@ -999,7 +1067,7 @@ export default function WhatsAppChat({
                       <div
                         className={cn(
                           "relative overflow-hidden rounded-2xl shadow-lg min-w-[260px] max-w-[320px]",
-                          isWithdrawn || isExpired
+                          isWithdrawn || isExpired || isFinalizeFailed
                             ? "opacity-75 bg-gradient-to-br from-slate-400 to-slate-500 border border-slate-400/50"
                             : isPaid
                               ? "bg-gradient-to-br from-emerald-700 via-emerald-800 to-emerald-900 border border-white/10"
@@ -1022,7 +1090,12 @@ export default function WhatsAppChat({
                                 Withdrawn
                               </span>
                             )}
-                            {isDeclined && !isWithdrawn && (
+                            {isFinalizeFailed && (
+                              <span className="text-[10px] font-semibold uppercase tracking-wider bg-rose-500/40 text-rose-50 px-2 py-0.5 rounded-full">
+                                Needs support
+                              </span>
+                            )}
+                            {isDeclined && !isWithdrawn && !isFinalizeFailed && (
                               <span className="text-[10px] font-semibold uppercase tracking-wider bg-rose-400/30 text-rose-100 px-2 py-0.5 rounded-full">
                                 Declined
                               </span>
@@ -1037,7 +1110,12 @@ export default function WhatsAppChat({
                                 Booked ✓
                               </span>
                             )}
-                            {isPaymentPending && (
+                            {isFinalizeFailed && (
+                              <span className="text-[10px] font-semibold uppercase tracking-wider bg-rose-500/40 text-rose-50 px-2 py-0.5 rounded-full">
+                                Needs support
+                              </span>
+                            )}
+                            {isPaymentPending && !isFinalizeFailed && (
                               <span className="text-[10px] font-semibold uppercase tracking-wider bg-yellow-400/30 text-yellow-100 px-2 py-0.5 rounded-full flex items-center gap-1">
                                 <Loader2 className="w-2.5 h-2.5 animate-spin" />
                                 Processing
@@ -1128,18 +1206,23 @@ export default function WhatsAppChat({
                             </div>
                           )}
                           {/* Customer: View Booking when paid */}
-                          {!isProviderChat && isPaid && att.booking_id && (
+                          {!isProviderChat && canViewBooking && (
                             <Button
                               size="sm"
                               className="w-full mt-3 bg-white/20 hover:bg-white/30 text-white text-xs font-medium border border-white/30"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                window.location.href = `/account-settings/bookings/${att.booking_id}`;
+                                window.location.href = `/account-settings/bookings/${effBookingId}`;
                               }}
                             >
                               <ExternalLink className="w-3.5 h-3.5 mr-1.5" />
                               View Booking
                             </Button>
+                          )}
+                          {!isProviderChat && isPaid && !effBookingId && (
+                            <p className="mt-3 text-[11px] text-emerald-100/90">
+                              Payment received — your booking link will appear in a moment.
+                            </p>
                           )}
                           {/* Customer: Accept & Pay + Decline */}
                           {canAccept && att.offer_id && (

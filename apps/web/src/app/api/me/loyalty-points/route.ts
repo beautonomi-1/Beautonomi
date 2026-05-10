@@ -7,13 +7,8 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 /**
  * GET /api/me/loyalty-points
- * Get current user's loyalty points balance and transaction history.
- * Uses ledger (loyalty_points_ledger) when available; falls back to legacy
- * (loyalty_point_transactions + get_user_loyalty_balance) so balance is always correct.
- *
- * TODO: Consolidate to loyalty_points_ledger as sole source of truth.
- * Migration plan: 1) Backfill ledger from legacy transactions 2) Remove legacy reads
- * 3) Drop loyalty_point_transactions table. See SOFT_DELETE_STRATEGY.md.
+ * Balance and history from canonical `loyalty_points_ledger` via
+ * `get_customer_available_points` and `loyalty_points_balance` (view).
  */
 export async function GET(request: NextRequest) {
   try {
@@ -34,8 +29,6 @@ export async function GET(request: NextRequest) {
     let min_redemption_points = 50;
     let recent_transactions: { id: string; type: string; points: number; description: string; created_at: string }[] = [];
 
-    // Try ledger path first (loyalty_points_ledger + config)
-    let ledgerConfigSuccess = false;
     try {
       const { data: config } = await supabase
         .from("loyalty_point_config")
@@ -44,8 +37,6 @@ export async function GET(request: NextRequest) {
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
-
-      if (config) ledgerConfigSuccess = true;
 
       const { data: balanceData } = await supabase
         .rpc("get_customer_available_points", { customer_uuid: user.id });
@@ -57,7 +48,6 @@ export async function GET(request: NextRequest) {
         const parsedMinRedemption = Number(config.min_redemption_points);
         min_redemption_points = Number.isFinite(parsedMinRedemption) ? parsedMinRedemption : 50;
       } else {
-        // Fallback to legacy config
         const { data: legacyRule } = await supabase
           .from("loyalty_rules")
           .select("redemption_rate, currency, min_redemption_points")
@@ -65,7 +55,7 @@ export async function GET(request: NextRequest) {
           .order("effective_from", { ascending: false })
           .limit(1)
           .maybeSingle();
-          
+
         if (legacyRule) {
           redemption_rate = Number(legacyRule.redemption_rate) || 100;
           currency = legacyRule.currency || lastResortCurrency;
@@ -96,133 +86,50 @@ export async function GET(request: NextRequest) {
       if (!transactionsError && transactions?.length) {
         recent_transactions = transactions.map((t: any) => {
           const raw = t.transaction_type;
-          const type = raw === "earned" || raw === "adjusted" || raw === "bonus" ? "earn" : raw === "redeemed" ? "redeem" : "expire";
+          const pts = Number(t.points_amount) || 0;
+          const type =
+            raw === "expired" ? "expire" : pts < 0 ? "redeem" : "earn";
           return {
             id: t.id,
             type,
-            points: Number(t.points_amount) || 0,
+            points: pts,
             description: t.description || "",
             created_at: t.created_at,
           };
         });
       }
     } catch {
-      // Ledger/config not available or error; fall through to legacy
+      // Keep defaults if ledger unavailable
     }
 
     let next_milestone: any = null;
     let available_milestones: any[] = [];
 
-    // Fallback to legacy (loyalty_point_transactions) when ledger balance is 0 or ledger failed
-    if (available_balance === 0 && recent_transactions.length === 0) {
-      try {
-        const { data: legacyBalance, error: legacyBalanceError } = await supabase.rpc("get_user_loyalty_balance", { p_user_id: user.id });
-        if (legacyBalanceError) {
-          // Manual fallback if RPC fails
-          const { data: txs } = await supabase
-            .from("loyalty_point_transactions")
-            .select("points, transaction_type, expires_at")
-            .eq("user_id", user.id);
-          if (txs) {
-            available_balance = txs.reduce((sum, t) => {
-              const isExpired = t.expires_at && new Date(t.expires_at) < new Date();
-              if (isExpired) return sum;
-              if (t.transaction_type === "earned" || t.transaction_type === "adjusted") return sum + Number(t.points || 0);
-              if (t.transaction_type === "redeemed" || t.transaction_type === "expired") return sum - Number(t.points || 0);
-              return sum;
-            }, 0);
-            available_balance = Math.max(available_balance, 0);
-          }
-        } else {
-          available_balance = Number(legacyBalance) || 0;
+    try {
+      const { data: allMilestones } = await supabase
+        .from("loyalty_milestones")
+        .select("id, name, description, points_threshold, reward_type, reward_amount, reward_currency")
+        .eq("is_active", true)
+        .order("points_threshold", { ascending: true });
+
+      if (allMilestones?.length) {
+        const lifetime = total_earned || available_balance;
+        available_milestones = allMilestones.map((m: any) => ({
+          ...m,
+          points_required: m.points_threshold,
+          reward_description: m.description,
+        }));
+        next_milestone = allMilestones.find((m: any) => (m.points_threshold || 0) > lifetime) ?? null;
+        if (next_milestone) {
+          next_milestone = {
+            ...next_milestone,
+            points_required: next_milestone.points_threshold,
+            reward_description: next_milestone.description,
+          };
         }
-
-        const { data: activeRule } = await supabase
-          .from("loyalty_rules")
-          .select("redemption_rate, currency")
-          .eq("is_active", true)
-          .order("effective_from", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (activeRule) {
-          redemption_rate = Number(activeRule.redemption_rate) || 100;
-          currency = activeRule.currency || lastResortCurrency;
-        }
-
-        const { data: history } = await supabase
-          .from("loyalty_point_transactions")
-          .select("id, points, transaction_type, description, created_at")
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false })
-          .range(offset, offset + limit - 1);
-
-        if (history?.length) {
-          total_earned = history
-            .filter((t: any) => t.transaction_type === "earned" || t.transaction_type === "adjusted")
-            .reduce((s: number, t: any) => s + Number(t.points || 0), 0);
-          total_redeemed = history
-            .filter((t: any) => t.transaction_type === "redeemed")
-            .reduce((s: number, t: any) => s + Number(t.points || 0), 0);
-          recent_transactions = history.map((t: any) => {
-            const raw = t.transaction_type;
-            const type = raw === "earned" || raw === "adjusted" ? "earn" : raw === "redeemed" ? "redeem" : "expire";
-            return {
-              id: t.id,
-              type,
-              points: Number(t.points) || 0,
-              description: t.description || "",
-              created_at: t.created_at,
-            };
-          });
-        }
-
-        const { data: allMilestones } = await supabase
-          .from("loyalty_milestones")
-          .select("id, name, description, points_threshold, reward_type, reward_amount, reward_currency")
-          .eq("is_active", true)
-          .order("points_threshold", { ascending: true });
-
-        if (allMilestones?.length) {
-          available_milestones = allMilestones.map((m: any) => ({
-            ...m,
-            points_required: m.points_threshold,
-            reward_description: m.description,
-          }));
-          next_milestone = allMilestones.find((m: any) => (m.points_threshold || 0) > total_earned) ?? null;
-          if (next_milestone) {
-            next_milestone = { ...next_milestone, points_required: next_milestone.points_threshold, reward_description: next_milestone.description };
-          }
-        }
-      } catch {
-        // Legacy also failed; keep zeros and defaults
       }
-    }
-
-    // Load milestones for ledger path when not yet set
-    if (available_milestones.length === 0) {
-      try {
-        const { data: allMilestones } = await supabase
-          .from("loyalty_milestones")
-          .select("id, name, description, points_threshold, reward_type, reward_amount, reward_currency")
-          .eq("is_active", true)
-          .order("points_threshold", { ascending: true });
-
-        if (allMilestones?.length) {
-          const lifetime = total_earned || available_balance;
-          available_milestones = allMilestones.map((m: any) => ({
-            ...m,
-            points_required: m.points_threshold,
-            reward_description: m.description,
-          }));
-          next_milestone = allMilestones.find((m: any) => (m.points_threshold || 0) > lifetime) ?? null;
-          if (next_milestone) {
-            next_milestone = { ...next_milestone, points_required: next_milestone.points_threshold, reward_description: next_milestone.description };
-          }
-        }
-      } catch {
-        // ignore
-      }
+    } catch {
+      // ignore
     }
 
     const currencySymbol = currency === "ZAR" ? "R" : currency;
@@ -254,7 +161,6 @@ export async function GET(request: NextRequest) {
       },
       minimum_redemption: min_redemption_points,
       recent_transactions: recent_transactions,
-      history: recent_transactions,
       lifetime_points: total_earned,
       earning_rate_description: "Earn points with every booking",
       next_milestone: next_milestone,

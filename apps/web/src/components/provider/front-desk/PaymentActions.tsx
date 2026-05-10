@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CreditCard, Link2 } from "lucide-react";
 import { sendPaystackLink, createYocoTerminalPaymentAndMarkPaid } from "@/lib/front-desk/actions";
+import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
 
 interface PaymentActionsProps {
   bookingId: string;
@@ -21,6 +22,7 @@ interface PaymentActionsProps {
   totalRefunded?: number;
   walletAmount?: number;
   giftCardAmount?: number;
+  unpaidAdditionalCharges?: number;
   paymentStatus?: string;
   currency: string;
   onComplete: () => void;
@@ -35,13 +37,21 @@ export function PaymentActions({
   totalRefunded = 0,
   walletAmount = 0,
   giftCardAmount = 0,
+  unpaidAdditionalCharges = 0,
   paymentStatus,
   currency,
   onComplete,
   variant = "default",
 }: PaymentActionsProps) {
-  const effectivePaid = Math.max(0, totalPaid - totalRefunded);
-  const remaining = paymentStatus === "refunded" ? 0 : Math.max(0, totalAmount - effectivePaid - walletAmount - giftCardAmount);
+  const remaining = computeBookingOutstandingDisplay({
+    totalAmount,
+    totalPaid,
+    totalRefunded,
+    walletAmount,
+    giftCardAmount,
+    unpaidAdditionalCharges,
+    paymentStatus,
+  });
   const [yocoOpen, setYocoOpen] = useState(false);
   const [yocoAmount, setYocoAmount] = useState(String(remaining));
   const [isSubmitting, setIsSubmitting] = useState(false);

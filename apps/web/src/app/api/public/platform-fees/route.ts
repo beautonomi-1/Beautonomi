@@ -46,7 +46,7 @@ export async function GET(_request: NextRequest) {
       if (provider?.customer_fee_config_id) {
         const { data: feeConfig } = await supabase
           .from('platform_fee_config')
-          .select('fee_type, fee_percentage, fee_fixed_amount, applies_to, is_active')
+          .select('fee_type, fee_percentage, fee_fixed_amount, min_booking_amount, max_fee_amount, applies_to, is_active')
           .eq('id', provider.customer_fee_config_id)
           .eq('is_active', true)
           .maybeSingle();
@@ -60,6 +60,8 @@ export async function GET(_request: NextRequest) {
               platform_service_fee_type: isPercentage ? 'percentage' : 'fixed',
               platform_service_fee_percentage: isPercentage ? Number(feeConfig.fee_percentage || 0) : 0,
               platform_service_fee_fixed: isPercentage ? 0 : Number(feeConfig.fee_fixed_amount || 0),
+              min_booking_amount: Number(feeConfig.min_booking_amount || 0),
+              max_fee_amount: feeConfig.max_fee_amount == null ? null : Number(feeConfig.max_fee_amount || 0),
               show_service_fee_to_customer: showToCustomer,
               cash_enabled_on_platform: paymentTypes.cash === true,
             },

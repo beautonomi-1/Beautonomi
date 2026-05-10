@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef, memo } from "react";
 import {
   View,
   Text,
@@ -9,8 +9,11 @@ import {
   ActivityIndicator,
   useWindowDimensions,
   Switch,
+  FlatList,
+  type ListRenderItemInfo,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";
@@ -39,8 +42,9 @@ import { StaticMapImage } from "@/components/ui/StaticMapImage";
 import { reverseGeocodeCoordinates } from "@/lib/reverse-geocode-address";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { useDefaultPhoneDial } from "@/hooks/useDefaultPhoneDial";
+import { Colors } from "@/constants/colors";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { calculateBookingTotals, safeNum } from "@beautonomi/utils";
+import { calculateBookingTotals, percentOf, safeNum } from "@beautonomi/utils";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -340,11 +344,112 @@ interface AvailableSlotsApiResponse {
   provider_timezone?: string | null;
 }
 
+const SCHEDULING_DURATION_HINT =
+  "Pick a service first so we can show accurate times based on duration.";
+
+type NewBookingDateChipProps = {
+  date: Date;
+  selectedDate: Date;
+  today: Date;
+  minWidth: number;
+  onSelectDate: (d: Date) => void;
+};
+
+const NewBookingDateChip = memo(function NewBookingDateChip({
+  date: d,
+  selectedDate,
+  today,
+  minWidth,
+  onSelectDate,
+}: NewBookingDateChipProps) {
+  const isActive = isSameDay(d, selectedDate);
+  const isToday = isSameDay(d, today);
+  return (
+    <TouchableOpacity
+      style={[twStyle(`items-center rounded-2xl px-3 py-2.5 ${
+        isActive ? "bg-gray-900" : isToday ? "border border-emerald-200 bg-emerald-50" : "border border-gray-200 bg-white"
+      }`), { minWidth, marginRight: 8 }]}
+      onPress={() => onSelectDate(d)}
+      accessibilityRole="radio"
+      accessibilityState={{ checked: isActive }}
+      accessibilityLabel={format(d, "EEEE, MMMM d")}
+    >
+      <Text
+        style={twStyle(`text-[10px] font-semibold ${isActive ? "text-gray-300" : isToday ? "text-emerald-700" : "text-gray-500"}`)}
+      >
+        {isToday ? "Today" : format(d, "EEE")}
+      </Text>
+      <Text style={twStyle(`text-base font-bold ${isActive ? "text-white" : "text-gray-900"}`)}>{format(d, "d")}</Text>
+      <Text style={twStyle(`text-[10px] ${isActive ? "text-gray-300" : isToday ? "text-emerald-700" : "text-gray-500"}`)}>
+        {format(d, "MMM")}
+      </Text>
+    </TouchableOpacity>
+  );
+});
+
+type NewBookingTimeSlotChipProps = {
+  row: AvailableSlotsApiRow;
+  isActive: boolean;
+  chipWidth: number;
+  /** Column index in the 3-column grid (controls horizontal gutter). */
+  columnIndex: number;
+  onSelect: (time: string) => void;
+};
+
+const NewBookingTimeSlotChip = memo(function NewBookingTimeSlotChip({
+  row,
+  isActive,
+  chipWidth,
+  columnIndex,
+  onSelect,
+}: NewBookingTimeSlotChipProps) {
+  const unavailable = !row.available;
+  const baseChip = unavailable
+    ? "border border-red-200 bg-red-50"
+    : isActive
+      ? "border border-emerald-700 bg-emerald-600"
+      : "border border-emerald-200 bg-emerald-50";
+  return (
+    <TouchableOpacity
+      disabled={unavailable}
+      style={[
+        twStyle(`rounded-lg px-2 py-2 ${baseChip}`),
+        { width: chipWidth, marginBottom: 8, marginRight: columnIndex % 3 === 2 ? 0 : 8 },
+      ]}
+      onPress={() => {
+        if (unavailable) return;
+        onSelect(row.time);
+      }}
+      accessibilityRole="radio"
+      accessibilityState={{ checked: isActive, disabled: unavailable }}
+      accessibilityLabel={
+        unavailable ? `${row.time}, unavailable${row.reason ? `, ${row.reason}` : ""}` : `Time ${row.time}`
+      }
+    >
+      <Text
+        style={twStyle(
+          `text-center text-sm font-medium ${
+            unavailable ? "text-red-300 line-through" : isActive ? "text-white" : "text-emerald-800"
+          }`,
+        )}
+      >
+        {row.time}
+      </Text>
+      {unavailable && row.reason ? (
+        <Text style={twStyle("mt-0.5 text-center text-[10px] text-red-400")} numberOfLines={2}>
+          {row.reason}
+        </Text>
+      ) : null}
+    </TouchableOpacity>
+  );
+});
+
 /** Default mobile travel buffer minutes — keep aligned with `HOUSE_CALL_CONFIG.DEFAULT_TRAVEL_BUFFER_MINUTES` in apps/web. */
 const DEFAULT_MOBILE_TRAVEL_BUFFER_MINUTES = 30;
 
 export default function NewBookingScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{
     date?: string;
     time?: string;
@@ -386,7 +491,7 @@ export default function NewBookingScreen() {
   const teamUrl = selectedLocationId
     ? `/api/provider/team?location_id=${encodeURIComponent(selectedLocationId)}`
     : "/api/provider/team";
-  const { data: staffList, error: staffError } = useApi<StaffMember[]>(teamUrl);
+  const { data: staffList, error: staffError, refresh: refreshStaffList } = useApi<StaffMember[]>(teamUrl);
   const { data: paymentSettings } = useApi<PaymentSettings>("/api/provider/settings/payments");
   const { data: referralSourcesRaw } = useApi<{ id: string; name: string; is_active?: boolean }[]>("/api/provider/referral-sources");
   const referralSources = useMemo(
@@ -526,6 +631,8 @@ export default function NewBookingScreen() {
   const [travelFeePreviewLoading, setTravelFeePreviewLoading] = useState(false);
   /** From POST /api/location/validate — drives availability `travel_buffer` parity with customer booking. */
   const [travelPreviewMinutes, setTravelPreviewMinutes] = useState<number | null>(null);
+  /** From POST /api/location/validate — straight-line or driving distance to base. */
+  const [travelPreviewDistanceKm, setTravelPreviewDistanceKm] = useState<number | null>(null);
   const [tipAmount, setTipAmount] = useState("");
   const [notes, setNotes] = useState("");
   // §Provider-audit 2026-04: allow providers to suppress customer
@@ -570,6 +677,7 @@ export default function NewBookingScreen() {
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [conflictWarning, setConflictWarning] = useState<string | null>(null);
   const [, setCheckingAvailability] = useState(false);
+  const dateOptionsFlatListRef = useRef<FlatList<Date>>(null);
 
   const homeAddressCountryFallback = useMemo(
     () => addressCountry.trim() || bundle?.meta?.tenant_region?.name?.trim() || "South Africa",
@@ -593,12 +701,21 @@ export default function NewBookingScreen() {
   useEffect(() => {
     if (locationType !== "at_home") {
       setTravelPreviewMinutes(null);
+      setTravelPreviewDistanceKm(null);
       return;
     }
     const pid = providerProfile?.id;
-    if (!pid) return;
-    if (!addressLine1.trim() || !addressCity.trim()) return;
-    if (addressLatitude == null || addressLongitude == null) return;
+    if (
+      !pid ||
+      !addressLine1.trim() ||
+      !addressCity.trim() ||
+      addressLatitude == null ||
+      addressLongitude == null
+    ) {
+      setTravelPreviewMinutes(null);
+      setTravelPreviewDistanceKm(null);
+      return;
+    }
 
     let cancelled = false;
     const timer = setTimeout(() => {
@@ -613,6 +730,7 @@ export default function NewBookingScreen() {
             valid?: boolean;
             travelFee?: number;
             travelTimeMinutes?: number;
+            distanceKm?: number;
           }>("/api/location/validate", {
             address: addressString,
             provider_id: pid,
@@ -622,6 +740,7 @@ export default function NewBookingScreen() {
           if (cancelled) return;
           if (res.error) {
             setTravelPreviewMinutes(null);
+            setTravelPreviewDistanceKm(null);
             return;
           }
           const d = res.data;
@@ -632,17 +751,27 @@ export default function NewBookingScreen() {
                 ? d.travelTimeMinutes
                 : null,
             );
+            const dk = d.distanceKm;
+            setTravelPreviewDistanceKm(
+              typeof dk === "number" && Number.isFinite(dk) ? dk : null,
+            );
             if (!travelFeeUserLockedRef.current) {
               setTravelFee(fee === 0 ? "" : fee.toFixed(2));
             }
           } else {
             setTravelPreviewMinutes(null);
+            setTravelPreviewDistanceKm(
+              typeof d?.distanceKm === "number" && Number.isFinite(d.distanceKm) ? d.distanceKm : null,
+            );
             if (!travelFeeUserLockedRef.current) {
               setTravelFee("");
             }
           }
         } catch {
-          if (!cancelled) setTravelPreviewMinutes(null);
+          if (!cancelled) {
+            setTravelPreviewMinutes(null);
+            setTravelPreviewDistanceKm(null);
+          }
         } finally {
           if (!cancelled) setTravelFeePreviewLoading(false);
         }
@@ -1026,7 +1155,9 @@ export default function NewBookingScreen() {
 
     const membershipDiscountAmt = safeNum(membershipPricingPreview?.membershipDiscountAmount);
     const baseDiscountAmt = Math.max(manualDiscount, promoDiscount, packageDiscount);
-    const discountAmt = baseDiscountAmt + membershipDiscountAmt;
+    /** Non-membership discounts only; membership is sent separately to avoid double-counting on the server. */
+    const discountAmt = baseDiscountAmt;
+    const discountAmtForTotals = baseDiscountAmt + membershipDiscountAmt;
 
     const taxRatePercent = safeNum(paymentSettings?.taxRatePercent);
     const taxRate = taxRatePercent / 100;
@@ -1035,7 +1166,7 @@ export default function NewBookingScreen() {
     const tipNum = safeNum(tipAmount);
     const pricing = calculateBookingTotals({
       subtotal,
-      discountAmount: discountAmt,
+      discountAmount: discountAmtForTotals,
       taxRate,
       taxInclusive,
       travelFee: travelFeeNum,
@@ -1185,6 +1316,26 @@ export default function NewBookingScreen() {
     }
     return [];
   }, [availableSlotsData]);
+
+  const needsServiceFirstForScheduling =
+    selectedServices.length === 0 && selectedProducts.length === 0;
+
+  const dateChipMinWidth = isTablet ? 76 : 64;
+  const dateChipStride = dateChipMinWidth + 8;
+
+  const dateInitialScrollIndex = useMemo(() => {
+    const i = dateOptions.findIndex((d) => isSameDay(d, selectedDate));
+    const idx = i >= 0 ? i : 0;
+    return Math.min(idx, Math.max(0, dateOptions.length - 1));
+  }, [dateOptions, selectedDate]);
+
+  const handleSelectTimeSlot = useCallback((time: string) => {
+    setSelectedTime(time);
+    setShowTimePicker(false);
+  }, []);
+
+  const timeSlotGridOuterWidth = Math.min(windowWidth - 32, 400);
+  const timeSlotChipWidth = Math.max(64, Math.floor((timeSlotGridOuterWidth - 16) / 3));
 
   const apiAvailableTimes = useMemo(() => {
     const fromGrid = availableSlotsData?.slot_grid?.filter((s) => s.available).map((s) => s.time);
@@ -1474,9 +1625,9 @@ export default function NewBookingScreen() {
       const phoneErr = validateE164Phone(newClientPhoneE164);
       if (phoneErr) return phoneErr;
     }
+    if (selectedServices.length === 0 && selectedProducts.length === 0) return "Please select at least one service or product";
     if (!selectedDate) return "Please select a date";
     if (!selectedTime) return "Please select a time";
-    if (selectedServices.length === 0 && selectedProducts.length === 0) return "Please select at least one service or product";
     if (isRecurring) {
       if (!selectedClient?.customer_id) return "Repeating visits must use a saved client. Select the client from search results first.";
       if (selectedServices.length === 0) return "Repeating visits need at least one service.";
@@ -1624,6 +1775,23 @@ export default function NewBookingScreen() {
         ...(s.customization ? { customization: s.customization } : {}),
       };
     });
+    const selectedAddOnPayloads = selectedServices.flatMap((s) => {
+      const svc = services?.find((sv) => sv.id === s.serviceId);
+      return s.addOnIds
+        .map((aoId) => {
+          const ao = svc?.add_ons?.find((a) => a.id === aoId);
+          if (!ao) return null;
+          return {
+            addon_id: ao.id,
+            service_id: s.serviceId,
+            name: ao.name,
+            quantity: 1,
+            price: safeNum(ao.price),
+            currency: svc?.currency || getTenantDefaultCurrency(),
+          };
+        })
+        .filter((ao): ao is NonNullable<typeof ao> => Boolean(ao));
+    });
     const selectedProductPayloads = selectedProducts.map((p) => {
       const unit = safeNum(p.unitPrice);
       const qty = Math.max(1, Math.floor(safeNum(p.quantity)) || 1);
@@ -1636,17 +1804,23 @@ export default function NewBookingScreen() {
         productVariantId: p.productVariantId || null,
       };
     });
+    const winManual = summary.baseDiscountAmt === summary.manualDiscount;
+    const winPromo = summary.baseDiscountAmt === summary.promoDiscount;
+    const winPackage = summary.baseDiscountAmt === summary.packageDiscount;
 
     const payload: Record<string, unknown> = {
       ...clientPayload,
       scheduled_at: scheduledAt,
       services: selectedServicePayloads,
+      addons: selectedAddOnPayloads,
       products: selectedProductPayloads,
       location_type: locationType,
       location_id: locationType === "at_salon" ? selectedLocationId : undefined,
       special_requests: notes.trim() || undefined,
       subtotal: summary.subtotal,
-      discount_amount: summary.discountAmt || 0,
+      discount_amount: winManual || winPackage ? (winManual ? summary.manualDiscount : summary.packageDiscount) : 0,
+      membership_discount_amount: summary.membershipDiscountAmt || 0,
+      promotion_discount_amount: winPromo ? summary.promoDiscount : 0,
       discount_code: promoApplied?.code || undefined,
       discount_reason: promoApplied
         ? `Promo: ${promoApplied.code}`
@@ -1665,7 +1839,7 @@ export default function NewBookingScreen() {
       ...(paymentOption === "deposit" ? {
         deposit_required: true,
         deposit_percentage: depositPercentage,
-        deposit_amount: Math.ceil((summary.total * depositPercentage) / 100),
+        deposit_amount: percentOf(summary.total, depositPercentage),
       } : {}),
       send_notification: sendNotification,
       ...(selectedPackageId ? { package_id: selectedPackageId } : {}),
@@ -1709,6 +1883,16 @@ export default function NewBookingScreen() {
             staff_id: s.staff_id,
             duration_minutes: s.duration_minutes,
           })),
+          ...selectedAddOnPayloads.map((ao) => ({
+            id: ao.addon_id,
+            type: "addon" as const,
+            name: ao.name,
+            quantity: ao.quantity,
+            unit_price: ao.price,
+            total: ao.price * ao.quantity,
+            addon_id: ao.addon_id,
+            service_id: ao.service_id,
+          })),
           ...selectedProductPayloads.map((p) => ({
             id: p.productId,
             type: "product" as const,
@@ -1725,9 +1909,6 @@ export default function NewBookingScreen() {
         if (occurrenceCount && Number.isFinite(occurrenceCount) && occurrenceCount > 1) {
           recurrenceParts.push(`COUNT=${Math.floor(occurrenceCount)}`);
         }
-        const winManual = summary.baseDiscountAmt === summary.manualDiscount;
-        const winPromo = summary.baseDiscountAmt === summary.promoDiscount;
-        const winPackage = summary.baseDiscountAmt === summary.packageDiscount;
         const recurringBody: Record<string, unknown> = {
           customer_id: selectedClient.customer_id,
           service_id: selectedServicePayloads[0]?.service_id,
@@ -1747,7 +1928,9 @@ export default function NewBookingScreen() {
           metadata: {
             duration_minutes: summary.totalMinutes,
             price: summary.total,
+            booking_source: isWalkIn ? "walk_in" : "provider",
             cart_items: cartItems,
+            addons: selectedAddOnPayloads,
             services: selectedServicePayloads.map((s) => ({
               offering_id: s.service_id,
               staff_id: s.staff_id,
@@ -1871,7 +2054,7 @@ export default function NewBookingScreen() {
     const cardChargeTotal =
       paymentMethod === "yoco_pos"
         ? paymentOption === "deposit"
-          ? Math.ceil((summary.total * depositPercentage) / 100)
+          ? percentOf(summary.total, depositPercentage)
           : summary.total
         : 0;
     const goYoco =
@@ -1904,11 +2087,12 @@ export default function NewBookingScreen() {
   /* ---------------------------------------------------------------- */
 
   return (
-      <ScreenContainer>
+    <View style={{ flex: 1 }}>
+      <ScreenContainer onRefresh={() => void refreshStaffList()}>
         <ScreenHeader title={isWalkIn ? "Walk-in Booking" : "New Booking"} showBack />
 
         {staffError && !staffList ? (
-          <View style={twStyle("mx-4 mb-2 rounded-xl border border-amber-200 bg-amber-50 p-3")}>
+          <View style={twStyle("mb-2 rounded-2xl border border-amber-200 bg-amber-50 p-3")}>
             <Text style={twStyle("text-sm text-amber-900")}>
               Could not load team list. Pull to refresh the screen or try again — staff assignment may be unavailable.
             </Text>
@@ -1921,21 +2105,21 @@ export default function NewBookingScreen() {
         {pendingDraft && !showConfirmation ? (
           <View
             style={twStyle(
-              "mx-4 mb-2 rounded-xl border border-indigo-200 bg-indigo-50 p-3",
+              "mb-2 rounded-3xl border border-primary/20 bg-primary/10 p-3",
             )}
           >
             <View style={twStyle("flex-row items-start")}>
               <Ionicons
                 name="document-text-outline"
                 size={18}
-                color="#4f46e5"
+                color={Colors.primary}
                 style={{ marginTop: 2, marginRight: 8 }}
               />
               <View style={twStyle("flex-1")}>
-                <Text style={twStyle("text-sm font-semibold text-indigo-900")}>
+                <Text style={twStyle("text-sm font-semibold text-primary")}>
                   Resume previous draft?
                 </Text>
-                <Text style={twStyle("mt-0.5 text-xs text-indigo-700")}>
+                <Text style={twStyle("mt-0.5 text-xs text-gray-700")}>
                   {(() => {
                     const count = (pendingDraft.selectedServices ?? []).length;
                     const parts: string[] = [];
@@ -1959,7 +2143,7 @@ export default function NewBookingScreen() {
               <TouchableOpacity
                 onPress={applyPendingDraft}
                 style={twStyle(
-                  "mr-2 flex-1 flex-row items-center justify-center rounded-lg bg-indigo-600 py-2",
+                  "mr-2 flex-1 flex-row items-center justify-center rounded-2xl bg-primary py-2",
                 )}
                 accessibilityRole="button"
                 accessibilityLabel="Resume draft"
@@ -1970,13 +2154,13 @@ export default function NewBookingScreen() {
               <TouchableOpacity
                 onPress={discardPendingDraft}
                 style={twStyle(
-                  "flex-1 flex-row items-center justify-center rounded-lg border border-indigo-200 bg-white py-2",
+                  "flex-1 flex-row items-center justify-center rounded-2xl border border-primary/20 bg-white py-2",
                 )}
                 accessibilityRole="button"
                 accessibilityLabel="Discard draft"
               >
-                <Ionicons name="trash-outline" size={14} color="#4338ca" />
-                <Text style={twStyle("ml-1.5 text-xs font-semibold text-indigo-700")}>Discard</Text>
+                <Ionicons name="trash-outline" size={14} color={Colors.primary} />
+                <Text style={twStyle("ml-1.5 text-xs font-semibold text-primary")}>Discard</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -2062,7 +2246,7 @@ export default function NewBookingScreen() {
                   <View>
                     {selectedClient ? (
                       <View>
-                        <View style={twStyle("flex-row items-center rounded-xl border border-indigo-200 bg-indigo-50 p-3")}>
+                        <View style={twStyle("flex-row items-center rounded-3xl border border-primary/20 bg-primary/10 p-3")}>
                           <Avatar name={selectedClient.full_name} imageUrl={selectedClient.avatar_url} size="sm" />
                           <View style={twStyle("ml-2 flex-1")}>
                             <Text style={twStyle("text-sm font-medium text-gray-900")}>
@@ -2074,7 +2258,7 @@ export default function NewBookingScreen() {
                             onPress={() => setSelectedClient(null)}
                             accessibilityLabel="Remove selected client"
                           >
-                            <Ionicons name="close-circle" size={20} color="#6366f1" />
+                            <Ionicons name="close-circle" size={20} color={Colors.primary} />
                           </TouchableOpacity>
                         </View>
                         {/* §Provider-audit 2026-05: visible reminder that the
@@ -2229,50 +2413,272 @@ export default function NewBookingScreen() {
                 )}
               </View>
 
+              {/* -------- SERVICES -------- */}
+              <SectionLabel label="Services" required />
+              {servicesLoading ? (
+                <LoadingState fullScreen={false} message="Loading services..." />
+              ) : servicesError && !services ? (
+                <View style={twStyle("mb-4 rounded-xl bg-red-50 p-4")}>
+                  <Text style={twStyle("text-sm text-red-600")}>Failed to load services. Pull down to refresh and try again.</Text>
+                </View>
+              ) : (
+                <View style={twStyle("mb-4")}>
+                  {serviceCategoryOptions.length > 1 && (
+                    <View style={twStyle("mb-3 rounded-2xl border border-gray-100 bg-gray-50 p-2")}>
+                      <Text style={twStyle("mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-500")}>
+                        Filter by category
+                      </Text>
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                        <TouchableOpacity
+                          style={[
+                            twStyle(`mr-2 rounded-full border px-3 py-2 ${
+                              selectedServiceCategory === "all" ? "border-gray-900 bg-gray-900" : "border-gray-200 bg-white"
+                            }`),
+                          ]}
+                          onPress={() => setSelectedServiceCategory("all")}
+                          accessibilityRole="button"
+                          accessibilityLabel="Show all services"
+                        >
+                          <Text style={twStyle(`text-xs font-semibold ${selectedServiceCategory === "all" ? "text-white" : "text-gray-700"}`)}>
+                            All
+                          </Text>
+                        </TouchableOpacity>
+                        {serviceCategoryOptions.map((category) => {
+                          const active = selectedServiceCategory === category.id;
+                          return (
+                            <TouchableOpacity
+                              key={category.id}
+                              style={[
+                                twStyle(`mr-2 rounded-full border px-3 py-2 ${
+                                  active ? "border-emerald-600 bg-emerald-600" : "border-emerald-200 bg-white"
+                                }`),
+                              ]}
+                              onPress={() => setSelectedServiceCategory(category.id)}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Show ${category.label} services`}
+                            >
+                              <Text style={twStyle(`text-xs font-semibold ${active ? "text-white" : "text-emerald-700"}`)}>
+                                {category.label} · {category.count}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </ScrollView>
+                    </View>
+                  )}
+                  {(() => {
+                    if (!services) return null;
+                    const allParentSvcs = services.filter((s) => !s.parent_service_id && s.service_type !== "variant");
+                    const parentSvcs = selectedServiceCategory === "all"
+                      ? allParentSvcs
+                      : allParentSvcs.filter((s) => getServiceCategoryInfo(s).id === selectedServiceCategory);
+                    const variantSvcs = services.filter((s) => s.service_type === "variant" || !!s.parent_service_id);
+                    const variantsByParent = new Map<string, Service[]>();
+                    variantSvcs.forEach((v) => {
+                      const key = v.parent_service_id ?? v.id;
+                      if (!variantsByParent.has(key)) variantsByParent.set(key, []);
+                      variantsByParent.get(key)!.push(v);
+                    });
+
+                    const renderServiceRow = (service: Service, indent?: boolean) => {
+                      const sel = selectedServices.find((s) => s.serviceId === service.id);
+                      const isSelected = !!sel;
+                      const staffName = staffList?.find((s) => s.id === sel?.staffId)?.name;
+                      const displayName = service.variant_name
+                        ? `${service.title} · ${service.variant_name}`
+                        : service.title;
+                      return (
+                        <View key={service.id}>
+                          <TouchableOpacity
+                            style={[
+                              twStyle(`flex-row items-center justify-between rounded-xl border p-4 ${
+                                isSelected ? "border-primary bg-primary/10" : "border-gray-100 bg-white"
+                              }`),
+                              indent ? { marginLeft: 12 } : undefined,
+                            ]}
+                            onPress={() => toggleService(service.id)}
+                            accessibilityRole="checkbox"
+                            accessibilityState={{ checked: isSelected }}
+                            accessibilityLabel={`${displayName}, ${service.duration_minutes} minutes`}
+                          >
+                            <View style={twStyle("flex-1")}>
+                              <Text style={twStyle(`text-sm font-medium ${isSelected ? "text-primary" : "text-gray-900"}`)}>
+                                {displayName}
+                              </Text>
+                              <Text style={twStyle("text-xs text-gray-500")}>{formatDuration(service.duration_minutes)}</Text>
+                            </View>
+                            <View style={twStyle("flex-row items-center")}>
+                              <Text style={twStyle(`mr-3 text-sm font-semibold ${isSelected ? "text-primary" : "text-gray-900"}`)}>
+                                {formatCurrency(service.price, service.currency)}
+                              </Text>
+                              <View style={twStyle(`h-5 w-5 items-center justify-center rounded-md ${isSelected ? "bg-primary" : "border border-gray-300"}`)}>
+                                {isSelected && <Ionicons name="checkmark" size={14} color="#fff" />}
+                              </View>
+                            </View>
+                          </TouchableOpacity>
+                          {isSelected && (
+                            <View style={[twStyle("mt-1 mb-1 flex-row"), indent ? { marginLeft: 24 } : { marginLeft: 12 }]}>
+                              <TouchableOpacity
+                                style={[twStyle("flex-row items-center rounded-lg border border-gray-200 bg-white px-3 py-1.5"), { marginRight: 8 }]}
+                                onPress={() => setStaffPickerService(service.id)}
+                                accessibilityLabel={`Assign staff for ${displayName}`}
+                              >
+                                <Ionicons name="person-outline" size={14} color="#6b7280" />
+                                <Text style={twStyle("ml-1 text-xs text-gray-600")}>{staffName ?? "Assign Staff"}</Text>
+                              </TouchableOpacity>
+                              {service.add_ons && service.add_ons.length > 0 && (
+                                <TouchableOpacity
+                                  style={twStyle("flex-row items-center rounded-lg border border-gray-200 bg-white px-3 py-1.5")}
+                                  onPress={() => setAddOnPickerService(service.id)}
+                                >
+                                  <Ionicons name="add-circle-outline" size={14} color="#6b7280" />
+                                  <Text style={twStyle("ml-1 text-xs text-gray-600")}>Add-ons ({sel?.addOnIds.length ?? 0})</Text>
+                                </TouchableOpacity>
+                              )}
+                            </View>
+                          )}
+                          {isSelected && (
+                            <View style={[twStyle("mt-1 mb-1"), indent ? { marginLeft: 24 } : { marginLeft: 12 }]}>
+                              <TextInput
+                                style={twStyle("rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700")}
+                                placeholder="Add customization notes (optional)"
+                                placeholderTextColor="#9ca3af"
+                                value={sel?.customization ?? ""}
+                                onChangeText={(text) => {
+                                  setSelectedServices((prev) =>
+                                    prev.map((s) => s.serviceId === service.id ? { ...s, customization: text } : s)
+                                  );
+                                }}
+                                multiline
+                                maxLength={500}
+                              />
+                            </View>
+                          )}
+                        </View>
+                      );
+                    };
+
+                    if (parentSvcs.length === 0) {
+                      return (
+                        <View style={twStyle("rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-6")}>
+                          <Text style={twStyle("text-center text-sm font-medium text-gray-600")}>No services in this category</Text>
+                          <Text style={twStyle("mt-1 text-center text-xs text-gray-400")}>Choose another category or add services in Catalogue.</Text>
+                        </View>
+                      );
+                    }
+
+                    return parentSvcs.map((service, svcIdx) => {
+                      const variants = variantsByParent.get(service.id) ?? [];
+                      if (variants.length > 0) {
+                        return (
+                          <View key={service.id} style={svcIdx > 0 ? { marginTop: 12 } : undefined}>
+                            <Text style={twStyle("text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 px-1")}>
+                              {service.title}
+                            </Text>
+                            <View style={twStyle("gap-y-2")}>
+                              {variants.map((v) => renderServiceRow(v, true))}
+                            </View>
+                          </View>
+                        );
+                      }
+                      return (
+                        <View key={service.id} style={svcIdx > 0 ? { marginTop: 8 } : undefined}>
+                          {renderServiceRow(service, false)}
+                        </View>
+                      );
+                    });
+                  })()}
+                </View>
+              )}
+
+              {aggregatedBookingResources.length > 0 ? (
+                <View
+                  style={twStyle("mb-4 rounded-2xl border border-teal-100 bg-teal-50/90 px-4 py-3")}
+                  accessibilityLabel="Resource requirements for selected services"
+                >
+                  <View style={twStyle("mb-2 flex-row items-center")}>
+                    <Ionicons name="layers-outline" size={18} color="#0f766e" />
+                    <Text style={twStyle("ml-2 text-sm font-semibold text-teal-900")}>Rooms & equipment</Text>
+                  </View>
+                  <Text style={twStyle("mb-3 text-xs leading-4 text-teal-900/90")}>
+                    These come from each service&apos;s resource links in your catalogue. The schedule checks capacity when you
+                    continue; assignments show on the booking and can be edited after saving.
+                  </Text>
+                  {aggregatedBookingResources.map((r) => (
+                    <View
+                      key={r.resource_id}
+                      style={twStyle(`mb-2 rounded-xl border px-3 py-2 ${
+                        r.inactive || r.locationMismatch ? "border-amber-200 bg-amber-50/80" : "border-teal-100 bg-white/90"
+                      }`)}
+                    >
+                      <Text style={twStyle("text-sm font-medium text-gray-900")}>
+                        {r.name}
+                        <Text style={twStyle("text-xs font-normal text-gray-500")}>
+                          {" "}
+                          · {r.required ? "Required" : "Optional"}
+                        </Text>
+                      </Text>
+                      <Text style={twStyle("mt-0.5 text-xs text-gray-600")}>
+                        Services: {r.serviceTitles.join(", ")}
+                      </Text>
+                      {r.inactive ? (
+                        <Text style={twStyle("mt-1 text-xs text-amber-800")}>
+                          This resource is inactive — reactivate under Resources &amp; forms or update the service link.
+                        </Text>
+                      ) : null}
+                      {r.locationMismatch ? (
+                        <Text style={twStyle("mt-1 text-xs text-amber-800")}>
+                          Linked to a different branch than this booking — confirm capacity or adjust assignments after saving.
+                        </Text>
+                      ) : null}
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+
               {/* -------- DATE -------- */}
               <SectionLabel label="Date" required />
-              <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  style={twStyle("mb-4")}
-                  contentContainerStyle={{ paddingVertical: 4 }}
-                >
-                  {dateOptions.map((d) => {
-                    const isActive = isSameDay(d, selectedDate);
-                    const isToday = isSameDay(d, today);
-                    return (
-                      <TouchableOpacity
-                        key={d.toISOString()}
-                        style={[twStyle(`items-center rounded-2xl px-3 py-2.5 ${
-                          isActive ? "bg-gray-900" : isToday ? "border border-emerald-200 bg-emerald-50" : "border border-gray-200 bg-white"
-                        }`), { minWidth: isTablet ? 76 : 64, marginRight: 8 }]}
-                        onPress={() => setSelectedDate(d)}
-                        accessibilityRole="radio"
-                        accessibilityState={{ checked: isActive }}
-                        accessibilityLabel={format(d, "EEEE, MMMM d")}
-                      >
-                        <Text
-                          style={twStyle(`text-[10px] font-semibold ${isActive ? "text-gray-300" : isToday ? "text-emerald-700" : "text-gray-500"}`)}
-                        >
-                          {isToday ? "Today" : format(d, "EEE")}
-                        </Text>
-                        <Text
-                          style={twStyle(`text-base font-bold ${
-                            isActive ? "text-white" : "text-gray-900"
-                          }`)}
-                        >
-                          {format(d, "d")}
-                        </Text>
-                        <Text style={twStyle(`text-[10px] ${isActive ? "text-gray-300" : isToday ? "text-emerald-700" : "text-gray-500"}`)}>
-                          {format(d, "MMM")}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </ScrollView>
+              {needsServiceFirstForScheduling ? (
+                <Text style={twStyle("mb-2 text-xs text-amber-800")}>{SCHEDULING_DURATION_HINT}</Text>
+              ) : null}
+              <FlatList<Date>
+                ref={dateOptionsFlatListRef}
+                horizontal
+                data={dateOptions}
+                keyExtractor={(d: Date) => d.toISOString()}
+                showsHorizontalScrollIndicator={false}
+                style={twStyle("mb-4")}
+                contentContainerStyle={{ paddingVertical: 4 }}
+                initialScrollIndex={dateInitialScrollIndex}
+                getItemLayout={(_data: ArrayLike<Date> | null | undefined, index: number) => ({
+                  length: dateChipStride,
+                  offset: dateChipStride * index,
+                  index,
+                })}
+                onScrollToIndexFailed={(info: { index: number }) => {
+                  requestAnimationFrame(() => {
+                    dateOptionsFlatListRef.current?.scrollToOffset({
+                      offset: Math.max(0, info.index) * dateChipStride,
+                      animated: false,
+                    });
+                  });
+                }}
+                renderItem={({ item: d }: ListRenderItemInfo<Date>) => (
+                  <NewBookingDateChip
+                    date={d}
+                    selectedDate={selectedDate}
+                    today={today}
+                    minWidth={dateChipMinWidth}
+                    onSelectDate={setSelectedDate}
+                  />
+                )}
+              />
 
               {/* -------- TIME -------- */}
               <SectionLabel label="Time" required />
+              {needsServiceFirstForScheduling ? (
+                <Text style={twStyle("mb-2 text-xs text-amber-800")}>{SCHEDULING_DURATION_HINT}</Text>
+              ) : null}
               <TouchableOpacity
                 style={twStyle(`mb-4 flex-row items-center justify-between rounded-xl border px-4 py-3 ${
                   selectedTime ? "border-emerald-300 bg-emerald-50" : "border-gray-200 bg-gray-50"
@@ -2516,7 +2922,11 @@ export default function NewBookingScreen() {
                         height={160}
                         zoom={15}
                       />
-                      <Text style={twStyle("mt-1.5 text-center text-xs text-gray-500")}>Selected map location</Text>
+                      <Text style={twStyle("mt-1.5 text-center text-xs text-gray-500")}>
+                        {travelPreviewDistanceKm != null && Number.isFinite(travelPreviewDistanceKm)
+                          ? `Selected location — ${travelPreviewDistanceKm.toFixed(1)} km from your base`
+                          : "Selected map location"}
+                      </Text>
                     </View>
                   )}
                   <Text style={twStyle("mb-1 mt-3 text-xs font-medium text-gray-600")}>Street line (from search — editable)</Text>
@@ -2579,9 +2989,22 @@ export default function NewBookingScreen() {
                     </Text>
                     {travelFeePreviewLoading ? (
                       <View style={twStyle("flex-row items-center py-2")}>
-                        <ActivityIndicator size="small" color="#6366f1" />
+                        <ActivityIndicator size="small" color={Colors.primary} />
                         <Text style={twStyle("ml-2 text-sm text-gray-600")}>Calculating travel fee…</Text>
                       </View>
+                    ) : travelPreviewDistanceKm != null || travelPreviewMinutes != null ? (
+                      <Text style={twStyle("mb-2 text-xs text-gray-600")}>
+                        {[
+                          travelPreviewDistanceKm != null && Number.isFinite(travelPreviewDistanceKm)
+                            ? `${travelPreviewDistanceKm.toFixed(1)} km away`
+                            : null,
+                          travelPreviewMinutes != null && Number.isFinite(travelPreviewMinutes) && travelPreviewMinutes > 0
+                            ? `~${Math.round(travelPreviewMinutes)} min drive`
+                            : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </Text>
                     ) : null}
                     <TextInput
                       style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
@@ -2601,229 +3024,6 @@ export default function NewBookingScreen() {
             </View>
 
             <View style={twStyle(isTablet ? "flex-1" : "")}>
-              {/* -------- SERVICES -------- */}
-              <SectionLabel label="Services" required />
-              {servicesLoading ? (
-                <LoadingState fullScreen={false} message="Loading services..." />
-              ) : servicesError && !services ? (
-                <View style={twStyle("mb-4 rounded-xl bg-red-50 p-4")}>
-                  <Text style={twStyle("text-sm text-red-600")}>Failed to load services. Pull down to refresh and try again.</Text>
-                </View>
-              ) : (
-                <View style={twStyle("mb-4")}>
-                  {serviceCategoryOptions.length > 1 && (
-                    <View style={twStyle("mb-3 rounded-2xl border border-gray-100 bg-gray-50 p-2")}>
-                      <Text style={twStyle("mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-500")}>
-                        Filter by category
-                      </Text>
-                      <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-                        <TouchableOpacity
-                          style={[
-                            twStyle(`mr-2 rounded-full border px-3 py-2 ${
-                              selectedServiceCategory === "all" ? "border-gray-900 bg-gray-900" : "border-gray-200 bg-white"
-                            }`),
-                          ]}
-                          onPress={() => setSelectedServiceCategory("all")}
-                          accessibilityRole="button"
-                          accessibilityLabel="Show all services"
-                        >
-                          <Text style={twStyle(`text-xs font-semibold ${selectedServiceCategory === "all" ? "text-white" : "text-gray-700"}`)}>
-                            All
-                          </Text>
-                        </TouchableOpacity>
-                        {serviceCategoryOptions.map((category) => {
-                          const active = selectedServiceCategory === category.id;
-                          return (
-                            <TouchableOpacity
-                              key={category.id}
-                              style={[
-                                twStyle(`mr-2 rounded-full border px-3 py-2 ${
-                                  active ? "border-emerald-600 bg-emerald-600" : "border-emerald-200 bg-white"
-                                }`),
-                              ]}
-                              onPress={() => setSelectedServiceCategory(category.id)}
-                              accessibilityRole="button"
-                              accessibilityLabel={`Show ${category.label} services`}
-                            >
-                              <Text style={twStyle(`text-xs font-semibold ${active ? "text-white" : "text-emerald-700"}`)}>
-                                {category.label} · {category.count}
-                              </Text>
-                            </TouchableOpacity>
-                          );
-                        })}
-                      </ScrollView>
-                    </View>
-                  )}
-                  {(() => {
-                    if (!services) return null;
-                    const allParentSvcs = services.filter((s) => !s.parent_service_id && s.service_type !== "variant");
-                    const parentSvcs = selectedServiceCategory === "all"
-                      ? allParentSvcs
-                      : allParentSvcs.filter((s) => getServiceCategoryInfo(s).id === selectedServiceCategory);
-                    const variantSvcs = services.filter((s) => s.service_type === "variant" || !!s.parent_service_id);
-                    const variantsByParent = new Map<string, Service[]>();
-                    variantSvcs.forEach((v) => {
-                      const key = v.parent_service_id ?? v.id;
-                      if (!variantsByParent.has(key)) variantsByParent.set(key, []);
-                      variantsByParent.get(key)!.push(v);
-                    });
-
-                    const renderServiceRow = (service: Service, indent?: boolean) => {
-                      const sel = selectedServices.find((s) => s.serviceId === service.id);
-                      const isSelected = !!sel;
-                      const staffName = staffList?.find((s) => s.id === sel?.staffId)?.name;
-                      const displayName = service.variant_name
-                        ? `${service.title} · ${service.variant_name}`
-                        : service.title;
-                      return (
-                        <View key={service.id}>
-                          <TouchableOpacity
-                            style={[
-                              twStyle(`flex-row items-center justify-between rounded-xl border p-4 ${
-                                isSelected ? "border-indigo-500 bg-indigo-50" : "border-gray-100 bg-white"
-                              }`),
-                              indent ? { marginLeft: 12 } : undefined,
-                            ]}
-                            onPress={() => toggleService(service.id)}
-                            accessibilityRole="checkbox"
-                            accessibilityState={{ checked: isSelected }}
-                            accessibilityLabel={`${displayName}, ${service.duration_minutes} minutes`}
-                          >
-                            <View style={twStyle("flex-1")}>
-                              <Text style={twStyle(`text-sm font-medium ${isSelected ? "text-indigo-900" : "text-gray-900"}`)}>
-                                {displayName}
-                              </Text>
-                              <Text style={twStyle("text-xs text-gray-500")}>{formatDuration(service.duration_minutes)}</Text>
-                            </View>
-                            <View style={twStyle("flex-row items-center")}>
-                              <Text style={twStyle(`mr-3 text-sm font-semibold ${isSelected ? "text-indigo-700" : "text-gray-900"}`)}>
-                                {formatCurrency(service.price, service.currency)}
-                              </Text>
-                              <View style={twStyle(`h-5 w-5 items-center justify-center rounded-md ${isSelected ? "bg-indigo-600" : "border border-gray-300"}`)}>
-                                {isSelected && <Ionicons name="checkmark" size={14} color="#fff" />}
-                              </View>
-                            </View>
-                          </TouchableOpacity>
-                          {isSelected && (
-                            <View style={[twStyle("mt-1 mb-1 flex-row"), indent ? { marginLeft: 24 } : { marginLeft: 12 }]}>
-                              <TouchableOpacity
-                                style={[twStyle("flex-row items-center rounded-lg border border-gray-200 bg-white px-3 py-1.5"), { marginRight: 8 }]}
-                                onPress={() => setStaffPickerService(service.id)}
-                                accessibilityLabel={`Assign staff for ${displayName}`}
-                              >
-                                <Ionicons name="person-outline" size={14} color="#6b7280" />
-                                <Text style={twStyle("ml-1 text-xs text-gray-600")}>{staffName ?? "Assign Staff"}</Text>
-                              </TouchableOpacity>
-                              {service.add_ons && service.add_ons.length > 0 && (
-                                <TouchableOpacity
-                                  style={twStyle("flex-row items-center rounded-lg border border-gray-200 bg-white px-3 py-1.5")}
-                                  onPress={() => setAddOnPickerService(service.id)}
-                                >
-                                  <Ionicons name="add-circle-outline" size={14} color="#6b7280" />
-                                  <Text style={twStyle("ml-1 text-xs text-gray-600")}>Add-ons ({sel?.addOnIds.length ?? 0})</Text>
-                                </TouchableOpacity>
-                              )}
-                            </View>
-                          )}
-                          {isSelected && (
-                            <View style={[twStyle("mt-1 mb-1"), indent ? { marginLeft: 24 } : { marginLeft: 12 }]}>
-                              <TextInput
-                                style={twStyle("rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700")}
-                                placeholder="Add customization notes (optional)"
-                                placeholderTextColor="#9ca3af"
-                                value={sel?.customization ?? ""}
-                                onChangeText={(text) => {
-                                  setSelectedServices((prev) =>
-                                    prev.map((s) => s.serviceId === service.id ? { ...s, customization: text } : s)
-                                  );
-                                }}
-                                multiline
-                                maxLength={500}
-                              />
-                            </View>
-                          )}
-                        </View>
-                      );
-                    };
-
-                    if (parentSvcs.length === 0) {
-                      return (
-                        <View style={twStyle("rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-6")}>
-                          <Text style={twStyle("text-center text-sm font-medium text-gray-600")}>No services in this category</Text>
-                          <Text style={twStyle("mt-1 text-center text-xs text-gray-400")}>Choose another category or add services in Catalogue.</Text>
-                        </View>
-                      );
-                    }
-
-                    return parentSvcs.map((service, svcIdx) => {
-                      const variants = variantsByParent.get(service.id) ?? [];
-                      if (variants.length > 0) {
-                        return (
-                          <View key={service.id} style={svcIdx > 0 ? { marginTop: 12 } : undefined}>
-                            <Text style={twStyle("text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 px-1")}>
-                              {service.title}
-                            </Text>
-                            <View style={twStyle("gap-y-2")}>
-                              {variants.map((v) => renderServiceRow(v, true))}
-                            </View>
-                          </View>
-                        );
-                      }
-                      return (
-                        <View key={service.id} style={svcIdx > 0 ? { marginTop: 8 } : undefined}>
-                          {renderServiceRow(service, false)}
-                        </View>
-                      );
-                    });
-                  })()}
-                </View>
-              )}
-
-              {aggregatedBookingResources.length > 0 ? (
-                <View
-                  style={twStyle("mb-4 rounded-2xl border border-teal-100 bg-teal-50/90 px-4 py-3")}
-                  accessibilityLabel="Resource requirements for selected services"
-                >
-                  <View style={twStyle("mb-2 flex-row items-center")}>
-                    <Ionicons name="layers-outline" size={18} color="#0f766e" />
-                    <Text style={twStyle("ml-2 text-sm font-semibold text-teal-900")}>Rooms & equipment</Text>
-                  </View>
-                  <Text style={twStyle("mb-3 text-xs leading-4 text-teal-900/90")}>
-                    These come from each service&apos;s resource links in your catalogue. The schedule checks capacity when you
-                    continue; assignments show on the booking and can be edited after saving.
-                  </Text>
-                  {aggregatedBookingResources.map((r) => (
-                    <View
-                      key={r.resource_id}
-                      style={twStyle(`mb-2 rounded-xl border px-3 py-2 ${
-                        r.inactive || r.locationMismatch ? "border-amber-200 bg-amber-50/80" : "border-teal-100 bg-white/90"
-                      }`)}
-                    >
-                      <Text style={twStyle("text-sm font-medium text-gray-900")}>
-                        {r.name}
-                        <Text style={twStyle("text-xs font-normal text-gray-500")}>
-                          {" "}
-                          · {r.required ? "Required" : "Optional"}
-                        </Text>
-                      </Text>
-                      <Text style={twStyle("mt-0.5 text-xs text-gray-600")}>
-                        Services: {r.serviceTitles.join(", ")}
-                      </Text>
-                      {r.inactive ? (
-                        <Text style={twStyle("mt-1 text-xs text-amber-800")}>
-                          This resource is inactive — reactivate under Resources &amp; forms or update the service link.
-                        </Text>
-                      ) : null}
-                      {r.locationMismatch ? (
-                        <Text style={twStyle("mt-1 text-xs text-amber-800")}>
-                          Linked to a different branch than this booking — confirm capacity or adjust assignments after saving.
-                        </Text>
-                      ) : null}
-                    </View>
-                  ))}
-                </View>
-              ) : null}
-
               {/* -------- PRODUCTS -------- */}
               {productsList.length > 0 && (
                 <View style={twStyle("mb-4")}>
@@ -2871,8 +3071,8 @@ export default function NewBookingScreen() {
                     onPress={() => setShowProductPicker(true)}
                     accessibilityLabel="Add a product"
                   >
-                    <Ionicons name="add-circle-outline" size={18} color="#6366f1" />
-                    <Text style={twStyle("ml-2 text-sm font-medium text-indigo-600")}>Add Product</Text>
+                    <Ionicons name="add-circle-outline" size={18} color={Colors.primary} />
+                    <Text style={twStyle("ml-2 text-sm font-medium text-primary")}>Add Product</Text>
                   </TouchableOpacity>
                 </View>
               )}
@@ -2882,9 +3082,9 @@ export default function NewBookingScreen() {
                 <View style={twStyle("mb-4")}>
                   <SectionLabel label="Package" />
                   {selectedPackageId ? (
-                    <View style={twStyle("flex-row items-center rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3")}>
-                      <Ionicons name="gift-outline" size={16} color="#6366f1" />
-                      <Text style={twStyle("flex-1 ml-2 text-sm font-medium text-indigo-700")} numberOfLines={1}>
+                    <View style={twStyle("flex-row items-center rounded-2xl border border-primary/20 bg-primary/10 px-4 py-3")}>
+                      <Ionicons name="gift-outline" size={16} color={Colors.primary} />
+                      <Text style={twStyle("flex-1 ml-2 text-sm font-medium text-primary")} numberOfLines={1}>
                         {packagesList.find((p) => p.id === selectedPackageId)?.name ?? "Package"}
                       </Text>
                       <TouchableOpacity
@@ -2900,8 +3100,8 @@ export default function NewBookingScreen() {
                       onPress={() => setShowPackagePicker(true)}
                       accessibilityLabel="Add a package"
                     >
-                      <Ionicons name="gift-outline" size={18} color="#6366f1" />
-                      <Text style={twStyle("ml-2 text-sm font-medium text-indigo-600")}>Add Package</Text>
+                      <Ionicons name="gift-outline" size={18} color={Colors.primary} />
+                      <Text style={twStyle("ml-2 text-sm font-medium text-primary")}>Add Package</Text>
                     </TouchableOpacity>
                   )}
                 </View>
@@ -2987,7 +3187,7 @@ export default function NewBookingScreen() {
                       />
                     </View>
                     <TouchableOpacity
-                      style={twStyle(`rounded-xl px-4 py-3 ${promoCode.trim() ? "bg-indigo-600" : "bg-gray-300"}`)}
+                      style={twStyle(`rounded-xl px-4 py-3 ${promoCode.trim() ? "bg-primary" : "bg-gray-300"}`)}
                       onPress={applyPromoCode}
                       disabled={!promoCode.trim() || promoValidating}
                       accessibilityLabel="Apply promo code"
@@ -3101,7 +3301,7 @@ export default function NewBookingScreen() {
                     </View>
                     {summary.total > 0 && (
                       <Text style={twStyle("mt-2 text-xs text-gray-500")}>
-                        Deposit: {formatCurrency(Math.ceil((summary.total * depositPercentage) / 100), tenantCurrency)}
+                        Deposit: {formatCurrency(percentOf(summary.total, depositPercentage), tenantCurrency)}
                         {" "}of{" "}
                         {formatCurrency(summary.total, tenantCurrency)}
                       </Text>
@@ -3267,8 +3467,8 @@ export default function NewBookingScreen() {
                 <Switch
                   value={sendNotification}
                   onValueChange={setSendNotification}
-                  trackColor={{ false: "#d1d5db", true: "#818cf8" }}
-                  thumbColor={sendNotification ? "#6366f1" : "#f4f4f5"}
+                  trackColor={{ false: "#d1d5db", true: Colors.primaryRing }}
+                  thumbColor={sendNotification ? Colors.primary : "#f4f4f5"}
                   accessibilityLabel="Notify customer"
                 />
               </View>
@@ -3282,8 +3482,8 @@ export default function NewBookingScreen() {
             <Text style={twStyle("mb-2 text-sm font-semibold text-gray-700")}>Summary</Text>
             {selectedPackageId && (
               <View style={twStyle("mb-2 flex-row items-center")}>
-                <Ionicons name="gift-outline" size={14} color="#6366f1" />
-                <Text style={twStyle("ml-1 text-xs font-medium text-indigo-600")}>
+                <Ionicons name="gift-outline" size={14} color={Colors.primary} />
+                <Text style={twStyle("ml-1 text-xs font-medium text-primary")}>
                   Package: {packagesList.find((p) => p.id === selectedPackageId)?.name ?? "Package"}
                 </Text>
               </View>
@@ -3304,11 +3504,11 @@ export default function NewBookingScreen() {
             </View>
             {summary.membershipDiscountAmt > 0 && (
               <View style={twStyle("flex-row justify-between")}>
-                <Text style={twStyle("text-sm text-indigo-700")}>
+                <Text style={twStyle("text-sm text-primary")}>
                   Membership discount
                   {summary.membershipPlanName ? ` (${summary.membershipPlanName})` : ""}
                 </Text>
-                <Text style={twStyle("text-sm text-indigo-700")}>
+                <Text style={twStyle("text-sm text-primary")}>
                   {formatCurrency(-summary.membershipDiscountAmt, tenantCurrency)}
                 </Text>
               </View>
@@ -3359,16 +3559,7 @@ export default function NewBookingScreen() {
           </View>
         )}
 
-        {!showConfirmation && (
-          <ActionButton
-            label={isRecurring ? "Review Repeating Booking" : "Review Booking"}
-            onPress={handleReview}
-            disabled={selectedServices.length === 0 && selectedProducts.length === 0}
-            fullWidth
-          />
-        )}
-
-        <View style={twStyle("h-32")} />
+        {!showConfirmation ? <View style={{ height: 112 + Math.max(insets.bottom, 12) }} /> : null}
 
         {/* -------- TIME PICKER SHEET -------- */}
         <BottomSheet
@@ -3390,6 +3581,9 @@ export default function NewBookingScreen() {
           ) : null}
           {timePickerRows.length > 0 ? (
             <>
+              {needsServiceFirstForScheduling ? (
+                <Text style={twStyle("mb-2 text-xs text-amber-800")}>{SCHEDULING_DURATION_HINT}</Text>
+              ) : null}
               <View style={twStyle("mb-3 flex-row flex-wrap items-center")}>
                 <View style={twStyle("mr-4 flex-row items-center")}>
                   <View style={twStyle("mr-1.5 h-2 w-2 rounded-full bg-emerald-400")} />
@@ -3400,57 +3594,28 @@ export default function NewBookingScreen() {
                   <Text style={twStyle("text-xs text-gray-600")}>Unavailable</Text>
                 </View>
               </View>
-              <ScrollView style={{ maxHeight: 360 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
-                <View style={twStyle("flex-row flex-wrap")}>
-                  {timePickerRows.map((row) => {
-                    const isActive = selectedTime === row.time;
-                    const unavailable = !row.available;
-                    const baseChip = unavailable
-                      ? "border border-red-200 bg-red-50"
-                      : isActive
-                        ? "border border-emerald-700 bg-emerald-600"
-                        : "border border-emerald-200 bg-emerald-50";
-                    return (
-                      <TouchableOpacity
-                        key={row.time}
-                        disabled={unavailable}
-                        style={[twStyle(`rounded-lg px-3 py-2 ${baseChip}`), { marginRight: 8, marginBottom: 8 }]}
-                        onPress={() => {
-                          if (unavailable) return;
-                          setSelectedTime(row.time);
-                          setShowTimePicker(false);
-                        }}
-                        accessibilityRole="radio"
-                        accessibilityState={{ checked: isActive, disabled: unavailable }}
-                        accessibilityLabel={
-                          unavailable
-                            ? `${row.time}, unavailable${row.reason ? `, ${row.reason}` : ""}`
-                            : `Time ${row.time}`
-                        }
-                      >
-                        <Text
-                          style={twStyle(
-                            `text-center text-sm font-medium ${
-                              unavailable
-                                ? "text-red-300 line-through"
-                                : isActive
-                                  ? "text-white"
-                                  : "text-emerald-800"
-                            }`,
-                          )}
-                        >
-                          {row.time}
-                        </Text>
-                        {unavailable && row.reason ? (
-                          <Text style={twStyle("mt-0.5 max-w-[96px] text-center text-[10px] text-red-400")} numberOfLines={2}>
-                            {row.reason}
-                          </Text>
-                        ) : null}
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </ScrollView>
+              <FlatList<AvailableSlotsApiRow>
+                data={timePickerRows}
+                numColumns={3}
+                keyExtractor={(row: AvailableSlotsApiRow) => row.time}
+                style={{ maxHeight: 360 }}
+                columnWrapperStyle={twStyle("flex-row")}
+                removeClippedSubviews
+                initialNumToRender={24}
+                windowSize={7}
+                maxToRenderPerBatch={18}
+                keyboardShouldPersistTaps="handled"
+                nestedScrollEnabled
+                renderItem={({ item: row, index }: ListRenderItemInfo<AvailableSlotsApiRow>) => (
+                  <NewBookingTimeSlotChip
+                    row={row}
+                    isActive={selectedTime === row.time}
+                    chipWidth={timeSlotChipWidth}
+                    columnIndex={index}
+                    onSelect={handleSelectTimeSlot}
+                  />
+                )}
+              />
             </>
           ) : null}
         </BottomSheet>
@@ -3489,7 +3654,7 @@ export default function NewBookingScreen() {
           title="Add Product"
         >
           {productCategoryOptions.length > 1 && (
-            <View style={twStyle("mb-3 rounded-2xl border border-indigo-100 bg-indigo-50/40 p-2")}>
+            <View style={twStyle("mb-3 rounded-2xl border border-primary/20 bg-primary/10 p-2")}>
               <Text style={twStyle("mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-500")}>
                 Filter by category
               </Text>
@@ -3497,7 +3662,7 @@ export default function NewBookingScreen() {
                 <TouchableOpacity
                   style={[
                     twStyle(`mr-2 rounded-full border px-3 py-2 ${
-                      selectedProductCategory === "all" ? "border-indigo-900 bg-indigo-900" : "border-indigo-200 bg-white"
+                      selectedProductCategory === "all" ? "border-primary bg-primary" : "border-primary/20 bg-white"
                     }`),
                   ]}
                   onPress={() => setSelectedProductCategory("all")}
@@ -3515,14 +3680,14 @@ export default function NewBookingScreen() {
                       key={category.id}
                       style={[
                         twStyle(`mr-2 rounded-full border px-3 py-2 ${
-                          active ? "border-indigo-600 bg-indigo-600" : "border-indigo-200 bg-white"
+                          active ? "border-primary bg-primary" : "border-primary/20 bg-white"
                         }`),
                       ]}
                       onPress={() => setSelectedProductCategory(category.id)}
                       accessibilityRole="button"
                       accessibilityLabel={`Show ${category.label} products`}
                     >
-                      <Text style={twStyle(`text-xs font-semibold ${active ? "text-white" : "text-indigo-700"}`)}>
+                      <Text style={twStyle(`text-xs font-semibold ${active ? "text-white" : "text-primary"}`)}>
                         {category.label} · {category.count}
                       </Text>
                     </TouchableOpacity>
@@ -3547,7 +3712,7 @@ export default function NewBookingScreen() {
                       return (
                         <TouchableOpacity
                           key={v.id}
-                          style={twStyle(`flex-row items-center justify-between px-4 py-3 border-b border-gray-100 ${alreadyAdded ? "bg-indigo-50" : ""}`)}
+                          style={twStyle(`flex-row items-center justify-between px-4 py-3 border-b border-gray-100 ${alreadyAdded ? "bg-primary/10" : ""}`)}
                           onPress={() => {
                             if (!alreadyAdded) {
                               setSelectedProducts((prev) => [...prev, {
@@ -3574,7 +3739,7 @@ export default function NewBookingScreen() {
               return (
                 <TouchableOpacity
                   key={product.id}
-                  style={twStyle(`flex-row items-center justify-between px-4 py-3 border-b border-gray-100 ${alreadyAdded ? "bg-indigo-50" : ""}`)}
+                  style={twStyle(`flex-row items-center justify-between px-4 py-3 border-b border-gray-100 ${alreadyAdded ? "bg-primary/10" : ""}`)}
                   onPress={() => {
                     if (!alreadyAdded) {
                       setSelectedProducts((prev) => [...prev, {
@@ -3694,7 +3859,7 @@ export default function NewBookingScreen() {
                   <TouchableOpacity
                     key={ao.id}
                     style={[twStyle(`flex-row items-center justify-between rounded-xl border p-3 ${
-                      isChecked ? "border-indigo-400 bg-indigo-50" : "border-gray-100 bg-white"
+                      isChecked ? "border-primary bg-primary/10" : "border-gray-100 bg-white"
                     }`), idx > 0 ? { marginTop: 8 } : undefined]}
                     onPress={() => toggleAddOn(addOnPickerService!, ao.id)}
                     accessibilityRole="checkbox"
@@ -3712,7 +3877,7 @@ export default function NewBookingScreen() {
                       </Text>
                       <View
                         style={twStyle(`h-5 w-5 items-center justify-center rounded-md ${
-                          isChecked ? "bg-indigo-600" : "border border-gray-300"
+                          isChecked ? "bg-primary" : "border border-gray-300"
                         }`)}
                       >
                         {isChecked && <Ionicons name="checkmark" size={14} color="#fff" />}
@@ -3738,6 +3903,32 @@ export default function NewBookingScreen() {
           }
         />
       </ScreenContainer>
+      {!showConfirmation ? (
+        <View
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            bottom: 0,
+            paddingHorizontal: 16,
+            paddingTop: 12,
+            paddingBottom: Math.max(insets.bottom, 12),
+            backgroundColor: "rgba(255,255,255,0.96)",
+            borderTopWidth: 1,
+            borderTopColor: "#f1f5f9",
+          }}
+        >
+          <ActionButton
+            label={isRecurring ? "Review Repeating Booking" : "Review Booking"}
+            onPress={handleReview}
+            disabled={selectedServices.length === 0 && selectedProducts.length === 0}
+            fullWidth
+            size="lg"
+            variant="brand"
+          />
+        </View>
+      ) : null}
+    </View>
   );
 }
 
@@ -3828,8 +4019,8 @@ function ConfirmationView({
   return (
     <View accessibilityLabel="Booking confirmation">
       <View style={twStyle("mb-4 items-center")}>
-        <View style={twStyle(`mb-2 h-14 w-14 items-center justify-center rounded-2xl ${isRecurring ? "bg-emerald-100" : "bg-indigo-100"}`)}>
-          <Ionicons name={isRecurring ? "repeat-outline" : "checkmark-circle-outline"} size={30} color={isRecurring ? "#059669" : "#6366f1"} />
+        <View style={twStyle(`mb-2 h-14 w-14 items-center justify-center rounded-2xl ${isRecurring ? "bg-emerald-100" : "bg-primary/10"}`)}>
+          <Ionicons name={isRecurring ? "repeat-outline" : "checkmark-circle-outline"} size={30} color={isRecurring ? "#059669" : Colors.primary} />
         </View>
         <Text style={twStyle("text-lg font-bold text-gray-900")}>
           {isRecurring ? "Confirm Repeating Booking" : "Confirm Booking"}
@@ -3860,7 +4051,7 @@ function ConfirmationView({
         {paymentOption === "deposit" && depositPercentage ? (
           <ConfirmRow
             label="Deposit"
-            value={`${depositPercentage}% (${formatCurrency(Math.ceil((summary.total * depositPercentage) / 100), currency)})`}
+            value={`${depositPercentage}% (${formatCurrency(percentOf(summary.total, depositPercentage), currency)})`}
           />
         ) : null}
         {packageName ? <ConfirmRow label="Package" value={packageName} /> : null}
@@ -3874,11 +4065,11 @@ function ConfirmationView({
       </View>
 
       {intakeConfirmationBlocks && intakeConfirmationBlocks.length > 0 ? (
-        <View style={twStyle("mb-4 rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4")}>
-          <Text style={twStyle("mb-2 text-sm font-semibold text-indigo-900")}>Client forms</Text>
+        <View style={twStyle("mb-4 rounded-2xl border border-primary/20 bg-primary/10 p-4")}>
+          <Text style={twStyle("mb-2 text-sm font-semibold text-primary")}>Client forms</Text>
           {intakeConfirmationBlocks.map((block) => (
             <View key={block.formId} style={twStyle("mb-3")}>
-              <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-indigo-800")}>
+              <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-primary")}>
                 {block.title}
               </Text>
               {block.lines.map((line, i) => (
@@ -3907,11 +4098,11 @@ function ConfirmationView({
         </View>
         {(summary.membershipDiscountAmt ?? 0) > 0 && (
           <View style={twStyle("flex-row justify-between")}>
-            <Text style={twStyle("text-sm text-indigo-700")}>
+            <Text style={twStyle("text-sm text-primary")}>
               Membership discount
               {summary.membershipPlanName ? ` (${summary.membershipPlanName})` : ""}
             </Text>
-            <Text style={twStyle("text-sm text-indigo-700")}>
+            <Text style={twStyle("text-sm text-primary")}>
               {formatCurrency(-(summary.membershipDiscountAmt ?? 0), currency)}
             </Text>
           </View>
@@ -3944,7 +4135,14 @@ function ConfirmationView({
         </View>
       </View>
 
-      <ActionButton label={isRecurring ? "Confirm & Create Series" : "Confirm & Create Booking"} onPress={onConfirm} loading={creating} fullWidth />
+      <ActionButton
+        label={isRecurring ? "Confirm & Create Series" : "Confirm & Create Booking"}
+        onPress={onConfirm}
+        loading={creating}
+        fullWidth
+        size="lg"
+        variant="brand"
+      />
       <TouchableOpacity style={twStyle("mt-3 items-center py-2")} onPress={onBack} accessibilityLabel="Back to edit" accessibilityRole="button">
         <Text style={twStyle("text-sm font-medium text-gray-600")}>Back to Edit</Text>
       </TouchableOpacity>

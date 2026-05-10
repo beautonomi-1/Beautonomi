@@ -187,7 +187,12 @@ export async function GET(request: NextRequest) {
       const giftCardAmount = Number(booking.gift_card_amount ?? 0);
       const effectivePaid = Math.max(0, totalPaid - totalRefunded);
       const ps = ((booking.payment_status || "") as string).toLowerCase();
-      const outstandingBalance = ps === "refunded" ? 0 : Math.max(0, totalAmount - effectivePaid - walletAmount - giftCardAmount);
+      // §Finance-truth 2026-05: post-582 `total_paid` already includes wallet+gift
+      // booking_payments rows. Use max(effective_paid, wallet+gift) to avoid
+      // double-subtracting while keeping legacy pre-582 rows correct.
+      const walletGiftCoverage = walletAmount + giftCardAmount;
+      const coverage = Math.max(effectivePaid, walletGiftCoverage);
+      const outstandingBalance = ps === "refunded" ? 0 : Math.max(0, totalAmount - coverage);
       const customer = customersMap.get(booking.customer_id ?? "");
       const provider = providersMap.get(booking.provider_id ?? "");
       const location = locationsMap.get(booking.location_id ?? "");

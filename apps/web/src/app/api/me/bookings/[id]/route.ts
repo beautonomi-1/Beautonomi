@@ -168,6 +168,11 @@ export async function GET(
       address_country?: string; address_postal_code?: string; address_latitude?: number; address_longitude?: number;
       location?: { name?: string; address_line1?: string; address_line2?: string; city?: string; country?: string };
       special_requests?: string; group_booking_id?: string; group_bookings?: { ref_number?: string };
+      custom_offer?: {
+        id?: string | null;
+        notes?: string | null;
+        request?: { id?: string | null; description?: string | null } | null;
+      } | null;
       provider?: {
         id: string;
         business_name?: string;
@@ -336,6 +341,18 @@ export async function GET(
       special_requests: bookingData.special_requests,
       is_group_booking: !!bookingData.group_booking_id,
       group_booking_ref: (bookingData.group_bookings as { ref_number?: string } | undefined)?.ref_number ?? null,
+      custom_offer: bookingData.custom_offer
+        ? {
+            id: bookingData.custom_offer.id ?? null,
+            notes: bookingData.custom_offer.notes ?? null,
+            request: bookingData.custom_offer.request
+              ? {
+                  id: bookingData.custom_offer.request.id ?? null,
+                  description: bookingData.custom_offer.request.description ?? null,
+                }
+              : null,
+          }
+        : null,
       provider: bookingData.provider ? {
         id: bookingData.provider.id,
         business_name: bookingData.provider.business_name,
