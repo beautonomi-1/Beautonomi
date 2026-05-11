@@ -8,6 +8,8 @@ import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { checkRecurringAppointmentFeatureAccess } from "@/lib/subscriptions/feature-access";
 import { createBookingFromRecurringSeries } from "@/lib/recurring/create-booking-from-series";
+import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
+import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
 import {
   ADVANCED_RECURRENCE_UPGRADE,
   SUBSCRIPTION_UPGRADE_SHORT,
@@ -72,6 +74,81 @@ function buildInitialOccurrenceDates(params: {
   }
 
   return dates;
+}
+
+async function sendFirstRecurringPaymentLink(params: {
+  admin: ReturnType<typeof getSupabaseAdmin>;
+  bookingId: string;
+  customerId: string;
+}) {
+  const { admin, bookingId, customerId } = params;
+  const { data: booking } = await admin
+    .from("bookings")
+    .select("id, tenant_id, booking_number, ref_number, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status")
+    .eq("id", bookingId)
+    .maybeSingle();
+
+  if (!booking) {
+    throw new Error("First recurring visit could not be loaded for payment-link delivery");
+  }
+
+  const bookingRef = booking.booking_number || booking.ref_number || bookingId.slice(0, 8).toUpperCase();
+  const appBase = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
+  const paymentLink = `${appBase}/bookings/${bookingId}/pay`;
+  const amountDue = computeBookingOutstandingDisplay({
+    totalAmount: Number(booking.total_amount ?? 0),
+    totalPaid: Number(booking.total_paid ?? 0),
+    totalRefunded: Number(booking.total_refunded ?? 0),
+    walletAmount: Number(booking.wallet_amount ?? 0),
+    giftCardAmount: Number(booking.gift_card_amount ?? 0),
+    unpaidAdditionalCharges: 0,
+    paymentStatus: booking.payment_status,
+  });
+  const { format: formatMoney } = await getTenantMoneyFormatter(
+    (booking as { tenant_id?: string | null }).tenant_id ?? null,
+  );
+
+  const { data: customerContact } = await admin
+    .from("users")
+    .select("email, phone")
+    .eq("id", customerId)
+    .maybeSingle();
+  const customerEmail = (customerContact as { email?: string | null } | null)?.email;
+  const customerPhone = (customerContact as { phone?: string | null } | null)?.phone;
+
+  const { insertNotification } = await import("@/lib/notifications/insert-notification");
+  await insertNotification({
+    user_id: customerId,
+    type: "payment_link_sent",
+    title: "Payment Link Ready",
+    message: `Pay ${formatMoney(amountDue)} for booking ${bookingRef}. Open: ${paymentLink}`,
+    data: {
+      booking_id: bookingId,
+      booking_ref: bookingRef,
+      amount: amountDue,
+      payment_link: paymentLink,
+      source: "provider_recurring_create",
+    },
+    action_url: paymentLink,
+  });
+
+  const { sendTemplateNotification } = await import("@/lib/notifications/onesignal");
+  const channels: ("push" | "email" | "sms")[] = ["push"];
+  if (customerEmail) channels.push("email");
+  if (customerPhone) channels.push("sms");
+  await sendTemplateNotification(
+    "payment_pending",
+    [customerId],
+    {
+      amount: formatMoney(amountDue),
+      booking_number: String(bookingRef),
+      payment_method: "Paystack",
+      booking_id: bookingId,
+      payment_link: paymentLink,
+    },
+    channels,
+    { appType: "customer" },
+  );
 }
 
 /**
@@ -282,6 +359,22 @@ export async function POST(request: NextRequest) {
         .from("recurring_appointments")
         .update({ last_booking_date: lastCreatedDate, updated_at: new Date().toISOString() })
         .eq("id", appointment.id);
+    }
+
+    if (validated.payment_method === "payment_link" && createdBookingIds[0]) {
+      try {
+        await sendFirstRecurringPaymentLink({
+          admin,
+          bookingId: createdBookingIds[0],
+          customerId: validated.customer_id,
+        });
+        if (createdBookingIds.length > 1) {
+          warnings.push("Payment link sent for the first generated visit. Future visits remain pending until collected or paid.");
+        }
+      } catch (paymentLinkError) {
+        console.warn("Failed to send payment link for first recurring visit:", paymentLinkError);
+        warnings.push("Series created, but the first visit payment link could not be sent automatically. Send it from booking details.");
+      }
     }
 
     return successResponse({

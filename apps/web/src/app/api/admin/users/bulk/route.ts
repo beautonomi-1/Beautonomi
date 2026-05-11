@@ -122,7 +122,7 @@ export async function POST(request: NextRequest) {
       actor_role: user.role ?? "superadmin",
       action: `admin.users.bulk.${action}`,
       entity_type: "user",
-      entity_id: user_ids.join(","),
+      entity_id: user_ids[0],
       metadata: { user_ids, action, role, reason, count: user_ids.length },
     });
 

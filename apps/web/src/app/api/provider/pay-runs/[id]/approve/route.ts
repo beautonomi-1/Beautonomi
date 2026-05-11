@@ -6,7 +6,7 @@ import {
   handleApiError,
   getProviderIdForUser,
 } from "@/lib/supabase/api-helpers";
-import { createClient } from "@supabase/supabase-js";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 /**
  * POST /api/provider/pay-runs/[id]/approve
@@ -20,11 +20,7 @@ export async function POST(
     const { user } = await requireRoleInApi(["provider_owner"], request);
     const { id } = await params;
 
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      { auth: { autoRefreshToken: false, persistSession: false } }
-    );
+    const supabaseAdmin = getSupabaseAdmin();
 
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
     if (!providerId) return notFoundResponse("Provider not found");

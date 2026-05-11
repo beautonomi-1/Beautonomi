@@ -214,13 +214,12 @@ export async function POST(
         : typeof idempotency_key === "string" && idempotency_key.trim()
           ? idempotency_key.trim()
           : request.headers.get("Idempotency-Key")?.trim() || null;
-    const hasTerminalReference = typeof reference === "string" && reference.trim().length > 0;
 
     let paymentProvider = 'other';
     if (effectivePaymentMethod === 'cash') {
       paymentProvider = 'cash';
     } else if (effectivePaymentMethod === 'card') {
-      paymentProvider = payment_provider === "yoco" || hasTerminalReference ? "yoco" : "other";
+      paymentProvider = payment_provider === "yoco" ? "yoco" : "other";
     }
 
     if (paymentProvider === "yoco" && !stableReference) {

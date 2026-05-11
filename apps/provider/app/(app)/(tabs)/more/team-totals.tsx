@@ -22,6 +22,7 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { useResponsive } from "@/hooks/useResponsive";
 import { twStyle } from "@/lib/twStyle";
 import { appendReportLocation } from "@/lib/reportLocationQuery";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 
 interface StaffTotalsItem {
   team_member_id: string;
@@ -44,6 +45,7 @@ export default function TeamTotalsScreen() {
   const router = useRouter();
   const { selectedLocationId } = useProvider();
   const { screenPadding } = useResponsive();
+  const currency = getTenantDefaultCurrency();
   const [refreshing, setRefreshing] = useState(false);
   const [period, setPeriod] = useState<"daily" | "weekly">("daily");
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -246,11 +248,11 @@ export default function TeamTotalsScreen() {
               </View>
               <View style={twStyle("flex-1 min-w-[100px] rounded-xl border border-gray-200 bg-white p-3")}>
                 <Text style={twStyle("text-xs text-gray-500")}>Revenue</Text>
-                <Text style={twStyle("text-lg font-semibold text-gray-900")}>R{stats.revenue.toLocaleString()}</Text>
+                <Text style={twStyle("text-lg font-semibold text-gray-900")}>{currency} {stats.revenue.toLocaleString()}</Text>
               </View>
               <View style={twStyle("flex-1 min-w-[100px] rounded-xl border border-gray-200 bg-white p-3")}>
                 <Text style={twStyle("text-xs text-gray-500")}>Tips</Text>
-                <Text style={twStyle("text-lg font-semibold text-gray-900")}>R{stats.tips.toLocaleString()}</Text>
+                <Text style={twStyle("text-lg font-semibold text-gray-900")}>{currency} {stats.tips.toLocaleString()}</Text>
               </View>
               <View style={twStyle("flex-1 min-w-[100px] rounded-xl border border-gray-200 bg-white p-3")}>
                 <Text style={twStyle("text-xs text-gray-500")}>Hours</Text>
@@ -258,7 +260,7 @@ export default function TeamTotalsScreen() {
               </View>
               <View style={twStyle("flex-1 min-w-[100px] rounded-xl border border-gray-200 bg-white p-3")}>
                 <Text style={twStyle("text-xs text-gray-500")}>Commission</Text>
-                <Text style={twStyle("text-lg font-semibold text-gray-900")}>R{stats.commission.toLocaleString()}</Text>
+                <Text style={twStyle("text-lg font-semibold text-gray-900")}>{currency} {stats.commission.toLocaleString()}</Text>
               </View>
             </View>
 
@@ -278,11 +280,11 @@ export default function TeamTotalsScreen() {
                     {t.team_member_name}
                   </Text>
                   <Text style={twStyle("w-12 text-sm text-gray-700 text-right")}>{t.appointments_count}</Text>
-                  <Text style={twStyle("w-16 text-sm text-gray-700 text-right")}>R{t.revenue.toLocaleString()}</Text>
-                  <Text style={twStyle("w-12 text-sm text-gray-700 text-right")}>R{t.tips.toLocaleString()}</Text>
+                  <Text style={twStyle("w-16 text-sm text-gray-700 text-right")}>{currency} {t.revenue.toLocaleString()}</Text>
+                  <Text style={twStyle("w-12 text-sm text-gray-700 text-right")}>{currency} {t.tips.toLocaleString()}</Text>
                   <Text style={twStyle("w-12 text-sm text-gray-700 text-right")}>{t.hours_worked.toFixed(1)}</Text>
                   <Text style={twStyle("w-16 text-sm font-medium text-gray-700 text-right")}>
-                    R{t.commission.toLocaleString()}
+                    {currency} {t.commission.toLocaleString()}
                   </Text>
                 </View>
               ))}

@@ -1455,10 +1455,10 @@ export default function BookCheckoutScreen() {
     ? Math.min(walletBalance, checkoutAmountDueByPolicy)
     : 0;
   const giftCardAppliedToCheckout =
-    paymentMethod === "giftcard" && giftCardValid
+    (paymentMethod === "giftcard" || paymentMethod === "card") && giftCardValid
       ? Math.min(Number(giftCardValid.balance || 0), checkoutAmountDueByPolicy)
       : 0;
-  const cardAmountDueNow = Math.max(0, checkoutAmountDueByPolicy - walletAppliedToCheckout);
+  const cardAmountDueNow = Math.max(0, checkoutAmountDueByPolicy - giftCardAppliedToCheckout - walletAppliedToCheckout);
   const bottomAmountShown =
     paymentMethod === "cash"
       ? checkoutAmountDueByPolicy
@@ -2033,7 +2033,7 @@ export default function BookCheckoutScreen() {
       if (paymentMethod === "card" && selectedCardId && !useNewCard && savedCards.length > 0) {
         payload.payment_method_id = selectedCardId;
       }
-      if (paymentMethod === "giftcard" && giftCardCode.trim() && giftCardValid) {
+      if ((paymentMethod === "giftcard" || paymentMethod === "card") && giftCardCode.trim() && giftCardValid) {
         payload.gift_card_code = giftCardCode.trim().toUpperCase();
       }
       if (Object.keys(bookingCustomValues).length > 0) payload.custom_field_values = bookingCustomValues;
@@ -3877,8 +3877,8 @@ export default function BookCheckoutScreen() {
                 )}
               </View>
 
-              {/* Gift card code (when gift card selected) */}
-              {paymentMethod === "giftcard" && (
+              {/* Gift card code (gift-card-only or card + gift-card split) */}
+              {(paymentMethod === "giftcard" || (paymentMethod === "card" && giftCardsEnabled)) && (
                 <View style={{ marginBottom: 12 }}>
                   {user && ownedGiftCards.length > 0 && !giftCardValid && (
                     <View style={{ marginBottom: 12 }}>

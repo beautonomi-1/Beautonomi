@@ -115,7 +115,7 @@ describe("migration 582 wallet/gift backfill ↔ runtime helper idempotency", ()
 
 /**
  * Mirrors the SQL `update_booking_payment_status` trigger semantics from
- * migration 582 to prove the threshold logic + refund handling.
+ * migrations 582 + 589 to prove the threshold logic + refund handling.
  */
 function trigger(
   totalAmount: number,
@@ -133,14 +133,14 @@ function trigger(
   if (totalPaid === 0) status = "pending";
   else if (totalRefunded >= totalPaid) status = "refunded";
   else if (totalAmount != null && totalPaid + 0.01 >= totalAmount)
-    status = totalRefunded > 0 ? "partially_paid" : "paid";
+    status = totalRefunded > 0 ? "partially_refunded" : "paid";
   else if (totalPaid > 0) status = "partially_paid";
   else status = "pending";
 
   return { status, totalPaid, totalRefunded };
 }
 
-describe("migration 582 update_booking_payment_status trigger semantics", () => {
+describe("migration 582/589 update_booking_payment_status trigger semantics", () => {
   it("paid status threshold honours +0.01 tolerance", () => {
     expect(trigger(100, [{ amount: 99.99, status: "completed" }]).status).toBe("paid");
     expect(trigger(100, [{ amount: 99.98, status: "completed" }]).status).toBe("partially_paid");
@@ -163,13 +163,13 @@ describe("migration 582 update_booking_payment_status trigger semantics", () => 
     expect(r.status).toBe("paid");
   });
 
-  it("partial refund of fully paid → partially_paid", () => {
+  it("partial refund of fully paid → partially_refunded", () => {
     const r = trigger(
       100,
       [{ amount: 100, status: "completed" }],
       [{ amount: 25, status: "completed" }],
     );
-    expect(r.status).toBe("partially_paid");
+    expect(r.status).toBe("partially_refunded");
   });
 
   it("full refund → refunded", () => {

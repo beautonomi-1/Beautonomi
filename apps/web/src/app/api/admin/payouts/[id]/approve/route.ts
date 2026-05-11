@@ -7,6 +7,7 @@ import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchProviderInAdminTenant } from "@/lib/tenant/admin-booking-tenant";
 import { formatCurrency } from "@/lib/utils";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { validateAdminPayoutReadiness } from "@/lib/admin/validate-provider-payout-readiness";
 
 /**
  * POST /api/admin/payouts/[id]/approve
@@ -28,7 +29,7 @@ export async function POST(
 
     const { data: payout } = await supabase
       .from("payouts")
-      .select("id, status, provider_id, amount, currency")
+      .select("id, status, provider_id, amount, currency, payout_account_details")
       .eq("id", id)
       .single();
 
@@ -36,7 +37,13 @@ export async function POST(
       return notFoundResponse("Payout not found");
     }
 
-    type PayoutRow = { status: string; provider_id?: string; amount: number; currency?: string | null };
+    type PayoutRow = {
+      status: string;
+      provider_id?: string;
+      amount: number;
+      currency?: string | null;
+      payout_account_details?: { bank_account_id?: string | null } | null;
+    };
     const payoutRow = payout as PayoutRow;
     const payoutCurrency = payoutRow.currency?.trim() || LAST_RESORT_CURRENCY;
     const amountFormatted = formatCurrency(Number(payoutRow.amount), payoutCurrency);
@@ -46,6 +53,19 @@ export async function POST(
     }
     if (payoutRow.status !== "pending") {
       return errorResponse("Payout is not pending", "INVALID_STATE", 400);
+    }
+
+    if (payoutRow.provider_id) {
+      const readiness = await validateAdminPayoutReadiness({
+        supabase,
+        providerId: payoutRow.provider_id,
+        tenantId,
+        requestedAccountId: payoutRow.payout_account_details?.bank_account_id ?? null,
+        requireAccount: true,
+      });
+      if (readiness.ok === false) {
+        return errorResponse(readiness.message, readiness.code, readiness.status);
+      }
     }
 
     // Update payout status

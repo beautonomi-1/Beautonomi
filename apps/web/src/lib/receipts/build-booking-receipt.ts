@@ -16,7 +16,12 @@ export {
   type ReceiptInvariantPayload,
 } from "@/lib/bookings/display-invariants";
 
-export type BookingPaymentLike = { amount?: number | null; status?: string | null };
+export type BookingPaymentLike = {
+  amount?: number | null;
+  status?: string | null;
+  payment_method?: string | null;
+  payment_provider?: string | null;
+};
 
 export type AdditionalChargeLike = { status?: string | null; amount?: number | null };
 
@@ -70,12 +75,23 @@ export function computeBookingReceiptFinancials(input: {
 
   const completedPayments = (input.booking_payments || []).filter((p) => isPaidBookingPaymentStatus(p.status));
   const paymentsPaid = completedPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+  const walletGiftPaymentsPaid = completedPayments
+    .filter((p) => {
+      const method = String(p.payment_method || "").toLowerCase();
+      const provider = String(p.payment_provider || "").toLowerCase();
+      return method === "wallet" || method === "gift_card" || provider === "wallet" || provider === "gift_card";
+    })
+    .reduce((sum, p) => sum + Number(p.amount || 0), 0);
   const walletCredit = Number(b.wallet_amount ?? 0);
   const giftCardCredit = Number(b.gift_card_amount ?? 0);
   const totalPaidRow = Number(b.total_paid ?? 0);
   const totalRefundedRow = Number(b.total_refunded ?? 0);
+  const walletGiftCoverage = Math.max(0, walletCredit + giftCardCredit);
+  const legacyWalletGiftRemainder = Math.max(0, walletGiftCoverage - walletGiftPaymentsPaid);
   const amountPaid =
-    totalPaidRow > 0.005 ? totalPaidRow : paymentsPaid + walletCredit + giftCardCredit;
+    totalPaidRow > 0
+      ? Math.max(totalPaidRow, paymentsPaid, walletGiftCoverage)
+      : Math.max(totalPaidRow, paymentsPaid + legacyWalletGiftRemainder, walletGiftCoverage);
 
   const unpaidAdditionalCharges = (input.additional_charges || [])
     .filter((ac) => ac.status !== "paid" && ac.status !== "rejected")
@@ -83,7 +99,7 @@ export function computeBookingReceiptFinancials(input: {
 
   const balanceDue = computeBookingOutstandingDisplay({
     totalAmount: totalFromRow,
-    totalPaid: totalPaidRow,
+    totalPaid: amountPaid,
     totalRefunded: totalRefundedRow,
     walletAmount: walletCredit,
     giftCardAmount: giftCardCredit,

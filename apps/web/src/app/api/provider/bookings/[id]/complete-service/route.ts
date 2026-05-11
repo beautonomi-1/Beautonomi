@@ -18,7 +18,6 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { syncAppointmentProductOrder } from "@/lib/orders/sync-appointment-product-order";
 import { notifyReviewReminder } from "@/lib/notifications";
 import { insertNotification } from "@/lib/notifications/insert-notification";
-import { validateProviderBookingProducts } from "@/lib/bookings/validate-provider-booking-products";
 
 /**
  * POST /api/provider/bookings/[id]/complete-service
@@ -110,35 +109,6 @@ export async function POST(
           required_status: "in_progress",
           required_stage: "service_started",
         },
-      );
-    }
-
-    const { data: bookingProductRows, error: bookingProductsLookupError } = await supabaseAdminBranch
-      .from("booking_products")
-      .select("product_id, product_variant_id, quantity")
-      .eq("booking_id", id)
-      .is("stock_deducted_at", null);
-    if (bookingProductsLookupError) {
-      return errorResponse(
-        "We couldn't verify product stock for this booking. Please try again.",
-        "PRODUCT_VALIDATION_FAILED",
-        503,
-      );
-    }
-    const stockValidation = await validateProviderBookingProducts(
-      supabaseAdminBranch,
-      providerId,
-      (bookingProductRows ?? []).map((row: any) => ({
-        productId: row.product_id,
-        productVariantId: row.product_variant_id,
-        quantity: row.quantity,
-      })),
-    );
-    if (stockValidation.ok === false) {
-      return errorResponse(
-        stockValidation.message,
-        stockValidation.code,
-        stockValidation.code === "PRODUCT_VALIDATION_FAILED" ? 503 : 400,
       );
     }
 

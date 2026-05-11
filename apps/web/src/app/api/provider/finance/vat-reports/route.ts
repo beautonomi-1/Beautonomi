@@ -37,9 +37,10 @@ export async function GET(request: NextRequest) {
       .from("providers")
       .select("is_vat_registered, vat_number, tenant_id, timezone")
       .eq("id", providerId)
-      .single();
+      .maybeSingle();
 
     if (providerError) throw providerError;
+    if (!provider) return successResponse({ reports: [] });
 
     const providerTimezoneEarly =
       (provider as { timezone?: string | null }).timezone || "Africa/Johannesburg";
@@ -104,95 +105,118 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Get VAT transactions for each period
-    const reports = await Promise.all(
-      periods.map(async (period) => {
-        const { fromIso, toIso } = dateRangeBoundsUtc(period.period_start, period.period_end, providerTimezone);
-        const { data: vatTransactions, error: vatError } = await supabase
-          .from("finance_transactions")
-          .select("id, amount, net, created_at, booking_id, description")
-          .eq("provider_id", providerId)
-          .eq("transaction_type", "tax")
-          .gte("created_at", fromIso)
-          .lte("created_at", toIso);
+    // Batch all 3 DB queries for the full year in one go instead of per-period (18→3 queries).
+    const yearStart = `${year}-01-01`;
+    const yearEnd = `${year}-12-31`;
+    const { fromIso: yearFromIso } = dateRangeBoundsUtc(yearStart, yearStart, providerTimezone);
+    const { toIso: yearToIso } = dateRangeBoundsUtc(yearEnd, yearEnd, providerTimezone);
 
-        if (vatError) {
-          console.error(`Error fetching VAT for period ${period.period_label}:`, vatError);
-          return {
-            ...period,
-            vat_collected: 0,
-            transaction_count: 0,
-            transactions: [],
-            error: vatError.message,
-          };
-        }
+    const [vatTxResult, remindersResult] = await Promise.all([
+      supabase
+        .from("finance_transactions")
+        .select("id, amount, net, created_at, booking_id, description")
+        .eq("provider_id", providerId)
+        .eq("transaction_type", "tax")
+        .gte("created_at", yearFromIso)
+        .lte("created_at", yearToIso),
+      supabase
+        .from("vat_remittance_reminders")
+        .select("id, sent_at, days_before_deadline, remitted_to_sars, remitted_at, period_start, period_end")
+        .eq("provider_id", providerId)
+        .gte("period_start", yearStart)
+        .lte("period_start", yearEnd)
+        .order("sent_at", { ascending: false }),
+    ]);
 
-        const vatCollected = (vatTransactions || []).reduce(
-          (sum, t) => {
-            const net = Number(t.net ?? 0);
-            return sum + (net !== 0 ? net : Number(t.amount ?? 0));
-          },
-          0
-        );
+    const allVatTx: any[] = vatTxResult.data || [];
 
-        // Get booking details for transactions
-        const bookingIds = [...new Set((vatTransactions || []).map(t => t.booking_id).filter(Boolean))];
-        let bookings: any[] = [];
-        if (bookingIds.length > 0) {
-          const { data: bookingData } = await supabase
-            .from("bookings")
-            .select("id, booking_number, scheduled_at, total_amount, tax_amount")
-            .in("id", bookingIds);
-          bookings = bookingData || [];
-        }
+    // Batch-fetch all booking details referenced across the year's transactions.
+    const allBookingIds = [...new Set(allVatTx.map((t: any) => t.booking_id).filter(Boolean))] as string[];
+    const bookingMap = new Map<string, any>();
+    if (allBookingIds.length > 0) {
+      const { data: bookingData } = await supabase
+        .from("bookings")
+        .select("id, booking_number, scheduled_at, total_amount, tax_amount")
+        .in("id", allBookingIds);
+      for (const b of bookingData || []) bookingMap.set(b.id, b);
+    }
 
-        // Check if reminder was sent and remittance status
-        const { data: reminder } = await supabase
-          .from("vat_remittance_reminders")
-          .select("id, sent_at, days_before_deadline, remitted_to_sars, remitted_at")
-          .eq("provider_id", providerId)
-          .eq("period_start", period.period_start)
-          .eq("period_end", period.period_end)
-          .order("sent_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
+    // Index reminders by period_start (take most recent per period).
+    const reminderMap = new Map<string, any>();
+    for (const r of (remindersResult.data || []) as any[]) {
+      if (!reminderMap.has(r.period_start)) reminderMap.set(r.period_start, r);
+    }
 
-        const now = new Date();
-        const deadline = new Date(period.deadline_date);
-        const daysUntilDeadline = Math.ceil((deadline.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-        const isOverdue = deadline < now && vatCollected > 0;
+    const now = new Date();
+    const reports = periods.map((period) => {
+      const { fromIso, toIso } = dateRangeBoundsUtc(period.period_start, period.period_end, providerTimezone);
+      const periodFrom = new Date(fromIso);
+      const periodTo = new Date(toIso);
 
+      const vatTransactions = allVatTx.filter((t: any) => {
+        const d = new Date(t.created_at);
+        return d >= periodFrom && d <= periodTo;
+      });
+
+      if (vatTxResult.error) {
+        console.error(`Error fetching VAT for period ${period.period_label}:`, vatTxResult.error);
         return {
           ...period,
-          vat_collected: vatCollected,
-          vat_collected_formatted: new Intl.NumberFormat(intlLocale, {
-            style: 'currency',
-            currency: lastResortCurrency,
-          }).format(vatCollected),
-          transaction_count: vatTransactions?.length || 0,
-          transactions: (vatTransactions || []).map(t => {
-            const booking = bookings.find(b => b.id === t.booking_id);
-            return {
-              id: t.id,
-              amount: Number(t.net || 0) !== 0 ? Number(t.net || 0) : Number(t.amount || 0),
-              booking_number: booking?.booking_number || 'N/A',
-              booking_date: booking?.scheduled_at || t.created_at,
-              description: t.description,
-            };
-          }),
-          reminder_sent: reminder ? {
-            sent_at: reminder.sent_at,
-            days_before_deadline: reminder.days_before_deadline,
-          } : null,
-          reminder_id: reminder?.id || null,
-          remitted_to_sars: reminder?.remitted_to_sars || false,
-          remitted_at: reminder?.remitted_at || null,
-          days_until_deadline: daysUntilDeadline,
-          is_overdue: deadline < now && vatCollected > 0 && !(reminder?.remitted_to_sars),
-          status: reminder?.remitted_to_sars ? 'remitted' : (isOverdue ? 'overdue' : daysUntilDeadline <= 7 ? 'due_soon' : 'upcoming'),
+          vat_collected: 0,
+          transaction_count: 0,
+          transactions: [],
+          error: vatTxResult.error.message,
         };
-      })
-    );
+      }
+
+      const vatCollected = vatTransactions.reduce(
+        (sum: number, t: any) => {
+          const net = Number(t.net ?? 0);
+          return sum + (net !== 0 ? net : Number(t.amount ?? 0));
+        },
+        0
+      );
+
+      const reminder = reminderMap.get(period.period_start) ?? null;
+      const deadline = new Date(period.deadline_date);
+      const daysUntilDeadline = Math.ceil((deadline.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      const isOverdue = deadline < now && vatCollected > 0;
+
+      return {
+        ...period,
+        vat_collected: vatCollected,
+        vat_collected_formatted: new Intl.NumberFormat(intlLocale, {
+          style: "currency",
+          currency: lastResortCurrency,
+        }).format(vatCollected),
+        transaction_count: vatTransactions.length,
+        transactions: vatTransactions.map((t: any) => {
+          const booking = bookingMap.get(t.booking_id);
+          return {
+            id: t.id,
+            amount: Number(t.net || 0) !== 0 ? Number(t.net || 0) : Number(t.amount || 0),
+            booking_number: booking?.booking_number ?? "N/A",
+            booking_date: booking?.scheduled_at ?? t.created_at,
+            description: t.description,
+          };
+        }),
+        reminder_sent: reminder
+          ? { sent_at: reminder.sent_at, days_before_deadline: reminder.days_before_deadline }
+          : null,
+        reminder_id: reminder?.id ?? null,
+        remitted_to_sars: reminder?.remitted_to_sars ?? false,
+        remitted_at: reminder?.remitted_at ?? null,
+        days_until_deadline: daysUntilDeadline,
+        is_overdue: deadline < now && vatCollected > 0 && !reminder?.remitted_to_sars,
+        status: reminder?.remitted_to_sars
+          ? "remitted"
+          : isOverdue
+          ? "overdue"
+          : daysUntilDeadline <= 7
+          ? "due_soon"
+          : "upcoming",
+      };
+    });
 
     // Sort by period start (most recent first)
     reports.sort((a, b) => 

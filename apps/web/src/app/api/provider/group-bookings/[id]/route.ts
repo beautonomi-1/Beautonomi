@@ -38,6 +38,7 @@ export async function GET(
         bookings:bookings(
           id, booking_number, ref_number, status, scheduled_at, total_amount,
           total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status,
+          additional_charges(amount,status),
           customer:users!bookings_customer_id_fkey(id, full_name, email, phone, avatar_url)
         ),
         service_packages:package_id(id, name),
@@ -67,7 +68,19 @@ export async function GET(
         const walletGiftCoverage =
           Number(booking.wallet_amount ?? 0) + Number(booking.gift_card_amount ?? 0);
         const coverage = Math.max(paidAfterRefunds, walletGiftCoverage);
-        const balanceDue = Math.max(0, Number(booking.total_amount ?? 0) - coverage);
+        const unpaidAdditionalCharges = Array.isArray(booking.additional_charges)
+          ? booking.additional_charges
+              .filter((charge: any) => charge?.status !== "paid" && charge?.status !== "rejected")
+              .reduce((sum: number, charge: any) => sum + Number(charge?.amount || 0), 0)
+          : 0;
+        const balanceDue = computeWalletGiftCoverageOutstanding({
+          totalAmount: Number(booking.total_amount ?? 0),
+          totalPaid: Number(booking.total_paid ?? 0),
+          totalRefunded: Number(booking.total_refunded ?? 0),
+          walletAmount: Number(booking.wallet_amount ?? 0),
+          giftCardAmount: Number(booking.gift_card_amount ?? 0),
+          unpaidAdditionalCharges,
+        });
         return [
           booking.id,
           {

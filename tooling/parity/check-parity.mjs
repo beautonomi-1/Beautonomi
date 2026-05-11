@@ -62,7 +62,7 @@ const PROVIDER_APP = path.join(ROOT, "apps/provider/app");
 /** Minimal provider-app smoke paths (tabs + auth) — extend when formalizing provider↔web parity. */
 const PROVIDER_ROUTE_FILES = [
   "(app)/(tabs)/dashboard.tsx",
-  "(app)/(tabs)/calendar.tsx",
+  "(app)/(tabs)/bookings/index.tsx",
   "(app)/(tabs)/more/index.tsx",
   "(app)/(tabs)/more/bookings/index.tsx",
   "(app)/(tabs)/more/finance-hub.tsx",

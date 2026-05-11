@@ -843,36 +843,6 @@ export async function PATCH(
         );
       }
 
-      if (requestedDbStatus === "completed") {
-        const { data: bookingProductRows, error: bookingProductsLookupError } = await supabaseAdminPatch
-          .from("booking_products")
-          .select("product_id, product_variant_id, quantity")
-          .eq("booking_id", id)
-          .is("stock_deducted_at", null);
-        if (bookingProductsLookupError) {
-          return errorResponse(
-            "We couldn't verify product stock for this booking. Please try again.",
-            "PRODUCT_VALIDATION_FAILED",
-            503,
-          );
-        }
-        const stockValidation = await validateProviderBookingProducts(
-          supabaseAdminPatch,
-          providerId,
-          (bookingProductRows ?? []).map((row: any) => ({
-            productId: row.product_id,
-            productVariantId: row.product_variant_id,
-            quantity: row.quantity,
-          })),
-        );
-        if (stockValidation.ok === false) {
-          return errorResponse(
-            stockValidation.message,
-            stockValidation.code,
-            stockValidation.code === "PRODUCT_VALIDATION_FAILED" ? 503 : 400,
-          );
-        }
-      }
     }
 
     // Update booking
@@ -1912,11 +1882,22 @@ export async function PATCH(
             };
           } else if (newStatus === "cancelled") {
             templateKey = "booking_cancelled";
+            const paymentStatusForRefundCopy =
+              ((updatedBooking as RefetchedBookingRow)?.payment_status ||
+                (currentBooking as BookingRow)?.payment_status ||
+                "").toString();
+            const hasCustomerFunds =
+              ["paid", "partially_paid", "partially_refunded"].includes(paymentStatusForRefundCopy) ||
+              Number(
+                (updatedBooking as RefetchedBookingRow)?.total_paid ??
+                  (currentBooking as Record<string, unknown>)?.total_paid ??
+                  0,
+              ) > 0;
             templateVariables = {
               provider_name: providerName,
               booking_date: scheduledDate || "your appointment",
               booking_number: bookingNumber || "",
-              refund_info: ((updatedBooking as RefetchedBookingRow)?.payment_status || (currentBooking as BookingRow)?.payment_status) === "paid" 
+              refund_info: hasCustomerFunds
                 ? "A refund will be processed within 3-5 business days."
                 : "No payment was required.",
               booking_id: id,

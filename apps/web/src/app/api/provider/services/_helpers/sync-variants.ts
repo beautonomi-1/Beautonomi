@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 interface PricingOption {
   id: string;
@@ -72,7 +73,7 @@ export async function syncVariantOfferings(
         duration_minutes: variantDuration,
         buffer_minutes: parentService.buffer_minutes ?? 15,
         price: variantPrice,
-        currency: parentService.currency ?? "ZAR",
+        currency: parentService.currency ?? LAST_RESORT_CURRENCY,
         supports_at_home: parentService.supports_at_home ?? false,
         supports_at_salon: parentService.supports_at_salon ?? true,
         at_home_radius_km: parentService.at_home_radius_km ?? null,

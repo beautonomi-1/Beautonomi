@@ -6,7 +6,7 @@ import {
   successResponse,
   handleApiError,
 } from "@/lib/supabase/api-helpers";
-import { createClient } from "@supabase/supabase-js";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 /**
  * GET /api/provider/pay-runs/my-earnings
@@ -16,11 +16,7 @@ export async function GET(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
 
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      { auth: { autoRefreshToken: false, persistSession: false } }
-    );
+    const supabaseAdmin = getSupabaseAdmin();
 
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
 

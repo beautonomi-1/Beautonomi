@@ -42,7 +42,14 @@ export async function POST(request: NextRequest) {
 
     const { player_id, platform } = validationResult.data;
 
-    await registerDevice(supabase, user.id, player_id, platform, "provider");
+    const result = await registerDevice(supabase, user.id, player_id, platform, "provider");
+    if (!result.success) {
+      return errorResponse(
+        result.error || "Failed to register device",
+        "DEVICE_REGISTRATION_FAILED",
+        500,
+      );
+    }
 
     return successResponse({ registered: true });
   } catch (error) {

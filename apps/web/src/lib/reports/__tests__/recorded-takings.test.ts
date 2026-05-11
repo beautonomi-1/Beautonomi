@@ -234,6 +234,34 @@ describe("getRecordedTakingsForRange", () => {
     expect(r.bookingCount).toBe(1);
   });
 
+  it("legacy partially-refunded wallet booking still reports original wallet takings", async () => {
+    const r = await getRecordedTakingsForRange(
+      mockSupabase({
+        providers: [providerRow()],
+        booking_payments: [],
+        bookings: [
+          {
+            id: "legacy-refunded",
+            provider_id: providerId,
+            location_id: null,
+            wallet_amount: 80,
+            total_paid: 0,
+            total_amount: 80,
+            payment_status: "partially_refunded",
+            scheduled_at: inRange,
+          },
+        ],
+        product_orders: [],
+        sales: [],
+        finance_transactions: [],
+      }),
+      { providerId, rangeStartIso: start, rangeEndIso: end },
+    );
+
+    expect(r.walletTotal).toBe(80);
+    expect(r.byPaymentMethod.wallet).toBe(80);
+  });
+
   it("includes walk-in product orders paid in range under their payment method", async () => {
     const r = await getRecordedTakingsForRange(
       mockSupabase({

@@ -18,6 +18,8 @@ import { trackNotificationOpened } from "@/lib/analytics";
 import { addBreadcrumb, captureError } from "@/lib/sentry";
 import { navigateFromNotification, type Notification } from "@/lib/notifications";
 
+const SUBSCRIPTION_RETRY_DELAYS_MS = [3000, 10000, 30000];
+
 /**
  * Deep link from a push — same rules as the in-app notification list
  * (navigateFromNotification) so banners and the bell land on the same screens.
@@ -188,15 +190,15 @@ function usePushRegistration() {
         if (subId) {
           await registerWithBackend(subId);
         } else {
-          const retry = setTimeout(async () => {
+          const retryTimers = SUBSCRIPTION_RETRY_DELAYS_MS.map((delay) => setTimeout(async () => {
             try {
               const id = await OneSignal.User.pushSubscription.getIdAsync();
               if (id) await registerWithBackend(id);
             } catch {
               // ignore
             }
-          }, 3000);
-          unsubscribe = () => clearTimeout(retry);
+          }, delay));
+          unsubscribe = () => retryTimers.forEach(clearTimeout);
         }
       } catch (err) {
         captureError(err instanceof Error ? err : new Error("OneSignal init failed"), {
@@ -217,7 +219,7 @@ function usePushRegistration() {
     if (gate.phase !== "complete" || gate.fromRestore) return;
 
     let cancelled = false;
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    let timeoutIds: ReturnType<typeof setTimeout>[] = [];
 
     const tryRegister = async () => {
       if (cancelled || registeredRef.current) return;
@@ -245,11 +247,11 @@ function usePushRegistration() {
     };
 
     void tryRegister();
-    timeoutId = setTimeout(tryRegister, 2500);
+    timeoutIds = [2500, 10000, 30000].map((delay) => setTimeout(tryRegister, delay));
 
     return () => {
       cancelled = true;
-      if (timeoutId) clearTimeout(timeoutId);
+      timeoutIds.forEach(clearTimeout);
     };
   }, [appId, user, gate]);
 }

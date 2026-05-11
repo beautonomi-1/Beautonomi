@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { successResponse, notFoundResponse, handleApiError, requireRoleInApi, getProviderIdForUser } from "@/lib/supabase/api-helpers";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 /**
  * GET /api/provider/services/[id]/variants
@@ -114,7 +115,7 @@ export async function POST(
         description: description || null,
         price: Number(price),
         duration_minutes: Number(duration_minutes),
-        currency: parent.currency || "ZAR",
+        currency: parent.currency || LAST_RESORT_CURRENCY,
         service_type: "variant",
         parent_service_id: serviceId,
         variant_sort_order: variant_sort_order ?? 0,

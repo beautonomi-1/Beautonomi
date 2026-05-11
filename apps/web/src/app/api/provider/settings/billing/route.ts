@@ -10,7 +10,8 @@ import { requirePermission } from "@/lib/auth/requirePermission";
 
 /**
  * GET /api/provider/settings/billing
- * Get provider billing information
+ * Get provider billing contact info (address, email, phone).
+ * Payment methods and invoices have their own dedicated endpoints.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -27,49 +28,19 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get provider basic data first
-    const { data: _provider, error: providerError } = await supabase
-      .from("providers")
-      .select("id")
-      .eq("id", providerId)
-      .single();
-
-    if (providerError) {
-      throw providerError;
-    }
-
-    // Try to get billing settings (columns that may not exist yet)
-    const { data: billingSettings } = await supabase
+    const { data: billingSettings, error } = await supabase
       .from("providers")
       .select("billing_address, billing_email, billing_phone")
       .eq("id", providerId)
-      .single();
+      .maybeSingle();
 
-    // Get payment methods
-    const { data: paymentMethods } = await supabase
-      .from("provider_payment_methods")
-      .select("*")
-      .eq("provider_id", providerId)
-      .eq("is_active", true)
-      .order("is_default", { ascending: false });
+    if (error) throw error;
 
-    // Get invoices
-    const { data: invoices } = await supabase
-      .from("provider_invoices")
-      .select("*")
-      .eq("provider_id", providerId)
-      .order("issue_date", { ascending: false })
-      .limit(50);
-
-    const result = {
-      billingAddress: billingSettings?.billing_address || null,
-      billingEmail: billingSettings?.billing_email || null,
-      billingPhone: billingSettings?.billing_phone || null,
-      paymentMethods: paymentMethods || [],
-      invoices: invoices || [],
-    };
-
-    return successResponse(result);
+    return successResponse({
+      billingAddress: billingSettings?.billing_address ?? null,
+      billingEmail: billingSettings?.billing_email ?? null,
+      billingPhone: billingSettings?.billing_phone ?? null,
+    });
   } catch (error) {
     return handleApiError(error, "Failed to load billing information");
   }

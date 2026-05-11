@@ -143,7 +143,36 @@ export async function processPayment(
         400
       );
     }
-    const applyAmount = Math.max(0, amountToCollect);
+    const { data: giftCardRow, error: giftCardLookupError } = await (supabaseAdmin.from("gift_cards") as any)
+      .select("balance, currency, is_active, expires_at")
+      .eq("code", giftCardCode)
+      .maybeSingle();
+    if (giftCardLookupError || !giftCardRow) {
+      return handleApiError(
+        giftCardLookupError || new Error("Invalid gift card code"),
+        "Invalid gift card code",
+        "GIFT_CARD_INVALID",
+        400,
+      );
+    }
+    if (!giftCardRow.is_active) {
+      return handleApiError(new Error("Gift card is inactive"), "Gift card is inactive", "GIFT_CARD_INVALID", 400);
+    }
+    if (giftCardRow.expires_at && new Date(giftCardRow.expires_at) < new Date()) {
+      return handleApiError(new Error("Gift card has expired"), "Gift card has expired", "GIFT_CARD_INVALID", 400);
+    }
+    if (giftCardRow.currency && giftCardRow.currency !== v.currency) {
+      return handleApiError(
+        new Error("Gift card currency mismatch"),
+        "Gift card currency does not match this booking.",
+        "GIFT_CARD_INVALID",
+        400,
+      );
+    }
+    const giftCardBalance = Math.max(0, Number(giftCardRow.balance || 0));
+    const applyAmount = paymentMethod === "giftcard"
+      ? Math.max(0, amountToCollect)
+      : Math.min(giftCardBalance, Math.max(0, amountToCollect));
     if (applyAmount > 0) {
       const { data: reserved, error: reserveError } = await (supabase.rpc as any)(
         "reserve_gift_card_redemption",
@@ -296,6 +325,13 @@ export async function processPayment(
 
     const effectivePaymentStatus = isDepositPayment ? "partially_paid" : "paid";
 
+    await ensureWalletGiftBookingPayments(supabaseAdmin, {
+      bookingId: booking.id,
+      tenantId: booking.tenant_id,
+      walletAmount: walletAmountApplied,
+      giftCardAmount: giftCardAmountApplied,
+    });
+
     await (supabase.from("bookings") as any)
       .update({
         payment_status: effectivePaymentStatus,
@@ -304,13 +340,6 @@ export async function processPayment(
         status: shouldAutoConfirmStatus ? "confirmed" : "pending",
       })
       .eq("id", booking.id);
-
-    await ensureWalletGiftBookingPayments(supabaseAdmin, {
-      bookingId: booking.id,
-      tenantId: booking.tenant_id,
-      walletAmount: walletAmountApplied,
-      giftCardAmount: giftCardAmountApplied,
-    });
 
     // ── Ledger entries (no gateway fees) ─────────────────────────────────
     await insertNoGatewayLedger(supabase, {
@@ -473,6 +502,7 @@ export async function processPayment(
         const chargeData = chargeResult.data as { id?: number; reference?: string; amount?: number };
         const amountMajor =
           typeof chargeData.amount === "number" ? chargeData.amount / 100 : amountToCollect;
+        paymentReference = chargeData.reference ?? reference;
         const recordedPayment = await recordBookingPaystackPayment(supabaseAdmin, {
           bookingId: booking.id,
           tenantId: booking.tenant_id ?? null,
@@ -492,6 +522,36 @@ export async function processPayment(
             reason: recordedPayment.reason,
             error: recordedPayment.error,
           });
+        }
+
+        if (giftCardAmountApplied > 0) {
+          try {
+            const { data: captureResult } = await (supabaseAdmin.rpc as any)("capture_gift_card_redemption", {
+              p_booking_id: booking.id,
+            });
+            if (captureResult === false || captureResult === null) {
+              console.warn("[process-payment] saved-card gift card capture returned no capture", {
+                bookingId: booking.id,
+                giftCardAmountApplied,
+              });
+              await supabaseAdmin
+                .from("bookings")
+                .update({ gift_card_id: null, gift_card_amount: 0 })
+                .eq("id", booking.id);
+            } else {
+              await ensureWalletGiftBookingPayments(supabaseAdmin, {
+                bookingId: booking.id,
+                tenantId: booking.tenant_id,
+                walletAmount: walletAmountApplied,
+                giftCardAmount: giftCardAmountApplied,
+              });
+            }
+          } catch (giftCaptureErr) {
+            console.error(
+              "[process-payment] saved-card gift card capture threw after successful charge; webhook will retry",
+              { bookingId: booking.id, err: giftCaptureErr },
+            );
+          }
         }
 
         try {
@@ -686,7 +746,7 @@ export async function processPayment(
     }
   }
 
-  return { paymentUrl, paymentReference: paymentUrl ? paymentReference : null };
+  return { paymentUrl, paymentReference };
 }
 
 // ─── Private helpers ──────────────────────────────────────────────────────────

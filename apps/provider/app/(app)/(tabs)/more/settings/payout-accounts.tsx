@@ -15,7 +15,6 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { StatCard } from "@/components/ui/StatCard";
 import { twStyle } from "@/lib/twStyle";
@@ -320,11 +319,37 @@ onPress={() => {
       )}
 
       {!accounts || accounts.length === 0 ? (
-        <EmptyState
-          icon="wallet-outline"
-          title="No payout accounts"
-          description="Add a bank account to receive payouts"
-        />
+        <View style={twStyle("flex-1 items-center justify-center px-6")}>
+          <View style={twStyle("mb-4 h-20 w-20 items-center justify-center rounded-full bg-indigo-50")}>
+            <Ionicons name="shield-checkmark-outline" size={34} color="#6366f1" />
+          </View>
+          <Text style={twStyle("text-center text-lg font-bold text-gray-900")}>
+            Add your payout account
+          </Text>
+          <Text style={twStyle("mt-2 text-center text-sm leading-5 text-gray-500")}>
+            Verify your bank details with Paystack so finance can pay platform-held earnings to the right account.
+          </Text>
+          <TouchableOpacity
+            style={twStyle("mt-6 flex-row items-center justify-center rounded-2xl bg-gray-900 px-6 py-3")}
+            onPress={() => {
+              setForm((p) => ({
+                ...p,
+                account_number: "",
+                bank_code: "",
+                bank_name: "",
+                account_name: "",
+              }));
+              resetVerifyState();
+              setShowAdd(true);
+            }}
+          >
+            <Ionicons name="add-circle-outline" size={20} color="#fff" />
+            <Text style={twStyle("ml-2 font-semibold text-white")}>Add bank account</Text>
+          </TouchableOpacity>
+          <Text style={twStyle("mt-3 text-center text-xs text-gray-400")}>
+            Your full account number is never shown after setup.
+          </Text>
+        </View>
       ) : (
         <FlatList
           {...verticalFlatListPerf}

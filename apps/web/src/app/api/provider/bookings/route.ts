@@ -11,6 +11,7 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { dateRangeBoundsUtc, fromBusinessTime, nowInTz, resolveTz } from "@/lib/dates/provider-tz";
 import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
+import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
 import { startOfDay, startOfMonth } from "date-fns";
 
 import { mapStatusToProvider } from "@/lib/utils/booking-status";
@@ -121,7 +122,7 @@ async function handleGetProviderBookings(request: NextRequest) {
     // In the provider portal we already scope by provider_id (resolved server-side)
     // and enforce roles, so using admin here avoids "saved but not visible" issues.
     const supabase = await getSupabaseServer(request);
-    const supabaseAdmin = await getSupabaseAdmin();
+    const supabaseAdmin = getSupabaseAdmin();
     const { searchParams } = new URL(request.url);
 
     // Get provider ID
@@ -563,31 +564,55 @@ async function handleGetProviderBookings(request: NextRequest) {
     const groupStaffName = new Map((groupStaffRes.data ?? []).map((s: any) => [s.id, s.name]));
     const groupLocation = new Map((groupLocRes.data ?? []).map((l: any) => [l.id, l]));
     const groupPaymentById = new Map<string, {
+      totalAmount: number;
       totalPaid: number;
       totalRefunded: number;
       walletGiftCoverage: number;
       coverage: number;
+      balanceDue: number;
       paymentStatus: string;
+      hasRefundStatus: boolean;
     }>();
     for (const child of groupChildBookingsRes.data ?? []) {
       if (!child.group_booking_id || ["cancelled", "no_show"].includes(String(child.status ?? ""))) continue;
       const prev = groupPaymentById.get(child.group_booking_id) ?? {
+        totalAmount: 0,
         totalPaid: 0,
         totalRefunded: 0,
         walletGiftCoverage: 0,
         coverage: 0,
+        balanceDue: 0,
         paymentStatus: "pending",
+        hasRefundStatus: false,
       };
+      const childPaymentStatus = String(child.payment_status ?? "");
       const paidAfterRefunds = Math.max(0, Number(child.total_paid ?? 0) - Number(child.total_refunded ?? 0));
       const walletGiftCoverage = Number(child.wallet_amount ?? 0) + Number(child.gift_card_amount ?? 0);
       const childCoverage = Math.max(paidAfterRefunds, walletGiftCoverage);
       const childUnpaidCharges = sumUnpaidAdditionalCharges(child.additional_charges);
+      const childTotal = Number(child.total_amount ?? 0);
+      const childBalanceDue = computeBookingOutstandingDisplay({
+        totalAmount: childTotal,
+        totalPaid: Number(child.total_paid ?? 0),
+        totalRefunded: Number(child.total_refunded ?? 0),
+        walletAmount: Number(child.wallet_amount ?? 0),
+        giftCardAmount: Number(child.gift_card_amount ?? 0),
+        unpaidAdditionalCharges: childUnpaidCharges,
+        paymentStatus: child.payment_status ?? null,
+      });
       groupPaymentById.set(child.group_booking_id, {
+        totalAmount: prev.totalAmount + childTotal + childUnpaidCharges,
         totalPaid: prev.totalPaid + Number(child.total_paid ?? 0),
         totalRefunded: prev.totalRefunded + Number(child.total_refunded ?? 0),
         walletGiftCoverage: prev.walletGiftCoverage + walletGiftCoverage,
-        coverage: prev.coverage + childCoverage - childUnpaidCharges,
+        coverage: prev.coverage + childCoverage,
+        balanceDue: prev.balanceDue + childBalanceDue,
         paymentStatus: prev.paymentStatus,
+        hasRefundStatus:
+          prev.hasRefundStatus ||
+          childPaymentStatus === "partially_refunded" ||
+          childPaymentStatus === "refunded" ||
+          Number(child.total_refunded ?? 0) > 0,
       });
     }
 
@@ -618,19 +643,26 @@ async function handleGetProviderBookings(request: NextRequest) {
       const productTotal = products.reduce((sum: number, p: any) => sum + (Number(p.total_price) || 0), 0);
       const total = Number(group.total_price ?? 0) || participantTotal + productTotal + (Number(group.travel_fee) || 0);
       const payment = groupPaymentById.get(group.id) ?? {
+        totalAmount: 0,
         totalPaid: 0,
         totalRefunded: 0,
         walletGiftCoverage: 0,
         coverage: 0,
+        balanceDue: 0,
         paymentStatus: "pending",
+        hasRefundStatus: false,
       };
-      const balanceDue = Math.max(0, total - payment.coverage);
+      const balanceDue = Math.max(0, payment.totalAmount > 0 ? payment.balanceDue : total - payment.coverage);
       const groupPaymentStatus =
-        total > 0 && balanceDue <= 0
-          ? "paid"
-          : payment.totalPaid > 0 || payment.walletGiftCoverage > 0
-            ? "partially_paid"
-            : "pending";
+        payment.hasRefundStatus && payment.totalPaid > 0 && payment.totalRefunded >= payment.totalPaid - 0.01
+          ? "refunded"
+          : payment.hasRefundStatus
+            ? "partially_refunded"
+            : total > 0 && balanceDue <= 0
+              ? "paid"
+              : payment.totalPaid > 0 || payment.walletGiftCoverage > 0
+                ? "partially_paid"
+                : "pending";
       const staffName = group.staff_id ? groupStaffName.get(group.staff_id) ?? null : null;
       const loc = group.location_id ? groupLocation.get(group.location_id) ?? null : null;
       return {
@@ -754,7 +786,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
     const { user } = permissionCheck;
 
     const supabase = await getSupabaseServer(request);
-    const supabaseAdmin = await getSupabaseAdmin(); // Use admin client to bypass RLS
+    const supabaseAdmin = getSupabaseAdmin(); // Use admin client to bypass RLS
     const body = await request.json();
     const providerFormResponses = parseProviderFormResponses(
       (body as { provider_form_responses?: unknown }).provider_form_responses
@@ -2007,13 +2039,87 @@ async function handleCreateProviderBooking(request: NextRequest) {
       );
     }
 
+    const paymentLinkWarnings: string[] = [];
+    if (body.payment_method === "payment_link") {
+      if (!shouldNotify) {
+        paymentLinkWarnings.push("Payment link was not sent because customer notifications are disabled for this booking.");
+      } else {
+        try {
+          const bookingRef = booking.booking_number || booking.id.slice(0, 8).toUpperCase();
+          const appBase = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
+          const paymentLink = `${appBase}/bookings/${booking.id}/pay`;
+          const amountDue = computeBookingOutstandingDisplay({
+            totalAmount: Number(booking.total_amount ?? finalTotalAmount),
+            totalPaid: Number(booking.total_paid ?? 0),
+            totalRefunded: Number(booking.total_refunded ?? 0),
+            walletAmount: Number(booking.wallet_amount ?? 0),
+            giftCardAmount: Number(booking.gift_card_amount ?? 0),
+            unpaidAdditionalCharges: 0,
+            paymentStatus: booking.payment_status,
+          });
+          const { format: formatMoney } = await getTenantMoneyFormatter(
+            (booking as { tenant_id?: string | null }).tenant_id ?? tenantId,
+          );
+          const { data: customerContact } = await supabaseAdmin
+            .from("users")
+            .select("email, phone")
+            .eq("id", customerId)
+            .maybeSingle();
+          const customerEmail = (customerContact as { email?: string | null } | null)?.email;
+          const customerPhone = (customerContact as { phone?: string | null } | null)?.phone;
+          const { insertNotification } = await import("@/lib/notifications/insert-notification");
+          await insertNotification({
+            user_id: customerId,
+            type: "payment_link_sent",
+            title: "Payment Link Ready",
+            message: `Pay ${formatMoney(amountDue)} for booking ${bookingRef}. Open: ${paymentLink}`,
+            data: {
+              booking_id: booking.id,
+              booking_ref: bookingRef,
+              amount: amountDue,
+              payment_link: paymentLink,
+              source: "provider_booking_create",
+            },
+            action_url: paymentLink,
+          });
+
+          try {
+            const { sendTemplateNotification } = await import("@/lib/notifications/onesignal");
+            const channels: ("push" | "email" | "sms")[] = ["push"];
+            if (customerEmail) channels.push("email");
+            if (customerPhone) channels.push("sms");
+            await sendTemplateNotification(
+              "payment_pending",
+              [customerId],
+              {
+                amount: formatMoney(amountDue),
+                booking_number: String(bookingRef),
+                payment_method: "Paystack",
+                booking_id: booking.id,
+                payment_link: paymentLink,
+              },
+              channels,
+              { appType: "customer" },
+            );
+          } catch (pushError) {
+            console.warn("Payment-link notification delivery failed after provider-created booking:", pushError);
+            paymentLinkWarnings.push("Payment link was created, but push/email/SMS delivery could not be confirmed.");
+          }
+        } catch (paymentLinkError) {
+          console.warn("Payment link notification failed after provider-created booking:", paymentLinkError);
+          paymentLinkWarnings.push("Booking was created, but the payment link could not be sent automatically. Send it from booking details.");
+        }
+      }
+    }
+
     void import("@/lib/subscriptions/subscription-limit-notifications")
       .then((m) => m.maybeNotifyProviderSubscriptionLimits(providerId))
       .catch((e) => console.warn("Subscription usage notification:", e));
 
     const responsePayload: any = transformedBooking;
-    if (resourceWarnings.length > 0) {
-      responsePayload._warnings = resourceWarnings;
+    const responseWarnings = [...resourceWarnings, ...paymentLinkWarnings];
+    if (responseWarnings.length > 0) {
+      responsePayload._warnings = responseWarnings;
     }
     return successResponse(responsePayload);
   } catch (error) {

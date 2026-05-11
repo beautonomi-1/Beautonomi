@@ -20,7 +20,7 @@ export async function PATCH(
 
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
-    const providerId = await getProviderIdForUser(permissionCheck.user!.id);
+    const providerId = await getProviderIdForUser(permissionCheck.user!.id, supabase);
 
     if (!providerId) {
       return handleApiError(
@@ -81,7 +81,7 @@ export async function DELETE(
     }
 
     const supabase = await getSupabaseServer(request);
-    const providerId = await getProviderIdForUser(permissionCheck.user!.id);
+    const providerId = await getProviderIdForUser(permissionCheck.user!.id, supabase);
 
     if (!providerId) {
       return handleApiError(

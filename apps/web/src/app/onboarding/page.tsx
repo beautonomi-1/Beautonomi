@@ -22,7 +22,6 @@ import {
   normalizeSupabaseSmsOtpToken,
   isCompleteSupabaseSmsOtp,
   SUPABASE_AUTH_OTP_LENGTH,
-  SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS,
 } from "@/lib/supabase/auth-sms-otp";
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -423,14 +422,18 @@ function Step4Phone({
   const [pendingPhoneE164, setPendingPhoneE164] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
-  const [countdown, setCountdown] = useState(0);
+  // §UX-audit 2026-05: 30s resend cooldown — consistent with login screen.
+  // Previously used the full OTP expiry (SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS,
+  // ~5 min) which disabled the button for 5 minutes after the first send.
+  const RESEND_COOLDOWN_SECS = 30;
+  const [resendCooldown, setResendCooldown] = useState(0);
   const [localVerified, setLocalVerified] = useState(alreadyVerified);
 
   useEffect(() => {
-    if (countdown <= 0) return;
-    const t = setTimeout(() => setCountdown((c) => c - 1), 1000);
-    return () => clearTimeout(t);
-  }, [countdown]);
+    if (resendCooldown <= 0) return;
+    const t = window.setInterval(() => setResendCooldown((c) => (c > 0 ? c - 1 : 0)), 1000);
+    return () => window.clearInterval(t);
+  }, [resendCooldown]);
 
   const handleSendCode = async () => {
     if (!isCompleteE164(phoneE164)) {
@@ -447,7 +450,7 @@ function Step4Phone({
       setPendingPhoneE164(normalized);
       setVerificationCode("");
       setCodeSent(true);
-      setCountdown(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS);
+      setResendCooldown(RESEND_COOLDOWN_SECS);
       toast.success("Verification code sent!");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to send code. Try again.");
@@ -525,15 +528,20 @@ function Step4Phone({
               <Button
                 type="button"
                 onClick={handleSendCode}
-                disabled={!isCompleteE164(phoneE164) || isSending || countdown > 0}
+                disabled={!isCompleteE164(phoneE164) || isSending || resendCooldown > 0}
                 className="h-12 shrink-0 rounded-xl bg-primary px-4 text-white hover:bg-primary/90 disabled:opacity-50"
+                aria-label={
+                  resendCooldown > 0
+                    ? `Resend in ${resendCooldown} seconds`
+                    : codeSent ? "Resend code" : "Send code"
+                }
               >
                 {isSending ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
-                ) : countdown > 0 ? (
-                  `${Math.floor(countdown / 60)}:${String(countdown % 60).padStart(2, "0")}`
+                ) : resendCooldown > 0 ? (
+                  `Resend in ${resendCooldown}s`
                 ) : (
-                  "Send code"
+                  codeSent ? "Resend" : "Send code"
                 )}
               </Button>
             </div>
@@ -979,6 +987,11 @@ function CustomerOnboardingWizard() {
     }
   };
 
+  // §UX-audit 2026-05: back navigation so users can correct earlier steps
+  const handleBack = () => {
+    if (currentStep > 1) setCurrentStep((s) => s - 1);
+  };
+
   const handleComplete = async () => {
     setIsLoading(true);
     try {
@@ -1008,12 +1021,26 @@ function CustomerOnboardingWizard() {
   const canSkipCurrentStep = currentStep !== 1 && currentStep !== 4 && currentStep !== 5;
   const isLastStep = currentStep === TOTAL_STEPS;
   const continueLabel = isLastStep ? "Finish" : "Continue";
+  const canGoBack = currentStep > 1;
 
   return (
     <div className="flex min-h-screen flex-col bg-gradient-to-b from-white to-slate-50">
       {/* Header */}
       <header className="flex items-center justify-between px-4 py-5 sm:px-8">
-        <span className="text-lg font-bold tracking-tight text-primary">Beautonomi</span>
+        {canGoBack ? (
+          <button
+            type="button"
+            onClick={handleBack}
+            disabled={isLoading}
+            className="flex items-center gap-1 text-sm text-slate-500 hover:text-slate-800 disabled:opacity-40"
+            aria-label="Go back to previous step"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M19 12H5"/><path d="m12 5-7 7 7 7"/></svg>
+            Back
+          </button>
+        ) : (
+          <span className="text-lg font-bold tracking-tight text-primary">Beautonomi</span>
+        )}
         {canSkipCurrentStep && (
           <button
             type="button"

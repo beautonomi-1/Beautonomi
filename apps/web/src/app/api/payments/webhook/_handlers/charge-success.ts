@@ -34,6 +34,7 @@ import { tryCreateCustomerRecurringFromPaystackChargeMetadata } from "@/lib/recu
 import { applyWalletTopupFromSuccessfulPaystackCharge } from "@/lib/wallet/apply-wallet-topup-from-paystack-success";
 import { recordBookingPaystackPayment } from "@/lib/bookings/record-booking-paystack-payment";
 import { syncBookingAfterPaystackSuccess } from "@/lib/bookings/sync-booking-after-paystack-success";
+import { ensureWalletGiftBookingPayments } from "@/lib/bookings/ensure-wallet-gift-booking-payments";
 import { patchCustomOfferMessageAttachments } from "@/lib/custom-offers/sync-offer-message-attachments";
 import { finalizeCustomOfferPaymentFromPaystackEvent } from "@/lib/custom-offers/finalize-custom-offer-payment";
 
@@ -384,7 +385,6 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
   const { error: updateError } = await supabase
     .from("bookings")
     .update({
-      payment_status: stdIsDeposit ? "partially_paid" : "paid",
       payment_reference: reference,
       payment_date: new Date().toISOString(),
       payment_provider: "paystack",
@@ -396,21 +396,28 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
     throw updateError;
   }
 
-  await syncBookingAfterPaystackSuccess(supabase, metadata.booking_id, {
-    paymentReference: reference,
-    paymentProvider: "paystack",
-  });
-
   // Gift cards: capture reserved redemption
+  let giftCardCaptured = giftCardAmountFromMeta <= 0;
   try {
-    const { data: captureResult } = await supabase.rpc("capture_gift_card_redemption", {
-      p_booking_id: metadata.booking_id,
-    });
+    if (giftCardAmountFromMeta > 0) {
+      const { data: captureResult } = await supabase.rpc("capture_gift_card_redemption", {
+        p_booking_id: metadata.booking_id,
+      });
 
-    if (captureResult === false || captureResult === null) {
-      console.warn(
-        `Gift card redemption capture failed for booking ${metadata.booking_id}. Check if gift card expired.`,
-      );
+      if (captureResult === false || captureResult === null) {
+        console.warn(
+          `Gift card redemption capture failed for booking ${metadata.booking_id}. Check if gift card expired.`,
+        );
+        await supabase
+          .from("bookings")
+          .update({
+            gift_card_id: null,
+            gift_card_amount: 0,
+          })
+          .eq("id", metadata.booking_id);
+      } else {
+        giftCardCaptured = true;
+      }
     }
   } catch (gcError: unknown) {
     const errorMessage = gcError instanceof Error ? gcError.message : String(gcError);
@@ -432,6 +439,18 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
       console.error("Error capturing gift card redemption:", gcError);
     }
   }
+
+  await ensureWalletGiftBookingPayments(supabase, {
+    bookingId: metadata.booking_id,
+    tenantId: bookingData.tenant_id ?? financeTenantId ?? null,
+    walletAmount: walletAmountFromMeta,
+    giftCardAmount: giftCardCaptured ? giftCardAmountFromMeta : 0,
+  });
+
+  await syncBookingAfterPaystackSuccess(supabase, metadata.booking_id, {
+    paymentReference: reference,
+    paymentProvider: "paystack",
+  });
 
   // Loyalty points: deduct if used (idempotent; same as verify so only one path applies)
   // §Customer-audit 2026-04: centralised through recordLoyaltyRedemption so both
@@ -1168,7 +1187,12 @@ async function processFailedPayment(data: PaystackChargeData, supabase: Supabase
       return;
     }
     const currentStatus = (booking as { payment_status?: string }).payment_status;
-    const nextPaymentStatus = currentStatus === "pending" ? "pending" : "partially_paid";
+    const nextPaymentStatus =
+      currentStatus === "refunded" || currentStatus === "partially_refunded"
+        ? currentStatus
+        : currentStatus === "pending"
+          ? "pending"
+          : "partially_paid";
     await supabase
       .from("bookings")
       .update({
@@ -1256,6 +1280,29 @@ async function processFailedPayment(data: PaystackChargeData, supabase: Supabase
     }
   }
 
+  // Gift cards: void reserved redemption and restore balance before the final
+  // failed status update so payment-status triggers cannot leave stale coverage.
+  try {
+    await supabase.rpc("void_gift_card_redemption", {
+      p_booking_id: metadata.booking_id,
+    });
+  } catch (gcError) {
+    console.error("Error voiding gift card redemption:", gcError);
+  }
+
+  try {
+    await supabase
+      .from("booking_payments")
+      .delete()
+      .eq("booking_id", metadata.booking_id)
+      .in("payment_provider_id", [
+        `wallet_booking:${metadata.booking_id}`,
+        `gift_card_booking:${metadata.booking_id}`,
+      ]);
+  } catch (paymentCleanupError) {
+    console.error("Error cleaning synthetic booking payments after charge.failed:", paymentCleanupError);
+  }
+
   // Update booking: mark payment as failed AND cancel the booking to release the slot
   const { error: updateError } = await supabase.from("bookings")
     .update({
@@ -1271,15 +1318,6 @@ async function processFailedPayment(data: PaystackChargeData, supabase: Supabase
   if (updateError) {
     console.error("Error updating booking payment status:", updateError);
     throw updateError;
-  }
-
-  // Gift cards: void reserved redemption and restore balance
-  try {
-    await supabase.rpc("void_gift_card_redemption", {
-      p_booking_id: metadata.booking_id,
-    });
-  } catch (gcError) {
-    console.error("Error voiding gift card redemption:", gcError);
   }
 
   // Create payment transaction record
@@ -1974,6 +2012,28 @@ async function handleProviderSubscriptionOrderSuccess(
     description: `Provider subscription payment`,
     created_at: new Date().toISOString(),
   });
+
+  try {
+    const { data: plan } = await supabase
+      .from("subscription_plans")
+      .select("name")
+      .eq("id", planId)
+      .maybeSingle();
+    const { notifyProviderTeamUsers } = await import("@/lib/notifications/notify-provider-team");
+    await notifyProviderTeamUsers(providerId, {
+      type: "subscription_update",
+      title: "Subscription payment confirmed",
+      message: `Your ${(plan as { name?: string } | null)?.name ?? "subscription"} payment is complete.`,
+      data: {
+        provider_subscription_order_id: orderId,
+        plan_id: planId,
+        amount: amountInCurrency,
+      },
+      action_url: "/provider/subscription",
+    });
+  } catch (notificationError) {
+    console.warn("Provider subscription payment notification failed:", notificationError);
+  }
 }
 
 async function handleProviderSubscriptionOrderFailed(
@@ -2096,6 +2156,23 @@ async function handleAdsBudgetOrderSuccess(
     description: billingLabel,
     created_at: new Date().toISOString(),
   });
+
+  try {
+    const { notifyProviderTeamUsers } = await import("@/lib/notifications/notify-provider-team");
+    await notifyProviderTeamUsers(providerId, {
+      type: "ads_payment_confirmed",
+      title: "Ad payment confirmed",
+      message: `${billingLabel} payment confirmed. Your campaign is funded.`,
+      data: {
+        ads_budget_order_id: orderId,
+        campaign_id: campaignId,
+        amount: amountInCurrency,
+      },
+      action_url: "/provider/settings/ads",
+    });
+  } catch (notificationError) {
+    console.warn("Ads payment notification failed:", notificationError);
+  }
 }
 
 // ─── Customer standalone card verification (profile → add card) ─────────────
@@ -2330,6 +2407,44 @@ async function handleSubscriptionAuthorizationSuccess(
           updated_at: new Date().toISOString(),
         })
         .eq("provider_id", providerId);
+    } else {
+      const now = new Date();
+      const expiresAt = new Date(now);
+      if (billingPeriod === "yearly") expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+      else expiresAt.setMonth(expiresAt.getMonth() + 1);
+
+      await supabase.from("provider_subscriptions")
+        .update({
+          status: "active",
+          started_at: now.toISOString(),
+          expires_at: expiresAt.toISOString(),
+          auto_renew: false,
+          paystack_sync_pending: false,
+          paystack_sync_note: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("provider_id", providerId);
+    }
+
+    try {
+      const { data: plan } = await supabase
+        .from("subscription_plans")
+        .select("name")
+        .eq("id", planId)
+        .maybeSingle();
+      const { notifyProviderTeamUsers } = await import("@/lib/notifications/notify-provider-team");
+      await notifyProviderTeamUsers(providerId, {
+        type: "subscription_update",
+        title: "Subscription activated",
+        message: `${(plan as { name?: string } | null)?.name ?? "Your subscription"} is active.`,
+        data: {
+          provider_subscription_order_id: orderId,
+          plan_id: planId,
+        },
+        action_url: "/provider/subscription",
+      });
+    } catch (notificationError) {
+      console.warn("Subscription activation notification failed:", notificationError);
     }
   } catch (err: unknown) {
     console.error("Failed to create Paystack subscription after authorization:", err);

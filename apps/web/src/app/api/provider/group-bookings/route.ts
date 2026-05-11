@@ -12,6 +12,7 @@ import {
   groupProductLineTotal,
   validateAndPriceGroupPackage,
 } from "@/lib/bookings/group-booking-package-pricing";
+import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
 import { computeCatalogPackageServiceDiscount } from "@beautonomi/utils";
 
 /**
@@ -116,7 +117,7 @@ export async function GET(request: NextRequest) {
       const participantPaymentsRes = participantBookingIds.length > 0
         ? await admin
             .from("bookings")
-            .select("id, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status")
+            .select("id, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status, additional_charges(amount,status)")
             .in("id", participantBookingIds)
         : { data: [] as any[] };
       const participantPaymentByBookingId = new Map(
@@ -128,7 +129,20 @@ export async function GET(request: NextRequest) {
           const walletGiftCoverage =
             Number(booking.wallet_amount ?? 0) + Number(booking.gift_card_amount ?? 0);
           const coverage = Math.max(paidAfterRefunds, walletGiftCoverage);
-          const balanceDue = Math.max(0, Number(booking.total_amount ?? 0) - coverage);
+          const unpaidAdditionalCharges = Array.isArray(booking.additional_charges)
+            ? booking.additional_charges
+                .filter((charge: any) => charge?.status !== "paid" && charge?.status !== "rejected")
+                .reduce((sum: number, charge: any) => sum + Number(charge?.amount || 0), 0)
+            : 0;
+          const balanceDue = computeBookingOutstandingDisplay({
+            totalAmount: Number(booking.total_amount ?? 0),
+            totalPaid: Number(booking.total_paid ?? 0),
+            totalRefunded: Number(booking.total_refunded ?? 0),
+            walletAmount: Number(booking.wallet_amount ?? 0),
+            giftCardAmount: Number(booking.gift_card_amount ?? 0),
+            unpaidAdditionalCharges,
+            paymentStatus: booking.payment_status ?? null,
+          });
           return [
             booking.id,
             {

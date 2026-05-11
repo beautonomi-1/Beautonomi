@@ -149,13 +149,15 @@ export async function getRecordedTakingsForRange(
       const walletAmt = Number(wb.wallet_amount ?? 0);
       const bpSum = bpAmountByBooking.get(wb.id) ?? 0;
       const totalPaid = Number(wb.total_paid ?? 0);
+      const ps = (wb.payment_status || "").toLowerCase();
+      const hasSettledWalletStatus = ps === "paid" || ps === "partially_refunded";
       let collected = totalPaid;
-      if (collected <= 0 && wb.payment_status === "paid") {
+      if (collected <= 0 && hasSettledWalletStatus) {
         collected = Math.max(Number(wb.total_amount ?? 0), walletAmt, bpSum);
       }
       const uncaptured = Math.max(0, collected - bpSum);
       let walletPortion = Math.min(walletAmt, uncaptured);
-      if (walletPortion <= 0 && walletAmt > 0 && bpSum === 0 && wb.payment_status === "paid") {
+      if (walletPortion <= 0 && walletAmt > 0 && bpSum === 0 && hasSettledWalletStatus) {
         walletPortion = walletAmt;
       }
       if (walletPortion <= 0) continue;

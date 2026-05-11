@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { z } from "zod";
 import { percentOf } from "@beautonomi/utils";
@@ -22,13 +23,14 @@ export async function POST(request: NextRequest) {
     const supabase = await getSupabaseServer();
 
     if (body.type === "coupon") {
-      // Validate coupon
-      const { data: coupon, error } = await supabase
+      // Validate coupon — use admin client so RLS does not block the read on the coupons table.
+      const supabaseAdmin = getSupabaseAdmin();
+      const { data: coupon, error } = await supabaseAdmin
         .from("coupons")
         .select("*")
         .eq("code", body.code.toUpperCase())
         .eq("is_active", true)
-        .single();
+        .maybeSingle();
 
       if (error || !coupon) {
         return successResponse({
@@ -71,17 +73,25 @@ export async function POST(request: NextRequest) {
       });
     } else if (body.type === "gift_card") {
       // Validate gift card
-      const { data: giftCard, error } = await supabase
+      const supabaseAdmin = getSupabaseAdmin();
+      const { data: giftCard, error } = await supabaseAdmin
         .from("gift_cards")
         .select("*")
-        .eq("code", body.code)
-        .eq("status", "active")
-        .single();
+        .eq("code", body.code.trim().toUpperCase())
+        .eq("is_active", true)
+        .maybeSingle();
 
       if (error || !giftCard) {
         return successResponse({
           valid: false,
           message: "Invalid gift card code",
+        });
+      }
+
+      if (giftCard.expires_at && new Date(giftCard.expires_at) < new Date()) {
+        return successResponse({
+          valid: false,
+          message: "This gift card has expired",
         });
       }
 

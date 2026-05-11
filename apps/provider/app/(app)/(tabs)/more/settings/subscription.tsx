@@ -189,6 +189,21 @@ export default function SubscriptionScreen() {
     return [...free, ...paid];
   }, [plans, billingSegment]);
 
+  const confirmSecureCheckout = useCallback(
+    (params: { title: string; message: string; confirmLabel?: string }) =>
+      new Promise<boolean>((resolve) => {
+        Alert.alert(params.title, params.message, [
+          { text: "Not now", style: "cancel", onPress: () => resolve(false) },
+          {
+            text: params.confirmLabel ?? "Continue to Paystack",
+            style: "default",
+            onPress: () => resolve(true),
+          },
+        ]);
+      }),
+    [],
+  );
+
   useEffect(() => {
     const sub = AppState.addEventListener("change", (nextState) => {
       if (appState.current.match(/inactive|background/) && nextState === "active") {
@@ -243,6 +258,14 @@ export default function SubscriptionScreen() {
   }
 
   async function handleRenew() {
+    const confirmed = await confirmSecureCheckout({
+      title: "Review renewal",
+      message:
+        "We'll open secure Paystack checkout. Your plan renews only after Paystack confirms the payment.",
+      confirmLabel: "Renew securely",
+    });
+    if (!confirmed) return;
+
     const { error: err, data } = await postAction("/api/provider/subscription/renew", { in_app: true });
     if (err) {
       Alert.alert("Error", err);
@@ -291,6 +314,16 @@ export default function SubscriptionScreen() {
     if (!selectedPlan) return;
     const billingPeriod = selectedPlan.billing_period || "monthly";
     const barePlanId = selectedPlan.plan_id || planId;
+    const isPaidSelection = !(selectedPlan.is_free || selectedPlan.amount === 0);
+
+    if (isPaidSelection) {
+      const confirmed = await confirmSecureCheckout({
+        title: "Review plan payment",
+        message: `${selectedPlan.name} is ${formatOptionPrice(selectedPlan)}. We'll open Paystack to complete the payment, then return here with a confirmation screen.`,
+        confirmLabel: "Pay securely",
+      });
+      if (!confirmed) return;
+    }
 
     setUpgradingId(planId);
     try {

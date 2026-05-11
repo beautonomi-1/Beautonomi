@@ -68,9 +68,12 @@ export async function POST(
       return errorResponse("Can only refund paid or partially paid bookings", "INVALID_STATUS", 400);
     }
 
-    // total_paid from booking_payments trigger only counts gateway payments.
-    // Include wallet and gift card amounts for the full collected total.
-    const totalCollected = (b.total_paid ?? 0) + (b.wallet_amount ?? 0) + (b.gift_card_amount ?? 0);
+    // Post-582 `total_paid` usually includes synthetic wallet/gift rows. Use the
+    // larger coverage estimate so legacy rows still refund correctly without double-counting.
+    const totalCollected = Math.max(
+      Number(b.total_paid ?? 0),
+      Number(b.wallet_amount ?? 0) + Number(b.gift_card_amount ?? 0),
+    );
     const availableForRefund = totalCollected - (b.total_refunded ?? 0);
     if (amount > availableForRefund) {
       const displayCurrency = b.currency || lastResortCurrency;

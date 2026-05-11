@@ -2,10 +2,10 @@ import { describe, it, expect } from "vitest";
 import { computeBookingReceiptFinancials } from "@/lib/receipts/build-booking-receipt";
 
 /**
- * Mirrors `update_booking_payment_status` (migration 582) — status logic
+ * Mirrors `update_booking_payment_status` (migrations 582 + 589) — status logic
  * extracted into JS so we can exhaustively test the boundaries.
  *
- *   total_paid + 0.01 >= total_amount  →  paid (or partially_paid if any refund)
+ *   total_paid + 0.01 >= total_amount  →  paid (or partially_refunded if any refund)
  *   total_paid > 0                      →  partially_paid
  *   else                                →  pending
  *
@@ -21,12 +21,12 @@ function deriveStatus(totalAmount: number, payments: DbPaymentRow[], refundedTot
   if (totalPaid === 0) return { status: "pending", totalPaid };
   if (refundedTotal >= totalPaid) return { status: "refunded", totalPaid };
   if (totalPaid + 0.01 >= totalAmount) {
-    return { status: refundedTotal > 0 ? "partially_paid" : "paid", totalPaid };
+    return { status: refundedTotal > 0 ? "partially_refunded" : "paid", totalPaid };
   }
   return { status: "partially_paid", totalPaid };
 }
 
-describe("wallet + card → paid status (migration 582 trigger semantics)", () => {
+describe("wallet + card → paid status (migration 582/589 trigger semantics)", () => {
   it("wallet + card sums to total_amount → paid", () => {
     const total = 154.6;
     const r = deriveStatus(total, [
@@ -71,10 +71,10 @@ describe("wallet + card → paid status (migration 582 trigger semantics)", () =
     expect(r.status).toBe("refunded");
   });
 
-  it("partial refund leaves status as partially_paid even when paid in full first", () => {
+  it("partial refund leaves status as partially_refunded when paid in full first", () => {
     const total = 100;
     const r = deriveStatus(total, [{ amount: 100, status: "completed" }], 25);
-    expect(r.status).toBe("partially_paid");
+    expect(r.status).toBe("partially_refunded");
   });
 });
 

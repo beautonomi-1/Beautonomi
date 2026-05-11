@@ -238,7 +238,7 @@ describe("receipt financial scenarios (provider walk-in / customer at-home / wal
     expect(f.platformFee).toBe(8.6);
   });
 
-  it("amount_paid prefers total_paid (trigger-maintained) over summing booking_payments + wallet/gift", () => {
+  it("amount_paid uses canonical coverage without double-counting wallet/gift", () => {
     const f = computeBookingReceiptFinancials({
       row: {
         ...BASE_ROW,
@@ -257,5 +257,47 @@ describe("receipt financial scenarios (provider walk-in / customer at-home / wal
     });
     // 200, not 200 + 50 (no double-count)
     expect(f.amountPaid).toBe(200);
+  });
+
+  it("amount_paid falls back to booking_payments when bookings.total_paid is stale low", () => {
+    const f = computeBookingReceiptFinancials({
+      row: {
+        ...BASE_ROW,
+        subtotal: 200,
+        gift_card_amount: 50,
+        total_amount: 200,
+        total_paid: 150,
+        payment_status: "paid",
+      },
+      linesSubtotal: 200,
+      booking_payments: [
+        { amount: 150, status: "completed" },
+        { amount: 50, status: "completed" },
+      ],
+      additional_charges: [],
+    });
+
+    expect(f.amountPaid).toBe(200);
+    expect(f.giftCardCredit).toBe(50);
+  });
+
+  it("amount_paid falls back to wallet/gift coverage for legacy rows without booking_payments", () => {
+    const f = computeBookingReceiptFinancials({
+      row: {
+        ...BASE_ROW,
+        subtotal: 125,
+        wallet_amount: 75,
+        gift_card_amount: 50,
+        total_amount: 125,
+        total_paid: 0,
+        payment_status: "paid",
+      },
+      linesSubtotal: 125,
+      booking_payments: [],
+      additional_charges: [],
+    });
+
+    expect(f.amountPaid).toBe(125);
+    expect(f.balanceDue).toBe(0);
   });
 });

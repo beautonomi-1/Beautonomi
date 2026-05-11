@@ -25,7 +25,7 @@ function formatRangeStart(range: string, timezone: string): Date {
   }
   if (range === "year") {
     const fromYmd = formatDateYmd(subYears(zNow, 1), timezone);
-    return new Date(dateRangeBoundsUtc(fromYmd, fromYmd, timezone).fromIso);
+    return new Date(dateRangeBoundsUtc(fromYmd, todayYmd, timezone).fromIso);
   }
   const monthStartYmd = formatDateYmd(startOfMonth(zNow), timezone);
   return new Date(dateRangeBoundsUtc(monthStartYmd, monthStartYmd, timezone).fromIso);

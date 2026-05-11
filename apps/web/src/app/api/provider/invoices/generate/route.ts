@@ -176,7 +176,7 @@ export async function POST(request: NextRequest) {
       .like("invoice_number", `INV-${year}-%`)
       .order("invoice_number", { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
 
     let sequenceNum = 1;
     if (lastInvoice?.invoice_number) {

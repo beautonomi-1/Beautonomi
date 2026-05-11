@@ -9,7 +9,7 @@ import {
   notFoundResponse,
   handleApiError,
 } from "@/lib/supabase/api-helpers";
-import { createClient } from "@supabase/supabase-js";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { dateRangeBoundsUtc, formatDateYmd, formatInTz } from "@/lib/dates/provider-tz";
 import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
 
@@ -81,9 +81,7 @@ export type ClientRetentionResponse = {
 export async function GET(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
-    const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    });
+    const supabaseAdmin = getSupabaseAdmin();
 
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
     if (!providerId) return notFoundResponse("Provider not found");

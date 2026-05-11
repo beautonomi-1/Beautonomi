@@ -9,6 +9,7 @@ import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchProviderInAdminTenant } from "@/lib/tenant/admin-booking-tenant";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { validateAdminPayoutReadiness } from "@/lib/admin/validate-provider-payout-readiness";
 
 const bodySchema = z.object({
   reason: z.string().optional().nullable(),
@@ -108,41 +109,21 @@ export async function POST(
       );
     }
 
-    // Use bank account from payout request if stored, else primary (latest active)
     const requestedAccountId = p.payout_account_details?.bank_account_id;
-    let acct: { recipient_code: string; currency?: string } | null = null;
-
-    if (requestedAccountId) {
-      const { data: requestedAcct } = await supabase.from("provider_payout_accounts")
-        .select("recipient_code, currency")
-        .eq("id", requestedAccountId)
-        .eq("provider_id", p.provider_id)
-        .eq("active", true)
-        .is("deleted_at", null)
-        .maybeSingle();
-      acct = requestedAcct;
-    }
-    if (!acct?.recipient_code) {
-      // Fallback: prefer the primary account, then latest by created_at.
-      // is_primary desc ensures the account marked as primary is picked first.
-      const { data: primaryAcct } = await supabase.from("provider_payout_accounts")
-        .select("recipient_code, currency")
-        .eq("provider_id", p.provider_id)
-        .eq("active", true)
-        .is("deleted_at", null)
-        .order("is_primary", { ascending: false })
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      acct = primaryAcct;
-    }
-
-    if (!acct?.recipient_code) {
+    const readiness = await validateAdminPayoutReadiness({
+      supabase,
+      providerId: p.provider_id,
+      tenantId,
+      requestedAccountId,
+      requireAccount: true,
+    });
+    if (readiness.ok === false) {
       return NextResponse.json(
-        { data: null, error: { message: "Provider payout account not set", code: "ACCOUNT_NOT_FOUND" } },
-        { status: 404 }
+        { data: null, error: { message: readiness.message, code: readiness.code } },
+        { status: readiness.status }
       );
     }
+    const acct = readiness.account!;
 
     const tenantRegion = await getTenantRegionConfig(tenantId);
     const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
@@ -150,7 +131,7 @@ export async function POST(
     const transferRequest = {
       source: "balance" as const,
       amount: convertToSmallestUnit(Number(p.amount || 0)),
-      recipient: acct.recipient_code as string,
+      recipient: acct.recipient_code,
       reason: reason || `Payout ${p.payout_number || p.id}`,
       reference: `payout_${p.id}`,
       currency: p.currency || acct.currency || lastResortCurrency,

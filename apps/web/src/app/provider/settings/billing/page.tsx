@@ -69,7 +69,7 @@ export default function BillingSettings() {
       const [billingResponse, paymentMethodsResponse, invoicesResponse] = await Promise.all([
         fetcher.get<{ data: BillingData }>("/api/provider/settings/billing"),
         fetcher.get<{ data: any[] }>("/api/provider/payment-methods").catch(() => ({ data: [] })),
-        fetcher.get<{ data: { invoices: any[] } }>("/api/provider/invoices").catch(() => ({ data: { invoices: [] } })),
+        fetcher.get<{ data: { invoices: any[] } }>("/api/provider/invoices?limit=100").catch(() => ({ data: { invoices: [] } })),
       ]);
 
       const billingInfo = billingResponse.data;

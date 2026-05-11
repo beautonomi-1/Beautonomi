@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
     const { data: booking, error: bookingError } = await supabase
       .from("bookings")
       .select(
-        "id, provider_id, location_type, scheduled_at, created_at, status, booking_number, subtotal, discount_amount, tax_amount, service_fee_amount, travel_fee, tip_amount, total_amount, total_paid, wallet_amount, gift_card_amount, currency"
+        "id, provider_id, location_type, scheduled_at, created_at, status, booking_number, subtotal, discount_amount, tax_amount, service_fee_amount, travel_fee, tip_amount, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, currency"
       )
       .eq("id", validation.bookingId)
       .single();
@@ -145,7 +145,13 @@ export async function POST(request: NextRequest) {
     const giftCardCollected = roundCurrency2(
       Math.max(0, Number((booking as { gift_card_amount?: number | null }).gift_card_amount ?? 0))
     );
-    const effectiveCollectedAmount = roundCurrency2(totalPaid + walletCollected + giftCardCollected);
+    const effectiveCollectedAmount = roundCurrency2(
+      Math.max(
+        0,
+        Math.max(totalPaid, walletCollected + giftCardCollected) -
+          Number((booking as { total_refunded?: number | null }).total_refunded ?? 0),
+      )
+    );
     const walletRefundAmount = roundCurrency2(Math.min(policyRefundAmount, effectiveCollectedAmount));
     const cancellationFeeApplied = roundCurrency2(Math.max(0, bookingTotal - policyRefundAmount));
     const newTotalAmount = roundCurrency2(

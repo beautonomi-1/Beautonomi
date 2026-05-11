@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "@beautonomi/i18n";
 import { View, Text, TextInput, TouchableOpacity, Alert, Pressable, ScrollView, Modal, ActivityIndicator, KeyboardAvoidingView, Platform } from "react-native";
 import { Image } from "expo-image";
@@ -20,7 +20,6 @@ import {
   normalizeSupabaseSmsOtpToken,
   isCompleteSupabaseSmsOtp,
   SUPABASE_AUTH_OTP_LENGTH,
-  SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS,
 } from "@/lib/supabase-sms-otp";
 import { appendFormDataFileNative } from "@beautonomi/utils";
 
@@ -68,6 +67,11 @@ export default function PersonalInfoScreen() {
   const [phoneOtpCode, setPhoneOtpCode] = useState("");
   const [phoneSending, setPhoneSending] = useState(false);
   const [phoneVerifying, setPhoneVerifying] = useState(false);
+  // §UX-audit 2026-05: 30s resend cooldown prevents OTP spam and replaces
+  // the blocking Alert — visual feedback is shown inline in the modal.
+  const PHONE_RESEND_COOLDOWN_SECS = 30;
+  const [phoneResendCooldown, setPhoneResendCooldown] = useState(0);
+  const phoneResendIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -111,6 +115,26 @@ export default function PersonalInfoScreen() {
     load();
   }, [load]);
 
+  useEffect(() => {
+    if (phoneResendCooldown <= 0) {
+      if (phoneResendIntervalRef.current) {
+        clearInterval(phoneResendIntervalRef.current);
+        phoneResendIntervalRef.current = null;
+      }
+      return;
+    }
+    phoneResendIntervalRef.current = setInterval(
+      () => setPhoneResendCooldown((c) => (c > 0 ? c - 1 : 0)),
+      1000,
+    );
+    return () => {
+      if (phoneResendIntervalRef.current) {
+        clearInterval(phoneResendIntervalRef.current);
+        phoneResendIntervalRef.current = null;
+      }
+    };
+  }, [phoneResendCooldown]);
+
   const handleChangeEmail = async () => {
     const email = newEmail.trim().toLowerCase();
     if (!email) {
@@ -153,18 +177,28 @@ export default function PersonalInfoScreen() {
       const { error: updateError } = await supabase.auth.updateUser({ phone: e164 });
       if (updateError) throw updateError;
       setPendingPhoneE164(e164);
-      setPhoneStep("enter_otp");
       setPhoneOtpCode("");
-      const mins = Math.max(1, Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60));
-      const minuteUnit = mins === 1 ? ls("minuteSingular") : ls("minutePlural");
-      Alert.alert(
-        ls("codeSentTitle"),
-        ls("codeSentBody", {
-          digits: String(SUPABASE_AUTH_OTP_LENGTH),
-          minutes: String(mins),
-          minuteUnit,
-        }),
-      );
+      // §UX-audit 2026-05: transition to OTP step immediately — no
+      // blocking Alert. Inline modal header already confirms the number.
+      setPhoneStep("enter_otp");
+      setPhoneResendCooldown(PHONE_RESEND_COOLDOWN_SECS);
+    } catch (e: unknown) {
+      Alert.alert(errTitle, (e as { message?: string })?.message ?? ls("sendCodeFailed"));
+    } finally {
+      setPhoneSending(false);
+    }
+  };
+
+  const handleResendPhoneOtp = async () => {
+    if (phoneResendCooldown > 0 || phoneSending) return;
+    const e164 = pendingPhoneE164;
+    if (!e164) return;
+    setPhoneSending(true);
+    try {
+      const { error: updateError } = await supabase.auth.updateUser({ phone: e164 });
+      if (updateError) throw updateError;
+      setPhoneOtpCode("");
+      setPhoneResendCooldown(PHONE_RESEND_COOLDOWN_SECS);
     } catch (e: unknown) {
       Alert.alert(errTitle, (e as { message?: string })?.message ?? ls("sendCodeFailed"));
     } finally {
@@ -295,8 +329,6 @@ export default function PersonalInfoScreen() {
     color: Colors.gray[900],
   };
 
-  const phoneSmsMins = Math.max(1, Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60));
-  const phoneSmsMinuteUnit = phoneSmsMins === 1 ? ls("minuteSingular") : ls("minutePlural");
 
   return (
     <ScreenFrame loading={loading} error={error} onRetry={load}>
@@ -503,8 +535,8 @@ export default function PersonalInfoScreen() {
                   <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 12 }}>
                     {pi("phoneSmsIntro", {
                       digits: String(SUPABASE_AUTH_OTP_LENGTH),
-                      minutes: String(phoneSmsMins),
-                      minuteUnit: phoneSmsMinuteUnit,
+                      minutes: String(PHONE_RESEND_COOLDOWN_SECS),
+                      minuteUnit: ls("minutePlural"),
                     })}
                   </Text>
                   <PhoneInputWithCountry
@@ -526,15 +558,32 @@ export default function PersonalInfoScreen() {
                 </>
               ) : (
                 <>
-                  <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 8 }}>
-                    {pi("codeSentTo", {
-                      masked: pendingPhoneE164.replace(/(\+\d{2,3})(\d{3})(\d+)(\d{4})/, "$1 $2 *** $4"),
-                    })}
-                  </Text>
+                  {/* §UX-audit 2026-05: inline confirmation replaces blocking Alert */}
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 8,
+                      backgroundColor: "#ECFDF5",
+                      borderColor: "#A7F3D0",
+                      borderWidth: 1,
+                      borderRadius: 10,
+                      paddingVertical: 8,
+                      paddingHorizontal: 12,
+                      marginBottom: 12,
+                    }}
+                    accessibilityRole="alert"
+                  >
+                    <Ionicons name="checkmark-circle" size={16} color="#059669" />
+                    <Text style={{ flex: 1, color: "#065F46", fontSize: 13 }}>
+                      Code sent to{" "}
+                      {pendingPhoneE164.replace(/(\+\d{2,3})(\d{3})(\d+)(\d{4})/, "$1 $2 *** $4")}
+                    </Text>
+                  </View>
                   <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 10 }}>
                     {ls("enterOtp", { digits: String(SUPABASE_AUTH_OTP_LENGTH) })}
                   </Text>
-                  <View style={{ marginBottom: 16 }}>
+                  <View style={{ marginBottom: 12 }}>
                     <OtpDigitRow
                       value={phoneOtpCode}
                       onChange={setPhoneOtpCode}
@@ -546,8 +595,29 @@ export default function PersonalInfoScreen() {
                       accessibilityLabelPrefix={pi("otpA11yPrefix")}
                     />
                   </View>
+                  {/* Resend row */}
+                  <View style={{ flexDirection: "row", justifyContent: "center", marginBottom: 16 }}>
+                    <TouchableOpacity
+                      onPress={() => void handleResendPhoneOtp()}
+                      disabled={phoneSending || phoneResendCooldown > 0}
+                      accessibilityRole="button"
+                      accessibilityLabel={
+                        phoneResendCooldown > 0
+                          ? `Resend in ${phoneResendCooldown} seconds`
+                          : "Resend verification code"
+                      }
+                    >
+                      {phoneSending ? (
+                        <ActivityIndicator size="small" color={Colors.gray[400]} />
+                      ) : (
+                        <Text style={{ fontSize: 13, fontWeight: "600", color: phoneResendCooldown > 0 ? Colors.gray[400] : Colors.primary }}>
+                          {phoneResendCooldown > 0 ? `Resend in ${phoneResendCooldown}s` : "Resend code"}
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
                   <View style={{ flexDirection: "row" }}>
-                    <TouchableOpacity onPress={() => { setPhoneStep("enter_phone"); setPhoneOtpCode(""); setPendingPhoneE164(""); }} style={{ flex: 1, marginRight: 12, paddingVertical: 14, borderRadius: RADIUS_BUTTON, alignItems: "center", borderWidth: 1, borderColor: Colors.gray[300] }}>
+                    <TouchableOpacity onPress={() => { setPhoneStep("enter_phone"); setPhoneOtpCode(""); setPendingPhoneE164(""); setPhoneResendCooldown(0); }} style={{ flex: 1, marginRight: 12, paddingVertical: 14, borderRadius: RADIUS_BUTTON, alignItems: "center", borderWidth: 1, borderColor: Colors.gray[300] }}>
                       <Text style={{ fontWeight: "600", color: Colors.gray[700] }}>{t("common.back")}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity onPress={() => void handleVerifyPhoneOtp()} disabled={phoneVerifying || !isCompleteSupabaseSmsOtp(phoneOtpCode)} style={{ flex: 1, backgroundColor: Colors.primary, paddingVertical: 14, borderRadius: RADIUS_BUTTON, alignItems: "center" }}>

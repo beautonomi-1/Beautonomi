@@ -140,10 +140,13 @@ export async function recordYocoPayment(
   reference?: string
 ): Promise<boolean> {
   try {
+    const stableReference = reference?.trim();
     await fetcher.post(`/api/provider/bookings/${bookingId}/mark-paid`, {
       payment_method: "card",
       amount,
-      reference: reference || `Yoco-${Date.now()}`,
+      ...(stableReference
+        ? { payment_provider: "yoco", reference: stableReference }
+        : { payment_provider: "other", idempotency_key: `manual-card:${bookingId}:${amount.toFixed(2)}` }),
     });
     toast.success("Payment recorded");
     return true;

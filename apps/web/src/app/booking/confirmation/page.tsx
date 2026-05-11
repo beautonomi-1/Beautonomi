@@ -27,6 +27,8 @@ interface BookingDetails {
   currency: string;
   wallet_amount?: number;
   total_paid?: number;
+  deposit_required?: boolean;
+  payment_option?: string | null;
   /** Line items for parity with checkout summary (from `/api/me/bookings/[id]`). */
   subtotal?: number;
   tax_amount?: number;
@@ -133,8 +135,9 @@ export default function BookingConfirmationPage() {
 
     const loadBooking = async () => {
       setIsLoading(true);
-      // Retry up to 3 times with backoff — the booking may have just been written to DB
-      const delays = [0, 1000, 2500];
+      // Retry while the booking/payment write catches up; card payments may be
+      // confirmed by Paystack just before webhook reconciliation completes.
+      const delays = [0, 1000, 2500, 4000, 6000];
       let lastErr: unknown = null;
       for (const delay of delays) {
         if (delay > 0) await new Promise((r) => setTimeout(r, delay));
@@ -143,6 +146,15 @@ export default function BookingConfirmationPage() {
             `/api/me/bookings/${bookingId}`
           );
           setBooking(response.data);
+          const paymentStatus = String(response.data?.payment_status || "").toLowerCase();
+          const paymentProvider = String(response.data?.payment_provider || "").toLowerCase();
+          const shouldKeepPollingPayment =
+            paymentStatus === "pending" &&
+            paymentProvider !== "cash" &&
+            delay !== delays[delays.length - 1];
+          if (shouldKeepPollingPayment) {
+            continue;
+          }
           refreshIdentify();
           setIsLoading(false);
           return;
@@ -366,7 +378,13 @@ export default function BookingConfirmationPage() {
     paymentStatus: booking.payment_status,
     paymentProvider: booking.payment_provider,
     outstandingBalance: booking.outstanding_balance,
+    paymentOption: booking.payment_option,
+    depositRequired: booking.deposit_required,
   });
+  const walletPaid = Math.max(0, Number(booking.wallet_amount || 0));
+  const giftCardPaid = Math.max(0, Number(booking.gift_card_amount || 0));
+  const totalPaid = Math.max(0, Number(booking.total_paid || 0));
+  const otherPaid = Math.max(0, totalPaid - walletPaid - giftCardPaid);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -696,20 +714,26 @@ export default function BookingConfirmationPage() {
                   {formatCurrency(booking.total_amount, booking.currency)}
                 </span>
               </div>
-              {/* Show wallet credit if part of total was covered by wallet */}
-              {(booking.wallet_amount ?? 0) > 0 && (
+              {/* Show tender lines without double-counting wallet/gift in total_paid. */}
+              {walletPaid > 0 && (
                 <div className="flex justify-between items-center text-sm text-green-700">
                   <span className="flex items-center gap-1.5">
                     <Wallet className="w-3.5 h-3.5" />
-                    Wallet credit applied
+                    Paid with wallet
                   </span>
-                  <span className="font-medium">−{formatCurrency(booking.wallet_amount!, booking.currency)}</span>
+                  <span className="font-medium">{formatCurrency(walletPaid, booking.currency)}</span>
                 </div>
               )}
-              {(booking.wallet_amount ?? 0) > 0 && (booking.total_paid ?? 0) > 0 && (
+              {giftCardPaid > 0 && (
+                <div className="flex justify-between items-center text-sm text-blue-700">
+                  <span>Paid with gift card</span>
+                  <span className="font-medium">{formatCurrency(giftCardPaid, booking.currency)}</span>
+                </div>
+              )}
+              {otherPaid > 0 && (
                 <div className="flex justify-between items-center text-sm text-gray-600">
-                  <span>Paid via card</span>
-                  <span className="font-medium">{formatCurrency(booking.total_paid!, booking.currency)}</span>
+                  <span>{booking.payment_provider === "cash" ? "Cash recorded" : "Paid online / card"}</span>
+                  <span className="font-medium">{formatCurrency(otherPaid, booking.currency)}</span>
                 </div>
               )}
               {typeof booking.outstanding_balance === "number" && booking.outstanding_balance > 0 && (

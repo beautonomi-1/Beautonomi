@@ -51,7 +51,7 @@ export async function recordBookingPaystackPayment(
     return { ok: true, paymentProviderId, inserted: false };
   }
 
-  const { error: insertError } = await supabase.from("booking_payments").insert({
+  const paymentRow = {
     booking_id: input.bookingId,
     ...(input.tenantId ? { tenant_id: input.tenantId } : {}),
     amount,
@@ -69,11 +69,33 @@ export async function recordBookingPaystackPayment(
       save_card: Boolean(input.saveCard),
       payment_method_id: input.paymentMethodId ?? null,
     },
-  });
+  };
+
+  const { error: insertError } = await supabase.from("booking_payments").insert(paymentRow);
 
   if (insertError && insertError.code !== "23505") {
+    const message = String(insertError.message || "").toLowerCase();
+    if (message.includes("status") || message.includes("enum")) {
+      const { status: _status, ...rowWithoutStatus } = paymentRow;
+      const { error: fallbackError } = await supabase.from("booking_payments").insert(rowWithoutStatus);
+
+      if (fallbackError && fallbackError.code !== "23505") {
+        return { ok: false, reason: "missing_provider_id", error: fallbackError };
+      }
+
+      if (!fallbackError) {
+        await supabase
+          .from("booking_payments")
+          .update({ status: "completed" })
+          .eq("payment_provider", "paystack")
+          .eq("payment_provider_id", paymentProviderId);
+      }
+
+      return { ok: true, paymentProviderId, inserted: fallbackError?.code !== "23505" };
+    }
+
     return { ok: false, reason: "missing_provider_id", error: insertError };
   }
 
-  return { ok: true, paymentProviderId, inserted: true };
+  return { ok: true, paymentProviderId, inserted: insertError?.code !== "23505" };
 }

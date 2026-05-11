@@ -1,5 +1,4 @@
 import { NextRequest } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
@@ -241,15 +240,7 @@ export async function POST(request: NextRequest) {
     const payoutAccountId = chosenAccount?.id ?? accountList[0].id;
 
     // Insert into payouts table (service role bypasses RLS)
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!serviceRoleKey) {
-      throw new Error("SUPABASE_SERVICE_ROLE_KEY not configured");
-    }
-
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      serviceRoleKey
-    );
+    const supabaseAdmin = getSupabaseAdmin();
 
     const payoutAccountDetails = {
       ...(notes && { notes }),
