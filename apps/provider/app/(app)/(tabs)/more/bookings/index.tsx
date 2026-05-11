@@ -658,7 +658,6 @@ export default function BookingsListScreen() {
   }, [viewMode, listSort, filtered, daySchedule]);
 
   const selectedDateKey = format(selectedDate, "yyyy-MM-dd");
-  const isDayClosed = closedDateKeys.has(selectedDateKey);
 
   const daySummary = useMemo(() => {
     const dayB = mergedBookingsData.filter(

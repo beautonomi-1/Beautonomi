@@ -41,7 +41,7 @@ interface SalesByServicePayload {
   totalBookings: number;
   totalRevenue: number;
   averageServiceRevenue: number;
-  allServices: Array<{
+  allServices: {
     serviceId: string;
     serviceName: string;
     category: string;
@@ -50,7 +50,7 @@ interface SalesByServicePayload {
     revenue: number;
     averageRevenuePerBooking?: number;
     averagePrice?: number;
-  }>;
+  }[];
   basisNote?: string;
 }
 

@@ -11,12 +11,10 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect } from "expo-router";
 import { useAuth } from "@/providers/AuthProvider";
-import { useApi, useApiMutation } from "@/hooks/useApi";
 import { useBiometricAuth } from "@/hooks/useBiometricAuth";
 import { api } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase/client";
@@ -479,8 +477,7 @@ export default function SettingsLoginAndSecurityScreen() {
                   )}
 
                   <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 10, lineHeight: 18 }}>
-                    We'll SMS a {SUPABASE_AUTH_OTP_LENGTH}-digit code to verify your number (valid{" "}
-                    {Math.max(1, Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60))} min).
+                    {`We'll SMS a ${SUPABASE_AUTH_OTP_LENGTH}-digit code to verify your number (valid ${Math.max(1, Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60))} min).`}
                   </Text>
                   <TouchableOpacity
                     onPress={handleSendPhoneOtp}

@@ -57,7 +57,7 @@ function buildSummaryFromByDate(byDate: OccDay[]): Summary | null {
 
 function isOccupancyPayload(data: unknown): data is {
   byDate?: OccDay[];
-  byStaff?: Array<{ staffId?: string; staffName?: string; byDate?: OccDay[] }>;
+  byStaff?: { staffId?: string; staffName?: string; byDate?: OccDay[] }[];
   summary?: Summary;
   basisNote?: string;
   reportBasis?: string;

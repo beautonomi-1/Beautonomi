@@ -17,8 +17,8 @@ function isPayoutsPayload(data: unknown): data is {
   totalRefunded: number;
   averagePayout: number;
   platformFeeRate: number;
-  monthlyBreakdown: Array<{ month: string; count: number; amount: number }>;
-  recentPayouts: Array<{
+  monthlyBreakdown: { month: string; count: number; amount: number }[];
+  recentPayouts: {
     bookingId?: string | null;
     productOrderId?: string;
     grossAmount: number;
@@ -29,7 +29,7 @@ function isPayoutsPayload(data: unknown): data is {
     createdAt: string;
     ledgerSettlementAt?: string;
     referenceLabel?: string;
-  }>;
+  }[];
   reportBasis?: string;
   timezone?: string;
   fromYmd?: string;

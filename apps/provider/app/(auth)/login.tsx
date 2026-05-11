@@ -20,7 +20,6 @@ import { Colors } from "@/constants/colors";
 import { BeautonomiLogo } from "@/components/ui/BeautonomiLogo";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useAuth, type OAuthProvider } from "@/providers/AuthProvider";
-import { useTranslation } from "@beautonomi/i18n";
 import { api } from "@/lib/api-client";
 import { changeLanguage } from "@/lib/i18n";
 import {
@@ -83,7 +82,6 @@ type LoginMode = "phone" | "email";
 export default function LoginScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ deactivated?: string; suspended?: string }>();
-  const { t } = useTranslation();
   const { contentMaxWidth, isTablet, screenPadding } = useResponsive();
   const {
     signInWithOtp,

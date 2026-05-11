@@ -37,7 +37,7 @@ export interface BookingScheduleCardBooking {
   gift_card_amount?: number | null;
   outstanding_balance?: number | null;
   payment_status?: string | null;
-  additional_charges?: Array<{ amount?: number | string | null; status?: string | null }> | null;
+  additional_charges?: { amount?: number | string | null; status?: string | null }[] | null;
   location_type?: "at_salon" | "at_home" | null;
   is_group_booking?: boolean;
   is_recurring?: boolean;

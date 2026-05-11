@@ -967,6 +967,7 @@ function Step9Zones() {
         setLoading(false);
       }
     })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     formData.address?.latitude,
     formData.address?.longitude,
@@ -1375,7 +1376,6 @@ function Step14Plan() {
       }
     })();
     return () => { active = false; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [updateFormData]);
 
   if (loading) {

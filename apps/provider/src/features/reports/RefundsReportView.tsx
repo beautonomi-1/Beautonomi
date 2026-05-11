@@ -37,7 +37,7 @@ function isRefundsPayload(data: unknown): data is Record<string, unknown> & {
   totalRefundAmount?: number;
   refundShareOfPaymentLedgerPercent?: number;
   refundRate?: number;
-  methodBreakdown?: Array<{ method: string; count: number; amount: number; percentage?: number }>;
+  methodBreakdown?: { method: string; count: number; amount: number; percentage?: number }[];
   reportBasis?: string;
   timezone?: string;
   providerEarningsReversed?: number;
@@ -152,7 +152,7 @@ export function RefundsReportView({ data }: { data: unknown }) {
             Recent refund rows
           </Text>
           <View style={twStyle("rounded-2xl border border-gray-100 bg-white")}>
-            {(data.recentRefunds as Array<{ id?: string; amount?: number; created_at?: string; reason?: string; paymentMethodLabel?: string }>).map((r) => (
+            {(data.recentRefunds as { id?: string; amount?: number; created_at?: string; reason?: string; paymentMethodLabel?: string }[]).map((r) => (
               <View
                 key={String(r.id)}
                 style={twStyle("border-b border-gray-50 px-4 py-3 last:border-b-0")}
