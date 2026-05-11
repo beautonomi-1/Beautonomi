@@ -40,9 +40,9 @@ export async function GET(request: NextRequest) {
       .from("wallet_transactions")
       .select("type, amount.sum()")
       .eq("wallet_id", wallet.id);
-    const aggList = (aggRows ?? []) as { type: string; amount: number }[];
-    const creditSum = aggList.find((r) => r.type === "credit")?.amount ?? 0;
-    const debitSum = aggList.find((r) => r.type === "debit")?.amount ?? 0;
+    const aggList = (aggRows ?? []) as { type: string; sum: number }[];
+    const creditSum = aggList.find((r) => r.type === "credit")?.sum ?? 0;
+    const debitSum = aggList.find((r) => r.type === "debit")?.sum ?? 0;
     const normalizedLedgerBalance = Math.round((Number(creditSum) - Number(debitSum)) * 100) / 100;
     const storedBalance = Math.round(Number(wallet.balance || 0) * 100) / 100;
     const walletForResponse = { ...wallet, balance: storedBalance };

@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { z } from "zod";
 import { percentOf } from "@beautonomi/utils";
 
@@ -20,7 +21,8 @@ const validateSchema = z.object({
 export async function POST(request: NextRequest) {
   try {
     const body = validateSchema.parse(await request.json());
-    const supabase = await getSupabaseServer();
+    const tenantId = await resolveTenantIdWithZaFallback(request);
+    const supabase = await getSupabaseServer(request);
 
     if (body.type === "coupon") {
       // Validate coupon — use admin client so RLS does not block the read on the coupons table.
@@ -79,6 +81,7 @@ export async function POST(request: NextRequest) {
         .select("*")
         .eq("code", body.code.trim().toUpperCase())
         .eq("is_active", true)
+        .eq("tenant_id", tenantId)
         .maybeSingle();
 
       if (error || !giftCard) {
