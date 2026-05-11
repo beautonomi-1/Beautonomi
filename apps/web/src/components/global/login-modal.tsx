@@ -135,6 +135,11 @@ export default function LoginModal({
   const [emailOtpSent, setEmailOtpSent] = useState(false);
   const [emailOtpCode, setEmailOtpCode] = useState("");
   const [pendingEmailOtp, setPendingEmailOtp] = useState("");
+  /** §QA 2026-05: client-side resend cooldown — Supabase rate-limits hard otherwise. */
+  const RESEND_COOLDOWN_SECONDS = 30;
+  const [otpResendCooldown, setOtpResendCooldown] = useState(0);
+  const [emailOtpResendCooldown, setEmailOtpResendCooldown] = useState(0);
+  const [emailOtpResending, setEmailOtpResending] = useState(false);
   const [preferredLanguage, setPreferredLanguage] = useState(() => {
     if (typeof navigator !== "undefined" && navigator.language) {
       const code = navigator.language.split("-")[0];
@@ -221,10 +226,13 @@ export default function LoginModal({
       setOtpExpiresAt(null);
       setOtpSecondsLeft(0);
       setOtpResending(false);
+      setOtpResendCooldown(0);
       setEmailOtpMode(false);
       setEmailOtpSent(false);
       setEmailOtpCode("");
       setPendingEmailOtp("");
+      setEmailOtpResending(false);
+      setEmailOtpResendCooldown(0);
       const langCode = typeof navigator !== "undefined" && navigator.language
         ? (() => { const c = navigator.language.split("-")[0]; return supportedLanguages.some((l) => l.code === c) ? c : "en"; })()
         : "en";
@@ -252,6 +260,24 @@ export default function LoginModal({
     const id = window.setInterval(tick, 1000);
     return () => window.clearInterval(id);
   }, [otpExpiresAt]);
+
+  useEffect(() => {
+    if (otpResendCooldown <= 0) return;
+    const id = window.setInterval(
+      () => setOtpResendCooldown((s) => (s > 0 ? s - 1 : 0)),
+      1000,
+    );
+    return () => window.clearInterval(id);
+  }, [otpResendCooldown]);
+
+  useEffect(() => {
+    if (emailOtpResendCooldown <= 0) return;
+    const id = window.setInterval(
+      () => setEmailOtpResendCooldown((s) => (s > 0 ? s - 1 : 0)),
+      1000,
+    );
+    return () => window.clearInterval(id);
+  }, [emailOtpResendCooldown]);
 
   const formatOtpCountdown = (seconds: number) => {
     const mm = String(Math.floor(seconds / 60)).padStart(2, "0");
@@ -706,9 +732,10 @@ export default function LoginModal({
     setError(null);
     try {
       const supabase = getSupabaseClient();
+      // Unified auth: shouldCreateUser: true regardless of `isSignup` toggle so both modes work.
       const { error: otpError } = await supabase.auth.signInWithOtp({
         phone: normalizeSupabaseAuthPhone(fullPhoneE164),
-        options: { channel: "sms", shouldCreateUser: isSignup },
+        options: { channel: "sms", shouldCreateUser: true },
       });
       if (otpError) throw otpError;
       setSentPhoneE164(normalizeSupabaseAuthPhone(fullPhoneE164));
@@ -716,6 +743,7 @@ export default function LoginModal({
       setOtpCode("");
       const expiresAt = Date.now() + authPolicy.sms_otp_expiration_seconds * 1000;
       setOtpExpiresAt(expiresAt);
+      setOtpResendCooldown(RESEND_COOLDOWN_SECONDS);
       toast.success("Check your phone for the verification code");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to send code";
@@ -727,19 +755,20 @@ export default function LoginModal({
   };
 
   const handleResendPhoneOtp = async () => {
-    if (!sentPhoneE164) return;
+    if (!sentPhoneE164 || otpResendCooldown > 0) return;
     setOtpResending(true);
     setError(null);
     try {
       const supabase = getSupabaseClient();
       const { error: otpError } = await supabase.auth.signInWithOtp({
         phone: normalizeSupabaseAuthPhone(sentPhoneE164),
-        options: { channel: "sms", shouldCreateUser: isSignup },
+        options: { channel: "sms", shouldCreateUser: true },
       });
       if (otpError) throw otpError;
       setOtpCode("");
       const expiresAt = Date.now() + authPolicy.sms_otp_expiration_seconds * 1000;
       setOtpExpiresAt(expiresAt);
+      setOtpResendCooldown(RESEND_COOLDOWN_SECONDS);
       toast.success("A new verification code has been sent");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to resend code";
@@ -792,19 +821,17 @@ export default function LoginModal({
     setError(null);
     try {
       const supabase = getSupabaseClient();
-      const origin = typeof window !== "undefined" ? window.location.origin : "";
-      const emailRedirectTo =
-        redirectContext === "provider"
-          ? `${origin}/auth/callback?next=/provider/dashboard`
-          : `${origin}/auth/callback`;
+      // Email OTP: omit emailRedirectTo so Supabase sends the 6-digit code (not a magic link).
+      // shouldCreateUser: true so verifying the code creates new accounts seamlessly.
       const { error: otpError } = await supabase.auth.signInWithOtp({
         email: trimmed,
-        options: { emailRedirectTo, shouldCreateUser: false },
+        options: { shouldCreateUser: true },
       });
       if (otpError) throw otpError;
       setPendingEmailOtp(trimmed);
       setEmailOtpSent(true);
       setEmailOtpCode("");
+      setEmailOtpResendCooldown(RESEND_COOLDOWN_SECONDS);
       toast.success(
         `Check your email for the ${emailOtpLen}-digit code (valid about ${emailOtpExpiryMin} minutes).`,
       );
@@ -814,6 +841,30 @@ export default function LoginModal({
       toast.error(msg);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleResendEmailOtp = async () => {
+    const addr = pendingEmailOtp || email.trim();
+    if (!addr || emailOtpResendCooldown > 0) return;
+    setEmailOtpResending(true);
+    setError(null);
+    try {
+      const supabase = getSupabaseClient();
+      const { error: otpError } = await supabase.auth.signInWithOtp({
+        email: addr,
+        options: { shouldCreateUser: true },
+      });
+      if (otpError) throw otpError;
+      setEmailOtpCode("");
+      setEmailOtpResendCooldown(RESEND_COOLDOWN_SECONDS);
+      toast.success("A new verification code has been sent");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to resend code";
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setEmailOtpResending(false);
     }
   };
 
@@ -1011,10 +1062,14 @@ export default function LoginModal({
                 <button
                   type="button"
                   onClick={() => void handleResendPhoneOtp()}
-                  disabled={otpResending || isLoading}
+                  disabled={otpResending || isLoading || otpResendCooldown > 0}
                   className="font-medium text-primary hover:underline disabled:opacity-50 disabled:no-underline"
                 >
-                  {otpResending ? "Resending..." : "Resend code"}
+                  {otpResending
+                    ? "Resending..."
+                    : otpResendCooldown > 0
+                      ? `Resend in ${otpResendCooldown}s`
+                      : "Resend code"}
                 </button>
               </div>
               <Button
@@ -1218,6 +1273,20 @@ export default function LoginModal({
                         className="mb-5"
                         length={emailOtpLen}
                       />
+                      <div className="mb-4 flex items-center justify-end text-xs">
+                        <button
+                          type="button"
+                          onClick={() => void handleResendEmailOtp()}
+                          disabled={emailOtpResending || isLoading || emailOtpResendCooldown > 0}
+                          className="font-medium text-primary hover:underline disabled:opacity-50 disabled:no-underline"
+                        >
+                          {emailOtpResending
+                            ? "Resending..."
+                            : emailOtpResendCooldown > 0
+                              ? `Resend in ${emailOtpResendCooldown}s`
+                              : "Resend code"}
+                        </button>
+                      </div>
                       <Button
                         className="w-full rounded-2xl bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary-hover text-white min-h-[52px] h-12 text-base font-semibold mb-4 touch-manipulation shadow-lg shadow-pink-200/40 gap-2"
                         onClick={() => void handleVerifyEmailOtp()}
@@ -1239,6 +1308,7 @@ export default function LoginModal({
                           setEmailOtpSent(false);
                           setEmailOtpCode("");
                           setPendingEmailOtp("");
+                          setEmailOtpResendCooldown(0);
                           setError(null);
                         }}
                         className="w-full py-3 text-[15px] text-gray-500 hover:text-gray-900 font-medium touch-manipulation rounded-xl active:bg-gray-100 mb-6"

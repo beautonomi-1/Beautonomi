@@ -8,12 +8,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { DollarSign, Calendar, Wallet, FileText, ChevronRight } from "lucide-react";
+import { DollarSign, Calendar, Wallet, FileText, ChevronRight, Lock } from "lucide-react";
 import Link from "next/link";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import { Badge } from "@/components/ui/badge";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
+import { usePermissions } from "@/hooks/usePermissions";
 import {
   Dialog,
   DialogContent,
@@ -45,6 +46,7 @@ interface PayoutItem {
   status: string;
   requested_at?: string;
   processed_at?: string;
+  failure_reason?: string | null;
 }
 
 interface PayoutAccount {
@@ -53,6 +55,7 @@ interface PayoutAccount {
   account_number_last4: string;
   bank_name: string | null;
   active: boolean;
+  is_primary?: boolean;
 }
 
 export default function ProviderPayoutsCenter() {
@@ -68,6 +71,8 @@ export default function ProviderPayoutsCenter() {
   const [selectedAccountId, setSelectedAccountId] = useState("");
   const [isRequesting, setIsRequesting] = useState(false);
   const { format: fmt } = useReportCurrency();
+  const { hasPermission } = usePermissions();
+  const canRequestPayout = hasPermission("process_payments");
 
   useEffect(() => {
     const load = async () => {
@@ -81,12 +86,15 @@ export default function ProviderPayoutsCenter() {
           fetcher.get<{ data: PayoutAccount[] }>("/api/provider/payout-accounts"),
         ]);
         if (nextRes.status === "fulfilled") setNextDate(nextRes.value.data ?? null);
-        if (financeRes.status === "fulfilled") setEarnings((financeRes.value.data as any)?.earnings ?? null);
+        if (financeRes.status === "fulfilled") setEarnings(financeRes.value.data?.earnings ?? null);
         if (payoutsRes.status === "fulfilled") setPayouts(Array.isArray(payoutsRes.value.data) ? payoutsRes.value.data : []);
         if (accountsRes.status === "fulfilled") {
           const list = Array.isArray(accountsRes.value.data) ? accountsRes.value.data : [];
           setAccounts(list);
-          if (list.length > 0) setSelectedAccountId((current) => current || list[0].id);
+          if (list.length > 0) {
+            const preferred = list.find((account) => account.is_primary) ?? list[0];
+            setSelectedAccountId((current) => current || preferred.id);
+          }
         }
         if (nextRes.status === "rejected" && financeRes.status === "rejected") {
           setLoadError("Failed to load payout data. Please refresh.");
@@ -106,12 +114,15 @@ export default function ProviderPayoutsCenter() {
       fetcher.get<{ data: PayoutItem[] }>("/api/provider/payouts"),
       fetcher.get<{ data: PayoutAccount[] }>("/api/provider/payout-accounts"),
     ]);
-    if (financeRes.status === "fulfilled") setEarnings((financeRes.value.data as any)?.earnings ?? null);
+    if (financeRes.status === "fulfilled") setEarnings(financeRes.value.data?.earnings ?? null);
     if (payoutsRes.status === "fulfilled") setPayouts(Array.isArray(payoutsRes.value.data) ? payoutsRes.value.data : []);
     if (accountsRes.status === "fulfilled") {
       const list = Array.isArray(accountsRes.value.data) ? accountsRes.value.data : [];
       setAccounts(list);
-      if (list.length > 0) setSelectedAccountId((current) => current || list[0].id);
+      if (list.length > 0) {
+        const preferred = list.find((account) => account.is_primary) ?? list[0];
+        setSelectedAccountId((current) => current || preferred.id);
+      }
     }
   };
 
@@ -128,6 +139,10 @@ export default function ProviderPayoutsCenter() {
     }
     if (!earnings || amount > earnings.available_balance) {
       toast.error("Amount exceeds available balance");
+      return;
+    }
+    if (!canRequestPayout) {
+      toast.error('Payout requests need the "Process payments" permission');
       return;
     }
     if (accounts.length === 0) {
@@ -155,12 +170,14 @@ export default function ProviderPayoutsCenter() {
 
   const statusBadge = (status: string) => {
     const map: Record<string, string> = {
-      completed: "bg-green-100 text-green-800",
-      pending: "bg-yellow-100 text-yellow-800",
-      processing: "bg-blue-100 text-blue-800",
-      failed: "bg-red-100 text-red-800",
+      completed: "bg-green-100 text-green-800 border-green-200",
+      pending: "bg-yellow-100 text-yellow-800 border-yellow-200",
+      processing: "bg-blue-100 text-blue-800 border-blue-200",
+      failed: "bg-red-100 text-red-800 border-red-200",
     };
-    return <Badge className={map[status] ?? "bg-gray-100 text-gray-800"}>{status}</Badge>;
+    const label =
+      status === "completed" ? "Paid" : status === "processing" ? "Processing" : status === "failed" ? "Failed" : "Pending";
+    return <Badge className={map[status] ?? "bg-gray-100 text-gray-800 border-gray-200"}>{label}</Badge>;
   };
 
   if (loading && !earnings) {
@@ -207,11 +224,23 @@ export default function ProviderPayoutsCenter() {
                   </p>
                 </div>
               </div>
-              <Button onClick={() => setShowRequestDialog(true)}>
-                <Wallet className="mr-2 h-4 w-4" />
-                Request payout
-              </Button>
+              <div className="flex flex-col items-stretch gap-2 sm:items-end">
+                {!canRequestPayout ? (
+                  <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                    <Lock className="h-3.5 w-3.5" />
+                    Process payments permission required
+                  </div>
+                ) : null}
+                <Button onClick={() => setShowRequestDialog(true)} disabled={!canRequestPayout}>
+                  <Wallet className="mr-2 h-4 w-4" />
+                  Request payout
+                </Button>
+              </div>
             </div>
+            <p className="mt-3 text-xs leading-relaxed text-gray-500">
+              This is platform-held payoutable money after completed payouts and pending requests. Cash, EFT, manual
+              card and Yoco takings collected directly are excluded.
+            </p>
           </SectionCard>
 
           <SectionCard title="Payout schedule">
@@ -280,7 +309,8 @@ export default function ProviderPayoutsCenter() {
                   <tr className="border-b text-left text-gray-500">
                     <th className="pb-2 pr-4">Date</th>
                     <th className="pb-2 pr-4">Amount</th>
-                    <th className="pb-2">Status</th>
+                    <th className="pb-2 pr-4">Status</th>
+                    <th className="pb-2">Details</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -294,7 +324,16 @@ export default function ProviderPayoutsCenter() {
                           : "—"}
                       </td>
                       <td className="py-3 pr-4 font-medium">{fmt(p.amount)}</td>
-                      <td className="py-3">{statusBadge(p.status)}</td>
+                      <td className="py-3 pr-4">{statusBadge(p.status)}</td>
+                      <td className="py-3 text-xs text-gray-500">
+                        {p.status === "failed" && p.failure_reason
+                          ? p.failure_reason
+                          : p.status === "processing"
+                            ? "Finance is processing this payout."
+                            : p.status === "pending"
+                              ? "Waiting for finance approval."
+                              : "Completed and recorded in the finance ledger."}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -351,6 +390,7 @@ export default function ProviderPayoutsCenter() {
                       <option key={account.id} value={account.id}>
                         {account.account_name} ****{account.account_number_last4}
                         {account.bank_name ? ` (${account.bank_name})` : ""}
+                        {account.is_primary ? " - Primary" : ""}
                       </option>
                     ))}
                   </select>
@@ -383,6 +423,7 @@ export default function ProviderPayoutsCenter() {
                 onClick={handleRequestPayout}
                 disabled={
                   isRequesting ||
+                  !canRequestPayout ||
                   accounts.length === 0 ||
                   !payoutAmount ||
                   Number(payoutAmount) < (earnings?.minimum_payout_amount ?? 100) ||

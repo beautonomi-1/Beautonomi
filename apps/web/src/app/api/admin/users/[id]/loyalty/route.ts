@@ -13,7 +13,7 @@ import { getUserRowIfAccessibleToAdminTenant } from "@/lib/tenant/admin-user-ten
 /**
  * GET /api/admin/users/[id]/loyalty
  *
- * Fetch loyalty balance and recent transactions for a user.
+ * Fetch loyalty balance and recent transactions for a user (ledger-backed).
  */
 export async function GET(
   request: NextRequest,
@@ -31,44 +31,23 @@ export async function GET(
     }
 
     let balance = 0;
-    const { data: balData, error: balRpcErr } = await supabase.rpc("get_user_loyalty_balance", {
-      p_user_id: userId,
+    const { data: balData, error: balRpcErr } = await supabase.rpc("get_customer_available_points", {
+      customer_uuid: userId,
     });
-    const rpcBalance = !balRpcErr && balData != null ? Number(balData) : NaN;
-    if (Number.isFinite(rpcBalance)) {
-      balance = Math.max(rpcBalance, 0);
-    } else {
-      const { data: txRows } = await supabase
-        .from("loyalty_point_transactions")
-        .select("points, transaction_type, expires_at")
-        .eq("user_id", userId);
-
-      if (txRows) {
-        balance = txRows.reduce((sum, t) => {
-          const row = t as { points: number; transaction_type: string; expires_at: string | null };
-          const isExpired = row.expires_at && new Date(row.expires_at) < new Date();
-          if (isExpired) return sum;
-          if (row.transaction_type === "earned" || row.transaction_type === "adjusted") {
-            return sum + Number(row.points || 0);
-          } else if (row.transaction_type === "redeemed" || row.transaction_type === "expired") {
-            return sum - Number(row.points || 0);
-          }
-          return sum;
-        }, 0);
-        balance = Math.max(balance, 0);
-      }
+    if (!balRpcErr && balData != null) {
+      balance = Math.max(Number(balData) || 0, 0);
     }
 
     const { data: txRaw } = await supabase
-      .from("loyalty_point_transactions")
-      .select("id, points, transaction_type, reference_type, reference_id, description, created_at")
-      .eq("user_id", userId)
+      .from("loyalty_points_ledger")
+      .select("id, points_amount, transaction_type, booking_id, description, metadata, created_at")
+      .eq("customer_id", userId)
       .order("created_at", { ascending: false })
       .limit(50);
 
     const transactions = (txRaw ?? []).map((row) => ({
       ...row,
-      source: row.reference_type ?? null,
+      points: row.points_amount,
     }));
 
     return successResponse({

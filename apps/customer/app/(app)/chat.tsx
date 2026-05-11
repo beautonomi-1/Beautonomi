@@ -55,8 +55,11 @@ type MessageAttachment = {
   expiration_at?: string | null;
   withdrawn?: boolean;
   status?: string;
-  booking_id?: string;
+  booking_id?: string | null;
 };
+
+/** Server truth when message attachment JSON is stale (patch missed / race). */
+type OfferStatusOverride = { status: string; booking_id: string | null };
 
 type OfferDetailData = {
   id: string;
@@ -245,7 +248,12 @@ export default function ChatScreen() {
   const [offerDetailVisible, setOfferDetailVisible] = useState(false);
   const [offerDetailLoading, setOfferDetailLoading] = useState(false);
   const [offerDetailData, setOfferDetailData] = useState<OfferDetailData | null>(null);
+  /** Merged into custom_offer bubbles so CTAs match DB after payment even if attachments lag. */
+  const [offerStatusById, setOfferStatusById] = useState<Record<string, OfferStatusOverride>>({});
   const initialScrollDone = useRef(false);
+  const offerRehydrateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const offerStatusByIdRef = useRef(offerStatusById);
+  offerStatusByIdRef.current = offerStatusById;
   const flatListRef = useRef<FlatList>(null);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const { pickFromLibrary, pickFromCamera } = useImagePicker();
@@ -346,6 +354,7 @@ export default function ChatScreen() {
     setMessages([]);
     setNextCursor(undefined);
     setHasMore(false);
+    setOfferStatusById({});
     initialScrollDone.current = false;
     loadMessages();
   }, [id, loadMessages]);
@@ -373,6 +382,68 @@ export default function ChatScreen() {
       .post("/api/me/notifications/mark-related-read", { conversation_id: id })
       .catch(() => {});
   }, [id, user]);
+
+  // Re-fetch offer rows for bubbles stuck on pending / payment_pending (attachment patch can lag).
+  useEffect(() => {
+    if (!id || !user) return;
+    let cancelled = false;
+    if (offerRehydrateTimerRef.current) clearTimeout(offerRehydrateTimerRef.current);
+    offerRehydrateTimerRef.current = setTimeout(() => {
+      offerRehydrateTimerRef.current = null;
+      const offerIds = new Set<string>();
+      for (const m of messages) {
+        if (!Array.isArray(m.attachments)) continue;
+        for (const raw of m.attachments) {
+          if (typeof raw !== "object" || !raw) continue;
+          const a = raw as MessageAttachment;
+          if (a.type !== "custom_offer" || !a.offer_id) continue;
+          const st = (a.status || "").toLowerCase();
+          if (st === "pending" || st === "payment_pending" || !st) {
+            const known = offerStatusByIdRef.current[a.offer_id];
+            const knownSt = (known?.status ?? "").toLowerCase();
+            if (
+              knownSt === "paid" ||
+              knownSt === "declined" ||
+              knownSt === "withdrawn" ||
+              knownSt === "expired" ||
+              knownSt === "finalize_failed"
+            ) {
+              continue;
+            }
+            offerIds.add(a.offer_id);
+          }
+        }
+      }
+      if (offerIds.size === 0 || cancelled) return;
+      void (async () => {
+        const patch: Record<string, OfferStatusOverride> = {};
+        await Promise.all(
+          [...offerIds].map(async (oid) => {
+            try {
+              const res = await api.get<{ status?: string; booking_id?: string | null }>(
+                `/api/me/custom-offers/${encodeURIComponent(oid)}`,
+              );
+              if (cancelled || res.error || !res.data?.status) return;
+              const row = res.data;
+              patch[oid] = { status: row.status!, booking_id: row.booking_id ?? null };
+            } catch {
+              /* ignore */
+            }
+          }),
+        );
+        if (!cancelled && Object.keys(patch).length > 0) {
+          setOfferStatusById((prev) => ({ ...prev, ...patch }));
+        }
+      })();
+    }, 400);
+    return () => {
+      cancelled = true;
+      if (offerRehydrateTimerRef.current) {
+        clearTimeout(offerRehydrateTimerRef.current);
+        offerRehydrateTimerRef.current = null;
+      }
+    };
+  }, [id, user, messages]);
 
   // Resolve conversation metadata (provider id/slug/name) when opening by conversation id.
   useEffect(() => {
@@ -1150,17 +1221,26 @@ export default function ChatScreen() {
                         </Text>
                       ) : null}
                       {customOfferAttachment ? (() => {
+                        const oid = customOfferAttachment.offer_id ?? "";
+                        const ov = oid ? offerStatusById[oid] : undefined;
+                        const effStatus = (ov?.status ?? customOfferAttachment.status ?? "").toLowerCase();
+                        const effBookingId =
+                          ov?.booking_id ?? customOfferAttachment.booking_id ?? undefined;
                         const isOfferExpired =
-                          customOfferAttachment.expired === true || customOfferAttachment.status === "expired";
+                          customOfferAttachment.expired === true || effStatus === "expired";
                         const isOfferWithdrawn =
-                          customOfferAttachment.withdrawn === true || customOfferAttachment.status === "withdrawn";
-                        const isOfferDeclined = customOfferAttachment.status === "declined";
-                        const isOfferPaid =
-                          customOfferAttachment.status === "paid" || !!customOfferAttachment.booking_id;
-                        const isPaymentPending = customOfferAttachment.status === "payment_pending";
+                          customOfferAttachment.withdrawn === true || effStatus === "withdrawn";
+                        const isOfferDeclined = effStatus === "declined";
+                        const isOfferPaid = effStatus === "paid" || !!effBookingId;
+                        const isPaymentPending = effStatus === "payment_pending";
+                        const isFinalizeFailed = effStatus === "finalize_failed";
                         const isOfferInactive =
-                          isOfferExpired || isOfferWithdrawn || isOfferDeclined || isOfferPaid;
-                        const cardMuted = isOfferWithdrawn || isOfferExpired;
+                          isOfferExpired ||
+                          isOfferWithdrawn ||
+                          isOfferDeclined ||
+                          isOfferPaid ||
+                          isFinalizeFailed;
+                        const cardMuted = isOfferWithdrawn || isOfferExpired || isFinalizeFailed;
                         const expAt = customOfferAttachment.expiration_at;
                         const expLabel =
                           expAt && !isOfferInactive
@@ -1176,7 +1256,7 @@ export default function ChatScreen() {
                         const preferredLabel = formatCustomOfferPreferredStart(customOfferAttachment.preferred_start_at);
                         const gradientColors = customOfferGradientColors({
                           isWithdrawn: isOfferWithdrawn,
-                          isExpired: isOfferExpired,
+                          isExpired: isOfferExpired || isFinalizeFailed,
                           isPaid: isOfferPaid,
                         });
                         const mono = Platform.select({ ios: "Menlo", default: "monospace" });
@@ -1297,6 +1377,19 @@ export default function ChatScreen() {
                                     >
                                       <Text style={{ fontSize: 10, fontWeight: "600", color: "#d1fae5", textTransform: "uppercase" }}>
                                         {t("customer.chatScreen.customOfferPaid")} ✓
+                                      </Text>
+                                    </View>
+                                  ) : isFinalizeFailed ? (
+                                    <View
+                                      style={{
+                                        paddingHorizontal: 8,
+                                        paddingVertical: 3,
+                                        borderRadius: 999,
+                                        backgroundColor: "rgba(251,113,133,0.35)",
+                                      }}
+                                    >
+                                      <Text style={{ fontSize: 10, fontWeight: "600", color: "#ffe4e6", textTransform: "uppercase" }}>
+                                        Needs support
                                       </Text>
                                     </View>
                                   ) : isPaymentPending ? (
@@ -1442,13 +1535,13 @@ export default function ChatScreen() {
                                 </TouchableOpacity>
                               </View>
                             ) : null}
-                            {!isMe && isOfferPaid && customOfferAttachment.booking_id ? (
+                            {!isMe && isOfferPaid && effBookingId ? (
                               <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
                                 <TouchableOpacity
                                   onPress={() =>
                                     router.push({
                                       pathname: "/(app)/booking-detail",
-                                      params: { id: customOfferAttachment.booking_id! },
+                                      params: { id: effBookingId },
                                     })
                                   }
                                   style={{

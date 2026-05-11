@@ -12,6 +12,7 @@ import {
   groupProductLineTotal,
   validateAndPriceGroupPackage,
 } from "@/lib/bookings/group-booking-package-pricing";
+import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
 import { computeCatalogPackageServiceDiscount } from "@beautonomi/utils";
 
 /**
@@ -105,26 +106,86 @@ export async function GET(request: NextRequest) {
       ]);
       const offeringTitle = new Map((offeringsRes.data || []).map((o: any) => [o.id, o.title]));
       const staffName = new Map((staffRes.data || []).map((s: any) => [s.id, s.name]));
+      const participantBookingIds = [
+        ...new Set(
+          raw
+            .flatMap((r: any) => Array.isArray(r.booking_participants) ? r.booking_participants : [])
+            .map((p: any) => p.booking_id)
+            .filter(Boolean),
+        ),
+      ];
+      const participantPaymentsRes = participantBookingIds.length > 0
+        ? await admin
+            .from("bookings")
+            .select("id, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status, additional_charges(amount,status)")
+            .in("id", participantBookingIds)
+        : { data: [] as any[] };
+      const participantPaymentByBookingId = new Map(
+        (participantPaymentsRes.data ?? []).map((booking: any) => {
+          const paidAfterRefunds = Math.max(
+            0,
+            Number(booking.total_paid ?? 0) - Number(booking.total_refunded ?? 0),
+          );
+          const walletGiftCoverage =
+            Number(booking.wallet_amount ?? 0) + Number(booking.gift_card_amount ?? 0);
+          const coverage = Math.max(paidAfterRefunds, walletGiftCoverage);
+          const unpaidAdditionalCharges = Array.isArray(booking.additional_charges)
+            ? booking.additional_charges
+                .filter((charge: any) => charge?.status !== "paid" && charge?.status !== "rejected")
+                .reduce((sum: number, charge: any) => sum + Number(charge?.amount || 0), 0)
+            : 0;
+          const balanceDue = computeBookingOutstandingDisplay({
+            totalAmount: Number(booking.total_amount ?? 0),
+            totalPaid: Number(booking.total_paid ?? 0),
+            totalRefunded: Number(booking.total_refunded ?? 0),
+            walletAmount: Number(booking.wallet_amount ?? 0),
+            giftCardAmount: Number(booking.gift_card_amount ?? 0),
+            unpaidAdditionalCharges,
+            paymentStatus: booking.payment_status ?? null,
+          });
+          return [
+            booking.id,
+            {
+              total_amount: Number(booking.total_amount ?? 0),
+              total_paid: Number(booking.total_paid ?? 0),
+              total_refunded: Number(booking.total_refunded ?? 0),
+              wallet_gift_coverage: walletGiftCoverage,
+              balance_due: balanceDue,
+              payment_status:
+                booking.payment_status || (balanceDue <= 0 && Number(booking.total_amount ?? 0) > 0 ? "paid" : coverage > 0 ? "partially_paid" : "pending"),
+              paid: Number(booking.total_amount ?? 0) > 0 && balanceDue <= 0,
+            },
+          ];
+        }),
+      );
 
       groupBookings = raw.map((row: any) => {
         const at = row.scheduled_at ? new Date(row.scheduled_at) : null;
-        const participants = (row.booking_participants || []).map((p: any) => ({
-          id: p.id,
-          booking_id: p.booking_id,
-          group_booking_id: row.id,
-          client_name: p.participant_name || '—',
-          client_email: p.participant_email,
-          client_phone: p.participant_phone,
-          service_id: p.service_id || '',
-          service_name: p.service_name || '—',
-          price: Number(p.price) || 0,
-          duration_minutes: p.duration_minutes,
-          addons: p.addons || [],
-          checked_in: !!p.checked_in_at,
-          checked_in_time: p.checked_in_at,
-          checked_out: !!p.checked_out_at,
-          checked_out_time: p.checked_out_at,
-        }));
+        const participants = (row.booking_participants || []).map((p: any) => {
+          const payment = p.booking_id ? participantPaymentByBookingId.get(p.booking_id) : null;
+          return {
+            id: p.id,
+            booking_id: p.booking_id,
+            group_booking_id: row.id,
+            client_name: p.participant_name || '—',
+            client_email: p.participant_email,
+            client_phone: p.participant_phone,
+            service_id: p.service_id || '',
+            service_name: p.service_name || '—',
+            price: Number(p.price) || 0,
+            duration_minutes: p.duration_minutes,
+            addons: p.addons || [],
+            checked_in: !!p.checked_in_at,
+            checked_in_time: p.checked_in_at,
+            checked_out: !!p.checked_out_at,
+            checked_out_time: p.checked_out_at,
+            payment_status: payment?.payment_status ?? "pending",
+            paid: payment?.paid ?? false,
+            balance_due: payment?.balance_due ?? (Number(p.price) || 0),
+            total_paid: payment?.total_paid ?? 0,
+            total_refunded: payment?.total_refunded ?? 0,
+          };
+        });
         const participantTotal = participants.reduce((sum: number, p: any) => sum + (Number(p.price) || 0), 0);
         const productTotal = Array.isArray(row.products)
           ? row.products.reduce((sum: number, p: any) => sum + groupProductLineTotal(p), 0)

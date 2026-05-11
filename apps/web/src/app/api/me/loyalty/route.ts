@@ -7,8 +7,8 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 /**
  * GET /api/me/loyalty
- * 
- * Get current user's loyalty points, balance, and milestones
+ *
+ * Get current user's loyalty points, balance, and milestones (ledger-backed).
  */
 export async function GET(request: NextRequest) {
   try {
@@ -18,59 +18,40 @@ export async function GET(request: NextRequest) {
     const tenantRegion = await getTenantRegionConfig(tenantId);
     const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
-    // Get user's loyalty points balance using the function
     let pointsBalance = 0;
     let pointsHistory: any[] = [];
 
     try {
-      // Use the get_user_loyalty_balance function
       const { data: balanceData, error: balanceError } = await supabase
-        .rpc("get_user_loyalty_balance", { p_user_id: user.id });
+        .rpc("get_customer_available_points", { customer_uuid: user.id });
 
       if (balanceError) {
-        console.warn("Error calling get_user_loyalty_balance:", balanceError);
-        // Fallback: calculate manually
-        const { data: transactions } = await supabase
-          .from("loyalty_point_transactions")
-          .select("points, transaction_type, expires_at")
-          .eq("user_id", user.id);
-        
-        if (transactions) {
-          pointsBalance = transactions.reduce((sum, t) => {
-            const isExpired = t.expires_at && new Date(t.expires_at) < new Date();
-            if (isExpired) return sum;
-            
-            if (t.transaction_type === "earned" || t.transaction_type === "adjusted") {
-              return sum + Number(t.points || 0);
-            } else if (t.transaction_type === "redeemed" || t.transaction_type === "expired") {
-              return sum - Number(t.points || 0);
-            }
-            return sum;
-          }, 0);
-          pointsBalance = Math.max(pointsBalance, 0);
-        }
+        console.warn("Error calling get_customer_available_points:", balanceError);
       } else if (balanceData !== null) {
         pointsBalance = Number(balanceData) || 0;
       }
 
-      // Get points history/transactions
       const { data: history, error: historyError } = await supabase
-        .from("loyalty_point_transactions")
-        .select("id, points, transaction_type, description, created_at")
-        .eq("user_id", user.id)
+        .from("loyalty_points_ledger")
+        .select("id, points_amount, transaction_type, description, created_at")
+        .eq("customer_id", user.id)
         .order("created_at", { ascending: false })
         .limit(50);
 
       if (!historyError && history) {
-        pointsHistory = history;
+        pointsHistory = history.map((row: any) => ({
+          id: row.id,
+          points: Number(row.points_amount) || 0,
+          transaction_type: row.transaction_type,
+          description: row.description || "",
+          created_at: row.created_at,
+        }));
       }
     } catch {
-      // Tables might not exist, use defaults
-      console.warn("Loyalty points tables not found, using default balance");
+      console.warn("Loyalty ledger read failed, using default balance");
     }
 
-    // Get active loyalty rule to calculate redemption value
-    let redemptionRate = 100; // Default: 100 points = 1 currency unit
+    let redemptionRate = 100;
     let currency = lastResortCurrency;
     let pointsPerCurrency = 1;
 
@@ -92,7 +73,6 @@ export async function GET(request: NextRequest) {
       console.warn("loyalty_rules table not found, using defaults");
     }
 
-    // Get available milestones
     let milestones: any[] = [];
     let nextMilestone: any = null;
 
@@ -105,15 +85,13 @@ export async function GET(request: NextRequest) {
 
       if (!milestonesError && allMilestones) {
         milestones = allMilestones;
-        // Find next milestone user hasn't reached
         nextMilestone = allMilestones.find((m) => m.points_threshold > pointsBalance) || null;
       }
     } catch {
       console.warn("loyalty_milestones table not found");
     }
 
-    // Calculate redemption value
-    const redemptionValue = pointsBalance / redemptionRate;
+    const redemptionValue = redemptionRate > 0 ? pointsBalance / redemptionRate : 0;
 
     const res = successResponse({
       points_balance: pointsBalance,
@@ -125,7 +103,6 @@ export async function GET(request: NextRequest) {
       available_milestones: milestones,
       history: pointsHistory,
     });
-    // Loyalty points change rarely; 60 s browser cache is safe here.
     res.headers.set("Cache-Control", "private, max-age=60, stale-while-revalidate=120");
     return res;
   } catch (error) {

@@ -6,7 +6,8 @@
  * @see https://supabase.com/docs/reference/javascript/auth-verifyotp
  *
  * Token must be digits only (no spaces). Phone/email must match what was passed to `signInWithOtp` / `updateUser`.
- * For **login-only** surfaces, pass `shouldCreateUser: false` on `signInWithOtp` so OTP does not register new users.
+ * Unified login/signup surfaces use `shouldCreateUser: true` so verifying an OTP can create an account.
+ * Use `shouldCreateUser: false` only when you must block new registrations on that screen.
  */
 
 export const SUPABASE_AUTH_OTP_LENGTH = 6;

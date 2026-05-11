@@ -9,6 +9,7 @@ import {
   ScrollView,
   ActivityIndicator,
   useWindowDimensions,
+  Linking,
 } from "react-native";
 import * as Location from "expo-location";
 import { Ionicons } from "@expo/vector-icons";
@@ -76,6 +77,10 @@ interface Participant {
   service_name?: string | null;
   duration_minutes?: number | null;
   price?: number;
+  payment_status?: string | null;
+  balance_due?: number | null;
+  total_paid?: number | null;
+  total_refunded?: number | null;
   addons?: { id?: string; addonId?: string; name?: string; price?: number; duration?: number; duration_minutes?: number }[] | null;
   notes?: string | null;
 }
@@ -1108,6 +1113,8 @@ export default function GroupBookingsScreen() {
     const linkRes = await addParticipant(`/api/provider/group-bookings/${args.groupId}/participants`, {
       booking_id: createdBookingId,
       participant_name: args.participant.name.trim(),
+      participant_email: args.participant.email?.trim() || undefined,
+      participant_phone: args.participant.phone?.trim() || undefined,
       service_id: args.serviceId,
       service_name: args.serviceName || undefined,
       price: args.unitPrice,
@@ -1946,7 +1953,13 @@ export default function GroupBookingsScreen() {
                             </Text>
                           ) : null}
                           {displayPhone && (
-                            <Text style={twStyle("text-xs text-gray-400")}>{displayPhone}</Text>
+                            <TouchableOpacity
+                              onPress={() => Linking.openURL(`tel:${displayPhone}`).catch(() => {})}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Call ${displayName}`}
+                            >
+                              <Text style={twStyle("text-xs text-primary")}>{displayPhone}</Text>
+                            </TouchableOpacity>
                           )}
                         </View>
                         <View style={twStyle("flex-row items-center")}>
@@ -1955,6 +1968,20 @@ export default function GroupBookingsScreen() {
                               {(Number((p as Participant & { price?: number }).price) || 0) > 0
                                 ? formatCurrency(Number((p as Participant & { price?: number }).price) || 0)
                                 : "No price"}
+                            </Text>
+                          </View>
+                          <View
+                            style={[
+                              twStyle(`rounded-full px-2 py-0.5 ${p.paid ? "bg-emerald-50" : (Number(p.total_paid ?? 0) > 0 ? "bg-amber-50" : "bg-gray-100")}`),
+                              { marginRight: 8 },
+                            ]}
+                          >
+                            <Text style={twStyle(`text-[10px] font-medium ${p.paid ? "text-emerald-700" : (Number(p.total_paid ?? 0) > 0 ? "text-amber-700" : "text-gray-600")}`)}>
+                              {p.paid
+                                ? "Paid"
+                                : Number(p.total_paid ?? 0) > 0
+                                  ? `${formatCurrency(Math.max(0, Number(p.balance_due ?? 0)))} due`
+                                  : "Unpaid"}
                             </Text>
                           </View>
                           {canCheckInOut && (

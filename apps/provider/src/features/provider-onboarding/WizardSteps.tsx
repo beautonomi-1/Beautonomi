@@ -12,9 +12,11 @@ import {
   Modal,
   Image,
   useWindowDimensions,
+  Platform,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import * as Haptics from "expo-haptics";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase/client";
@@ -23,7 +25,6 @@ import {
   normalizeSupabaseAuthPhone,
   normalizeSupabaseSmsOtpToken,
   SUPABASE_AUTH_OTP_LENGTH,
-  SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS,
 } from "@/lib/supabase-sms-otp";
 import {
   COUNTRY_CODES,
@@ -108,13 +109,15 @@ function Step2Identity() {
   const [codeSent, setCodeSent] = useState(false);
   const [otp, setOtp] = useState("");
   const [pendingE164, setPendingE164] = useState("");
-  const [countdown, setCountdown] = useState(0);
+  /** Resend cooldown (seconds) — 30s, same as the login screen. NOT the full OTP expiry. */
+  const RESEND_COOLDOWN_SECS = 30;
+  const [resendCooldown, setResendCooldown] = useState(0);
 
   useEffect(() => {
-    if (countdown <= 0) return;
-    const t = setTimeout(() => setCountdown((c) => c - 1), 1000);
+    if (resendCooldown <= 0) return;
+    const t = setTimeout(() => setResendCooldown((c) => (c > 0 ? c - 1 : 0)), 1000);
     return () => clearTimeout(t);
-  }, [countdown]);
+  }, [resendCooldown]);
 
   useEffect(() => {
     if (loadingDraft || phoneFieldsSeeded.current) return;
@@ -154,7 +157,7 @@ function Step2Identity() {
       setPendingE164(normalized);
       setOtp("");
       setCodeSent(true);
-      setCountdown(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS);
+      setResendCooldown(RESEND_COOLDOWN_SECS);
       Alert.alert("Code sent", `We sent a ${SUPABASE_AUTH_OTP_LENGTH}-digit code to your phone.`);
     } catch (e) {
       Alert.alert("Could not send code", e instanceof Error ? e.message : "Try again.");
@@ -197,9 +200,12 @@ function Step2Identity() {
     <View style={twStyle("gap-4")}>
       <View>
         <Text style={twStyle(labelCls)}>Full name</Text>
+        <Text style={twStyle("text-xs text-gray-500 mb-2 leading-relaxed")}>
+          If you signed up with phone, email code, or Google, add the name clients should see — you can change it anytime.
+        </Text>
         <TextInput
           value={formData.owner_name || ""}
-          onChangeText={(t) => updateFormData({ owner_name: t, phone_verified: false })}
+          onChangeText={(t) => updateFormData({ owner_name: t })}
           placeholder="Your name"
           placeholderTextColor="#9ca3af"
           style={twStyle(inputCls)}
@@ -278,44 +284,47 @@ function Step2Identity() {
             </TouchableOpacity>
           </View>
         </Modal>
-        <TouchableOpacity
-          onPress={sendCode}
-          disabled={sending || countdown > 0}
-          style={twStyle("mt-3 rounded-xl bg-gray-900 py-3 items-center")}
-        >
-          <Text style={twStyle("font-semibold text-white")}>
-            {sending
-              ? "Sending…"
-              : countdown > 0
-                ? `Resend (${Math.floor(countdown / 60)}:${String(countdown % 60).padStart(2, "0")})`
-                : "Send verification code"}
-          </Text>
-        </TouchableOpacity>
+        {/* Only show the send-code flow when not yet verified */}
+        {!formData.phone_verified ? (
+          <TouchableOpacity
+            onPress={sendCode}
+            disabled={sending || resendCooldown > 0}
+            style={twStyle("mt-3 rounded-xl bg-gray-900 py-3 items-center")}
+          >
+            <Text style={twStyle("font-semibold text-white")}>
+              {sending
+                ? "Sending…"
+                : resendCooldown > 0
+                  ? `Resend in ${resendCooldown}s`
+                  : codeSent
+                    ? "Resend code"
+                    : "Send verification code"}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
-      {codeSent ? (
+      {codeSent && !formData.phone_verified ? (
         <View>
           <Text style={twStyle(labelCls)}>Verification code</Text>
           <OtpDigitRow
             value={otp}
             onChange={setOtp}
             onComplete={(code) => {
-              if (!verifying && !formData.phone_verified) void verify(code);
+              if (!verifying) void verify(code);
             }}
-            disabled={verifying || Boolean(formData.phone_verified)}
+            disabled={verifying}
             autoFocus
             accessibilityLabelPrefix="Phone verification"
           />
           <TouchableOpacity
             onPress={() => void verify()}
-            disabled={verifying || formData.phone_verified}
+            disabled={verifying}
             style={twStyle("mt-4 rounded-xl bg-primary py-3 items-center")}
           >
             {verifying ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={twStyle("font-semibold text-white")}>
-                {formData.phone_verified ? "Verified" : "Verify"}
-              </Text>
+              <Text style={twStyle("font-semibold text-white")}>Verify</Text>
             )}
           </TouchableOpacity>
         </View>
@@ -324,6 +333,20 @@ function Step2Identity() {
         <View style={twStyle("flex-row items-center gap-2 rounded-xl border border-green-200 bg-green-50 p-3")}>
           <Ionicons name="checkmark-circle" size={22} color="#16a34a" />
           <Text style={twStyle("text-sm font-medium text-green-900")}>Phone verified</Text>
+          <TouchableOpacity
+            onPress={() => {
+              updateFormData({ phone_verified: false });
+              setCodeSent(false);
+              setOtp("");
+              setPendingE164("");
+              setResendCooldown(0);
+            }}
+            style={twStyle("ml-auto")}
+            accessibilityRole="button"
+            accessibilityLabel="Change phone number"
+          >
+            <Text style={twStyle("text-xs font-semibold text-gray-500")}>Change</Text>
+          </TouchableOpacity>
         </View>
       ) : null}
     </View>
@@ -909,6 +932,9 @@ function Step9Zones() {
   const { formData, updateFormData } = useOnboardingWizard();
   const [zones, setZones] = useState<ZoneRow[]>([]);
   const [loading, setLoading] = useState(true);
+  // Track whether we have already auto-selected zones so that updating
+  // `selected_zone_ids` doesn't re-trigger the suggest-zones API call.
+  const autoSelectedRef = useRef(false);
 
   useEffect(() => {
     const lat = formData.address?.latitude;
@@ -931,7 +957,8 @@ function Step9Zones() {
         });
         const list = res.data?.suggested_zones ?? [];
         setZones(list);
-        if (list.length && !hadZones) {
+        if (list.length && !hadZones && !autoSelectedRef.current) {
+          autoSelectedRef.current = true;
           updateFormData({ selected_zone_ids: list.map((z) => z.id) });
         }
       } catch {
@@ -940,6 +967,7 @@ function Step9Zones() {
         setLoading(false);
       }
     })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     formData.address?.latitude,
     formData.address?.longitude,
@@ -947,7 +975,8 @@ function Step9Zones() {
     formData.address?.city,
     formData.address?.postal_code,
     formData.address?.country,
-    formData.selected_zone_ids?.length,
+    // Intentionally omit `formData.selected_zone_ids?.length` — updating it
+    // after auto-selection must not re-trigger a zones fetch.
     updateFormData,
   ]);
 
@@ -1151,6 +1180,27 @@ const DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday"
 function Step12Hours() {
   const { formData, updateFormData } = useOnboardingWizard();
   const oh = formData.operating_hours || {};
+  const isFreelancer = formData.business_type === "mobile" || formData.team_size === "freelancer";
+
+  const [showPicker, setShowPicker] = useState<"open" | "close" | null>(null);
+  const [pickerDay, setPickerDay] = useState<string | null>(null);
+  const [pickerTime, setPickerTime] = useState<string>("09:00");
+
+  useEffect(() => {
+    if (isFreelancer && (!formData.operating_hours || Object.keys(formData.operating_hours).length === 0)) {
+      updateFormData({
+        operating_hours: {
+          monday: { open: "08:00", close: "20:00", closed: false },
+          tuesday: { open: "08:00", close: "20:00", closed: false },
+          wednesday: { open: "08:00", close: "20:00", closed: false },
+          thursday: { open: "08:00", close: "20:00", closed: false },
+          friday: { open: "08:00", close: "20:00", closed: false },
+          saturday: { open: "09:00", close: "18:00", closed: false },
+          sunday: { open: "10:00", close: "16:00", closed: false },
+        },
+      });
+    }
+  }, [isFreelancer, formData.operating_hours, updateFormData]);
 
   const setDay = (day: string, patch: Partial<{ open: string; close: string; closed: boolean }>) => {
     const cur = oh[day] || { open: "09:00", close: "18:00", closed: false };
@@ -1159,8 +1209,39 @@ function Step12Hours() {
     });
   };
 
+  const handleTimeChange = (_: any, d?: Date) => {
+    if (Platform.OS !== "ios") {
+      setShowPicker(null);
+      setPickerDay(null);
+    }
+    if (d && pickerDay && showPicker) {
+      const timeStr = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+      setDay(pickerDay, { [showPicker]: timeStr });
+      setPickerTime(timeStr);
+    }
+  };
+
   return (
     <View style={twStyle("gap-3")}>
+      <View style={twStyle(`rounded-2xl border p-4 ${isFreelancer ? "border-emerald-200 bg-emerald-50" : "border-gray-200 bg-gray-50"}`)}>
+        <View style={twStyle("flex-row items-start gap-2")}>
+          <Ionicons name="information-circle" size={20} color={isFreelancer ? "#047857" : "#4b5563"} />
+          <Text style={twStyle(`flex-1 text-sm leading-5 ${isFreelancer ? "text-emerald-900" : "text-gray-800"}`)}>
+            {isFreelancer ? (
+              <Text>
+                <Text style={twStyle("font-bold")}>Freelancer hours: </Text>
+                We started you on broad weekday hours (8:00–20:00); tweak them to match how you actually work. You can change this anytime in Settings.
+              </Text>
+            ) : (
+              <Text>
+                <Text style={twStyle("font-bold")}>Location Booking Window: </Text>
+                Clients only see slots inside these hours for the salon. You can set individual staff schedules later under Settings.
+              </Text>
+            )}
+          </Text>
+        </View>
+      </View>
+
       {DAYS.map((day) => {
         const h = oh[day] || { open: "09:00", close: "18:00", closed: false };
         return (
@@ -1176,22 +1257,43 @@ function Step12Hours() {
               </View>
             </View>
             {!h.closed ? (
-              <View style={twStyle("mt-2 flex-row gap-2")}>
-                <TextInput
-                  value={h.open}
-                  onChangeText={(t) => setDay(day, { open: t })}
-                  style={twStyle(`${inputCls} flex-1`)}
-                />
-                <TextInput
-                  value={h.close}
-                  onChangeText={(t) => setDay(day, { close: t })}
-                  style={twStyle(`${inputCls} flex-1`)}
-                />
+              <View style={twStyle("mt-3 flex-row gap-2")}>
+                <TouchableOpacity
+                  onPress={() => {
+                    setPickerDay(day);
+                    setShowPicker("open");
+                    setPickerTime(h.open || "09:00");
+                  }}
+                  style={twStyle("flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-gray-50 py-3")}
+                >
+                  <Ionicons name="time-outline" size={16} color="#6b7280" />
+                  <Text style={twStyle("ml-2 text-base font-medium text-gray-900")}>{h.open || "09:00"}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => {
+                    setPickerDay(day);
+                    setShowPicker("close");
+                    setPickerTime(h.close || "18:00");
+                  }}
+                  style={twStyle("flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-gray-50 py-3")}
+                >
+                  <Ionicons name="time-outline" size={16} color="#6b7280" />
+                  <Text style={twStyle("ml-2 text-base font-medium text-gray-900")}>{h.close || "18:00"}</Text>
+                </TouchableOpacity>
               </View>
             ) : null}
           </View>
         );
       })}
+
+      {showPicker && pickerDay && (
+        <DateTimePicker
+          value={new Date(`2000-01-01T${pickerTime}:00`)}
+          mode="time"
+          display={Platform.OS === "ios" ? "spinner" : "default"}
+          onChange={handleTimeChange}
+        />
+      )}
     </View>
   );
 }
@@ -1239,6 +1341,9 @@ function Step14Plan() {
   const { formData, updateFormData } = useOnboardingWizard();
   const [plans, setPlans] = useState<PlanRow[]>([]);
   const [loading, setLoading] = useState(true);
+  // Capture selected_plan_id at mount time so the fetch effect runs exactly
+  // once (on mount) without `formData.selected_plan_id` as a dependency.
+  const initialPlanId = useRef(formData.selected_plan_id);
 
   useEffect(() => {
     let active = true;
@@ -1256,8 +1361,8 @@ function Step14Plan() {
         
         if (list.length === 0) {
           updateFormData({ no_plans_available: true, selected_plan_id: undefined, selected_plan_name: undefined });
-        } else if (!formData.selected_plan_id?.trim()) {
-          // Auto-select first plan if none selected
+        } else if (!initialPlanId.current?.trim()) {
+          // Auto-select first plan only when none was previously selected
           updateFormData({ 
             selected_plan_id: list[0].id, 
             selected_plan_name: list[0].name,
@@ -1271,7 +1376,7 @@ function Step14Plan() {
       }
     })();
     return () => { active = false; };
-  }, [formData.selected_plan_id, updateFormData]);
+  }, [updateFormData]);
 
   if (loading) {
     return (

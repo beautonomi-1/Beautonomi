@@ -21,14 +21,14 @@ function isClientSummaryPayload(data: unknown): data is {
   returningClients?: number;
   averageLifetimeValue?: number;
   averageBookingsPerClient?: number;
-  topClients?: Array<{
+  topClients?: {
     clientId?: string;
     clientName?: string;
     totalBookings?: number;
     totalSpent?: number;
     lastVisit?: string;
     averageRating?: number;
-  }>;
+  }[];
   clientRetention?: { retentionRate?: number; inclusiveDayCount?: number; period?: string };
   basisNote?: string;
   reportBasis?: string;

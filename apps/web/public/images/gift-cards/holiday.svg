@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" role="img" aria-labelledby="title desc">
+  <title id="title">Holiday gift card</title>
+  <desc id="desc">Festive berry Beautonomi holiday gift card artwork.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fef3c7"/>
+      <stop offset=".5" stop-color="#fb7185"/>
+      <stop offset="1" stop-color="#831843"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="800" rx="64" fill="url(#bg)"/>
+  <path d="M155 230h890v352H155z" fill="#fff" opacity=".16"/>
+  <rect x="220" y="190" width="760" height="420" rx="54" fill="#fff" opacity=".9"/>
+  <path d="M420 486h360M465 486c0-122 74-218 135-272 61 54 135 150 135 272" fill="none" stroke="#831843" stroke-width="42" stroke-linecap="round"/>
+  <circle cx="600" cy="288" r="52" fill="#fb7185"/>
+  <path d="M522 384h156" stroke="#fb7185" stroke-width="32" stroke-linecap="round"/>
+  <text x="600" y="158" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="62" font-weight="700" fill="#fff">Holiday Special</text>
+  <text x="600" y="675" text-anchor="middle" font-family="Verdana, sans-serif" font-size="40" font-weight="700" fill="#fff">Beautonomi Gift Card</text>
+</svg>

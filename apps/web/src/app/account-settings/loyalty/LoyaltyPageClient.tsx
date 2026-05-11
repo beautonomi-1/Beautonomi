@@ -290,10 +290,16 @@ export default function LoyaltyPage({
                         >
                           <div className="flex-1">
                             <p className="text-sm font-medium text-gray-900">
-                              {transaction.description || 
-                                (transaction.transaction_type === "earned" ? "Points Earned" : 
-                                 transaction.transaction_type === "redeemed" ? "Points Redeemed" : 
-                                 "Points Transaction")}
+                              {transaction.description ||
+                                (transaction.transaction_type === "bonus"
+                                  ? "Bonus points"
+                                  : transaction.transaction_type === "earned"
+                                    ? "Points earned"
+                                    : transaction.transaction_type === "redeemed"
+                                      ? "Points redeemed"
+                                      : transaction.transaction_type === "expired"
+                                        ? "Points expired"
+                                        : "Points adjustment")}
                             </p>
                             <p className="text-xs text-gray-500 mt-1">
                               {new Date(transaction.created_at).toLocaleDateString("en-US", {
@@ -307,14 +313,10 @@ export default function LoyaltyPage({
                           </div>
                           <div
                             className={`text-sm font-semibold ${
-                              transaction.transaction_type === "earned"
-                                ? "text-green-700"
-                                : transaction.transaction_type === "redeemed"
-                                ? "text-red-700"
-                                : "text-gray-700"
+                              transaction.points >= 0 ? "text-green-700" : "text-red-700"
                             }`}
                           >
-                            {transaction.transaction_type === "earned" ? "+" : "-"}
+                            {transaction.points >= 0 ? "+" : "-"}
                             {Math.abs(transaction.points).toLocaleString()} pts
                           </div>
                         </div>

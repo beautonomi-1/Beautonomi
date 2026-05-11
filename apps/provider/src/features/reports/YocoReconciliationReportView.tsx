@@ -12,7 +12,7 @@ function centsToMajor(cents: number): number {
 }
 
 function isYocoReconciliationPayload(data: unknown): data is {
-  payments: Array<{
+  payments: {
     id: string;
     yoco_payment_id: string;
     amount: number;
@@ -21,7 +21,7 @@ function isYocoReconciliationPayload(data: unknown): data is {
     created_at: string;
     link_kind: string;
     booking_synced: boolean;
-  }>;
+  }[];
   summary: {
     total: number;
     with_booking: number;

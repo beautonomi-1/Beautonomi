@@ -152,9 +152,11 @@ export function BeautonomiGateModal({
     setLoading("email");
     try {
       const supabase = getSupabaseClient();
+      // Email OTP (no magic link): omit emailRedirectTo so Supabase sends a 6-digit code.
+      // shouldCreateUser: true so brand-new visitors can complete checkout without a separate signup.
       const { error } = await supabase.auth.signInWithOtp({
         email: email.trim(),
-        options: { emailRedirectTo: redirectUrl, shouldCreateUser: false },
+        options: { shouldCreateUser: true },
       });
       if (error) throw error;
       setOtpCode("");
@@ -186,9 +188,10 @@ export function BeautonomiGateModal({
     setLoading("phone");
     try {
       const supabase = getSupabaseClient();
+      // Unified auth: account is created automatically when OTP is verified.
       const { error } = await supabase.auth.signInWithOtp({
         phone: normalizeSupabaseAuthPhone(e164),
-        options: { channel: "sms", shouldCreateUser: false },
+        options: { channel: "sms", shouldCreateUser: true },
       });
       if (error) throw error;
       setOtpCode("");

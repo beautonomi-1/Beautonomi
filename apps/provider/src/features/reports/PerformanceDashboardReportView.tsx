@@ -28,18 +28,18 @@ function isDashboardPayload(data: unknown): data is {
   today?: LedgerBlock;
   week?: LedgerBlock;
   month?: LedgerBlock;
-  upcomingBookings?: Array<{
+  upcomingBookings?: {
     id?: string;
     scheduled_at?: string;
     status?: string;
     total_amount?: number | null;
-  }>;
-  recentBookings?: Array<{
+  }[];
+  recentBookings?: {
     id?: string;
     scheduled_at?: string;
     status?: string;
     total_amount?: number | null;
-  }>;
+  }[];
 } {
   return data != null && typeof data === "object" && !Array.isArray(data) && "today" in data;
 }

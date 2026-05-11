@@ -8,6 +8,8 @@ export const FEATURE_FLAG_KEYS = {
   GIFT_CARDS: "gift_cards",
   /** When disabled (tenant or global row), providers cannot create/send custom offers. */
   PROVIDER_CUSTOM_OFFERS: "commerce.provider_custom_offers",
+  /** When enabled, custom-offer checkout may use wallet / gift / loyalty (UI + `POST .../pay`). */
+  CUSTOM_OFFER_FULL_CHECKOUT: "commerce.custom_offer_full_checkout",
 } as const;
 
 export type PaymentRelatedFeatureKey =

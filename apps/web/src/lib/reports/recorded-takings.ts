@@ -11,6 +11,7 @@ import {
   summarizeLedgerLocationAttribution,
   type LedgerLocationAttributionSummary,
 } from "@/lib/reports/provider-report-utils";
+import { PAID_BOOKING_PAYMENT_STATUSES } from "@/lib/payments/booking-payment-status";
 
 export const RECORDED_TAKINGS_PAYMENT_METHODS = [
   "cash",
@@ -79,7 +80,7 @@ export async function getRecordedTakingsForRange(
   let bpQuery = supabaseAdmin
     .from("booking_payments")
     .select("booking_id, amount, payment_method")
-    .eq("status", "completed")
+    .in("status", [...PAID_BOOKING_PAYMENT_STATUSES])
     .gte("created_at", rangeStartIso)
     .lte("created_at", rangeEndIso);
   if (providerTenantId) {
@@ -148,13 +149,15 @@ export async function getRecordedTakingsForRange(
       const walletAmt = Number(wb.wallet_amount ?? 0);
       const bpSum = bpAmountByBooking.get(wb.id) ?? 0;
       const totalPaid = Number(wb.total_paid ?? 0);
+      const ps = (wb.payment_status || "").toLowerCase();
+      const hasSettledWalletStatus = ps === "paid" || ps === "partially_refunded";
       let collected = totalPaid;
-      if (collected <= 0 && wb.payment_status === "paid") {
+      if (collected <= 0 && hasSettledWalletStatus) {
         collected = Math.max(Number(wb.total_amount ?? 0), walletAmt, bpSum);
       }
       const uncaptured = Math.max(0, collected - bpSum);
       let walletPortion = Math.min(walletAmt, uncaptured);
-      if (walletPortion <= 0 && walletAmt > 0 && bpSum === 0 && wb.payment_status === "paid") {
+      if (walletPortion <= 0 && walletAmt > 0 && bpSum === 0 && hasSettledWalletStatus) {
         walletPortion = walletAmt;
       }
       if (walletPortion <= 0) continue;

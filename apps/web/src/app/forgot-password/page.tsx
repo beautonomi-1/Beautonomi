@@ -87,8 +87,15 @@ export default function ForgotPasswordPage() {
         <h1 className="text-center text-[28px] font-extrabold text-gray-900 mb-1" id="forgot-heading">
           {t("auth.resetPassword")}
         </h1>
-        <p className="text-center text-[15px] text-gray-500 mb-7">
+        <p className="text-center text-[15px] text-gray-500 mb-2">
           Enter the email for your account and we&apos;ll send you a link to reset your password.
+        </p>
+        <p className="text-center text-[13px] text-gray-500 mb-7">
+          Signed up with phone, email code, or Google? You don&apos;t have a password —{" "}
+          <Link href={loginHref} className="font-semibold text-[#FF0077] hover:underline">
+            sign in with one of those instead
+          </Link>
+          .
         </p>
 
         {error && (

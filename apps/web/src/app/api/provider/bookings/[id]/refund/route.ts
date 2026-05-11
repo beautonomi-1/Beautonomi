@@ -132,11 +132,8 @@ export async function POST(
       );
     }
 
-    // §Final-audit 2026-04: include wallet + gift card collected in the
-    // refund cap, matching the admin route. `total_paid` only counts
-    // gateway payments (trigger `update_booking_payment_status`), so a
-    // booking paid entirely in wallet previously could not be refunded
-    // by the provider — the cap was $0.
+    // Include wallet/gift coverage without double-counting newer synthetic
+    // booking_payments rows that already feed total_paid.
     const { data: bookingData } = await supabase
       .from("bookings")
       .select("total_paid, total_refunded, wallet_amount, gift_card_amount")
@@ -147,7 +144,8 @@ export async function POST(
     const walletPaid = (bookingData as { wallet_amount?: number } | null)?.wallet_amount || 0;
     const giftPaid = (bookingData as { gift_card_amount?: number } | null)?.gift_card_amount || 0;
     const totalRefunded = bookingData?.total_refunded || 0;
-    const availableForRefund = totalPaid + walletPaid + giftPaid - totalRefunded;
+    const totalCollectedAllSources = Math.max(totalPaid, walletPaid + giftPaid);
+    const availableForRefund = totalCollectedAllSources - totalRefunded;
 
     // Validate refund amount
     if (amount > availableForRefund) {
@@ -259,12 +257,9 @@ export async function POST(
       console.warn("Failed to create refund booking event:", eventErr);
     }
 
-    // Wave 1.2 fully_refunded fix: include wallet + gift card + loyalty
-    // in the cap, matching availableForRefund. Previous calc used only
-    // gateway totalPaid, marking wallet/gift-paid bookings non-refundable.
+    // Keep full-refund detection aligned with the same all-source coverage cap.
     const newTotalRefunded = totalRefunded + amount;
-    const totalPaidAllSources = totalPaid + walletPaid + giftPaid;
-    const isFullyRefunded = newTotalRefunded >= totalPaidAllSources;
+    const isFullyRefunded = newTotalRefunded >= totalCollectedAllSources;
 
     // Notify customer that refund was added to wallet
     const bookingRef = booking.ref_number || booking.booking_number || bookingId.slice(0, 8).toUpperCase();

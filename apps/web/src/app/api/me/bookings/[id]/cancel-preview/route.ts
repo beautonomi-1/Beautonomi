@@ -3,6 +3,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireAuthInApi, handleApiError, successResponse } from "@/lib/supabase/api-helpers";
 import { getCancellationPolicy, canCancelBooking } from "@/lib/bookings/cancellation-policy";
 import { computeCancellationRefundAmount, roundCurrency2 } from "@/lib/bookings/refund-processing";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 /**
  * GET /api/me/bookings/[id]/cancel-preview
@@ -24,7 +25,7 @@ export async function GET(
     const { data: booking, error } = await supabase
       .from("bookings")
       .select(
-        "id, provider_id, location_type, scheduled_at, created_at, status, customer_id, total_amount, total_paid, currency, wallet_balance_used, gift_card_amount"
+        "id, provider_id, location_type, scheduled_at, created_at, status, customer_id, total_amount, total_paid, total_refunded, currency, wallet_amount, wallet_balance_used, gift_card_amount"
       )
       .eq("id", bookingId)
       .single();
@@ -72,12 +73,14 @@ export async function GET(
     const bookingTotal = Number(booking.total_amount ?? 0);
     const totalPaid = roundCurrency2(Math.max(0, Number(booking.total_paid ?? 0)));
     const walletCollected = roundCurrency2(
-      Math.max(0, Number((booking as any).wallet_balance_used ?? 0))
+      Math.max(0, Number((booking as any).wallet_amount ?? (booking as any).wallet_balance_used ?? 0))
     );
     const giftCardCollected = roundCurrency2(
       Math.max(0, Number((booking as any).gift_card_amount ?? 0))
     );
-    const effectiveCollectedAmount = roundCurrency2(totalPaid + walletCollected + giftCardCollected);
+    const effectiveCollectedAmount = roundCurrency2(
+      Math.max(0, Math.max(totalPaid, walletCollected + giftCardCollected) - Number((booking as any).total_refunded ?? 0))
+    );
     const isLate = check.isLateCancellation === true;
     const policyRefundAmount = computeCancellationRefundAmount(bookingTotal, policy, isLate);
     const walletRefundAmount = roundCurrency2(Math.min(policyRefundAmount, effectiveCollectedAmount));
@@ -86,7 +89,7 @@ export async function GET(
     return successResponse({
       allowed: true,
       is_late_cancellation: isLate,
-      currency: booking.currency ?? "ZAR",
+      currency: booking.currency ?? LAST_RESORT_CURRENCY,
       booking_total: roundCurrency2(bookingTotal),
       total_paid: totalPaid,
       expected_cancellation_fee: cancellationFeeApplied,

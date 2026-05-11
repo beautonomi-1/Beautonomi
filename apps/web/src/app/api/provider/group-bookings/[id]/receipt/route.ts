@@ -13,6 +13,7 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { parseReceiptDownloadToken } from "@/lib/receipts/receipt-download-token";
 import { groupPackageTotal, groupProductLineTotal } from "@/lib/bookings/group-booking-package-pricing";
 import { computeCatalogPackageServiceDiscount } from "@beautonomi/utils";
+import { isPaidBookingPaymentStatus } from "@/lib/payments/booking-payment-status";
 
 type ParticipantRow = {
   id: string;
@@ -212,21 +213,28 @@ export async function GET(
     );
     const childDiscountAmount = childRows.reduce((sum, b) => sum + num(b.discount_amount), 0);
     const amountPaid = childRows.reduce((sum, b) => {
-      const completedPayments = (b.booking_payments || [])
-        .filter((p) => p.status === "completed")
+      const paidViaRows = (b.booking_payments || [])
+        .filter((p) => isPaidBookingPaymentStatus(p.status))
         .reduce((s, p) => s + num(p.amount), 0);
-      return sum + completedPayments + num(b.wallet_amount) + num(b.gift_card_amount);
+      const legacyWalletGift = Math.max(0, num(b.wallet_amount) + num(b.gift_card_amount));
+      return sum + Math.max(paidViaRows, legacyWalletGift);
     }, 0);
     const totalRefunded = childRows.reduce((sum, b) => sum + num(b.total_refunded), 0);
-    const balanceDue = Math.max(0, (childRows.length > 0 ? childTotalAmount : groupTotal) - amountPaid + totalRefunded);
+    const baseTotal = childRows.length > 0 ? childTotalAmount : groupTotal;
+    const netCollected = Math.max(0, amountPaid - totalRefunded);
+    const balanceDue = Math.max(0, baseTotal - netCollected);
     const paymentStatus =
       childRows.length === 0
         ? "not invoiced"
-        : balanceDue <= 0
-          ? "paid"
-          : childRows.some((b) => b.payment_status === "paid" || num(b.total_paid) > 0)
-            ? "partial"
-            : "pending";
+        : totalRefunded > 0 && amountPaid > 0 && totalRefunded >= amountPaid - 0.01
+          ? "refunded"
+          : totalRefunded > 0
+            ? "partially_refunded"
+            : balanceDue <= 0
+              ? "paid"
+              : childRows.some((b) => b.payment_status === "paid" || num(b.total_paid) > 0)
+                ? "partial"
+                : "pending";
 
     const lineItems = participants.map((p, index) => {
       const child = p.booking_id ? childById.get(p.booking_id) : null;
@@ -245,9 +253,12 @@ export async function GET(
         tax_amount: child ? num(child.tax_amount) : null,
         platform_fee_amount: child ? num(child.platform_fee_amount ?? child.service_fee_amount) : null,
         amount_paid: child
-          ? (child.booking_payments || [])
-              .filter((payment) => payment.status === "completed")
-              .reduce((sum, payment) => sum + num(payment.amount), 0) + num(child.wallet_amount) + num(child.gift_card_amount)
+          ? Math.max(
+              (child.booking_payments || [])
+                .filter((payment) => isPaidBookingPaymentStatus(payment.status))
+                .reduce((sum, payment) => sum + num(payment.amount), 0),
+              Math.max(0, num(child.wallet_amount) + num(child.gift_card_amount)),
+            )
           : null,
         refunded: child ? num(child.total_refunded) : null,
       };

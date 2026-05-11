@@ -4,6 +4,7 @@ import { requireRoleInApi, handleApiError } from "@/lib/supabase/api-helpers";
 import type { UserRole } from "@/types/beautonomi";
 import { SUPPORT_TICKET_STAFF_ROLES } from "@/lib/support/support-ticket-staff";
 import { notifySupportTicketUpdated } from "@/lib/notifications/notification-service";
+import { slackNotifySupportTicketReply } from "@/lib/integrations/slack/triggers";
 import { z } from "zod";
 
 const attachmentSchema = z.object({
@@ -43,7 +44,7 @@ export async function POST(
     // Verify user has access to this ticket and get details for notification
     const { data: ticket } = await supabase
       .from("support_tickets")
-      .select("user_id, provider_id, ticket_number, subject, first_staff_reply_at, status")
+      .select("id, user_id, provider_id, ticket_number, subject, priority, first_staff_reply_at, status, requester_type, support_context_type, support_context_label")
       .eq("id", id)
       .single();
 
@@ -83,6 +84,8 @@ export async function POST(
 
     const ticketUpdate: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (!isInternal && isAdmin) {
+      ticketUpdate.last_message_at = data.created_at ?? new Date().toISOString();
+      ticketUpdate.last_message_from = "staff";
       if (!(ticket as { first_staff_reply_at?: string | null }).first_staff_reply_at) {
         ticketUpdate.first_staff_reply_at = new Date().toISOString();
       }
@@ -109,6 +112,30 @@ export async function POST(
         );
       } catch (notifyErr) {
         console.error("Support ticket reply notification failed:", notifyErr);
+      }
+    }
+
+    if (!isInternal && isAdmin) {
+      try {
+        const previewText =
+          message.slice(0, 180) ||
+          (attachments.length ? `Sent ${attachments.length} attachment(s)` : "New reply");
+        await slackNotifySupportTicketReply(
+          request,
+          ticket as {
+            id: string;
+            ticket_number?: string | null;
+            subject?: string | null;
+            priority?: string | null;
+            requester_type?: string | null;
+            support_context_type?: string | null;
+            support_context_label?: string | null;
+          },
+          previewText,
+          { authorType: "staff", messageId: data.id as string | undefined }
+        );
+      } catch (slackErr) {
+        console.error("Slack staff reply notification failed:", slackErr);
       }
     }
 

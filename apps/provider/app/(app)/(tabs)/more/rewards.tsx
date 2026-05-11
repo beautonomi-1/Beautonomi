@@ -160,17 +160,17 @@ export function RewardsPointsContent() {
             (typeof stats.total_earnings === "number" && stats.total_earnings > 0)) && (
           <View style={{ marginBottom: 24, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}>
             <Text style={{ marginBottom: 12, fontSize: 14, fontWeight: "600", color: Colors.gray[700] }}>Activity</Text>
-            <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
-              <View style={{ marginRight: 16, marginBottom: 16 }}>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", marginHorizontal: -8 }}>
+              <View style={{ width: "50%", paddingHorizontal: 8, marginBottom: 16 }}>
                 <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>{stats.total_bookings}</Text>
                 <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Bookings</Text>
               </View>
-              <View style={{ marginRight: 16, marginBottom: 16 }}>
+              <View style={{ width: "50%", paddingHorizontal: 8, marginBottom: 16 }}>
                 <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>{stats.review_count}</Text>
                 <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Reviews</Text>
               </View>
               {typeof stats.rating_average === "number" && stats.rating_average > 0 && (
-                <View style={{ marginRight: 16, marginBottom: 16 }}>
+                <View style={{ width: "50%", paddingHorizontal: 8, marginBottom: 16 }}>
                   <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>
                     {stats.rating_average.toFixed(1)}
                   </Text>
@@ -178,8 +178,8 @@ export function RewardsPointsContent() {
                 </View>
               )}
               {typeof stats.total_earnings === "number" && stats.total_earnings > 0 && (
-                <View style={{ marginRight: 16, marginBottom: 16 }}>
-                  <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }} numberOfLines={1}>
+                <View style={{ width: "50%", paddingHorizontal: 8, marginBottom: 16 }}>
+                  <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900] }} numberOfLines={1}>
                     {formatCurrency(stats.total_earnings)}
                   </Text>
                   <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Net earnings</Text>

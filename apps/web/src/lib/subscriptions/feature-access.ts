@@ -413,11 +413,16 @@ export async function checkStaffManagementFeatureAccess(
 
 /**
  * Check if provider has access to multi-location features
+ *
+ * @param supabaseClient — Use the same client as the API route (`getSupabaseServer(request)`).
+ *   If omitted, uses cookie-only `getSupabaseServer()`, which breaks Bearer-token / mobile calls
+ *   and yields false "subscription required" 403s.
  */
 export async function checkLocationFeatureAccess(
-  providerId: string
+  providerId: string,
+  supabaseClient?: SupabaseClient
 ): Promise<LocationFeatureAccess> {
-  const supabase = await getSupabaseServer();
+  const supabase = supabaseClient ?? (await getSupabaseServer());
   const tier = await getProviderSubscriptionTier(supabase, providerId);
 
   if (!tier) {

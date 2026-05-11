@@ -39,6 +39,7 @@ import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import {
   formatMoney,
   getHoldTimeRemaining,
+  percentOf,
   serverNowToClockOffsetMs,
 } from "@beautonomi/utils";
 import type { SavedPaymentMethod } from "@/types/api";
@@ -64,6 +65,17 @@ function bookingPaidFromPaystackVerifyBody(body: unknown): boolean {
     cur = o.data;
   }
   return false;
+}
+
+function generateCheckoutIdempotencyKey(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = Math.floor(Math.random() * 16);
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
 }
 
 /* ─── Types ─── */
@@ -624,6 +636,7 @@ export default function BookCheckoutScreen() {
   const [processingPayment, setProcessingPayment] = useState(false);
   const [processingMessage, setProcessingMessage] = useState(() => t("checkout.processingPayment"));
   const consumeInFlightRef = useRef(false);
+  const checkoutIdempotencyKeyRef = useRef<string | null>(null);
   /** Tracks whether the initial hold load has completed — suppresses the focus re-check on first mount. */
   const holdLoadedRef = useRef(false);
 
@@ -1314,6 +1327,53 @@ export default function BookCheckoutScreen() {
     .reduce((s, a) => s + (Number(a.price) || 0), 0);
   const productsSubtotal = selectedProducts.reduce((s, p) => s + p.price * p.quantity, 0);
   const prePromoTotal = subtotal + addonsSubtotal + travelFee + productsSubtotal;
+
+  const checkoutCartFingerprint = useMemo(
+    () =>
+      [
+        subtotal.toFixed(4),
+        addonsSubtotal.toFixed(4),
+        String(travelFee),
+        productsSubtotal.toFixed(4),
+        [...selectedAddonIds].sort().join(","),
+        selectedProducts
+          .map((p) => `${p.productId}:${p.productVariantId ?? ""}:${p.quantity}:${p.price}`)
+          .sort()
+          .join("|"),
+        isGroupBooking ? String(groupParticipants.length) : "0",
+      ].join("~"),
+    [
+      subtotal,
+      addonsSubtotal,
+      travelFee,
+      productsSubtotal,
+      selectedAddonIds,
+      selectedProducts,
+      isGroupBooking,
+      groupParticipants.length,
+    ],
+  );
+
+  const prevCheckoutCartFingerprintRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (prevCheckoutCartFingerprintRef.current === null) {
+      prevCheckoutCartFingerprintRef.current = checkoutCartFingerprint;
+      return;
+    }
+    if (prevCheckoutCartFingerprintRef.current !== checkoutCartFingerprint) {
+      prevCheckoutCartFingerprintRef.current = checkoutCartFingerprint;
+      if (appliedPromoDiscount > 0 || promotionCode.trim().length > 0) {
+        setAppliedPromoDiscount(0);
+        setPromotionCode("");
+        setPromoError(null);
+        setPromoNeedsAutoValidate(false);
+        void AsyncStorage.removeItem("beautonomi_booking_promotion_code");
+        void AsyncStorage.removeItem("beautonomi_booking_promotion_prefill");
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [checkoutCartFingerprint]);
+
   const effectivePromoDiscount = Math.min(appliedPromoDiscount, prePromoTotal);
   const subtotalAfterPromo = Math.max(0, prePromoTotal - effectivePromoDiscount);
   // Wave 4.2: membership discount applies after coupon/gift, before
@@ -1384,10 +1444,30 @@ export default function BookCheckoutScreen() {
     hold?.deposit_amount != null && hold.deposit_amount > 0
       ? hold.deposit_amount
       : depositPctEffective > 0
-        ? Math.ceil((total * depositPctEffective) / 100)
+        ? percentOf(total, depositPctEffective)
         : 0;
   const hasDeposit = !!(hold?.deposit_required && depositPctEffective > 0 && depositAmountComputed > 0);
   const depositAmount = depositAmountComputed;
+  const checkoutAmountDueByPolicy = paymentOption === "deposit" && hasDeposit ? depositAmount : total;
+  const walletAppliesToCheckout =
+    (paymentMethod === "wallet" || (paymentMethod === "card" && useWallet)) && walletBalance > 0;
+  const walletAppliedToCheckout = walletAppliesToCheckout
+    ? Math.min(walletBalance, checkoutAmountDueByPolicy)
+    : 0;
+  const giftCardAppliedToCheckout =
+    (paymentMethod === "giftcard" || paymentMethod === "card") && giftCardValid
+      ? Math.min(Number(giftCardValid.balance || 0), checkoutAmountDueByPolicy)
+      : 0;
+  const cardAmountDueNow = Math.max(0, checkoutAmountDueByPolicy - giftCardAppliedToCheckout - walletAppliedToCheckout);
+  const bottomAmountShown =
+    paymentMethod === "cash"
+      ? checkoutAmountDueByPolicy
+      : paymentMethod === "giftcard"
+        ? checkoutAmountDueByPolicy
+        : paymentMethod === "wallet"
+          ? walletAppliedToCheckout || checkoutAmountDueByPolicy
+          : cardAmountDueNow;
+  const amountPaidOnCompletion = paymentMethod === "cash" ? 0 : checkoutAmountDueByPolicy;
 
   useEffect(() => {
     if (!hold) return;
@@ -1742,7 +1822,7 @@ export default function BookCheckoutScreen() {
       time: bookingTime,
       services: serviceNames || undefined,
       bookingStatus,
-      totalPaid: total,
+      totalPaid: amountPaidOnCompletion,
       platformFee: serviceFeeAmount,
       currency,
     });
@@ -1789,7 +1869,7 @@ export default function BookCheckoutScreen() {
     };
 
     navTimeoutRef.current = setTimeout(navigate, 2600);
-  }, [routeCampaignId, routeProviderId, hold_id, hold, t, total, serviceFeeAmount, currency]);
+  }, [routeCampaignId, routeProviderId, hold_id, hold, t, amountPaidOnCompletion, serviceFeeAmount, currency]);
 
   const handleRequestNow = useCallback(async () => {
     if (!hold_id || !hold || !user) return;
@@ -1878,6 +1958,14 @@ export default function BookCheckoutScreen() {
       setError(t("checkout.giftCardEnterValid"));
       return;
     }
+    if (
+      paymentMethod === "giftcard" &&
+      giftCardValid &&
+      Number(giftCardValid.balance || 0) + 0.005 < checkoutAmountDueByPolicy
+    ) {
+      setError("This gift card does not cover the amount due now. Choose another payment method or use a different gift card.");
+      return;
+    }
 
     if (paymentMethod === "card" && !paystackEnabled) {
       setError(t("checkout.cardUnavailableMarket"));
@@ -1938,11 +2026,14 @@ export default function BookCheckoutScreen() {
           (paymentMethod === "card" && useWallet),
         save_card: paymentMethod === "card" && (useNewCard || savedCards.length === 0) ? saveCard : false,
         guest_fingerprint_hash: fingerprint,
+        idempotency_key:
+          checkoutIdempotencyKeyRef.current ??
+          (checkoutIdempotencyKeyRef.current = generateCheckoutIdempotencyKey()),
       };
       if (paymentMethod === "card" && selectedCardId && !useNewCard && savedCards.length > 0) {
         payload.payment_method_id = selectedCardId;
       }
-      if (paymentMethod === "giftcard" && giftCardCode.trim() && giftCardValid) {
+      if ((paymentMethod === "giftcard" || paymentMethod === "card") && giftCardCode.trim() && giftCardValid) {
         payload.gift_card_code = giftCardCode.trim().toUpperCase();
       }
       if (Object.keys(bookingCustomValues).length > 0) payload.custom_field_values = bookingCustomValues;
@@ -2210,9 +2301,8 @@ export default function BookCheckoutScreen() {
         if (!paymentConfirmed) {
           setProcessingPayment(false);
           if (bookingId) {
-            const amountPaidPending = paymentOption === "deposit" && hasDeposit ? depositAmount : total;
             trackBookingConfirmed(bookingId, paymentMethod, total);
-            trackPaymentSuccess(bookingId, amountPaidPending);
+            trackPaymentSuccess(bookingId, amountPaidOnCompletion);
             notifyRecurringSubscription({ bookingIdForSeriesCheck: bookingId });
             navigateToBooking(bookingId, routeRescheduleBookingId ?? undefined, "pending_payment");
           } else {
@@ -2229,15 +2319,14 @@ export default function BookCheckoutScreen() {
         }
 
         setProcessingPayment(false);
-        const amountPaid = paymentOption === "deposit" && hasDeposit ? depositAmount : total;
         trackBookingConfirmed(confirmedBookingId ?? hold_id, paymentMethod, total);
-        trackPaymentSuccess(confirmedBookingId ?? hold_id, amountPaid);
+        trackPaymentSuccess(confirmedBookingId ?? hold_id, amountPaidOnCompletion);
         notifyRecurringSubscription({ bookingIdForSeriesCheck: confirmedBookingId ?? bookingId });
         navigateToBooking(confirmedBookingId, routeRescheduleBookingId ?? undefined, confirmedBookingStatus);
       } else {
         if (selectedCardId && !useNewCard && savedCards.length > 0) refreshCards();
         trackBookingConfirmed(bookingId ?? hold_id, paymentMethod, total);
-        trackPaymentSuccess(bookingId ?? hold_id, total);
+        trackPaymentSuccess(bookingId ?? hold_id, amountPaidOnCompletion);
         notifyRecurringSubscription({ bookingIdForSeriesCheck: bookingId ?? undefined });
         navigateToBooking(bookingId, routeRescheduleBookingId ?? undefined);
       }
@@ -2249,7 +2338,7 @@ export default function BookCheckoutScreen() {
       setConsuming(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- pay helpers and navigateToBooking are stable refs
-  }, [hold_id, hold, user, bookContinueReturnTo, paymentMethod, paymentOption, useWallet, selectedCardId, useNewCard, savedCards, saveCard, total, depositAmount, hasDeposit, currency, bookingCustomDefinitions, bookingCustomValues, providerForms, providerFormValues, specialRequests, houseCallInstructionsPrefill, promotionCode, tipAmount, routeRescheduleBookingId, giftCardCode, giftCardValid, selectedAddonIds, isGroupBooking, groupParticipants, selectedProducts, snapshotOfferingIds, selectedPackageId, paystackEnabled, walletEnabled, subscribeRecurring, recurringFrequency, loyaltyPointsApplied, cancellationPolicyAccepted, serverClockOffsetMs, refreshSession, t]);
+  }, [hold_id, hold, user, bookContinueReturnTo, paymentMethod, paymentOption, useWallet, selectedCardId, useNewCard, savedCards, saveCard, total, depositAmount, hasDeposit, currency, bookingCustomDefinitions, bookingCustomValues, providerForms, providerFormValues, specialRequests, houseCallInstructionsPrefill, promotionCode, tipAmount, routeRescheduleBookingId, giftCardCode, giftCardValid, selectedAddonIds, isGroupBooking, groupParticipants, selectedProducts, snapshotOfferingIds, selectedPackageId, paystackEnabled, walletEnabled, subscribeRecurring, recurringFrequency, loyaltyPointsApplied, cancellationPolicyAccepted, serverClockOffsetMs, refreshSession, amountPaidOnCompletion, t]);
 
   /* ─── Loading skeleton ─── */
   if (loading) {
@@ -3788,8 +3877,8 @@ export default function BookCheckoutScreen() {
                 )}
               </View>
 
-              {/* Gift card code (when gift card selected) */}
-              {paymentMethod === "giftcard" && (
+              {/* Gift card code (gift-card-only or card + gift-card split) */}
+              {(paymentMethod === "giftcard" || (paymentMethod === "card" && giftCardsEnabled)) && (
                 <View style={{ marginBottom: 12 }}>
                   {user && ownedGiftCards.length > 0 && !giftCardValid && (
                     <View style={{ marginBottom: 12 }}>
@@ -4045,10 +4134,20 @@ export default function BookCheckoutScreen() {
             {/* Price summary */}
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
               <Text style={{ fontSize: 13, color: "#6B7280" }}>
-                {paymentOption === "deposit" && hasDeposit ? t("checkout.depositNow") : t("checkout.total")}
+                {paymentMethod === "cash"
+                  ? "Due at appointment"
+                  : paymentMethod === "giftcard"
+                    ? "Gift card charge"
+                    : paymentMethod === "wallet"
+                      ? "Wallet charge"
+                      : paymentOption === "deposit" && hasDeposit
+                        ? t("checkout.depositNow")
+                        : walletAppliedToCheckout > 0
+                          ? "Card charge now"
+                          : t("checkout.total")}
               </Text>
               <Text style={{ fontSize: 18, fontWeight: "800", color: "#111827" }}>
-                {formatCurrency(paymentOption === "deposit" && hasDeposit ? depositAmount : total, currency)}
+                {formatCurrency(bottomAmountShown, currency)}
               </Text>
             </View>
             {onDemandEnabled && user && hold?.provider_on_demand_accept_enabled && (

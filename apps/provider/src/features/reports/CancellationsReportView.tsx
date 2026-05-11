@@ -20,8 +20,8 @@ function isCancellationsPayload(data: unknown): data is {
   totalBookings?: number;
   cancellationRate?: number;
   lostRevenue?: number;
-  cancellationReasons?: Array<{ reason: string; count: number; percentage: number }>;
-  dailyBreakdown?: Array<{ date: string; count: number }>;
+  cancellationReasons?: { reason: string; count: number; percentage: number }[];
+  dailyBreakdown?: { date: string; count: number }[];
   recentCancellations?: unknown[];
   basisNote?: string;
   reportBasis?: string;

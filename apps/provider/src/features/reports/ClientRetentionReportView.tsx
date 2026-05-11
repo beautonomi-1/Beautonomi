@@ -35,13 +35,13 @@ function isRetentionPayload(data: unknown): data is {
   returningClients?: number;
   overallRetentionRate?: number;
   averageVisitsPerClient?: number;
-  retentionByPeriod?: Array<{
+  retentionByPeriod?: {
     period: string;
     retentionRate: number;
     clients?: number;
     clientsInPriorPeriod?: number;
     returnedFromPriorPeriod?: number;
-  }>;
+  }[];
   periodGranularity?: string;
   analysisFromYmd?: string;
   analysisToYmd?: string;

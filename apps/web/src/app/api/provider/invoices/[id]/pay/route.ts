@@ -1,5 +1,4 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   successResponse,
@@ -24,7 +23,6 @@ export async function POST(
       return permissionCheck.response!;
     }
 
-    const supabase = await getSupabaseServer(request);
     const admin = getSupabaseAdmin();
     const body = await request.json();
     const { amount, paymentMethodId, paymentDate, paymentReference } = body;
@@ -78,8 +76,8 @@ export async function POST(
       );
     }
 
-    // Create payment record
-    const { data: payment, error: paymentError } = await supabase
+    // Create payment record — use admin to bypass RLS (authorization already verified above)
+    const { data: payment, error: paymentError } = await admin
       .from("provider_invoice_payments")
       .insert({
         invoice_id: id,

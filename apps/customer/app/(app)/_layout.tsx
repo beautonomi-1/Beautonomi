@@ -8,6 +8,7 @@ import { AccountStatusGuard } from "@/components/AccountStatusGuard";
 import { SingularLinkHandler } from "@/components/SingularLinkHandler";
 import MaintenanceGate from "@/components/MaintenanceGate";
 import { NativePermissionsOnboarding } from "@/components/NativePermissionsOnboarding";
+import { BiometricGate } from "@/components/BiometricGate";
 import { Colors } from "@/constants/colors";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
@@ -214,6 +215,7 @@ export default function AppLayout() {
 
   return (
     <MaintenanceGate>
+    <BiometricGate>
     <AccountStatusGuard>
     <RoleGate>
       <SingularLinkHandler />
@@ -260,6 +262,7 @@ export default function AppLayout() {
       </View>
     </RoleGate>
     </AccountStatusGuard>
+    </BiometricGate>
     </MaintenanceGate>
   );
 }

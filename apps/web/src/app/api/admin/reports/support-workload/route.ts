@@ -28,7 +28,10 @@ interface TicketRow {
   first_staff_reply_at: string | null;
   sla_resolution_due_at: string | null;
   csat_score: number | null;
+  csat_agent_id: string | null;
   category: string | null;
+  requester_type: string | null;
+  support_context_type: string | null;
   tags: string[] | null;
   user_id: string | null;
   provider_id: string | null;
@@ -77,6 +80,8 @@ export async function GET(request: NextRequest) {
         period: window.period,
         agents: [],
         topCategories: [],
+        topContextTypes: [],
+        requesterMix: [],
         topTags: [],
         agingUnassigned: { total: 0, buckets: [] },
         topRequesters: [],
@@ -95,7 +100,10 @@ export async function GET(request: NextRequest) {
       "first_staff_reply_at",
       "sla_resolution_due_at",
       "csat_score",
+      "csat_agent_id",
       "category",
+      "requester_type",
+      "support_context_type",
       "tags",
       "user_id",
       "provider_id",
@@ -173,15 +181,16 @@ export async function GET(request: NextRequest) {
     }
 
     for (const t of periodTickets) {
-      if (!t.assigned_to) continue;
-      const agg = ensureAgent(t.assigned_to);
+      const agentForCsat = t.csat_agent_id || t.assigned_to;
+      if (!agentForCsat && !t.assigned_to) continue;
+      const agg = ensureAgent(t.assigned_to || agentForCsat!);
       agg.assignedInPeriod.add(t.id);
       if (t.first_staff_reply_at && t.created_at) {
         const ms =
           new Date(t.first_staff_reply_at).getTime() - new Date(t.created_at).getTime();
         if (ms >= 0) agg.frtMs.push(ms);
       }
-      if (typeof t.csat_score === "number") agg.csatScores.push(t.csat_score);
+      if (typeof t.csat_score === "number" && agentForCsat) ensureAgent(agentForCsat).csatScores.push(t.csat_score);
       if (isSlaBreached(t)) agg.slaBreaches += 1;
     }
     for (const t of resolved) {
@@ -282,6 +291,22 @@ export async function GET(request: NextRequest) {
       .sort((a, b) => b.count - a.count)
       .slice(0, TOP_CATEGORIES_LIMIT);
 
+    const contextMap = new Map<string, number>();
+    const requesterMap = new Map<string, number>();
+    for (const t of periodTickets) {
+      const context = t.support_context_type || "uncategorized";
+      const requester = t.requester_type || (t.provider_id ? "provider" : "customer");
+      contextMap.set(context, (contextMap.get(context) ?? 0) + 1);
+      requesterMap.set(requester, (requesterMap.get(requester) ?? 0) + 1);
+    }
+    const topContextTypes = [...contextMap.entries()]
+      .map(([support_context_type, count]) => ({ support_context_type, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, TOP_CATEGORIES_LIMIT);
+    const requesterMix = [...requesterMap.entries()]
+      .map(([requester_type, count]) => ({ requester_type, count }))
+      .sort((a, b) => b.count - a.count);
+
     /* ── Top tags (free-text) ──────────────────────────────────────────── */
     const tagMap = new Map<string, number>();
     for (const t of periodTickets) {
@@ -348,6 +373,8 @@ export async function GET(request: NextRequest) {
       period: window.period,
       agents,
       topCategories,
+      topContextTypes,
+      requesterMix,
       topTags,
       agingUnassigned,
       topRequesters,

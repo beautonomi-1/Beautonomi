@@ -11,6 +11,7 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { dateRangeBoundsUtc, fromBusinessTime, nowInTz, resolveTz } from "@/lib/dates/provider-tz";
 import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
+import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
 import { startOfDay, startOfMonth } from "date-fns";
 
 import { mapStatusToProvider } from "@/lib/utils/booking-status";
@@ -27,6 +28,21 @@ import {
 import { computeCatalogPackageServiceDiscount } from "@beautonomi/utils";
 import { validateProviderCatalogPackageMatch } from "@/lib/bookings/validate-provider-package-booking";
 import { resolveMembershipDiscount } from "@/lib/provider/salon-membership-entitlement";
+import { shouldRejectProductOnlyProviderBooking } from "@/lib/provider-booking/booking-request-policy";
+import {
+  computeProviderCreateTaxableAmount,
+  normalizeProviderCreateDiscounts,
+  sumExplicitProviderAddonsSubtotal,
+} from "@/lib/bookings/provider-booking-finance";
+import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
+import { validateProviderBookingProducts } from "@/lib/bookings/validate-provider-booking-products";
+
+function sumUnpaidAdditionalCharges(charges: unknown): number {
+  if (!Array.isArray(charges)) return 0;
+  return charges
+    .filter((charge: any) => charge?.status !== "paid" && charge?.status !== "rejected")
+    .reduce((sum: number, charge: any) => sum + Number(charge?.amount ?? 0), 0);
+}
 
 // Map frontend status to database enum values
 // Frontend: booked, started, completed, cancelled, no_show
@@ -106,7 +122,7 @@ async function handleGetProviderBookings(request: NextRequest) {
     // In the provider portal we already scope by provider_id (resolved server-side)
     // and enforce roles, so using admin here avoids "saved but not visible" issues.
     const supabase = await getSupabaseServer(request);
-    const supabaseAdmin = await getSupabaseAdmin();
+    const supabaseAdmin = getSupabaseAdmin();
     const { searchParams } = new URL(request.url);
 
     // Get provider ID
@@ -180,6 +196,11 @@ async function handleGetProviderBookings(request: NextRequest) {
             id,
             description
           )
+        ),
+        additional_charges:additional_charges(
+          id,
+          amount,
+          status
         )
       `
       )
@@ -357,6 +378,16 @@ async function handleGetProviderBookings(request: NextRequest) {
       const recurringSeries = Array.isArray(booking.recurring_appointments)
         ? booking.recurring_appointments[0]
         : booking.recurring_appointments;
+      const unpaidAdditionalCharges = sumUnpaidAdditionalCharges(booking.additional_charges);
+      const outstandingBalance = computeBookingOutstandingDisplay({
+        totalAmount: Number(booking.total_amount ?? 0),
+        totalPaid: Number(booking.total_paid ?? 0),
+        totalRefunded: Number(booking.total_refunded ?? 0),
+        walletAmount: Number(booking.wallet_amount ?? 0),
+        giftCardAmount: Number(booking.gift_card_amount ?? 0),
+        unpaidAdditionalCharges,
+        paymentStatus: booking.payment_status,
+      });
 
       return {
         id: booking.id,
@@ -429,6 +460,8 @@ async function handleGetProviderBookings(request: NextRequest) {
         currency: booking.currency || lastResortCurrency,
         payment_status: booking.payment_status,
         payment_method: null, // payment_method_id is the actual column
+        outstanding_balance: outstandingBalance,
+        additional_charges: booking.additional_charges || [],
         special_requests: booking.special_requests || null,
         loyalty_points_earned: booking.loyalty_points_earned || 0,
         custom_offer: booking.custom_offer || null,
@@ -436,6 +469,10 @@ async function handleGetProviderBookings(request: NextRequest) {
         updated_at: booking.updated_at,
         // Include current_stage for Mangomint-style status/color (client_arrived → WAITING, etc.)
         current_stage: booking.current_stage || null,
+        arrival_otp_pending: Boolean((booking as any).arrival_otp_pending),
+        qr_arrival_pending: Boolean((booking as any).qr_arrival_pending),
+        arrival_otp_verified: Boolean((booking as any).arrival_otp_verified),
+        qr_code_verified: Boolean((booking as any).qr_code_verified),
         // Include joined data for UI convenience (provider portal calendar uses these)
         customers: booking.customers || null,
         locations: booking.locations || null,
@@ -508,16 +545,76 @@ async function handleGetProviderBookings(request: NextRequest) {
 
     const groupStaffIds = [...new Set((groupRows ?? []).map((g: any) => g.staff_id).filter(Boolean))];
     const groupLocationIds = [...new Set((groupRows ?? []).map((g: any) => g.location_id).filter(Boolean))];
-    const [groupStaffRes, groupLocRes] = await Promise.all([
+    const groupIds = (groupRows ?? []).map((g: any) => g.id).filter(Boolean);
+    const [groupStaffRes, groupLocRes, groupChildBookingsRes] = await Promise.all([
       groupStaffIds.length
         ? supabaseAdmin.from("provider_staff").select("id, name").in("id", groupStaffIds)
         : Promise.resolve({ data: [] as any[] }),
       groupLocationIds.length
         ? supabaseAdmin.from("provider_locations").select("id, name, address_line1, city").in("id", groupLocationIds)
         : Promise.resolve({ data: [] as any[] }),
+      groupIds.length
+        ? supabaseAdmin
+            .from("bookings")
+            .select("id, group_booking_id, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status, status, additional_charges(amount,status)")
+            .eq("provider_id", providerId)
+            .in("group_booking_id", groupIds)
+        : Promise.resolve({ data: [] as any[] }),
     ]);
     const groupStaffName = new Map((groupStaffRes.data ?? []).map((s: any) => [s.id, s.name]));
     const groupLocation = new Map((groupLocRes.data ?? []).map((l: any) => [l.id, l]));
+    const groupPaymentById = new Map<string, {
+      totalAmount: number;
+      totalPaid: number;
+      totalRefunded: number;
+      walletGiftCoverage: number;
+      coverage: number;
+      balanceDue: number;
+      paymentStatus: string;
+      hasRefundStatus: boolean;
+    }>();
+    for (const child of groupChildBookingsRes.data ?? []) {
+      if (!child.group_booking_id || ["cancelled", "no_show"].includes(String(child.status ?? ""))) continue;
+      const prev = groupPaymentById.get(child.group_booking_id) ?? {
+        totalAmount: 0,
+        totalPaid: 0,
+        totalRefunded: 0,
+        walletGiftCoverage: 0,
+        coverage: 0,
+        balanceDue: 0,
+        paymentStatus: "pending",
+        hasRefundStatus: false,
+      };
+      const childPaymentStatus = String(child.payment_status ?? "");
+      const paidAfterRefunds = Math.max(0, Number(child.total_paid ?? 0) - Number(child.total_refunded ?? 0));
+      const walletGiftCoverage = Number(child.wallet_amount ?? 0) + Number(child.gift_card_amount ?? 0);
+      const childCoverage = Math.max(paidAfterRefunds, walletGiftCoverage);
+      const childUnpaidCharges = sumUnpaidAdditionalCharges(child.additional_charges);
+      const childTotal = Number(child.total_amount ?? 0);
+      const childBalanceDue = computeBookingOutstandingDisplay({
+        totalAmount: childTotal,
+        totalPaid: Number(child.total_paid ?? 0),
+        totalRefunded: Number(child.total_refunded ?? 0),
+        walletAmount: Number(child.wallet_amount ?? 0),
+        giftCardAmount: Number(child.gift_card_amount ?? 0),
+        unpaidAdditionalCharges: childUnpaidCharges,
+        paymentStatus: child.payment_status ?? null,
+      });
+      groupPaymentById.set(child.group_booking_id, {
+        totalAmount: prev.totalAmount + childTotal + childUnpaidCharges,
+        totalPaid: prev.totalPaid + Number(child.total_paid ?? 0),
+        totalRefunded: prev.totalRefunded + Number(child.total_refunded ?? 0),
+        walletGiftCoverage: prev.walletGiftCoverage + walletGiftCoverage,
+        coverage: prev.coverage + childCoverage,
+        balanceDue: prev.balanceDue + childBalanceDue,
+        paymentStatus: prev.paymentStatus,
+        hasRefundStatus:
+          prev.hasRefundStatus ||
+          childPaymentStatus === "partially_refunded" ||
+          childPaymentStatus === "refunded" ||
+          Number(child.total_refunded ?? 0) > 0,
+      });
+    }
 
     const transformedGroups = (groupRows ?? []).map((group: any) => {
       const participants = Array.isArray(group.booking_participants) ? group.booking_participants : [];
@@ -545,6 +642,27 @@ async function handleGetProviderBookings(request: NextRequest) {
       }));
       const productTotal = products.reduce((sum: number, p: any) => sum + (Number(p.total_price) || 0), 0);
       const total = Number(group.total_price ?? 0) || participantTotal + productTotal + (Number(group.travel_fee) || 0);
+      const payment = groupPaymentById.get(group.id) ?? {
+        totalAmount: 0,
+        totalPaid: 0,
+        totalRefunded: 0,
+        walletGiftCoverage: 0,
+        coverage: 0,
+        balanceDue: 0,
+        paymentStatus: "pending",
+        hasRefundStatus: false,
+      };
+      const balanceDue = Math.max(0, payment.totalAmount > 0 ? payment.balanceDue : total - payment.coverage);
+      const groupPaymentStatus =
+        payment.hasRefundStatus && payment.totalPaid > 0 && payment.totalRefunded >= payment.totalPaid - 0.01
+          ? "refunded"
+          : payment.hasRefundStatus
+            ? "partially_refunded"
+            : total > 0 && balanceDue <= 0
+              ? "paid"
+              : payment.totalPaid > 0 || payment.walletGiftCoverage > 0
+                ? "partially_paid"
+                : "pending";
       const staffName = group.staff_id ? groupStaffName.get(group.staff_id) ?? null : null;
       const loc = group.location_id ? groupLocation.get(group.location_id) ?? null : null;
       return {
@@ -600,10 +718,14 @@ async function handleGetProviderBookings(request: NextRequest) {
         service_fee_amount: 0,
         tip_amount: 0,
         total_amount: total,
-        total_paid: 0,
-        total_refunded: 0,
+        total_paid: payment.totalPaid,
+        total_refunded: payment.totalRefunded,
+        wallet_amount: Math.max(0, payment.walletGiftCoverage),
+        gift_card_amount: 0,
+        balance_due: balanceDue,
         currency: lastResortCurrency,
-        payment_status: "pending",
+        payment_status: groupPaymentStatus,
+        outstanding_balance: balanceDue,
         payment_method: null,
         special_requests: group.notes || null,
         loyalty_points_earned: 0,
@@ -664,7 +786,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
     const { user } = permissionCheck;
 
     const supabase = await getSupabaseServer(request);
-    const supabaseAdmin = await getSupabaseAdmin(); // Use admin client to bypass RLS
+    const supabaseAdmin = getSupabaseAdmin(); // Use admin client to bypass RLS
     const body = await request.json();
     const providerFormResponses = parseProviderFormResponses(
       (body as { provider_form_responses?: unknown }).provider_form_responses
@@ -965,12 +1087,32 @@ async function handleCreateProviderBooking(request: NextRequest) {
     const servicesSubtotal = Array.isArray(body.services)
       ? body.services.reduce((sum: number, svc: any) => sum + (Number(svc.price) || 0), 0)
       : 0;
-    const addonsSubtotal = Array.isArray(body.addons)
-      ? body.addons.reduce((sum: number, addon: any) => {
-          const qty = Number(addon.quantity ?? 1) || 1;
-          return sum + (Number(addon.price) || 0) * qty;
-        }, 0)
-      : 0;
+    const explicitAddonsSubtotal = sumExplicitProviderAddonsSubtotal(body.addons);
+    const addOnIdsFromServices = Array.isArray(body.services)
+      ? [
+          ...new Set(
+            body.services
+              .flatMap((svc: any) => (Array.isArray(svc.add_on_ids) ? svc.add_on_ids : []))
+              .filter((id: unknown): id is string => typeof id === "string" && id.trim().length > 0)
+              .map((id: string) => id.trim()),
+          ),
+        ]
+      : [];
+    let serviceAddOnsSubtotal = 0;
+    if (!Array.isArray(body.addons) && addOnIdsFromServices.length > 0) {
+      const { data: addOnPriceRows, error: addOnPriceError } = await supabaseAdmin
+        .from("offerings")
+        .select("id, price")
+        .in("id", addOnIdsFromServices);
+      if (addOnPriceError) {
+        console.warn("[provider/bookings] Could not resolve add-on prices for subtotal recomputation:", addOnPriceError);
+      }
+      serviceAddOnsSubtotal = (addOnPriceRows ?? []).reduce(
+        (sum: number, row: any) => sum + (Number(row.price) || 0),
+        0,
+      );
+    }
+    const addonsSubtotal = Array.isArray(body.addons) ? explicitAddonsSubtotal : serviceAddOnsSubtotal;
     const productsSubtotal = Array.isArray(body.products)
       ? body.products.reduce((sum: number, product: any) => {
           const qty = Number(product.quantity ?? 1) || 1;
@@ -982,8 +1124,38 @@ async function handleCreateProviderBooking(request: NextRequest) {
       : 0;
     const computedLineSubtotal = servicesSubtotal + addonsSubtotal + productsSubtotal;
     const serverSubtotal = computedLineSubtotal > 0 ? computedLineSubtotal : Number(body.subtotal) || 0;
-    let serverDiscountAmount = Number(body.discount_amount) || 0;
-
+    const explicitMembershipDiscount = Math.max(
+      0,
+      Number((body as { membership_discount_amount?: unknown }).membership_discount_amount) || 0,
+    );
+    const normalizedDiscounts = normalizeProviderCreateDiscounts({
+      discountAmount: Number(body.discount_amount) || 0,
+      promotionDiscountAmount: Number(body.promotion_discount_amount) || 0,
+      membershipDiscountAmount: explicitMembershipDiscount,
+      discountCode: typeof body.discount_code === "string" ? body.discount_code : null,
+    });
+    let serverDiscountAmount = normalizedDiscounts.discountAmount;
+    const serverPromotionDiscountAmount = normalizedDiscounts.promotionDiscountAmount;
+    if (shouldRejectProductOnlyProviderBooking(body as Record<string, unknown>)) {
+      return errorResponse(
+        "Product-only sales are not appointment bookings. Use the product sale checkout so stock, receipts, and end-of-day reporting stay consistent.",
+        "UNSUPPORTED_PRODUCT_ONLY_BOOKING",
+        422,
+      );
+    }
+    const productValidation = await validateProviderBookingProducts(
+      supabaseAdmin,
+      providerId,
+      Array.isArray(body.products) ? body.products : [],
+    );
+    if (productValidation.ok === false) {
+      return errorResponse(
+        productValidation.message,
+        productValidation.code,
+        productValidation.code === "PRODUCT_VALIDATION_FAILED" ? 503 : 400,
+      );
+    }
+    const validatedProducts = productValidation.products;
     // Catalog package: validate lines against `service_package_items`, then discount SERVICES-only
     // subtotal (matches public `validate-booking.ts`).
     const bookingLocationTypeForPkg = body.location_type || "at_salon";
@@ -1031,22 +1203,27 @@ async function handleCreateProviderBooking(request: NextRequest) {
     // booking a service for a salon member gets the same discount the public
     // checkout would. Without this, members were being silently overcharged
     // when their stylist created the booking from the provider app.
-    const subtotalForMembership = Math.max(0, serverSubtotal - serverDiscountAmount);
+    const bookingLocationType = body.location_type || "at_salon";
+    const serverTravelFee = bookingLocationType === "at_home" ? Number(body.travel_fee) || 0 : 0;
+    const subtotalForMembership = Math.max(0, serverSubtotal + serverTravelFee - serverDiscountAmount);
     const membershipResult = await resolveMembershipDiscount({
       supabase: supabaseAdmin,
       customerId,
       providerId,
       subtotal: subtotalForMembership,
     });
-    const membershipDiscountAmount = membershipResult.membershipDiscountAmount;
-    if (membershipDiscountAmount > 0) {
-      serverDiscountAmount = serverDiscountAmount + membershipDiscountAmount;
+    let membershipDiscountAmount = membershipResult.membershipDiscountAmount;
+    if (explicitMembershipDiscount > 0.001) {
+      membershipDiscountAmount = explicitMembershipDiscount;
     }
     const serverTipAmount = Number(body.tip_amount) || 0;
-    const bookingLocationType = body.location_type || "at_salon";
-    const serverTravelFee = bookingLocationType === "at_home" ? Number(body.travel_fee) || 0 : 0;
     const serverPlatformFeeAmount = Number(platformFeeAmount) || 0;
-    const taxableAmount = Math.max(0, serverSubtotal - serverDiscountAmount);
+    const taxableAmount = computeProviderCreateTaxableAmount({
+      subtotal: serverSubtotal,
+      discountAmount: serverDiscountAmount,
+      promotionDiscountAmount: serverPromotionDiscountAmount,
+      membershipDiscountAmount,
+    });
     const taxRateDecimal = effectiveTaxRate / 100;
 
     const recomputedTaxAmount = taxInclusive
@@ -1100,6 +1277,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
       discount_amount: serverDiscountAmount,
       discount_code: body.discount_code || null,
       discount_reason: body.discount_reason || null,
+      promotion_discount_amount: serverPromotionDiscountAmount,
       // §Provider-audit 2026-05: persist the membership benefit applied so
       // the bookings list, receipts, and reporting reflect the same numbers
       // as the public checkout flow.
@@ -1405,8 +1583,12 @@ async function handleCreateProviderBooking(request: NextRequest) {
         );
       }
 
-      // Fetch created booking and set provider-only fields not in RPC
-      const { data: createdBooking, error: fetchErr } = await supabaseAdmin
+      const createdBookingId = String(bookingId);
+
+      // Set provider-only fields not handled by the locking RPC. Keep this
+      // separate from the reload so an embedded-select/schema issue cannot
+      // turn a successfully-created booking into a partial failure.
+      const { error: postRpcUpdateErr } = await supabaseAdmin
         .from("bookings")
         .update({
           booking_source: bookingSource,
@@ -1414,26 +1596,42 @@ async function handleCreateProviderBooking(request: NextRequest) {
           discount_reason: body.discount_reason ?? null,
           ...(providerFormResponses ? { provider_form_responses: providerFormResponses } : {}),
         })
-        .eq("id", bookingId)
-        .select(
-          `
-          *,
-          customers:users!bookings_customer_id_fkey(id, full_name, email, phone),
-          locations:provider_locations(id, name, address_line1, city)
-        `
-        )
-        .single();
+        .eq("id", createdBookingId);
 
-      if (fetchErr || !createdBooking) {
-        console.error("Failed to fetch/update booking after RPC:", fetchErr);
-        // The booking row was created by the RPC; it can be found in the calendar.
-        return errorResponse(
-          "Booking was saved but could not be fully loaded after creation. Please check your calendar to confirm it was created.",
-          "DB_FETCH_ERROR",
-          500,
-        );
+      if (postRpcUpdateErr) {
+        console.warn("Booking created, but provider-only post-RPC fields could not be patched:", {
+          bookingId: createdBookingId,
+          error: postRpcUpdateErr,
+        });
       }
+
+      const { data: createdBooking, error: fetchErr } = await supabaseAdmin
+        .from("bookings")
+        .select("*")
+        .eq("id", createdBookingId)
+        .maybeSingle();
+
+      if (fetchErr) {
+        console.warn("Booking created, but post-RPC reload failed; using request payload fallback:", {
+          bookingId: createdBookingId,
+          error: fetchErr,
+        });
+      }
+
       booking = createdBooking;
+      if (!booking) {
+        booking = {
+          ...bookingData,
+          id: createdBookingId,
+          booking_number: null,
+          booking_source: bookingSource,
+          referral_source_id: referralSourceId,
+          discount_reason: body.discount_reason ?? null,
+          provider_form_responses: providerFormResponses ?? null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+      }
       console.log("Booking created successfully via RPC:", booking.id);
 
       // §Provider-audit 2026-04: RPC `create_booking_with_locking` does not
@@ -1471,11 +1669,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
       const { data: insertedBooking, error } = await supabaseAdmin
         .from("bookings")
         .insert(bookingData)
-        .select(`
-          *,
-          customers:users!bookings_customer_id_fkey(id, full_name, email, phone),
-          locations:provider_locations(id, name, address_line1, city)
-        `)
+        .select("*")
         .single();
 
       if (error) {
@@ -1596,15 +1790,16 @@ async function handleCreateProviderBooking(request: NextRequest) {
     }
 
     // Create booking_products records for each product
-    if (body.products && Array.isArray(body.products) && body.products.length > 0) {
+    if (validatedProducts.length > 0) {
       const primaryStaffId = body.team_member_id || body.staff_id || null;
-      const bookingProductsData = body.products.map((product: any) => ({
+      const bookingProductsData = validatedProducts.map((product) => ({
         booking_id: booking.id,
-        product_id: product.productId || product.product_id,
-        product_variant_id: product.productVariantId ?? null,
-        quantity: product.quantity || 1,
-        unit_price: product.unitPrice || product.unit_price || 0,
-        total_price: product.totalPrice || product.total_price || (product.unitPrice || product.unit_price || 0) * (product.quantity || 1),
+        product_id: product.productId,
+        product_variant_id: product.productVariantId,
+        quantity: product.quantity,
+        unit_price: product.unitPrice,
+        total_price: product.totalPrice,
+        currency: product.currency || booking.currency || lastResortCurrency,
         staff_id: primaryStaffId,
       }));
 
@@ -1654,7 +1849,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
         try {
           const { data: pendingProducts } = await supabaseAdmin
             .from("booking_products")
-            .select("id, product_id, product_variant_id, quantity")
+            .select("id, product_id, product_variant_id, quantity, products:products!booking_products_product_id_fkey(track_stock_quantity)")
             .eq("booking_id", booking.id)
             .is("stock_deducted_at", null);
           if (Array.isArray(pendingProducts) && pendingProducts.length > 0) {
@@ -1664,8 +1859,10 @@ async function handleCreateProviderBooking(request: NextRequest) {
               product_id: string | null;
               product_variant_id?: string | null;
               quantity: number | null;
+              products?: { track_stock_quantity?: boolean | null } | null;
             }>) {
               if (!row.product_id || !row.quantity || row.quantity <= 0) continue;
+              if (row.products?.track_stock_quantity === false) continue;
               const { error: decErr } = row.product_variant_id
                 ? await (supabaseAdmin.rpc as any)("decrement_product_variant_stock", {
                   p_variant_id: row.product_variant_id,
@@ -1680,7 +1877,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
                   `[provider/bookings create] decrement_product_stock failed for booking ${booking.id}, row ${row.id}:`,
                   decErr,
                 );
-                continue;
+                throw new Error(decErr.message || "Product stock could not be deducted");
               }
               await supabaseAdmin
                 .from("booking_products")
@@ -1692,6 +1889,15 @@ async function handleCreateProviderBooking(request: NextRequest) {
           console.error(
             "[provider/bookings create] failed to deduct retail stock:",
             stockErr,
+          );
+          await supabaseAdmin.from("product_orders").delete().eq("booking_id", booking.id);
+          await supabaseAdmin.from("bookings").delete().eq("id", booking.id);
+          return errorResponse(
+            stockErr instanceof Error
+              ? stockErr.message
+              : "Product stock could not be deducted for this completed booking.",
+            "INSUFFICIENT_STOCK",
+            400,
           );
         }
       }
@@ -1833,13 +2039,87 @@ async function handleCreateProviderBooking(request: NextRequest) {
       );
     }
 
+    const paymentLinkWarnings: string[] = [];
+    if (body.payment_method === "payment_link") {
+      if (!shouldNotify) {
+        paymentLinkWarnings.push("Payment link was not sent because customer notifications are disabled for this booking.");
+      } else {
+        try {
+          const bookingRef = booking.booking_number || booking.id.slice(0, 8).toUpperCase();
+          const appBase = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
+          const paymentLink = `${appBase}/bookings/${booking.id}/pay`;
+          const amountDue = computeBookingOutstandingDisplay({
+            totalAmount: Number(booking.total_amount ?? finalTotalAmount),
+            totalPaid: Number(booking.total_paid ?? 0),
+            totalRefunded: Number(booking.total_refunded ?? 0),
+            walletAmount: Number(booking.wallet_amount ?? 0),
+            giftCardAmount: Number(booking.gift_card_amount ?? 0),
+            unpaidAdditionalCharges: 0,
+            paymentStatus: booking.payment_status,
+          });
+          const { format: formatMoney } = await getTenantMoneyFormatter(
+            (booking as { tenant_id?: string | null }).tenant_id ?? tenantId,
+          );
+          const { data: customerContact } = await supabaseAdmin
+            .from("users")
+            .select("email, phone")
+            .eq("id", customerId)
+            .maybeSingle();
+          const customerEmail = (customerContact as { email?: string | null } | null)?.email;
+          const customerPhone = (customerContact as { phone?: string | null } | null)?.phone;
+          const { insertNotification } = await import("@/lib/notifications/insert-notification");
+          await insertNotification({
+            user_id: customerId,
+            type: "payment_link_sent",
+            title: "Payment Link Ready",
+            message: `Pay ${formatMoney(amountDue)} for booking ${bookingRef}. Open: ${paymentLink}`,
+            data: {
+              booking_id: booking.id,
+              booking_ref: bookingRef,
+              amount: amountDue,
+              payment_link: paymentLink,
+              source: "provider_booking_create",
+            },
+            action_url: paymentLink,
+          });
+
+          try {
+            const { sendTemplateNotification } = await import("@/lib/notifications/onesignal");
+            const channels: ("push" | "email" | "sms")[] = ["push"];
+            if (customerEmail) channels.push("email");
+            if (customerPhone) channels.push("sms");
+            await sendTemplateNotification(
+              "payment_pending",
+              [customerId],
+              {
+                amount: formatMoney(amountDue),
+                booking_number: String(bookingRef),
+                payment_method: "Paystack",
+                booking_id: booking.id,
+                payment_link: paymentLink,
+              },
+              channels,
+              { appType: "customer" },
+            );
+          } catch (pushError) {
+            console.warn("Payment-link notification delivery failed after provider-created booking:", pushError);
+            paymentLinkWarnings.push("Payment link was created, but push/email/SMS delivery could not be confirmed.");
+          }
+        } catch (paymentLinkError) {
+          console.warn("Payment link notification failed after provider-created booking:", paymentLinkError);
+          paymentLinkWarnings.push("Booking was created, but the payment link could not be sent automatically. Send it from booking details.");
+        }
+      }
+    }
+
     void import("@/lib/subscriptions/subscription-limit-notifications")
       .then((m) => m.maybeNotifyProviderSubscriptionLimits(providerId))
       .catch((e) => console.warn("Subscription usage notification:", e));
 
     const responsePayload: any = transformedBooking;
-    if (resourceWarnings.length > 0) {
-      responsePayload._warnings = resourceWarnings;
+    const responseWarnings = [...resourceWarnings, ...paymentLinkWarnings];
+    if (responseWarnings.length > 0) {
+      responsePayload._warnings = responseWarnings;
     }
     return successResponse(responsePayload);
   } catch (error) {

@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { View, ActivityIndicator, Text } from "react-native";
 import { Image } from "expo-image";
 import { Colors } from "@/constants/colors";
+import { getBackendUrl, webApiTenantHeaders } from "@/config/public-env";
 import { getMapboxConfig } from "@/lib/third-party-config";
 import { twStyle } from "@/lib/twStyle";
 
@@ -43,11 +44,7 @@ export function StaticMapImage({
       try {
         const config = await getMapboxConfig();
         if (cancelled) return;
-        if (!config?.token) {
-          setLoading(false);
-          return;
-        }
-        const stylePath = config.style_url
+        const stylePath = config?.style_url
           ? (config.style_url.match(/mapbox:\/\/styles\/(.+)/)?.[1] ?? "mapbox/streets-v12")
           : "mapbox/streets-v12";
         const lat = Number(latitude);
@@ -71,17 +68,34 @@ export function StaticMapImage({
         const w = Math.round(Number(width) || 400);
         const h = Math.round(Number(height) || 200);
 
-        let url: string;
-        if (hasSecondary) {
-          const pinA = `pin-l+FF0077(${lng},${lat})`;
-          const pinB = `pin-l+2563EB(${secLng},${secLat})`;
-          url = `https://api.mapbox.com/styles/v1/${stylePath}/static/${pinA},${pinB}/auto/${w}x${h}@2x?access_token=${config.token}`;
+        const publicToken = config?.token?.trim();
+        if (publicToken) {
+          /** Pin overlay + `auto` camera so the marker stays in frame (matches server proxy). */
+          let url: string;
+          if (hasSecondary) {
+            const pinA = `pin-l+FF0077(${lng},${lat})`;
+            const pinB = `pin-l+2563EB(${secLng},${secLat})`;
+            url = `https://api.mapbox.com/styles/v1/${stylePath}/static/${pinA},${pinB}/auto/${w}x${h}@2x?access_token=${encodeURIComponent(publicToken)}`;
+          } else {
+            const pin = `pin-l+FF0077(${lng},${lat})`;
+            url = `https://api.mapbox.com/styles/v1/${stylePath}/static/${pin}/auto/${w}x${h}@2x?access_token=${encodeURIComponent(publicToken)}`;
+          }
+          setUri(url);
         } else {
-          const pin = `pin-l+FF0077(${lng},${lat})`;
-          const center = `${lng},${lat},${zoom}`;
-          url = `https://api.mapbox.com/styles/v1/${stylePath}/static/${pin}/${center}/${w}x${h}@2x?access_token=${config.token}`;
+          const base = getBackendUrl().replace(/\/$/, "");
+          const qs = new URLSearchParams({
+            lat: String(lat),
+            lng: String(lng),
+            w: String(w),
+            h: String(h),
+            style: stylePath,
+          });
+          if (hasSecondary && secLat != null && secLng != null) {
+            qs.set("sec_lat", String(secLat));
+            qs.set("sec_lng", String(secLng));
+          }
+          setUri(`${base}/api/mapbox/static-image?${qs.toString()}`);
         }
-        setUri(url);
       } catch {
         if (!cancelled) setUri(null);
       } finally {
@@ -92,7 +106,7 @@ export function StaticMapImage({
     return () => {
       cancelled = true;
     };
-  }, [latitude, longitude, secondaryLatitude, secondaryLongitude, width, height, zoom]);
+  }, [latitude, longitude, secondaryLatitude, secondaryLongitude, width, height]);
 
   if (loading) {
     return (
@@ -130,7 +144,7 @@ export function StaticMapImage({
 
   return (
     <Image
-      source={{ uri }}
+      source={{ uri, headers: webApiTenantHeaders() }}
       style={{ width, height, borderRadius }}
       contentFit="cover"
       transition={200}

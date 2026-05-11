@@ -58,8 +58,8 @@ export async function POST(
       return notFoundResponse("Additional charge not found");
     }
 
-    // Verify charge can be paid
-    if (charge.status === 'paid') {
+    const chargeStatus = String(charge.status || "").toLowerCase();
+    if (chargeStatus === "paid") {
       return errorResponse(
         "This charge has already been paid",
         "ALREADY_PAID",
@@ -67,12 +67,16 @@ export async function POST(
       );
     }
 
-    if (charge.status === 'rejected') {
+    if (chargeStatus === "rejected") {
       return errorResponse(
         "This charge has been rejected",
         "CHARGE_REJECTED",
         400
       );
+    }
+
+    if (!["pending", "approved"].includes(chargeStatus)) {
+      return errorResponse("This charge cannot be paid in its current status", "INVALID_STATUS", 400);
     }
 
     // Get customer email

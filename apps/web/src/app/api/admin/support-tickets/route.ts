@@ -118,6 +118,10 @@ export async function POST(request: NextRequest) {
       category,
       priority,
       provider_id,
+      requester_type,
+      support_context_type,
+      support_context_id,
+      support_context_label,
     } = body;
 
     if (!subject || !description) {
@@ -139,6 +143,10 @@ export async function POST(request: NextRequest) {
         category: category || null,
         priority: priorityVal,
         status: "open",
+        requester_type: requester_type || (provider_id ? "provider" : "admin"),
+        support_context_type: support_context_type || null,
+        support_context_id: support_context_id || null,
+        support_context_label: typeof support_context_label === "string" ? support_context_label.trim() || null : null,
       })
       .select()
       .single();
@@ -170,12 +178,28 @@ export async function POST(request: NextRequest) {
         .select()
         .single();
       if (!slaErr && withSla) {
-        void slackNotifyNewSupportTicket(request, withSla as { id: string; ticket_number?: string; subject?: string; priority?: string });
+        void slackNotifyNewSupportTicket(request, withSla as {
+          id: string;
+          ticket_number?: string;
+          subject?: string;
+          priority?: string;
+          requester_type?: string;
+          support_context_type?: string;
+          support_context_label?: string;
+        });
         return NextResponse.json({ ticket: withSla });
       }
     }
 
-    void slackNotifyNewSupportTicket(request, data as { id: string; ticket_number?: string; subject?: string; priority?: string });
+    void slackNotifyNewSupportTicket(request, data as {
+      id: string;
+      ticket_number?: string;
+      subject?: string;
+      priority?: string;
+      requester_type?: string;
+      support_context_type?: string;
+      support_context_label?: string;
+    });
     return NextResponse.json({ ticket: data });
   } catch (error: unknown) {
     return handleApiError(error, "Failed to create support ticket");

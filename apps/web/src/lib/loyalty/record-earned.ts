@@ -2,14 +2,12 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { calculateLoyaltyPoints } from "./calculate-points";
 
 /**
- * Record loyalty points earned into BOTH balance stores so the customer's
- * visible balance stays consistent.
- * 
- * Writes to BOTH stores:
- *   - `loyalty_points_ledger`  (canonical, read by `get_customer_available_points`)
- *   - `loyalty_point_transactions` (legacy, read by `get_user_loyalty_balance`)
- * 
- * Caller MUST pass an admin-scoped Supabase client (RLS bypass).
+ * Ensure loyalty points earned for a completed booking exist on the canonical
+ * ledger. Usually the DB trigger `award_loyalty_points_on_booking_completion`
+ * already inserted the row; this helper is idempotent backup for timing/race
+ * edge cases.
+ *
+ * Caller MUST pass an admin-scoped Supabase client (service_role).
  */
 export async function recordLoyaltyEarned(
   adminClient: SupabaseClient,
@@ -32,7 +30,6 @@ export async function recordLoyaltyEarned(
     return { recorded: false, points: 0 };
   }
 
-  // Check ledger
   const { data: ledgerExisting } = await adminClient
     .from("loyalty_points_ledger")
     .select("id")
@@ -42,48 +39,31 @@ export async function recordLoyaltyEarned(
     .limit(1)
     .maybeSingle();
 
-  if (!ledgerExisting) {
-    const { data: balanceData } = await adminClient.rpc(
-      "get_customer_available_points",
-      { customer_uuid: customerId },
-    );
-    const currentBalance = Number(balanceData ?? 0) || 0;
-
-    await adminClient.from("loyalty_points_ledger").insert({
-      customer_id: customerId,
-      transaction_type: "earned",
-      points_amount: pointsEarned,
-      balance_after: currentBalance + pointsEarned,
-      booking_id: bookingId,
-      description: `Points earned for completed booking ${bookingNumber || bookingId}`,
-    });
+  if (ledgerExisting) {
+    return { recorded: false, points: pointsEarned };
   }
 
-  // Check legacy
-  const { data: legacyExisting } = await adminClient
-    .from("loyalty_point_transactions")
-    .select("id")
-    .eq("user_id", customerId)
-    .eq("reference_id", bookingId)
-    .eq("reference_type", "booking")
-    .eq("transaction_type", "earned")
-    .limit(1)
-    .maybeSingle();
+  const desc = `Points earned for completed booking ${bookingNumber || bookingId}`;
+  const { error: rpcError } = await (adminClient.rpc as any)("append_loyalty_ledger_entry", {
+    p_customer_id: customerId,
+    p_transaction_type: "earned",
+    p_points_amount: pointsEarned,
+    p_booking_id: bookingId,
+    p_description: desc,
+    p_metadata: {},
+    p_expires_at: null,
+  });
 
-  if (!legacyExisting) {
-    await adminClient.from("loyalty_point_transactions").insert({
-      user_id: customerId,
-      transaction_type: "earned",
-      points: pointsEarned,
-      description: `Points earned for completed booking ${bookingNumber || bookingId}`,
-      reference_id: bookingId,
-      reference_type: "booking",
-      expires_at: null,
-    });
+  if (rpcError) {
+    const code = (rpcError as { code?: string }).code;
+    if (code === "23505") {
+      return { recorded: false, points: pointsEarned };
+    }
+    console.error("Loyalty ledger earn append failed:", rpcError);
+    return { recorded: false, points: pointsEarned };
   }
 
-  // Update booking 
   await adminClient.from("bookings").update({ loyalty_points_earned: pointsEarned }).eq("id", bookingId);
 
-  return { recorded: !ledgerExisting || !legacyExisting, points: pointsEarned };
+  return { recorded: true, points: pointsEarned };
 }

@@ -124,7 +124,7 @@ export async function GET(request: NextRequest) {
       lastMonthEnd = new Date(prev.toIso);
     } else if (range === "year") {
       const yStartYmd = formatDateYmd(subYears(zNow, 1), tz);
-      startDate = new Date(dateRangeBoundsUtc(yStartYmd, yStartYmd, tz).fromIso);
+      startDate = new Date(dateRangeBoundsUtc(yStartYmd, todayYmd, tz).fromIso);
       const prevPeriodAnchor = subMonths(subYears(zNow, 1), 1);
       const lmStartYmd = formatDateYmd(startOfMonth(prevPeriodAnchor), tz);
       const lmEndYmd = formatDateYmd(endOfMonth(prevPeriodAnchor), tz);

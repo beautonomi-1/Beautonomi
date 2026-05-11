@@ -8,15 +8,7 @@ import { errorResponse, successResponse } from "@/lib/supabase/api-helpers";
  * Lightweight balance for booking checkout (promotions step). Full history:
  * GET /api/me/loyalty.
  *
- * §Release-audit 2026-04: read both the ledger source and the legacy points
- * store while the migration is in progress, so the booking checkout matches
- * the loyalty points page and the redemption validator.
- *
- * §Customer-audit 2026-04 (round 2): previously this handler ignored the
- * incoming request, so mobile clients sending Bearer tokens were treated as
- * unauthenticated and the booking-flow loyalty panel silently showed 0
- * balance. Passing `request` enables Bearer-token auth via
- * `getSupabaseServer`.
+ * Ledger-only: `get_customer_available_points` over `loyalty_points_ledger`.
  */
 export async function GET(request: NextRequest) {
   const supabase = await getSupabaseServer(request);
@@ -27,9 +19,8 @@ export async function GET(request: NextRequest) {
     return errorResponse("Authentication required", "UNAUTHORIZED", 401);
   }
 
-  const [ledgerResult, legacyResult, configResult] = await Promise.all([
+  const [ledgerResult, configResult] = await Promise.all([
     supabase.rpc("get_customer_available_points", { customer_uuid: user.id }),
-    supabase.rpc("get_user_loyalty_balance", { p_user_id: user.id }),
     supabase
       .from("loyalty_point_config")
       .select("redemption_rate, min_redemption_points, max_redemption_percentage")
@@ -44,16 +35,7 @@ export async function GET(request: NextRequest) {
     return Number.isFinite(n) ? n : 0;
   };
 
-  const ledgerBalance = !ledgerResult.error
-    ? toFiniteNumber(ledgerResult.data)
-    : NaN;
-  const legacyBalance = !legacyResult.error
-    ? toFiniteNumber(legacyResult.data)
-    : 0;
-
-  // Keep checkout aligned with the loyalty page during the ledger migration:
-  // some customers still have valid points only in the legacy transaction store.
-  const balance = Math.max(Number.isFinite(ledgerBalance) ? ledgerBalance : 0, legacyBalance);
+  const balance = !ledgerResult.error ? toFiniteNumber(ledgerResult.data) : 0;
 
   const cfg = configResult.data;
   const redemptionRate = Number(cfg?.redemption_rate) || 10;

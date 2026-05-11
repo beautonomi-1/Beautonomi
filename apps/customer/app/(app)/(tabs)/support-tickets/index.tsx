@@ -25,8 +25,25 @@ type Ticket = {
   status: string;
   priority: string;
   category: string | null;
+  support_context_type?: string | null;
+  support_context_label?: string | null;
+  csat_score?: number | null;
+  has_unread_staff_reply?: boolean;
+  last_message_from?: "customer" | "staff" | null;
+  last_message_at?: string | null;
   created_at: string;
   updated_at: string;
+};
+
+const SUPPORT_CONTEXT_LABELS: Record<string, string> = {
+  booking: "Booking",
+  product_order: "Product order",
+  gift_card: "Gift card",
+  payment: "Payment",
+  provider_onboarding: "Provider onboarding",
+  account: "Account",
+  technical: "Technical",
+  other: "Other",
 };
 
 const PAGE_SIZE = 50;
@@ -47,6 +64,16 @@ function formatDateSafe(value: unknown): string {
 function categoryLabel(value: string | null | undefined): string {
   if (!value) return "";
   return labelForSupportTicketCategory(value);
+}
+
+function contextLabel(ticket: Ticket): string | null {
+  if (!ticket.support_context_type) return ticket.support_context_label || null;
+  const base = SUPPORT_CONTEXT_LABELS[ticket.support_context_type] ?? ticket.support_context_type.replace(/_/g, " ");
+  return ticket.support_context_label ? `${base}: ${ticket.support_context_label}` : base;
+}
+
+function shouldAskForCsat(ticket: Ticket): boolean {
+  return (ticket.status === "resolved" || ticket.status === "closed") && !ticket.csat_score;
 }
 
 function statusBgColor(status: string): string {
@@ -208,18 +235,35 @@ export default function SupportTicketsListScreen() {
             >
               <View style={styles.cardTop}>
                 <Text style={styles.ticketNum}>{t.ticket_number}</Text>
-                <View style={[styles.statusPill, { backgroundColor: statusBgColor(t.status) }]}>
-                  <Text style={styles.statusText}>{t.status.replace("_", " ")}</Text>
+                <View style={styles.pillRow}>
+                  {t.has_unread_staff_reply || t.last_message_from === "staff" ? (
+                    <View style={styles.replyPill}>
+                      <Text style={styles.replyPillText}>New reply</Text>
+                    </View>
+                  ) : null}
+                  <View style={[styles.statusPill, { backgroundColor: statusBgColor(t.status) }]}>
+                    <Text style={styles.statusText}>{t.status.replace("_", " ")}</Text>
+                  </View>
                 </View>
               </View>
               <Text style={styles.subject} numberOfLines={2}>
                 {t.subject}
               </Text>
+              {contextLabel(t) ? (
+                <Text style={styles.contextMeta} numberOfLines={1}>
+                  About {contextLabel(t)}
+                </Text>
+              ) : null}
               <Text style={styles.meta}>
                 {t.category ? `${categoryLabel(t.category)} · ` : ""}
                 Priority: {t.priority}
                 {" · "}Updated {formatDateSafe(t.updated_at)}
               </Text>
+              {shouldAskForCsat(t) ? (
+                <Text style={styles.csatPrompt}>Rate this support experience</Text>
+              ) : t.csat_score ? (
+                <Text style={styles.csatScore}>Your rating: {t.csat_score}/5</Text>
+              ) : null}
             </TouchableOpacity>
           ))}
           {loadMoreError ? <Text style={styles.loadMoreError}>{loadMoreError}</Text> : null}
@@ -268,10 +312,16 @@ const styles = StyleSheet.create({
   },
   cardTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 },
   ticketNum: { fontFamily: "monospace", fontSize: 12, color: Colors.gray[500] },
+  pillRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  replyPill: { borderRadius: 9999, paddingHorizontal: 8, paddingVertical: 2, backgroundColor: "#dbeafe" },
+  replyPillText: { fontSize: 12, fontWeight: "700", color: "#1d4ed8" },
   statusPill: { borderRadius: 9999, paddingHorizontal: 8, paddingVertical: 2 },
   statusText: { fontSize: 12, fontWeight: "500", color: Colors.gray[800] },
   subject: { fontWeight: "600", color: Colors.gray[900] },
+  contextMeta: { marginTop: 6, fontSize: 12, color: Colors.gray[700] },
   meta: { marginTop: 6, fontSize: 12, color: Colors.gray[500] },
+  csatPrompt: { marginTop: 8, fontSize: 12, fontWeight: "700", color: Colors.primary },
+  csatScore: { marginTop: 8, fontSize: 12, color: Colors.gray[600] },
   loadMoreBtn: {
     marginTop: 4,
     borderRadius: 12,

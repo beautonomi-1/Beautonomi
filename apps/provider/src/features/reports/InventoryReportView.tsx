@@ -29,7 +29,7 @@ function isInventoryPayload(data: unknown): data is {
   previewLimits?: { lowStock?: number; outOfStock?: number };
   lowStockProducts: PreviewProduct[];
   outOfStockProducts: PreviewProduct[];
-  categoryBreakdown: Array<{ category: string; count: number; stockValue: number }>;
+  categoryBreakdown: { category: string; count: number; stockValue: number }[];
   reportBasis?: string;
   timezone?: string;
   asOf?: string;

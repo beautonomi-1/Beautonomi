@@ -8,7 +8,9 @@ const updateShiftSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   start_time: z.string().regex(/^\d{2}:\d{2}$/).optional(),
   end_time: z.string().regex(/^\d{2}:\d{2}$/).optional(),
-  notes: z.string().optional(),
+  // Nullable so callers can explicitly clear notes via PATCH (e.g. provider
+  // app edit flow). `optional` means "omit to leave unchanged".
+  notes: z.string().nullable().optional(),
   is_recurring: z.boolean().optional(),
   recurring_pattern: z.any().optional(),
 });
@@ -91,7 +93,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(['provider_owner', 'superadmin'], request);
+    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
 
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
@@ -195,7 +197,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(['provider_owner', 'superadmin'], request);
+    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
 
     const supabase = await getSupabaseServer(request);
     const { id } = await params;

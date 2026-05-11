@@ -1,4 +1,5 @@
 import { ScrollView, TouchableOpacity, Text } from "react-native";
+import { Colors } from "@/constants/colors";
 
 interface FilterChipGroupProps {
   options: { label: string; value: string }[];
@@ -26,7 +27,7 @@ export function FilterChipGroup({ options, selected, onSelect }: FilterChipGroup
               paddingHorizontal: 20,
               paddingVertical: 10,
               marginRight: 8,
-              ...(isActive ? { backgroundColor: "#111827" } : { borderWidth: 1, borderColor: "#e5e7eb", backgroundColor: "#fff" }),
+              ...(isActive ? { backgroundColor: Colors.primary } : { borderWidth: 1, borderColor: "#e5e7eb", backgroundColor: "#fff" }),
             }}
             onPress={() => onSelect(opt.value)}
             activeOpacity={0.7}

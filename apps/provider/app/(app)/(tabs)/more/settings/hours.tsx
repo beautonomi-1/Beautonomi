@@ -6,11 +6,10 @@ import {
   TouchableOpacity,
   Alert,
   Switch,
-  ScrollView,
-  Modal,
-  Pressable,
+  Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -50,9 +49,6 @@ const DAYS = [
   "Sunday",
 ];
 
-const HOURS = Array.from({ length: 24 }, (_, i) => i);
-const MINUTES = [0, 15, 30, 45];
-
 function pad(n: number): string {
   return n.toString().padStart(2, "0");
 }
@@ -82,144 +78,6 @@ function defaultSchedule(): DayHours[] {
     close_time: "18:00",
     breaks: [],
   }));
-}
-
-/* ─── Time Picker Modal ─── */
-function TimePicker({
-  visible,
-  value,
-  onSelect,
-  onClose,
-}: {
-  visible: boolean;
-  value: string;
-  onSelect: (time: string) => void;
-  onClose: () => void;
-}) {
-  const parsed = parseTime(value);
-  const [hour, setHour] = useState(parsed.h);
-  const [minute, setMinute] = useState(parsed.m);
-
-  useEffect(() => {
-    if (visible) {
-      const p = parseTime(value);
-      setHour(p.h);
-      setMinute(p.m);
-    }
-  }, [visible, value]);
-
-  function handleConfirm() {
-    onSelect(`${pad(hour)}:${pad(minute)}`);
-    onClose();
-  }
-
-  return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onClose}
-    >
-      <Pressable
-        style={twStyle("flex-1 items-center justify-center bg-black/40")}
-        onPress={onClose}
-      >
-        <Pressable
-          style={twStyle("mx-6 w-80 rounded-2xl bg-white p-6")}
-          onPress={() => {}}
-          accessibilityLabel="Time picker dialog"
-        >
-          <Text style={twStyle("mb-4 text-center text-lg font-semibold text-gray-900")}>
-            Select Time
-          </Text>
-
-          {/* Hour / Minute columns */}
-          <View style={twStyle("flex-row justify-center")}>
-            {/* Hour */}
-            <View style={[twStyle("items-center"), { marginRight: 16 }]}>
-              <Text style={twStyle("mb-2 text-xs font-medium text-gray-500")}>
-                Hour
-              </Text>
-              <ScrollView
-                style={twStyle("h-40 w-16 rounded-xl bg-gray-50")}
-                showsVerticalScrollIndicator={false}
-                accessibilityLabel="Hour selector"
-              >
-                {HOURS.map((h) => (
-                  <TouchableOpacity
-                    key={h}
-                    style={twStyle(`items-center py-2 ${hour === h ? "rounded-lg bg-indigo-600" : ""}`)}
-                    onPress={() => setHour(h)}
-                    accessibilityLabel={`Hour ${h}`}
-                    accessibilityRole="button"
-                  >
-                    <Text
-                      style={twStyle(`text-base font-medium ${hour === h ? "text-white" : "text-gray-700"}`)}
-                    >
-                      {pad(h)}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-
-            <Text style={[twStyle("self-center text-2xl font-bold text-gray-400"), { marginRight: 16 }]}>
-              :
-            </Text>
-
-            {/* Minute */}
-            <View style={twStyle("items-center")}>
-              <Text style={twStyle("mb-2 text-xs font-medium text-gray-500")}>
-                Min
-              </Text>
-              <View style={twStyle("w-16 rounded-xl bg-gray-50")}>
-                {MINUTES.map((m) => (
-                  <TouchableOpacity
-                    key={m}
-                    style={twStyle(`items-center py-3 ${minute === m ? "rounded-lg bg-indigo-600" : ""}`)}
-                    onPress={() => setMinute(m)}
-                    accessibilityLabel={`Minute ${pad(m)}`}
-                    accessibilityRole="button"
-                  >
-                    <Text
-                      style={twStyle(`text-base font-medium ${minute === m ? "text-white" : "text-gray-700"}`)}
-                    >
-                      {pad(m)}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-          </View>
-
-          {/* Preview */}
-          <Text style={twStyle("mt-4 text-center text-xl font-bold text-gray-900")}>
-            {formatTimeLabel(`${pad(hour)}:${pad(minute)}`)}
-          </Text>
-
-          {/* Actions */}
-          <View style={twStyle("mt-5 flex-row")}>
-            <TouchableOpacity
-              style={[twStyle("flex-1 items-center rounded-xl border border-gray-200 py-3"), { marginRight: 12 }]}
-              onPress={onClose}
-              accessibilityLabel="Cancel time selection"
-              accessibilityRole="button"
-            >
-              <Text style={twStyle("font-medium text-gray-600")}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={twStyle("flex-1 items-center rounded-xl bg-indigo-600 py-3")}
-              onPress={handleConfirm}
-              accessibilityLabel="Confirm time selection"
-              accessibilityRole="button"
-            >
-              <Text style={twStyle("font-medium text-white")}>Confirm</Text>
-            </TouchableOpacity>
-          </View>
-        </Pressable>
-      </Pressable>
-    </Modal>
-  );
 }
 
 /* ─── types for API ─── */
@@ -662,12 +520,19 @@ export default function OperatingHoursScreen() {
       <View style={twStyle("h-8")} />
 
       {/* Time Picker Modal */}
-      <TimePicker
-        visible={pickerVisible}
-        value={getCurrentTimeValue()}
-        onSelect={handleTimeSelect}
-        onClose={() => setPickerVisible(false)}
-      />
+      {pickerVisible && pickerTarget && (
+        <DateTimePicker
+          value={new Date(`2000-01-01T${getCurrentTimeValue()}:00`)}
+          mode="time"
+          display={Platform.OS === "ios" ? "spinner" : "default"}
+          onChange={(_: any, d?: Date) => {
+            if (Platform.OS !== "ios") setPickerVisible(false);
+            if (d) {
+              handleTimeSelect(`${pad(d.getHours())}:${pad(d.getMinutes())}`);
+            }
+          }}
+        />
+      )}
     </ScreenContainer>
   );
 }

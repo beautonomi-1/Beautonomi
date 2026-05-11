@@ -60,11 +60,13 @@ import {
 import { buildSaleItemsFromBookingDetail } from "@/lib/build-sale-items-from-booking";
 import {
   dbTargetToPatchStatusField,
-  getAllowedTransitionTargets,
   labelForDbStatus,
   optimisticBookingFieldsForDbTarget,
-  filterInProgressWhenAtHomeVerificationPending,
 } from "@/lib/provider-booking-status-transitions";
+import {
+  buildProviderBookingActionModel,
+  mapProviderBookingActionError,
+} from "@/lib/provider-booking-action-policy";
 import { getBookingNextStepCard } from "@/lib/provider-booking-next-step-card";
 
 function extractIsoDatePart(value: unknown): string | null {
@@ -442,9 +444,11 @@ function statusColor(status: string): string {
     case "started":
       return "bg-amber-100";
     case "waiting":
+    case "pending":
+    case "pending_payment":
       return "bg-amber-100";
     case "checked_in":
-      return "bg-indigo-100";
+      return "bg-primary/10";
     case "completed":
       return "bg-green-100";
     case "cancelled":
@@ -465,9 +469,11 @@ function statusTextColor(status: string): string {
     case "started":
       return "text-amber-800";
     case "waiting":
+    case "pending":
+    case "pending_payment":
       return "text-amber-800";
     case "checked_in":
-      return "text-indigo-800";
+      return "text-primary";
     case "completed":
       return "text-green-800";
     case "cancelled":
@@ -605,31 +611,15 @@ export default function BookingDetailScreen() {
     return "confirmed";
   }, [data, resolvedBooking]);
 
-  const rawAllowedStatusTargets = useMemo(
-    () => getAllowedTransitionTargets(currentDbStatus),
-    [currentDbStatus],
-  );
-  const allowedStatusTargets = useMemo(() => {
-    let list = rawAllowedStatusTargets.filter((target) =>
-      target === "cancelled" ? canCancelAppointments : canEditAppointments,
-    );
+  const actionModel = useMemo(() => {
     const row = resolvedBooking ?? (data as BookingDetail | undefined);
-    if (!row) return list;
-    const rawLoc = row.location_type;
-    const atHome =
-      rawLoc === "at_home" ||
-      (rawLoc == null &&
-        !row.location_id &&
-        !!(row as BookingDetail).address?.line1?.trim());
-    return filterInProgressWhenAtHomeVerificationPending({
-      targets: list,
-      atHome,
-      arrivalVerified: row.arrival_otp_verified === true || row.qr_code_verified === true,
-      arrivalOtpPending: row.arrival_otp_pending === true,
-      qrArrivalPending: row.qr_arrival_pending === true,
-      currentStage: row.current_stage,
-    });
-  }, [rawAllowedStatusTargets, canCancelAppointments, canEditAppointments, resolvedBooking, data]);
+    return row ? buildProviderBookingActionModel(row) : null;
+  }, [resolvedBooking, data]);
+  const allowedStatusTargets = useMemo(() => {
+    const targets = actionModel?.statusTargets ?? [];
+    return targets.filter((target) => (target === "cancelled" ? canCancelAppointments : canEditAppointments));
+  }, [actionModel, canCancelAppointments, canEditAppointments]);
+  const statusDisabledReasons = actionModel?.disabledReasons ?? [];
   const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const locationPermissionDeniedRef = useRef(false);
   const mainScrollRef = useRef<ScrollView>(null);
@@ -1256,8 +1246,8 @@ export default function BookingDetailScreen() {
   const arrivalOtpPending = b.arrival_otp_pending === true;
   const qrArrivalPending = b.qr_arrival_pending === true;
 
-  const isActive = ["pending", "booked", "confirmed", "waiting", "checked_in"].includes(b.status);
-  const isStarted = ["started", "in_progress"].includes(b.status);
+  const isActive = ["pending", "confirmed", "waiting", "checked_in"].includes(currentDbStatus);
+  const isStarted = currentDbStatus === "in_progress";
   const totalAmount = b.total_amount ?? 0;
   const totalPaid = b.total_paid ?? 0;
   const totalRefunded = b.total_refunded ?? 0;
@@ -1265,7 +1255,13 @@ export default function BookingDetailScreen() {
   const giftCardAmountApplied = Number(b.gift_card_amount ?? 0);
   const effectivePaid = Math.max(0, totalPaid - totalRefunded);
   const ps = (b.payment_status || "").toLowerCase();
-  const outstandingRawLocal = totalAmount - effectivePaid - walletAmountApplied - giftCardAmountApplied;
+  // §Finance-truth 2026-05: see apps/web/src/lib/bookings/display-invariants.ts —
+  // post-582 `total_paid` already includes wallet+gift booking_payments rows. Use
+  // max(effectivePaid, wallet+gift) to never double-subtract while still covering
+  // pre-582 rows that pre-date the synthetic booking_payments backfill.
+  const walletGiftCoverage = walletAmountApplied + giftCardAmountApplied;
+  const coverageLocal = Math.max(effectivePaid, walletGiftCoverage);
+  const outstandingRawLocal = totalAmount - coverageLocal;
   const outstanding =
     typeof b.outstanding_balance === "number"
       ? Math.max(0, b.outstanding_balance)
@@ -1284,7 +1280,7 @@ export default function BookingDetailScreen() {
       ? b.deposit_amount
       : null;
   const depositRemaining =
-    depositTarget != null ? Math.max(0, depositTarget - totalPaid) : 0;
+    depositTarget != null ? Math.max(0, depositTarget - coverageLocal) : 0;
   const yocoTerminalAmount =
     depositRemaining > 0 && (ps === "pending" || ps === "partially_paid")
       ? Math.min(outstanding, depositRemaining)
@@ -1594,10 +1590,10 @@ export default function BookingDetailScreen() {
 
     if (dbTarget === "in_progress") {
       setOptimisticBookingStatus(optimisticBookingFieldsForDbTarget(dbTarget));
-      const { error: err } = await postMutation(`/api/provider/bookings/${id}/start-service`, {});
+      const { error: err, errorCode } = await postMutation(`/api/provider/bookings/${id}/start-service`, {});
       if (err) {
         setOptimisticBookingStatus(null);
-        Alert.alert("Error", err);
+        Alert.alert("Status not changed", mapProviderBookingActionError(err, errorCode));
         return;
       }
       setOptimisticBookingStatus(null);
@@ -1607,10 +1603,10 @@ export default function BookingDetailScreen() {
 
     if (dbTarget === "completed") {
       setOptimisticBookingStatus(optimisticBookingFieldsForDbTarget(dbTarget));
-      const { error: err } = await postMutation(`/api/provider/bookings/${id}/complete-service`, {});
+      const { error: err, errorCode } = await postMutation(`/api/provider/bookings/${id}/complete-service`, {});
       if (err) {
         setOptimisticBookingStatus(null);
-        Alert.alert("Error", err);
+        Alert.alert("Status not changed", mapProviderBookingActionError(err, errorCode));
         return;
       }
       setOptimisticBookingStatus(null);
@@ -1628,20 +1624,20 @@ export default function BookingDetailScreen() {
     setOptimisticBookingStatus(optimisticBookingFieldsForDbTarget(dbTarget));
     const version = (b as BookingDetail & { version?: number }).version;
     const patchStatus = dbTargetToPatchStatusField(dbTarget);
-    const { error: err } = await patchMutation(`/api/provider/bookings/${id}`, {
+    const { error: err, errorCode } = await patchMutation(`/api/provider/bookings/${id}`, {
       status: patchStatus,
       ...(version !== undefined && { version }),
     });
     if (err) {
       setOptimisticBookingStatus(null);
-      if (isConflictError(err)) {
+      if (errorCode === "CONFLICT" || isConflictError(err)) {
         Alert.alert(
           "Conflict",
           "This booking was modified by another user. Please refresh and try again.",
           [{ text: "Cancel", style: "cancel" }, { text: "Refresh", onPress: () => refresh() }],
         );
       } else {
-        Alert.alert("Error", err);
+        Alert.alert("Status not changed", mapProviderBookingActionError(err, errorCode));
       }
       return;
     }
@@ -1723,8 +1719,9 @@ export default function BookingDetailScreen() {
         return;
       }
       const version = (b as BookingDetail & { version?: number }).version;
-      const { error: err } = await patchMutation(`/api/provider/bookings/${id}`, {
+      const { error: err, errorCode } = await patchMutation(`/api/provider/bookings/${id}`, {
         scheduled_at: newScheduledAt,
+        travel_buffer: rescheduleIsHome ? rescheduleTravelBufferMinutes : 0,
         ...(version !== undefined && { version }),
       });
       if (err) {
@@ -1735,7 +1732,7 @@ export default function BookingDetailScreen() {
             [{ text: "Cancel", style: "cancel" }, { text: "Refresh", onPress: () => refresh() }]
           );
         } else {
-          Alert.alert("Error", err);
+          Alert.alert("Reschedule not changed", mapProviderBookingActionError(err, errorCode));
         }
         setRescheduling(false);
         return;
@@ -1948,9 +1945,9 @@ export default function BookingDetailScreen() {
       if (sent === false) {
         const reason =
           payload?.detail ||
-          payload?.message ||
           payload?.error ||
-          "No channel accepted the message (check customer email/phone and notification settings).";
+          payload?.message ||
+          "The notification could not be delivered. Check the customer's contact details and try again.";
         Alert.alert("Not sent", reason);
         return;
       }
@@ -2217,16 +2214,16 @@ export default function BookingDetailScreen() {
                 setRefreshing(false);
               }
             }}
-            tintColor="#6B7280"
+            tintColor={Colors.primary}
           />
         }
       >
         {isAtHome ? (
-          <View style={twStyle("rounded-2xl border-2 border-violet-200 bg-violet-50 p-4 mb-3")}>
+          <View style={twStyle("rounded-3xl border-2 border-primary/20 bg-primary/10 p-4 mb-3")}>
             <View style={twStyle("flex-row items-center justify-between mb-2")}>
               <View style={twStyle("flex-row items-center flex-1")}>
-                <Ionicons name="home" size={22} color="#5B21B6" />
-                <Text style={twStyle("ml-2 text-base font-bold text-violet-950")}>House call</Text>
+                <Ionicons name="home" size={22} color={Colors.primary} />
+                <Text style={twStyle("ml-2 text-base font-bold text-primary")}>House call</Text>
               </View>
               {b.db_status === "pending" ? (
                 <View style={twStyle("rounded-full bg-amber-200 px-2 py-1")}>
@@ -2234,10 +2231,10 @@ export default function BookingDetailScreen() {
                 </View>
               ) : null}
             </View>
-            <Text style={twStyle("text-sm text-violet-900 leading-5 mb-3")}>
+            <Text style={twStyle("text-sm text-gray-800 leading-5 mb-3")}>
               You travel to the client. Flow: confirm the booking, then Start journey when you leave, Mark arrived, then verify with their PIN and/or QR (per your settings), then start service.
             </Text>
-            <Text style={twStyle("text-xs text-violet-900/90 leading-5 mb-2")}>{PROVIDER_HOUSE_CALL_EXCELLENCE_NUDGE}</Text>
+            <Text style={twStyle("text-xs text-gray-700 leading-5 mb-2")}>{PROVIDER_HOUSE_CALL_EXCELLENCE_NUDGE}</Text>
             <TouchableOpacity
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -2246,22 +2243,22 @@ export default function BookingDetailScreen() {
               accessibilityRole="button"
               accessibilityLabel={PROVIDER_EXCELLENCE_DASHBOARD_CTA}
             >
-              <Text style={twStyle("text-xs font-semibold text-violet-800")}>{PROVIDER_EXCELLENCE_DASHBOARD_CTA} →</Text>
+              <Text style={twStyle("text-xs font-semibold text-primary")}>{PROVIDER_EXCELLENCE_DASHBOARD_CTA} →</Text>
             </TouchableOpacity>
             {addressLine ? (
               <TouchableOpacity
                 onPress={openMapsUrl}
-                style={twStyle("flex-row items-center rounded-xl border border-violet-200 bg-white px-3 py-2.5")}
+                style={twStyle("flex-row items-center rounded-2xl border border-primary/20 bg-white px-3 py-2.5")}
                 accessibilityRole="button"
                 accessibilityLabel="Open directions to client address"
               >
-                <Ionicons name="navigate" size={18} color="#6D28D9" />
+                <Ionicons name="navigate" size={18} color={Colors.primary} />
                 <Text style={twStyle("ml-2 flex-1 text-sm font-medium text-gray-800")} numberOfLines={3}>
                   {addressLine}
                 </Text>
               </TouchableOpacity>
             ) : (
-              <Text style={twStyle("text-xs text-violet-800")}>No address on file — check notes or contact the client.</Text>
+              <Text style={twStyle("text-xs text-primary")}>No address on file — check notes or contact the client.</Text>
             )}
           </View>
         ) : null}
@@ -2373,12 +2370,17 @@ export default function BookingDetailScreen() {
                 </View>
               )}
               {b.booking_source === "provider" && !b.is_group_booking && (
-                <View style={[twStyle("rounded-full bg-indigo-100 px-2 py-1"), { marginRight: 6 }]}>
-                  <Text style={twStyle("text-xs font-medium text-indigo-800")}>Provider</Text>
+                <View style={[twStyle("rounded-full bg-primary/10 px-2 py-1"), { marginRight: 6 }]}>
+                  <Text style={twStyle("text-xs font-medium text-primary")}>Provider</Text>
                 </View>
               )}
-              <View style={twStyle(`rounded-full px-2 py-1 ${statusColor(b.status)}`)}>
-                <Text style={twStyle(`text-xs font-semibold ${statusTextColor(b.status)}`)}>
+              {b.booking_source === "online" && !b.is_group_booking && (
+                <View style={[twStyle("rounded-full bg-blue-100 px-2 py-1"), { marginRight: 6 }]}>
+                  <Text style={twStyle("text-xs font-medium text-blue-800")}>Online</Text>
+                </View>
+              )}
+              <View style={twStyle(`rounded-full px-2 py-1 ${statusColor(currentDbStatus)}`)}>
+                <Text style={twStyle(`text-xs font-semibold ${statusTextColor(currentDbStatus)}`)}>
                   {labelForDbStatus(currentDbStatus)}
                 </Text>
               </View>
@@ -2396,7 +2398,7 @@ export default function BookingDetailScreen() {
             </Text>
           )}
           {b.is_group_booking && b.group_booking_ref ? (
-            <Text style={twStyle("mt-2 text-xs font-medium text-indigo-700")}>
+            <Text style={twStyle("mt-2 text-xs font-medium text-primary")}>
               Group booking · {b.group_booking_ref}
             </Text>
           ) : null}
@@ -2404,8 +2406,8 @@ export default function BookingDetailScreen() {
 
         <View style={twStyle("rounded-2xl border border-gray-200 bg-white p-4 mb-3")}>
           <View style={twStyle("flex-row items-start")}>
-            <View style={[twStyle("mr-3 h-11 w-11 items-center justify-center rounded-2xl"), { backgroundColor: `${nextStep.color}18` }]}>
-              <Ionicons name={nextStep.icon} size={22} color={nextStep.color} />
+            <View style={[twStyle("mr-3 h-11 w-11 items-center justify-center rounded-2xl"), { backgroundColor: Colors.primarySoft }]}>
+              <Ionicons name={nextStep.icon} size={22} color={Colors.primary} />
             </View>
             <View style={twStyle("flex-1")}>
               <Text style={twStyle("text-base font-bold text-gray-900")}>{nextStep.title}</Text>
@@ -2423,17 +2425,21 @@ export default function BookingDetailScreen() {
             <View style={twStyle("rounded-xl bg-gray-50 px-3 py-2")}>
               <Text style={twStyle("text-[11px] font-semibold uppercase text-gray-500")}>Type</Text>
               <Text style={twStyle("mt-0.5 text-sm font-semibold text-gray-900")}>
+                {isAtHome ? "House call" : b.booking_source === "walk_in" ? "Walk-in / salon" : "Salon"}
+              </Text>
+            </View>
+            <View style={twStyle("rounded-xl bg-gray-50 px-3 py-2")}>
+              <Text style={twStyle("text-[11px] font-semibold uppercase text-gray-500")}>Channel</Text>
+              <Text style={twStyle("mt-0.5 text-sm font-semibold text-gray-900")}>
                 {b.is_group_booking
                   ? "Group"
-                  : recurringDetails
-                    ? "Recurring"
-                    : b.booking_source === "walk_in"
-                      ? "Walk-in"
-                      : b.booking_source === "provider"
-                        ? "Provider"
-                        : isAtHome
-                          ? "House call"
-                          : "Salon"}
+                  : b.booking_source === "walk_in"
+                    ? "Walk-in"
+                    : b.booking_source === "provider"
+                      ? "Provider-created"
+                      : b.booking_source === "online"
+                        ? "Online"
+                        : "Booking"}
               </Text>
             </View>
             <View style={twStyle("rounded-xl bg-gray-50 px-3 py-2")}>
@@ -2448,19 +2454,14 @@ export default function BookingDetailScreen() {
 
           <View style={twStyle("mt-4 flex-row flex-wrap gap-2")}>
             {allowedStatusTargets.length > 0 ? (
-              <TouchableOpacity
+              <ActionButton
+                label="Change status"
                 onPress={() => setShowStatusPicker(true)}
                 disabled={patchLoading || mutating}
-                style={twStyle(isAtHome ? "rounded-xl px-4 py-2.5" : "rounded-xl bg-gray-900 px-4 py-2.5")}
-                accessibilityRole="button"
-                accessibilityLabel="Change booking status"
-              >
-                <Text
-                  style={twStyle(`text-sm font-semibold ${isAtHome ? "text-primary underline" : "text-white"}`)}
-                >
-                  Change status
-                </Text>
-              </TouchableOpacity>
+                variant="brand"
+                size="sm"
+                icon="swap-horizontal-outline"
+              />
             ) : null}
             {canReschedule ? (
               <TouchableOpacity
@@ -2513,6 +2514,12 @@ export default function BookingDetailScreen() {
               </TouchableOpacity>
             ) : null}
           </View>
+          {actionModel?.paymentLifecycleNote ? (
+            <Text style={twStyle("mt-2 text-xs text-emerald-700")}>{actionModel.paymentLifecycleNote}</Text>
+          ) : null}
+          {allowedStatusTargets.length === 0 && statusDisabledReasons.length > 0 ? (
+            <Text style={twStyle("mt-2 text-xs text-gray-500")}>{statusDisabledReasons[0]}</Text>
+          ) : null}
         </View>
 
         {recurringDetails ? (
@@ -2537,7 +2544,12 @@ export default function BookingDetailScreen() {
               </View>
             </View>
             <TouchableOpacity
-              onPress={() => router.push("/(app)/(tabs)/more/recurring-appointments" as never)}
+              onPress={() =>
+                router.push({
+                  pathname: "/(app)/(tabs)/more/recurring-appointments",
+                  params: { series_id: b.recurring_series_id },
+                } as never)
+              }
               style={twStyle("mt-3 rounded-lg border border-blue-200 bg-white px-3 py-2")}
               accessibilityRole="button"
               accessibilityLabel="Manage recurring series"
@@ -2609,19 +2621,42 @@ export default function BookingDetailScreen() {
         {((b.participants?.length ?? 0) > 0 || (b.package_name ?? b.package_id)) ? (
           <View style={twStyle("mb-3")}>
             {(b.participants?.length ?? 0) > 0 ? (
-              <View style={twStyle("rounded-xl border border-indigo-100 bg-indigo-50/80 p-4")}>
-                <Text style={twStyle("text-sm font-medium text-indigo-900 mb-2")}>Group participants</Text>
+              <View style={twStyle("rounded-3xl border border-primary/20 bg-primary/10 p-4")}>
+                <View style={twStyle("mb-2 flex-row items-center justify-between")}>
+                  <Text style={twStyle("text-sm font-medium text-primary")}>Group participants</Text>
+                  {b.group_booking_id ? (
+                    <TouchableOpacity
+                      onPress={() =>
+                        router.push({
+                          pathname: "/(app)/(tabs)/more/group-bookings",
+                          params: { open_group_id: b.group_booking_id },
+                        } as never)
+                      }
+                      style={twStyle("rounded-full bg-white px-3 py-1.5")}
+                      accessibilityRole="button"
+                      accessibilityLabel="Manage group booking"
+                    >
+                      <Text style={twStyle("text-xs font-semibold text-primary")}>Manage group</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
                 {(b.participants ?? []).map((p, idx) => (
                   <View
                     key={p.id ?? `${p.participant_name ?? "p"}-${idx}`}
-                    style={twStyle("mb-2 rounded-lg border border-indigo-100 bg-white px-3 py-2 last:mb-0")}
+                    style={twStyle("mb-2 rounded-2xl border border-primary/20 bg-white px-3 py-2 last:mb-0")}
                   >
                     <Text style={twStyle("text-sm font-medium text-gray-900")}>
                       {p.participant_name?.trim() || "Participant"}
                       {p.is_primary_contact ? " · Primary" : ""}
                     </Text>
                     {p.participant_phone ? (
-                      <Text style={twStyle("text-xs text-gray-600 mt-0.5")}>{p.participant_phone}</Text>
+                      <TouchableOpacity
+                        onPress={() => Linking.openURL(`tel:${p.participant_phone}`).catch(() => {})}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Call ${p.participant_name?.trim() || "participant"}`}
+                      >
+                        <Text style={twStyle("text-xs text-primary mt-0.5")}>{p.participant_phone}</Text>
+                      </TouchableOpacity>
                     ) : null}
                     {p.participant_email ? (
                       <Text style={twStyle("text-xs text-gray-600")}>{p.participant_email}</Text>
@@ -2717,9 +2752,9 @@ export default function BookingDetailScreen() {
                   </View>
                 )}
                 {isArrived && !arrivalVerified && qrArrivalPending && (
-                  <View style={twStyle("rounded-lg bg-violet-50 border border-violet-200 p-3 mb-3")}>
-                    <Text style={twStyle("text-sm font-medium text-violet-950 mb-1")}>Scan the customer&apos;s QR or enter their code</Text>
-                    <Text style={twStyle("text-xs text-violet-800 mb-2")}>
+                  <View style={twStyle("rounded-2xl bg-primary/10 border border-primary/20 p-3 mb-3")}>
+                    <Text style={twStyle("text-sm font-medium text-primary mb-1")}>Scan the customer&apos;s QR or enter their code</Text>
+                    <Text style={twStyle("text-xs text-gray-700 mb-2")}>
                       Ask them to open this booking — they&apos;ll see an arrival QR. You can scan it or type the 8-character code.
                       {arrivalOtpPending
                         ? " If it expired, use Resend in the PIN section — the customer gets a fresh code and QR."
@@ -2729,14 +2764,14 @@ export default function BookingDetailScreen() {
                       <TouchableOpacity
                         onPress={handleResendArrivalOtp}
                         disabled={isResendingArrivalOtp}
-                        style={twStyle("rounded-lg border border-violet-400 py-2.5 px-3 items-center mb-2")}
+                        style={twStyle("rounded-2xl border border-primary/20 py-2.5 px-3 items-center mb-2")}
                         accessibilityRole="button"
                         accessibilityLabel="Resend QR and code to customer"
                       >
                         {isResendingArrivalOtp ? (
-                          <ActivityIndicator size="small" color="#5B21B6" />
+                          <ActivityIndicator size="small" color={Colors.primary} />
                         ) : (
-                          <Text style={twStyle("text-violet-900 font-semibold")}>Resend QR & code to customer</Text>
+                          <Text style={twStyle("text-primary font-semibold")}>Resend QR & code to customer</Text>
                         )}
                       </TouchableOpacity>
                     ) : null}
@@ -2749,7 +2784,7 @@ export default function BookingDetailScreen() {
                       style={twStyle("border border-gray-300 rounded-lg px-3 py-2.5 text-base mb-2 bg-white font-mono")}
                       accessibilityLabel="QR verification code from customer"
                     />
-                    <Text style={twStyle("text-xs text-violet-800 mb-1")}>Or paste raw scan result (JSON)</Text>
+                    <Text style={twStyle("text-xs text-primary mb-1")}>Or paste raw scan result (JSON)</Text>
                     <TextInput
                       value={qrPasteJson}
                       onChangeText={setQrPasteJson}
@@ -2762,12 +2797,12 @@ export default function BookingDetailScreen() {
                       onPress={() => setShowArrivalQrScanner(true)}
                       disabled={isVerifyingQrArrival || Platform.OS === "web"}
                       style={twStyle(
-                        `rounded-lg border-2 border-violet-600 py-2.5 items-center mb-2 ${Platform.OS === "web" ? "opacity-50" : ""}`
+                        `rounded-2xl border-2 border-primary py-2.5 items-center mb-2 ${Platform.OS === "web" ? "opacity-50" : ""}`
                       )}
                       accessibilityRole="button"
                       accessibilityLabel="Open QR scanner"
                     >
-                      <Text style={twStyle("text-violet-800 font-semibold")}>
+                      <Text style={twStyle("text-primary font-semibold")}>
                         {Platform.OS === "web" ? "Scan QR (use mobile app)" : "Scan QR"}
                       </Text>
                     </TouchableOpacity>
@@ -2778,7 +2813,7 @@ export default function BookingDetailScreen() {
                         (qrPasteJson.trim().length === 0 &&
                           qrArrivalCodeInput.replace(/\s/g, "").length < 8)
                       }
-                      style={twStyle("rounded-lg bg-violet-700 py-2.5 items-center")}
+                      style={twStyle("rounded-2xl bg-primary py-2.5 items-center")}
                       accessibilityRole="button"
                       accessibilityLabel="Verify QR arrival"
                     >
@@ -2872,6 +2907,25 @@ export default function BookingDetailScreen() {
           </Text>
         ) : null}
 
+        {showProviderCompletionModal ? (
+          <View style={twStyle("rounded-3xl border border-primary/20 bg-primary/10 p-4 mb-3")}>
+            <View style={twStyle("flex-row items-start")}>
+              <View style={twStyle("mr-3 h-10 w-10 items-center justify-center rounded-2xl bg-white")}>
+                <Ionicons name="sparkles-outline" size={20} color={Colors.primary} />
+              </View>
+              <View style={twStyle("flex-1")}>
+                <Text style={twStyle("text-sm font-bold text-gray-900")}>Service completed</Text>
+                <Text style={twStyle("mt-1 text-xs leading-5 text-gray-600")}>
+                  Rate the client, share the receipt, or post the finished work when you are ready.
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => dismissProviderCompletionModal(true)} accessibilityLabel="Dismiss completed service tip">
+                <Ionicons name="close" size={18} color="#6b7280" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : null}
+
         {/* Client rating (provider → customer via provider_client_ratings) */}
         {(b.status === "completed" || b.status === "no_show") && canViewClientRatings && (
           <View style={twStyle("rounded-xl border border-gray-200 bg-white p-4 mb-3")}>
@@ -2917,6 +2971,12 @@ export default function BookingDetailScreen() {
             ) : null}
             {(typeof b.subtotal === "number" && b.subtotal > 0) ||
             (typeof b.discount_amount === "number" && b.discount_amount > 0) ||
+            (typeof (b as { promotion_discount_amount?: number }).promotion_discount_amount === "number" &&
+              Number((b as { promotion_discount_amount?: number }).promotion_discount_amount) > 0) ||
+            (typeof (b as { membership_discount_amount?: number }).membership_discount_amount === "number" &&
+              Number((b as { membership_discount_amount?: number }).membership_discount_amount) > 0) ||
+            (typeof (b as { loyalty_discount_amount?: number }).loyalty_discount_amount === "number" &&
+              Number((b as { loyalty_discount_amount?: number }).loyalty_discount_amount) > 0) ||
             (typeof b.tax_amount === "number" && b.tax_amount > 0) ||
             (typeof b.service_fee_amount === "number" && b.service_fee_amount > 0) ||
             (typeof b.tip_amount === "number" && b.tip_amount > 0) ||
@@ -2924,7 +2984,7 @@ export default function BookingDetailScreen() {
               <View style={twStyle("mb-2 border-b border-gray-100 pb-2")}>
                 {typeof b.subtotal === "number" && b.subtotal > 0 ? (
                   <Text style={twStyle("text-sm text-gray-600")}>
-                    Subtotal: {b.currency ?? getTenantDefaultCurrency()} {Math.max(0, b.subtotal - (b.travel_fee_amount ?? 0)).toLocaleString()}
+                    Subtotal: {b.currency ?? getTenantDefaultCurrency()} {b.subtotal.toLocaleString()}
                   </Text>
                 ) : null}
                 {typeof b.discount_amount === "number" && b.discount_amount > 0 ? (
@@ -2933,6 +2993,24 @@ export default function BookingDetailScreen() {
                     {b.discount_code ? ` (${b.discount_code})` : ""}
                     {b.discount_reason ? ` — ${b.discount_reason}` : ""}: −{b.currency ?? getTenantDefaultCurrency()}{" "}
                     {b.discount_amount.toLocaleString()}
+                  </Text>
+                ) : null}
+                {Number((b as { promotion_discount_amount?: number }).promotion_discount_amount) > 0 ? (
+                  <Text style={twStyle("text-sm text-green-700 mt-0.5")}>
+                    Promotion: −{b.currency ?? getTenantDefaultCurrency()}{" "}
+                    {Number((b as { promotion_discount_amount?: number }).promotion_discount_amount).toLocaleString()}
+                  </Text>
+                ) : null}
+                {Number((b as { membership_discount_amount?: number }).membership_discount_amount) > 0 ? (
+                  <Text style={twStyle("text-sm text-green-700 mt-0.5")}>
+                    Membership: −{b.currency ?? getTenantDefaultCurrency()}{" "}
+                    {Number((b as { membership_discount_amount?: number }).membership_discount_amount).toLocaleString()}
+                  </Text>
+                ) : null}
+                {Number((b as { loyalty_discount_amount?: number }).loyalty_discount_amount) > 0 ? (
+                  <Text style={twStyle("text-sm text-green-700 mt-0.5")}>
+                    Loyalty: −{b.currency ?? getTenantDefaultCurrency()}{" "}
+                    {Number((b as { loyalty_discount_amount?: number }).loyalty_discount_amount).toLocaleString()}
                   </Text>
                 ) : null}
                 {typeof b.tax_amount === "number" && b.tax_amount > 0 ? (
@@ -2986,11 +3064,41 @@ export default function BookingDetailScreen() {
                 {b.currency ?? getTenantDefaultCurrency()} {b.deposit_amount.toLocaleString()}
               </Text>
             )}
-            {totalPaid > 0 && (
-              <Text style={twStyle("text-sm text-green-600 mt-0.5")}>
-                Paid: {b.currency ?? getTenantDefaultCurrency()} {totalPaid.toLocaleString()}
-              </Text>
-            )}
+            {/* §Finance-truth 2026-05: wallet/gift are payment instruments, not
+                discounts. After migration 582 `total_paid` includes wallet + gift
+                via booking_payments — we render the breakdown so providers see
+                exactly how the booking was settled (wallet → gift → card/other). */}
+            {(() => {
+              const walletPaid = Number((b as { wallet_amount?: number }).wallet_amount ?? 0);
+              const giftPaid = Number((b as { gift_card_amount?: number }).gift_card_amount ?? 0);
+              const otherPaid = Math.max(0, totalPaid - walletPaid - giftPaid);
+              const cur = b.currency ?? getTenantDefaultCurrency();
+              if (walletPaid <= 0 && giftPaid <= 0 && totalPaid <= 0) return null;
+              return (
+                <View style={twStyle("mt-1")}>
+                  {walletPaid > 0 && (
+                    <Text style={twStyle("text-sm text-gray-600")}>
+                      Paid (wallet): {cur} {walletPaid.toLocaleString()}
+                    </Text>
+                  )}
+                  {giftPaid > 0 && (
+                    <Text style={twStyle("text-sm text-gray-600")}>
+                      Paid (gift card): {cur} {giftPaid.toLocaleString()}
+                    </Text>
+                  )}
+                  {otherPaid > 0 && (
+                    <Text style={twStyle("text-sm text-gray-600")}>
+                      Paid (card / other): {cur} {otherPaid.toLocaleString()}
+                    </Text>
+                  )}
+                  {totalPaid > 0 && (
+                    <Text style={twStyle("text-sm font-semibold text-green-600 mt-0.5")}>
+                      Total paid: {cur} {totalPaid.toLocaleString()}
+                    </Text>
+                  )}
+                </View>
+              );
+            })()}
             {totalRefunded > 0 && (
               <Text style={twStyle("text-sm text-orange-700 mt-0.5")}>
                 Refunded: {b.currency ?? getTenantDefaultCurrency()} {totalRefunded.toLocaleString()}
@@ -3652,7 +3760,7 @@ export default function BookingDetailScreen() {
 
       {/* Provider post-completion modal: once per booking when opening a completed booking */}
       <Modal
-        visible={showProviderCompletionModal}
+        visible={false}
         animationType="fade"
         transparent
         onRequestClose={() => dismissProviderCompletionModal(true)}
@@ -3712,7 +3820,7 @@ export default function BookingDetailScreen() {
                 dismissProviderCompletionModal(true);
                 router.push("/(app)/(tabs)/more/explore-posts?create=1" as never);
               }}
-              style={{ backgroundColor: "#ec4899", paddingVertical: 14, borderRadius: 12, alignItems: "center", marginBottom: 10 }}
+              style={{ backgroundColor: Colors.primary, paddingVertical: 14, borderRadius: 16, alignItems: "center", marginBottom: 10 }}
               activeOpacity={0.8}
             >
               <Text style={{ color: "#fff", fontWeight: "600", fontSize: 16 }}>Post to Explore</Text>
@@ -3923,7 +4031,7 @@ export default function BookingDetailScreen() {
       >
         {loadingCustomerProfile ? (
           <View style={twStyle("py-8 items-center")}>
-            <ActivityIndicator size="large" color="#6366f1" />
+            <ActivityIndicator size="large" color={Colors.primary} />
           </View>
         ) : customerProfile ? (
           <View style={twStyle("pb-4")}>
@@ -3994,8 +4102,8 @@ export default function BookingDetailScreen() {
                               )
                             }
                           >
-                            <Ionicons name="document-text-outline" size={16} color="#6366f1" />
-                            <Text style={twStyle("ml-1 text-sm font-medium text-indigo-600")}>View consent document</Text>
+                            <Ionicons name="document-text-outline" size={16} color={Colors.primary} />
+                            <Text style={twStyle("ml-1 text-sm font-medium text-primary")}>View consent document</Text>
                           </TouchableOpacity>
                         ) : null}
                         <TouchableOpacity
@@ -4046,7 +4154,7 @@ export default function BookingDetailScreen() {
       >
         {loadingAuditLog ? (
           <View style={twStyle("py-8 items-center")}>
-            <ActivityIndicator size="large" color="#6366f1" />
+            <ActivityIndicator size="large" color={Colors.primary} />
           </View>
         ) : sortedAuditLogs.length === 0 ? (
           <View style={twStyle("py-6 px-2")}>

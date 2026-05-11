@@ -309,7 +309,7 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['provider_owner', 'superadmin'], request);
+    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
 
     const supabase = await getSupabaseServer(request);
     const body = await request.json();

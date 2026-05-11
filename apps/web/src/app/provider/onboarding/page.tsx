@@ -4159,8 +4159,8 @@ function Step12Hours({
             </span>
           ) : (
             <span>
-              <strong className="text-slate-900">Booking window:</strong> Clients only see slots inside these hours. Adjust
-              now or later under Settings.
+              <strong className="text-slate-900">Location Booking Window:</strong> Clients only see slots inside these hours for the salon. 
+              You can set individual staff schedules later under Settings.
             </span>
           )}
         </AlertDescription>

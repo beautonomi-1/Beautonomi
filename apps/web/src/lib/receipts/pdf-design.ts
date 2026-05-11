@@ -160,6 +160,77 @@ export function drawPdfTotals(
   doc.y = y + 34 + rows.length * 21 + 48;
 }
 
+/**
+ * Canonical user-facing label for `booking_payments.payment_method` /
+ * `payment_provider`. Centralised so customer/provider PDF + JSON receipts and
+ * mobile/web detail screens never disagree.
+ */
+export function formatPaymentMethodLabel(
+  paymentMethod?: string | null,
+  paymentProvider?: string | null,
+): string {
+  const m = String(paymentMethod ?? "").toLowerCase();
+  const p = String(paymentProvider ?? "").toLowerCase();
+  if (m === "wallet" || p === "wallet") return "Wallet";
+  if (m === "gift_card" || p === "gift_card") return "Gift card";
+  if (m === "cash" || p === "cash") return "Cash";
+  if (m === "bank_transfer") return "EFT";
+  if (m === "card") {
+    if (p === "yoco") return "Card (Yoco)";
+    if (p === "paystack") return "Card";
+    if (p === "stripe") return "Card";
+    if (p === "flutterwave") return "Card";
+    if (p === "other") return "Card (manual)";
+    return "Card";
+  }
+  if (m === "saved_card" || m === "new_card") return "Card";
+  if (m === "other") return p ? `Other (${p})` : "Other";
+  return paymentMethod ? String(paymentMethod) : "Payment";
+}
+
+/**
+ * Payments table: lists each completed `booking_payments` row with method label.
+ * Renders inside a section so receipts can show wallet+card splits, gift+card
+ * splits, deposits, and balance settlements with one line per payment.
+ */
+export function drawPdfPayments(
+  doc: PdfDoc,
+  rows: Array<{
+    label: string;
+    detail?: string | null;
+    amount: string;
+    tone?: "success" | "warning" | "muted";
+  }>,
+  opts?: { title?: string },
+) {
+  if (rows.length === 0) return;
+  ensurePdfSpace(doc, 32 + rows.length * 22);
+  drawPdfSectionTitle(doc, opts?.title || "Payments");
+  const startX = 50;
+  const width = 495;
+  const headerY = doc.y;
+  doc.roundedRect(startX, headerY, width, 22, 8).fill("#F9FAFB");
+  doc.fontSize(8).fillColor(RECEIPT_PDF.muted).text("METHOD", startX + 14, headerY + 7, { width: 330 });
+  doc.text("AMOUNT", startX + 390, headerY + 7, { width: 90, align: "right" });
+  doc.y = headerY + 30;
+  for (const row of rows) {
+    ensurePdfSpace(doc, 26);
+    const rowY = doc.y;
+    const tone =
+      row.tone === "success" ? RECEIPT_PDF.success :
+      row.tone === "warning" ? RECEIPT_PDF.warning :
+      RECEIPT_PDF.ink;
+    doc.fontSize(10).fillColor(RECEIPT_PDF.ink).text(row.label, startX + 14, rowY, { width: 335 });
+    if (row.detail) {
+      doc.fontSize(8.5).fillColor(RECEIPT_PDF.muted).text(row.detail, startX + 14, doc.y + 2, { width: 335 });
+    }
+    doc.fontSize(10).fillColor(tone).text(row.amount, startX + 390, rowY, { width: 90, align: "right" });
+    doc.y = Math.max(doc.y, rowY + (row.detail ? 28 : 18));
+    doc.moveTo(startX + 14, doc.y).lineTo(startX + width - 14, doc.y).strokeColor(RECEIPT_PDF.line).lineWidth(0.5).stroke();
+    doc.moveDown(0.35);
+  }
+}
+
 export function drawPdfFooter(doc: PdfDoc, text?: string | null) {
   if (!text) return;
   ensurePdfSpace(doc, 70);

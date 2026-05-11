@@ -40,14 +40,23 @@ export async function PATCH(
       return errorResponse("Period start and end dates are required", "VALIDATION_ERROR", 400);
     }
 
-    // Find the reminder record
-    const { data: reminder, error: reminderError } = await supabase
+    // Find the reminder record.
+    // When id is not a UUID (e.g. "new" sent by mobile when no prior reminder exists),
+    // skip the id filter and look up by provider + period alone so the create-fallback
+    // path below can create the first reminder for this period.
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+    let reminderQuery = supabase
       .from("vat_remittance_reminders")
       .select("id, provider_id, remitted_to_sars")
-      .eq("id", id)
       .eq("provider_id", providerId)
       .eq("period_start", period_start)
-      .eq("period_end", period_end)
+      .eq("period_end", period_end);
+    if (isUuid) {
+      reminderQuery = reminderQuery.eq("id", id);
+    }
+    const { data: reminder, error: reminderError } = await reminderQuery
+      .order("sent_at", { ascending: false })
+      .limit(1)
       .maybeSingle();
 
     if (reminderError) throw reminderError;

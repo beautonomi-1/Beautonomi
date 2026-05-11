@@ -5,6 +5,7 @@
 
 import type { Booking } from "@/types/beautonomi";
 import type { OperationalBadge } from "./types";
+import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
 
 const LATE_THRESHOLD_MINUTES = 10;
 const ARRIVING_WINDOW_MINUTES = 30;
@@ -25,18 +26,35 @@ export function getOperationalBadge(booking: Booking): OperationalBadge {
   const paymentStatus = (booking as any).payment_status as string | undefined;
   const totalPaid = (booking as any).total_paid as number | undefined;
   const totalAmount = (booking as any).total_amount as number | undefined;
+  const totalRefunded = Number((booking as any).total_refunded || 0);
+  const walletAmount = Number((booking as any).wallet_amount || 0);
+  const giftCardAmount = Number((booking as any).gift_card_amount || 0);
+  const unpaidAdditionalCharges = Array.isArray((booking as any).additional_charges)
+    ? (booking as any).additional_charges
+        .filter((charge: any) => charge?.status !== "paid" && charge?.status !== "rejected")
+        .reduce((sum: number, charge: any) => sum + Number(charge?.amount || 0), 0)
+    : 0;
+  const outstanding = computeBookingOutstandingDisplay({
+    totalAmount: Number(totalAmount || 0),
+    totalPaid: Number(totalPaid || 0),
+    totalRefunded,
+    walletAmount,
+    giftCardAmount,
+    unpaidAdditionalCharges,
+    paymentStatus,
+  });
+  const fullyPaid = outstanding <= 0;
 
   // Terminal states
   if (status === "cancelled" || status === "no_show") return "cancelled";
   if (status === "completed") {
-    const fullyPaid = paymentStatus === "paid" || (totalPaid != null && totalAmount != null && totalPaid >= totalAmount);
     return fullyPaid ? "completed" : "ready_to_pay";
   }
 
   // DB still pending — provider must confirm before normal front-desk flow (parity with mobile)
-  const dbStatus = booking.db_status;
+  const dbStatus = (booking as any).db_status as string | undefined;
   if (
-    dbStatus === "pending" &&
+    (dbStatus === "pending" || dbStatus === "pending_payment") &&
     status !== "in_progress" &&
     currentStage !== "service_started" &&
     currentStage !== "service_completed"
@@ -48,7 +66,6 @@ export function getOperationalBadge(booking: Booking): OperationalBadge {
   if (status === "in_progress" || currentStage === "service_started") {
     // Service done (current_stage service_completed) but not marked completed - could be ready to pay
     if (currentStage === "service_completed") {
-      const fullyPaid = paymentStatus === "paid" || (totalPaid != null && totalAmount != null && totalPaid >= totalAmount);
       return fullyPaid ? "completed" : "ready_to_pay";
     }
     return "in_service";
@@ -56,7 +73,7 @@ export function getOperationalBadge(booking: Booking): OperationalBadge {
 
   // Ready to pay: completed status in DB but we already handled completed above.
   // Alternative: status confirmed/in_progress and service_completed stage but payment pending
-  if (currentStage === "service_completed" && paymentStatus !== "paid") {
+  if (currentStage === "service_completed" && !fullyPaid) {
     return "ready_to_pay";
   }
 

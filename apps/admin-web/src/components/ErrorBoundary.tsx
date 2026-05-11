@@ -8,13 +8,29 @@ interface Props {
 interface State {
   hasError: boolean;
   message?: string;
+  isChunkLoadError?: boolean;
+}
+
+function isChunkLoadErrorMessage(message?: string): boolean {
+  if (!message) return false;
+  return (
+    message.includes("dynamically imported module") ||
+    message.includes("Failed to fetch") ||
+    message.includes("ChunkLoadError") ||
+    message.includes("Loading chunk") ||
+    message.includes("Importing a module script failed")
+  );
 }
 
 export class ErrorBoundary extends Component<Props, State> {
   state: State = { hasError: false };
 
   static getDerivedStateFromError(error: Error): State {
-    return { hasError: true, message: error.message };
+    return {
+      hasError: true,
+      message: error.message,
+      isChunkLoadError: isChunkLoadErrorMessage(error.message),
+    };
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
@@ -28,11 +44,17 @@ export class ErrorBoundary extends Component<Props, State> {
 
   render() {
     if (this.state.hasError) {
+      const message = this.state.isChunkLoadError
+        ? "A new version is available. Please reload the page."
+        : this.state.message ?? "Please refresh or try again.";
+
       return (
         <div className="flex min-h-[40vh] flex-col items-center justify-center p-6">
           <div className="max-w-md rounded-xl border border-red-200 bg-red-50 p-6 text-center text-red-900">
-            <h2 className="text-lg font-semibold">Something went wrong</h2>
-            <p className="mt-2 text-sm">{this.state.message ?? "Please refresh or try again."}</p>
+            <h2 className="text-lg font-semibold">
+              {this.state.isChunkLoadError ? "New version available" : "Something went wrong"}
+            </h2>
+            <p className="mt-2 text-sm">{message}</p>
             <button
               type="button"
               className="mt-4 rounded-lg bg-red-700 px-4 py-2 text-sm text-white"

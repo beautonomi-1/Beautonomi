@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
 
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
-    const providerId = await getProviderIdForUser(permissionCheck.user!.id);
+    const providerId = await getProviderIdForUser(permissionCheck.user!.id, supabase);
 
     if (!providerId) {
       return handleApiError(

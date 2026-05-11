@@ -182,7 +182,6 @@ export async function POST(
     const refundReference = `wallet_refund_${txId}_${Date.now()}`;
     const isFullRefund = refundAmount >= Number(txData.amount);
     const newTransactionStatus = isFullRefund ? "refunded" : "partially_refunded";
-    const newBookingPaymentStatus = isFullRefund ? "refunded" : "partially_refunded";
 
     // Update transaction status
     await supabase
@@ -196,14 +195,6 @@ export async function POST(
         refunded_by: user.id,
       })
       .eq("id", txId);
-
-    // Update booking payment status
-    await supabase
-      .from("bookings")
-      .update({
-        payment_status: newBookingPaymentStatus,
-      })
-      .eq("id", txData.booking_id);
 
     // Record in booking_refunds so update_booking_payment_status keeps totals in sync
     await supabase.from("booking_refunds").insert({

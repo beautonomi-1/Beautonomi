@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getAllPermissions } from "@/lib/auth/permissions";
 import { getTeamRosterDetailLevel, redactStaffRowForViewer } from "@/lib/auth/provider-team-roster-access";
 import { checkStaffManagementFeatureAccess } from "@/lib/subscriptions/feature-access";
@@ -401,17 +402,7 @@ export async function POST(request: Request) {
           );
         }
 
-        const { createClient } = await import("@supabase/supabase-js");
-        const supabaseAdmin = createClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.SUPABASE_SERVICE_ROLE_KEY!,
-          {
-            auth: {
-              autoRefreshToken: false,
-              persistSession: false,
-            },
-          }
-        );
+        const supabaseAdmin = getSupabaseAdmin();
 
         const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
 

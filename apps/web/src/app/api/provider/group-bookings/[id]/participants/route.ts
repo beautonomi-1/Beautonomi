@@ -62,10 +62,25 @@ async function recalculateGroupBookingTotal(admin: ReturnType<typeof getSupabase
     .eq("id", groupId);
 }
 
+async function tryRecalculateGroupBookingTotal(
+  admin: ReturnType<typeof getSupabaseAdmin>,
+  groupId: string,
+) {
+  try {
+    await recalculateGroupBookingTotal(admin, groupId);
+  } catch (error) {
+    // The participant link is the critical write. A stale total can be fixed by
+    // the next edit/reload, while failing here leaves mobile with a partial group.
+    console.warn("[group participant] total recalculation failed:", error);
+  }
+}
+
 /** Link an existing booking to the group (legacy path). */
 const bookingLinkSchema = z.object({
   booking_id: z.string().uuid(),
   participant_name: z.string().min(1).optional(),
+  participant_email: z.string().email().optional().nullable(),
+  participant_phone: z.string().optional().nullable(),
   service_id: z.string().uuid().optional().nullable(),
   service_name: z.string().optional().nullable(),
   price: z.coerce.number().min(0).optional(),
@@ -155,14 +170,25 @@ export async function POST(
         return errorResponse("Booking already belongs to another group", "CONFLICT", 409);
       }
 
-      const { data: existing } = await admin
-        .from("booking_participants")
-        .select("id")
-        .eq("booking_id", body.booking_id)
-        .maybeSingle();
+      const findExistingParticipant = () =>
+        admin
+          .from("booking_participants")
+          .select("*")
+          .eq("booking_id", body.booking_id)
+          .maybeSingle();
 
+      const { data: existing, error: existingError } = await findExistingParticipant();
+
+      if (existingError) {
+        throw existingError;
+      }
       if (existing) {
-        return errorResponse("Booking already has a participant record", "CONFLICT", 409);
+        const existingGroupId = (existing as { group_booking_id?: string | null }).group_booking_id;
+        if (existingGroupId && existingGroupId !== groupId) {
+          return errorResponse("Booking already belongs to another group", "CONFLICT", 409);
+        }
+        await tryRecalculateGroupBookingTotal(admin, groupId);
+        return successResponse({ data: existing });
       }
 
       const cust = b.customers || {};
@@ -178,8 +204,8 @@ export async function POST(
           booking_id: body.booking_id,
           group_booking_id: groupId,
           participant_name: name,
-          participant_email: cust.email ?? null,
-          participant_phone: cust.phone ?? null,
+          participant_email: body.participant_email ?? cust.email ?? null,
+          participant_phone: body.participant_phone ?? cust.phone ?? null,
           service_id: body.service_id ?? null,
           service_name: body.service_name ?? null,
           price: typeof body.price === "number" ? body.price : 0,
@@ -191,6 +217,14 @@ export async function POST(
         .single();
 
       if (insErr) {
+        if (insErr.code === "23505") {
+          const { data: racedExisting, error: racedExistingError } = await findExistingParticipant();
+          if (racedExistingError) throw racedExistingError;
+          if (racedExisting) {
+            await tryRecalculateGroupBookingTotal(admin, groupId);
+            return successResponse({ data: racedExisting });
+          }
+        }
         throw insErr;
       }
 
@@ -207,7 +241,7 @@ export async function POST(
         throw bookingUpdateError;
       }
 
-      await recalculateGroupBookingTotal(admin, groupId);
+      await tryRecalculateGroupBookingTotal(admin, groupId);
 
       return successResponse({ data: row });
     }
@@ -252,7 +286,7 @@ export async function POST(
       throw insErr;
     }
 
-    await recalculateGroupBookingTotal(admin, groupId);
+    await tryRecalculateGroupBookingTotal(admin, groupId);
 
     return successResponse({ data: row });
   } catch (error) {

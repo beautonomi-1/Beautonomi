@@ -52,7 +52,6 @@ const BookingActionBar = forwardRef<HTMLDivElement, BookingActionBarProps>(funct
     
     const discounts =
       (bookingState.promotions.couponDiscount || 0) +
-      (bookingState.promotions.giftCardAmount || 0) +
       (bookingState.promotions.loyaltyDiscount || 0) +
       (bookingState.promotions.membershipDiscount || 0);
     
@@ -126,9 +125,9 @@ const BookingActionBar = forwardRef<HTMLDivElement, BookingActionBarProps>(funct
             </div>
           )}
           {bookingState.promotions.giftCardAmount > 0 && (
-            <div className="flex justify-between text-sm text-green-600">
-              <span>Gift Card</span>
-              <span>-{formatCurrency(bookingState.promotions.giftCardAmount, totals.currency)}</span>
+            <div className="flex justify-between text-sm text-blue-700">
+              <span>Gift card tender</span>
+              <span>Applies at payment</span>
             </div>
           )}
           {bookingState.promotions.loyaltyDiscount > 0 && (

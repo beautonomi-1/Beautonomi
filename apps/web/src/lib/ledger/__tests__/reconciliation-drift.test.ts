@@ -73,7 +73,7 @@ const INTENTIONALLY_SKIPPED: Record<string, string> = {
   charge:
     "Lives in payment_transactions, NOT finance_transactions. It's the raw PSP event, never the canonical ledger row.",
   earned:
-    "Lives in loyalty_point_transactions, NOT finance_transactions. Points are posted via a separate journal writer.",
+    "Lives in loyalty_points_ledger, NOT finance_transactions. Points are posted via a separate journal writer.",
   redeemed:
     "Same as 'earned' — loyalty side, not money ledger.",
   additional_charge:
@@ -83,7 +83,7 @@ const INTENTIONALLY_SKIPPED: Record<string, string> = {
 /**
  * Files that are allowed to contain `transaction_type: "..."` literals
  * targeting tables OTHER than finance_transactions (e.g. payment_transactions,
- * loyalty_point_transactions). The test below walks upwards a few lines
+ * loyalty_points_ledger). The test below walks upwards a few lines
  * to decide whether the literal is bound for finance_transactions.
  */
 const FINANCE_TABLE_HINT = /finance_transactions|financeTransactions/;
@@ -178,7 +178,7 @@ describe("Reconciliation drift (Wave 5.3)", () => {
         `Reconciliation drift detected — new finance_transactions types without shadow-ledger coverage:\n${msg}\n\n` +
           "Either:\n" +
           "  (a) extend _shadow_replay_finance_tx_row in a new migration and add the type to SHADOW_LEDGER_ALLOWLIST here, OR\n" +
-          "  (b) if the row belongs on a DIFFERENT table (payment_transactions / loyalty_point_transactions), " +
+          "  (b) if the row belongs on a DIFFERENT table (payment_transactions / loyalty_points_ledger), " +
           "move the insert OR add the type to INTENTIONALLY_SKIPPED with a justification.",
       );
     }

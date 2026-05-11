@@ -1,7 +1,7 @@
 "use client";
 
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
-import { getHoldTimeRemaining, serverNowToClockOffsetMs } from "@beautonomi/utils";
+import { getHoldTimeRemaining, percentOf, serverNowToClockOffsetMs } from "@beautonomi/utils";
 
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState, useCallback, Suspense } from "react";
@@ -1097,7 +1097,7 @@ function BookContinueContent() {
     const paystackEnabled = hold.payment_paystack !== false;
     const depositPct = hold.deposit_percentage ?? 0;
     const showDepositChoice = Boolean(hold.deposit_required) && depositPct > 0;
-    const depositAmount = showDepositChoice ? Math.ceil((totalAmount * depositPct) / 100) : 0;
+    const depositAmount = showDepositChoice ? percentOf(totalAmount, depositPct) : 0;
     const remainingAfterDeposit = Math.max(0, totalAmount - depositAmount);
     const cardOnlineBlocked = !paystackEnabled && !allowPayInPerson;
     const policyAckBlocksCheckout =

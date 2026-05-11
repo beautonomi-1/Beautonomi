@@ -175,7 +175,7 @@ export async function POST(request: NextRequest) {
         `
         id, quantity, product_variant_id,
         product:products (
-          id, name, retail_price, quantity, is_active, retail_sales_enabled,
+          id, name, retail_price, quantity, is_active, retail_sales_enabled, track_stock_quantity,
           image_urls, tax_rate, provider_id, has_variants, weight_grams
         ),
         product_variant:product_variants (
@@ -203,7 +203,7 @@ export async function POST(request: NextRequest) {
         `
         id, quantity, product_variant_id,
         product:products!inner (
-          id, name, retail_price, is_active, retail_sales_enabled, quantity,
+          id, name, retail_price, is_active, retail_sales_enabled, quantity, track_stock_quantity,
           image_urls, tax_rate, provider_id, has_variants, weight_grams
         ),
         product_variant:product_variants (
@@ -225,11 +225,12 @@ export async function POST(request: NextRequest) {
       const p = item.product;
       const variant = item.product_variant;
       const effectiveQty = variant ? (variant.quantity ?? 0) : (p?.quantity ?? 0);
+      const tracksStock = p?.track_stock_quantity !== false;
       if (!p || !p.is_active || !p.retail_sales_enabled) {
         stockErrors.push(`${p?.name ?? "Unknown product"} is no longer available`);
       } else if (p.has_variants && !variant) {
         stockErrors.push(`${p.name}: variant required`);
-      } else if (effectiveQty < item.quantity) {
+      } else if (tracksStock && effectiveQty < item.quantity) {
         stockErrors.push(`${p.name}: only ${effectiveQty} available (requested ${item.quantity})`);
       }
     }

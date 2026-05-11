@@ -22,6 +22,7 @@ import {
 import { getGoogleCalendarUrl } from "@/lib/calendar/ics";
 import type { Booking } from "@/types/beautonomi";
 import { formatBookingDateInTimeZone, formatBookingTimeInTimeZone } from "@/lib/bookings/display-datetime";
+import { getBookingLifecycleDisplay, getBookingPaymentDisplay } from "@beautonomi/utils";
 
 /** Booking as returned from GET /api/me/bookings/:id (includes expanded provider, location, etc.) */
 type BookingDetail = Booking & {
@@ -272,6 +273,17 @@ export default function BookingDetailPage() {
     (booking.outstanding_balance ?? 0) > 0 &&
     (booking.payment_status === "pending" || booking.payment_status === "partially_paid");
   const providerName = booking.provider?.business_name ?? "your provider";
+  const lifecycleDisplay = getBookingLifecycleDisplay({
+    status: booking.status,
+    providerName,
+  });
+  const paymentDisplay = getBookingPaymentDisplay({
+    paymentStatus: booking.payment_status,
+    paymentProvider: (booking as unknown as Record<string, unknown>).payment_provider as string | undefined,
+    outstandingBalance: booking.outstanding_balance,
+    paymentOption: (booking as unknown as Record<string, unknown>).payment_option as string | undefined,
+    depositRequired: (booking as unknown as Record<string, unknown>).deposit_required as boolean | undefined,
+  });
 
   const scheduledAt = booking.selected_datetime ?? booking.scheduled_at;
   const totalDurationMinutes = booking.services?.reduce((sum, s) => sum + (s.duration_minutes ?? 0), 0) ?? 0;
@@ -308,16 +320,29 @@ export default function BookingDetailPage() {
       )}
 
       {isActive && (
-        <div className="mb-6 rounded-2xl border border-green-200 bg-green-50 p-4">
+        <div
+          className={`mb-6 rounded-2xl border p-4 ${
+            lifecycleDisplay.isAwaitingProviderConfirmation
+              ? "border-yellow-200 bg-yellow-50"
+              : "border-green-200 bg-green-50"
+          }`}
+        >
           <div className="flex items-start gap-3">
-            <CheckCircle2 className="h-10 w-10 shrink-0 text-green-600" />
+            <CheckCircle2
+              className={`h-10 w-10 shrink-0 ${
+                lifecycleDisplay.isAwaitingProviderConfirmation ? "text-yellow-600" : "text-green-600"
+              }`}
+            />
             <div>
               <p className="font-semibold text-gray-900">
-                Booking confirmed {formatTime(booking.scheduled_at)}
+                {lifecycleDisplay.title} {formatTime(booking.scheduled_at)}
               </p>
               <p className="text-sm text-gray-600 mt-0.5">
-                Your booking with {providerName} is confirmed.
+                {lifecycleDisplay.description}
               </p>
+              {(paymentDisplay.isPaymentSettled || paymentDisplay.isDepositPaid) && (
+                <p className="text-sm text-gray-600 mt-1">{paymentDisplay.label}.</p>
+              )}
               {helpUrl && (
                 <a
                   href={helpUrl}
@@ -352,7 +377,7 @@ export default function BookingDetailPage() {
                 : "bg-gray-100 text-gray-800"
             }`}
           >
-            {booking.status}
+            {lifecycleDisplay.label}
           </span>
         </div>
       </div>
@@ -580,7 +605,7 @@ export default function BookingDetailPage() {
           <div className="flex justify-between">
             <span className="text-gray-600">Subtotal</span>
             <span className="font-medium">
-              {booking.currency} {Math.max(0, booking.subtotal - (booking.travel_fee || 0)).toFixed(2)}
+              {booking.currency} {(Number(booking.subtotal) || 0).toFixed(2)}
             </span>
           </div>
           {booking.travel_fee > 0 && (
@@ -625,22 +650,11 @@ export default function BookingDetailPage() {
               </span>
             </div>
           )}
-          {booking.gift_card_amount > 0 && (
-            <div className="flex justify-between">
-              <span className="text-gray-600">Gift card</span>
-              <span className="font-medium text-green-600">
-                -{booking.currency} {booking.gift_card_amount.toFixed(2)}
-              </span>
-            </div>
-          )}
-          {booking.wallet_amount > 0 && (
-            <div className="flex justify-between">
-              <span className="text-gray-600">Wallet credit</span>
-              <span className="font-medium text-green-600">
-                -{booking.currency} {booking.wallet_amount.toFixed(2)}
-              </span>
-            </div>
-          )}
+          {/* §Finance-truth 2026-05: wallet/gift are payment instruments, not
+              discounts. Migration 582 makes `total_paid` include wallet + gift,
+              so rendering them above total here would conflict with the "Paid
+              via" breakdown rendered below total. We surface them only in the
+              payments section so customers see one consistent reconciliation. */}
           {booking.tax_amount > 0 && (
             <div className="flex justify-between">
               <span className="text-gray-600">Tax{booking.tax_rate > 0 ? ` (${booking.tax_rate}%)` : ""}</span>
@@ -693,14 +707,53 @@ export default function BookingDetailPage() {
               </span>
             </div>
           </div>
-          {booking.total_paid > 0 && (
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Amount paid</span>
-              <span className="font-medium text-green-600">
-                {booking.currency} {booking.total_paid.toFixed(2)}
-              </span>
-            </div>
-          )}
+          {/* §Finance-truth 2026-05: payments breakdown — wallet/gift are
+              payment methods, not discounts. We split total_paid into wallet,
+              gift, and card/other so customers see exactly how the booking
+              was settled, never doubling up with the "applied" deduction lines. */}
+          {(() => {
+            const walletPaid = Number(booking.wallet_amount || 0);
+            const giftPaid = Number(booking.gift_card_amount || 0);
+            const totalPaid = Number(booking.total_paid || 0);
+            const otherPaid = Math.max(0, totalPaid - walletPaid - giftPaid);
+            if (totalPaid <= 0 && walletPaid <= 0 && giftPaid <= 0) return null;
+            return (
+              <div className="pt-2">
+                {walletPaid > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Paid (wallet)</span>
+                    <span className="font-medium text-gray-700">
+                      {booking.currency} {walletPaid.toFixed(2)}
+                    </span>
+                  </div>
+                )}
+                {giftPaid > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Paid (gift card)</span>
+                    <span className="font-medium text-gray-700">
+                      {booking.currency} {giftPaid.toFixed(2)}
+                    </span>
+                  </div>
+                )}
+                {otherPaid > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Paid (card / other)</span>
+                    <span className="font-medium text-gray-700">
+                      {booking.currency} {otherPaid.toFixed(2)}
+                    </span>
+                  </div>
+                )}
+                {totalPaid > 0 && (
+                  <div className="flex justify-between text-sm font-semibold border-t mt-1 pt-1">
+                    <span className="text-gray-700">Total paid</span>
+                    <span className="text-green-600">
+                      {booking.currency} {totalPaid.toFixed(2)}
+                    </span>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
           {booking.outstanding_balance !== undefined && booking.outstanding_balance > 0 && (
             <div className="pt-2 border-t">
               <div className="flex justify-between">
@@ -738,8 +791,10 @@ export default function BookingDetailPage() {
             <span className="font-medium capitalize">
               {isCashBooking
                 ? "Cash"
-                : booking.payment_status === "paid"
+                : paymentDisplay.isPaymentSettled
                 ? "Online"
+                : paymentDisplay.isDepositPaid
+                ? "Online (deposit paid)"
                 : "Online (pending)"}
             </span>
           </div>
@@ -747,22 +802,14 @@ export default function BookingDetailPage() {
             <span>Payment status</span>
             <span
               className={`font-medium ${
-                booking.payment_status === "paid"
+                paymentDisplay.tone === "success"
                   ? "text-green-600"
-                  : booking.payment_status === "pending"
+                  : paymentDisplay.tone === "warning"
                   ? "text-yellow-600"
                   : "text-red-600"
               }`}
             >
-              {booking.payment_status === "paid"
-                ? "Paid"
-                : booking.payment_status === "partially_paid"
-                ? "Partially paid"
-                : booking.payment_status === "pending"
-                ? isCashBooking
-                  ? "Pay on arrival"
-                  : "Pending"
-                : booking.payment_status}
+              {paymentDisplay.label}
             </span>
           </div>
           {booking.loyalty_points_earned > 0 && booking.status === "completed" && (

@@ -22,9 +22,36 @@ type Ticket = {
   status: string;
   priority: string;
   category: string | null;
+  support_context_type?: string | null;
+  support_context_label?: string | null;
+  csat_score?: number | null;
+  has_unread_staff_reply?: boolean;
+  last_message_from?: "customer" | "staff" | null;
+  last_message_at?: string | null;
   created_at: string;
   updated_at: string;
 };
+
+const SUPPORT_CONTEXT_LABELS: Record<string, string> = {
+  booking: "Booking",
+  product_order: "Product order",
+  gift_card: "Gift card",
+  payment: "Payment",
+  provider_onboarding: "Provider onboarding",
+  account: "Account",
+  technical: "Technical",
+  other: "Other",
+};
+
+function contextLabel(ticket: Ticket): string | null {
+  if (!ticket.support_context_type) return ticket.support_context_label || null;
+  const base = SUPPORT_CONTEXT_LABELS[ticket.support_context_type] ?? ticket.support_context_type.replaceAll("_", " ");
+  return ticket.support_context_label ? `${base}: ${ticket.support_context_label}` : base;
+}
+
+function shouldAskForCsat(ticket: Ticket): boolean {
+  return (ticket.status === "resolved" || ticket.status === "closed") && !ticket.csat_score;
+}
 
 export default function MyTicketsPage() {
   const router = useRouter();
@@ -115,14 +142,31 @@ export default function MyTicketsPage() {
                       <CardHeader className="py-4">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <span className="font-mono text-sm text-gray-500">{t.ticket_number}</span>
-                          <Badge className={statusColor(t.status)}>{t.status.replace("_", " ")}</Badge>
+                          <div className="flex flex-wrap items-center gap-2">
+                            {t.has_unread_staff_reply || t.last_message_from === "staff" ? (
+                              <Badge className="bg-blue-100 text-blue-800">Support replied</Badge>
+                            ) : null}
+                            <Badge className={statusColor(t.status)}>{t.status.replace("_", " ")}</Badge>
+                          </div>
                         </div>
                         <CardTitle className="text-base mt-1">{t.subject}</CardTitle>
                         <CardDescription className="space-y-1">
+                          {contextLabel(t) ? (
+                            <span className="block text-zinc-700">
+                              About {contextLabel(t)}
+                            </span>
+                          ) : null}
                           {t.category ? (
                             <span className="block text-zinc-600">
                               {labelForSupportTicketCategory(t.category)}
                             </span>
+                          ) : null}
+                          {shouldAskForCsat(t) ? (
+                            <span className="block font-medium text-[#FF0077]">
+                              Rate this support experience
+                            </span>
+                          ) : t.csat_score ? (
+                            <span className="block text-zinc-600">Your rating: {t.csat_score}/5</span>
                           ) : null}
                           <span className="block">
                             Updated {new Date(t.updated_at).toLocaleDateString()}

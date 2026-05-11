@@ -24,10 +24,27 @@ function AdsPaymentReturnInner() {
     if (!success) return;
     let cancelled = false;
 
-    const finish = (nextMessage: string) => {
+    const postNativeStatus = (status: "success" | "pending" | "failed", nextMessage: string) => {
+      try {
+        const w = window as Window & { ReactNativeWebView?: { postMessage: (msg: string) => void } };
+        w.ReactNativeWebView?.postMessage(
+          JSON.stringify({
+            type: "BEAUTONOMI_ADS_PAYMENT_DONE",
+            status,
+            order_id: orderId || null,
+            message: nextMessage,
+          }),
+        );
+      } catch {
+        // ignore
+      }
+    };
+
+    const finish = (nextMessage: string, status: "success" | "pending" | "failed") => {
       if (cancelled) return;
       setMessage(nextMessage);
       setReady(true);
+      postNativeStatus(status, nextMessage);
     };
 
     const run = async () => {
@@ -40,20 +57,11 @@ function AdsPaymentReturnInner() {
             throw new Error("Could not verify payment immediately.");
           }
         }
-        finish("Payment received. Your campaign is being activated.");
+        finish("Payment received. Your campaign is being activated.", "success");
       } catch {
-        finish("Payment received. We are still syncing confirmation from Paystack.");
+        finish("Payment received. We are still syncing confirmation from Paystack.", "pending");
       }
     };
-
-    try {
-      const w = window as Window & { ReactNativeWebView?: { postMessage: (msg: string) => void } };
-      w.ReactNativeWebView?.postMessage(
-        JSON.stringify({ type: "BEAUTONOMI_ADS_PAYMENT_DONE", order_id: orderId || null }),
-      );
-    } catch {
-      // ignore
-    }
 
     void run();
 

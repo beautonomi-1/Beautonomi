@@ -9,6 +9,8 @@ Beautonomi connects Slack via **OAuth v2** (bot token). Alerts are **opt-in per 
 | `SLACK_CLIENT_ID` | Slack app client ID |
 | `SLACK_CLIENT_SECRET` | Slack app client secret |
 | `SLACK_OAUTH_STATE_SECRET` | Optional; HMAC secret for OAuth `state` (defaults to `SLACK_CLIENT_SECRET`) |
+| `BEAUTONOMI_SLACK_ENV` | Optional; forces Slack config environment (`production`, `staging`, or `development`). Falls back to `VERCEL_ENV` / `NODE_ENV`. |
+| `NEXT_PUBLIC_APP_URL` | Used to build admin deep links in Slack messages. |
 
 ## Slack app setup
 
@@ -24,7 +26,7 @@ Beautonomi connects Slack via **OAuth v2** (bot token). Alerts are **opt-in per 
 
 ## Events (high-signal defaults)
 
-- Support immediate: urgent/high ticket created, escalation, reopened ticket, unassigned high/urgent ticket on update.
+- Support immediate: ticket created, urgent/high ticket created, customer/provider reply, staff public reply, escalation, reopened ticket, unassigned high/urgent ticket on update. Support messages include requester origin and marketplace context when present.
 - Support scheduled: high/urgent unassigned for 30+ minutes, breached SLA, 24h stale follow-up, queue-health threshold.
 - Provider Ops immediate: new unassigned lead, reassignment, `won`/`matched` milestone.
 - Provider Ops scheduled: stale lead (7d), blocked proposal/negotiation lead (3d), next-step overdue (48h), pipeline-health threshold.
@@ -36,6 +38,11 @@ Beautonomi connects Slack via **OAuth v2** (bot token). Alerts are **opt-in per 
 - Reports scheduled: daily operations digest and finance exceptions digest.
 
 Tune routing and dedupe windows in the Slack settings page; invite the bot to private channels you select.
+
+Recommended channel routing:
+- Route `support.ticket.*` and `support.queue.health` events to the support desk channel.
+- Route `provider_ops.lead.*` and `provider_ops.pipeline.health` events to the provider operations / lead channel.
+- Keep finance, dispute, safety, verification, and report events in their own channels if those teams operate separately.
 
 ## Cron
 

@@ -8,6 +8,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { MessageCircle, Phone, Copy, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
 import type { FrontDeskBooking } from "@/lib/front-desk/types";
 import { copyTextToClipboard } from "@/lib/browser/clipboard";
 import { WorkflowStepper } from "./WorkflowStepper";
@@ -60,6 +61,21 @@ export function ActionPanel({ booking, onClose, onActionComplete, onCompleteRequ
   const badge = booking.operationalBadge || "confirmed";
   const locationType = (booking as any).location_type as string | undefined;
   const isAtHome = locationType === "at_home";
+  const unpaidAdditionalCharges = Array.isArray((booking as any).additional_charges)
+    ? (booking as any).additional_charges
+        .filter((charge: any) => charge?.status !== "paid" && charge?.status !== "rejected")
+        .reduce((sum: number, charge: any) => sum + Number(charge?.amount || 0), 0)
+    : 0;
+  const folioTotal = Number(booking.total_amount || 0) + unpaidAdditionalCharges;
+  const outstandingBalance = computeBookingOutstandingDisplay({
+    totalAmount: Number(booking.total_amount || 0),
+    totalPaid: Number((booking as any).total_paid || 0),
+    totalRefunded: Number((booking as any).total_refunded || 0),
+    walletAmount: Number((booking as any).wallet_amount || 0),
+    giftCardAmount: Number((booking as any).gift_card_amount || 0),
+    unpaidAdditionalCharges,
+    paymentStatus: (booking as any).payment_status,
+  });
 
   const handleCopyPhone = async () => {
     if (phone) {
@@ -177,9 +193,11 @@ export function ActionPanel({ booking, onClose, onActionComplete, onCompleteRequ
             )}
             <div className="pt-4 border-t border-[#0F172A]/[0.08]">
               <div className="flex justify-between items-baseline">
-                <span className="text-sm text-[#0F172A]/60">Total</span>
+                <span className="text-sm text-[#0F172A]/60">
+                  {unpaidAdditionalCharges > 0 ? "Total incl. open charges" : "Total"}
+                </span>
                 <span className="text-lg font-semibold text-[#0F172A]">
-                  {booking.currency} {Number(booking.total_amount || 0).toFixed(2)}
+                  {booking.currency} {folioTotal.toFixed(2)}
                 </span>
               </div>
             </div>
@@ -226,6 +244,11 @@ export function ActionPanel({ booking, onClose, onActionComplete, onCompleteRequ
                   bookingId={booking.id}
                   totalAmount={Number(booking.total_amount || 0)}
                   totalPaid={Number((booking as any).total_paid || 0)}
+                  totalRefunded={Number((booking as any).total_refunded || 0)}
+                  walletAmount={Number((booking as any).wallet_amount || 0)}
+                  giftCardAmount={Number((booking as any).gift_card_amount || 0)}
+                  unpaidAdditionalCharges={unpaidAdditionalCharges}
+                  paymentStatus={(booking as any).payment_status}
                   currency={booking.currency || tenantCurrency}
                   onComplete={onActionComplete}
                   variant="footer"
@@ -246,8 +269,13 @@ export function ActionPanel({ booking, onClose, onActionComplete, onCompleteRequ
                     })
                   }
                 >
-                  Mark completed (cash / offline)
+                  {outstandingBalance > 0 ? "Complete without recording payment" : "Mark completed"}
                 </Button>
+                {outstandingBalance > 0 ? (
+                  <p className="text-[11px] font-medium leading-4 text-amber-700">
+                    This only changes booking status. Use the payment buttons above to record cash, card, or offline payment.
+                  </p>
+                ) : null}
               </div>
             ) : nextStep ? (
               <Button

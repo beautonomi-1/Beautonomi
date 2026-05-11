@@ -562,42 +562,42 @@ export function ProviderOpsLeadDetailPage() {
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <label className="block text-sm">
                     <span className="text-xs font-medium text-gray-500">Contact Person</span>
-                    <input className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none" value={editDraft.contact_person_name} onChange={(e) => setEditDraft((d) => ({ ...d, contact_person_name: e.target.value }))} />
+                    <input className="mt-1 min-h-11 w-full rounded-lg border border-gray-300 px-3 py-2 text-base focus:border-gray-500 focus:outline-none sm:text-sm" value={editDraft.contact_person_name} onChange={(e) => setEditDraft((d) => ({ ...d, contact_person_name: e.target.value }))} />
                   </label>
                   <label className="block text-sm">
                     <span className="text-xs font-medium text-gray-500">Business Name</span>
-                    <input className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none" value={editDraft.business_name} onChange={(e) => setEditDraft((d) => ({ ...d, business_name: e.target.value }))} />
+                    <input className="mt-1 min-h-11 w-full rounded-lg border border-gray-300 px-3 py-2 text-base focus:border-gray-500 focus:outline-none sm:text-sm" value={editDraft.business_name} onChange={(e) => setEditDraft((d) => ({ ...d, business_name: e.target.value }))} />
                   </label>
                   <label className="block text-sm">
                     <span className="text-xs font-medium text-gray-500">Email</span>
-                    <input type="email" className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none" value={editDraft.email} onChange={(e) => setEditDraft((d) => ({ ...d, email: e.target.value }))} />
+                    <input type="email" className="mt-1 min-h-11 w-full rounded-lg border border-gray-300 px-3 py-2 text-base focus:border-gray-500 focus:outline-none sm:text-sm" value={editDraft.email} onChange={(e) => setEditDraft((d) => ({ ...d, email: e.target.value }))} />
                   </label>
                   <label className="block text-sm">
                     <span className="text-xs font-medium text-gray-500">Phone</span>
-                    <input type="tel" className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none" value={editDraft.phone_e164} onChange={(e) => setEditDraft((d) => ({ ...d, phone_e164: e.target.value }))} />
+                    <input type="tel" className="mt-1 min-h-11 w-full rounded-lg border border-gray-300 px-3 py-2 text-base focus:border-gray-500 focus:outline-none sm:text-sm" value={editDraft.phone_e164} onChange={(e) => setEditDraft((d) => ({ ...d, phone_e164: e.target.value }))} />
                   </label>
                   <label className="block text-sm">
                     <span className="text-xs font-medium text-gray-500">Location</span>
-                    <input className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none" value={editDraft.suggested_location_text} onChange={(e) => setEditDraft((d) => ({ ...d, suggested_location_text: e.target.value }))} />
+                    <input className="mt-1 min-h-11 w-full rounded-lg border border-gray-300 px-3 py-2 text-base focus:border-gray-500 focus:outline-none sm:text-sm" value={editDraft.suggested_location_text} onChange={(e) => setEditDraft((d) => ({ ...d, suggested_location_text: e.target.value }))} />
                   </label>
                   <label className="block text-sm">
                     <span className="text-xs font-medium text-gray-500">Country</span>
-                    <input className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none" value={editDraft.country} onChange={(e) => setEditDraft((d) => ({ ...d, country: e.target.value }))} />
+                    <input className="mt-1 min-h-11 w-full rounded-lg border border-gray-300 px-3 py-2 text-base focus:border-gray-500 focus:outline-none sm:text-sm" value={editDraft.country} onChange={(e) => setEditDraft((d) => ({ ...d, country: e.target.value }))} />
                   </label>
                 </div>
                 <label className="block text-sm">
                   <span className="text-xs font-medium text-gray-500">Description</span>
-                  <textarea rows={3} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none" value={editDraft.description} onChange={(e) => setEditDraft((d) => ({ ...d, description: e.target.value }))} />
+                  <textarea rows={3} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-base focus:border-gray-500 focus:outline-none sm:text-sm" value={editDraft.description} onChange={(e) => setEditDraft((d) => ({ ...d, description: e.target.value }))} />
                 </label>
                 <label className="block text-sm">
                   <span className="text-xs font-medium text-gray-500">Notes</span>
-                  <textarea rows={2} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none" value={editDraft.notes} onChange={(e) => setEditDraft((d) => ({ ...d, notes: e.target.value }))} />
+                  <textarea rows={2} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-base focus:border-gray-500 focus:outline-none sm:text-sm" value={editDraft.notes} onChange={(e) => setEditDraft((d) => ({ ...d, notes: e.target.value }))} />
                 </label>
                 <div className="flex gap-2 pt-1">
-                  <button type="button" disabled={updateLeadMut.isPending} onClick={saveEdits} className="rounded-xl bg-gray-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50 transition-colors">
+                  <button type="button" disabled={updateLeadMut.isPending} onClick={saveEdits} className="min-h-11 rounded-xl bg-gray-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50 transition-colors">
                     {updateLeadMut.isPending ? "Saving…" : "Save Changes"}
                   </button>
-                  <button type="button" onClick={() => setIsEditing(false)} className="rounded-xl border border-gray-300 bg-white px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
+                  <button type="button" onClick={() => setIsEditing(false)} className="min-h-11 rounded-xl border border-gray-300 bg-white px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
                     Cancel
                   </button>
                 </div>
@@ -754,7 +754,7 @@ export function ProviderOpsLeadDetailPage() {
                     type="button"
                     onClick={() => setShowConvertModal(true)}
                     disabled={convertMut.isPending}
-                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                    className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
                   >
                     <ArrowRightCircle className="h-4 w-4" />
                     Convert to Provider
@@ -770,7 +770,7 @@ export function ProviderOpsLeadDetailPage() {
                     type="button"
                     onClick={() => setShowInviteModal(true)}
                     disabled={inviteMut.isPending}
-                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-indigo-300 bg-white px-4 py-2.5 text-sm font-medium text-indigo-700 hover:bg-indigo-50 disabled:opacity-50 transition-colors"
+                    className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-indigo-300 bg-white px-4 py-2.5 text-sm font-medium text-indigo-700 hover:bg-indigo-50 disabled:opacity-50 transition-colors"
                   >
                     <Send className="h-4 w-4" />
                     Send Onboarding Link
@@ -796,7 +796,7 @@ export function ProviderOpsLeadDetailPage() {
             <div className="flex flex-wrap gap-1.5">
               {STAGES.map((s) => (
                 <button key={s} type="button" disabled={stageChange.isPending} onClick={() => stageChange.mutate(s)} className={cn(
-                  "rounded-full px-3 py-1.5 text-xs font-medium transition-all",
+                "min-h-11 rounded-full px-3 py-1.5 text-xs font-medium transition-all touch-manipulation",
                   s === stage ? "bg-gray-900 text-white shadow-md" : "border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 hover:shadow-sm",
                 )}>
                   <span className={cn("mr-1 inline-block h-1.5 w-1.5 rounded-full", s === stage ? "bg-white" : STAGE_DOT[s])} />

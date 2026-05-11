@@ -11,6 +11,7 @@ import { getGoogleCalendarUrl, getOutlookCalendarUrl, downloadICS } from "@/lib/
 import { formatCurrency } from "@/lib/utils";
 import { formatBookingDateInTimeZone, formatBookingTimeInTimeZone } from "@/lib/bookings/display-datetime";
 import { DEFAULT_BOOKING_DISPLAY_TIMEZONE } from "@/lib/bookings/display-invariants";
+import { getBookingLifecycleDisplay, getBookingPaymentDisplay } from "@beautonomi/utils";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import BeautonomiHeader from "@/components/layout/beautonomi-header";
 import { useRefreshAmplitudeIdentify } from "@/hooks/useAmplitude";
@@ -26,6 +27,8 @@ interface BookingDetails {
   currency: string;
   wallet_amount?: number;
   total_paid?: number;
+  deposit_required?: boolean;
+  payment_option?: string | null;
   /** Line items for parity with checkout summary (from `/api/me/bookings/[id]`). */
   subtotal?: number;
   tax_amount?: number;
@@ -132,8 +135,9 @@ export default function BookingConfirmationPage() {
 
     const loadBooking = async () => {
       setIsLoading(true);
-      // Retry up to 3 times with backoff — the booking may have just been written to DB
-      const delays = [0, 1000, 2500];
+      // Retry while the booking/payment write catches up; card payments may be
+      // confirmed by Paystack just before webhook reconciliation completes.
+      const delays = [0, 1000, 2500, 4000, 6000];
       let lastErr: unknown = null;
       for (const delay of delays) {
         if (delay > 0) await new Promise((r) => setTimeout(r, delay));
@@ -142,6 +146,15 @@ export default function BookingConfirmationPage() {
             `/api/me/bookings/${bookingId}`
           );
           setBooking(response.data);
+          const paymentStatus = String(response.data?.payment_status || "").toLowerCase();
+          const paymentProvider = String(response.data?.payment_provider || "").toLowerCase();
+          const shouldKeepPollingPayment =
+            paymentStatus === "pending" &&
+            paymentProvider !== "cash" &&
+            delay !== delays[delays.length - 1];
+          if (shouldKeepPollingPayment) {
+            continue;
+          }
           refreshIdentify();
           setIsLoading(false);
           return;
@@ -200,13 +213,17 @@ export default function BookingConfirmationPage() {
     const timeLine = formatBookingTimeInTimeZone(booking.selected_datetime, tz);
     const totalStr = formatCurrency(booking.total_amount, booking.currency);
     const providerName = booking.provider?.business_name || "the provider";
+    const lifecycleDisplay = getBookingLifecycleDisplay({
+      status: booking.status,
+      providerName,
+    });
     const text = [
       `Booking #${booking.booking_number} — ${providerName}.`,
       `${dateLine}, ${timeLine}.`,
       `${booking.services.length} service(s). Total ${totalStr}.`,
     ].join(" ");
     const shareData = {
-      title: `Booking Confirmation - ${booking.booking_number}`,
+      title: `${lifecycleDisplay.title} - ${booking.booking_number}`,
       text,
       url: window.location.href,
     };
@@ -317,11 +334,9 @@ export default function BookingConfirmationPage() {
                 <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-100 mb-4">
                   <CheckCircle className="w-8 h-8 text-green-600" />
                 </div>
-                <h1 className="text-2xl font-semibold text-gray-900 mb-2">
-                  Booking Confirmed!
-                </h1>
+                <h1 className="text-2xl font-semibold text-gray-900 mb-2">Booking submitted</h1>
                 <p className="text-gray-500 text-sm mb-6">
-                  Your booking was created successfully. We could not load the full details right now — check your email for a confirmation, or view your bookings below.
+                  Your booking was created successfully. We could not load the full details right now — check your email, or view your bookings below.
                 </p>
                 <div className="flex flex-col sm:flex-row gap-3 justify-center">
                   <Button
@@ -355,6 +370,21 @@ export default function BookingConfirmationPage() {
   const bookingDateRaw = booking.selected_datetime;
   const bookingTz = booking.display_time_zone || DEFAULT_BOOKING_DISPLAY_TIMEZONE;
   const bookingDate = new Date(bookingDateRaw);
+  const lifecycleDisplay = getBookingLifecycleDisplay({
+    status: booking.status,
+    providerName: booking.provider?.business_name,
+  });
+  const paymentDisplay = getBookingPaymentDisplay({
+    paymentStatus: booking.payment_status,
+    paymentProvider: booking.payment_provider,
+    outstandingBalance: booking.outstanding_balance,
+    paymentOption: booking.payment_option,
+    depositRequired: booking.deposit_required,
+  });
+  const walletPaid = Math.max(0, Number(booking.wallet_amount || 0));
+  const giftCardPaid = Math.max(0, Number(booking.gift_card_amount || 0));
+  const totalPaid = Math.max(0, Number(booking.total_paid || 0));
+  const otherPaid = Math.max(0, totalPaid - walletPaid - giftCardPaid);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -373,21 +403,21 @@ export default function BookingConfirmationPage() {
             transition={{ type: "spring", stiffness: 200, damping: 15 }}
             className="inline-block mb-4"
           >
-            {booking.status === "confirmed" || booking.status === "completed" ? (
+            {lifecycleDisplay.tone === "success" || lifecycleDisplay.tone === "info" ? (
               <CheckCircle className="w-20 h-20 text-green-500" />
             ) : (
               <AlertCircle className="w-20 h-20 text-yellow-500" />
             )}
           </motion.div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            {booking.status === "confirmed" || booking.status === "completed"
-              ? "Booking Confirmed!"
-              : "Booking Received!"}
+            {lifecycleDisplay.title}
           </h1>
           <p className="text-gray-600">
-            {booking.status === "confirmed" || booking.status === "completed"
-              ? <>Your booking has been confirmed. We&apos;ve sent a confirmation to{" "}{booking.client_info?.email || "your email"}.</>
-              : "Your payment was received. Your booking is awaiting provider confirmation — you'll be notified once it's confirmed."}
+            {paymentDisplay.isPaymentSettled || paymentDisplay.isDepositPaid
+              ? `${paymentDisplay.description} ${lifecycleDisplay.description}`
+              : lifecycleDisplay.isPaymentInProgress
+                ? "We are still confirming your payment. You will be notified once it is complete."
+                : lifecycleDisplay.description}
           </p>
           {booking.status === "pending" && (
             <div className="mt-3 inline-flex items-center gap-2 bg-yellow-50 border border-yellow-200 rounded-full px-4 py-1.5 text-sm text-yellow-800">
@@ -580,7 +610,7 @@ export default function BookingConfirmationPage() {
             {/* Price breakdown — matches checkout when fees/taxes/loyalty apply */}
             {(() => {
               const travel = booking.travel_fee ?? 0;
-              const sub = Math.max(0, (booking.subtotal ?? 0) - travel);
+              const sub = Math.max(0, Number(booking.subtotal ?? 0));
               const tax = booking.tax_amount ?? 0;
               const taxRate = booking.tax_rate ?? 0;
               const svcFee =
@@ -684,20 +714,26 @@ export default function BookingConfirmationPage() {
                   {formatCurrency(booking.total_amount, booking.currency)}
                 </span>
               </div>
-              {/* Show wallet credit if part of total was covered by wallet */}
-              {(booking.wallet_amount ?? 0) > 0 && (
+              {/* Show tender lines without double-counting wallet/gift in total_paid. */}
+              {walletPaid > 0 && (
                 <div className="flex justify-between items-center text-sm text-green-700">
                   <span className="flex items-center gap-1.5">
                     <Wallet className="w-3.5 h-3.5" />
-                    Wallet credit applied
+                    Paid with wallet
                   </span>
-                  <span className="font-medium">−{formatCurrency(booking.wallet_amount!, booking.currency)}</span>
+                  <span className="font-medium">{formatCurrency(walletPaid, booking.currency)}</span>
                 </div>
               )}
-              {(booking.wallet_amount ?? 0) > 0 && (booking.total_paid ?? 0) > 0 && (
+              {giftCardPaid > 0 && (
+                <div className="flex justify-between items-center text-sm text-blue-700">
+                  <span>Paid with gift card</span>
+                  <span className="font-medium">{formatCurrency(giftCardPaid, booking.currency)}</span>
+                </div>
+              )}
+              {otherPaid > 0 && (
                 <div className="flex justify-between items-center text-sm text-gray-600">
-                  <span>Paid via card</span>
-                  <span className="font-medium">{formatCurrency(booking.total_paid!, booking.currency)}</span>
+                  <span>{booking.payment_provider === "cash" ? "Cash recorded" : "Paid online / card"}</span>
+                  <span className="font-medium">{formatCurrency(otherPaid, booking.currency)}</span>
                 </div>
               )}
               {typeof booking.outstanding_balance === "number" && booking.outstanding_balance > 0 && (
@@ -718,8 +754,8 @@ export default function BookingConfirmationPage() {
               ) : (
                 <p className="text-sm text-gray-500 mt-1">
                   Payment status:{" "}
-                  <span className={booking.payment_status === "paid" ? "text-green-600 font-medium" : "text-yellow-600 font-medium"}>
-                    {booking.payment_status === "paid" ? "Paid in full" : booking.payment_status === "partially_paid" ? "Partially paid" : "Pending"}
+                  <span className={paymentDisplay.tone === "success" ? "text-green-600 font-medium" : "text-yellow-600 font-medium"}>
+                    {paymentDisplay.label}
                   </span>
                 </p>
               )}

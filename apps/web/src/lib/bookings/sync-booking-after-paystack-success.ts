@@ -30,7 +30,7 @@ export async function syncBookingAfterPaystackSuccess(
   const { data: row, error } = await admin
     .from("bookings")
     .select(
-      "id, status, provider_id, total_amount, total_paid, wallet_amount, gift_card_amount, payment_status, payment_date, paid_at, confirmed_at, cancelled_at",
+      "id, status, provider_id, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status, payment_date, paid_at, confirmed_at, cancelled_at",
     )
     .eq("id", bookingId)
     .maybeSingle();
@@ -57,17 +57,21 @@ export async function syncBookingAfterPaystackSuccess(
   }
 
   const ps = (row.payment_status as string) || "pending";
-  // A partially_paid booking where wallet covered the rest is actually fully paid.
-  // The DB trigger only sums booking_payments rows (Paystack amounts), not wallet_amount.
-  // We re-derive the true paid status here to ensure correct accounting.
+  // Post-582/589, total_paid is expected to include synthetic wallet/gift rows.
+  // Use the same coverage invariant as booking display/mark-paid to avoid
+  // double-counting those fields while still handling legacy rows.
   const totalPaid = Number((row as Record<string, unknown>).total_paid ?? 0);
+  const totalRefunded = Number((row as Record<string, unknown>).total_refunded ?? 0);
   const walletAmount = Number((row as Record<string, unknown>).wallet_amount ?? 0);
   const giftCardAmount = Number((row as Record<string, unknown>).gift_card_amount ?? 0);
   const totalAmount = Number((row as Record<string, unknown>).total_amount ?? 0);
-  const effectivelyPaid = totalPaid + walletAmount + giftCardAmount;
-  const isFullyCovered = totalAmount > 0 && effectivelyPaid >= totalAmount - 0.01; // 1-cent tolerance for rounding
+  const effectivePaid = Math.max(0, totalPaid - totalRefunded);
+  const walletGiftCoverage = walletAmount + giftCardAmount;
+  const coverage = Math.max(effectivePaid, walletGiftCoverage);
+  const isFullyCovered = totalAmount > 0 && coverage >= totalAmount - 0.01; // 1-cent tolerance for rounding
 
-  const hasRecordedPayment = ps === "paid" || ps === "partially_paid" || isFullyCovered;
+  const hasCoverage = coverage > 0.005;
+  const hasRecordedPayment = hasCoverage || ps === "partially_paid" || isFullyCovered;
 
   if (!hasRecordedPayment) {
     if (Object.keys(updates).length > 0) {
@@ -83,10 +87,14 @@ export async function syncBookingAfterPaystackSuccess(
     updates.paid_at = now;
   }
 
-  // When wallet + Paystack together cover the full amount, mark as fully paid regardless
-  // of what the DB trigger computed (trigger ignores wallet_amount).
-  if (isFullyCovered && ps !== "paid") {
+  // If the booking is fully covered but the DB status is stale, repair it here.
+  // Refund-aware statuses are owned by the booking_refunds trigger; do not flatten them.
+  if (ps === "refunded" || ps === "partially_refunded") {
+    // keep trigger-derived refund state
+  } else if (isFullyCovered && ps !== "paid" && totalRefunded <= 0.005) {
     updates.payment_status = "paid";
+  } else if (!isFullyCovered && ps === "paid" && hasCoverage) {
+    updates.payment_status = "partially_paid";
   }
 
   if (shouldAutoConfirm) {
@@ -96,6 +104,8 @@ export async function syncBookingAfterPaystackSuccess(
         updates.confirmed_at = now;
       }
     }
+  } else if (row.status === "pending_payment") {
+    updates.status = "pending";
   }
   // When requireConfirmationForBookings is true, leave status as pending until provider confirms.
 

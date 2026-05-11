@@ -87,44 +87,13 @@ async function handleRefundProcessed(data: Record<string, unknown>, supabase: Su
     // The create_finance_ledger_from_booking_refund trigger (migration 490) is the
     // SOLE writer of the finance_transactions refund entry; app-side inserts have
     // been removed to prevent duplicate ledger rows.
-    const [{ data: completedPayments }, { data: existingRefunds }] = await Promise.all([
-      supabase
-        .from("booking_payments")
-        .select("amount")
-        .eq("booking_id", txn.booking_id)
-        .eq("status", "completed"),
-      supabase
-        .from("booking_refunds")
-        .select("amount")
-        .eq("booking_id", txn.booking_id)
-        .eq("status", "completed"),
-    ]);
-    const paidAmount = (completedPayments ?? []).reduce(
-      (sum: number, row: { amount?: number | string | null }) => sum + Number(row.amount ?? 0),
-      0,
-    );
-    const refundedBefore = (existingRefunds ?? []).reduce(
-      (sum: number, row: { amount?: number | string | null }) => sum + Number(row.amount ?? 0),
-      0,
-    );
-    const refundStatus = refundedBefore + refundAmount >= Math.max(0, paidAmount) - 0.01
-      ? "refunded"
-      : "partially_refunded";
-
-    await supabase.from("bookings")
-      .update({
-        payment_status: refundStatus,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", txn.booking_id);
-
     // Resolve the originating booking_payments row so booking_refunds.payment_id is set.
     // Without it the DB trigger still fires but the ledger entry won't carry source_payment_id.
     const { data: bookingPayment } = await supabase
       .from("booking_payments")
       .select("id")
       .eq("booking_id", txn.booking_id)
-      .eq("status", "completed")
+      .in("status", ["completed", "partially_refunded"])
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();

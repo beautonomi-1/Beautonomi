@@ -2,7 +2,7 @@
  * Push Notifications Provider – OneSignal (Provider App)
  * Fetches app_id from superadmin (GET /api/public/third-party-config?service=onesignal).
  * Fallback: EXPO_PUBLIC_ONESIGNAL_APP_ID from env.
- * Registers device with POST /api/me/devices (onesignal_player_id = OneSignal subscription ID).
+ * Registers device with POST /api/provider/devices (onesignal_player_id = OneSignal subscription ID).
  * Handles notification tap deep links via expo-router.
  * Notification templates are configured from the superadmin portal.
  */
@@ -20,6 +20,8 @@ import { api } from "@/lib/api-client";
 import { getOneSignalAppId } from "@/lib/third-party-config";
 import { captureError, addBreadcrumb } from "@/lib/sentry";
 import { isTransientApiFailure } from "@/lib/api-error";
+
+const SUBSCRIPTION_RETRY_DELAYS_MS = [3000, 10000, 30000];
 
 /** Keys from sendTemplateNotification(..., { appType: "provider" }); payload uses template_key, not type. */
 const PROVIDER_BOOKING_TEMPLATE_KEYS = new Set([
@@ -393,11 +395,10 @@ function usePushRegistration() {
       try {
         const platform = Platform.OS === "ios" ? "ios" : "android";
         const res = await api.post<{ registered?: boolean }>(
-          "/api/me/devices",
+          "/api/provider/devices",
           {
             player_id: playerId,
             platform,
-            app_type: "provider",
           },
         );
         if (res.error) {
@@ -455,6 +456,8 @@ function usePushRegistration() {
               };
               if (Object.keys(merged).length > 0) {
                 handleNotificationRoute(merged);
+              } else {
+                router.push("/(app)/notifications");
               }
             },
           );
@@ -494,7 +497,7 @@ function usePushRegistration() {
         if (subId) {
           await registerWithBackend(subId);
         } else {
-          const retry = setTimeout(async () => {
+          const retryTimers = SUBSCRIPTION_RETRY_DELAYS_MS.map((delay) => setTimeout(async () => {
             try {
               const retryId =
                 await OneSignal.User.pushSubscription.getIdAsync();
@@ -502,8 +505,8 @@ function usePushRegistration() {
             } catch {
               // ignore
             }
-          }, 3000);
-          unsubscribe = () => clearTimeout(retry);
+          }, delay));
+          unsubscribe = () => retryTimers.forEach(clearTimeout);
         }
       } catch (e) {
         captureError(
@@ -523,7 +526,7 @@ function usePushRegistration() {
     if (gate.phase !== "complete" || gate.fromRestore) return;
 
     let cancelled = false;
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    let timeoutIds: ReturnType<typeof setTimeout>[] = [];
 
     const tryRegister = async () => {
       if (cancelled || registeredRef.current) return;
@@ -533,27 +536,26 @@ function usePushRegistration() {
         if (!id || cancelled || registeredRef.current) return;
         const platform = Platform.OS === "ios" ? "ios" : "android";
         const res = await api.post<{ registered?: boolean }>(
-          "/api/me/devices",
+          "/api/provider/devices",
           {
             player_id: id,
             platform,
-            app_type: "provider",
           },
         );
         if (!res.error) {
           registeredRef.current = true;
         }
-      } catch {
-        // OneSignal not available
+      } catch (err) {
+        captureError(err, { scope: "push_notifications:device_register_retry" });
       }
     };
 
     void tryRegister();
-    timeoutId = setTimeout(tryRegister, 2500);
+    timeoutIds = [2500, 10000, 30000].map((delay) => setTimeout(tryRegister, delay));
 
     return () => {
       cancelled = true;
-      if (timeoutId) clearTimeout(timeoutId);
+      timeoutIds.forEach(clearTimeout);
     };
   }, [appId, user, gate]);
 }

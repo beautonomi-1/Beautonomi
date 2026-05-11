@@ -92,13 +92,12 @@ export default function VATReportsScreen() {
 
   const markAsRemitted = useCallback(
     async (report: VATReport) => {
-      if (!report.reminder_id) {
-        Alert.alert("Error", "Unable to mark as remitted. Please refresh.");
-        return;
-      }
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      // When no reminder has been sent yet, pass "new" — the API will create
+      // the reminder record on the first mark-as-remitted call.
+      const reminderId = report.reminder_id ?? "new";
       const { error: err } = await patchRemitted(
-        `/api/provider/finance/vat-reports/${report.reminder_id}/mark-remitted`,
+        `/api/provider/finance/vat-reports/${reminderId}/mark-remitted`,
         { period_start: report.period_start, period_end: report.period_end }
       );
       if (err) {

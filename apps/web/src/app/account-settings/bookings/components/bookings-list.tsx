@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { Calendar, MapPin, Clock, User, Sparkles } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { getBookingLifecycleDisplay, getBookingPaymentDisplay } from "@beautonomi/utils";
 
 interface BookingsListProps {
   status?: "upcoming" | "past" | "cancelled";
@@ -223,7 +224,19 @@ export default function BookingsList({
         </Select>
       </div>
 
-      {bookings.map((booking) => (
+      {bookings.map((booking) => {
+        const lifecycleDisplay = getBookingLifecycleDisplay({
+          status: booking.status,
+          providerName: (booking as BookingListItem).provider_name,
+        });
+        const paymentDisplay = getBookingPaymentDisplay({
+          paymentStatus: (booking as { payment_status?: string }).payment_status,
+          paymentProvider: (booking as { payment_provider?: string }).payment_provider,
+          outstandingBalance: (booking as { outstanding_balance?: number }).outstanding_balance,
+          paymentOption: (booking as { payment_option?: string }).payment_option,
+          depositRequired: (booking as { deposit_required?: boolean }).deposit_required,
+        });
+        return (
         <div
           key={booking.id}
           className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-2xl p-6 md:p-8 shadow-lg hover:shadow-2xl hover:-translate-y-0.5 active:scale-[0.99] transition-all duration-200"
@@ -253,11 +266,13 @@ export default function BookingsList({
                       : "bg-gray-50 text-gray-700 border border-gray-200"
                   }`}
                 >
-                  {(booking.status as string) === "pending_payment" ? "Pending Payment"
-                    : booking.status === "in_progress" ? "In Progress"
-                    : booking.status === "no_show" ? "No Show"
-                    : booking.status.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase())}
+                  {lifecycleDisplay.label}
                 </span>
+                {(paymentDisplay.isPaymentSettled || paymentDisplay.isDepositPaid) && (
+                  <span className="px-3 py-1.5 rounded-full text-xs font-semibold tracking-tight bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    {paymentDisplay.label}
+                  </span>
+                )}
               </div>
 
               <div className="space-y-3 text-sm md:text-base text-gray-700">
@@ -343,7 +358,8 @@ export default function BookingsList({
             </div>
           </div>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

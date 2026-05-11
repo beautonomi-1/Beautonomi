@@ -8,7 +8,7 @@ let engagementPluginRegistered = false;
 
 /**
  * Amplitude's Guides & Surveys runtime (loaded from their CDN by the engagement plugin)
- * uses the native Popover API (`showPopover` / `hidePopover`). Older browsers (and some
+ * uses the native Popover API (`showPopover` / `hidePopover` / `togglePopover`). Older browsers (and some
  * WebKit versions without full support) throw `hidePopover is not a function` during
  * decide / teardown — skip registering the plugin so analytics still works.
  */
@@ -17,8 +17,13 @@ function engagementPopoverHostSupported(): boolean {
   const proto = HTMLElement.prototype as HTMLElement & {
     showPopover?: () => void;
     hidePopover?: () => void;
+    togglePopover?: () => boolean;
   };
-  return typeof proto.showPopover === "function" && typeof proto.hidePopover === "function";
+  return (
+    typeof proto.showPopover === "function" &&
+    typeof proto.hidePopover === "function" &&
+    typeof proto.togglePopover === "function"
+  );
 }
 
 /**
@@ -40,7 +45,7 @@ export default function AmplitudeEngagementProvider({ children }: { children: Re
     if (!engagementPopoverHostSupported()) {
       if (process.env.NODE_ENV !== "production") {
         console.warn(
-          "[Amplitude] Guides/Surveys engagement plugin skipped: native Popover API (showPopover/hidePopover) not available in this browser.",
+          "[Amplitude] Guides/Surveys engagement plugin skipped: native Popover API (showPopover/hidePopover/togglePopover) not available in this browser.",
         );
       }
       return;

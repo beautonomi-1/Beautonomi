@@ -364,11 +364,33 @@ export default function AdsSettingsScreen() {
     loadAll();
   }, [loadAll]);
 
+  const confirmAdsCheckout = useCallback(
+    (params: { title: string; message: string; confirmLabel?: string }) =>
+      new Promise<boolean>((resolve) => {
+        Alert.alert(params.title, params.message, [
+          { text: "Not now", style: "cancel", onPress: () => resolve(false) },
+          {
+            text: params.confirmLabel ?? "Continue to Paystack",
+            onPress: () => resolve(true),
+          },
+        ]);
+      }),
+    [],
+  );
+
   const handleCreateCampaign = useCallback(async () => {
     const budgetNum = parseFloat(createForm.budget.replace(/,/g, "."));
     if (!Number.isFinite(budgetNum) || budgetNum < 0) {
       Alert.alert("Invalid", `Enter a valid total budget (${tenantCurrency}).`);
       return;
+    }
+    if (budgetNum > 0) {
+      const confirmed = await confirmAdsCheckout({
+        title: "Review ad budget",
+        message: `You are about to fund this campaign with ${formatMoney(budgetNum, tenantCurrency)}. Paystack will confirm the payment before the campaign is funded.`,
+        confirmLabel: "Pay securely",
+      });
+      if (!confirmed) return;
     }
     setCreating(true);
     try {
@@ -407,10 +429,17 @@ export default function AdsSettingsScreen() {
     } finally {
       setCreating(false);
     }
-  }, [createForm, loadAll, tenantCurrency, router]);
+  }, [createForm, loadAll, tenantCurrency, router, confirmAdsCheckout]);
 
   const handleBuyPack = useCallback(
     async (pack: ImpressionPack) => {
+      const confirmed = await confirmAdsCheckout({
+        title: "Review impression pack",
+        message: `${formatCompactNumber(pack.impressions)} impressions for ${formatMoney(pack.price_zar, tenantCurrency)}. Paystack will confirm payment before delivery starts.`,
+        confirmLabel: "Buy pack",
+      });
+      if (!confirmed) return;
+
       setCreatingPackId(pack.id);
       try {
         const res = await api.post<
@@ -448,7 +477,7 @@ export default function AdsSettingsScreen() {
         setCreatingPackId(null);
       }
     },
-    [loadAll, router, createForm.global_category_ids]
+    [loadAll, router, createForm.global_category_ids, confirmAdsCheckout, tenantCurrency]
   );
 
   const handleUpdateCampaign = useCallback(async () => {
@@ -690,6 +719,13 @@ export default function AdsSettingsScreen() {
                   <TouchableOpacity
                     key={tp.id}
                     onPress={async () => {
+                      const confirmed = await confirmAdsCheckout({
+                        title: "Review time boost",
+                        message: `${tp.label} for ${formatMoney(tp.price_zar, tenantCurrency)}. Your sponsored placement starts only after Paystack confirms payment.`,
+                        confirmLabel: "Buy boost",
+                      });
+                      if (!confirmed) return;
+
                       setCreatingPackId(tp.id);
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                       try {

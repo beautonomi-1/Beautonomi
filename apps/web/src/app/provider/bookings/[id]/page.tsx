@@ -64,6 +64,7 @@ import {
   ARRIVAL_PIN_PROVIDER_HEADING,
   ARRIVAL_PIN_PROVIDER_SUBTEXT,
   ARRIVAL_PIN_TOAST_PROVIDER_INCOMPLETE,
+  getBookingPaymentDisplay,
 } from "@beautonomi/utils";
 import {
   Dialog,
@@ -1037,6 +1038,12 @@ export default function ProviderBookingDetail() {
     unpaidAdditionalCharges: unpaidChargesTotal,
     paymentStatus: b.payment_status,
   });
+  const paymentDisplay = getBookingPaymentDisplay({
+    paymentStatus: b.payment_status,
+    outstandingBalance: outstanding,
+    paymentOption: (b as unknown as Record<string, unknown>).payment_option as string | null | undefined,
+    depositRequired: (b as unknown as Record<string, unknown>).deposit_required as boolean | null | undefined,
+  });
   const netPaidAfterRefunds = totalPaid - totalRefunded;
   const maxRefundable = Math.max(0, netPaidAfterRefunds);
   const canMarkPaid = outstanding > 0 && (b.status === "completed" || isStarted);
@@ -1102,6 +1109,11 @@ export default function ProviderBookingDetail() {
               {(booking as any).group_booking_ref && (
                 <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">Group</span>
               )}
+              {(booking as { custom_offer_id?: string | null }).custom_offer_id ? (
+                <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-pink-100 text-pink-800">
+                  Custom offer
+                </span>
+              ) : null}
             </div>
           </div>
           <a
@@ -1665,9 +1677,41 @@ export default function ProviderBookingDetail() {
             <div className="flex justify-between">
               <span className="text-gray-600">Subtotal</span>
               <span className="font-medium">
-                {booking.currency} {Math.max(0, (booking.subtotal ?? 0) - (booking.travel_fee ?? 0)).toFixed(2)}
+                {booking.currency} {(Number(booking.subtotal) || 0).toFixed(2)}
               </span>
             </div>
+            {Number((booking as any).discount_amount ?? 0) > 0 && (
+              <div className="flex justify-between">
+                <span className="text-gray-600">Discount</span>
+                <span className="font-medium text-green-600">
+                  −{booking.currency} {Number((booking as any).discount_amount).toFixed(2)}
+                </span>
+              </div>
+            )}
+            {Number((booking as any).promotion_discount_amount ?? 0) > 0 && (
+              <div className="flex justify-between">
+                <span className="text-gray-600">Promotion</span>
+                <span className="font-medium text-green-600">
+                  −{booking.currency} {Number((booking as any).promotion_discount_amount).toFixed(2)}
+                </span>
+              </div>
+            )}
+            {Number((booking as any).membership_discount_amount ?? 0) > 0 && (
+              <div className="flex justify-between">
+                <span className="text-gray-600">Membership</span>
+                <span className="font-medium text-green-600">
+                  −{booking.currency} {Number((booking as any).membership_discount_amount).toFixed(2)}
+                </span>
+              </div>
+            )}
+            {Number((booking as any).loyalty_discount_amount ?? 0) > 0 && (
+              <div className="flex justify-between">
+                <span className="text-gray-600">Loyalty</span>
+                <span className="font-medium text-green-600">
+                  −{booking.currency} {Number((booking as any).loyalty_discount_amount).toFixed(2)}
+                </span>
+              </div>
+            )}
             {booking.travel_fee != null && booking.travel_fee > 0 && (
               <div className="flex justify-between">
                 <span className="text-gray-600">Travel Fee</span>
@@ -1729,14 +1773,16 @@ export default function ProviderBookingDetail() {
               <span>Payment Status</span>
               <span
                 className={`font-medium ${
-                  booking.payment_status === "paid"
+                  paymentDisplay.tone === "success"
                     ? "text-green-600"
-                    : booking.payment_status === "pending"
+                    : paymentDisplay.tone === "warning"
                     ? "text-yellow-600"
-                    : "text-red-600"
+                    : paymentDisplay.tone === "danger"
+                      ? "text-red-600"
+                      : "text-gray-600"
                 }`}
               >
-                {booking.payment_status}
+                {paymentDisplay.label}
               </span>
             </div>
           </div>
@@ -1862,6 +1908,30 @@ export default function ProviderBookingDetail() {
                 <span className="font-medium text-green-600">−{formatMoney(Number((booking as any).discount_amount))}</span>
               </div>
             )}
+            {Number((booking as any).promotion_discount_amount ?? 0) > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Promotion</span>
+                <span className="font-medium text-green-600">
+                  −{formatMoney(Number((booking as any).promotion_discount_amount))}
+                </span>
+              </div>
+            )}
+            {Number((booking as any).membership_discount_amount ?? 0) > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Membership</span>
+                <span className="font-medium text-green-600">
+                  −{formatMoney(Number((booking as any).membership_discount_amount))}
+                </span>
+              </div>
+            )}
+            {Number((booking as any).loyalty_discount_amount ?? 0) > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Loyalty</span>
+                <span className="font-medium text-green-600">
+                  −{formatMoney(Number((booking as any).loyalty_discount_amount))}
+                </span>
+              </div>
+            )}
             {Number((booking as any).travel_fee ?? (booking as any).travel_fee_amount ?? 0) > 0 && (
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">Travel fee</span>
@@ -1876,19 +1946,19 @@ export default function ProviderBookingDetail() {
             )}
             {walletAmountApplied > 0 && (
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Wallet credit</span>
-                <span className="font-medium text-purple-700">−{formatMoney(walletAmountApplied)}</span>
+                <span className="text-gray-600">Wallet applied</span>
+                <span className="font-medium text-gray-900">{formatMoney(walletAmountApplied)}</span>
               </div>
             )}
             {giftCardAmountApplied > 0 && (
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Gift card</span>
-                <span className="font-medium text-purple-700">−{formatMoney(giftCardAmountApplied)}</span>
+                <span className="text-gray-600">Gift card applied</span>
+                <span className="font-medium text-gray-900">{formatMoney(giftCardAmountApplied)}</span>
               </div>
             )}
             {totalPaid > 0 && (
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Paid via card/gateway</span>
+                <span className="text-gray-600">Payments recorded</span>
                 <span className="font-medium text-green-600">{formatMoney(totalPaid)}</span>
               </div>
             )}
@@ -1902,12 +1972,6 @@ export default function ProviderBookingDetail() {
               <div className="flex justify-between text-sm border-t pt-2">
                 <span className="text-gray-700 font-medium">Outstanding</span>
                 <span className="font-bold text-amber-600">{formatMoney(outstanding)}</span>
-              </div>
-            )}
-            {outstanding < 0 && (
-              <div className="flex justify-between text-sm border-t pt-2">
-                <span className="text-gray-700 font-medium">Overpaid / credit</span>
-                <span className="font-medium text-blue-700">{formatMoney(-outstanding)}</span>
               </div>
             )}
           </div>

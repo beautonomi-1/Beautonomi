@@ -16,6 +16,9 @@ const purchaseSchema = z.object({
   quantity: z.number().int().positive().min(1).max(1000).default(1),
   currency: z.string().min(3).max(6).optional(),
   recipient_email: z.string().email().optional().nullable(),
+  template_id: z.string().trim().min(1).max(120).optional(),
+  template_name: z.string().trim().min(1).max(160).optional(),
+  template_image_url: z.string().trim().min(1).max(2000).optional(),
   source: z.string().optional(),
   campaign_id: z.string().optional(),
   utm_source: z.string().optional(),
@@ -114,6 +117,11 @@ export async function POST(request: NextRequest) {
       utm_medium: parsed.data.utm_medium || undefined,
       utm_campaign: parsed.data.utm_campaign || undefined,
     };
+    const templateMetadata = {
+      template_id: parsed.data.template_id || undefined,
+      template_name: parsed.data.template_name || undefined,
+      template_image_url: parsed.data.template_image_url || undefined,
+    };
 
     const { data: order, error: orderError } = await (supabase.from("gift_card_orders") as any)
       .insert({
@@ -129,6 +137,7 @@ export async function POST(request: NextRequest) {
         metadata: {
           source: "gift_card_purchase",
           attribution,
+          ...templateMetadata,
         },
       })
       .select("*")
@@ -156,6 +165,7 @@ export async function POST(request: NextRequest) {
           recipient_email: parsed.data.recipient_email || null,
           quantity,
           attribution,
+          ...templateMetadata,
           // provider_id removed - platform-only gift cards
         },
         tenantId,

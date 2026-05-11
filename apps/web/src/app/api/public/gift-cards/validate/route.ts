@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { isGiftCardsEnabledForTenant } from "@/lib/subscriptions/entitlements";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { getTenantRegionConfig } from "@/lib/regions/config";
@@ -44,7 +45,8 @@ export async function GET(request: Request) {
       return NextResponse.json({ valid: false, message: "Login required to use gift cards" }, { status: 401 });
     }
 
-    const { data: card, error } = await (supabase.from("gift_cards") as any)
+    const supabaseAdmin = getSupabaseAdmin();
+    const { data: card, error } = await (supabaseAdmin.from("gift_cards") as any)
       .select("id, code, balance, currency, is_active, expires_at")
       .eq("code", code)
       .maybeSingle();

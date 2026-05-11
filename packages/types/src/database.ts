@@ -346,18 +346,6 @@ interface ProviderSubscriptionsRow {
   updated_at: Timestamp;
 }
 
-interface LoyaltyPointTransactionsRow {
-  id: UUID;
-  user_id: UUID;
-  points: number;
-  transaction_type: string;
-  description: string | null;
-  reference_id: UUID | null;
-  reference_type: string | null;
-  expires_at: Timestamp | null;
-  created_at: Timestamp;
-}
-
 interface FinanceTransactionsRow {
   id: UUID;
   booking_id: UUID | null;
@@ -483,7 +471,6 @@ export interface Database {
       reviews: TableDefinition<ReviewsRow, InsertOf<ReviewsRow>, UpdateOf<ReviewsRow>>;
       subscription_plans: TableDefinition<SubscriptionPlansRow, InsertOf<SubscriptionPlansRow>, UpdateOf<SubscriptionPlansRow>>;
       provider_subscriptions: TableDefinition<ProviderSubscriptionsRow, InsertOf<ProviderSubscriptionsRow>, UpdateOf<ProviderSubscriptionsRow>>;
-      loyalty_point_transactions: TableDefinition<LoyaltyPointTransactionsRow, InsertOf<LoyaltyPointTransactionsRow>, UpdateOf<LoyaltyPointTransactionsRow>>;
       finance_transactions: TableDefinition<FinanceTransactionsRow, InsertOf<FinanceTransactionsRow>, UpdateOf<FinanceTransactionsRow>>;
       tenants: TableDefinition<TenantsRow, InsertOf<TenantsRow>, UpdateOf<TenantsRow>>;
       platform_zones: TableDefinition<PlatformZonesRow, InsertOf<PlatformZonesRow>, UpdateOf<PlatformZonesRow>>;

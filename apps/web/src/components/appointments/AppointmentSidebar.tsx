@@ -23,6 +23,7 @@ import { format } from "date-fns";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { percentOf } from "@beautonomi/utils";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -2113,7 +2114,7 @@ export function AppointmentSidebar({
 
       // Deposit fields — when provider chooses to collect deposit only
       if (collectDeposit && depositSettings.required && formData.totalAmount > 0) {
-        const depositAmount = Math.ceil((formData.totalAmount * depositSettings.percentage) / 100);
+        const depositAmount = percentOf(formData.totalAmount, depositSettings.percentage);
         (appointmentData as any).deposit_required = true;
         (appointmentData as any).deposit_percentage = depositSettings.percentage;
         (appointmentData as any).deposit_amount = depositAmount;
@@ -4741,6 +4742,7 @@ export function AppointmentSidebar({
                               actualPaymentStatus === 'paid' ? 'default' : 
                               actualPaymentStatus === 'pending' ? 'outline' : 
                               actualPaymentStatus === 'refunded' ? 'outline' : 
+                              actualPaymentStatus === 'partially_refunded' ? 'secondary' :
                               actualPaymentStatus === 'partially_paid' ? 'secondary' : 
                               'outline'
                             }
@@ -4749,6 +4751,7 @@ export function AppointmentSidebar({
                               actualPaymentStatus === 'paid' && "bg-green-100 text-green-800 border-green-200",
                               actualPaymentStatus === 'pending' && "bg-yellow-50 text-yellow-700 border-yellow-200",
                               actualPaymentStatus === 'refunded' && "bg-gray-50 text-gray-700 border-gray-200",
+                              actualPaymentStatus === 'partially_refunded' && "bg-purple-50 text-purple-700 border-purple-200",
                               actualPaymentStatus === 'partially_paid' && "bg-blue-50 text-blue-700 border-blue-200"
                             )}
                           >
@@ -5096,18 +5099,23 @@ export function AppointmentSidebar({
                       </div>
                     )}
 
-                    {/* Refund Button (for paid or partially_paid bookings) */}
-                    {(selectedAppointment.payment_status === 'paid' || selectedAppointment.payment_status === 'partially_paid') && (
+                    {/* Refund Button (for bookings with captured funds still available to refund) */}
+                    {(selectedAppointment.payment_status === 'paid' ||
+                      selectedAppointment.payment_status === 'partially_paid' ||
+                      selectedAppointment.payment_status === 'partially_refunded') && (
                       <>
                         <Button 
                           className="w-full text-xs" 
                           variant="outline"
                           size="sm"
                           onClick={async () => {
-                            // For partially_paid, fetch available refund amount
+                            // For partial states, fetch available refund amount from recorded payments/refunds.
                             let availableRefund = selectedAppointment.total_amount || 0;
                             
-                            if (selectedAppointment.payment_status === 'partially_paid') {
+                            if (
+                              selectedAppointment.payment_status === 'partially_paid' ||
+                              selectedAppointment.payment_status === 'partially_refunded'
+                            ) {
                               try {
                                 const paymentsResponse = await providerPortalFetch(`/api/provider/bookings/${activeBookingId}/payments`);
                                 if (paymentsResponse.ok) {
@@ -5162,7 +5170,8 @@ export function AppointmentSidebar({
                                   onChange={(e) => setRefundAmount(parseFloat(e.target.value) || 0)}
                                 />
                                 <p className="text-xs text-gray-500">
-                                  {selectedAppointment.payment_status === 'partially_paid' 
+                                  {selectedAppointment.payment_status === 'partially_paid' ||
+                                  selectedAppointment.payment_status === 'partially_refunded'
                                     ? `Available to refund: R${refundAmount.toFixed(2)} (of R${selectedAppointment.total_amount?.toFixed(2) || '0.00'} total)`
                                     : `Full amount: R${selectedAppointment.total_amount?.toFixed(2) || '0.00'}`
                                   }
@@ -5208,10 +5217,13 @@ export function AppointmentSidebar({
                                     
                                     // Update the appointment state immediately
                                     if (selectedAppointment) {
-                                      // After refund, status could be 'refunded' or 'partially_paid'
-                                      const newStatus = refundAmount >= (selectedAppointment.total_amount || 0) 
+                                      // After refund, status could be 'refunded' or 'partially_refunded'.
+                                      const totalPaidForStatus = Number((selectedAppointment as any).total_paid ?? selectedAppointment.total_amount ?? 0);
+                                      const totalRefundedForStatus = Number((selectedAppointment as any).total_refunded ?? 0);
+                                      const availableForStatus = Math.max(0, totalPaidForStatus - totalRefundedForStatus);
+                                      const newStatus = refundAmount >= availableForStatus - 0.01
                                         ? 'refunded' 
-                                        : 'partially_paid';
+                                        : 'partially_refunded';
                                       
                                       updateSelectedAppointment({
                                         ...selectedAppointment,
@@ -5410,13 +5422,13 @@ export function AppointmentSidebar({
                     <div className="flex justify-between">
                       <span>Deposit ({depositSettings.percentage}%)</span>
                       <span className="font-medium text-gray-700">
-                        {formatMoney(Math.ceil((formData.totalAmount * depositSettings.percentage) / 100))}
+                        {formatMoney(percentOf(formData.totalAmount, depositSettings.percentage))}
                       </span>
                     </div>
                     <div className="flex justify-between">
                       <span>Balance due later</span>
                       <span className="font-medium text-gray-700">
-                        {formatMoney(formData.totalAmount - Math.ceil((formData.totalAmount * depositSettings.percentage) / 100))}
+                        {formatMoney(formData.totalAmount - percentOf(formData.totalAmount, depositSettings.percentage))}
                       </span>
                     </div>
                   </div>

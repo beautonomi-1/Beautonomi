@@ -44,6 +44,7 @@ import { pushInAppBrowser } from "@/lib/in-app-web";
 interface CustomOfferAttachment {
   type: "custom_offer";
   offer_id?: string;
+  booking_id?: string | null;
   price?: number;
   currency?: string;
   duration_minutes?: number;
@@ -56,6 +57,7 @@ interface CustomOfferAttachment {
 interface ProviderOfferDetail {
   id: string;
   status: string;
+  booking_id?: string | null;
   price?: number;
   currency?: string;
   duration_minutes?: number;
@@ -748,33 +750,19 @@ export default function ChatScreen() {
                 const files = fileLikeAttachments(msg.attachments);
                 const hasText = !!(msg.content && msg.content.trim());
 
-                const openOfferDetail = (offerId: string) => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  router.push(`/(app)/(tabs)/more/custom-requests/${offerId}` as never);
-                };
-
-                const handleWithdrawOffer = (offerId: string) => {
-                  Alert.alert(
-                    "Withdraw offer",
-                    "Are you sure you want to withdraw this offer? The customer will no longer be able to accept it.",
-                    [
-                      { text: "Cancel", style: "cancel" },
-                      {
-                        text: "Withdraw",
-                        style: "destructive",
-                        onPress: async () => {
-                          const res = await api.post(`/api/provider/custom-requests/${offerId}/withdraw`, {});
-                          if (res.error) {
-                            Alert.alert("Error", typeof res.error === "string" ? res.error : res.error.message || "Failed to withdraw offer");
-                          } else {
-                            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                            void refresh();
-                          }
-                        },
-                      },
-                    ]
-                  );
-                };
+                const isWithdrawnAtt = Boolean(offer?.withdrawn || offer?.status === "withdrawn");
+                const isDeclinedAtt = offer?.status === "declined";
+                const isExpiredAtt = Boolean(offer?.expired || offer?.status === "expired");
+                const isFinalizeFailedAtt = offer?.status === "finalize_failed";
+                const isPaidAtt = offer?.status === "paid" || Boolean(offer?.booking_id);
+                const canRetractOffer =
+                  isMe &&
+                  !!offer?.offer_id &&
+                  !isWithdrawnAtt &&
+                  !isExpiredAtt &&
+                  !isPaidAtt &&
+                  !isDeclinedAtt &&
+                  !isFinalizeFailedAtt;
 
                 const renderFileRow = (att: FileLikeAttachment, idx: number) => {
                   const key = `${msg.id}-f-${idx}-${att.name || att.url || idx}`;
@@ -843,53 +831,85 @@ export default function ChatScreen() {
                 return (
                   <View style={twStyle(`mb-3 ${isMe ? "items-end" : "items-start"}`)}>
                     {showOfferCard ? (
-                      <TouchableOpacity
-                        activeOpacity={0.85}
-                        onPress={() => offer?.offer_id && openOfferDetail(offer.offer_id)}
+                      <View
                         style={twStyle(`max-w-[85%] rounded-2xl overflow-hidden ${
                           isMe ? "rounded-br-sm bg-primary/10 border border-primary/20" : "rounded-bl-sm bg-gray-100 border border-gray-200"
                         }`)}
                       >
-                        <View style={twStyle("px-4 pt-3 pb-2")}>
-                          <View style={twStyle("flex-row items-center mb-1")}>
-                            <Ionicons name="pricetag" size={16} color={isMe ? Colors.primary : "#6b7280"} style={{ marginRight: 8 }} />
-                            <Text style={twStyle("text-sm font-semibold text-gray-900")}>Custom offer</Text>
+                        <TouchableOpacity
+                          activeOpacity={0.85}
+                          onPress={() => {
+                            if (offer?.offer_id) void openOfferDetail(offer.offer_id);
+                          }}
+                          accessibilityRole="button"
+                          accessibilityLabel="Open custom offer details"
+                        >
+                          <View style={twStyle("px-4 pt-3 pb-2")}>
+                            <View style={twStyle("flex-row items-center mb-1")}>
+                              <Ionicons name="pricetag" size={16} color={isMe ? Colors.primary : "#6b7280"} style={{ marginRight: 8 }} />
+                              <Text style={twStyle("text-sm font-semibold text-gray-900")}>Custom offer</Text>
+                            </View>
+                            {typeof offer?.price === "number" && (
+                              <Text style={twStyle("text-base font-medium text-gray-900 mt-0.5")}>
+                                {formatCurrency(offer.price, offer.currency ?? getTenantDefaultCurrency())}
+                              </Text>
+                            )}
+                            {offer?.duration_minutes != null && offer.duration_minutes > 0 && (
+                              <Text style={twStyle("text-sm text-gray-600 mt-0.5")}>{offer.duration_minutes} min</Text>
+                            )}
+                            {offer?.preferred_start_at && (
+                              <Text style={twStyle("text-sm text-gray-600 mt-0.5")}>
+                                {formatDateTime(offer.preferred_start_at)}
+                              </Text>
+                            )}
+                            {isWithdrawnAtt ? (
+                              <View style={twStyle("mt-2 px-2 py-1 rounded bg-amber-100 self-start")}>
+                                <Text style={twStyle("text-xs font-medium text-amber-800")}>Withdrawn</Text>
+                              </View>
+                            ) : isExpiredAtt ? (
+                              <View style={twStyle("mt-2 px-2 py-1 rounded bg-gray-100 self-start")}>
+                                <Text style={twStyle("text-xs font-medium text-gray-500")}>Expired</Text>
+                              </View>
+                            ) : isDeclinedAtt ? (
+                              <View style={twStyle("mt-2 px-2 py-1 rounded bg-gray-100 self-start")}>
+                                <Text style={twStyle("text-xs font-medium text-gray-500")}>Declined</Text>
+                              </View>
+                            ) : isFinalizeFailedAtt ? (
+                              <View style={twStyle("mt-2 px-2 py-1 rounded bg-rose-100 self-start")}>
+                                <Text style={twStyle("text-xs font-medium text-rose-800")}>Needs support</Text>
+                              </View>
+                            ) : isPaidAtt ? (
+                              <View style={twStyle("mt-2 px-2 py-1 rounded bg-emerald-100 self-start")}>
+                                <Text style={twStyle("text-xs font-medium text-emerald-800")}>Paid / Booked</Text>
+                              </View>
+                            ) : offer?.status === "payment_pending" ? (
+                              <View style={twStyle("mt-2 px-2 py-1 rounded bg-blue-100 self-start")}>
+                                <Text style={twStyle("text-xs font-medium text-blue-800")}>Payment in progress</Text>
+                              </View>
+                            ) : null}
                           </View>
-                          {typeof offer?.price === "number" && (
-                            <Text style={twStyle("text-base font-medium text-gray-900 mt-0.5")}>
-                              {formatCurrency(offer.price, offer.currency ?? getTenantDefaultCurrency())}
-                            </Text>
-                          )}
-                          {offer?.duration_minutes != null && offer.duration_minutes > 0 && (
-                            <Text style={twStyle("text-sm text-gray-600 mt-0.5")}>{offer.duration_minutes} min</Text>
-                          )}
-                          {offer?.preferred_start_at && (
-                            <Text style={twStyle("text-sm text-gray-600 mt-0.5")}>
-                              {formatDateTime(offer.preferred_start_at)}
-                            </Text>
-                          )}
-                          {offer?.withdrawn ? (
-                            <View style={twStyle("mt-2 px-2 py-1 rounded bg-amber-100 self-start")}>
-                              <Text style={twStyle("text-xs font-medium text-amber-800")}>Withdrawn</Text>
-                            </View>
-                          ) : (offer?.expired === true || offer?.status === "expired") ? (
-                            <View style={twStyle("mt-2 px-2 py-1 rounded bg-gray-100 self-start")}>
-                              <Text style={twStyle("text-xs font-medium text-gray-500")}>Expired</Text>
-                            </View>
-                          ) : offer?.status === "paid" ? (
-                            <View style={twStyle("mt-2 px-2 py-1 rounded bg-emerald-100 self-start")}>
-                              <Text style={twStyle("text-xs font-medium text-emerald-800")}>Paid / Booked</Text>
-                            </View>
-                          ) : isMe && offer?.offer_id && !offer?.withdrawn && offer?.status !== "expired" ? (
-                            <TouchableOpacity
-                              onPress={() => handleWithdrawOffer(offer.offer_id!)}
-                              style={twStyle("mt-2 px-3 py-1.5 rounded-lg bg-amber-500 active:opacity-80")}
-                              activeOpacity={0.8}
-                            >
-                              <Text style={twStyle("text-sm font-medium text-white")}>Withdraw offer</Text>
-                            </TouchableOpacity>
-                          ) : null}
-                        </View>
+                        </TouchableOpacity>
+                        {isPaidAtt && offer?.booking_id ? (
+                          <TouchableOpacity
+                            onPress={() => {
+                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                              router.push(`/(app)/(tabs)/more/bookings/${offer.booking_id}` as never);
+                            }}
+                            style={twStyle("mx-4 mb-2 px-3 py-2 rounded-lg bg-emerald-600 active:opacity-90")}
+                            activeOpacity={0.85}
+                          >
+                            <Text style={twStyle("text-sm font-semibold text-white text-center")}>View booking</Text>
+                          </TouchableOpacity>
+                        ) : null}
+                        {canRetractOffer ? (
+                          <TouchableOpacity
+                            onPress={() => offer.offer_id && handleWithdrawOffer(offer.offer_id)}
+                            style={twStyle("mx-4 mb-2 px-3 py-1.5 rounded-lg bg-amber-500 active:opacity-80")}
+                            activeOpacity={0.8}
+                          >
+                            <Text style={twStyle("text-sm font-medium text-white text-center")}>Withdraw offer</Text>
+                          </TouchableOpacity>
+                        ) : null}
                         <View style={twStyle("px-4 pb-2 flex-row items-center justify-end")}>
                           <Text style={[twStyle("text-[11px] text-gray-400"), { marginRight: 4 }]}>{formatTime(msg.created_at)}</Text>
                           {isMe ? (
@@ -900,7 +920,7 @@ export default function ChatScreen() {
                             />
                           ) : null}
                         </View>
-                      </TouchableOpacity>
+                      </View>
                     ) : null}
 
                     {hasCustomRequest ? (
@@ -1113,8 +1133,10 @@ export default function ChatScreen() {
               const req = d.request;
               const isExpired = d.status === "expired";
               const isWithdrawn = d.status === "withdrawn";
-              const isPaid = d.status === "paid";
-              const isPending = d.status === "pending";
+              const isPaid = d.status === "paid" || Boolean(d.booking_id);
+              const isFinalizeFailed = d.status === "finalize_failed";
+              const isPending =
+                (d.status === "pending" || d.status === "payment_pending") && !isFinalizeFailed;
 
               const formatDate = (iso: string | null | undefined) => {
                 if (!iso) return "—";
@@ -1132,6 +1154,8 @@ export default function ChatScreen() {
                 ? { label: "Withdrawn", bg: "#FEF3C7", text: "#92400E" }
                 : isExpired
                 ? { label: "Expired", bg: "#F3F4F6", text: "#6B7280" }
+                : isFinalizeFailed
+                ? { label: "Finalize failed — contact support", bg: "#FEE2E2", text: "#991B1B" }
                 : isPaid
                 ? { label: "Paid / Booked", bg: "#DCFCE7", text: "#166534" }
                 : d.status === "payment_pending"
@@ -1208,7 +1232,27 @@ export default function ChatScreen() {
                   </View>
 
                   {/* Actions */}
-                  {isPending && d.id ? (
+                  {isPaid && d.booking_id ? (
+                    <TouchableOpacity
+                      onPress={() => {
+                        setOfferDetailVisible(false);
+                        setTimeout(() => {
+                          router.push(`/(app)/(tabs)/more/bookings/${d.booking_id}` as never);
+                        }, 300);
+                      }}
+                      style={{
+                        marginTop: 24,
+                        borderRadius: 12,
+                        backgroundColor: "#059669",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        paddingVertical: 14,
+                      }}
+                    >
+                      <Text style={{ color: "#fff", fontSize: 15, fontWeight: "700" }}>View booking</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                  {isPending && !isPaid && d.id ? (
                     <TouchableOpacity
                       onPress={() => {
                         setOfferDetailVisible(false);

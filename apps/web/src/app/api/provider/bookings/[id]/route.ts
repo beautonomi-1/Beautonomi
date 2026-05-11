@@ -24,10 +24,17 @@ import { assertProviderUserCanAccessBookingBranch } from "@/lib/provider-booking
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
-import { isValidProviderBookingStatusTransition } from "@/lib/bookings/booking-status-transitions";
-import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
+import {
+  getProviderBookingStatusTransitionBlockReason,
+  isValidProviderBookingStatusTransition,
+} from "@/lib/bookings/booking-status-transitions";
+import {
+  computeBookingOutstandingDisplay,
+  computePackageAppliedForDisplay,
+} from "@/lib/bookings/display-invariants";
 import { resolveBookingDisplayTimeZone } from "@/lib/bookings/display-datetime";
 import { syncAppointmentProductOrder } from "@/lib/orders/sync-appointment-product-order";
+import { validateProviderBookingProducts } from "@/lib/bookings/validate-provider-booking-products";
 
 function mapStatusToDatabase(frontendStatus: string): string {
   return mapStatusFromProvider(frontendStatus as ProviderBookingStatus);
@@ -35,29 +42,6 @@ function mapStatusToDatabase(frontendStatus: string): string {
 
 function mapStatusFromDatabase(dbStatus: string): string {
   return mapStatusToProvider(dbStatus as BookingStatus);
-}
-
-function resolveLoyaltyBaseAmount(booking: {
-  subtotal?: number | null;
-  total_amount?: number | null;
-  tax_amount?: number | null;
-  service_fee_amount?: number | null;
-  tip_amount?: number | null;
-  travel_fee?: number | null;
-  discount_amount?: number | null;
-}): number {
-  const subtotal = Number(booking.subtotal ?? 0);
-  if (subtotal > 0) return subtotal;
-
-  const total = Number(booking.total_amount ?? 0);
-  if (total <= 0) return 0;
-
-  const tax = Number(booking.tax_amount ?? 0);
-  const serviceFee = Number(booking.service_fee_amount ?? 0);
-  const tip = Number(booking.tip_amount ?? 0);
-  const travel = Number(booking.travel_fee ?? 0);
-  const discount = Number(booking.discount_amount ?? 0);
-  return Math.max(0, total - tax - serviceFee - tip - travel + discount);
 }
 
 /** Raw booking row from DB with joined booking_services, booking_products, group_bookings */
@@ -369,22 +353,56 @@ export async function GET(
       };
       }),
       addons: [], // Would need separate fetch from booking_addons
-      package_id: bookingData.package_id || null,
+      package_id: computePackageAppliedForDisplay({
+        package_id: bookingData.package_id || null,
+        customer_package_entitlement_id:
+          (bookingData as { customer_package_entitlement_id?: string | null }).customer_package_entitlement_id ?? null,
+        discount_amount: Number(bookingData.discount_amount ?? 0),
+        promotion_discount_amount: Number(
+          (bookingData as { promotion_discount_amount?: number | null }).promotion_discount_amount ?? 0,
+        ),
+      })
+        ? bookingData.package_id || null
+        : null,
       package_name: (() => {
+        const applied = computePackageAppliedForDisplay({
+          package_id: bookingData.package_id || null,
+          customer_package_entitlement_id:
+            (bookingData as { customer_package_entitlement_id?: string | null }).customer_package_entitlement_id ?? null,
+          discount_amount: Number(bookingData.discount_amount ?? 0),
+          promotion_discount_amount: Number(
+            (bookingData as { promotion_discount_amount?: number | null }).promotion_discount_amount ?? 0,
+          ),
+        });
+        if (!applied) return null;
         const sp = bookingData.service_packages;
         const one = Array.isArray(sp) ? sp[0] : sp;
         return typeof one?.name === "string" ? one.name : null;
       })(),
       subtotal: bookingData.subtotal || 0,
       discount_amount: bookingData.discount_amount || 0,
+      promotion_discount_amount: Number(
+        (bookingData as { promotion_discount_amount?: number | null }).promotion_discount_amount ?? 0,
+      ),
+      membership_discount_amount: Number(
+        (bookingData as { membership_discount_amount?: number | null }).membership_discount_amount ?? 0,
+      ),
+      loyalty_discount_amount: Number(
+        (bookingData as { loyalty_discount_amount?: number | null }).loyalty_discount_amount ?? 0,
+      ),
+      loyalty_points_used: Number(
+        (bookingData as { loyalty_points_used?: number | null }).loyalty_points_used ??
+          (bookingData as { loyalty_points_redeemed?: number | null }).loyalty_points_redeemed ??
+          0,
+      ),
       discount_code: bookingData.discount_code || null,
       discount_reason: bookingData.discount_reason || null,
       tax_amount: bookingData.tax_amount || 0,
       tax_rate: bookingData.tax_rate || 0,
-      platform_fee_percentage: Number(bookingData.platform_fee_percentage ?? bookingData.service_fee_percentage ?? 0),
-      platform_fee_amount: Number(bookingData.platform_fee_amount ?? bookingData.service_fee_amount ?? 0),
-      service_fee_percentage: Number(bookingData.service_fee_percentage ?? bookingData.platform_fee_percentage ?? 0),
-      service_fee_amount: Number(bookingData.service_fee_amount ?? bookingData.platform_fee_amount ?? 0),
+      platform_fee_percentage: Number(bookingData.platform_fee_percentage || bookingData.service_fee_percentage || 0),
+      platform_fee_amount: Number(bookingData.platform_fee_amount || bookingData.service_fee_amount || 0),
+      service_fee_percentage: Number(bookingData.service_fee_percentage || bookingData.platform_fee_percentage || 0),
+      service_fee_amount: Number(bookingData.service_fee_amount || bookingData.platform_fee_amount || 0),
       platform_fee_paid_by: bookingData.platform_fee_paid_by ?? bookingData.service_fee_paid_by ?? null,
       service_fee_paid_by: bookingData.service_fee_paid_by ?? bookingData.platform_fee_paid_by ?? null,
       tip_amount: bookingData.tip_amount || 0,
@@ -618,6 +636,7 @@ export async function PATCH(
       current_stage,
       send_arrival_notification,
       referral_source_id,
+      travel_buffer,
     } = body;
     
     // Check if any updateable field is provided
@@ -784,8 +803,14 @@ export async function PATCH(
         staffIdsCsv: staffIdsCsvGrid,
         locationId: effLocationId,
         excludeBookingId: id,
+        excludeGroupBookingId: (currentBooking as { group_booking_id?: string | null }).group_booking_id ?? undefined,
         mode,
-        travelBufferRaw: mode === "mobile" ? null : "0",
+        travelBufferRaw:
+          travel_buffer !== undefined && travel_buffer !== null
+            ? String(travel_buffer)
+            : mode === "mobile"
+              ? null
+              : "0",
         minNoticeMinutes: 0,
         maxAdvanceDays: 365,
         resourceOfferingIds,
@@ -803,12 +828,21 @@ export async function PATCH(
     if (requestedDbStatus) {
       const currentDbStatus = (currentBooking as BookingRow).status ?? "";
       if (!isValidProviderBookingStatusTransition(currentDbStatus, requestedDbStatus)) {
+        const paymentStatus = (currentBooking as BookingRow).payment_status ?? null;
         return errorResponse(
-          `Cannot transition booking from ${currentDbStatus} to ${requestedDbStatus}`,
+          getProviderBookingStatusTransitionBlockReason(currentDbStatus, requestedDbStatus, {
+            payment_status: paymentStatus,
+          }),
           "INVALID_STATUS_TRANSITION",
-          400
+          400,
+          {
+            current_status: currentDbStatus,
+            requested_status: requestedDbStatus,
+            payment_status: paymentStatus,
+          },
         );
       }
+
     }
 
     // Update booking
@@ -1202,7 +1236,8 @@ export async function PATCH(
           total_price,
           products:products!booking_products_product_id_fkey(id, name, retail_price),
           product_variant:product_variants(id, option_values)
-        )
+        ),
+        additional_charges(amount,status)
       `
       )
       .eq("id", id)
@@ -1251,7 +1286,8 @@ export async function PATCH(
               id,
               description
             )
-          )
+          ),
+          additional_charges(amount,status)
         `
         )
         .eq("id", id)
@@ -1331,7 +1367,8 @@ export async function PATCH(
               id,
               description
             )
-          )
+          ),
+          additional_charges(amount,status)
         `
         )
         .eq("id", id)
@@ -1351,6 +1388,39 @@ export async function PATCH(
 
     // Update products if provided
     if (products !== undefined && Array.isArray(products)) {
+      const currentStatusForProducts = String((currentBooking as BookingRow).status ?? "");
+      if (["completed", "cancelled", "no_show"].includes(currentStatusForProducts)) {
+        return errorResponse(
+          "Products cannot be edited after a booking is completed or closed. Create a sale/refund adjustment instead.",
+          "PRODUCT_EDIT_LOCKED",
+          400,
+        );
+      }
+      const { data: deductedProductRows } = await supabaseAdminPatch
+        .from("booking_products")
+        .select("id")
+        .eq("booking_id", id)
+        .not("stock_deducted_at", "is", null)
+        .limit(1);
+      if ((deductedProductRows ?? []).length > 0) {
+        return errorResponse(
+          "Products on this booking already affected stock. Create a sale/refund adjustment instead of editing the booking products.",
+          "PRODUCT_EDIT_LOCKED",
+          400,
+        );
+      }
+      const productValidation = await validateProviderBookingProducts(
+        supabaseAdminPatch,
+        providerId,
+        products,
+      );
+      if (productValidation.ok === false) {
+        return errorResponse(
+          productValidation.message,
+          productValidation.code,
+          productValidation.code === "PRODUCT_VALIDATION_FAILED" ? 503 : 400,
+        );
+      }
       // Delete existing products
       await supabaseAdminPatch
         .from("booking_products")
@@ -1366,14 +1436,13 @@ export async function PATCH(
           .not("staff_id", "is", null)
           .limit(1);
         const primaryStaffId = bookingServices?.[0]?.staff_id ?? null;
-        type ProductUpdateInput = { productId: string; productVariantId?: string | null; quantity?: number; unitPrice?: number; totalPrice?: number };
-        const productsToInsert = products.map((product: ProductUpdateInput) => ({
+        const productsToInsert = productValidation.products.map((product) => ({
           booking_id: id,
           product_id: product.productId,
-          product_variant_id: product.productVariantId ?? null,
-          quantity: product.quantity ?? 1,
-          unit_price: product.unitPrice ?? 0,
-          total_price: product.totalPrice || (product.unitPrice || 0) * (product.quantity || 1),
+          product_variant_id: product.productVariantId,
+          quantity: product.quantity,
+          unit_price: product.unitPrice,
+          total_price: product.totalPrice,
           staff_id: primaryStaffId,
         }));
 
@@ -1383,7 +1452,11 @@ export async function PATCH(
 
         if (productsError) {
           console.error("Error updating booking_products:", productsError);
-          // Non-fatal - booking was updated successfully
+          return errorResponse(
+            "The booking was updated, but product items could not be saved. Please try again.",
+            "BOOKING_PRODUCTS_FAILED",
+            422,
+          );
         }
       }
 
@@ -1429,38 +1502,35 @@ export async function PATCH(
         }
 
         if (dbStatus === "cancelled") {
-          // Reverse loyalty points if they were earned for this booking
           const loyaltyPointsEarned = (currentBooking as BookingRow).loyalty_points_earned || 0;
           if (loyaltyPointsEarned > 0 && customerId) {
             try {
-              // Check if points were already earned (transaction exists)
-              const { data: existingTransaction } = await supabase
-                .from("loyalty_point_transactions")
-                .select("id, points")
-                .eq("reference_id", id)
-                .eq("reference_type", "booking")
-                .eq("transaction_type", "earned")
+              const { data: existingClaw } = await supabaseAdminPatch
+                .from("loyalty_points_ledger")
+                .select("id")
+                .eq("booking_id", id)
+                .eq("customer_id", customerId)
+                .contains("metadata", { source: "booking_cancel_earn_clawback" })
                 .maybeSingle();
 
-              if (existingTransaction) {
-                // Create a reversal transaction to deduct the points
-                  await supabase
-                    .from("loyalty_point_transactions")
-                    .insert({
-                      user_id: customerId,
-                      transaction_type: "redeemed",
-                      points: loyaltyPointsEarned,
-                      description: `Points reversed for cancelled booking ${(currentBooking as BookingRow).booking_number || id}`,
-                      reference_id: id,
-                      reference_type: "booking",
-                      expires_at: null,
-                    });
-
-                console.log(`Reversed ${loyaltyPointsEarned} loyalty points for cancelled booking ${id}`);
+              if (!existingClaw) {
+                const { error: clawErr } = await (supabaseAdminPatch.rpc as any)("append_loyalty_ledger_entry", {
+                  p_customer_id: customerId,
+                  p_transaction_type: "adjusted",
+                  p_points_amount: -loyaltyPointsEarned,
+                  p_booking_id: id,
+                  p_description: `Points reversed for cancelled booking ${(currentBooking as BookingRow).booking_number || id}`,
+                  p_metadata: { source: "booking_cancel_earn_clawback" },
+                  p_expires_at: null,
+                });
+                if (clawErr) {
+                  console.error("Loyalty clawback RPC failed on cancel:", clawErr);
+                } else {
+                  console.log(`Reversed ${loyaltyPointsEarned} loyalty points for cancelled booking ${id}`);
+                }
               }
             } catch (loyaltyError) {
-              // Log but don't fail the cancellation if loyalty reversal fails
-              console.error('Failed to reverse loyalty points on cancellation:', loyaltyError);
+              console.error("Failed to reverse loyalty points on cancellation:", loyaltyError);
             }
           }
 
@@ -1573,55 +1643,7 @@ export async function PATCH(
             new Date(scheduled_at)
           );
         } else if (dbStatus === "completed") {
-          // Award customer loyalty points for completed booking
-          const loyaltyBaseAmount = resolveLoyaltyBaseAmount(currentBooking as BookingRow);
-          
-          if (loyaltyBaseAmount > 0 && customerId) {
-            try {
-              const { calculateLoyaltyPoints } = await import("@/lib/loyalty/calculate-points");
-              const { data: existingTransaction } = await supabaseAdmin
-                .from("loyalty_point_transactions")
-                .select("id")
-                .eq("reference_id", id)
-                .eq("reference_type", "booking")
-                .eq("transaction_type", "earned")
-                .maybeSingle();
-
-              if (!existingTransaction) {
-                const currency = (currentBooking as BookingRow).currency || lastResortCurrency;
-                const pointsEarned = await calculateLoyaltyPoints(loyaltyBaseAmount, supabaseAdmin, currency);
-
-                if (pointsEarned > 0) {
-                  // Create loyalty transaction for customer
-                  const { error: loyaltyError } = await supabaseAdmin
-                    .from("loyalty_point_transactions")
-                    .insert({
-                      user_id: customerId,
-                      transaction_type: "earned",
-                      points: pointsEarned,
-                      description: `Points earned for completed booking ${(currentBooking as BookingRow).booking_number || id}`,
-                      reference_id: id,
-                      reference_type: "booking",
-                      expires_at: null, // Or set expiry based on config
-                    });
-
-                  if (!loyaltyError) {
-                    // Update booking with loyalty_points_earned
-                    await supabaseAdmin
-                      .from("bookings")
-                      .update({ loyalty_points_earned: pointsEarned })
-                      .eq("id", id);
-                      
-                    console.log(`Awarded ${pointsEarned} loyalty points to customer for completed booking ${id}`);
-                  } else {
-                    console.error('Failed to create loyalty transaction:', loyaltyError);
-                  }
-                }
-              }
-            } catch (loyaltyError) {
-              console.error('Failed to award customer loyalty points on completion:', loyaltyError);
-            }
-          }
+          // Customer loyalty earn is handled by DB trigger on status -> completed.
 
           // Award provider points for completed booking (same as complete-service)
           if (providerId && id) {
@@ -1640,7 +1662,7 @@ export async function PATCH(
           try {
             const { data: pendingProducts } = await supabaseAdmin
               .from("booking_products")
-              .select("id, product_id, product_variant_id, quantity")
+              .select("id, product_id, product_variant_id, quantity, products:products!booking_products_product_id_fkey(track_stock_quantity)")
               .eq("booking_id", id)
               .is("stock_deducted_at", null);
             if (Array.isArray(pendingProducts) && pendingProducts.length > 0) {
@@ -1650,8 +1672,10 @@ export async function PATCH(
                 product_id: string | null;
                 product_variant_id?: string | null;
                 quantity: number | null;
+                products?: { track_stock_quantity?: boolean | null } | null;
               }>) {
                 if (!row.product_id || !row.quantity || row.quantity <= 0) continue;
+                if (row.products?.track_stock_quantity === false) continue;
                 const { error: decErr } = row.product_variant_id
                   ? await (supabaseAdmin.rpc as any)("decrement_product_variant_stock", {
                     p_variant_id: row.product_variant_id,
@@ -1669,7 +1693,7 @@ export async function PATCH(
                     `[provider PATCH complete] decrement_product_stock failed for booking ${id}, row ${row.id}:`,
                     decErr,
                   );
-                  continue;
+                  throw new Error(decErr.message || "Product stock could not be deducted");
                 }
                 await supabaseAdmin
                   .from("booking_products")
@@ -1858,11 +1882,22 @@ export async function PATCH(
             };
           } else if (newStatus === "cancelled") {
             templateKey = "booking_cancelled";
+            const paymentStatusForRefundCopy =
+              ((updatedBooking as RefetchedBookingRow)?.payment_status ||
+                (currentBooking as BookingRow)?.payment_status ||
+                "").toString();
+            const hasCustomerFunds =
+              ["paid", "partially_paid", "partially_refunded"].includes(paymentStatusForRefundCopy) ||
+              Number(
+                (updatedBooking as RefetchedBookingRow)?.total_paid ??
+                  (currentBooking as Record<string, unknown>)?.total_paid ??
+                  0,
+              ) > 0;
             templateVariables = {
               provider_name: providerName,
               booking_date: scheduledDate || "your appointment",
               booking_number: bookingNumber || "",
-              refund_info: ((updatedBooking as RefetchedBookingRow)?.payment_status || (currentBooking as BookingRow)?.payment_status) === "paid" 
+              refund_info: hasCustomerFunds
                 ? "A refund will be processed within 3-5 business days."
                 : "No payment was required.",
               booking_id: id,
@@ -1919,6 +1954,13 @@ export async function PATCH(
 
     // Transform the fetched booking to match Booking type (same as GET endpoint)
     const bookingData = updatedBooking as BookingDbRow;
+    const patchUnpaidCharges = Array.isArray((bookingData as any).additional_charges)
+      ? (bookingData as any).additional_charges
+          .filter((charge: any) => charge?.status !== "paid" && charge?.status !== "rejected")
+          .reduce((sum: number, charge: any) => sum + Number(charge?.amount || 0), 0)
+      : 0;
+    const patchWalletAmount = Number((bookingData as any).wallet_amount ?? 0);
+    const patchGiftCardAmount = Number((bookingData as any).gift_card_amount ?? 0);
     const transformedBooking: Booking = {
       id: bookingData.id,
       booking_number: bookingData.booking_number,
@@ -1984,6 +2026,20 @@ export async function PATCH(
       package_id: bookingData.package_id || null,
       subtotal: bookingData.subtotal || 0,
       discount_amount: bookingData.discount_amount || 0,
+      promotion_discount_amount: Number(
+        (bookingData as { promotion_discount_amount?: number | null }).promotion_discount_amount ?? 0,
+      ),
+      membership_discount_amount: Number(
+        (bookingData as { membership_discount_amount?: number | null }).membership_discount_amount ?? 0,
+      ),
+      loyalty_discount_amount: Number(
+        (bookingData as { loyalty_discount_amount?: number | null }).loyalty_discount_amount ?? 0,
+      ),
+      loyalty_points_used: Number(
+        (bookingData as { loyalty_points_used?: number | null }).loyalty_points_used ??
+          (bookingData as { loyalty_points_redeemed?: number | null }).loyalty_points_redeemed ??
+          0,
+      ),
       discount_code: bookingData.discount_code || null,
       discount_reason: bookingData.discount_reason || null,
       tax_amount: bookingData.tax_amount || 0,
@@ -1994,9 +2050,21 @@ export async function PATCH(
       total_amount: bookingData.total_amount || 0,
       total_paid: bookingData.total_paid || 0,
       total_refunded: bookingData.total_refunded || 0,
+      wallet_amount: patchWalletAmount,
+      gift_card_amount: patchGiftCardAmount,
       currency: bookingData.currency || lastResortCurrency,
       payment_status: bookingData.payment_status,
       payment_method: null,
+      additional_charges: (bookingData as any).additional_charges || [],
+      outstanding_balance: computeBookingOutstandingDisplay({
+        totalAmount: Number(bookingData.total_amount || 0),
+        totalPaid: Number(bookingData.total_paid || 0),
+        totalRefunded: Number(bookingData.total_refunded || 0),
+        walletAmount: patchWalletAmount,
+        giftCardAmount: patchGiftCardAmount,
+        unpaidAdditionalCharges: patchUnpaidCharges,
+        paymentStatus: bookingData.payment_status,
+      }),
       special_requests: bookingData.special_requests || null,
       loyalty_points_earned: bookingData.loyalty_points_earned || 0,
       created_at: bookingData.created_at,
@@ -2063,6 +2131,6 @@ export async function PATCH(
     invalidateProviderBookingsReadCache(providerId);
     return successResponse({ booking: transformedBooking });
   } catch (error) {
-    return handleApiError(error, "Failed to update booking");
+    return handleApiError(error, "The booking could not be updated. Please refresh and try again.");
   }
 }

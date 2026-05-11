@@ -27,6 +27,8 @@ interface TicketRow {
   sla_resolution_due_at: string | null;
   csat_score: number | null;
   category: string | null;
+  requester_type: string | null;
+  support_context_type: string | null;
   user_id: string | null;
   provider_id: string | null;
   assigned_to: string | null;
@@ -80,6 +82,8 @@ export async function GET(request: NextRequest) {
         avgCsat: null,
         csatResponses: 0,
         csatPositiveRate: null,
+        requesterMix: [],
+        contextMix: [],
         statusMix: STATUS_KEYS.map((status) => ({ status, count: 0 })),
         priorityMix: PRIORITY_KEYS.map((priority) => ({
           priority,
@@ -107,6 +111,8 @@ export async function GET(request: NextRequest) {
       "sla_resolution_due_at",
       "csat_score",
       "category",
+      "requester_type",
+      "support_context_type",
       "user_id",
       "provider_id",
       "assigned_to",
@@ -211,6 +217,21 @@ export async function GET(request: NextRequest) {
       .map(([status, count]) => ({ status, count }))
       .sort((a, b) => b.count - a.count);
 
+    const requesterCounts = new Map<string, number>();
+    const contextCounts = new Map<string, number>();
+    for (const t of periodTickets) {
+      const requester = t.requester_type || (t.provider_id ? "provider" : "customer");
+      requesterCounts.set(requester, (requesterCounts.get(requester) ?? 0) + 1);
+      const context = t.support_context_type || "uncategorized";
+      contextCounts.set(context, (contextCounts.get(context) ?? 0) + 1);
+    }
+    const requesterMix = [...requesterCounts.entries()]
+      .map(([requester_type, count]) => ({ requester_type, count }))
+      .sort((a, b) => b.count - a.count);
+    const contextMix = [...contextCounts.entries()]
+      .map(([support_context_type, count]) => ({ support_context_type, count }))
+      .sort((a, b) => b.count - a.count);
+
     const priorityAgg = new Map<string, { count: number; breached: number }>();
     for (const key of PRIORITY_KEYS) priorityAgg.set(key, { count: 0, breached: 0 });
     for (const t of periodTickets) {
@@ -267,6 +288,8 @@ export async function GET(request: NextRequest) {
       avgCsat,
       csatResponses: csatScores.length,
       csatPositiveRate,
+      requesterMix,
+      contextMix,
       statusMix,
       priorityMix,
       dailyOpenedVsResolved,

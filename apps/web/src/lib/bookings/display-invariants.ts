@@ -8,9 +8,13 @@
  * **Total amount** — `total_amount` on `bookings`: subtotal + tax + platform_fee + travel + tip − headline discounts,
  * per DB trigger / create-booking-record. Always use the stored row for authoritative totals.
  *
- * **Outstanding** — For display: max(0, total_amount − amount recognized as paid − wallet − gift card),
- * with additional unpaid charges where applicable. For **cancelled** or **refunded** bookings, show **0** outstanding
- * when nothing is owed (use `payment_status` + `total_refunded` to avoid implying debt after full refund).
+ * **Outstanding** — For display: `max(0, total_amount + unpaid_additional_charges − effective_paid)`
+ * where `effective_paid = max(0, total_paid − total_refunded)` and `total_paid` (per migration 582)
+ * already includes wallet + gift-card settlement amounts via `booking_payments`. The legacy
+ * `wallet_amount` / `gift_card_amount` columns are display/audit only — using them as an extra
+ * deduction here double-subtracts whenever a booking_payments row exists for the same credit.
+ * For **cancelled** or **refunded** bookings, show **0** outstanding when nothing is owed
+ * (use `payment_status` + `total_refunded` to avoid implying debt after full refund).
  */
 export const BOOKING_FINANCIAL_INVARIANTS_DOC = "display-invariants.ts";
 
@@ -60,24 +64,27 @@ export type ReceiptInvariantPayload = {
   tax?: number;
   fees?: number;
   tip_amount?: number;
+  /** Manual + catalog package discount (excludes promo when `promotion_discount_amount` is set). */
   discount?: number;
+  promotion_discount_amount?: number;
   membership_discount_amount?: number;
   loyalty_discount_amount?: number;
   cancellation_fee?: number;
 };
 
-function reconcileReceiptTotal(receipt: ReceiptInvariantPayload): number {
+export function reconcileReceiptTotal(receipt: ReceiptInvariantPayload): number {
   const sub = Number(receipt.subtotal ?? 0);
   const travel = Number(receipt.travel_fee ?? 0);
   const tax = Number(receipt.tax ?? 0);
   const fees = Number(receipt.fees ?? 0);
   const tip = Number(receipt.tip_amount ?? 0);
   const disc = Number(receipt.discount ?? 0);
+  const promo = Number(receipt.promotion_discount_amount ?? 0);
   const mem = Number(receipt.membership_discount_amount ?? 0);
   const loy = Number(receipt.loyalty_discount_amount ?? 0);
   const cancel = Number(receipt.cancellation_fee ?? 0);
-  /** Mirrors `/api/bookings/[id]/receipt`: package + promo live in `discount_amount`; membership & loyalty are separate columns. */
-  return sub + travel + tax + fees + tip - disc - mem - loy - cancel;
+  /** Mirrors decomposed booking columns: discount_amount + promotion + membership + loyalty. */
+  return sub + travel + tax + fees + tip - disc - promo - mem - loy - cancel;
 }
 
 /**
@@ -117,12 +124,23 @@ export function computeBookingOutstandingDisplay(input: BookingOutstandingInputs
   } = input;
 
   const ps = (paymentStatus || "").toLowerCase();
+  if (ps === "refunded") return 0;
+
+  /**
+   * §Finance-truth 2026-05: post-migration 582 `total_paid` is the canonical
+   * SUM(booking_payments.amount WHERE status IN ('completed','partially_refunded')).
+   * That sum already covers wallet + gift card credits because migration 582
+   * (and `ensureWalletGiftBookingPayments` at runtime) backfill synthetic
+   * booking_payments rows with `payment_method = 'wallet'` / `'gift_card'`.
+   *
+   * For pre-582 bookings that were paid only via wallet/gift but never had a
+   * synthetic booking_payments row, we fall back to wallet+gift to avoid
+   * showing phantom outstanding. We pick the LARGER of the two coverage
+   * estimates — never their sum — so we never double-subtract.
+   */
   const effectivePaid = Math.max(0, Number(totalPaid) - Number(totalRefunded));
-  const raw = Number(totalAmount) + Number(unpaidAdditionalCharges) - effectivePaid - Number(walletAmount) - Number(giftCardAmount);
-
-  if (ps === "refunded") {
-    return 0;
-  }
-
+  const walletGiftCoverage = Math.max(0, Number(walletAmount) + Number(giftCardAmount));
+  const coverage = Math.max(effectivePaid, walletGiftCoverage);
+  const raw = Number(totalAmount) + Number(unpaidAdditionalCharges) - coverage;
   return Math.max(0, raw);
 }

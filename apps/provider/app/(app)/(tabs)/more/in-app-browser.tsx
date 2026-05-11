@@ -11,13 +11,13 @@ import {
   StyleSheet,
   Platform,
   Linking,
-  Alert,
 } from "react-native";
 import { WebView } from "react-native-webview";
 import type { WebViewMessageEvent } from "react-native-webview";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Colors } from "@/constants/colors";
 
@@ -28,32 +28,62 @@ export default function InAppBrowserScreen() {
   const displayTitle = params.title ? decodeURIComponent(params.title) : "Web";
 
   const [error, setError] = useState<string | null>(null);
+  const [paymentResult, setPaymentResult] = useState<{
+    status: "success" | "pending" | "failed";
+    title: string;
+    message: string;
+  } | null>(null);
 
   const onWebMessage = useCallback(
     (e: WebViewMessageEvent) => {
       try {
-        const raw = JSON.parse(e.nativeEvent.data) as { type?: string };
+        const raw = JSON.parse(e.nativeEvent.data) as { type?: string; status?: string; message?: string };
         // Ads budget: `/provider/settings/ads/payment-return` posts BEAUTONOMI_ADS_PAYMENT_DONE.
         // Provider subscription / renew / initialize-payment: Paystack callback lands on
         // `/provider/subscription?payment_success=true&in_app=1`, which posts subscription status
         // (see apps/web `provider/subscription/page.tsx`) so the shell can pop back to native UI.
-        if (raw?.type === "BEAUTONOMI_ADS_PAYMENT_DONE" || raw?.type === "subscription_success") {
+        if (raw?.type === "BEAUTONOMI_ADS_PAYMENT_DONE") {
+          const status = raw.status === "pending" ? "pending" : raw.status === "failed" ? "failed" : "success";
+          Haptics.notificationAsync(
+            status === "failed"
+              ? Haptics.NotificationFeedbackType.Error
+              : Haptics.NotificationFeedbackType.Success,
+          );
+          setPaymentResult({
+            status,
+            title: status === "success" ? "Ad payment complete" : status === "pending" ? "Payment is syncing" : "Payment not completed",
+            message:
+              raw.message ||
+              (status === "success"
+                ? "Your campaign payment was confirmed. Return to Ads to see the campaign update."
+                : status === "pending"
+                  ? "Paystack received the payment, but confirmation is still syncing. Return to Ads and pull to refresh in a moment."
+                  : "The payment could not be confirmed. Return to Ads and try again."),
+          });
+          return;
+        }
+        if (raw?.type === "subscription_success") {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          router.back();
+          setPaymentResult({
+            status: "success",
+            title: "Subscription payment complete",
+            message: "Your plan payment was confirmed. Return to Subscription to see your active plan.",
+          });
+          return;
         }
         if (raw?.type === "subscription_failed") {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-          Alert.alert(
-            "Payment not completed",
-            "The subscription payment did not go through. Check your card funds or try another payment method.",
-            [{ text: "Back to subscription", onPress: () => router.back() }],
-          );
+          setPaymentResult({
+            status: "failed",
+            title: "Payment not completed",
+            message: "The subscription payment did not go through. Check your card funds or try another payment method.",
+          });
         }
       } catch {
         // ignore non-JSON messages
       }
     },
-    [router],
+    [],
   );
 
   const isValid =
@@ -179,6 +209,68 @@ export default function InAppBrowserScreen() {
             <Text style={styles.backLinkText}>Try again</Text>
           </TouchableOpacity>
         </View>
+      ) : paymentResult ? (
+        <LinearGradient
+          colors={
+            paymentResult.status === "failed"
+              ? ["#fff1f2", "#ffffff", "#fff7ed"]
+              : paymentResult.status === "pending"
+                ? ["#fffbeb", "#ffffff", "#fff7ed"]
+                : ["#f0fdf4", "#ffffff", "#fdf2f8"]
+          }
+          style={styles.resultShell}
+        >
+          <View style={styles.resultCard}>
+            <View
+              style={[
+                styles.resultIcon,
+                paymentResult.status === "failed"
+                  ? styles.resultIconFailed
+                  : paymentResult.status === "pending"
+                    ? styles.resultIconPending
+                    : styles.resultIconSuccess,
+              ]}
+            >
+              <Ionicons
+                name={
+                  paymentResult.status === "failed"
+                    ? "close"
+                    : paymentResult.status === "pending"
+                      ? "time-outline"
+                      : "checkmark"
+                }
+                size={34}
+                color={Colors.white}
+              />
+            </View>
+            <Text style={styles.resultEyebrow}>
+              {paymentResult.status === "success"
+                ? "Confirmed by Paystack"
+                : paymentResult.status === "pending"
+                  ? "Awaiting final sync"
+                  : "Action needed"}
+            </Text>
+            <Text style={styles.resultTitle}>{paymentResult.title}</Text>
+            <Text style={styles.resultMessage}>{paymentResult.message}</Text>
+            <View style={styles.resultDivider} />
+            <View style={styles.resultStepRow}>
+              <Ionicons name="shield-checkmark-outline" size={18} color={Colors.gray[500]} />
+              <Text style={styles.resultStepText}>Payments are verified server-side before campaigns or plans are activated.</Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                router.back();
+              }}
+              style={styles.resultButton}
+              accessibilityLabel="Return to app"
+              accessibilityRole="button"
+            >
+              <Text style={styles.resultButtonText}>Return to app</Text>
+              <Ionicons name="arrow-forward" size={18} color={Colors.white} />
+            </TouchableOpacity>
+          </View>
+        </LinearGradient>
       ) : (
         <WebView
           source={{ uri: rawUrl }}
@@ -247,4 +339,93 @@ const styles = StyleSheet.create({
   errorText: { textAlign: "center", color: Colors.gray[600] },
   backLink: { marginTop: 16 },
   backLinkText: { fontSize: 14, fontWeight: "500", color: Colors.primary },
+  resultShell: {
+    flex: 1,
+    justifyContent: "center",
+    padding: 24,
+  },
+  resultCard: {
+    borderRadius: 30,
+    backgroundColor: "rgba(255,255,255,0.94)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(17,24,39,0.08)",
+    paddingHorizontal: 22,
+    paddingVertical: 28,
+    alignItems: "center",
+    shadowColor: "#111827",
+    shadowOffset: { width: 0, height: 18 },
+    shadowOpacity: 0.12,
+    shadowRadius: 28,
+    elevation: 8,
+  },
+  resultIcon: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 16,
+  },
+  resultIconSuccess: { backgroundColor: "#16a34a" },
+  resultIconPending: { backgroundColor: "#f59e0b" },
+  resultIconFailed: { backgroundColor: "#dc2626" },
+  resultEyebrow: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: Colors.primary,
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    textAlign: "center",
+    marginBottom: 8,
+  },
+  resultTitle: {
+    fontSize: 25,
+    fontWeight: "800",
+    color: Colors.gray[900],
+    textAlign: "center",
+  },
+  resultMessage: {
+    marginTop: 10,
+    fontSize: 15,
+    lineHeight: 22,
+    color: Colors.gray[600],
+    textAlign: "center",
+  },
+  resultDivider: {
+    width: "100%",
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: Colors.gray[200],
+    marginVertical: 18,
+  },
+  resultStepRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    borderRadius: 16,
+    backgroundColor: Colors.gray[50],
+    padding: 12,
+  },
+  resultStepText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 17,
+    color: Colors.gray[600],
+  },
+  resultButton: {
+    marginTop: 24,
+    borderRadius: 999,
+    backgroundColor: Colors.primary,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    width: "100%",
+  },
+  resultButtonText: {
+    color: Colors.white,
+    fontSize: 15,
+    fontWeight: "700",
+  },
 });

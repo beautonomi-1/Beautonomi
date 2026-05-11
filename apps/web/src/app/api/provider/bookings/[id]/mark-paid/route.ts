@@ -69,7 +69,7 @@ export async function POST(
     // Verify booking exists and belongs to provider
     const { data: booking, error: bookingError } = await supabase
       .from("bookings")
-      .select("id, status, tenant_id, total_amount, total_refunded, payment_status, provider_id, customer_id, booking_number, ref_number, total_paid, wallet_amount, gift_card_amount, tip_amount, travel_fee, tax_amount, service_fee_amount, booking_source, location_id, location_type")
+      .select("id, status, tenant_id, total_amount, total_refunded, payment_status, provider_id, customer_id, booking_number, ref_number, total_paid, wallet_amount, gift_card_amount, tip_amount, travel_fee, tax_amount, service_fee_amount, booking_source, location_id, location_type, additional_charges(amount,status)")
       .eq("id", bookingId)
       .eq("provider_id", providerId)
       .single();
@@ -157,9 +157,30 @@ export async function POST(
     const giftCardAlreadyApplied = Number((booking as any).gift_card_amount || 0);
     const bookingTotal = booking.total_amount || 0;
     const effectivePaid = Math.max(0, currentTotalPaid - totalRefunded);
-    const remainingBalance = bookingTotal - effectivePaid - walletAlreadyApplied - giftCardAlreadyApplied;
+    /**
+     * §Finance-truth 2026-05: post-migration 582 `total_paid` already includes
+     * wallet + gift booking_payments rows, so subtracting wallet/gift again
+     * double-subtracts and lets us under-charge the remaining balance.
+     * Use the LARGER of effective_paid and (wallet+gift) to remain correct
+     * for legacy rows that pre-date 582 yet had no synthetic booking_payments.
+     */
+    const walletGiftCoverage = walletAlreadyApplied + giftCardAlreadyApplied;
+    const coverage = Math.max(effectivePaid, walletGiftCoverage);
+    const remainingBalance = bookingTotal - coverage;
+    const unpaidAdditionalCharges = Array.isArray((booking as any).additional_charges)
+      ? (booking as any).additional_charges
+          .filter((charge: any) => charge?.status !== "paid" && charge?.status !== "rejected")
+          .reduce((sum: number, charge: any) => sum + Number(charge?.amount || 0), 0)
+      : 0;
     
     if (remainingBalance <= 0) {
+      if (unpaidAdditionalCharges > 0) {
+        return errorResponse(
+          `Base booking is settled, but ${formatMoney(unpaidAdditionalCharges)} in additional charges is still unpaid. Settle those charges from the Additional Charges section.`,
+          "ADDITIONAL_CHARGES_DUE",
+          400
+        );
+      }
       return errorResponse(
         "Booking is already fully paid (including wallet/gift card credits)",
         "ALREADY_PAID",
@@ -193,13 +214,12 @@ export async function POST(
         : typeof idempotency_key === "string" && idempotency_key.trim()
           ? idempotency_key.trim()
           : request.headers.get("Idempotency-Key")?.trim() || null;
-    const hasTerminalReference = typeof reference === "string" && reference.trim().length > 0;
 
     let paymentProvider = 'other';
     if (effectivePaymentMethod === 'cash') {
       paymentProvider = 'cash';
     } else if (effectivePaymentMethod === 'card') {
-      paymentProvider = payment_provider === "yoco" || hasTerminalReference ? "yoco" : "other";
+      paymentProvider = payment_provider === "yoco" ? "yoco" : "other";
     }
 
     if (paymentProvider === "yoco" && !stableReference) {

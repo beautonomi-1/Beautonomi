@@ -1,7 +1,13 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { successResponse, handleApiError, requireAuthInApi, getOffsetPaginationParams } from "@/lib/supabase/api-helpers";
+import {
+  successResponse,
+  handleApiError,
+  requireRoleInApi,
+  getOffsetPaginationParams,
+  getProviderIdForUser,
+} from "@/lib/supabase/api-helpers";
 import {
   notifySupportTicketCreated,
   notifySupportStaffInboxActivity,
@@ -16,6 +22,11 @@ const createTicketSchema = z.object({
   message: z.string().min(1, "Message is required").max(5000, "Message too long"),
   priority: z.enum(["low", "medium", "high", "urgent"]).optional().default("medium"),
   category: z.string().max(120).optional(),
+  support_context_type: z
+    .enum(["booking", "product_order", "gift_card", "payment", "provider_onboarding", "account", "technical", "other"])
+    .optional(),
+  support_context_id: z.string().uuid().optional().nullable(),
+  support_context_label: z.string().max(160).optional().nullable(),
 });
 
 /**
@@ -25,12 +36,25 @@ const createTicketSchema = z.object({
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireAuthInApi(request);
+    const { user } = await requireRoleInApi(
+      ["customer", "provider_owner", "provider_staff", "superadmin"],
+      request
+    );
     const body = await request.json();
     const validated = createTicketSchema.parse(body);
     const category = normalizeSupportTicketCategory(validated.category);
+    const requesterType =
+      user.role === "provider_owner" || user.role === "provider_staff"
+        ? "provider"
+        : user.role === "superadmin"
+          ? "admin"
+          : "customer";
 
     const adminSupabase = getSupabaseAdmin();
+    const providerId =
+      requesterType === "provider"
+        ? await getProviderIdForUser(user.id, adminSupabase as never, { request })
+        : null;
 
     // Create support ticket (description NOT NULL: use first message; ticket_number set by DB trigger if omitted)
     const { data: ticket, error: ticketError } = await adminSupabase
@@ -42,6 +66,11 @@ export async function POST(request: NextRequest) {
         priority: validated.priority,
         status: "open",
         category,
+        provider_id: providerId,
+        requester_type: requesterType,
+        support_context_type: validated.support_context_type ?? null,
+        support_context_id: validated.support_context_id ?? null,
+        support_context_label: validated.support_context_label?.trim() || null,
       })
       .select()
       .single();
@@ -77,6 +106,15 @@ export async function POST(request: NextRequest) {
       throw messageError;
     }
 
+    await adminSupabase
+      .from("support_tickets")
+      .update({
+        last_message_at: message.created_at,
+        last_message_from: "customer",
+        last_customer_view_at: message.created_at,
+      })
+      .eq("id", ticket.id);
+
     // Confirm to user via email (and push if enabled) that ticket was created
     try {
       await notifySupportTicketCreated(
@@ -105,7 +143,15 @@ export async function POST(request: NextRequest) {
 
     try {
       const { slackNotifyNewSupportTicket } = await import("@/lib/integrations/slack/triggers");
-      await slackNotifyNewSupportTicket(request, ticket as { id: string; ticket_number?: string; subject?: string; priority?: string });
+      await slackNotifyNewSupportTicket(request, ticket as {
+        id: string;
+        ticket_number?: string;
+        subject?: string;
+        priority?: string;
+        requester_type?: string;
+        support_context_type?: string;
+        support_context_label?: string;
+      });
     } catch (slackErr) {
       console.error("Slack notification failed:", slackErr);
     }
@@ -135,7 +181,10 @@ export async function POST(request: NextRequest) {
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireAuthInApi(request);
+    const { user } = await requireRoleInApi(
+      ["customer", "provider_owner", "provider_staff", "superadmin"],
+      request
+    );
     const supabase = await getSupabaseServer(request);
 
     const { searchParams } = new URL(request.url);
@@ -151,6 +200,15 @@ export async function GET(request: NextRequest) {
         status,
         priority,
         category,
+        requester_type,
+        support_context_type,
+        support_context_id,
+        support_context_label,
+        csat_score,
+        csat_submitted_at,
+        last_message_at,
+        last_message_from,
+        last_customer_view_at,
         created_at,
         updated_at
       `, { count: "exact" })
@@ -169,7 +227,15 @@ export async function GET(request: NextRequest) {
     }
 
     return successResponse({
-      tickets: tickets || [],
+      tickets: (tickets || []).map((ticket) => {
+        const lastMessageAt = ticket.last_message_at ? new Date(String(ticket.last_message_at)).getTime() : 0;
+        const lastSeenAt = ticket.last_customer_view_at ? new Date(String(ticket.last_customer_view_at)).getTime() : 0;
+        return {
+          ...ticket,
+          has_unread_staff_reply:
+            ticket.last_message_from === "staff" && lastMessageAt > Math.max(0, lastSeenAt),
+        };
+      }),
       total: count ?? 0,
       pagination: {
         limit,

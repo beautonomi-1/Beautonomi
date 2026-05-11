@@ -85,9 +85,15 @@ export async function POST(
       return notFoundResponse("Charge not found");
     }
 
-    // Check if charge is approved
-    if ((charge as any).status !== "approved") {
-      return errorResponse("Charge must be approved before payment", "INVALID_STATUS", 400);
+    const chargeStatus = String((charge as any).status || "").toLowerCase();
+    if (chargeStatus === "paid") {
+      return errorResponse("This charge has already been paid", "ALREADY_PAID", 400);
+    }
+    if (chargeStatus === "rejected") {
+      return errorResponse("This charge has been rejected", "CHARGE_REJECTED", 400);
+    }
+    if (!["pending", "approved"].includes(chargeStatus)) {
+      return errorResponse("This charge cannot be paid in its current status", "INVALID_STATUS", 400);
     }
 
     // Initialize Paystack payment for the additional charge
@@ -126,6 +132,12 @@ export async function POST(
     const paymentUrl = paystackData?.data?.authorization_url || null;
 
     const admin = getSupabaseAdmin();
+    if (chargeStatus === "pending") {
+      await admin
+        .from("additional_charges")
+        .update({ status: "approved" })
+        .eq("id", charge_id);
+    }
 
     // Create a payments row for tracking (do NOT overwrite booking.payment_reference)
     await (admin.from("payments") as any).insert({

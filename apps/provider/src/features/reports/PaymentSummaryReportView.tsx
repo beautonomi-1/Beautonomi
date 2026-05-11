@@ -24,7 +24,7 @@ function isPaymentSummaryPayload(data: unknown): data is Record<string, unknown>
   netAmount?: number;
   refundedAmount?: number;
   refundRate?: number;
-  paymentsByMethod?: Array<{ method: string; count: number; amount: number; percentage?: number }>;
+  paymentsByMethod?: { method: string; count: number; amount: number; percentage?: number }[];
   reportBasis?: string;
   timezone?: string;
   pendingPayments?: number;

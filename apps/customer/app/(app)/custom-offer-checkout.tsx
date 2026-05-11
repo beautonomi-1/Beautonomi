@@ -7,6 +7,8 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
+  TextInput,
+  Switch,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -46,6 +48,37 @@ type OfferPayload = {
   } | null;
 };
 
+type QuotePayload = {
+  pricing: {
+    subtotal: number;
+    travelFee: number;
+    promotionDiscountAmount: number;
+    taxAmount: number;
+    taxRate: number;
+    serviceFeeAmount: number;
+    tipAmount: number;
+    totalAmount: number;
+  };
+  deposit?: {
+    required?: boolean;
+    deposit_amount?: number;
+    full_total?: number;
+  };
+  payment_option?: "full" | "deposit";
+  feature_custom_offer_full_checkout?: boolean;
+  wallet_balance?: number;
+  loyalty_points_available?: number | null;
+  splits?: {
+    walletAmount: number;
+    giftCardAmount: number;
+    loyaltyPointsRedeemed: number;
+    loyaltyDiscountAmount: number;
+    paystackAmount: number;
+    warnings?: string[];
+  } | null;
+  splits_error?: { code?: string; message?: string } | null;
+};
+
 export default function CustomOfferCheckoutScreen() {
   const router = useRouter();
   const { offer_id } = useLocalSearchParams<{ offer_id: string }>();
@@ -54,6 +87,7 @@ export default function CustomOfferCheckoutScreen() {
   const offerId = typeof offer_id === "string" ? offer_id : "";
 
   const [offer, setOffer] = useState<OfferPayload | null>(null);
+  const [quote, setQuote] = useState<QuotePayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -67,6 +101,9 @@ export default function CustomOfferCheckoutScreen() {
   const { cards: savedCards, defaultCard, refresh: refreshSavedCards } = useSavedCards(!!user);
   const [useNewCard, setUseNewCard] = useState(true);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
+  const [useWallet, setUseWallet] = useState(false);
+  const [giftCardCode, setGiftCardCode] = useState("");
+  const [loyaltyPointsToRedeem, setLoyaltyPointsToRedeem] = useState("");
 
   const currency = offer?.currency || getTenantDefaultCurrency();
   const fmt = useCallback((n: number) => formatMoney(n, currency), [currency]);
@@ -107,11 +144,23 @@ export default function CustomOfferCheckoutScreen() {
       setLoading(false);
       return;
     }
+    if (row.status === "finalize_failed") {
+      setLoadError(
+        "We received your payment but could not finish creating the booking. Please contact support with your payment reference.",
+      );
+      setOffer(null);
+      setQuote(null);
+      setLoading(false);
+      return;
+    }
     setOffer(row);
     const reqDeposit = Boolean(row.provider_deposit?.requires_deposit);
     if (reqDeposit && row.status !== "paid") {
       setPaymentOption("deposit");
     }
+    const q = await api.get<QuotePayload>(`/api/me/custom-offers/${offerId}/quote?payment_option=${reqDeposit && row.status !== "paid" ? "deposit" : "full"}`);
+    if (!q.error && q.data) setQuote(q.data);
+    else setQuote(null);
     setLoading(false);
   }, [offerId]);
 
@@ -119,9 +168,35 @@ export default function CustomOfferCheckoutScreen() {
     void loadOffer();
   }, [loadOffer]);
 
+  useEffect(() => {
+    if (!offerId || !quote?.feature_custom_offer_full_checkout) return;
+    const params = new URLSearchParams({ payment_option: paymentOption });
+    if (useWallet) params.set("use_wallet", "1");
+    if (giftCardCode.trim()) params.set("gift_card_code", giftCardCode.trim().toUpperCase());
+    if (Number(loyaltyPointsToRedeem) > 0) {
+      params.set("loyalty_points_to_redeem", String(Math.floor(Number(loyaltyPointsToRedeem))));
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      api.get<QuotePayload>(`/api/me/custom-offers/${offerId}/quote?${params.toString()}`).then((res) => {
+        if (!cancelled && !res.error && res.data) setQuote(res.data);
+      });
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [offerId, quote?.feature_custom_offer_full_checkout, paymentOption, useWallet, giftCardCode, loyaltyPointsToRedeem]);
+
   const basePrice = Number(offer?.price ?? 0);
   const travel = Number(offer?.travel_fee ?? 0);
   const subtotalPreview = basePrice + travel;
+  const quoteTotal = Number(quote?.pricing?.totalAmount ?? subtotalPreview);
+  const dueBeforeSplit =
+    quote?.deposit?.required && paymentOption === "deposit"
+      ? Number(quote.deposit.deposit_amount ?? quoteTotal)
+      : quoteTotal;
+  const paystackDueNow = quote?.splits ? Number(quote.splits.paystackAmount || 0) : dueBeforeSplit;
 
   const pollForBooking = useCallback(async (): Promise<string | null> => {
     for (let i = 0; i < 30; i += 1) {
@@ -142,6 +217,9 @@ export default function CustomOfferCheckoutScreen() {
       payment_option: "full" | "deposit";
       payment_method_id?: string;
       callback_url?: string;
+      use_wallet?: boolean;
+      gift_card_code?: string;
+      loyalty_points_to_redeem?: number;
     }) => {
       if (!offerId) return;
       setProcessingPayment(true);
@@ -156,7 +234,7 @@ export default function CustomOfferCheckoutScreen() {
           total_amount?: number;
           deposit_amount?: number;
           payment_option?: string;
-        }>(`/api/me/custom-offers/${offerId}/accept`, body);
+        }>(`/api/me/custom-offers/${offerId}/pay`, body);
 
         if (res.error) {
           setProcessingPayment(false);
@@ -284,6 +362,15 @@ export default function CustomOfferCheckoutScreen() {
 
     const opt =
       providerRequiresDeposit && paymentOption === "deposit" ? "deposit" : "full";
+    const splitTenderBody = quote?.feature_custom_offer_full_checkout
+      ? {
+          ...(useWallet ? { use_wallet: true } : {}),
+          ...(giftCardCode.trim() ? { gift_card_code: giftCardCode.trim().toUpperCase() } : {}),
+          ...(Number(loyaltyPointsToRedeem) > 0
+            ? { loyalty_points_to_redeem: Math.floor(Number(loyaltyPointsToRedeem)) }
+            : {}),
+        }
+      : {};
 
     if (
       !useNewCard &&
@@ -293,6 +380,7 @@ export default function CustomOfferCheckoutScreen() {
       await runAcceptThenNavigate({
         payment_option: opt,
         payment_method_id: selectedCardId,
+        ...splitTenderBody,
       });
       return;
     }
@@ -302,6 +390,7 @@ export default function CustomOfferCheckoutScreen() {
     await runAcceptThenNavigate({
       payment_option: opt,
       ...(callbackUrl ? { callback_url: callbackUrl } : {}),
+      ...splitTenderBody,
     });
   }, [
     offer,
@@ -311,6 +400,10 @@ export default function CustomOfferCheckoutScreen() {
     useNewCard,
     selectedCardId,
     savedCards,
+    quote?.feature_custom_offer_full_checkout,
+    useWallet,
+    giftCardCode,
+    loyaltyPointsToRedeem,
     runAcceptThenNavigate,
     router,
   ]);
@@ -341,9 +434,11 @@ export default function CustomOfferCheckoutScreen() {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: "#F9FAFB" }} edges={["top"]}>
         {header}
-        <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-          <ActivityIndicator size="large" color={PRIMARY} />
-        </View>
+        <PaymentProcessingOverlay
+          visible
+          message="Loading your offer…"
+          hint="Fetching price, taxes, and payment options."
+        />
       </SafeAreaView>
     );
   }
@@ -408,31 +503,126 @@ export default function CustomOfferCheckoutScreen() {
             {offer.request?.service_name || "Custom offer"}
           </Text>
           <Text style={{ fontSize: 13, color: "#6B7280", marginBottom: 12 }}>
-            Final total includes taxes & fees — shown when you pay.
+            {quote
+              ? "Full payment summary — same taxes and platform fee as a standard booking."
+              : "Final total includes taxes & fees."}
           </Text>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-            <Text style={{ color: "#6B7280" }}>Service</Text>
-            <Text style={{ fontWeight: "600", color: "#111827" }}>{fmt(basePrice)}</Text>
-          </View>
-          {travel > 0 ? (
-            <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-              <Text style={{ color: "#6B7280" }}>Travel</Text>
-              <Text style={{ fontWeight: "600", color: "#111827" }}>{fmt(travel)}</Text>
-            </View>
-          ) : null}
-          <View
-            style={{
-              flexDirection: "row",
-              justifyContent: "space-between",
-              marginTop: 10,
-              paddingTop: 10,
-              borderTopWidth: 1,
-              borderTopColor: "#E5E7EB",
-            }}
-          >
-            <Text style={{ fontWeight: "700", color: "#111827" }}>Subtotal (estimate)</Text>
-            <Text style={{ fontWeight: "700", color: PRIMARY }}>{fmt(subtotalPreview)}</Text>
-          </View>
+          {quote?.pricing ? (
+            <>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                <Text style={{ color: "#6B7280" }}>Service subtotal</Text>
+                <Text style={{ fontWeight: "600", color: "#111827" }}>{fmt(Number(quote.pricing.subtotal ?? 0))}</Text>
+              </View>
+              {Number(quote.pricing.travelFee ?? 0) > 0 ? (
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                  <Text style={{ color: "#6B7280" }}>Travel</Text>
+                  <Text style={{ fontWeight: "600", color: "#111827" }}>{fmt(Number(quote.pricing.travelFee))}</Text>
+                </View>
+              ) : null}
+              {Number(quote.pricing.promotionDiscountAmount ?? 0) > 0 ? (
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                  <Text style={{ color: "#047857" }}>Promotion</Text>
+                  <Text style={{ fontWeight: "600", color: "#047857" }}>
+                    −{fmt(Number(quote.pricing.promotionDiscountAmount))}
+                  </Text>
+                </View>
+              ) : null}
+              {Number(quote.pricing.taxAmount ?? 0) > 0 ? (
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                  <Text style={{ color: "#6B7280" }}>
+                    Tax{Number(quote.pricing.taxRate) > 0 ? ` (${quote.pricing.taxRate}%)` : ""}
+                  </Text>
+                  <Text style={{ fontWeight: "600", color: "#111827" }}>{fmt(Number(quote.pricing.taxAmount))}</Text>
+                </View>
+              ) : null}
+              {Number(quote.pricing.serviceFeeAmount ?? 0) > 0 ? (
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                  <Text style={{ color: "#6B7280" }}>Platform fee</Text>
+                  <Text style={{ fontWeight: "600", color: "#111827" }}>{fmt(Number(quote.pricing.serviceFeeAmount))}</Text>
+                </View>
+              ) : null}
+              {Number(quote.pricing.tipAmount ?? 0) > 0 ? (
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                  <Text style={{ color: "#6B7280" }}>Tip</Text>
+                  <Text style={{ fontWeight: "600", color: "#111827" }}>{fmt(Number(quote.pricing.tipAmount))}</Text>
+                </View>
+              ) : null}
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  marginTop: 10,
+                  paddingTop: 10,
+                  borderTopWidth: 1,
+                  borderTopColor: "#E5E7EB",
+                }}
+              >
+                <Text style={{ fontWeight: "700", color: "#111827" }}>Booking total</Text>
+                <Text style={{ fontWeight: "700", color: PRIMARY }}>{fmt(Number(quote.pricing.totalAmount ?? 0))}</Text>
+              </View>
+              {quote.deposit?.required && typeof quote.deposit.deposit_amount === "number" ? (
+                <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 8 }}>
+                  Deposit option: {fmt(quote.deposit.deposit_amount)} (pay now) · Full balance{" "}
+                  {fmt(Number(quote.deposit.full_total ?? quote.pricing.totalAmount))}.
+                </Text>
+              ) : null}
+              {quote.splits ? (
+                <View style={{ marginTop: 10, gap: 6 }}>
+                  {quote.splits.loyaltyDiscountAmount > 0 ? (
+                    <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                      <Text style={{ color: "#047857" }}>Loyalty discount</Text>
+                      <Text style={{ fontWeight: "600", color: "#047857" }}>−{fmt(quote.splits.loyaltyDiscountAmount)}</Text>
+                    </View>
+                  ) : null}
+                  {quote.splits.giftCardAmount > 0 ? (
+                    <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                      <Text style={{ color: "#6B7280" }}>Gift card tender</Text>
+                      <Text style={{ fontWeight: "600", color: "#111827" }}>−{fmt(quote.splits.giftCardAmount)}</Text>
+                    </View>
+                  ) : null}
+                  {quote.splits.walletAmount > 0 ? (
+                    <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                      <Text style={{ color: "#6B7280" }}>Wallet tender</Text>
+                      <Text style={{ fontWeight: "600", color: "#111827" }}>−{fmt(quote.splits.walletAmount)}</Text>
+                    </View>
+                  ) : null}
+                </View>
+              ) : null}
+              {quote.splits_error ? (
+                <Text style={{ fontSize: 12, color: "#B91C1C", marginTop: 8 }}>{quote.splits_error.message}</Text>
+              ) : null}
+              <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 10 }}>
+                <Text style={{ fontWeight: "700", color: "#111827" }}>Pay now</Text>
+                <Text style={{ fontWeight: "700", color: PRIMARY }}>{fmt(paystackDueNow)}</Text>
+              </View>
+            </>
+          ) : (
+            <>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                <Text style={{ color: "#6B7280" }}>Service</Text>
+                <Text style={{ fontWeight: "600", color: "#111827" }}>{fmt(basePrice)}</Text>
+              </View>
+              {travel > 0 ? (
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                  <Text style={{ color: "#6B7280" }}>Travel</Text>
+                  <Text style={{ fontWeight: "600", color: "#111827" }}>{fmt(travel)}</Text>
+                </View>
+              ) : null}
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  marginTop: 10,
+                  paddingTop: 10,
+                  borderTopWidth: 1,
+                  borderTopColor: "#E5E7EB",
+                }}
+              >
+                <Text style={{ fontWeight: "700", color: "#111827" }}>Subtotal (estimate)</Text>
+                <Text style={{ fontWeight: "700", color: PRIMARY }}>{fmt(subtotalPreview)}</Text>
+              </View>
+            </>
+          )}
         </View>
 
         {providerRequiresDeposit ? (
@@ -468,6 +658,73 @@ export default function CustomOfferCheckoutScreen() {
                 </Text>
               </TouchableOpacity>
             </View>
+          </View>
+        ) : null}
+
+        {quote?.feature_custom_offer_full_checkout ? (
+          <View style={{ backgroundColor: "#fff", borderRadius: 14, padding: 16, marginBottom: 16 }}>
+            <Text style={{ fontSize: 15, fontWeight: "700", color: "#111827", marginBottom: 12 }}>
+              Split payment
+            </Text>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: 12,
+              }}
+            >
+              <View style={{ flex: 1, paddingRight: 12 }}>
+                <Text style={{ fontWeight: "700", color: "#111827" }}>Use wallet balance</Text>
+                <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>
+                  Available {fmt(Number(quote.wallet_balance ?? 0))}
+                </Text>
+              </View>
+              <Switch
+                value={useWallet}
+                disabled={Number(quote.wallet_balance ?? 0) <= 0}
+                onValueChange={setUseWallet}
+                trackColor={{ false: "#E5E7EB", true: "rgba(255,0,119,0.35)" }}
+                thumbColor={useWallet ? PRIMARY : "#F9FAFB"}
+              />
+            </View>
+            <Text style={{ fontSize: 12, fontWeight: "700", color: "#374151", marginBottom: 6 }}>
+              Gift card code
+            </Text>
+            <TextInput
+              value={giftCardCode}
+              onChangeText={setGiftCardCode}
+              autoCapitalize="characters"
+              placeholder="Optional gift card code"
+              placeholderTextColor="#9CA3AF"
+              style={{
+                borderWidth: 1,
+                borderColor: "#E5E7EB",
+                borderRadius: 12,
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                color: "#111827",
+                marginBottom: 12,
+              }}
+            />
+            <Text style={{ fontSize: 12, fontWeight: "700", color: "#374151", marginBottom: 6 }}>
+              Loyalty points
+            </Text>
+            <TextInput
+              value={loyaltyPointsToRedeem}
+              onChangeText={(value) => setLoyaltyPointsToRedeem(value.replace(/[^0-9]/g, ""))}
+              keyboardType="number-pad"
+              placeholder="Optional points to redeem"
+              placeholderTextColor="#9CA3AF"
+              style={{
+                borderWidth: 1,
+                borderColor: "#E5E7EB",
+                borderRadius: 12,
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                color: "#111827",
+              }}
+            />
           </View>
         ) : null}
 
@@ -548,13 +805,21 @@ export default function CustomOfferCheckoutScreen() {
             <ActivityIndicator color="#fff" />
           ) : (
             <Text style={{ color: "#fff", fontSize: 17, fontWeight: "700" }}>
-              {providerRequiresDeposit && paymentOption === "deposit" ? "Pay deposit" : "Pay now"}
+              Pay {fmt(paystackDueNow)}
             </Text>
           )}
         </TouchableOpacity>
       </View>
 
-      <PaymentProcessingOverlay visible={processingPayment} message={processingMessage} />
+      <PaymentProcessingOverlay
+        visible={processingPayment}
+        message={processingMessage}
+        hint={
+          processingMessage.includes("Opening")
+            ? "You may switch to your bank app — we will bring you back here when payment completes."
+            : undefined
+        }
+      />
 
       <PaymentSuccessOverlay
         visible={Boolean(successOverlay)}

@@ -40,7 +40,16 @@ export async function createBookingRecord(
     booking_source: "online",
     scheduled_at: draft.selected_datetime,
     package_id: draft.package_id ?? null,
-    subtotal: v.subtotal,
+    /**
+     * §Finance-truth 2026-05: persisted `subtotal` is the canonical sum of line items
+     * BEFORE any discount (services + addons + products). The catalog package discount
+     * is surfaced in `discount_amount` so the invariant
+     *   subtotal + travel + tax + platform_fee + tip - all_discounts - cancellation ≈ total_amount
+     * holds across customer/provider receipts and admin reports. Previously `v.subtotal`
+     * was post-package while `discount_amount` ALSO carried the package amount, which
+     * double-subtracted the package discount on every reconciliation surface.
+     */
+    subtotal: v.subtotal + v.packageDiscountAmount,
     travel_fee: v.travelFee,
     platform_fee_config_id: v.serviceFeeConfigId,
     platform_fee_percentage: v.serviceFeePercentage,
@@ -54,7 +63,8 @@ export async function createBookingRecord(
     tip_amount: v.tipAmount,
     tax_amount: v.taxAmount,
     tax_rate: v.taxRate ?? null,
-    discount_amount: v.packageDiscountAmount + v.promoDiscountAmount,
+    // Package/manual catalog discount only; promo is promotion_discount_amount.
+    discount_amount: v.packageDiscountAmount,
     discount_code: v.promoCode || null,
     promotion_discount_amount: v.promoDiscountAmount,
     membership_discount_amount: v.membershipDiscountAmount,
@@ -430,7 +440,7 @@ export async function createBookingRecord(
       total_price: Number(product.totalPrice),
       currency: v.currency,
       staff_id: primaryStaffId,
-      stock_deducted_at: product.productVariantId || v.productById.get(product.productId ?? product.product_id ?? "")?.track_stock_quantity
+      stock_deducted_at: v.productById.get(product.productId ?? product.product_id ?? "")?.track_stock_quantity
         ? stockDeductedAt
         : null,
     }));
@@ -442,34 +452,23 @@ export async function createBookingRecord(
 
     // Update stock (variant or product-level)
     for (const product of products) {
+      const pid = product.productId ?? product.product_id;
+      const productData = pid ? v.productById.get(pid) : undefined;
+      if (productData?.track_stock_quantity !== true) continue;
+
       if (product.productVariantId) {
-        try {
-          await (adminSupabase.rpc as any)("decrement_product_variant_stock", {
-            p_variant_id: product.productVariantId,
+        const { error: variantStockError } = await (adminSupabase.rpc as any)("decrement_product_variant_stock", {
+          p_variant_id: product.productVariantId,
+          p_quantity: product.quantity,
+        });
+        if (variantStockError) throw variantStockError;
+      } else {
+        if (pid) {
+          const { error: stockError } = await adminSupabase.rpc("decrement_product_stock", {
+            p_product_id: pid,
             p_quantity: product.quantity,
           });
-        } catch {
-          const { data: vrow } = await adminSupabase
-            .from("product_variants")
-            .select("quantity")
-            .eq("id", product.productVariantId)
-            .single();
-          if (vrow) {
-            await adminSupabase
-              .from("product_variants")
-              .update({ quantity: Math.max(0, (vrow.quantity ?? 0) - product.quantity) })
-              .eq("id", product.productVariantId);
-          }
-        }
-      } else {
-        const pid = product.productId ?? product.product_id;
-        const productData = pid ? v.productById.get(pid) : undefined;
-        if (productData?.track_stock_quantity && pid) {
-          const newQuantity = (productData.quantity || 0) - product.quantity;
-          await adminSupabase
-            .from("products")
-            .update({ quantity: Math.max(0, newQuantity) })
-            .eq("id", pid);
+          if (stockError) throw stockError;
         }
       }
     }

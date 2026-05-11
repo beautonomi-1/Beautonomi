@@ -157,7 +157,7 @@ const SETTINGS_CATEGORIES: SettingsCategory[] = [
         href: "#",
         action: "rateStore" as const,
       },
-      { title: "Change password", description: "Update your account password", href: "/account-settings/login-and-security", mobileRoute: "/(app)/(tabs)/more/settings-change-password" },
+      { title: "Login & security", description: "Email, phone, password, biometrics & sessions", href: "/account-settings/login-and-security", mobileRoute: "/(app)/(tabs)/more/settings-login-and-security" },
       { title: "Privacy Policy", description: "How we use your data", href: "/privacy-policy", mobileRoute: "/(auth)/privacy" },
       { title: "Terms of Service", description: "Terms and conditions", href: "/terms-and-condition", mobileRoute: "/(auth)/terms" },
       { title: "Deactivate account", description: "Temporarily disable your account", href: "/account-settings/login-and-security", mobileRoute: "/(app)/(tabs)/more/settings-deactivate-account", isDestructive: true },

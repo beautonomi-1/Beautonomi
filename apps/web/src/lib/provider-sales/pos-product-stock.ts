@@ -43,7 +43,7 @@ export async function validatePosProductStock(
       if (!pv) {
         return `Invalid variant for product "${prod.name}".`;
       }
-      if (Number(pv.quantity) < qty) {
+      if ((prod as { track_stock_quantity?: boolean }).track_stock_quantity !== false && Number(pv.quantity) < qty) {
         return `${prod.name}: only ${pv.quantity} in stock for that option (requested ${qty}).`;
       }
     } else if (Boolean((prod as { has_variants?: boolean }).has_variants)) {
@@ -75,6 +75,15 @@ export async function applyPosProductStockDecrements(
     if (!productId) continue;
 
     if (variantId) {
+      const { data: prodRow, error: pe } = await supabase
+        .from("products")
+        .select("track_stock_quantity")
+        .eq("id", productId)
+        .maybeSingle();
+      if (pe) throw new Error(pe.message || "product stock lookup failed");
+      if ((prodRow as { track_stock_quantity?: boolean } | null)?.track_stock_quantity === false) {
+        continue;
+      }
       const { error } = await supabase.rpc("decrement_product_variant_stock", {
         p_variant_id: variantId,
         p_quantity: qty,

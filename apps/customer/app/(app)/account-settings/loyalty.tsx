@@ -25,6 +25,7 @@ import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { haptic } from "@/lib/haptics";
 import { Colors } from "@/constants/colors";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { loyaltyHistoryRowsForDisplay } from "@/lib/loyalty-history-rows";
 
 interface Milestone {
   id: string;
@@ -55,6 +56,7 @@ interface LoyaltyData {
   next_milestone?: Milestone | null;
   milestones?: Milestone[];
   available_milestones?: Milestone[];
+  /** @deprecated Use recent_transactions only; kept for older API responses */
   history?: Transaction[];
   recent_transactions?: Transaction[];
   can_redeem?: boolean;
@@ -326,17 +328,14 @@ export default function LoyaltyScreen() {
 
         {tab === "history" && (
           <View>
-            {((): boolean => {
-              const combined = [...(data?.history ?? []), ...(data?.recent_transactions ?? [])];
-              return combined.length === 0;
-            })() ? (
+            {loyaltyHistoryRowsForDisplay(data).length === 0 ? (
               <View style={{ paddingVertical: 48, alignItems: "center" }}>
                 <Ionicons name="receipt-outline" size={40} color={Colors.gray[400]} />
                 <Text style={{ color: Colors.gray[600], marginTop: 12, fontWeight: "500" }}>No transactions yet</Text>
                 <Text style={{ fontSize: 13, color: Colors.gray[500], marginTop: 4 }}>Points will appear here after your first booking</Text>
               </View>
             ) : (
-              [...(data?.history ?? []), ...(data?.recent_transactions ?? [])].map((tx: any) => {
+              loyaltyHistoryRowsForDisplay(data).map((tx: any) => {
                 const txType = tx.type ?? (tx.transaction_type === "earned" ? "earn" : tx.transaction_type === "redeemed" ? "redeem" : tx.transaction_type === "expired" ? "expire" : "earn");
                 const desc = tx.description ?? (txType === "earn" ? "Points earned" : txType === "redeem" ? "Points redeemed" : "Points expired");
                 const pts = Number(tx.points ?? tx.points_amount ?? 0) || 0;

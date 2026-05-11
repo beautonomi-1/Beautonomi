@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
         .limit(1)
         .maybeSingle(),
       Promise.resolve(
-        supabase.rpc("get_user_loyalty_balance", { p_user_id: user.id })
+        supabase.rpc("get_customer_available_points", { customer_uuid: user.id })
       ).then(({ data, error }) => (error ? 0 : Number(data ?? 0))).catch(() => 0),
     ]);
 

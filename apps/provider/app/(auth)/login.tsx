@@ -20,7 +20,6 @@ import { Colors } from "@/constants/colors";
 import { BeautonomiLogo } from "@/components/ui/BeautonomiLogo";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useAuth, type OAuthProvider } from "@/providers/AuthProvider";
-import { useTranslation } from "@beautonomi/i18n";
 import { api } from "@/lib/api-client";
 import { changeLanguage } from "@/lib/i18n";
 import {
@@ -83,7 +82,6 @@ type LoginMode = "phone" | "email";
 export default function LoginScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ deactivated?: string; suspended?: string }>();
-  const { t } = useTranslation();
   const { contentMaxWidth, isTablet, screenPadding } = useResponsive();
   const {
     signInWithOtp,
@@ -137,10 +135,28 @@ export default function LoginScreen() {
   const [emailOtpSent, setEmailOtpSent] = useState(false);
   const [emailOtpCode, setEmailOtpCode] = useState("");
   const [pendingEmailOtp, setPendingEmailOtp] = useState("");
+  /** Cooldown timers (seconds) prevent users from spamming Supabase rate-limits during OTP resend. */
+  const RESEND_COOLDOWN_SECONDS = 30;
+  const [smsResendCooldown, setSmsResendCooldown] = useState(0);
+  const [emailResendCooldown, setEmailResendCooldown] = useState(0);
+  const [resendingSms, setResendingSms] = useState(false);
+  const [resendingEmail, setResendingEmail] = useState(false);
   const [socialAuth, setSocialAuth] = useState<{ google: boolean; apple: boolean }>({
     google: true,
     apple: true,
   });
+
+  useEffect(() => {
+    if (smsResendCooldown <= 0) return;
+    const id = setInterval(() => setSmsResendCooldown((s) => (s > 0 ? s - 1 : 0)), 1000);
+    return () => clearInterval(id);
+  }, [smsResendCooldown]);
+
+  useEffect(() => {
+    if (emailResendCooldown <= 0) return;
+    const id = setInterval(() => setEmailResendCooldown((s) => (s > 0 ? s - 1 : 0)), 1000);
+    return () => clearInterval(id);
+  }, [emailResendCooldown]);
 
   const fullPhone = `${countryCode}${stripLeadingZero(phone.replace(/\D/g, ""))}`.trim();
   const hasSocialAuth = socialAuth.google || socialAuth.apple;
@@ -219,6 +235,7 @@ export default function LoginScreen() {
       }
       setPendingPhone(e164);
       setOtpSent(true);
+      setSmsResendCooldown(RESEND_COOLDOWN_SECONDS);
       setFormSuccess(
         `We sent a ${smsOtpLen}-digit code. Check your phone (valid about ${smsOtpExpiryMin} ${
           smsOtpExpiryMin === 1 ? "minute" : "minutes"
@@ -228,6 +245,49 @@ export default function LoginScreen() {
       setFormError(e instanceof Error ? e.message : "Something went wrong. Please try again.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleResendPhoneOtp() {
+    if (smsResendCooldown > 0 || resendingSms) return;
+    if (!pendingPhone) return;
+    setFormError(null);
+    setResendingSms(true);
+    try {
+      const { error } = await signInWithOtp(pendingPhone);
+      if (error) {
+        setFormError(error.message);
+        return;
+      }
+      setToken("");
+      setSmsResendCooldown(RESEND_COOLDOWN_SECONDS);
+      setFormSuccess("A new verification code has been sent.");
+    } catch (e: unknown) {
+      setFormError(e instanceof Error ? e.message : "Failed to resend code.");
+    } finally {
+      setResendingSms(false);
+    }
+  }
+
+  async function handleResendEmailOtp() {
+    if (emailResendCooldown > 0 || resendingEmail) return;
+    const addr = pendingEmailOtp || email.trim();
+    if (!addr) return;
+    setFormError(null);
+    setResendingEmail(true);
+    try {
+      const { error } = await signInWithOtpEmail(addr);
+      if (error) {
+        setFormError(error.message);
+        return;
+      }
+      setEmailOtpCode("");
+      setEmailResendCooldown(RESEND_COOLDOWN_SECONDS);
+      setFormSuccess("A new verification code has been sent.");
+    } catch (e: unknown) {
+      setFormError(e instanceof Error ? e.message : "Failed to resend code.");
+    } finally {
+      setResendingEmail(false);
     }
   }
 
@@ -337,6 +397,7 @@ export default function LoginScreen() {
       setPendingEmailOtp(trimmed);
       setEmailOtpSent(true);
       setEmailOtpCode("");
+      setEmailResendCooldown(RESEND_COOLDOWN_SECONDS);
       setFormSuccess(
         `We sent a ${emailOtpLen}-digit code to your email (valid about ${emailOtpExpiryMin} minutes).`,
       );
@@ -408,10 +469,10 @@ export default function LoginScreen() {
           style={{ textAlign: "center", fontSize: 28, fontWeight: "800", color: "#111827", marginBottom: 6, letterSpacing: -0.3 }}
           accessibilityRole="header"
         >
-          Welcome back
+          Welcome
         </Text>
         <Text style={{ textAlign: "center", fontSize: 15, color: "#6B7280", lineHeight: 22, marginBottom: 28 }}>
-          {t("auth.login")} · Beautonomi for service pros
+          Sign in or create an account · Beautonomi for service pros
         </Text>
 
         {/* Account status message (deactivated/suspended redirect) */}
@@ -494,7 +555,7 @@ export default function LoginScreen() {
                     setPendingPhone("");
                   }
                   if (m === "email") {
-                    setEmailOtpMode(false);
+                    setEmailOtpMode(true);
                     setEmailOtpSent(false);
                     setEmailOtpCode("");
                     setPendingEmailOtp("");
@@ -552,6 +613,23 @@ export default function LoginScreen() {
                   autoFocus
                   accessibilityLabelPrefix="Login verification code"
                 />
+                <View style={{ flexDirection: "row", justifyContent: "flex-end", marginTop: 8, marginBottom: 8 }}>
+                  <TouchableOpacity
+                    onPress={() => void handleResendPhoneOtp()}
+                    disabled={smsResendCooldown > 0 || resendingSms || loading}
+                    accessibilityRole="button"
+                    accessibilityLabel="Resend SMS code"
+                    style={{ opacity: smsResendCooldown > 0 || resendingSms || loading ? 0.5 : 1 }}
+                  >
+                    <Text style={{ fontSize: 13, fontWeight: "600", color: PRIMARY }}>
+                      {resendingSms
+                        ? "Resending..."
+                        : smsResendCooldown > 0
+                          ? `Resend in ${smsResendCooldown}s`
+                          : "Resend code"}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </>
             ) : (
               <>
@@ -660,29 +738,71 @@ export default function LoginScreen() {
                 </TouchableOpacity>
               </View>
             ) : (
-              <TouchableOpacity
-                onPress={handleSendOtp}
-                disabled={loading}
-                style={{
-                  backgroundColor: PRIMARY,
-                  borderRadius: 12,
-                  paddingVertical: 16,
-                  alignItems: "center",
-                  opacity: loading ? 0.7 : 1,
-                }}
-                accessibilityRole="button"
-                accessibilityLabel="Send verification code"
-              >
-                {loading ? (
-                  <ActivityIndicator color="white" />
-                ) : (
-                  <Text style={{ color: "#fff", fontSize: 16, fontWeight: "700" }}>Send Code</Text>
-                )}
-              </TouchableOpacity>
+              <>
+                <TouchableOpacity
+                  onPress={handleSendOtp}
+                  disabled={loading}
+                  style={{
+                    backgroundColor: PRIMARY,
+                    borderRadius: 12,
+                    paddingVertical: 16,
+                    alignItems: "center",
+                    opacity: loading ? 0.7 : 1,
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Send verification code"
+                >
+                  {loading ? (
+                    <ActivityIndicator color="white" />
+                  ) : (
+                    <Text style={{ color: "#fff", fontSize: 16, fontWeight: "700" }}>Send Code</Text>
+                  )}
+                </TouchableOpacity>
+                {auth.email_provider_enabled && auth.phone_provider_enabled ? (
+                  <TouchableOpacity
+                    onPress={() => {
+                      setMode("email");
+                      setEmailOtpMode(true);
+                      setEmailOtpSent(false);
+                      setEmailOtpCode("");
+                      setPendingEmailOtp("");
+                      setFormError(null);
+                    }}
+                    disabled={loading}
+                    style={{
+                      marginTop: 14,
+                      borderWidth: 1.5,
+                      borderColor: "#E5E7EB",
+                      borderRadius: 12,
+                      paddingVertical: 14,
+                      alignItems: "center",
+                      backgroundColor: "#fff",
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Continue with email"
+                  >
+                    <Text style={{ fontSize: 15, color: "#111827", fontWeight: "600" }}>Continue with email</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </>
             )}
           </>
         ) : showEmailLoginBlock ? (
           <>
+            {auth.email_provider_enabled && auth.phone_provider_enabled ? (
+              <TouchableOpacity
+                onPress={() => {
+                  setMode("phone");
+                  setFormError(null);
+                  setFormSuccess(null);
+                }}
+                style={{ marginBottom: 16 }}
+                accessibilityRole="button"
+                accessibilityLabel="Continue with phone"
+              >
+                <Text style={{ fontSize: 14, color: PRIMARY, fontWeight: "600" }}>← Continue with phone</Text>
+              </TouchableOpacity>
+            ) : null}
             {/* Email */}
             <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 6 }}>
               Email
@@ -775,6 +895,23 @@ export default function LoginScreen() {
                   autoFocus
                   accessibilityLabelPrefix="Email verification code"
                 />
+                <View style={{ flexDirection: "row", justifyContent: "flex-end", marginTop: 8 }}>
+                  <TouchableOpacity
+                    onPress={() => void handleResendEmailOtp()}
+                    disabled={emailResendCooldown > 0 || resendingEmail || loading}
+                    accessibilityRole="button"
+                    accessibilityLabel="Resend email code"
+                    style={{ opacity: emailResendCooldown > 0 || resendingEmail || loading ? 0.5 : 1 }}
+                  >
+                    <Text style={{ fontSize: 13, fontWeight: "600", color: PRIMARY }}>
+                      {resendingEmail
+                        ? "Resending..."
+                        : emailResendCooldown > 0
+                          ? `Resend in ${emailResendCooldown}s`
+                          : "Resend code"}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
                 <TouchableOpacity
                   onPress={() => void handleVerifyEmailOtp()}
                   disabled={loading || !isCompleteOtpForLength(emailOtpCode, emailOtpLen)}
@@ -974,18 +1111,11 @@ export default function LoginScreen() {
           </>
         )}
 
-        {/* Sign up link */}
+        {/* Unified flow — no separate signup */}
         <View style={{ marginTop: 20 }}>
-          <TouchableOpacity
-            onPress={() => router.push("/(auth)/signup" as never)}
-            accessibilityRole="link"
-            accessibilityLabel="Sign up"
-          >
-            <Text style={{ textAlign: "center", fontSize: 14, color: "#6B7280" }}>
-              Don&apos;t have an account?{" "}
-              <Text style={{ fontWeight: "700", color: PRIMARY }}>Sign Up</Text>
-            </Text>
-          </TouchableOpacity>
+          <Text style={{ textAlign: "center", fontSize: 14, color: "#6B7280", lineHeight: 20 }}>
+            New here? Use phone, email code, or Google above — we create your account when you verify.
+          </Text>
         </View>
         </View>
       </ScrollView>

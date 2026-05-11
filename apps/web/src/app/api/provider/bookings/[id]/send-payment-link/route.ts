@@ -7,6 +7,7 @@ import { assertProviderUserCanAccessBookingBranch } from "@/lib/provider-booking
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { bookingTenantMismatchResponse } from "@/lib/tenant/provider-matches-host";
 import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
+import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
 
 /**
  * POST /api/provider/bookings/[id]/send-payment-link
@@ -26,7 +27,7 @@ export async function POST(
     const { user } = permissionCheck;
 
     const supabase = await getSupabaseServer(request);
-    const supabaseAdmin = await getSupabaseAdmin();
+    const supabaseAdmin = getSupabaseAdmin();
     const tenantId = await resolveTenantIdWithZaFallback(request);
     const { id: bookingId } = await params;
     const body = await request.json();
@@ -65,6 +66,7 @@ export async function POST(
         provider_id, 
         customer_id,
         location_id,
+        additional_charges(amount,status),
         customers:users!bookings_customer_id_fkey(
           id, 
           full_name, 
@@ -141,12 +143,20 @@ export async function POST(
     const appBase = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
     const paymentLink = `${appBase}/bookings/${bookingId}/pay`;
     const bookingRef = booking.ref_number || booking.booking_number || bookingId.slice(0, 8).toUpperCase();
-    const _tp = Number(booking.total_paid ?? 0);
-    const _tr = Number(booking.total_refunded ?? 0);
-    const _wa = Number(booking.wallet_amount ?? 0);
-    const _ga = Number(booking.gift_card_amount ?? 0);
-    const _ep = Math.max(0, _tp - _tr);
-    const amountDue = Math.max(0, Number(booking.total_amount ?? 0) - _ep - _wa - _ga);
+    const unpaidAdditionalCharges = Array.isArray((booking as any).additional_charges)
+      ? (booking as any).additional_charges
+          .filter((charge: any) => charge?.status !== "paid" && charge?.status !== "rejected")
+          .reduce((sum: number, charge: any) => sum + Number(charge?.amount || 0), 0)
+      : 0;
+    const amountDue = computeBookingOutstandingDisplay({
+      totalAmount: Number(booking.total_amount ?? 0),
+      totalPaid: Number(booking.total_paid ?? 0),
+      totalRefunded: Number(booking.total_refunded ?? 0),
+      walletAmount: Number(booking.wallet_amount ?? 0),
+      giftCardAmount: Number(booking.gift_card_amount ?? 0),
+      unpaidAdditionalCharges,
+      paymentStatus: booking.payment_status,
+    });
 
     // Create notification for customer (will be sent via OneSignal)
     try {

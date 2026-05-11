@@ -168,6 +168,11 @@ export async function GET(
       address_country?: string; address_postal_code?: string; address_latitude?: number; address_longitude?: number;
       location?: { name?: string; address_line1?: string; address_line2?: string; city?: string; country?: string };
       special_requests?: string; group_booking_id?: string; group_bookings?: { ref_number?: string };
+      custom_offer?: {
+        id?: string | null;
+        notes?: string | null;
+        request?: { id?: string | null; description?: string | null } | null;
+      } | null;
       provider?: {
         id: string;
         business_name?: string;
@@ -226,6 +231,8 @@ export async function GET(
       loyalty_points_used: Number((bookingData as Record<string, unknown>).loyalty_points_used ?? 0),
       currency: bookingData.currency ?? "ZAR",
       payment_status: bookingData.payment_status as string | undefined,
+      deposit_required: (bookingData as Record<string, unknown>).deposit_required ?? undefined,
+      payment_option: (bookingData as Record<string, unknown>).payment_option ?? undefined,
       payment_method_id: (bookingData as Record<string, unknown>).payment_method_id ?? undefined,
       payment_reference: (bookingData as { payment_reference?: string }).payment_reference ?? undefined,
       payment_date: (bookingData as Record<string, unknown>).payment_date ?? undefined,
@@ -336,6 +343,18 @@ export async function GET(
       special_requests: bookingData.special_requests,
       is_group_booking: !!bookingData.group_booking_id,
       group_booking_ref: (bookingData.group_bookings as { ref_number?: string } | undefined)?.ref_number ?? null,
+      custom_offer: bookingData.custom_offer
+        ? {
+            id: bookingData.custom_offer.id ?? null,
+            notes: bookingData.custom_offer.notes ?? null,
+            request: bookingData.custom_offer.request
+              ? {
+                  id: bookingData.custom_offer.request.id ?? null,
+                  description: bookingData.custom_offer.request.description ?? null,
+                }
+              : null,
+          }
+        : null,
       provider: bookingData.provider ? {
         id: bookingData.provider.id,
         business_name: bookingData.provider.business_name,
@@ -365,9 +384,9 @@ export async function GET(
         const bookingTotal = Number(bookingData.total_amount ?? 0);
         const totalPaid = Number(bookingData.total_paid ?? 0);
         const totalRefunded = Number((bookingData as Record<string, unknown>).total_refunded ?? 0);
-        // wallet_amount was debited from the customer's wallet balance at booking time and is
-        // NOT recorded in booking_payments (which only tracks gateway transactions). We must
-        // subtract it here so wallet-covered amounts don't show as outstanding balance.
+        // Post-582, wallet/gift are usually represented as synthetic booking_payments rows.
+        // The outstanding helper uses max(total_paid coverage, wallet+gift coverage) so legacy
+        // rows stay correct without double-subtracting newer synthetic rows.
         const walletAmount = Number((bookingData as Record<string, unknown>).wallet_amount ?? 0);
         const giftCardAmount = Number((bookingData as Record<string, unknown>).gift_card_amount ?? 0);
         type AcRow = { status?: string; amount?: number };

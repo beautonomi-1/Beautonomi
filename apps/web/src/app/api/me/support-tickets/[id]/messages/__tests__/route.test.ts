@@ -93,7 +93,12 @@ describe("POST /api/me/support-tickets/[id]/messages", () => {
     const res = await POST(req, { params: Promise.resolve({ id: "ticket-1" }) });
 
     expect(res.status).toBe(200);
-    expect(mock.updatePayloads[0]).toMatchObject({ status: "in_progress" });
+    expect(mock.updatePayloads[0]).toMatchObject({
+      status: "in_progress",
+      last_message_from: "customer",
+      last_customer_view_at: expect.any(String),
+      last_message_at: expect.any(String),
+    });
   });
 
   it("rejects replies to closed tickets", async () => {

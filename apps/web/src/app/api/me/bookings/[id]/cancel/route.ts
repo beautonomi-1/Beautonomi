@@ -33,7 +33,7 @@ export async function POST(
     const { data: booking, error: bookingError } = await supabase
       .from('bookings')
       .select(
-        'id, provider_id, location_type, scheduled_at, created_at, status, customer_id, version, booking_number, subtotal, discount_amount, tax_amount, service_fee_amount, travel_fee, tip_amount, total_amount, total_paid, wallet_amount, gift_card_amount, currency, cancellation_fee, customer_package_entitlement_id, loyalty_points_used, loyalty_points_redeemed'
+        'id, provider_id, location_type, scheduled_at, created_at, status, customer_id, version, booking_number, subtotal, discount_amount, tax_amount, service_fee_amount, travel_fee, tip_amount, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, currency, cancellation_fee, customer_package_entitlement_id, loyalty_points_used, loyalty_points_redeemed'
       )
       .eq('id', bookingId)
       .single();
@@ -161,7 +161,13 @@ export async function POST(
     const giftCardCollected = roundCurrency2(
       Math.max(0, Number((booking as { gift_card_amount?: number | null }).gift_card_amount ?? 0))
     );
-    const effectiveCollectedAmount = roundCurrency2(totalPaid + walletCollected + giftCardCollected);
+    const effectiveCollectedAmount = roundCurrency2(
+      Math.max(
+        0,
+        Math.max(totalPaid, walletCollected + giftCardCollected) -
+          Number((booking as { total_refunded?: number | null }).total_refunded ?? 0),
+      )
+    );
     const isLate = checkResult.isLateCancellation === true;
     const policyRefundAmount = computeCancellationRefundAmount(bookingTotal, policy, isLate);
     /** Wallet credit must not exceed money actually collected across card, wallet, and gift card. */

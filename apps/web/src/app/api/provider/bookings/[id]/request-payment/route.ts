@@ -10,6 +10,7 @@ import { z } from "zod";
 import type { Booking, AdditionalCharge } from "@/types/beautonomi";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
+import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
 
 const requestPaymentSchema = z.object({
   description: z.string().min(1, "Description is required"),
@@ -96,14 +97,6 @@ export async function POST(
 
     const bookingData = booking as any;
 
-    const totalAmount = Number(bookingData.total_amount ?? 0);
-    const totalPaidStored = Number(bookingData.total_paid ?? 0);
-    const totalRefundedStored = Number(bookingData.total_refunded ?? 0);
-    const walletApplied = Number(bookingData.wallet_amount ?? 0);
-    const giftApplied = Number(bookingData.gift_card_amount ?? 0);
-    const effPaid = Math.max(0, totalPaidStored - totalRefundedStored);
-    const remainingBalance = Math.max(0, totalAmount - effPaid - walletApplied - giftApplied);
-
     // Check if booking is in progress or completed
     if (!["in_progress", "completed"].includes(bookingData.status)) {
       return errorResponse("Can only request additional payment for in-progress or completed bookings", "INVALID_STATUS", 400);
@@ -129,6 +122,22 @@ export async function POST(
     }
 
     const newCharge = chargeRow as AdditionalCharge;
+    const { data: chargesForOutstanding } = await (supabase
+      .from("additional_charges") as any)
+      .select("amount, status")
+      .eq("booking_id", id);
+    const unpaidAdditionalCharges = ((chargesForOutstanding as Array<{ amount?: number; status?: string }> | null) ?? [])
+      .filter((charge) => charge.status !== "paid" && charge.status !== "rejected")
+      .reduce((sum, charge) => sum + Number(charge.amount || 0), 0);
+    const remainingBalance = computeBookingOutstandingDisplay({
+      totalAmount: Number(bookingData.total_amount ?? 0),
+      totalPaid: Number(bookingData.total_paid ?? 0),
+      totalRefunded: Number(bookingData.total_refunded ?? 0),
+      walletAmount: Number(bookingData.wallet_amount ?? 0),
+      giftCardAmount: Number(bookingData.gift_card_amount ?? 0),
+      unpaidAdditionalCharges,
+      paymentStatus: bookingData.payment_status,
+    });
 
     // Create booking event
     const { error: eventError } = await supabase

@@ -165,7 +165,6 @@ export async function POST(
       }
 
       const refundReference = `dispute_refund_${(dispute as DisputeRow).id}_${Date.now()}`;
-      const newBookingPaymentStatus = refundAmt >= bookingData.total_amount ? "refunded" : "partially_refunded";
 
       // Optional: mark any success payment_transaction for this booking as refunded (ledger consistency)
       const { data: tx } = await supabase
@@ -208,11 +207,6 @@ export async function POST(
       // `create_finance_ledger_from_booking_refund` (migration 490) via the
       // booking_refunds insert above. App-side insertion duplicates the ledger
       // (B1).
-
-      await supabase
-        .from("bookings")
-        .update({ payment_status: newBookingPaymentStatus })
-        .eq("id", id);
     }
 
     // Update dispute

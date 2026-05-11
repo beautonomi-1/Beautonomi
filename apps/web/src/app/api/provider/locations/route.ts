@@ -121,8 +121,9 @@ export async function POST(request: NextRequest) {
       return notFoundResponse("Provider not found");
     }
 
-    // Check subscription allows multiple locations
-    const locationAccess = await checkLocationFeatureAccess(providerId);
+    // Check subscription allows multiple locations (pass request-scoped client
+    // so Bearer-token auth from mobile/provider app is respected)
+    const locationAccess = await checkLocationFeatureAccess(providerId, supabase);
     if (!locationAccess.enabled) {
       return errorResponse(
         "Multiple locations require a subscription upgrade. Please upgrade your plan to add more locations.",

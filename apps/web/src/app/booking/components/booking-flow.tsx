@@ -31,6 +31,7 @@ import {
 import {
   buildRetailCartRowsFromPublicPackage,
   cartMatchesPublicCatalogPackage,
+  computeCatalogPackageServiceDiscount,
   flattenProviderServicesToMenu,
   resolvePackageOfferingsFromFlatMenu,
   type ProviderServiceLike,
@@ -146,6 +147,7 @@ export interface BookingState {
   serviceFeePercentage?: number;
   taxAmount?: number;
   taxRate?: number;
+  taxIncluded?: boolean;
   tipAmount?: number;
   /** When set, percentage tip buttons stay highlighted after refresh (synced from payment step). */
   tipPercentSelection?: number | null;
@@ -410,6 +412,8 @@ export default function BookingFlow() {
     platform_service_fee_type: "percentage" | "fixed";
     platform_service_fee_percentage: number;
     platform_service_fee_fixed: number;
+    min_booking_amount?: number | null;
+    max_fee_amount?: number | null;
     show_service_fee_to_customer: boolean;
   } | null>(null);
   
@@ -569,16 +573,25 @@ export default function BookingFlow() {
       servicesTotal = bookingState.selectedServices.reduce((sum, s) => sum + s.price, 0);
     }
 
+    const packageDiscount = bookingState.selectedPackage
+      ? computeCatalogPackageServiceDiscount(
+          {
+            price: bookingState.selectedPackage.price,
+            discount_percentage: bookingState.selectedPackage.discount,
+          },
+          servicesTotal,
+        )
+      : 0;
+
     const subtotal =
-      servicesTotal +
+      Math.max(0, servicesTotal - packageDiscount) +
       bookingState.selectedAddons.reduce((sum, a) => sum + a.price, 0) +
       bookingState.selectedProducts.reduce((sum, p) => sum + (p.price * p.quantity), 0) +
       (bookingState.address?.travelFee || 0);
 
-    // Coupon + gift only — membership applies before loyalty (parity with validate-booking + mobile checkout).
+    // Coupon only — gift cards are payment tender, not booking discounts.
     const nonMembershipDiscounts =
-      (bookingState.promotions.couponDiscount || 0) +
-      (bookingState.promotions.giftCardAmount || 0);
+      (bookingState.promotions.couponDiscount || 0);
 
     const subtotalAfterPromo = Math.max(0, subtotal - nonMembershipDiscounts);
 
@@ -594,13 +607,27 @@ export default function BookingFlow() {
 
     // Calculate tax (on subtotal after all discounts)
     const taxRate = bookingState.taxRate || 0;
-    const taxAmount = taxRate > 0 ? Number(((subtotalAfterDiscounts * taxRate) / 100).toFixed(2)) : 0;
+    const taxAmount = taxRate > 0
+      ? bookingState.taxIncluded
+        ? Number((subtotalAfterDiscounts - subtotalAfterDiscounts / (1 + taxRate / 100)).toFixed(2))
+        : Number(((subtotalAfterDiscounts * taxRate) / 100).toFixed(2))
+      : 0;
 
     // Calculate customer-paid Platform Fee (on subtotal after all discounts)
-    const serviceFeeAmount =
+    const minBookingAmount = Number(platformFeeSettings.min_booking_amount || 0);
+    let serviceFeeAmount = subtotalAfterDiscounts >= minBookingAmount
+      ? (
       platformFeeSettings.platform_service_fee_type === "percentage"
         ? Number(((subtotalAfterDiscounts * platformFeeSettings.platform_service_fee_percentage) / 100).toFixed(2))
-        : platformFeeSettings.platform_service_fee_fixed;
+        : platformFeeSettings.platform_service_fee_fixed
+      )
+      : 0;
+    if (
+      platformFeeSettings.platform_service_fee_type === "percentage" &&
+      platformFeeSettings.max_fee_amount != null
+    ) {
+      serviceFeeAmount = Math.min(serviceFeeAmount, Number(platformFeeSettings.max_fee_amount || 0));
+    }
     
     const serviceFeePercentage = platformFeeSettings.platform_service_fee_type === "percentage"
       ? platformFeeSettings.platform_service_fee_percentage
@@ -622,14 +649,15 @@ export default function BookingFlow() {
     bookingState.selectedServices,
     bookingState.selectedAddons,
     bookingState.selectedProducts,
+    bookingState.selectedPackage,
     bookingState.address?.travelFee,
     bookingState.promotions.couponDiscount,
-    bookingState.promotions.giftCardAmount,
     bookingState.promotions.loyaltyDiscount,
     membershipDiscountPercent,
     membershipPlanId,
     membershipPlanName,
     bookingState.taxRate,
+    bookingState.taxIncluded,
     platformFeeSettings,
   ]);
 
@@ -645,6 +673,7 @@ export default function BookingFlow() {
             updateBookingState({
               providerId: data.data.id,
               taxRate: data.data.tax_rate_percent != null ? Number(data.data.tax_rate_percent) : 0,
+              taxIncluded: Boolean(data.data.tax_inclusive),
               providerTimezone: data.data.timezone ?? null,
             });
           }

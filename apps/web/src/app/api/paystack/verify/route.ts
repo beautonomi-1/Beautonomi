@@ -7,6 +7,7 @@ import {
   requireRoleInApi,
   errorResponse,
   notFoundResponse,
+  getProviderIdForUser,
 } from "@/lib/supabase/api-helpers";
 import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
 import { trackServer } from "@/lib/analytics/amplitude/server";
@@ -78,7 +79,7 @@ export async function GET(request: NextRequest) {
       const productOrderId = metadata.product_order_id;
       if (productOrderId) {
         const { data: poBefore } = await (supabase.from("product_orders") as any)
-          .select("tenant_id, provider_id")
+          .select("tenant_id, provider_id, customer_id, total_amount, wallet_amount, payment_status, payment_reference")
           .eq("id", productOrderId)
           .maybeSingle();
 
@@ -99,15 +100,56 @@ export async function GET(request: NextRequest) {
           );
         }
 
+        const poBeforeRow = poBefore as {
+          tenant_id?: string | null;
+          provider_id?: string | null;
+          customer_id?: string | null;
+          total_amount?: number | string | null;
+          wallet_amount?: number | string | null;
+          payment_status?: string | null;
+          payment_reference?: string | null;
+        };
+
+        if (poBeforeRow.customer_id !== user.id) {
+          return errorResponse(
+            "You can only confirm payment for your own order.",
+            "FORBIDDEN",
+            403,
+          );
+        }
+
+        const paymentStatus = String(poBeforeRow.payment_status ?? "");
+        const existingReference = poBeforeRow.payment_reference ?? null;
+        if (paymentStatus !== "pending" && existingReference !== reference) {
+          return errorResponse(
+            "This order does not require online payment.",
+            "ORDER_NOT_PAYABLE",
+            400,
+          );
+        }
+
+        const amountMajor = Number(data.data.amount || 0) / 100;
+        const expectedMajor = Math.max(
+          0,
+          Number(poBeforeRow.total_amount ?? 0) - Number(poBeforeRow.wallet_amount ?? 0),
+        );
+        if (Math.abs(amountMajor - expectedMajor) > 0.01 && existingReference !== reference) {
+          return errorResponse(
+            "Payment amount does not match this order.",
+            "AMOUNT_MISMATCH",
+            400,
+          );
+        }
+
         const productOrderTenantId = await resolveTenantIdForFinanceLedger(supabase, {
-          tenant_id: (poBefore as { tenant_id?: string | null }).tenant_id,
-          provider_id: (poBefore as { provider_id?: string | null }).provider_id,
+          tenant_id: poBeforeRow.tenant_id,
+          provider_id: poBeforeRow.provider_id,
         });
         await recordProductOrderPayment({
           supabase: getSupabaseAdmin() as any,
           productOrderId,
           reference,
-          amountMajor: Number(data.data.amount || 0) / 100,
+          amountMajor,
           feesMajor: Number(data.data.fees || 0) / 100,
           source: "paystack_verify",
           provider: "paystack",
@@ -116,10 +158,9 @@ export async function GET(request: NextRequest) {
         const { data: po } = await (supabase.from("product_orders") as any)
           .select("customer_id, provider_id, order_number, total_amount")
           .eq("id", productOrderId)
-          .single();
+          .maybeSingle();
 
         if (po) {
-          const amountMajor = data.data.amount / 100;
           const { format: fmtPo } = await getTenantMoneyFormatter(productOrderTenantId);
           void import("@/lib/notifications/insert-notification").then(({ insertNotification }) =>
             insertNotification({
@@ -259,13 +300,132 @@ export async function GET(request: NextRequest) {
       }
 
       if (metadata?.ads_budget_order_id) {
-        await processSuccessfulPayment(data.data, getSupabaseAdmin());
+        const admin = getSupabaseAdmin();
+        const providerId = await getProviderIdForUser(user.id, admin as never, { request });
+        if (!providerId) {
+          return notFoundResponse("Provider not found");
+        }
+        const adsBudgetOrderId = String(metadata.ads_budget_order_id);
+        const { data: order } = await admin
+          .from("ads_budget_orders")
+          .select("id, provider_id, campaign_id, amount, status, currency")
+          .eq("id", adsBudgetOrderId)
+          .maybeSingle();
+        if (!order) {
+          return notFoundResponse("Ads payment order not found");
+        }
+        const orderRow = order as {
+          provider_id?: string | null;
+          campaign_id?: string | null;
+          amount?: number | string | null;
+          status?: string | null;
+        };
+        if (orderRow.provider_id !== providerId) {
+          return errorResponse(
+            "You can only confirm ad payments for your own provider account.",
+            "FORBIDDEN",
+            403,
+          );
+        }
+        const { data: providerTenantRow } = await admin
+          .from("providers")
+          .select("tenant_id")
+          .eq("id", providerId)
+          .maybeSingle();
+        if (
+          !resourceTenantMatchesHostTenant(
+            tenantId,
+            (providerTenantRow as { tenant_id?: string | null } | null)?.tenant_id,
+          )
+        ) {
+          return errorResponse(
+            "This ads payment belongs to a different market. Open checkout from the correct site or app.",
+            "TENANT_MISMATCH",
+            403,
+          );
+        }
+        const amountMajor = Number(data.data.amount || 0) / 100;
+        const expectedMajor = Number(orderRow.amount ?? 0);
+        if (String(orderRow.status ?? "") !== "paid" && Math.abs(amountMajor - expectedMajor) > 0.01) {
+          return errorResponse(
+            "Payment amount does not match this ads order.",
+            "AMOUNT_MISMATCH",
+            400,
+          );
+        }
+        await processSuccessfulPayment(data.data, admin);
         return successResponse({
           status: "success",
           type: "ads_budget_order",
-          adsBudgetOrderId: String(metadata.ads_budget_order_id),
-          campaignId: metadata.campaign_id ? String(metadata.campaign_id) : null,
+          adsBudgetOrderId,
+          campaignId: orderRow.campaign_id ?? (metadata.campaign_id ? String(metadata.campaign_id) : null),
           message: "Ads payment confirmed",
+        });
+      }
+
+      if (metadata?.provider_subscription_order_id) {
+        const admin = getSupabaseAdmin();
+        const providerId = await getProviderIdForUser(user.id, admin as never, { request });
+        if (!providerId) {
+          return notFoundResponse("Provider not found");
+        }
+        const subscriptionOrderId = String(metadata.provider_subscription_order_id);
+        const { data: order } = await admin
+          .from("provider_subscription_orders")
+          .select("id, provider_id, plan_id, billing_period, amount, status, currency")
+          .eq("id", subscriptionOrderId)
+          .maybeSingle();
+        if (!order) {
+          return notFoundResponse("Subscription payment order not found");
+        }
+        const orderRow = order as {
+          provider_id?: string | null;
+          plan_id?: string | null;
+          billing_period?: string | null;
+          amount?: number | string | null;
+          status?: string | null;
+        };
+        if (orderRow.provider_id !== providerId) {
+          return errorResponse(
+            "You can only confirm subscription payments for your own provider account.",
+            "FORBIDDEN",
+            403,
+          );
+        }
+        const { data: providerTenantRow } = await admin
+          .from("providers")
+          .select("tenant_id")
+          .eq("id", providerId)
+          .maybeSingle();
+        if (
+          !resourceTenantMatchesHostTenant(
+            tenantId,
+            (providerTenantRow as { tenant_id?: string | null } | null)?.tenant_id,
+          )
+        ) {
+          return errorResponse(
+            "This subscription payment belongs to a different market. Open checkout from the correct site or app.",
+            "TENANT_MISMATCH",
+            403,
+          );
+        }
+        const amountMajor = Number(data.data.amount || 0) / 100;
+        const expectedMajor = Number(orderRow.amount ?? 0);
+        if (String(orderRow.status ?? "") !== "paid" && Math.abs(amountMajor - expectedMajor) > 0.01) {
+          return errorResponse(
+            "Payment amount does not match this subscription order.",
+            "AMOUNT_MISMATCH",
+            400,
+          );
+        }
+        await processSuccessfulPayment(data.data, admin);
+        return successResponse({
+          status: "success",
+          type: "provider_subscription_order",
+          subscriptionOrderId,
+          planId: orderRow.plan_id ?? null,
+          billingPeriod: orderRow.billing_period ?? null,
+          message: "Subscription payment confirmed",
         });
       }
 

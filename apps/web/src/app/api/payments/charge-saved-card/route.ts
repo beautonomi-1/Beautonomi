@@ -8,8 +8,9 @@ import {
   notFoundResponse,
 } from "@/lib/supabase/api-helpers";
 import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
+import { recordBookingPaystackPayment } from "@/lib/bookings/record-booking-paystack-payment";
 import { chargeAuthorization, convertToSmallestUnit } from "@/lib/payments/paystack-complete";
-import { convertFromSmallestUnit } from "@/lib/payments/paystack";
+import { convertFromSmallestUnit, generateTransactionReference } from "@/lib/payments/paystack";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { syncBookingAfterPaystackSuccess } from "@/lib/bookings/sync-booking-after-paystack-success";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
@@ -154,6 +155,7 @@ export async function POST(request: NextRequest) {
       (typeof meta.booking_id === "string" && meta.booking_id) ||
       (typeof meta.bookingId === "string" && meta.bookingId) ||
       null;
+    let bookingTenantId: string | null = null;
 
     if (giftCardOrderIdFromMeta && !productOrderIdFromMeta) {
       const { data: gcoRow, error: gcoErr } = await (supabase.from("gift_card_orders") as any)
@@ -202,6 +204,7 @@ export async function POST(request: NextRequest) {
           403,
         );
       }
+      bookingTenantId = bookingRow.tenant_id ?? null;
     }
 
     let amountInSmallestUnit: number;
@@ -236,6 +239,11 @@ export async function POST(request: NextRequest) {
       amountInSmallestUnit = convertToSmallestUnit(body.amount!);
     }
 
+    const chargeReference = generateTransactionReference(
+      productOrderIdFromMeta ? "order" : bookingIdFromMeta ? "booking" : giftCardOrderIdFromMeta ? "giftcard" : "savedcard",
+      productOrderIdFromMeta ?? bookingIdFromMeta ?? giftCardOrderIdFromMeta ?? user.id,
+    );
+
     const chargeResult = await chargeAuthorization(
       authorizationCode,
       body.email,
@@ -245,7 +253,7 @@ export async function POST(request: NextRequest) {
         payment_method_id: body.payment_method_id,
         user_id: user.id,
       },
-      { tenantId }
+      { tenantId, reference: chargeReference }
     );
 
     if (!chargeResult.status) {
@@ -275,11 +283,34 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Sync the booking's payment status/totals when a booking_id is present
-    if (bookingIdFromMeta && chargeResult.data?.reference) {
+    // Sync the booking's payment status/totals when a booking_id is present.
+    // Record the canonical booking_payments row first so DB triggers have
+    // payment truth before lifecycle sync runs.
+    if (bookingIdFromMeta) {
+      const chargeData = chargeResult.data as { id?: number; reference?: string; amount?: number; status?: string };
+      const amountMajor =
+        typeof chargeData.amount === "number"
+          ? convertFromSmallestUnit(chargeData.amount)
+          : convertFromSmallestUnit(amountInSmallestUnit);
+      const recordedPayment = await recordBookingPaystackPayment(supabaseAdmin, {
+        bookingId: bookingIdFromMeta,
+        tenantId: bookingTenantId,
+        reference: chargeData.reference ?? chargeReference,
+        transactionId: chargeData.id ?? null,
+        amountMajor,
+        source: "charge_saved_card",
+        paymentOption: typeof meta.payment_option === "string" ? meta.payment_option : null,
+        requiresDeposit: Boolean(meta.requires_deposit),
+        saveCard: Boolean(meta.save_card),
+        paymentMethodId: body.payment_method_id,
+        notes: `Saved card charge. Ref: ${chargeData.reference ?? chargeReference}`,
+      });
+      if (recordedPayment.ok === false) {
+        console.error("[charge-saved-card] Failed to record booking payment after successful charge:", recordedPayment);
+      }
       try {
         await syncBookingAfterPaystackSuccess(supabaseAdmin, bookingIdFromMeta, {
-          paymentReference: chargeResult.data.reference,
+          paymentReference: chargeData.reference ?? chargeReference,
           paymentProvider: "paystack",
         });
       } catch (syncErr) {
@@ -289,7 +320,7 @@ export async function POST(request: NextRequest) {
 
     return successResponse({
       transaction: chargeResult.data,
-      reference: chargeResult.data.reference,
+      reference: chargeResult.data.reference ?? chargeReference,
       status: chargeResult.data.status,
       message: chargeResult.message,
       currency,

@@ -54,7 +54,7 @@ export async function POST(
 
     const { data: ticket, error: ticketError } = await supabase
       .from("support_tickets")
-      .select("id, user_id, ticket_number, subject, assigned_to, status")
+      .select("id, user_id, ticket_number, subject, priority, assigned_to, status, requester_type, support_context_type, support_context_label")
       .eq("id", id)
       .single();
 
@@ -90,6 +90,9 @@ export async function POST(
     const ticketUpdate: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
       last_customer_reply_at: new Date().toISOString(),
+      last_message_at: newMessage.created_at ?? new Date().toISOString(),
+      last_message_from: "customer",
+      last_customer_view_at: newMessage.created_at ?? new Date().toISOString(),
     };
     if (currentStatus === "waiting_customer") {
       ticketUpdate.status = "in_progress";
@@ -118,7 +121,23 @@ export async function POST(
       const previewText =
         message.slice(0, 180) ||
         (attachments.length ? `Sent ${attachments.length} attachment(s)` : "New reply");
-      await slackNotifySupportTicketReply(request, ticket as { id: string; ticket_number?: string; subject?: string; priority?: string }, previewText);
+      await slackNotifySupportTicketReply(
+        request,
+        ticket as {
+          id: string;
+          ticket_number?: string;
+          subject?: string;
+          priority?: string;
+          requester_type?: string;
+          support_context_type?: string;
+          support_context_label?: string;
+        },
+        previewText,
+        {
+          authorType: user.role === "provider_owner" || user.role === "provider_staff" ? "provider" : "customer",
+          messageId: newMessage.id as string | undefined,
+        }
+      );
     } catch (slackErr) {
       console.error("Slack reply notification failed:", slackErr);
     }

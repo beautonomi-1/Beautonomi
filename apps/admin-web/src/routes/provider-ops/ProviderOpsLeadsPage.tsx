@@ -224,11 +224,16 @@ export function ProviderOpsLeadsPage() {
   const assignedToFilter = sp.get("assigned_to") || "";
   const sortBy = sp.get("sort") || "created_at";
   const sortDir = sp.get("dir") || "desc";
+  const viewParam = sp.get("view");
 
   const [searchInput, setSearchInput] = useState(search);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [viewMode, setViewMode] = useState<"table" | "card">("table");
+  const [density, setDensity] = useState<"comfortable" | "compact">(() => {
+    if (typeof window === "undefined") return "comfortable";
+    return window.localStorage.getItem("providerOpsLeadDensity") === "compact" ? "compact" : "comfortable";
+  });
   const [filtersOpen, setFiltersOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
@@ -240,6 +245,26 @@ export function ProviderOpsLeadsPage() {
   const [whatsAppLead, setWhatsAppLead] = useState<Lead | null>(null);
   const [showBulkWhatsApp, setShowBulkWhatsApp] = useState(false);
   const [bulkAssignOpen, setBulkAssignOpen] = useState(false);
+
+  useEffect(() => {
+    if (viewParam === "table" || viewParam === "card") {
+      setViewMode(viewParam);
+      return;
+    }
+    if (window.matchMedia("(max-width: 640px)").matches) setViewMode("card");
+  }, [viewParam]);
+
+  const setLeadView = (next: "table" | "card") => {
+    setViewMode(next);
+    const n = new URLSearchParams(sp);
+    n.set("view", next);
+    setSp(n, { replace: true });
+  };
+
+  const setLeadDensity = (next: "comfortable" | "compact") => {
+    setDensity(next);
+    window.localStorage.setItem("providerOpsLeadDensity", next);
+  };
 
   const qk = useMemo(
     () =>
@@ -772,7 +797,7 @@ export function ProviderOpsLeadsPage() {
               <Filter className="h-4 w-4" />Filters{filtersOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
             </button>
             {selectedIds.size > 0 && (
-              <div className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm sm:flex-initial">
+              <div className="hidden min-w-0 flex-1 items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm sm:flex sm:flex-initial">
                 <span className="shrink-0 font-medium text-blue-700">{selectedIds.size} selected</span>
                 <select
                   className="min-w-0 flex-1 rounded-lg border border-blue-200 bg-white px-2 py-1 text-xs text-blue-700 sm:flex-initial"
@@ -804,11 +829,33 @@ export function ProviderOpsLeadsPage() {
                 <button type="button" onClick={() => setSelectedIds(new Set())} className="shrink-0 text-blue-500 hover:text-blue-700"><X className="h-3.5 w-3.5" /></button>
               </div>
             )}
+            <div className="inline-flex rounded-xl border border-gray-300 bg-white">
+              <button
+                type="button"
+                onClick={() => setLeadDensity("comfortable")}
+                className={cn(
+                  "min-h-11 touch-manipulation rounded-l-xl px-3 text-xs font-medium",
+                  density === "comfortable" ? "bg-gray-900 text-white" : "text-gray-600 hover:bg-gray-50",
+                )}
+              >
+                Cozy
+              </button>
+              <button
+                type="button"
+                onClick={() => setLeadDensity("compact")}
+                className={cn(
+                  "min-h-11 touch-manipulation rounded-r-xl px-3 text-xs font-medium",
+                  density === "compact" ? "bg-gray-900 text-white" : "text-gray-600 hover:bg-gray-50",
+                )}
+              >
+                Compact
+              </button>
+            </div>
             <div className="ml-auto flex shrink-0 rounded-xl border border-gray-300 bg-white sm:ml-0">
-              <button type="button" onClick={() => setViewMode("table")} className={cn("min-h-11 min-w-11 touch-manipulation rounded-l-xl px-2.5 py-2 transition-colors", viewMode === "table" ? "bg-gray-900 text-white" : "text-gray-500 hover:bg-gray-50")} aria-label="Table view">
+              <button type="button" onClick={() => setLeadView("table")} className={cn("min-h-11 min-w-11 touch-manipulation rounded-l-xl px-2.5 py-2 transition-colors", viewMode === "table" ? "bg-gray-900 text-white" : "text-gray-500 hover:bg-gray-50")} aria-label="Table view">
                 <LayoutList className="h-4 w-4" />
               </button>
-              <button type="button" onClick={() => setViewMode("card")} className={cn("min-h-11 min-w-11 touch-manipulation rounded-r-xl px-2.5 py-2 transition-colors", viewMode === "card" ? "bg-gray-900 text-white" : "text-gray-500 hover:bg-gray-50")} aria-label="Card view">
+              <button type="button" onClick={() => setLeadView("card")} className={cn("min-h-11 min-w-11 touch-manipulation rounded-r-xl px-2.5 py-2 transition-colors", viewMode === "card" ? "bg-gray-900 text-white" : "text-gray-500 hover:bg-gray-50")} aria-label="Card view">
                 <LayoutGrid className="h-4 w-4" />
               </button>
             </div>
@@ -816,7 +863,7 @@ export function ProviderOpsLeadsPage() {
         </div>
 
         {filtersOpen && (
-          <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 p-3">
+          <div className="mt-2 hidden flex-wrap items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 p-3 md:flex">
             <select
               value={country}
               onChange={(e) => { const n = new URLSearchParams(sp); if (e.target.value) n.set("country", e.target.value); else n.delete("country"); n.delete("page"); setSp(n, { replace: true }); }}
@@ -896,6 +943,106 @@ export function ProviderOpsLeadsPage() {
         )}
       </div>
 
+      {filtersOpen &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[105] flex items-end bg-black/40 p-0 md:hidden"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Lead filters"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setFiltersOpen(false);
+            }}
+          >
+            <div className="max-h-[88dvh] w-full overflow-y-auto rounded-t-2xl bg-white p-4 shadow-2xl">
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <h2 className="text-base font-semibold text-gray-900">Filter leads</h2>
+                  <p className="text-xs text-gray-500">Refine the inbox without losing your place.</p>
+                </div>
+                <button type="button" onClick={() => setFiltersOpen(false)} className="min-h-11 min-w-11 rounded-xl p-2 text-gray-500 hover:bg-gray-100" aria-label="Close filters">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <div className="space-y-3">
+                <select
+                  value={country}
+                  onChange={(e) => { const n = new URLSearchParams(sp); if (e.target.value) n.set("country", e.target.value); else n.delete("country"); n.delete("province"); n.delete("page"); setSp(n, { replace: true }); }}
+                  className="min-h-11 w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-base text-gray-700"
+                >
+                  <option value="">All Countries</option>
+                  {countryOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label} ({opt.count})</option>)}
+                </select>
+                <select
+                  value={province}
+                  onChange={(e) => { const n = new URLSearchParams(sp); if (e.target.value) n.set("province", e.target.value); else n.delete("province"); n.delete("page"); setSp(n, { replace: true }); }}
+                  className="min-h-11 w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-base text-gray-700"
+                >
+                  <option value="">All Provinces / States</option>
+                  {provinceOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label} ({opt.count})</option>)}
+                </select>
+                <select
+                  value={assignedToFilter}
+                  onChange={(e) => {
+                    const n = new URLSearchParams(sp);
+                    if (e.target.value) n.set("assigned_to", e.target.value);
+                    else n.delete("assigned_to");
+                    n.delete("page");
+                    setSp(n, { replace: true });
+                  }}
+                  className="min-h-11 w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-base text-gray-700"
+                >
+                  <option value="">All assignees</option>
+                  <option value="unassigned">Unassigned</option>
+                  {assigneeFilterOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label} ({opt.count})</option>)}
+                </select>
+                <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Categories</div>
+                  <div className="max-h-60 space-y-1 overflow-auto">
+                    {categoryOptions.map((cat) => {
+                      const checked = categoryIds.includes(cat.id);
+                      return (
+                        <label key={cat.id} className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg bg-white px-2 py-2 text-sm text-gray-700">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(e) => {
+                              const n = new URLSearchParams(sp);
+                              const next = new Set(categoryIds);
+                              if (e.target.checked) next.add(cat.id);
+                              else next.delete(cat.id);
+                              n.delete("category_id");
+                              n.delete("category_ids");
+                              [...next].forEach((id) => n.append("category_ids", id));
+                              n.delete("page");
+                              setSp(n, { replace: true });
+                            }}
+                          />
+                          <span className="min-w-0 flex-1 truncate">{cat.name}</span>
+                          <span className="text-xs text-gray-400">{cat.count}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div className="flex gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => { const n = new URLSearchParams(sp); n.delete("country"); n.delete("province"); n.delete("category_id"); n.delete("category_ids"); n.delete("assigned_to"); n.delete("page"); setSp(n, { replace: true }); }}
+                    className="min-h-11 flex-1 rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700"
+                  >
+                    Clear
+                  </button>
+                  <button type="button" onClick={() => setFiltersOpen(false)} className="min-h-11 flex-1 rounded-xl bg-gray-900 px-4 py-2 text-sm font-medium text-white">
+                    Show leads
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+
       {/* Main split-panel area — min-h-0 so flex children can shrink and the drawer gets a real height */}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
         {/* Left panel: lead list */}
@@ -923,6 +1070,7 @@ export function ProviderOpsLeadsPage() {
               onStageChange={(id, s, expectedAt) => stageChangeMut.mutate({ id, newStage: s, expected_updated_at: expectedAt })}
               onWhatsAppClick={(lead) => setWhatsAppLead(lead)}
               assignLeadMut={assignLeadMut}
+              density={density}
             />
           ) : (
             <LeadCardGrid
@@ -930,6 +1078,7 @@ export function ProviderOpsLeadsPage() {
               selectedLeadId={selectedLeadId}
               onSelectLead={setSelectedLeadId}
               assignLeadMut={assignLeadMut}
+              density={density}
             />
           )}
 
@@ -1122,7 +1271,7 @@ function SortHeader({ label, column, sortBy, sortDir, onSort }: { label: string;
   );
 }
 
-function LeadTable({ rows, selectedLeadId, selectedIds, sortBy, sortDir, onSelectLead, onToggleSelect, onToggleSelectAll, onSort, onStageChange, onWhatsAppClick, assignLeadMut }: {
+function LeadTable({ rows, selectedLeadId, selectedIds, sortBy, sortDir, onSelectLead, onToggleSelect, onToggleSelectAll, onSort, onStageChange, onWhatsAppClick, assignLeadMut, density }: {
   rows: Lead[];
   selectedLeadId: string | null;
   selectedIds: Set<string>;
@@ -1139,8 +1288,10 @@ function LeadTable({ rows, selectedLeadId, selectedIds, sortBy, sortDir, onSelec
     isPending: boolean;
     variables?: { leadId: string; assigned_to: string; assigned_to_name?: string; expected_updated_at?: string };
   };
+  density?: "comfortable" | "compact";
 }) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const rowPad = density === "compact" ? "py-1.5" : "py-2.5";
 
   return (
     <div className="flex-1 overflow-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]">
@@ -1184,12 +1335,12 @@ function LeadTable({ rows, selectedLeadId, selectedIds, sortBy, sortDir, onSelec
                 onMouseEnter={() => setHoveredId(lead.id)}
                 onMouseLeave={() => setHoveredId(null)}
               >
-                <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
+                <td className={cn("px-3", rowPad)} onClick={(e) => e.stopPropagation()}>
                   <button type="button" onClick={() => onToggleSelect(lead.id)} className="text-gray-400 hover:text-gray-700">
                     {isChecked ? <CheckSquare className="h-4 w-4 text-blue-600" /> : <Square className="h-4 w-4" />}
                   </button>
                 </td>
-                <td className="px-3 py-2.5">
+                <td className={cn("px-3", rowPad)}>
                   <div className="flex items-center gap-2">
                     <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gray-100 text-xs font-semibold text-gray-600">
                       {name.charAt(0).toUpperCase()}
@@ -1205,14 +1356,14 @@ function LeadTable({ rows, selectedLeadId, selectedIds, sortBy, sortDir, onSelec
                     </div>
                   </div>
                 </td>
-                <td className="px-3 py-2.5">
+                <td className={cn("px-3", rowPad)}>
                   {/* Touch: always show stage control (no hover). Desktop: badge until row hover */}
                   <div className="md:hidden">
                     <select
                       value={lead.commercial_stage}
                       onClick={(e) => e.stopPropagation()}
                       onChange={(e) => { e.stopPropagation(); onStageChange(lead.id, e.target.value, lead.updated_at); }}
-                      className="max-w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs font-medium text-gray-700 touch-manipulation"
+                      className="min-h-11 max-w-[9rem] rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs font-medium text-gray-700 touch-manipulation sm:max-w-full"
                     >
                       {STAGES.filter((s) => s !== "all").map((s) => <option key={s} value={s}>{STAGE_LABELS[s]}</option>)}
                     </select>
@@ -1234,7 +1385,7 @@ function LeadTable({ rows, selectedLeadId, selectedIds, sortBy, sortDir, onSelec
                     )}
                   </div>
                 </td>
-                <td className="hidden px-3 py-2.5 lg:table-cell" onClick={(e) => e.stopPropagation()}>
+                <td className={cn("hidden px-3 lg:table-cell", rowPad)} onClick={(e) => e.stopPropagation()}>
                   <LeadAssigneeInline
                     leadId={lead.id}
                     assignedToId={lead.assigned_to ?? null}
@@ -1244,10 +1395,10 @@ function LeadTable({ rows, selectedLeadId, selectedIds, sortBy, sortDir, onSelec
                     disabled={assignLeadMut.isPending && assignLeadMut.variables?.leadId === lead.id}
                   />
                 </td>
-                <td className="hidden px-3 py-2.5 md:table-cell">
+                <td className={cn("hidden px-3 md:table-cell", rowPad)}>
                   <span className="inline-block rounded-md border border-gray-200 bg-gray-50 px-2 py-0.5 text-[11px] font-medium text-gray-600">{lead.source}</span>
                 </td>
-                <td className="hidden px-3 py-2.5 lg:table-cell">
+                <td className={cn("hidden px-3 lg:table-cell", rowPad)}>
                   <div className="flex flex-wrap gap-1">
                     {cats.slice(0, 2).map((c) => (
                       <span key={c} className="inline-block rounded-md bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-600">{c}</span>
@@ -1255,17 +1406,17 @@ function LeadTable({ rows, selectedLeadId, selectedIds, sortBy, sortDir, onSelec
                     {cats.length > 2 && <span className="text-[10px] text-gray-400">+{cats.length - 2}</span>}
                   </div>
                 </td>
-                <td className="hidden px-3 py-2.5 xl:table-cell">
+                <td className={cn("hidden px-3 xl:table-cell", rowPad)}>
                   {lead.suggested_location_text && (
                     <span className="inline-flex items-center gap-1 text-xs text-gray-500">
                       <MapPin className="h-3 w-3" />{lead.suggested_location_text}
                     </span>
                   )}
                 </td>
-                <td className="px-3 py-2.5">
+                <td className={cn("px-3", rowPad)}>
                   <span className="text-xs text-gray-500">{new Date(lead.created_at).toLocaleDateString()}</span>
                 </td>
-                <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
+                <td className={cn("px-3", rowPad)} onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100">
                       {lead.phone_e164 && (
                         <a href={`tel:${lead.phone_e164}`} className="min-h-9 min-w-9 touch-manipulation rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700" title="Call">
@@ -1303,7 +1454,7 @@ function LeadTable({ rows, selectedLeadId, selectedIds, sortBy, sortDir, onSelec
 
 // ─── Card grid view ───────────────────────────────────────────────────────────
 
-function LeadCardGrid({ rows, selectedLeadId, onSelectLead, assignLeadMut }: {
+function LeadCardGrid({ rows, selectedLeadId, onSelectLead, assignLeadMut, density }: {
   rows: Lead[];
   selectedLeadId: string | null;
   onSelectLead: (id: string) => void;
@@ -1312,6 +1463,7 @@ function LeadCardGrid({ rows, selectedLeadId, onSelectLead, assignLeadMut }: {
     isPending: boolean;
     variables?: { leadId: string; assigned_to: string; assigned_to_name?: string; expected_updated_at?: string };
   };
+  density?: "comfortable" | "compact";
 }) {
   return (
     <div className="flex-1 overflow-auto p-3">
@@ -1331,7 +1483,8 @@ function LeadCardGrid({ rows, selectedLeadId, onSelectLead, assignLeadMut }: {
               type="button"
               onClick={() => onSelectLead(lead.id)}
               className={cn(
-                "w-full rounded-xl border bg-white p-4 text-left transition-all hover:shadow-md",
+                "w-full rounded-xl border bg-white text-left transition-all hover:shadow-md",
+                density === "compact" ? "p-3" : "p-4",
                 isSelected ? "border-blue-300 ring-2 ring-blue-100 shadow-md" : "border-gray-200",
               )}
             >

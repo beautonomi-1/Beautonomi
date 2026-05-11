@@ -35,7 +35,7 @@ function formatBucket(periodStr: string, gran: string | undefined): string {
 
 type TrendsPayload = {
   period?: string;
-  trends?: Array<{ period: string; revenue: number; bookings: number }>;
+  trends?: { period: string; revenue: number; bookings: number }[];
   totalRevenue?: number;
   totalBookings?: number;
   averageRevenue?: number;

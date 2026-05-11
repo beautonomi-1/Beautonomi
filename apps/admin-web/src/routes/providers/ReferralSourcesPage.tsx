@@ -35,7 +35,13 @@ export function ReferralSourcesPage() {
 
   const providersQ = useQuery({
     queryKey: [...adminQueryKeys.providers.all(), "referral-sources-picker"],
-    queryFn: () => adminApi.getJson<ProviderRow[]>("/api/admin/providers", { timeoutMs: 60_000 }),
+    // /api/admin/providers returns successResponse({ data: [...], meta: {...} }) so after the
+    // client's one-level unwrap the result is { data: ProviderRow[], meta: unknown }.
+    // We normalise to a plain array here so the rest of the component can stay simple.
+    queryFn: async () => {
+      const res = await adminApi.getJson<{ data: ProviderRow[] }>("/api/admin/providers", { timeoutMs: 60_000 });
+      return res.data ?? [];
+    },
     enabled: allowed,
   });
 
@@ -73,6 +79,7 @@ export function ReferralSourcesPage() {
       setMsg("Updated.");
       await qc.invalidateQueries({ queryKey: adminQueryKeys.referralSources(providerId) });
     },
+    onError: (e) => setMsg(e instanceof Error ? e.message : "Update failed"),
   });
 
   const delMut = useMutation({
@@ -81,6 +88,7 @@ export function ReferralSourcesPage() {
       setMsg("Deleted.");
       await qc.invalidateQueries({ queryKey: adminQueryKeys.referralSources(providerId) });
     },
+    onError: (e) => setMsg(e instanceof Error ? e.message : "Delete failed"),
   });
 
   const providers = Array.isArray(providersQ.data) ? providersQ.data : [];

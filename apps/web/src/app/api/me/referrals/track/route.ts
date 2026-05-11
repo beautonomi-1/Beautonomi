@@ -276,27 +276,18 @@ export async function POST(request: NextRequest) {
     if (rewardAmount > 0) {
       try {
         const pointsToAward = Math.round(rewardAmount);
-        
-        await supabaseAdmin.from("loyalty_point_transactions").insert({
-          user_id: referrerUser.id,
-          points: pointsToAward,
-          transaction_type: "earned",
-          description: "Referral reward",
-          reference_id: referralRecord?.id ?? null,
-          reference_type: "referral",
+        const { error: loyaltyRpcErr } = await (supabaseAdmin.rpc as any)("append_loyalty_ledger_entry", {
+          p_customer_id: referrerUser.id,
+          p_transaction_type: "bonus",
+          p_points_amount: pointsToAward,
+          p_booking_id: null,
+          p_description: "Referral reward",
+          p_metadata: { referral_id: referralRecord?.id, source: "referral_track" },
+          p_expires_at: null,
         });
-
-        const { data: balanceData } = await supabaseAdmin.rpc("get_customer_available_points", { customer_uuid: referrerUser.id });
-        const currentBalance = Number(balanceData) || 0;
-
-        await supabaseAdmin.from("loyalty_points_ledger").insert({
-          customer_id: referrerUser.id,
-          transaction_type: "bonus",
-          points_amount: pointsToAward,
-          balance_after: currentBalance + pointsToAward,
-          description: "Referral reward",
-          metadata: { referral_id: referralRecord?.id },
-        });
+        if (loyaltyRpcErr) {
+          console.warn("[referrals/track] loyalty append_loyalty_ledger_entry:", loyaltyRpcErr);
+        }
       } catch (loyaltyErr) {
         console.warn("[referrals/track] loyalty point insert:", loyaltyErr);
       }

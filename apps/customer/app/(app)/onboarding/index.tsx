@@ -180,7 +180,11 @@ export default function CustomerOnboarding() {
   const [pendingPhoneE164, setPendingPhoneE164] = useState("");
   const [otpSending, setOtpSending] = useState(false);
   const [otpVerifying, setOtpVerifying] = useState(false);
-  const [countdown, setCountdown] = useState(0);
+  // §UX-audit 2026-05: 30s resend cooldown (consistent with login screen).
+  // Previously used the full OTP expiry (~5 min) which forced users to wait
+  // 5 minutes before they could request a second code.
+  const RESEND_COOLDOWN_SECS = 30;
+  const [resendCooldown, setResendCooldown] = useState(0);
 
   /* Step 5 */
   const [addressLine1, setAddressLine1] = useState("");
@@ -199,12 +203,12 @@ export default function CustomerOnboarding() {
   const [hairTypes, setHairTypes] = useState<string[]>([]);
   const [skinType, setSkinType] = useState("");
 
-  /* ── Countdown timer ── */
+  /* ── Resend cooldown ticker ── */
   useEffect(() => {
-    if (countdown <= 0) return;
-    const t = setInterval(() => setCountdown((c) => c - 1), 1000);
+    if (resendCooldown <= 0) return;
+    const t = setInterval(() => setResendCooldown((c) => (c > 0 ? c - 1 : 0)), 1000);
     return () => clearInterval(t);
-  }, [countdown]);
+  }, [resendCooldown]);
 
   /* Default country from tenant when config loads (only if user hasn’t changed from initial SA) */
   useEffect(() => {
@@ -307,14 +311,8 @@ export default function CustomerOnboarding() {
       setPendingPhoneE164(e164);
       setOtpCode("");
       setOtpSent(true);
-      setCountdown(smsOtpExpirySec);
-      Alert.alert(
-        ob("codeSentTitle"),
-        ob("codeSentBody", {
-          digits: smsOtpLen,
-          minutes: Math.max(1, Math.round(smsOtpExpirySec / 60)),
-        }),
-      );
+      // §UX-audit 2026-05: 30s resend cooldown, inline banner replaces Alert.
+      setResendCooldown(RESEND_COOLDOWN_SECS);
     } catch (e: unknown) {
       Alert.alert(ob("sendCodeFailedTitle"), (e as { message?: string })?.message ?? ob("sendCodeFailedBody"));
     } finally {
@@ -472,6 +470,12 @@ export default function CustomerOnboarding() {
     }
   };
 
+  // §UX-audit 2026-05: back navigation so users can correct earlier steps
+  // without having to skip all the way through and re-enter.
+  const handleBack = () => {
+    if (step > 1) setStep((s) => s - 1);
+  };
+
   const completeOnboarding = async () => {
     setSaving(true);
     try {
@@ -510,15 +514,29 @@ export default function CustomerOnboarding() {
 
   const canSkip = step !== 1 && step !== 4 && step !== 5;
   const isLastStep = step === TOTAL_STEPS;
+  const canGoBack = step > 1;
 
   return (
     <LinearGradient colors={["#FFF8FB", "#FFFFFF", "#FAFBFC"]} locations={[0, 0.35, 1]} style={{ flex: 1, paddingTop: insets.top }}>
       {/* Header */}
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: SCREEN_PADDING, paddingVertical: 12 }}>
-        <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 18, fontWeight: "800", color: PRIMARY, letterSpacing: -0.5 }}>Beautonomi</Text>
-          <Text style={{ fontSize: 12, color: "#94A3B8", marginTop: 2, fontWeight: "500" }}>Let&apos;s personalize your experience</Text>
-        </View>
+        {canGoBack ? (
+          <TouchableOpacity
+            onPress={handleBack}
+            disabled={saving}
+            hitSlop={8}
+            style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}
+            accessibilityRole="button"
+            accessibilityLabel="Go back to previous step"
+          >
+            <Ionicons name="arrow-back" size={22} color="#64748B" />
+          </TouchableOpacity>
+        ) : (
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 18, fontWeight: "800", color: PRIMARY, letterSpacing: -0.5 }}>Beautonomi</Text>
+            <Text style={{ fontSize: 12, color: "#94A3B8", marginTop: 2, fontWeight: "500" }}>Let&apos;s personalize your experience</Text>
+          </View>
+        )}
         {canSkip && (
           <TouchableOpacity onPress={handleSkip} disabled={saving} hitSlop={8}>
             <Text style={{ fontSize: 14, color: "#94A3B8", fontWeight: "600" }}>Skip</Text>
@@ -696,22 +714,57 @@ export default function CustomerOnboarding() {
                   />
                   <TouchableOpacity
                     onPress={handleSendOtp}
-                    disabled={otpSending || countdown > 0 || !phoneNational.trim()}
+                    disabled={otpSending || resendCooldown > 0 || !phoneNational.trim()}
                     style={{
-                      marginTop: 12, backgroundColor: otpSending || countdown > 0 ? "#E2E8F0" : PRIMARY,
+                      marginTop: 12,
+                      backgroundColor: otpSending || resendCooldown > 0 ? "#E2E8F0" : PRIMARY,
                       borderRadius: RADIUS_BUTTON, paddingVertical: 14, alignItems: "center",
                     }}
+                    accessibilityRole="button"
+                    accessibilityState={{ disabled: otpSending || resendCooldown > 0 }}
+                    accessibilityLabel={
+                      resendCooldown > 0
+                        ? `Resend in ${resendCooldown} seconds`
+                        : otpSent ? "Resend code" : "Send verification code"
+                    }
                   >
                     {otpSending ? (
                       <ActivityIndicator color="#fff" size="small" />
                     ) : (
-                      <Text style={{ color: countdown > 0 ? "#94A3B8" : "#fff", fontWeight: "600", fontSize: 15 }}>
-                        {countdown > 0
-                          ? `Resend in ${Math.floor(countdown / 60)}:${String(countdown % 60).padStart(2, "0")}`
+                      <Text style={{ color: resendCooldown > 0 ? "#94A3B8" : "#fff", fontWeight: "600", fontSize: 15 }}>
+                        {resendCooldown > 0
+                          ? `Resend in ${resendCooldown}s`
                           : otpSent ? "Resend code" : "Send verification code"}
                       </Text>
                     )}
                   </TouchableOpacity>
+
+                  {/* §UX-audit 2026-05: inline success banner replaces the
+                      blocking Alert.alert so the user can immediately enter
+                      the code without dismissing a modal first. */}
+                  {otpSent && (
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 8,
+                        backgroundColor: "#ECFDF5",
+                        borderColor: "#A7F3D0",
+                        borderWidth: 1,
+                        borderRadius: 12,
+                        paddingVertical: 10,
+                        paddingHorizontal: 12,
+                        marginTop: 12,
+                      }}
+                      accessibilityRole="alert"
+                      accessibilityLabel={`Code sent to ${pendingPhoneE164 || `${phoneCountryCode}${phoneNational}`}`}
+                    >
+                      <Ionicons name="checkmark-circle" size={18} color="#059669" />
+                      <Text style={{ flex: 1, color: "#065F46", fontSize: 13, lineHeight: 18 }}>
+                        Code sent. Valid for about {Math.max(1, Math.round(smsOtpExpirySec / 60))} min.
+                      </Text>
+                    </View>
+                  )}
 
                   {otpSent && (
                     <View style={{ marginTop: 20 }}>

@@ -136,6 +136,12 @@ function addDaysInput(date: Date, days: number) {
   return formatLocalDate(next);
 }
 
+function isValidIsoDate(str: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(str)) return false;
+  const d = new Date(str);
+  return !isNaN(d.getTime());
+}
+
 function createDefaultInvoiceForm(): InvoiceForm {
   const today = new Date();
   return {
@@ -275,6 +281,23 @@ export default function InvoicesScreen() {
       return;
     }
 
+    if (!isValidIsoDate(invoiceForm.issue_date)) {
+      setFormError("Issue date must be in YYYY-MM-DD format.");
+      return;
+    }
+    if (!isValidIsoDate(invoiceForm.due_date)) {
+      setFormError("Due date must be in YYYY-MM-DD format.");
+      return;
+    }
+    if (!isValidIsoDate(invoiceForm.period_start)) {
+      setFormError("Period start must be in YYYY-MM-DD format.");
+      return;
+    }
+    if (!isValidIsoDate(invoiceForm.period_end)) {
+      setFormError("Period end must be in YYYY-MM-DD format.");
+      return;
+    }
+
     const payload = {
       ...invoiceForm,
       tax_rate: Number(invoiceForm.tax_rate || 0),
@@ -331,20 +354,22 @@ export default function InvoicesScreen() {
     ]);
   }
 
-  function handleSendInvoice(inv: Invoice) {
+  function handleMarkAsSent(inv: Invoice) {
     Alert.alert(
-      "Send invoice?",
-      `Send invoice ${inv.invoice_number} to the client via email?`,
+      "Mark as sent?",
+      `Mark invoice ${inv.invoice_number} as sent? This updates the status to "sent" but does not email the client.`,
       [
         { text: "Cancel", style: "cancel" },
         {
-          text: "Send",
+          text: "Mark sent",
           onPress: async () => {
             const { error } = await sendInvoice(`/api/provider/invoices/${inv.id}/send`, {});
-            if (error) Alert.alert("Error", error);
-            else {
+            if (error) {
+              Alert.alert("Error", error);
+            } else {
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              Alert.alert("Sent", `Invoice ${inv.invoice_number} sent`);
+              setSelected(null);
+              refresh();
             }
           },
         },
@@ -457,10 +482,6 @@ export default function InvoicesScreen() {
           onRefresh={handleRefresh}
           contentContainerStyle={{ paddingBottom: 120 }}
           ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
-          onEndReached={() => {
-            if (invData && page < invData.total_pages) setPage((p) => p + 1);
-          }}
-          onEndReachedThreshold={0.3}
           renderItem={({ item: inv }: { item: Invoice }) => {
             const sc = statusColor(inv.status);
             const isOverdue = inv.status === "overdue" || (inv.status === "pending" && new Date(inv.due_date) < new Date());
@@ -616,11 +637,11 @@ export default function InvoicesScreen() {
               )}
               <TouchableOpacity
                 style={[twStyle("items-center rounded-lg bg-indigo-50 px-3 py-2.5"), { marginRight: 8, marginBottom: 8 }]}
-                onPress={() => handleSendInvoice(selected)}
+                onPress={() => handleMarkAsSent(selected)}
                 disabled={sending}
               >
                 <Text style={twStyle("text-sm font-medium text-indigo-700")}>
-                  {sending ? "Sending..." : "Email Invoice"}
+                  {sending ? "Updating..." : "Mark as Sent"}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -675,6 +696,7 @@ export default function InvoicesScreen() {
                 value={invoiceForm.period_start}
                 onChangeText={(period_start) => setInvoiceForm((current) => ({ ...current, period_start }))}
                 placeholder="YYYY-MM-DD"
+                keyboardType="numbers-and-punctuation"
               />
             </View>
             <View style={twStyle("flex-1")}>
@@ -684,6 +706,7 @@ export default function InvoicesScreen() {
                 value={invoiceForm.period_end}
                 onChangeText={(period_end) => setInvoiceForm((current) => ({ ...current, period_end }))}
                 placeholder="YYYY-MM-DD"
+                keyboardType="numbers-and-punctuation"
               />
             </View>
           </View>
@@ -695,6 +718,7 @@ export default function InvoicesScreen() {
                 value={invoiceForm.issue_date}
                 onChangeText={(issue_date) => setInvoiceForm((current) => ({ ...current, issue_date }))}
                 placeholder="YYYY-MM-DD"
+                keyboardType="numbers-and-punctuation"
               />
             </View>
             <View style={twStyle("flex-1")}>
@@ -704,6 +728,7 @@ export default function InvoicesScreen() {
                 value={invoiceForm.due_date}
                 onChangeText={(due_date) => setInvoiceForm((current) => ({ ...current, due_date }))}
                 placeholder="YYYY-MM-DD"
+                keyboardType="numbers-and-punctuation"
               />
             </View>
           </View>

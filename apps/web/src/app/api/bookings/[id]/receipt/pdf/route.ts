@@ -13,11 +13,14 @@ import {
   drawPdfHeader,
   drawPdfInfoGrid,
   drawPdfLineItems,
+  drawPdfPayments,
   drawPdfTotals,
+  formatPaymentMethodLabel,
   formatPdfDate,
   moneyPdf,
 } from "@/lib/receipts/pdf-design";
 import { assertReceiptInvariant } from "@/lib/bookings/display-invariants";
+import { isPaidBookingPaymentStatus } from "@/lib/payments/booking-payment-status";
 
 // Wave 2.5 (audit 2026-04 final 100/100): extend serverless timeout to
 // 60s so large receipts (many services + products + additional charges +
@@ -83,6 +86,14 @@ type ReceiptPayload = {
     deposit_percentage?: number;
     payment_option?: string;
     additional_charges?: Array<{ description?: string; amount?: number; status?: string; paid_at?: string | null }>;
+    transactions?: Array<{
+      id?: string;
+      amount?: number | string;
+      payment_method?: string | null;
+      payment_provider?: string | null;
+      status?: string | null;
+      created_at?: string | null;
+    }>;
     receipt_header?: string | null;
     receipt_footer?: string | null;
   };
@@ -257,8 +268,10 @@ export async function GET(
       ...(receipt.deposit_required && receipt.payment_option === "deposit"
         ? [{ label: `Deposit${receipt.deposit_percentage ? ` (${receipt.deposit_percentage}%)` : ""}`, value: moneyPdf(receipt.deposit_amount, currency) }]
         : []),
-      ...(Number(receipt.wallet_amount || 0) > 0 ? [{ label: "Wallet applied", value: `-${moneyPdf(receipt.wallet_amount, currency)}`, tone: "success" as const }] : []),
-      ...(Number(receipt.gift_card_amount || 0) > 0 ? [{ label: "Gift card applied", value: `-${moneyPdf(receipt.gift_card_amount, currency)}`, tone: "success" as const }] : []),
+      // §Finance-truth 2026-05: wallet/gift are payment lines (rendered in the
+      // Payments section below). Showing them as negative deductions from total
+      // here while ALSO including them in `amount_paid` (which migration 582 makes
+      // total_paid include) double-counts. Refunds and amount_paid stay summary lines.
       ...(Number(receipt.total_refunded || 0) > 0 ? [{ label: "Refunded", value: `-${moneyPdf(receipt.total_refunded, currency)}`, tone: "warning" as const }] : []),
       ...(Number(receipt.amount_paid || 0) > 0 ? [{ label: "Amount paid", value: moneyPdf(receipt.amount_paid, currency) }] : []),
       ...(Number(receipt.balance_due || 0) > 0
@@ -266,6 +279,25 @@ export async function GET(
         : []),
     ];
     drawPdfTotals(doc, totalRows, { label: "Total", value: moneyPdf(receipt.total, currency) });
+
+    // Payments section: one row per completed booking_payments row. Wallet and
+    // gift card credits live here (via migration 582) so customers see exactly
+    // what was tendered and via which method.
+    const completedPayments = (receipt.transactions || []).filter(
+      (t) => isPaidBookingPaymentStatus(t.status),
+    );
+    if (completedPayments.length > 0) {
+      doc.moveDown(0.4);
+      drawPdfPayments(
+        doc,
+        completedPayments.map((t) => ({
+          label: formatPaymentMethodLabel(t.payment_method ?? null, t.payment_provider ?? null),
+          detail: t.created_at ? formatPdfDate(t.created_at) : null,
+          amount: moneyPdf(Number(t.amount || 0), currency),
+          tone: "success" as const,
+        })),
+      );
+    }
 
     assertReceiptInvariant("customer-booking-receipt-pdf", {
       total: Number(receipt.total ?? 0),
@@ -275,6 +307,7 @@ export async function GET(
       fees: Number(receipt.fees ?? 0),
       tip_amount: Number(receipt.tip_amount ?? 0),
       discount: Number(receipt.discount ?? 0),
+      promotion_discount_amount: Number(receipt.promotion_discount_amount ?? 0),
       membership_discount_amount: Number(receipt.membership_discount_amount ?? 0),
       loyalty_discount_amount: Number(receipt.loyalty_discount_amount ?? 0),
       cancellation_fee: Number(receipt.cancellation_fee ?? 0),

@@ -70,6 +70,7 @@ const consumeBodySchema = z.object({
   loyalty_points_used: z.number().min(0).optional(),
   membership_plan_id: z.string().uuid().optional().nullable(),
   campaign_id: z.string().uuid().optional().nullable(),
+  idempotency_key: z.string().uuid().optional().nullable(),
   /** Create customer recurring series: immediate when no Paystack redirect; otherwise after charge.success (Paystack metadata). */
   subscribe_recurring: z
     .object({
@@ -172,6 +173,7 @@ export async function POST(
     const loyaltyPointsUsed = parsed.data.loyalty_points_used;
     const membershipPlanId = parsed.data.membership_plan_id;
     const campaignId = parsed.data.campaign_id;
+    const idempotencyKey = parsed.data.idempotency_key ?? request.headers.get("idempotency-key")?.trim() ?? undefined;
     const subscribeRecurringReq = parsed.data.subscribe_recurring;
     const paystackCallbackUrl = parsed.data.paystack_callback_url;
 
@@ -547,6 +549,7 @@ export async function POST(
           ...(authorizationHeader ? { Authorization: authorizationHeader } : {}),
           ...(forwardHost ? { "x-forwarded-host": forwardHost } : {}),
           ...(activeMarketCountry ? { "x-active-market-country": activeMarketCountry } : {}),
+          ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
         },
         body: JSON.stringify(draft),
         signal: paymentForwardAbort.signal,

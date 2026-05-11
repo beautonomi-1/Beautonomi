@@ -1,8 +1,5 @@
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
-import {
-  computeBookingOutstandingDisplay,
-  computePackageAppliedForDisplay,
-} from "@/lib/bookings/display-invariants";
+import { computeBookingReceiptFinancials } from "@/lib/receipts/build-booking-receipt";
 
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -135,6 +132,14 @@ export async function GET(
           status,
           requested_at,
           paid_at
+        ),
+        custom_offer:custom_offers!bookings_custom_offer_id_fkey(
+          id,
+          notes,
+          request:custom_requests(
+            id,
+            description
+          )
         )
       `
       )
@@ -232,56 +237,39 @@ export async function GET(
     const items = [...serviceItems, ...addonItems, ...productItems];
 
     const linesSubtotal = items.reduce((s: number, i: any) => s + (i.total || 0), 0);
-    const subtotal = b.subtotal != null ? Number(b.subtotal) : linesSubtotal;
-    const travelFee = Number(b.travel_fee || 0);
-    const taxAmount = Number(b.tax_amount || 0);
+    const finances = computeBookingReceiptFinancials({
+      row: b as Record<string, unknown>,
+      linesSubtotal,
+      booking_payments: b.booking_payments,
+      additional_charges: b.additional_charges,
+    });
+    const {
+      subtotal,
+      tax: taxAmount,
+      platformFee: platformFeeAmount,
+      platformFeePercentage: platformFeePercentage,
+      travelFee,
+      tipAmount,
+      discount: discountAmount,
+      promotionDiscount: promotionDiscountAmount,
+      membershipDiscount: membershipDiscountAmount,
+      loyaltyDiscount: loyaltyDiscountAmount,
+      loyaltyPointsUsed,
+      rawPkgId: packageId,
+      packageActuallyApplied,
+      packageDiscount: packageDiscountAmount,
+      discountTotal: discountTotalAmount,
+      cancellationFee,
+      totalFromRow: totalAmount,
+      amountPaid,
+      walletCredit,
+      giftCardCredit,
+      totalRefundedRow: totalRefunded,
+      balanceDue,
+    } = finances;
     const taxRate = Number(b.tax_rate || 0);
-    const platformFeeAmount = Number(b.platform_fee_amount ?? b.service_fee_amount ?? 0);
-    const platformFeePercentage = Number(b.platform_fee_percentage ?? b.service_fee_percentage ?? 0);
-    const tipAmount = Number(b.tip_amount || 0);
-    const discountAmount = Number(b.discount_amount || 0);
-    const promotionDiscountAmount = Number(b.promotion_discount_amount || 0);
-    const membershipDiscountAmount = Number(b.membership_discount_amount || 0);
-    const loyaltyDiscountAmount = Number(b.loyalty_discount_amount || 0);
-    const loyaltyPointsUsed = Number(b.loyalty_points_used || b.loyalty_points_redeemed || 0);
-    const packageId = typeof b.package_id === "string" && b.package_id.length > 0 ? b.package_id : null;
     const spJoin = b.service_packages as { id?: string | null; name?: string | null } | Array<{ id?: string | null; name?: string | null }> | null | undefined;
     const pkgJoined = Array.isArray(spJoin) ? spJoin[0] : spJoin;
-    const entitlementId = (b as Record<string, unknown>).customer_package_entitlement_id;
-    const packageActuallyApplied = computePackageAppliedForDisplay({
-      package_id: packageId,
-      customer_package_entitlement_id: typeof entitlementId === "string" ? entitlementId : null,
-      discount_amount: discountAmount,
-      promotion_discount_amount: promotionDiscountAmount,
-    });
-    const packageDiscountAmount = packageActuallyApplied
-      ? Math.max(0, discountAmount - promotionDiscountAmount)
-      : 0;
-    const discountTotalAmount = discountAmount + membershipDiscountAmount + loyaltyDiscountAmount;
-    const cancellationFee = Number(b.cancellation_fee || 0);
-    const totalAmount =
-      b.total_amount != null && !Number.isNaN(Number(b.total_amount))
-        ? Number(b.total_amount)
-        : subtotal + taxAmount + platformFeeAmount + travelFee + tipAmount - discountTotalAmount - cancellationFee;
-
-    const completedPayments = (b.booking_payments || []).filter((p: any) => p.status === "completed");
-    const paymentsPaid = completedPayments.reduce((s: number, p: any) => s + Number(p.amount || 0), 0);
-    const walletCredit = Number((b as any).wallet_amount || 0);
-    const giftCardCredit = Number((b as any).gift_card_amount || 0);
-    const amountPaid = paymentsPaid + walletCredit + giftCardCredit;
-    const totalRefunded = Number(b.total_refunded || 0);
-    const unpaidAdditionalCharges = (b.additional_charges || [])
-      .filter((ac: any) => ac.status !== "paid" && ac.status !== "rejected")
-      .reduce((s: number, ac: any) => s + Number(ac.amount || 0), 0);
-    const balanceDue = computeBookingOutstandingDisplay({
-      totalAmount,
-      totalPaid: Number(b.total_paid || 0),
-      totalRefunded,
-      walletAmount: walletCredit,
-      giftCardAmount: giftCardCredit,
-      unpaidAdditionalCharges,
-      paymentStatus: b.payment_status,
-    });
 
     const additionalCharges = (b.additional_charges || []).map((ac: any) => ({
       id: ac.id,
@@ -330,7 +318,7 @@ export async function GET(
         phone: customer.phone || "",
       },
       items,
-      subtotal: Math.max(0, subtotal - travelFee),
+      subtotal: Math.max(0, subtotal),
       discount_amount: discountAmount,
       promotion_discount_amount: promotionDiscountAmount,
       membership_discount_amount: membershipDiscountAmount,
@@ -373,6 +361,7 @@ export async function GET(
       // "Refunded" line and compute net paid. `bookings.total_refunded` is
       // maintained by the finance ledger trigger (migration 490).
       total_refunded: totalRefunded,
+      custom_offer: b.custom_offer || null,
       additional_charges: additionalCharges,
       transactions: b.booking_payments || [],
       notes: b.special_requests || null,

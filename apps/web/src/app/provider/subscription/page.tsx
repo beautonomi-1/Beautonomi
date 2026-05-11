@@ -124,14 +124,54 @@ export default function SubscriptionPage() {
     return [...free, ...paid];
   }, [plans, billingTab]);
 
+  async function loadData(): Promise<ProviderSubscription | null> {
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      const [subscriptionRes, plansRes] = await Promise.all([
+        fetcher.get<{ data: ProviderSubscription | null }>("/api/provider/subscription"),
+        /** Same source as the provider app: tenant-aware options + Paystack-backed plan rows */
+        fetcher.get<{ data: SubscriptionPlan[] }>("/api/provider/subscription/plans"),
+      ]);
+
+      const sub = (subscriptionRes as any)?.data ?? null;
+      setSubscription(sub);
+      const rawPlans = (plansRes as { data?: SubscriptionPlan[] })?.data ?? [];
+      setPlans(Array.isArray(rawPlans) ? rawPlans : []);
+      return sub;
+    } catch (err) {
+      const errorMessage =
+        err instanceof FetchTimeoutError
+          ? "Request timed out. Please try again."
+          : err instanceof FetchError
+          ? err.message
+          : "Failed to load subscription data";
+      setError(errorMessage);
+      console.error("Error loading subscription:", err);
+      return null;
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const isPaymentSuccess = urlParams.get("payment_success") === "true";
     const inApp = urlParams.get("in_app") === "1";
+    const reference = urlParams.get("reference") || urlParams.get("trxref");
 
     let timeout: ReturnType<typeof setTimeout> | undefined;
 
     async function init() {
+      if (isPaymentSuccess && reference) {
+        try {
+          await fetcher.get(`/api/paystack/verify?reference=${encodeURIComponent(reference)}`);
+        } catch {
+          // Webhooks still reconcile this path; the banner below reflects the latest order state.
+        }
+      }
+
       const loaded = await loadData();
       if (!isPaymentSuccess) return;
 
@@ -172,37 +212,6 @@ export default function SubscriptionPage() {
       if (timeout) clearTimeout(timeout);
     };
   }, []);
-
-  const loadData = async (): Promise<ProviderSubscription | null> => {
-    try {
-      setIsLoading(true);
-      setError(null);
-
-      const [subscriptionRes, plansRes] = await Promise.all([
-        fetcher.get<{ data: ProviderSubscription | null }>("/api/provider/subscription"),
-        /** Same source as the provider app: tenant-aware options + Paystack-backed plan rows */
-        fetcher.get<{ data: SubscriptionPlan[] }>("/api/provider/subscription/plans"),
-      ]);
-
-      const sub = (subscriptionRes as any)?.data ?? null;
-      setSubscription(sub);
-      const rawPlans = (plansRes as { data?: SubscriptionPlan[] })?.data ?? [];
-      setPlans(Array.isArray(rawPlans) ? rawPlans : []);
-      return sub;
-    } catch (err) {
-      const errorMessage =
-        err instanceof FetchTimeoutError
-          ? "Request timed out. Please try again."
-          : err instanceof FetchError
-          ? err.message
-          : "Failed to load subscription data";
-      setError(errorMessage);
-      console.error("Error loading subscription:", err);
-      return null;
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const handleUpgrade = async (planId: string) => {
     try {

@@ -34,6 +34,8 @@ interface Conversation {
   booking_id?: string | null;
 }
 
+let conversationsRealtimeGen = 0;
+
 function formatDateTimeSafe(value: unknown): string {
   if (typeof value !== "string" || !value) return "—";
   const parsed = new Date(value);
@@ -67,7 +69,6 @@ export default function MessagingListScreen() {
   // (changing refresh identity causes subscribe/re-subscribe races).
   const refreshRef = useRef(refresh);
   useEffect(() => { refreshRef.current = refresh; }, [refresh]);
-  const conversationsRealtimeGenRef = useRef(0);
 
   useEffect(() => {
     if (!provider?.id) return;
@@ -83,7 +84,7 @@ export default function MessagingListScreen() {
     // Supabase may return an existing channel when the same topic is reused
     // during fast remounts. Give every subscription a unique topic so all
     // postgres_changes handlers are attached before subscribe().
-    const topic = `provider-conversations:${provider.id}:${++conversationsRealtimeGenRef.current}`;
+    const topic = `provider-conversations:${provider.id}:${++conversationsRealtimeGen}`;
     const channel = supabase
       .channel(topic)
       .on(
