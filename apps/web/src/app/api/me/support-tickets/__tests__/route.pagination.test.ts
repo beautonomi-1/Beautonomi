@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
-const mockRequireAuthInApi = vi.fn();
+const mockRequireRoleInApi = vi.fn();
 const mockGetSupabaseServer = vi.fn();
 
 vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/supabase/api-helpers")>();
   return {
     ...actual,
-    requireAuthInApi: (...args: unknown[]) => mockRequireAuthInApi(...args),
+    requireRoleInApi: (...args: unknown[]) => mockRequireRoleInApi(...args),
   };
 });
 
@@ -25,7 +25,14 @@ class SupportTicketsQuery {
   eq = vi.fn(() => this);
   order = vi.fn(() => this);
   range = vi.fn(async () => ({
-    data: [{ id: "ticket-1", ticket_number: "SUP-1", subject: "Help" }],
+    data: [{
+      id: "ticket-1",
+      ticket_number: "SUP-1",
+      subject: "Help",
+      last_message_from: "staff",
+      last_message_at: "2026-05-11T10:00:00.000Z",
+      last_customer_view_at: "2026-05-11T09:00:00.000Z",
+    }],
     error: null,
     count: 140,
   }));
@@ -35,7 +42,7 @@ describe("GET /api/me/support-tickets pagination", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
-    mockRequireAuthInApi.mockResolvedValue({ user: { id: "customer-1" } });
+    mockRequireRoleInApi.mockResolvedValue({ user: { id: "customer-1", role: "customer" } });
   });
 
   it("clamps oversized limits and returns real total metadata", async () => {
@@ -53,6 +60,7 @@ describe("GET /api/me/support-tickets pagination", () => {
     expect(query.select).toHaveBeenCalledWith(expect.any(String), { count: "exact" });
     expect(query.range).toHaveBeenCalledWith(50, 149);
     expect(body.data.tickets).toHaveLength(1);
+    expect(body.data.tickets[0].has_unread_staff_reply).toBe(true);
     expect(body.data.total).toBe(140);
     expect(body.data.pagination).toEqual({ limit: 100, offset: 50, has_more: false });
   });

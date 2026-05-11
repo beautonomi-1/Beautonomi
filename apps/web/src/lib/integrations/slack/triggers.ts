@@ -10,14 +10,44 @@ function eventEnv(): "production" | "staging" | "development" {
   return "production";
 }
 
+type SupportTicketSlackSummary = {
+  id: string;
+  ticket_number?: string | null;
+  subject?: string | null;
+  priority?: string | null;
+  requester_type?: string | null;
+  support_context_type?: string | null;
+  support_context_label?: string | null;
+};
+
+const SUPPORT_CONTEXT_LABELS: Record<string, string> = {
+  booking: "Booking",
+  product_order: "Product order",
+  gift_card: "Gift card",
+  payment: "Payment",
+  provider_onboarding: "Provider onboarding",
+  account: "Account",
+  technical: "Technical",
+  other: "Other",
+};
+
+function supportContextLine(ticket: SupportTicketSlackSummary): string | null {
+  if (!ticket.support_context_type) return ticket.support_context_label ? `Context: ${ticket.support_context_label}` : null;
+  const base =
+    SUPPORT_CONTEXT_LABELS[ticket.support_context_type] ??
+    ticket.support_context_type.replace(/_/g, " ");
+  return ticket.support_context_label
+    ? `Context: ${base} - ${ticket.support_context_label}`
+    : `Context: ${base}`;
+}
+
+function supportOriginLine(ticket: SupportTicketSlackSummary): string | null {
+  return ticket.requester_type ? `Origin: ${ticket.requester_type}` : null;
+}
+
 export async function slackNotifyNewSupportTicket(
   request: NextRequest,
-  ticket: {
-    id: string;
-    ticket_number?: string | null;
-    subject?: string | null;
-    priority?: string | null;
-  }
+  ticket: SupportTicketSlackSummary
 ) {
   const tenantId = await resolveAdminApiTenantId(request);
   const priority = String(ticket.priority || "medium");
@@ -35,20 +65,25 @@ export async function slackNotifyNewSupportTicket(
     entityType: "support_ticket",
     entityId: ticket.id,
     title: `New support ticket ${ticket.ticket_number || ticket.id} (${priority})`,
-    detailLines: [ticket.subject || "(no subject)", `Priority: ${priority}`, "Action: triage and assign an owner"],
+    detailLines: [
+      ticket.subject || "(no subject)",
+      `Priority: ${priority}`,
+      supportOriginLine(ticket),
+      supportContextLine(ticket),
+      "Action: triage and assign an owner",
+    ].filter(Boolean) as string[],
     actionUrl: `/support-tickets/${ticket.id}`,
   });
 }
 
 export async function slackNotifySupportTicketReply(
   request: NextRequest,
-  ticket: {
-    id: string;
-    ticket_number?: string | null;
-    subject?: string | null;
-    priority?: string | null;
-  },
-  messagePreview: string
+  ticket: SupportTicketSlackSummary,
+  messagePreview: string,
+  options?: {
+    authorType?: "customer" | "provider" | "staff";
+    messageId?: string | null;
+  }
 ) {
   const tenantId = await resolveAdminApiTenantId(request);
   const priority = String(ticket.priority || "medium");
@@ -58,11 +93,17 @@ export async function slackNotifySupportTicketReply(
     tenantId,
     environment: env,
     eventKey: SLACK_EVENT_KEYS.SUPPORT_TICKET_REPLY,
-    dedupeKey: `ticket:${ticket.id}:reply:${Date.now()}`,
+    dedupeKey: options?.messageId ? `ticket:${ticket.id}:reply:${options.messageId}` : `ticket:${ticket.id}:reply:${Date.now()}`,
     entityType: "support_ticket",
     entityId: ticket.id,
-    title: `New reply on ticket ${ticket.ticket_number || ticket.id}`,
-    detailLines: [ticket.subject || "(no subject)", `Preview: ${messagePreview}`],
+    title: `${options?.authorType === "staff" ? "Staff replied" : "Customer/provider replied"} on ticket ${ticket.ticket_number || ticket.id}`,
+    detailLines: [
+      ticket.subject || "(no subject)",
+      options?.authorType ? `Reply from: ${options.authorType}` : null,
+      supportOriginLine(ticket),
+      supportContextLine(ticket),
+      `Preview: ${messagePreview}`,
+    ].filter(Boolean) as string[],
     actionUrl: `/support-tickets/${ticket.id}`,
   });
 }

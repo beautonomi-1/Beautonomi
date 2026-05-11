@@ -55,10 +55,12 @@ export default function ReferralSourcesPage() {
   const searchProviders = useCallback(async (q: string) => {
     if (!q.trim()) { setProviders([]); return; }
     try {
-      const res = await fetcher.get<{ data: Provider[] }>(
+      // The admin providers endpoint returns successResponse({ data: [...], meta: {...} })
+      // so the full body shape is { data: { data: Provider[], meta: unknown }, error: null }.
+      const res = await fetcher.get<{ data: { data: Provider[] } }>(
         `/api/admin/providers?search=${encodeURIComponent(q)}&limit=10`
       );
-      setProviders(res.data ?? []);
+      setProviders(res.data?.data ?? []);
     } catch {
       /* ignore */
     }

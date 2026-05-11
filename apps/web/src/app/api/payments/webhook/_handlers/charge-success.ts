@@ -1571,7 +1571,12 @@ async function handleGiftCardOrderSuccess(
     recipient_email?: string;
     provider_id?: string | null;
     tenant_id?: string | null;
-    metadata?: { attribution?: Record<string, unknown> } | null;
+    metadata?: {
+      attribution?: Record<string, unknown>;
+      template_id?: string;
+      template_name?: string;
+      template_image_url?: string;
+    } | null;
   };
   const orderData = order as GiftOrderRow;
   if (orderData.status === "paid" && orderData.gift_card_id) return;
@@ -1602,6 +1607,26 @@ async function handleGiftCardOrderSuccess(
       : orderData.metadata?.attribution && typeof orderData.metadata.attribution === "object"
         ? orderData.metadata.attribution
         : undefined;
+  const templateMetadata = {
+    template_id:
+      typeof metadata?.template_id === "string"
+        ? metadata.template_id
+        : typeof orderData.metadata?.template_id === "string"
+          ? orderData.metadata.template_id
+          : undefined,
+    template_name:
+      typeof metadata?.template_name === "string"
+        ? metadata.template_name
+        : typeof orderData.metadata?.template_name === "string"
+          ? orderData.metadata.template_name
+          : undefined,
+    template_image_url:
+      typeof metadata?.template_image_url === "string"
+        ? metadata.template_image_url
+        : typeof orderData.metadata?.template_image_url === "string"
+          ? orderData.metadata.template_image_url
+          : undefined,
+  };
 
   const giftCardIds: string[] = [];
   const giftCardCodes: string[] = [];
@@ -1634,6 +1659,7 @@ async function handleGiftCardOrderSuccess(
           bulk_order_index: quantity > 1 ? i + 1 : null,
           bulk_order_total: quantity > 1 ? quantity : null,
           attribution,
+          ...templateMetadata,
         },
       })
       .select("*")
@@ -1677,6 +1703,7 @@ async function handleGiftCardOrderSuccess(
       gift_card_ids: giftCardIds,
       quantity: quantity,
       attribution,
+      ...templateMetadata,
     },
     created_at: new Date().toISOString(),
   });

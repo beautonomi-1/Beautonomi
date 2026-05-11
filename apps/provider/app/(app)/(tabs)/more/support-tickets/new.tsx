@@ -23,11 +23,23 @@ import {
 } from "@/lib/supportTicketCategoryPresets";
 import { SupportTicketCategoryPicker } from "@/components/SupportTicketCategoryPicker";
 
+const SUPPORT_CONTEXT_OPTIONS = [
+  { value: "booking", label: "Booking" },
+  { value: "product_order", label: "Product order" },
+  { value: "payment", label: "Payment/refund" },
+  { value: "provider_onboarding", label: "Onboarding" },
+  { value: "account", label: "Account" },
+  { value: "technical", label: "Technical" },
+  { value: "other", label: "Other" },
+] as const;
+
 export default function NewSupportTicketScreen() {
   const router = useRouter();
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
   const [category, setCategory] = useState(SUPPORT_TICKET_DEFAULT_CATEGORY);
+  const [supportContextType, setSupportContextType] = useState<(typeof SUPPORT_CONTEXT_OPTIONS)[number]["value"]>("booking");
+  const [supportContextLabel, setSupportContextLabel] = useState("");
   const [priority, setPriority] = useState<"low" | "medium" | "high" | "urgent">("medium");
   const [submitting, setSubmitting] = useState(false);
 
@@ -76,6 +88,8 @@ export default function NewSupportTicketScreen() {
         message: messageTrimmed,
         category,
         priority,
+        support_context_type: supportContextType,
+        support_context_label: supportContextLabel.trim() || null,
       }) as { error?: { message?: string } };
       if (res.error) {
         Alert.alert("Could not submit", typeof res.error === "string" ? res.error : (res.error?.message ?? "Please try again"));
@@ -109,6 +123,48 @@ export default function NewSupportTicketScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View style={{ marginBottom: 16 }}>
+            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>What is this about?</Text>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+              {SUPPORT_CONTEXT_OPTIONS.map((option) => (
+                <TouchableOpacity
+                  key={option.value}
+                  onPress={() => setSupportContextType(option.value)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: supportContextType === option.value }}
+                  style={{
+                    borderRadius: 20,
+                    paddingHorizontal: 14,
+                    paddingVertical: 10,
+                    borderWidth: 1.5,
+                    borderColor: supportContextType === option.value ? Colors.primary : Colors.gray[200],
+                    backgroundColor: supportContextType === option.value ? `${Colors.primary}12` : "#fff",
+                  }}
+                >
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: supportContextType === option.value ? Colors.primary : Colors.gray[600] }}>
+                    {option.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Related reference (optional)</Text>
+            <TextInput
+              style={{
+                marginBottom: 20,
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: Colors.gray[200],
+                backgroundColor: "#FAFAFA",
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                fontSize: 15,
+                color: "#111827",
+              }}
+              placeholder="Booking/order/payment reference"
+              placeholderTextColor="#9CA3AF"
+              value={supportContextLabel}
+              onChangeText={setSupportContextLabel}
+              maxLength={160}
+            />
             <SupportTicketCategoryPicker value={category} onChange={setCategory} />
           </View>
 

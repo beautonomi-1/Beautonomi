@@ -18,8 +18,22 @@ type Ticket = {
   status: string;
   priority: string;
   category: string | null;
+  support_context_type?: string | null;
+  support_context_label?: string | null;
+  csat_score?: number | null;
   created_at: string;
   updated_at: string;
+};
+
+const SUPPORT_CONTEXT_LABELS: Record<string, string> = {
+  booking: "Booking",
+  product_order: "Product order",
+  gift_card: "Gift card",
+  payment: "Payment",
+  provider_onboarding: "Provider onboarding",
+  account: "Account",
+  technical: "Technical",
+  other: "Other",
 };
 
 type TicketsResponse = { tickets?: Ticket[]; total?: number };
@@ -34,6 +48,16 @@ function formatDateSafe(value: unknown): string {
 function categoryLabel(value: string | null | undefined): string {
   if (!value) return "";
   return labelForSupportTicketCategory(value);
+}
+
+function contextLabel(ticket: Ticket): string | null {
+  if (!ticket.support_context_type) return ticket.support_context_label || null;
+  const base = SUPPORT_CONTEXT_LABELS[ticket.support_context_type] ?? ticket.support_context_type.replace(/_/g, " ");
+  return ticket.support_context_label ? `${base}: ${ticket.support_context_label}` : base;
+}
+
+function shouldAskForCsat(ticket: Ticket): boolean {
+  return (ticket.status === "resolved" || ticket.status === "closed") && !ticket.csat_score;
 }
 
 function statusBgColor(status: string): string {
@@ -161,11 +185,25 @@ export default function SupportTicketsListScreen() {
                 <Text style={{ fontWeight: "600", color: Colors.gray[900] }} numberOfLines={2}>
                   {t.subject}
                 </Text>
+                {contextLabel(t) ? (
+                  <Text style={{ marginTop: 6, fontSize: 12, color: Colors.gray[700] }} numberOfLines={1}>
+                    About {contextLabel(t)}
+                  </Text>
+                ) : null}
                 <Text style={{ marginTop: 6, fontSize: 12, color: Colors.gray[500] }}>
                   {t.category ? `${categoryLabel(t.category)} · ` : ""}
                   Priority: {t.priority}
                   {" · "}Updated {formatDateSafe(t.updated_at)}
                 </Text>
+                {shouldAskForCsat(t) ? (
+                  <Text style={{ marginTop: 8, fontSize: 12, fontWeight: "700", color: Colors.primary }}>
+                    Rate this support experience
+                  </Text>
+                ) : t.csat_score ? (
+                  <Text style={{ marginTop: 8, fontSize: 12, color: Colors.gray[600] }}>
+                    Your rating: {t.csat_score}/5
+                  </Text>
+                ) : null}
               </TouchableOpacity>
             ))}
           </View>

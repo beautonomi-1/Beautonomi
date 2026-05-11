@@ -751,6 +751,12 @@ function SupportPerformanceReport({ data }: { data: Record<string, unknown> }) {
   const dailyAll = Array.isArray(data.dailyOpenedVsResolved)
     ? (data.dailyOpenedVsResolved as { date: string; opened: number; resolved: number }[])
     : [];
+  const requesterMix = Array.isArray(data.requesterMix)
+    ? (data.requesterMix as { requester_type: string; count: number }[])
+    : [];
+  const contextMix = Array.isArray(data.contextMix)
+    ? (data.contextMix as { support_context_type: string; count: number }[])
+    : [];
 
   const [showEmptyDays, setShowEmptyDays] = useState(false);
   const daily = useMemo(() => {
@@ -841,6 +847,36 @@ function SupportPerformanceReport({ data }: { data: Record<string, unknown> }) {
                 <p className="mt-2 text-xl font-bold tabular-nums">{fmt(row.count)}</p>
               </div>
             ))}
+          </div>
+        </AdminPanel>
+      )}
+
+      {(requesterMix.length > 0 || contextMix.length > 0) && (
+        <AdminPanel>
+          <SectionHeading>Marketplace support drivers</SectionHeading>
+          <div className="mt-3 grid gap-4 lg:grid-cols-2">
+            <div>
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Customer vs provider</h3>
+              <div className="mt-2 space-y-2">
+                {requesterMix.map((row) => (
+                  <div key={row.requester_type} className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 text-sm">
+                    <span className="capitalize text-gray-700">{row.requester_type}</span>
+                    <span className="font-semibold tabular-nums">{fmt(row.count)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div>
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Related area</h3>
+              <div className="mt-2 space-y-2">
+                {contextMix.map((row) => (
+                  <div key={row.support_context_type} className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 text-sm">
+                    <span className="capitalize text-gray-700">{row.support_context_type.replace(/_/g, " ")}</span>
+                    <span className="font-semibold tabular-nums">{fmt(row.count)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </AdminPanel>
       )}
@@ -950,6 +986,12 @@ function SupportWorkloadReport({ data }: { data: Record<string, unknown> }) {
   const topRequesters = Array.isArray(data.topRequesters)
     ? (data.topRequesters as Record<string, unknown>[])
     : [];
+  const topContextTypes = Array.isArray(data.topContextTypes)
+    ? (data.topContextTypes as Record<string, unknown>[])
+    : [];
+  const requesterMix = Array.isArray(data.requesterMix)
+    ? (data.requesterMix as Record<string, unknown>[])
+    : [];
   const aging = (data.agingUnassigned as
     | { total?: number; buckets?: { bucket: string; count: number }[] }
     | undefined) ?? { total: 0, buckets: [] };
@@ -966,6 +1008,11 @@ function SupportWorkloadReport({ data }: { data: Record<string, unknown> }) {
       label: "Aging unassigned",
       value: fmt(aging.total ?? 0),
       sub: "Open tickets with no assignee",
+    },
+    {
+      label: "Provider-origin tickets",
+      value: fmt(requesterMix.find((r) => r.requester_type === "provider")?.count ?? 0),
+      sub: "Requests opened by provider users",
     },
   ];
 
@@ -1100,6 +1147,31 @@ function SupportWorkloadReport({ data }: { data: Record<string, unknown> }) {
                   </tr>
                 );
               })}
+            </AdminTableBody>
+          </AdminDataTable>
+        </AdminPanel>
+      )}
+
+      {topContextTypes.length > 0 && (
+        <AdminPanel>
+          <SectionHeading>Top marketplace contexts</SectionHeading>
+          <p className="mt-1 text-xs text-gray-500">
+            Use this to see whether support demand is coming from bookings, ecommerce, payments, onboarding, or technical issues.
+          </p>
+          <AdminDataTable className="mt-3">
+            <AdminTableHead>
+              <tr>
+                <AdminTh>Context</AdminTh>
+                <AdminTh>Tickets</AdminTh>
+              </tr>
+            </AdminTableHead>
+            <AdminTableBody>
+              {topContextTypes.map((r, i) => (
+                <tr key={String(r.support_context_type ?? i)}>
+                  <AdminTd className="text-xs capitalize">{String(r.support_context_type ?? "uncategorized").replace(/_/g, " ")}</AdminTd>
+                  <AdminTd className="tabular-nums text-xs">{fmt(r.count)}</AdminTd>
+                </tr>
+              ))}
             </AdminTableBody>
           </AdminDataTable>
         </AdminPanel>

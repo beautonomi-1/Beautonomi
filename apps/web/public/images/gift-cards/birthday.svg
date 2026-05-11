@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" role="img" aria-labelledby="title desc">
+  <title id="title">Birthday gift card</title>
+  <desc id="desc">Pink and peach Beautonomi birthday gift card artwork.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff1f6"/>
+      <stop offset="0.55" stop-color="#ff7aa8"/>
+      <stop offset="1" stop-color="#d60565"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="800" rx="64" fill="url(#bg)"/>
+  <circle cx="1040" cy="135" r="150" fill="#ffffff" opacity=".18"/>
+  <circle cx="170" cy="690" r="210" fill="#ffffff" opacity=".15"/>
+  <path d="M220 220h760a44 44 0 0 1 44 44v272a44 44 0 0 1-44 44H220a44 44 0 0 1-44-44V264a44 44 0 0 1 44-44Z" fill="#fff" opacity=".92"/>
+  <path d="M350 300c0-34 28-62 62-62s62 28 62 62v30H350v-30Zm376 0c0-34 28-62 62-62s62 28 62 62v30H726v-30Z" fill="#d60565" opacity=".16"/>
+  <path d="M298 330h604v156a64 64 0 0 1-64 64H362a64 64 0 0 1-64-64V330Z" fill="#d60565"/>
+  <path d="M600 330v220M298 408h604" stroke="#fff" stroke-width="28" opacity=".75"/>
+  <text x="600" y="165" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="58" font-weight="700" fill="#fff">Happy Birthday</text>
+  <text x="600" y="660" text-anchor="middle" font-family="Verdana, sans-serif" font-size="40" font-weight="700" fill="#fff">Beautonomi Gift Card</text>
+</svg>

@@ -22,8 +22,8 @@ export async function GET(
       .from("support_tickets")
       .select(`
         *,
-        user:users!support_tickets_user_id_fkey(id, email, full_name),
-        provider:providers(id, business_name),
+        user:users!support_tickets_user_id_fkey(id, email, full_name, phone, role, is_active, created_at),
+        provider:providers(id, business_name, email, phone, status, user_id, created_at),
         assigned_user:users!support_tickets_assigned_to_fkey(id, email, full_name)
       `)
       .eq("id", id)
@@ -81,6 +81,10 @@ export async function PATCH(
       csat_score,
       csat_comment,
       sla_resolution_due_at,
+      requester_type,
+      support_context_type,
+      support_context_id,
+      support_context_label,
       expected_updated_at,
     } = body;
 
@@ -137,6 +141,10 @@ export async function PATCH(
     }
     if (csat_comment !== undefined) updateData.csat_comment = csat_comment;
     if (sla_resolution_due_at !== undefined) updateData.sla_resolution_due_at = sla_resolution_due_at;
+    if (requester_type !== undefined) updateData.requester_type = requester_type;
+    if (support_context_type !== undefined) updateData.support_context_type = support_context_type || null;
+    if (support_context_id !== undefined) updateData.support_context_id = support_context_id || null;
+    if (support_context_label !== undefined) updateData.support_context_label = typeof support_context_label === "string" ? support_context_label.trim() || null : null;
 
     const { data, error } = await supabase
       .from("support_tickets")

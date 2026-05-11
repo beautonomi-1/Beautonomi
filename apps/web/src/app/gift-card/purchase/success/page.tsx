@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useState, useCallback } from "react";
+import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Navbar4 from "@/components/global/Navbar4";
@@ -17,12 +18,45 @@ type GiftCardRow = {
   metadata?: Record<string, unknown> | null;
 };
 
+type GiftCardTemplate = {
+  id: string;
+  name: string;
+  image_url: string;
+};
+
 function unwrapGiftCardsPayload(res: unknown): GiftCardRow[] {
   if (!res || typeof res !== "object") return [];
   const r = res as Record<string, unknown>;
   const inner = r.data && typeof r.data === "object" ? (r.data as Record<string, unknown>) : r;
   const list = inner.gift_cards;
   return Array.isArray(list) ? (list as GiftCardRow[]) : [];
+}
+
+function unwrapTemplatesPayload(res: unknown): GiftCardTemplate[] {
+  if (!res || typeof res !== "object") return [];
+  const r = res as Record<string, unknown>;
+  const inner = r.data && typeof r.data === "object" ? (r.data as Record<string, unknown>) : r;
+  const list = inner.templates;
+  return Array.isArray(list) ? (list as GiftCardTemplate[]) : [];
+}
+
+function getGiftCardTemplateDisplay(
+  card: GiftCardRow,
+  templates: GiftCardTemplate[],
+): { name?: string; imageUrl?: string } {
+  const metadata = card.metadata && typeof card.metadata === "object" ? card.metadata : {};
+  const templateId = typeof metadata.template_id === "string" ? metadata.template_id : undefined;
+  const cmsTemplate = templateId ? templates.find((t) => t.id === templateId) : undefined;
+  return {
+    name:
+      typeof metadata.template_name === "string"
+        ? metadata.template_name
+        : cmsTemplate?.name,
+    imageUrl:
+      typeof metadata.template_image_url === "string"
+        ? metadata.template_image_url
+        : cmsTemplate?.image_url,
+  };
 }
 
 function extractVerifyPayload(res: unknown): { type?: string; giftCardOrderId?: string } {
@@ -52,6 +86,23 @@ function GiftCardPurchaseSuccessInner() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [orderId, setOrderId] = useState<string | null>(null);
   const [cards, setCards] = useState<GiftCardRow[]>([]);
+  const [templates, setTemplates] = useState<GiftCardTemplate[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadTemplates() {
+      try {
+        const raw = await fetcher.get<unknown>("/api/public/gift-cards/marketplace", { staleTimeMs: 300000 });
+        if (!cancelled) setTemplates(unwrapTemplatesPayload(raw));
+      } catch {
+        // Codes remain usable even if artwork cannot be loaded.
+      }
+    }
+    void loadTemplates();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const verifyAndLoad = useCallback(async () => {
     if (!reference) {
@@ -168,25 +219,44 @@ function GiftCardPurchaseSuccessInner() {
               </p>
             </div>
             <div className="space-y-4">
-              {cards.map((c) => (
-                <div key={c.id} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Gift card code</p>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <code className="break-all font-mono text-lg font-bold text-gray-900">{c.code}</code>
-                    <button
-                      type="button"
-                      onClick={() => copyCode(c.code)}
-                      className="rounded-lg p-2 hover:bg-gray-100"
-                      aria-label="Copy code"
-                    >
-                      <Copy className="h-4 w-4" />
-                    </button>
+              {cards.map((c) => {
+                const template = getGiftCardTemplateDisplay(c, templates);
+                return (
+                  <div key={c.id} className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+                    {template.imageUrl ? (
+                      <div className="relative aspect-[3/2] bg-gray-100">
+                        <Image
+                          src={template.imageUrl}
+                          alt={template.name || "Gift card design"}
+                          fill
+                          className="object-cover"
+                          unoptimized
+                        />
+                      </div>
+                    ) : null}
+                    <div className="p-4">
+                      {template.name ? (
+                        <p className="mb-3 text-sm font-medium text-gray-700">{template.name}</p>
+                      ) : null}
+                      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Gift card code</p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <code className="break-all font-mono text-lg font-bold text-gray-900">{c.code}</code>
+                        <button
+                          type="button"
+                          onClick={() => copyCode(c.code)}
+                          className="rounded-lg p-2 hover:bg-gray-100"
+                          aria-label="Copy code"
+                        >
+                          <Copy className="h-4 w-4" />
+                        </button>
+                      </div>
+                      <p className="mt-2 text-sm text-gray-600">
+                        Balance: {c.currency} {Number(c.balance).toFixed(2)}
+                      </p>
+                    </div>
                   </div>
-                  <p className="mt-2 text-sm text-gray-600">
-                    Balance: {c.currency} {Number(c.balance).toFixed(2)}
-                  </p>
-                </div>
-              ))}
+                );
+              })}
               {orderId && cards.length === 0 && (
                 <p className="text-center text-gray-600">
                   Codes are still being issued. Find them anytime under{" "}

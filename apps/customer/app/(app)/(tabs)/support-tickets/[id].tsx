@@ -4,6 +4,7 @@ import {
   Text,
   TextInput,
   ScrollView,
+  RefreshControl,
   TouchableOpacity,
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -11,6 +12,7 @@ import {
   Alert,
   StyleSheet,
   Linking,
+  AppState,
 } from "react-native";
 import { useRouter, useLocalSearchParams, useNavigation } from "expo-router";
 import * as Haptics from "expo-haptics";
@@ -50,6 +52,10 @@ type Ticket = {
   status: string;
   priority: string;
   category: string | null;
+  support_context_type?: string | null;
+  support_context_label?: string | null;
+  csat_score?: number | null;
+  csat_comment?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -103,8 +109,14 @@ export default function SupportTicketDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [pendingAttachments, setPendingAttachments] = useState<SupportAttachment[]>([]);
+  const [csatScore, setCsatScore] = useState<number | null>(null);
+  const [csatComment, setCsatComment] = useState("");
+  const [submittingCsat, setSubmittingCsat] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
+  const knownMessageIdsRef = useRef<Set<string>>(new Set());
+  const loadedOnceRef = useRef(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const { pickFromLibrary } = useImagePicker();
 
@@ -121,8 +133,22 @@ export default function SupportTicketDetailScreen() {
       }
       const payload = res.data;
       const loadedTicket = payload?.ticket ?? null;
+      const loadedMessages = Array.isArray(payload?.messages) ? payload!.messages! : [];
+      const newStaffMessage = loadedMessages.some((m) => {
+        const isMine = m.is_mine ?? m.user_id === user?.id;
+        return !isMine && !knownMessageIdsRef.current.has(m.id);
+      });
       setTicket(loadedTicket);
-      setMessages(Array.isArray(payload?.messages) ? payload!.messages! : []);
+      setCsatScore(loadedTicket?.csat_score ?? null);
+      setCsatComment(loadedTicket?.csat_comment ?? "");
+      setMessages(loadedMessages);
+      if (loadedOnceRef.current && newStaffMessage) {
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 150);
+      }
+      knownMessageIdsRef.current = new Set(loadedMessages.map((m) => m.id));
+      loadedOnceRef.current = true;
+      void api.post(`/api/me/support-tickets/${id}/seen`, {}).catch(() => {});
       if (loadedTicket) trackSupportTicketDetailView(loadedTicket.id, loadedTicket.ticket_number);
     } catch (e) {
       setTicket(null);
@@ -131,10 +157,34 @@ export default function SupportTicketDetailScreen() {
     } finally {
       setLoading(false);
     }
-  }, [id, sd]);
+  }, [id, sd, user?.id]);
 
   useEffect(() => {
     loadTicket();
+  }, [loadTicket]);
+
+  useEffect(() => {
+    let active = AppState.currentState === "active";
+    const sub = AppState.addEventListener("change", (state) => {
+      active = state === "active";
+      if (active) void loadTicket();
+    });
+    const timer = setInterval(() => {
+      if (active) void loadTicket();
+    }, 30_000);
+    return () => {
+      sub.remove();
+      clearInterval(timer);
+    };
+  }, [loadTicket]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await loadTicket();
+    } finally {
+      setRefreshing(false);
+    }
   }, [loadTicket]);
 
   useEffect(() => {
@@ -226,6 +276,27 @@ export default function SupportTicketDetailScreen() {
     });
   };
 
+  const submitCsat = async () => {
+    if (!id || !csatScore) return;
+    setSubmittingCsat(true);
+    try {
+      const res = await api.post(`/api/me/support-tickets/${id}/csat`, {
+        score: csatScore,
+        comment: csatComment.trim() || null,
+      });
+      if (res.error) {
+        Alert.alert("Could not submit rating", getApiErrorMessage(res.error, "Please try again."));
+        return;
+      }
+      Alert.alert("Thanks", "Your rating helps us improve support.");
+      await loadTicket();
+    } catch (e) {
+      Alert.alert("Could not submit rating", e instanceof Error ? e.message : "Please try again.");
+    } finally {
+      setSubmittingCsat(false);
+    }
+  };
+
   if (!id) {
     return (
       <View style={styles.centered}>
@@ -279,6 +350,7 @@ export default function SupportTicketDetailScreen() {
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         <View style={styles.inner}>
           <View style={styles.headerRow}>
@@ -292,6 +364,12 @@ export default function SupportTicketDetailScreen() {
             {ticket.category ? `Category: ${labelForSupportTicketCategory(String(ticket.category))} · ` : ""}
             Priority: {ticket.priority}
           </Text>
+          {ticket.support_context_type ? (
+            <Text style={styles.contextMeta}>
+              About: {ticket.support_context_type.replace(/_/g, " ")}
+              {ticket.support_context_label ? ` · ${ticket.support_context_label}` : ""}
+            </Text>
+          ) : null}
 
           {messages.map((m) => {
             const isOwn = m.is_mine ?? m.user_id === user?.id;
@@ -403,10 +481,42 @@ export default function SupportTicketDetailScreen() {
           )}
 
           {!canReply && (
-            <Text style={styles.closedNote}>
-              This ticket is {ticket.status}. Open Help → New ticket if you need further
-              help.
-            </Text>
+            <View style={styles.csatBlock}>
+              <Text style={styles.label}>Rate this support experience</Text>
+              <View style={styles.csatRow}>
+                {[1, 2, 3, 4, 5].map((score) => (
+                  <TouchableOpacity
+                    key={score}
+                    onPress={() => setCsatScore(score)}
+                    style={[styles.csatChip, csatScore === score && styles.csatChipActive]}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: csatScore === score }}
+                  >
+                    <Text style={[styles.csatText, csatScore === score && styles.csatTextActive]}>{score}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <TextInput
+                style={styles.csatInput}
+                placeholder="Optional comment"
+                placeholderTextColor="#9ca3af"
+                value={csatComment}
+                onChangeText={setCsatComment}
+                multiline
+                maxLength={1000}
+              />
+              <TouchableOpacity
+                onPress={submitCsat}
+                disabled={!csatScore || submittingCsat}
+                style={[styles.sendBtn, (!csatScore || submittingCsat) && styles.sendBtnDisabled]}
+                accessibilityRole="button"
+              >
+                <Text style={styles.sendBtnText}>{submittingCsat ? "Submitting…" : ticket.csat_score ? "Update rating" : "Submit rating"}</Text>
+              </TouchableOpacity>
+              <Text style={styles.closedNote}>
+                This ticket is {ticket.status}. Open Help → New ticket if you need further help.
+              </Text>
+            </View>
           )}
         </View>
       </ScrollView>
@@ -431,6 +541,7 @@ const styles = StyleSheet.create({
   dateSmall: { fontSize: 12, color: Colors.gray[500] },
   title: { fontSize: 18, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 },
   subMeta: { marginBottom: 16, fontSize: 12, color: Colors.gray[500] },
+  contextMeta: { marginBottom: 16, fontSize: 12, color: Colors.gray[600] },
   msgRow: { marginBottom: 10 },
   msgRowOwn: { alignItems: "flex-end" },
   msgRowOther: { alignItems: "flex-start" },
@@ -504,4 +615,20 @@ const styles = StyleSheet.create({
   sendBtnDisabled: { opacity: 0.5 },
   sendBtnText: { fontWeight: "600", color: "#fff", fontSize: 16 },
   closedNote: { marginTop: 16, fontSize: 14, color: Colors.gray[500] },
+  csatBlock: { marginTop: 16 },
+  csatRow: { flexDirection: "row", gap: 8, marginBottom: 10 },
+  csatChip: { minWidth: 44, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], paddingVertical: 10, alignItems: "center" },
+  csatChipActive: { borderColor: Colors.primary, backgroundColor: Colors.primary },
+  csatText: { fontWeight: "700", color: Colors.gray[700] },
+  csatTextActive: { color: "#fff" },
+  csatInput: {
+    marginBottom: 10,
+    minHeight: 72,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: Colors.gray[900],
+  },
 });

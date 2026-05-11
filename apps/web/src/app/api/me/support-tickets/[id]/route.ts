@@ -27,7 +27,7 @@ export async function GET(
 
     const { data: ticket, error: ticketError } = await supabase
       .from("support_tickets")
-      .select("id, ticket_number, subject, status, priority, category, created_at, updated_at")
+      .select("id, ticket_number, subject, status, priority, category, requester_type, support_context_type, support_context_id, support_context_label, csat_score, csat_comment, csat_submitted_at, last_message_at, last_message_from, last_customer_view_at, created_at, updated_at")
       .eq("id", id)
       .eq("user_id", user.id)
       .single();

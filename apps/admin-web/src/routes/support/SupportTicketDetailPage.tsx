@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_SUPPORT } from "@beautonomi/admin-access";
@@ -19,6 +19,7 @@ import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminToast } from "@/lib/adminToast";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
 import { useAdminSession } from "@/providers/AdminSessionProvider";
+import { Building2, CheckCircle2, Copy, ExternalLink, FileText, Paperclip, Send, UploadCloud, UserRound, X } from "lucide-react";
 
 type Assignee = { id: string; email: string | null; full_name: string | null; role: string };
 
@@ -28,6 +29,9 @@ type TicketRow = Record<string, unknown> & {
   subject?: string;
   description?: string;
   category?: string | null;
+  requester_type?: string | null;
+  support_context_type?: string | null;
+  support_context_label?: string | null;
   priority?: string;
   status?: string;
   user_id?: string | null;
@@ -41,8 +45,24 @@ type TicketRow = Record<string, unknown> & {
   csat_comment?: string | null;
   created_at?: string;
   updated_at?: string;
-  user?: { id?: string; email?: string; full_name?: string | null } | null;
-  provider?: { id?: string; business_name?: string | null } | null;
+  user?: {
+    id?: string;
+    email?: string;
+    full_name?: string | null;
+    phone?: string | null;
+    role?: string | null;
+    is_active?: boolean | null;
+    created_at?: string | null;
+  } | null;
+  provider?: {
+    id?: string;
+    business_name?: string | null;
+    email?: string | null;
+    phone?: string | null;
+    status?: string | null;
+    user_id?: string | null;
+    created_at?: string | null;
+  } | null;
   assigned_user?: { id?: string; email?: string; full_name?: string | null } | null;
 };
 
@@ -107,6 +127,48 @@ function attachmentsFromRow(raw: unknown): AttachmentItem[] {
 
 const DETAIL_REFETCH_MS = 45_000;
 
+function isImageAttachment(att: AttachmentItem): boolean {
+  return Boolean(att.type?.startsWith("image/") || /\.(png|jpe?g|gif|webp|avif)$/i.test(att.url));
+}
+
+function formatFileSize(size?: number): string {
+  if (size == null) return "";
+  if (size < 1024 * 1024) return `${Math.max(1, Math.round(size / 1024))} KB`;
+  return `${(size / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function messageDayLabel(value?: string): string {
+  if (!value) return "";
+  const d = new Date(value);
+  if (!Number.isFinite(d.getTime())) return "";
+  const today = new Date();
+  const startOf = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diffDays = Math.round((startOf(today) - startOf(d)) / 86400000);
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: today.getFullYear() === d.getFullYear() ? undefined : "numeric" });
+}
+
+function relativeTime(value?: string): string {
+  if (!value) return "";
+  const then = new Date(value).getTime();
+  if (!Number.isFinite(then)) return "";
+  const seconds = Math.max(0, Math.floor((Date.now() - then) / 1000));
+  if (seconds < 60) return "just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+function formatDateTime(value?: string | null): string {
+  if (!value) return "—";
+  const d = new Date(value);
+  return Number.isFinite(d.getTime()) ? d.toLocaleString() : "—";
+}
+
 export function SupportTicketDetailPage() {
   const { id = "" } = useParams<{ id: string }>();
   const qc = useQueryClient();
@@ -125,6 +187,7 @@ export function SupportTicketDetailPage() {
   const [tagsInput, setTagsInput] = useState("");
   const [csatScore, setCsatScore] = useState<number | "">("");
   const [csatCommentDraft, setCsatCommentDraft] = useState("");
+  const [dragActive, setDragActive] = useState(false);
 
   const detailQ = useQuery({
     queryKey: adminQueryKeys.supportTicketDetail(id),
@@ -200,6 +263,21 @@ export function SupportTicketDetailPage() {
     },
     onError: (e: Error) => adminToast.error(e.message),
   });
+
+  const handleSendReply = async (nextStatus?: string) => {
+    const hasContent = reply.trim() || replyAttachments.length > 0;
+    if (!hasContent || sendMessage.isPending || patchTicket.isPending) return;
+    try {
+      await sendMessage.mutateAsync();
+      if (nextStatus) {
+        await adminApi.patchJson(`/api/admin/support-tickets/${encodeURIComponent(id)}`, { status: nextStatus });
+        invalidateTicket();
+        adminToast.success(`Ticket marked ${nextStatus.replace(/_/g, " ")}`);
+      }
+    } catch {
+      // Mutation handlers already surface the specific error.
+    }
+  };
 
   async function onPickFiles(files: FileList | null) {
     if (!files?.length || !id) return;
@@ -302,6 +380,17 @@ export function SupportTicketDetailPage() {
   const assignedId = ticket.assigned_to == null ? "" : str(ticket.assigned_to);
   const assigneeInList = assignedId && assignees.some((a) => a.id === assignedId);
   const customerUserId = ticket.user_id == null ? null : str(ticket.user_id);
+  const staffParticipants = Array.from(
+    new Set(
+      messages
+        .filter((m) => {
+          const uid = m.user_id == null ? null : str(m.user_id);
+          return !m.is_internal && uid !== customerUserId;
+        })
+        .map((m) => m.user?.full_name || m.user?.email || "Support")
+        .filter(Boolean)
+    )
+  ).slice(0, 3);
 
   const ownerLabel =
     ticket.assigned_user?.full_name ||
@@ -415,11 +504,33 @@ export function SupportTicketDetailPage() {
         <AdminPanel className="lg:col-span-2">
           <h2 className="text-lg font-semibold text-gray-900">Conversation</h2>
           <p className="mt-1 text-sm text-gray-600 whitespace-pre-wrap">{str(ticket.description)}</p>
+          <div className="mt-4 flex flex-wrap gap-2 text-xs">
+            <span className="rounded-full bg-gray-100 px-2.5 py-1 font-medium text-gray-700">
+              Customer: {ticket.user?.full_name || ticket.user?.email || ticket.provider?.business_name || "Unknown"}
+            </span>
+            <span className="rounded-full bg-slate-100 px-2.5 py-1 font-medium capitalize text-slate-800">
+              Origin: {str(ticket.requester_type) || (ticket.provider_id ? "provider" : "customer")}
+            </span>
+            {ticket.support_context_type ? (
+              <span className="rounded-full bg-violet-50 px-2.5 py-1 font-medium text-violet-800">
+                About: {str(ticket.support_context_type).replace(/_/g, " ")}
+                {ticket.support_context_label ? ` · ${str(ticket.support_context_label)}` : ""}
+              </span>
+            ) : null}
+            <span className="rounded-full bg-blue-50 px-2.5 py-1 font-medium text-blue-800">
+              Owner: {ownerLabel ?? "Unassigned"}
+            </span>
+            {staffParticipants.map((name) => (
+              <span key={name} className="rounded-full bg-emerald-50 px-2.5 py-1 font-medium text-emerald-800">
+                Support: {name}
+              </span>
+            ))}
+          </div>
           <ul className="mt-6 space-y-3 border-t border-gray-100 pt-4">
             {messages.length === 0 ? (
               <li className="text-sm text-gray-500">No messages yet.</li>
             ) : (
-              messages.map((m) => {
+              messages.map((m, idx) => {
                 const internal = Boolean(m.is_internal);
                 const uid = m.user_id == null ? null : str(m.user_id);
                 const fromCustomer = !internal && customerUserId !== null && uid === customerUserId;
@@ -432,50 +543,107 @@ export function SupportTicketDetailPage() {
                       : "border-gray-200 bg-gray-50/90";
                 const atts = attachmentsFromRow(m.attachments);
                 const roleLabel = internal ? "Internal" : fromCustomer ? "Customer" : "Support";
+                const dayLabel = messageDayLabel(str(m.created_at));
+                const prevDayLabel = idx > 0 ? messageDayLabel(str(messages[idx - 1]?.created_at)) : "";
+                const messageId = str(m.id);
                 return (
-                  <li key={str(m.id)} className={`flex w-full ${fromStaff ? "justify-end" : "justify-start"}`}>
-                    <div className={`max-w-[min(100%,42rem)] rounded-xl border p-3 ${bubble}`}>
+                  <Fragment key={messageId}>
+                    {dayLabel && dayLabel !== prevDayLabel ? (
+                      <li className="flex justify-center">
+                        <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-gray-500 ring-1 ring-gray-200">
+                          {dayLabel}
+                        </span>
+                      </li>
+                    ) : null}
+                  <li id={`message-${messageId}`} className={`flex w-full ${fromStaff ? "justify-end" : "justify-start"}`}>
+                    <div className={`max-w-[min(100%,42rem)] rounded-xl border p-3 shadow-sm ${bubble}`}>
                       <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
                         <span className="font-medium text-gray-700">{roleLabel}</span>
                         <span>·</span>
                         <span>{m.user?.full_name || m.user?.email || "User"}</span>
                         <span>·</span>
                         <span>{m.created_at ? new Date(String(m.created_at)).toLocaleString() : "—"}</span>
+                        {m.created_at ? <span>({relativeTime(String(m.created_at))})</span> : null}
                         {internal ? (
                           <span className="rounded-full bg-amber-200/80 px-2 py-0.5 text-amber-950">Not visible to customer</span>
                         ) : null}
+                        <button
+                          type="button"
+                          className="ml-auto inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-gray-500 hover:bg-white/70 hover:text-gray-800"
+                          onClick={() => {
+                            const href = `${window.location.origin}${window.location.pathname}#message-${messageId}`;
+                            void navigator.clipboard?.writeText(href).then(
+                              () => adminToast.success("Message link copied"),
+                              () => adminToast.error("Could not copy link")
+                            );
+                          }}
+                        >
+                          <Copy className="h-3 w-3" />
+                          Copy link
+                        </button>
                       </div>
                       <p className="mt-2 text-sm text-gray-800 whitespace-pre-wrap">{str(m.message)}</p>
                       {atts.length > 0 ? (
-                        <ul className="mt-2 space-y-1 border-t border-dashed border-gray-200 pt-2 text-xs">
+                        <ul className="mt-3 grid gap-2 border-t border-dashed border-gray-200 pt-2 text-xs sm:grid-cols-2">
                           {atts.map((a) => (
                             <li key={a.url}>
                               <a
                                 href={a.url}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="font-medium text-primary underline"
+                                className="block overflow-hidden rounded-lg border border-gray-200 bg-white/70 hover:border-gray-300"
                               >
-                                {a.name || "Attachment"}
+                                {isImageAttachment(a) ? (
+                                  <img src={a.url} alt={a.name || "Attachment"} className="h-28 w-full object-cover" loading="lazy" />
+                                ) : null}
+                                <span className="flex items-center gap-2 px-2 py-2 font-medium text-gray-800">
+                                  <FileText className="h-3.5 w-3.5 text-gray-500" />
+                                  <span className="min-w-0 flex-1 truncate">{a.name || "Attachment"}</span>
+                                  {a.size != null ? <span className="shrink-0 text-gray-500">{formatFileSize(a.size)}</span> : null}
+                                </span>
                               </a>
-                              {a.size != null ? <span className="text-gray-500"> ({Math.round(a.size / 1024)} KB)</span> : null}
                             </li>
                           ))}
                         </ul>
                       ) : null}
                     </div>
                   </li>
+                  </Fragment>
                 );
               })
             )}
           </ul>
 
           <div className="mt-6 space-y-3 border-t border-gray-100 pt-4">
-            <label className="block text-sm font-medium text-gray-700">Reply</label>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="inline-flex rounded-xl border border-gray-200 bg-gray-50 p-1 text-sm">
+                <button
+                  type="button"
+                  className={`rounded-lg px-3 py-2 font-medium transition-colors ${
+                    !replyInternal ? "bg-gray-900 text-white shadow-sm" : "text-gray-700 hover:bg-white"
+                  }`}
+                  onClick={() => setReplyInternal(false)}
+                >
+                  Reply to customer
+                </button>
+                <button
+                  type="button"
+                  className={`rounded-lg px-3 py-2 font-medium transition-colors ${
+                    replyInternal ? "bg-amber-500 text-amber-950 shadow-sm" : "text-gray-700 hover:bg-white"
+                  }`}
+                  onClick={() => setReplyInternal(true)}
+                >
+                  Internal note
+                </button>
+              </div>
+              <p className={`text-xs ${replyInternal ? "text-amber-700" : "text-gray-500"}`}>
+                {replyInternal ? "Only staff can see this note." : "Visible to the customer and included in notifications."}
+              </p>
+            </div>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs text-gray-500">Snippet</span>
+              <span className="text-xs font-medium text-gray-500">Snippet</span>
               <select
-                className="max-w-xs rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-800"
+                className="min-h-10 max-w-xs rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-800"
                 defaultValue=""
                 aria-label="Insert canned reply"
                 onChange={(e) => {
@@ -496,53 +664,133 @@ export function SupportTicketDetailPage() {
               </select>
             </div>
             <textarea
-              className="w-full min-h-[100px] rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              className={`w-full min-h-[120px] rounded-xl border px-3 py-2 text-sm focus:outline-none ${
+                replyInternal
+                  ? "border-amber-300 bg-amber-50/70 focus:border-amber-500"
+                  : "border-gray-300 bg-white focus:border-gray-500"
+              }`}
               value={reply}
               onChange={(e) => setReply(e.target.value)}
-              placeholder="Type a reply to the customer…"
+              onKeyDown={(e) => {
+                if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                  e.preventDefault();
+                  void handleSendReply();
+                }
+                if (e.key === "Escape" && reply.trim()) {
+                  e.preventDefault();
+                  setReply("");
+                }
+              }}
+              placeholder={replyInternal ? "Add context for teammates…" : "Type a clear reply to the customer…"}
             />
-            <label className="flex items-center gap-2 text-sm text-gray-700">
-              <input type="checkbox" checked={replyInternal} onChange={(e) => setReplyInternal(e.target.checked)} />
-              Internal note (not visible to customer)
-            </label>
-            <div className="flex flex-wrap items-center gap-3">
+            <p className="text-xs text-gray-500">Press Cmd/Ctrl+Enter to send, or Esc to clear the draft.</p>
+            <div
+              className={`rounded-2xl border border-dashed p-4 transition-colors ${
+                dragActive ? "border-blue-400 bg-blue-50" : "border-gray-300 bg-gray-50/80"
+              }`}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragActive(true);
+              }}
+              onDragLeave={() => setDragActive(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragActive(false);
+                void onPickFiles(e.dataTransfer.files);
+              }}
+            >
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="rounded-xl bg-white p-2 text-gray-700 shadow-sm ring-1 ring-gray-200">
+                    <UploadCloud className="h-5 w-5" />
+                  </span>
+                  <div>
+                    <p className="text-sm font-medium text-gray-800">Drop files here or attach from your device</p>
+                    <p className="text-xs text-gray-500">Images preview inline. Attachments are sent with this reply.</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className={adminToolbarButtonClass(uploading)}
+                  disabled={uploading}
+                  onClick={() => fileRef.current?.click()}
+                >
+                  <Paperclip className="mr-1.5 h-4 w-4" />
+                  {uploading ? "Uploading…" : "Attach files"}
+                </button>
+              </div>
               <input
                 ref={fileRef}
                 type="file"
                 multiple
-                className="text-sm text-gray-700"
+                className="hidden"
                 disabled={uploading}
                 onChange={(e) => void onPickFiles(e.target.files)}
               />
-              {uploading ? <span className="text-xs text-gray-500">Uploading…</span> : null}
+              {replyAttachments.length > 0 ? (
+                <ul className="mt-4 grid gap-2 sm:grid-cols-2">
+                  {replyAttachments.map((a) => (
+                    <li key={a.url} className="overflow-hidden rounded-xl border border-gray-200 bg-white text-xs shadow-sm">
+                      {isImageAttachment(a) ? (
+                        <img src={a.url} alt={a.name || "Attachment preview"} className="h-24 w-full object-cover" loading="lazy" />
+                      ) : null}
+                      <div className="flex items-center gap-2 px-3 py-2">
+                        <FileText className="h-4 w-4 shrink-0 text-gray-500" />
+                        <span className="min-w-0 flex-1 truncate text-gray-700">{a.name || "file"}</span>
+                        {a.size != null ? <span className="shrink-0 text-gray-500">{formatFileSize(a.size)}</span> : null}
+                        <button
+                          type="button"
+                          className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-red-600"
+                          aria-label={`Remove ${a.name || "attachment"}`}
+                          onClick={() => setReplyAttachments((prev) => prev.filter((x) => x.url !== a.url))}
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
             </div>
             {uploadErr ? <p className="text-sm text-red-600">{uploadErr}</p> : null}
-            {replyAttachments.length > 0 ? (
-              <ul className="text-xs text-gray-600">
-                {replyAttachments.map((a) => (
-                  <li key={a.url} className="flex items-center gap-2">
-                    <span>{a.name || "file"}</span>
-                    <button
-                      type="button"
-                      className="text-primary underline"
-                      onClick={() => setReplyAttachments((prev) => prev.filter((x) => x.url !== a.url))}
-                    >
-                      Remove
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-            <button
-              type="button"
-              className={adminToolbarButtonClass(
-                (!reply.trim() && replyAttachments.length === 0) || sendMessage.isPending
-              )}
-              disabled={(!reply.trim() && replyAttachments.length === 0) || sendMessage.isPending}
-              onClick={() => void sendMessage.mutate()}
-            >
-              {sendMessage.isPending ? "Sending…" : "Send reply"}
-            </button>
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+              <button
+                type="button"
+                className={adminToolbarButtonClass(
+                  (!reply.trim() && replyAttachments.length === 0) || sendMessage.isPending || patchTicket.isPending
+                )}
+                disabled={(!reply.trim() && replyAttachments.length === 0) || sendMessage.isPending || patchTicket.isPending}
+                onClick={() => void handleSendReply()}
+              >
+                <Send className="mr-1.5 h-4 w-4" />
+                {sendMessage.isPending ? "Sending…" : replyInternal ? "Save internal note" : "Send reply"}
+              </button>
+              {!replyInternal ? (
+                <>
+                  <button
+                    type="button"
+                    className={adminToolbarButtonClass(
+                      (!reply.trim() && replyAttachments.length === 0) || sendMessage.isPending || patchTicket.isPending
+                    )}
+                    disabled={(!reply.trim() && replyAttachments.length === 0) || sendMessage.isPending || patchTicket.isPending}
+                    onClick={() => void handleSendReply("resolved")}
+                  >
+                    <CheckCircle2 className="mr-1.5 h-4 w-4" />
+                    Send and resolve
+                  </button>
+                  <button
+                    type="button"
+                    className={adminToolbarButtonClass(
+                      (!reply.trim() && replyAttachments.length === 0) || sendMessage.isPending || patchTicket.isPending
+                    )}
+                    disabled={(!reply.trim() && replyAttachments.length === 0) || sendMessage.isPending || patchTicket.isPending}
+                    onClick={() => void handleSendReply("waiting_customer")}
+                  >
+                    Send and wait for customer
+                  </button>
+                </>
+              ) : null}
+            </div>
           </div>
         </AdminPanel>
 
@@ -656,30 +904,143 @@ export function SupportTicketDetailPage() {
           </AdminPanel>
 
           <AdminPanel>
-            <h2 className="text-lg font-semibold text-gray-900">People</h2>
-            <dl className="mt-3 space-y-2 text-sm">
+            <div className="flex items-start justify-between gap-3">
               <div>
-                <dt className="text-gray-500">Customer</dt>
-                <dd>
-                  {ticket.user?.id ? (
-                    <Link className="font-medium text-primary underline" to={adminSpaTo(`/admin/users/${ticket.user.id}`)}>
-                      {ticket.user.full_name || ticket.user.email || ticket.user.id}
-                    </Link>
-                  ) : (
-                    "—"
-                  )}
-                </dd>
+                <h2 className="text-lg font-semibold text-gray-900">People</h2>
+                <p className="mt-1 text-xs text-gray-500">Open quick details here, or jump to the full admin profile.</p>
               </div>
-              <div>
-                <dt className="text-gray-500">Provider</dt>
-                <dd>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              <details className="group rounded-2xl border border-gray-200 bg-white p-3 open:border-primary/30 open:bg-primary/5">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
+                  <span className="flex min-w-0 items-center gap-3">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-100 text-gray-600">
+                      <UserRound className="h-5 w-5" aria-hidden />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-xs font-medium uppercase tracking-wide text-gray-500">Requester</span>
+                      <span className="block truncate text-sm font-semibold text-gray-900">
+                        {ticket.user?.full_name || ticket.user?.email || ticket.user?.id || "Unknown user"}
+                      </span>
+                    </span>
+                  </span>
+                  <span className="text-xs font-medium text-primary group-open:hidden">View info</span>
+                  <span className="hidden text-xs font-medium text-gray-500 group-open:inline">Hide</span>
+                </summary>
+                <dl className="mt-3 grid grid-cols-1 gap-2 border-t border-gray-200 pt-3 text-sm sm:grid-cols-2">
+                  <div>
+                    <dt className="text-gray-500">Email</dt>
+                    <dd className="break-all text-gray-800">{ticket.user?.email || "—"}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-gray-500">Phone</dt>
+                    <dd className="text-gray-800">{ticket.user?.phone || "—"}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-gray-500">Role / origin</dt>
+                    <dd className="capitalize text-gray-800">
+                      {ticket.user?.role || str(ticket.requester_type) || (ticket.provider_id ? "provider" : "customer")}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-gray-500">Status</dt>
+                    <dd className={ticket.user?.is_active === false ? "font-medium text-red-700" : "text-gray-800"}>
+                      {ticket.user?.is_active === false ? "Inactive" : ticket.user?.is_active === true ? "Active" : "—"}
+                    </dd>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <dt className="text-gray-500">User ID</dt>
+                    <dd className="break-all font-mono text-xs text-gray-700">{ticket.user?.id || ticket.user_id || "—"}</dd>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <dt className="text-gray-500">Joined</dt>
+                    <dd className="text-gray-800">{formatDateTime(ticket.user?.created_at)}</dd>
+                  </div>
+                </dl>
+                {ticket.user?.id ? (
+                  <Link
+                    className="mt-3 inline-flex min-h-10 items-center gap-2 rounded-xl bg-gray-900 px-3 text-sm font-medium text-white hover:bg-gray-800"
+                    to={adminSpaTo(`/admin/users/${ticket.user.id}`)}
+                  >
+                    View full user profile
+                    <ExternalLink className="h-4 w-4" aria-hidden />
+                  </Link>
+                ) : null}
+              </details>
+
+              <details className="group rounded-2xl border border-gray-200 bg-white p-3 open:border-emerald-300 open:bg-emerald-50/60">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
+                  <span className="flex min-w-0 items-center gap-3">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+                      <Building2 className="h-5 w-5" aria-hidden />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-xs font-medium uppercase tracking-wide text-gray-500">Provider</span>
+                      <span className="block truncate text-sm font-semibold text-gray-900">
+                        {ticket.provider?.business_name || ticket.provider?.id || "No provider linked"}
+                      </span>
+                    </span>
+                  </span>
+                  <span className="text-xs font-medium text-primary group-open:hidden">View info</span>
+                  <span className="hidden text-xs font-medium text-gray-500 group-open:inline">Hide</span>
+                </summary>
+                <dl className="mt-3 grid grid-cols-1 gap-2 border-t border-gray-200 pt-3 text-sm sm:grid-cols-2">
+                  <div>
+                    <dt className="text-gray-500">Business email</dt>
+                    <dd className="break-all text-gray-800">{ticket.provider?.email || "—"}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-gray-500">Business phone</dt>
+                    <dd className="text-gray-800">{ticket.provider?.phone || "—"}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-gray-500">Provider status</dt>
+                    <dd className="capitalize text-gray-800">{ticket.provider?.status || "—"}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-gray-500">Created</dt>
+                    <dd className="text-gray-800">{formatDateTime(ticket.provider?.created_at)}</dd>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <dt className="text-gray-500">Provider ID</dt>
+                    <dd className="break-all font-mono text-xs text-gray-700">{ticket.provider?.id || ticket.provider_id || "—"}</dd>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <dt className="text-gray-500">Owner user ID</dt>
+                    <dd className="break-all font-mono text-xs text-gray-700">{ticket.provider?.user_id || "—"}</dd>
+                  </div>
+                </dl>
+                <div className="mt-3 flex flex-wrap gap-2">
                   {ticket.provider?.id ? (
-                    <Link className="font-medium text-primary underline" to={adminSpaTo(`/admin/providers/${ticket.provider.id}`)}>
-                      {ticket.provider.business_name || ticket.provider.id}
+                    <Link
+                      className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-gray-900 px-3 text-sm font-medium text-white hover:bg-gray-800"
+                      to={adminSpaTo(`/admin/providers/${ticket.provider.id}`)}
+                    >
+                      View full provider profile
+                      <ExternalLink className="h-4 w-4" aria-hidden />
                     </Link>
-                  ) : (
-                    "—"
-                  )}
+                  ) : null}
+                  {ticket.provider?.user_id ? (
+                    <Link
+                      className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium text-gray-800 hover:bg-gray-50"
+                      to={adminSpaTo(`/admin/users/${ticket.provider.user_id}`)}
+                    >
+                      View provider owner
+                      <ExternalLink className="h-4 w-4" aria-hidden />
+                    </Link>
+                  ) : null}
+                </div>
+              </details>
+            </div>
+
+            <dl className="mt-4 space-y-2 border-t border-gray-100 pt-4 text-sm">
+              <div>
+                <dt className="text-gray-500">Support context</dt>
+                <dd className="text-gray-700">
+                  {ticket.support_context_type
+                    ? `${str(ticket.support_context_type).replace(/_/g, " ")}${ticket.support_context_label ? ` · ${ticket.support_context_label}` : ""}`
+                    : "—"}
                 </dd>
               </div>
               <div>

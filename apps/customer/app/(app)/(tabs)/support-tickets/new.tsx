@@ -24,6 +24,16 @@ import { SupportTicketCategoryPicker } from "@/components/SupportTicketCategoryP
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { trackSupportTicketCreated } from "@/lib/analytics";
 
+const SUPPORT_CONTEXT_OPTIONS = [
+  { value: "booking", label: "Booking" },
+  { value: "product_order", label: "Product order" },
+  { value: "gift_card", label: "Gift card" },
+  { value: "payment", label: "Payment/refund" },
+  { value: "account", label: "Account" },
+  { value: "technical", label: "Technical" },
+  { value: "other", label: "Other" },
+] as const;
+
 export default function NewSupportTicketScreen() {
   useScreenTracking("New support ticket");
   const { t } = useTranslation();
@@ -32,6 +42,8 @@ export default function NewSupportTicketScreen() {
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
   const [category, setCategory] = useState(SUPPORT_TICKET_DEFAULT_CATEGORY);
+  const [supportContextType, setSupportContextType] = useState<(typeof SUPPORT_CONTEXT_OPTIONS)[number]["value"]>("booking");
+  const [supportContextLabel, setSupportContextLabel] = useState("");
   const [priority, setPriority] = useState<"low" | "medium" | "high" | "urgent">("medium");
   const [submitting, setSubmitting] = useState(false);
 
@@ -47,6 +59,8 @@ export default function NewSupportTicketScreen() {
         message: message.trim(),
         category,
         priority,
+        support_context_type: supportContextType,
+        support_context_label: supportContextLabel.trim() || null,
       });
       if (res.error) {
         Alert.alert(sn("submitFailedTitle"), getApiErrorMessage(res.error, sn("submitFailedFallback")));
@@ -79,6 +93,34 @@ export default function NewSupportTicketScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.fieldGap}>
+          <Text style={styles.label}>What is this about?</Text>
+          <View style={styles.contextRow}>
+            {SUPPORT_CONTEXT_OPTIONS.map((option) => (
+              <TouchableOpacity
+                key={option.value}
+                onPress={() => setSupportContextType(option.value)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: supportContextType === option.value }}
+                style={[
+                  styles.contextChip,
+                  supportContextType === option.value ? styles.priorityChipActive : styles.priorityChipInactive,
+                ]}
+              >
+                <Text style={[styles.priorityChipText, supportContextType === option.value && styles.priorityChipTextActive]}>
+                  {option.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <Text style={styles.label}>Related reference (optional)</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Booking/order/payment reference"
+            placeholderTextColor="#9CA3AF"
+            value={supportContextLabel}
+            onChangeText={setSupportContextLabel}
+            maxLength={160}
+          />
           <SupportTicketCategoryPicker value={category} onChange={setCategory} />
         </View>
 
@@ -144,6 +186,8 @@ const styles = StyleSheet.create({
   scrollContent: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 120 },
   fieldGap: { marginBottom: 16 },
   label: { marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] },
+  contextRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 },
+  contextChip: { borderRadius: 20, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1.5 },
   priorityRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 20 },
   priorityChip: { borderRadius: 20, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1.5 },
   priorityChipActive: { borderColor: Colors.primary, backgroundColor: `${Colors.primary}12` },

@@ -1,9 +1,7 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, successResponse, handleApiError, notFoundResponse, errorResponse } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
-import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
-import { fetchProviderInAdminTenant } from "@/lib/tenant/admin-booking-tenant";
 import { z } from "zod";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
@@ -16,8 +14,7 @@ const patchSchema = z.object({
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
-    const supabase = await getSupabaseServer(request);
-    const tenantId = await resolveAdminApiTenantId(request);
+    const supabase = getSupabaseAdmin();
     const { id } = await params;
     const body = patchSchema.parse(await request.json());
 
@@ -29,15 +26,17 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (srcErr) throw srcErr;
     if (!src?.provider_id) return notFoundResponse("Referral source not found");
 
-    const prov = await fetchProviderInAdminTenant(supabase, src.provider_id, tenantId, "id");
-    if ("error" in prov) return prov.error;
-
     const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (body.name !== undefined) update.name = body.name.trim();
     if (body.description !== undefined) update.description = body.description?.trim() || null;
     if (body.is_active !== undefined) update.is_active = body.is_active;
 
-    const { data, error } = await supabase.from("referral_sources").update(update).eq("id", id).select().single();
+    const { data, error } = await supabase
+      .from("referral_sources")
+      .update(update)
+      .eq("id", id)
+      .select()
+      .single();
     if (error) throw error;
 
     await writeAuditLog({
@@ -65,8 +64,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
-    const supabase = await getSupabaseServer(request);
-    const tenantId = await resolveAdminApiTenantId(request);
+    const supabase = getSupabaseAdmin();
     const { id } = await params;
 
     const { data: src, error: srcErr } = await supabase
@@ -76,9 +74,6 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       .maybeSingle();
     if (srcErr) throw srcErr;
     if (!src?.provider_id) return notFoundResponse("Referral source not found");
-
-    const prov = await fetchProviderInAdminTenant(supabase, src.provider_id, tenantId, "id");
-    if ("error" in prov) return prov.error;
 
     const { error } = await supabase.from("referral_sources").delete().eq("id", id);
     if (error) throw error;

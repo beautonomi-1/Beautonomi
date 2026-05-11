@@ -34,12 +34,25 @@ import BottomNav from "@/components/layout/bottom-nav";
 import { PLATFORM_CONTACT_HREF } from "@/lib/routes/platform-contact";
 import { SUPPORT_TICKET_CATEGORY_GROUPS } from "@/lib/support/ticket-categories";
 
+const SUPPORT_CONTEXT_OPTIONS = [
+  { value: "booking", label: "Booking or appointment", hint: "Booking ID, date, provider, or service" },
+  { value: "product_order", label: "Product / ecommerce order", hint: "Order number, product, delivery, or stock issue" },
+  { value: "gift_card", label: "Gift card", hint: "Gift card order or redemption issue" },
+  { value: "payment", label: "Payment, refund, or wallet", hint: "Payment reference or refund detail" },
+  { value: "provider_onboarding", label: "Provider onboarding", hint: "Verification, setup, marketplace profile" },
+  { value: "account", label: "Account or login", hint: "Profile, login, notifications, or data" },
+  { value: "technical", label: "App / website technical issue", hint: "Device, browser, error message" },
+  { value: "other", label: "Something else", hint: "Tell us what this relates to" },
+] as const;
+
 export default function SubmitTicketPage() {
   const router = useRouter();
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
   const [priority, setPriority] = useState<"low" | "medium" | "high">("medium");
   const [category, setCategory] = useState("");
+  const [supportContextType, setSupportContextType] = useState<(typeof SUPPORT_CONTEXT_OPTIONS)[number]["value"]>("booking");
+  const [supportContextLabel, setSupportContextLabel] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -63,6 +76,8 @@ export default function SubmitTicketPage() {
           message: message.trim(),
           priority,
           category,
+          support_context_type: supportContextType,
+          support_context_label: supportContextLabel.trim() || null,
         }
       );
       const ticketNumber = (res as { data?: { ticket?: { ticket_number?: string } } })?.data?.ticket?.ticket_number;
@@ -122,6 +137,41 @@ export default function SubmitTicketPage() {
             </CardHeader>
             <CardContent className="px-5 py-8 sm:px-8">
               <form onSubmit={handleSubmit} className="space-y-6">
+                <div className="space-y-2">
+                  <Label htmlFor="support-context" className="text-xs font-medium text-zinc-700">
+                    What is this about?
+                  </Label>
+                  <Select value={supportContextType} onValueChange={(value: typeof supportContextType) => setSupportContextType(value)}>
+                    <SelectTrigger id="support-context" className={`h-11 w-full ${inputClass}`}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent position="popper" className="rounded-2xl border-zinc-200 bg-white shadow-lg">
+                      {SUPPORT_CONTEXT_OPTIONS.map((item) => (
+                        <SelectItem key={item.value} value={item.value} className="rounded-lg text-[13px] text-zinc-700">
+                          {item.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[11px] text-zinc-500">
+                    {SUPPORT_CONTEXT_OPTIONS.find((item) => item.value === supportContextType)?.hint}
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="context-label" className="text-xs font-medium text-zinc-700">
+                    Related reference <span className="font-normal text-zinc-400">(optional)</span>
+                  </Label>
+                  <Input
+                    id="context-label"
+                    value={supportContextLabel}
+                    onChange={(e) => setSupportContextLabel(e.target.value)}
+                    placeholder="e.g. Booking TKT/ID, order number, product name, payment reference"
+                    maxLength={160}
+                    className={`h-11 ${inputClass}`}
+                  />
+                </div>
+
                 <div className="space-y-2">
                   <Label htmlFor="category" className="text-xs font-medium text-zinc-700">
                     Category <span className="text-[#FF0077]">*</span>
