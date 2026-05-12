@@ -57,17 +57,26 @@ export async function POST(request: NextRequest) {
     const reference = generateTransactionReference("card_verify", user.id);
 
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "";
+    const resolvedCardCallbackUrl = callback_url || `${baseUrl}/account/settings/payments?card_verified=1`;
+    const isMobileCardCallback =
+      resolvedCardCallbackUrl.startsWith("customer://") ||
+      resolvedCardCallbackUrl.startsWith("exp://");
+    const cardCancelAction = isMobileCardCallback
+      ? `${resolvedCardCallbackUrl}${resolvedCardCallbackUrl.includes("?") ? "&" : "?"}cancelled=1`
+      : `${baseUrl}/account/settings/payments?card_verification_cancelled=1`;
+
     const paystackData = await initializePaystackTransaction({
       email,
       amountInSmallestUnit,
       currency,
       reference,
-      callback_url: callback_url || `${baseUrl}/account/settings/payments?card_verified=1`,
+      callback_url: resolvedCardCallbackUrl,
       metadata: {
         customer_id: user.id,
         save_card: true,
         set_as_default: set_as_default ?? false,
         kind: "card_verification",
+        cancel_action: cardCancelAction,
       },
       tenantId,
     });

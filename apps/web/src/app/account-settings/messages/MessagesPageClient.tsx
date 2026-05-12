@@ -45,12 +45,6 @@ export function MessagesPageClient({ initial }: MessagesPageClientProps) {
   const hasHandledQueryParams = useRef<string | false>(false);
 
   useEffect(() => {
-    let cancelled = false;
-    let unsubscribe: (() => void) | null = null;
-    const timer = setTimeout(() => {
-      if (!cancelled) unsubscribe = subscribeToConversations();
-    }, 200);
-
     if (skipHydrateLoadOnce.current) {
       skipHydrateLoadOnce.current = false;
       setIsLoadingConversations(false);
@@ -58,6 +52,15 @@ export function MessagesPageClient({ initial }: MessagesPageClientProps) {
       void loadCurrentUser();
       void loadConversations();
     }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- mount-only: load user and conversations
+
+  // Re-subscribe to conversations when currentUserId is available so we can apply a row filter.
+  useEffect(() => {
+    let cancelled = false;
+    let unsubscribe: (() => void) | null = null;
+    const timer = setTimeout(() => {
+      if (!cancelled) unsubscribe = subscribeToConversations(currentUserId || undefined);
+    }, 200);
 
     return () => {
       cancelled = true;
@@ -70,7 +73,7 @@ export function MessagesPageClient({ initial }: MessagesPageClientProps) {
         }
       }
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- mount-only: load user, conversations, subscribe
+  }, [currentUserId]); // eslint-disable-line react-hooks/exhaustive-deps -- re-subscribe when user id resolves
 
   // Ensure chat is shown when conversation is selected (especially on desktop)
   useEffect(() => {
@@ -371,26 +374,31 @@ export function MessagesPageClient({ initial }: MessagesPageClientProps) {
     }
   };
 
-  const subscribeToConversations = () => {
+  const subscribeToConversations = (userId?: string) => {
     const supabase = getSupabaseClient();
-    
-    // Subscribe to conversation updates
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleLoad = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        debounceTimer = null;
+        void loadConversations();
+      }, 400);
+    };
+
+    // Filter by customer_id when available so only the user's own conversations
+    // trigger a reload (reduces spurious refreshes on multi-tenant Supabase).
+    const channelOpts =
+      userId
+        ? { event: "*" as const, schema: "public", table: "conversations", filter: `customer_id=eq.${userId}` }
+        : { event: "*" as const, schema: "public", table: "conversations" };
+
     const channel = supabase
-      .channel("customer-conversations-updates")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "conversations",
-        },
-        () => {
-          loadConversations();
-        }
-      )
+      .channel(userId ? `customer-conversations:${userId}` : "customer-conversations-updates")
+      .on("postgres_changes", channelOpts, () => scheduleLoad())
       .subscribe();
 
     return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
       try {
         supabase.removeChannel(channel);
       } catch {

@@ -5,6 +5,7 @@ import { ADMIN_SECTION_SUPPORT } from "@beautonomi/admin-access";
 import { AdminApiError } from "@beautonomi/admin-api-client";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
+import { getSupabaseBrowserClient } from "@/lib/supabase";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
@@ -210,6 +211,42 @@ export function SupportTicketDetailPage() {
     void qc.invalidateQueries({ queryKey: adminQueryKeys.supportTicketDetail(id) });
     void qc.invalidateQueries({ queryKey: adminQueryKeys.supportTickets.all() });
   };
+
+  // Realtime: refresh the ticket detail + list when this ticket or its messages change.
+  const rtDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!allowed || !id) return;
+    const sb = getSupabaseBrowserClient();
+    if (!sb) return;
+    const scheduleInvalidate = () => {
+      if (rtDebounceRef.current) clearTimeout(rtDebounceRef.current);
+      rtDebounceRef.current = setTimeout(() => {
+        rtDebounceRef.current = null;
+        invalidateTicket();
+      }, 400);
+    };
+    const channel = sb
+      .channel(`admin-ticket-detail:${id}`)
+      .on(
+        "postgres_changes" as never,
+        { event: "*", schema: "public", table: "support_tickets", filter: `id=eq.${id}` },
+        scheduleInvalidate,
+      )
+      .on(
+        "postgres_changes" as never,
+        { event: "*", schema: "public", table: "support_ticket_messages", filter: `ticket_id=eq.${id}` },
+        scheduleInvalidate,
+      )
+      .subscribe();
+    return () => {
+      if (rtDebounceRef.current) clearTimeout(rtDebounceRef.current);
+      try {
+        sb.removeChannel(channel);
+      } catch {
+        // Ignore
+      }
+    };
+  }, [allowed, id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const patchTicket = useMutation({
     mutationFn: (body: {

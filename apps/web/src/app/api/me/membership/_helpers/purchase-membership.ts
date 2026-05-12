@@ -28,6 +28,9 @@ type PurchaseMembershipInput = {
   expectedProviderId?: string | null;
   tenantId: string | null;
   attribution?: MembershipPurchaseAttribution;
+  /** Optional mobile-app return URL (e.g. `customer://membership-paystack`).
+   *  When provided: used as the Paystack callback_url and cancel_action is derived from it. */
+  callbackUrl?: string;
 };
 
 function httpError(message: string, status: number, code: string) {
@@ -180,7 +183,16 @@ export async function createMembershipPurchase(input: PurchaseMembershipInput): 
   }
 
   const reference = generateTransactionReference("membership", order.id);
-  const callbackUrl = `${process.env.NEXT_PUBLIC_APP_URL || ""}/checkout/success`;
+  const membershipAppUrl = process.env.NEXT_PUBLIC_APP_URL || "";
+
+  // Use caller-provided callback URL (mobile app scheme) when available, else web success page.
+  const isMobileCallback =
+    typeof input.callbackUrl === "string" &&
+    (input.callbackUrl.startsWith("customer://") || input.callbackUrl.startsWith("exp://"));
+  const callbackUrl = isMobileCallback ? input.callbackUrl! : `${membershipAppUrl}/checkout/success`;
+  const membershipCancelAction = isMobileCallback
+    ? `${callbackUrl}${callbackUrl.includes("?") ? "&" : "?"}cancelled=1`
+    : `${membershipAppUrl}/explore?membership_cancelled=1`;
 
   let paystackData: Awaited<ReturnType<typeof initializePaystackTransaction>>;
   try {
@@ -196,6 +208,7 @@ export async function createMembershipPurchase(input: PurchaseMembershipInput): 
         provider_id: planData.provider_id,
         plan_id: planData.id,
         attribution,
+        cancel_action: membershipCancelAction,
       },
       tenantId: input.tenantId,
     });

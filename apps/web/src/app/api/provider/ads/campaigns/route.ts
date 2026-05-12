@@ -215,6 +215,8 @@ export async function POST(request: NextRequest) {
       paymentRedirect === "provider_inapp" ? "app" : "web"
     }`;
 
+    const adsCancelAction = `${baseUrl}/provider/settings/ads/payment-return?cancelled=1&order_id=${encodeURIComponent(order.id)}`;
+
     const paystackData = await initializePaystackTransaction({
       email,
       amountInSmallestUnit: Math.max(100, convertToSmallestUnit(budget)),
@@ -225,6 +227,7 @@ export async function POST(request: NextRequest) {
         ads_budget_order_id: order.id,
         provider_id: providerId,
         campaign_id: campaign.id,
+        cancel_action: adsCancelAction,
       },
       tenantId,
     });

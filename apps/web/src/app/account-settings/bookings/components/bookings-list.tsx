@@ -225,17 +225,33 @@ export default function BookingsList({
       </div>
 
       {bookings.map((booking) => {
+        const _ps = (booking as { payment_status?: string }).payment_status;
+        const _outstanding = (booking as { outstanding_balance?: number }).outstanding_balance;
         const lifecycleDisplay = getBookingLifecycleDisplay({
           status: booking.status,
           providerName: (booking as BookingListItem).provider_name,
+          // Pass payment context so a stuck `pending_payment` row with paid
+          // payment_status displays as "Awaiting provider confirmation" rather
+          // than "Payment pending".
+          paymentStatus: _ps,
+          outstandingBalance: _outstanding,
         });
         const paymentDisplay = getBookingPaymentDisplay({
-          paymentStatus: (booking as { payment_status?: string }).payment_status,
+          paymentStatus: _ps,
           paymentProvider: (booking as { payment_provider?: string }).payment_provider,
-          outstandingBalance: (booking as { outstanding_balance?: number }).outstanding_balance,
+          outstandingBalance: _outstanding,
           paymentOption: (booking as { payment_option?: string }).payment_option,
           depositRequired: (booking as { deposit_required?: boolean }).deposit_required,
         });
+        // Resolve the effective lifecycle status for badge styling, so the
+        // pill colour matches the label (paid pending_payment shows yellow
+        // "Awaiting confirmation" not amber "Awaiting payment").
+        const _statusForStyle =
+          booking.status === "pending_payment" &&
+          ((_ps === "paid" || _ps === "partially_paid") ||
+            (typeof _outstanding === "number" && _outstanding <= 0.005))
+            ? "pending"
+            : booking.status;
         return (
         <div
           key={booking.id}
@@ -249,19 +265,19 @@ export default function BookingsList({
                 </h3>
                 <span
                   className={`px-3 py-1.5 rounded-full text-xs font-semibold tracking-tight ${
-                    booking.status === "confirmed"
+                    _statusForStyle === "confirmed"
                       ? "bg-green-50 text-green-700 border border-green-200"
-                      : booking.status === "completed"
+                      : _statusForStyle === "completed"
                       ? "bg-blue-50 text-blue-700 border border-blue-200"
-                      : booking.status === "pending"
+                      : _statusForStyle === "pending"
                       ? "bg-yellow-50 text-yellow-700 border border-yellow-200"
-                      : (booking.status as string) === "pending_payment"
+                      : (_statusForStyle as string) === "pending_payment"
                       ? "bg-amber-50 text-amber-700 border border-amber-200"
-                      : booking.status === "cancelled"
+                      : _statusForStyle === "cancelled"
                       ? "bg-red-50 text-red-700 border border-red-200"
-                      : (booking.status as string) === "started" || booking.status === "in_progress"
+                      : (_statusForStyle as string) === "started" || _statusForStyle === "in_progress"
                       ? "bg-indigo-50 text-indigo-700 border border-indigo-200"
-                      : booking.status === "no_show"
+                      : _statusForStyle === "no_show"
                       ? "bg-gray-100 text-gray-600 border border-gray-200"
                       : "bg-gray-50 text-gray-700 border border-gray-200"
                   }`}

@@ -98,6 +98,8 @@ const inlineParticipantSchema = z
     customer_name: z.string().min(1).optional(),
     customer_email: z.string().email().optional().nullable(),
     customer_phone: z.string().optional().nullable(),
+    /** Linked existing customer when selected via client search */
+    customer_id: z.string().uuid().optional().nullable(),
     service_id: z.string().uuid().optional().nullable(),
     service_name: z.string().optional().nullable(),
     price: z.coerce.number().min(0).optional(),
@@ -203,6 +205,8 @@ export async function POST(
         .insert({
           booking_id: body.booking_id,
           group_booking_id: groupId,
+          // Carry the customer from the linked booking for analytics joins
+          customer_id: (b as any).customer_id ?? null,
           participant_name: name,
           participant_email: body.participant_email ?? cust.email ?? null,
           participant_phone: body.participant_phone ?? cust.phone ?? null,
@@ -269,6 +273,7 @@ export async function POST(
       .insert({
         booking_id: null,
         group_booking_id: groupId,
+        customer_id: inline.customer_id ?? null,
         participant_name: name,
         participant_email: email,
         participant_phone: phone,

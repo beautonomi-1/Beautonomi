@@ -1440,11 +1440,14 @@ export default function PartnerProfileScreen() {
           text: pp("subscribeCta"),
           onPress: async () => {
             try {
+              const membershipReturnUrl =
+                Platform.OS !== "web" ? ExpoLinking.createURL("membership-paystack") : undefined;
               const res = await api.post("/api/me/membership/subscribe", {
                 membership_id: plan.id,
                 provider_id: provider.id,
                 source: "customer_app_partner_profile",
                 campaign_id: paramCampaignId,
+                ...(membershipReturnUrl ? { callback_url: membershipReturnUrl } : {}),
               });
 
               if (res.error) {
@@ -1520,14 +1523,20 @@ export default function PartnerProfileScreen() {
                 const WebBrowser = await import("expo-web-browser");
                 const returnUrl = ExpoLinking.createURL("membership-paystack");
                 const result = await WebBrowser.openAuthSessionAsync(url, returnUrl);
-                if (result.type === "cancel") {
+                if (result.type === "cancel" || result.type === "dismiss") {
                   haptic.error();
+                  Alert.alert("Payment cancelled", "You cancelled the payment. Your membership has not been activated.");
                   return;
                 }
                 if (result.type === "success" && result.url) {
                   try {
                     const parsed = ExpoLinking.parse(result.url);
                     const q = parsed.queryParams ?? {};
+                    if (q.cancelled === "1") {
+                      haptic.error();
+                      Alert.alert("Payment cancelled", "You cancelled the payment. Your membership has not been activated.");
+                      return;
+                    }
                     const returnedRef = q.reference ?? q.trxref;
                     const refStr = Array.isArray(returnedRef) ? returnedRef[0] : returnedRef;
                     if (typeof refStr === "string" && refStr.trim()) paystackRef = refStr.trim();

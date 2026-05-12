@@ -37,13 +37,21 @@ export async function POST(
     if (status === "withdrawn") {
       return successResponse({ withdrawn: true, alreadyWithdrawn: true });
     }
-    const allowedStatuses = ["pending", "payment_pending"];
+    if (status === "payment_pending") {
+      return errorResponse(
+        "This offer cannot be withdrawn because the customer is currently processing payment. Wait for payment to complete.",
+        "PAYMENT_IN_PROGRESS",
+        409,
+        { currentStatus: status },
+      );
+    }
+    const allowedStatuses = ["pending"];
     if (!allowedStatuses.includes(status)) {
       return errorResponse(
-        `This offer can no longer be withdrawn. Current status: ${status}. Only pending or payment_pending offers can be withdrawn.`,
+        `This offer can no longer be withdrawn. Current status: ${status}. Only pending offers can be withdrawn.`,
         "OFFER_NOT_WITHDRAWABLE",
         400,
-        { currentStatus: status }
+        { currentStatus: status },
       );
     }
 

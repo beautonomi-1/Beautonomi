@@ -264,6 +264,8 @@ export default function ReceiptPage() {
   const lifecycleDisplay = getBookingLifecycleDisplay({
     status: receipt.status,
     providerName: receipt.provider?.business_name,
+    paymentStatus: receipt.payment_status,
+    outstandingBalance: receipt.balance_due,
   });
   const paymentDisplay = getBookingPaymentDisplay({
     paymentStatus: receipt.payment_status,

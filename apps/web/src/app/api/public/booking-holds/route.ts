@@ -161,8 +161,14 @@ export async function POST(request: NextRequest) {
         const parsed = createHoldSchema.safeParse(body);
 
         if (!parsed.success) {
+          const message = parsed.error.issues
+            .map((e) => {
+              const field = e.path.length > 0 ? e.path.join(".") : null;
+              return field ? `${field}: ${e.message}` : e.message;
+            })
+            .join(", ");
           return handleApiError(
-            new Error(parsed.error.issues.map((e) => e.message).join(", ")),
+            new Error(message),
             "Validation failed",
             "VALIDATION_ERROR",
             400

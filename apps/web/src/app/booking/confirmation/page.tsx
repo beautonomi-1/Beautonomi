@@ -216,6 +216,8 @@ export default function BookingConfirmationPage() {
     const lifecycleDisplay = getBookingLifecycleDisplay({
       status: booking.status,
       providerName,
+      paymentStatus: booking.payment_status,
+      outstandingBalance: booking.outstanding_balance,
     });
     const text = [
       `Booking #${booking.booking_number} — ${providerName}.`,
@@ -373,6 +375,8 @@ export default function BookingConfirmationPage() {
   const lifecycleDisplay = getBookingLifecycleDisplay({
     status: booking.status,
     providerName: booking.provider?.business_name,
+    paymentStatus: booking.payment_status,
+    outstandingBalance: booking.outstanding_balance,
   });
   const paymentDisplay = getBookingPaymentDisplay({
     paymentStatus: booking.payment_status,
@@ -419,7 +423,7 @@ export default function BookingConfirmationPage() {
                 ? "We are still confirming your payment. You will be notified once it is complete."
                 : lifecycleDisplay.description}
           </p>
-          {booking.status === "pending" && (
+          {lifecycleDisplay.isAwaitingProviderConfirmation && (
             <div className="mt-3 inline-flex items-center gap-2 bg-yellow-50 border border-yellow-200 rounded-full px-4 py-1.5 text-sm text-yellow-800">
               <Clock className="w-4 h-4" />
               Providers typically confirm within 8 hours
@@ -635,10 +639,13 @@ export default function BookingConfirmationPage() {
                 giftCard > 0;
               // Show summary when any line item exists, or when only a platform fee applies (e.g. subtotal 0 after discounts).
               if (!hasBreakdown && !(svcFee > 0)) return null;
+              // Always show Subtotal when there is any breakdown to display — hiding it when
+              // sub === 0 (data drift) leaves a confusing gap between the line items and Total.
+              const showSubtotal = sub > 0 || hasBreakdown;
               return (
                 <div className="border-t pt-4 space-y-1.5 text-sm">
                   <h3 className="font-semibold text-gray-900 mb-2">Summary</h3>
-                  {sub > 0 && (
+                  {showSubtotal && (
                     <div className="flex justify-between text-gray-600">
                       <span>Subtotal</span>
                       <span>{formatCurrency(sub, booking.currency)}</span>
@@ -873,18 +880,20 @@ export default function BookingConfirmationPage() {
           </Button>
         </div>
 
-        {/* Help Text — status-aware */}
-        <div className={`mt-8 p-4 rounded-lg ${booking.status === "pending" ? "bg-yellow-50 border border-yellow-200" : "bg-blue-50"}`}>
-          <p className={`text-sm ${booking.status === "pending" ? "text-yellow-900" : "text-blue-900"}`}>
+        {/* Help Text — status-aware. Use the resolved lifecycle so a stuck
+            `pending_payment` booking that has actually paid shows the
+            "awaiting provider confirmation" copy, not generic "next steps". */}
+        <div className={`mt-8 p-4 rounded-lg ${lifecycleDisplay.isAwaitingProviderConfirmation ? "bg-yellow-50 border border-yellow-200" : "bg-blue-50"}`}>
+          <p className={`text-sm ${lifecycleDisplay.isAwaitingProviderConfirmation ? "text-yellow-900" : "text-blue-900"}`}>
             <strong>What&apos;s next?</strong>{" "}
             {booking.payment_provider === "cash"
               ? booking.location_type === "at_home"
                 ? "Your provider will be on their way at the scheduled time. Have your cash ready for when they arrive."
                 : "Simply arrive at the salon at your scheduled time and pay cash at the counter."
-              : booking.status === "pending"
+              : lifecycleDisplay.isAwaitingProviderConfirmation
                 ? "Your booking is waiting for the provider to confirm. You'll receive a notification once it's confirmed — this usually happens within 8 hours. If you need to make changes, visit your bookings page."
                 : "You'll receive a confirmation email with all the details."}{" "}
-            {booking.status !== "pending" && "If you need to make changes or cancel, please contact the provider directly or visit your bookings page."}
+            {!lifecycleDisplay.isAwaitingProviderConfirmation && "If you need to make changes or cancel, please contact the provider directly or visit your bookings page."}
           </p>
         </div>
       </div>

@@ -64,72 +64,58 @@ export async function POST(request: Request) {
     // Yoco webhooks are server-to-server callbacks, so there is no provider session.
     // Use service role after signature verification setup lookup so accounting writes are not blocked by RLS.
     const supabase = getSupabaseAdmin();
-    const event = JSON.parse(body);
 
-    // Verify webhook signature
-    // Get webhook secret from database (stored per provider or globally)
-    // For now, we'll verify against provider's webhook_secret
+    // Resolve webhook config (and secret) BEFORE parsing the payload — verify-then-parse is
+    // the correct security order so a malformed body never runs business logic.
     const { data: webhookConfig } = await supabase
       .from("provider_yoco_webhooks")
       .select("webhook_secret, provider_id")
       .eq("webhook_id", webhookId)
       .single();
 
+    type WebhookConfigRow = { webhook_secret?: string; provider_id?: string };
+
+    let webhookSecret: string | undefined;
+    let webhookProviderId: string | null = null;
+
     if (!webhookConfig) {
-      const globalWebhookSecret = process.env.YOCO_WEBHOOK_SECRET;
-      if (!globalWebhookSecret) {
+      webhookSecret = process.env.YOCO_WEBHOOK_SECRET;
+      if (!webhookSecret) {
         console.error("No webhook secret configured for Yoco");
         return NextResponse.json(
           { error: "Webhook not configured" },
-          { status: 503 }
-        );
-      }
-
-      const hash = crypto
-        .createHmac("sha256", globalWebhookSecret)
-        .update(body)
-        .digest("hex");
-
-      const sigBuf = Buffer.from(signature, "hex");
-      const hashBuf = Buffer.from(hash, "hex");
-      if (sigBuf.length !== hashBuf.length || !crypto.timingSafeEqual(sigBuf, hashBuf)) {
-        console.error("Invalid Yoco webhook signature");
-        return NextResponse.json(
-          { error: "Invalid signature" },
-          { status: 401 }
+          { status: 503 },
         );
       }
     } else {
-      type WebhookConfigRow = { webhook_secret?: string; provider_id?: string };
-      const secret = (webhookConfig as WebhookConfigRow).webhook_secret;
-      if (!secret) {
+      const configRow = webhookConfig as WebhookConfigRow;
+      if (!configRow.webhook_secret) {
         console.error("Yoco webhook secret is empty in database — rejecting");
         return NextResponse.json(
           { error: "Webhook secret not configured" },
-          { status: 503 }
+          { status: 503 },
         );
       }
-
-      const hash = crypto
-        .createHmac("sha256", secret)
-        .update(body)
-        .digest("hex");
-
-      const sigBuf = Buffer.from(signature, "hex");
-      const hashBuf = Buffer.from(hash, "hex");
-      if (sigBuf.length !== hashBuf.length || !crypto.timingSafeEqual(sigBuf, hashBuf)) {
-        console.error("Invalid Yoco webhook signature");
-        return NextResponse.json(
-          { error: "Invalid signature" },
-          { status: 401 }
-        );
-      }
+      webhookSecret = configRow.webhook_secret;
+      webhookProviderId = configRow.provider_id ?? null;
     }
+
+    const hash = crypto.createHmac("sha256", webhookSecret).update(body).digest("hex");
+    const sigBuf = Buffer.from(signature, "hex");
+    const hashBuf = Buffer.from(hash, "hex");
+    if (sigBuf.length !== hashBuf.length || !crypto.timingSafeEqual(sigBuf, hashBuf)) {
+      console.error("Invalid Yoco webhook signature");
+      return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+    }
+
+    // Signature verified — safe to parse body.
+    const event = JSON.parse(body);
 
     const { data: insertedEvent } = await supabase
       .from("provider_yoco_webhook_events")
       .insert({
         webhook_id: webhookId,
+        ...(webhookProviderId ? { provider_id: webhookProviderId } : {}),
         event_type: event.type,
         payload: event,
         signature,

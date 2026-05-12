@@ -1,6 +1,6 @@
 {
   "name": "customer",
-  "version": "1.0.35",
+  "version": "1.0.36",
   "main": "index.ts",
   "scripts": {
     "dev": "node ../../tooling/expo-dev/port-safe-expo-dev.js 8081 8083",
@@ -30,6 +30,7 @@
     "@beautonomi/i18n": "workspace:*",
     "@beautonomi/phone": "workspace:*",
     "@beautonomi/types": "workspace:*",
+    "@beautonomi/ui": "workspace:*",
     "@beautonomi/ui-tokens": "workspace:*",
     "@beautonomi/utils": "workspace:*",
     "@expo/vector-icons": "^15.1.1",

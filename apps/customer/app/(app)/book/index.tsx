@@ -741,6 +741,71 @@ export default function BookScreen() {
     };
   }, [slug, holdIdFromRoute]);
 
+  /**
+   * When returning from book-checkout via "Edit date/time", the navigation
+   * passes the existing `hold_id` so the slot can be changed without losing
+   * context.  The booking wizard re-initialises `atHomeAddress` to empty
+   * strings on mount, so at-home users would hit a Zod `.min(1)` validation
+   * failure on their next hold creation.
+   *
+   * Fix: fetch the existing hold and seed address state from `address_snapshot`
+   * before `createHold` is ever called.  We only do this once on mount (when
+   * `holdIdFromRoute` is present) to avoid overwriting user-entered edits.
+   */
+  const addressRestoredForHoldRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!holdIdFromRoute || addressRestoredForHoldRef.current === holdIdFromRoute) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await api.get<{
+          location_type?: string;
+          address_snapshot?: {
+            line1?: string;
+            line2?: string;
+            city?: string;
+            country?: string;
+            postal_code?: string;
+            latitude?: number;
+            longitude?: number;
+            apartment_unit?: string | null;
+            building_name?: string | null;
+            floor_number?: string | null;
+            parking_instructions?: string | null;
+            location_landmarks?: string | null;
+          } | null;
+        }>(`/api/public/booking-holds/${encodeURIComponent(holdIdFromRoute)}`);
+        if (cancelled) return;
+        const holdData = (res.data ?? {}) as typeof res.data;
+        if (!holdData || holdData.location_type !== "at_home") return;
+        const snap = holdData.address_snapshot;
+        if (!snap || !snap.line1) return;
+        addressRestoredForHoldRef.current = holdIdFromRoute;
+        setAtHomeAddress((prev) => ({
+          ...prev,
+          line1: snap.line1 ?? prev.line1,
+          line2: snap.line2 ?? prev.line2,
+          city: snap.city ?? prev.city,
+          country: snap.country ?? prev.country,
+          postal_code: snap.postal_code ?? prev.postal_code,
+          apartment_unit: snap.apartment_unit ?? prev.apartment_unit,
+          building_name: snap.building_name ?? prev.building_name,
+          floor_number: snap.floor_number ?? prev.floor_number,
+          parking_instructions: snap.parking_instructions ?? prev.parking_instructions,
+          location_landmarks: snap.location_landmarks ?? prev.location_landmarks,
+        }));
+        if (snap.latitude != null && snap.longitude != null) {
+          setAtHomeCoords({ latitude: snap.latitude, longitude: snap.longitude });
+        }
+      } catch {
+        // Non-blocking: user can re-enter address manually if fetch fails
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [holdIdFromRoute]); // eslint-disable-line react-hooks/exhaustive-deps
+
   /** Multi-staff: default to “any” (fastest slot) so date/time steps never run with a null selection. */
   useEffect(() => {
     if (step !== "staff") return;
@@ -1722,6 +1787,24 @@ export default function BookScreen() {
       );
       return;
     }
+    // Guard: for at-home bookings the address is required before the hold can
+    // be created. This happens when the user re-enters the date/time step from
+    // checkout without having filled in an address on this mount (e.g. the
+    // hold-snapshot restoration above is still pending or the user cleared it).
+    if (locationType === "at_home" && !atHomeAddress.line1.trim()) {
+      Alert.alert(
+        t("booking.addressRequired"),
+        t("booking.addressRequiredBody"),
+        [
+          {
+            text: t("common.ok"),
+            onPress: () => setStep("venue"),
+          },
+        ],
+      );
+      return;
+    }
+
     setCreatingHold(true);
     try {
       if (user?.id && referralCodeFromRoute && !referralAttachSucceededRef.current) {

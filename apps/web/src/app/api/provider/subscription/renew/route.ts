@@ -138,6 +138,8 @@ export async function POST(request: NextRequest) {
       ? `${baseUrl}/provider/subscription?payment_success=true&in_app=1`
       : `${baseUrl}/provider/subscription?payment_success=true`;
 
+    const renewCancelAction = `${baseUrl}/provider/subscription?payment_cancelled=1`;
+
     const paystackData = await initializePaystackTransaction({
       email,
       amountInSmallestUnit: convertToSmallestUnit(amount),
@@ -149,6 +151,7 @@ export async function POST(request: NextRequest) {
         provider_id: providerId,
         plan_id: sub.plan_id,
         billing_period: billingPeriod,
+        cancel_action: renewCancelAction,
       },
       tenantId,
     });

@@ -6,8 +6,9 @@ import { cn } from "@/lib/utils";
 import type { Appointment } from "@/lib/provider-portal/types";
 
 export function AppointmentStatusBadge({ status }: { status: Appointment["status"] }) {
-  const variants = {
+  const variants: Record<string, string> = {
     pending: "bg-amber-100 text-amber-800 border-amber-200",
+    pending_payment: "bg-amber-100 text-amber-800 border-amber-200",
     booked: "bg-blue-100 text-blue-800 border-blue-200",
     started: "bg-yellow-100 text-yellow-800 border-yellow-200",
     completed: "bg-green-100 text-green-800 border-green-200",
@@ -18,7 +19,9 @@ export function AppointmentStatusBadge({ status }: { status: Appointment["status
   const label =
     status === "no_show"
       ? "No Show"
-      : status.charAt(0).toUpperCase() + status.slice(1);
+      : status === "pending_payment"
+        ? "Awaiting payment"
+        : status.charAt(0).toUpperCase() + status.slice(1);
 
   return (
     <Badge

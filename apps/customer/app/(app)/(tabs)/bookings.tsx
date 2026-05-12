@@ -118,16 +118,29 @@ function BookingCard({ booking, onPress }: { booking: Booking; onPress: () => vo
     (booking as unknown as Record<string, unknown>).provider_name as string | undefined ||
     booking.services?.[0]?.offering_name ||
     "Beauty Service";
-  const statusEntry = STATUS_STYLES[booking.status] ?? { bg: Colors.gray[100], text: Colors.gray[700] };
+  // Resolve a coherent lifecycle status: when payment has cleared but the row
+  // is still `pending_payment`, treat as `pending` (awaiting provider) to
+  // avoid the contradictory "Pending Payment" pill on a paid booking.
+  const _bookingPaymentStatus = (booking as unknown as { payment_status?: string }).payment_status;
+  const _bookingOutstanding = (booking as unknown as { outstanding_balance?: number }).outstanding_balance;
+  const _resolvedStatus =
+    booking.status === "pending_payment" &&
+    ((_bookingPaymentStatus === "paid" || _bookingPaymentStatus === "partially_paid") ||
+      (typeof _bookingOutstanding === "number" && _bookingOutstanding <= 0.005))
+      ? "pending"
+      : booking.status;
+  const statusEntry = STATUS_STYLES[_resolvedStatus] ?? { bg: Colors.gray[100], text: Colors.gray[700] };
   const statusStyle = statusEntry;
   const lifecycleDisplay = getBookingLifecycleDisplay({
     status: booking.status,
     providerName: name,
+    paymentStatus: _bookingPaymentStatus,
+    outstandingBalance: _bookingOutstanding,
   });
   const paymentDisplay = getBookingPaymentDisplay({
-    paymentStatus: (booking as unknown as { payment_status?: string }).payment_status,
+    paymentStatus: _bookingPaymentStatus,
     paymentProvider: (booking as unknown as { payment_provider?: string }).payment_provider,
-    outstandingBalance: (booking as unknown as { outstanding_balance?: number }).outstanding_balance,
+    outstandingBalance: _bookingOutstanding,
     paymentOption: (booking as unknown as { payment_option?: string }).payment_option,
     depositRequired: (booking as unknown as { deposit_required?: boolean }).deposit_required,
   });

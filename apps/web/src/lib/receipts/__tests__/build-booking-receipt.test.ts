@@ -61,6 +61,62 @@ describe("computeBookingReceiptFinancials", () => {
     expect(f.platformFee).toBe(12);
   });
 
+  it("falls back to linesSubtotal when stored subtotal is 0 but lines exist (data-drift recovery)", () => {
+    const row = {
+      subtotal: 0,
+      tax_amount: 0,
+      platform_fee_amount: 0,
+      service_fee_amount: 0,
+      travel_fee: 0,
+      tip_amount: 0,
+      discount_amount: 0,
+      promotion_discount_amount: 0,
+      membership_discount_amount: 0,
+      loyalty_discount_amount: 0,
+      total_amount: 999,
+      total_paid: 0,
+      total_refunded: 0,
+      wallet_amount: 0,
+      gift_card_amount: 0,
+      payment_status: "pending",
+    };
+    const f = computeBookingReceiptFinancials({
+      row,
+      linesSubtotal: 999,
+      booking_payments: [],
+      additional_charges: [],
+    });
+    expect(f.subtotal).toBe(999);
+  });
+
+  it("keeps subtotal 0 when stored is 0 AND linesSubtotal is also 0 (truly free booking)", () => {
+    const row = {
+      subtotal: 0,
+      tax_amount: 0,
+      platform_fee_amount: 0,
+      service_fee_amount: 0,
+      travel_fee: 0,
+      tip_amount: 0,
+      discount_amount: 0,
+      promotion_discount_amount: 0,
+      membership_discount_amount: 0,
+      loyalty_discount_amount: 0,
+      total_amount: 0,
+      total_paid: 0,
+      total_refunded: 0,
+      wallet_amount: 0,
+      gift_card_amount: 0,
+      payment_status: "paid",
+    };
+    const f = computeBookingReceiptFinancials({
+      row,
+      linesSubtotal: 0,
+      booking_payments: [],
+      additional_charges: [],
+    });
+    expect(f.subtotal).toBe(0);
+  });
+
   it("sums paid payment rows when total_paid is zero", () => {
     const row = {
       subtotal: 50,

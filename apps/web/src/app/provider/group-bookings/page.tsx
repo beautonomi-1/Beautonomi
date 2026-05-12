@@ -710,7 +710,16 @@ function GroupBookingDetailPanel({ booking, onStatusChange, onCheckIn, onCheckOu
 
       <Separator />
 
-      {/* Financial summary */}
+      {/* Financial summary
+        *
+        * §Group-booking-audit 2026-05: when no participants are linked yet
+        * the only money on the row is the at-home travel fee. Labelling that
+        * R 100 line "Total" made it look like a real receipt the customer
+        * owed; the receipt PDF was correspondingly showing "Balance due R
+        * 100,00" in red. Mirror the PDF treatment here — show "Session
+        * estimate" + a soft note instead of "Total" — so the operator sees
+        * exactly what the receipt will print.
+        */}
       <section className="space-y-3">
         <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Financials</h3>
         <div className="bg-gray-50 rounded-xl p-4 space-y-2 text-sm">
@@ -726,9 +735,16 @@ function GroupBookingDetailPanel({ booking, onStatusChange, onCheckIn, onCheckOu
           )}
           <Separator className="my-1" />
           <div className="flex justify-between font-semibold">
-            <span>Total</span>
+            <span>{participants.length === 0 ? "Session estimate" : "Total"}</span>
             <span className="text-lg"><Money amount={booking.total_price ?? 0} /></span>
           </div>
+          {participants.length === 0 && (
+            <p className="text-xs text-gray-500 pt-1">
+              No participant bookings are linked yet. Add participants so the
+              receipt reflects each service price instead of the session
+              estimate.
+            </p>
+          )}
         </div>
       </section>
 

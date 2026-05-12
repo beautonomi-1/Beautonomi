@@ -92,13 +92,39 @@ export async function POST(request: NextRequest) {
       (typeof rawMeta.booking_id === "string" && rawMeta.booking_id.trim()
         ? rawMeta.booking_id.trim()
         : null);
+    const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com";
     const defaultCallbackUrl =
       rawMeta.type === "product_order"
-        ? `${process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com"}/shop/payment-callback`
+        ? `${appBaseUrl}/shop/payment-callback`
         : bookingIdForCallback
-          ? `${process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com"}/checkout/success?booking_id=${encodeURIComponent(bookingIdForCallback)}`
-          : `${process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com"}/checkout/success`;
+          ? `${appBaseUrl}/checkout/success?booking_id=${encodeURIComponent(bookingIdForCallback)}`
+          : `${appBaseUrl}/checkout/success`;
     const callbackUrl = body.callback_url?.trim() || defaultCallbackUrl;
+
+    // cancel_action: respect explicitly supplied value; otherwise default by type
+    const customOfferIdRaw =
+      typeof rawMeta.custom_offer_id === "string" && rawMeta.custom_offer_id.trim()
+        ? rawMeta.custom_offer_id.trim()
+        : null;
+    const isMobileCallback =
+      callbackUrl.startsWith("customer://") || callbackUrl.startsWith("exp://");
+    const defaultCancelAction = isMobileCallback
+      ? `${callbackUrl}${callbackUrl.includes("?") ? "&" : "?"}cancelled=1`
+      : rawMeta.type === "product_order"
+        ? `${appBaseUrl}/shop/cancelled`
+        : customOfferIdRaw
+          ? `${appBaseUrl}/checkout/cancelled?payment_type=custom_offer&offer_id=${encodeURIComponent(customOfferIdRaw)}`
+          : bookingIdForCallback
+            ? `${appBaseUrl}/checkout/cancelled?booking_id=${encodeURIComponent(bookingIdForCallback)}`
+            : `${appBaseUrl}/checkout/cancelled`;
+    const rawCancelAction =
+      typeof rawMeta.cancel_action === "string" ? rawMeta.cancel_action.trim() : "";
+    // Resolve relative paths ("/shop/cancelled?…") to absolute URLs for Paystack.
+    const cancelAction = rawCancelAction
+      ? rawCancelAction.startsWith("/")
+        ? `${appBaseUrl}${rawCancelAction}`
+        : rawCancelAction
+      : defaultCancelAction;
     const supabase = await getSupabaseServer(request);
 
     const productOrderIdRaw =
@@ -240,6 +266,7 @@ export async function POST(request: NextRequest) {
           save_card: saveCard,
           set_as_default: setAsDefault,
           customer_id: user.id,
+          cancel_action: cancelAction,
           custom_fields: [
             ...(rawMeta.bookingId || rawMeta.booking_id
               ? [
@@ -266,6 +293,31 @@ export async function POST(request: NextRequest) {
     }
 
     const data = await paystackResponse.json();
+    const paystackReference: string = data.data.reference;
+
+    // M1 guard: persist Paystack reference back to source rows so reconciliation
+    // and webhook processing can always find the row by reference.
+    if (paystackReference) {
+      if (bookingIdFromMeta) {
+        await Promise.resolve(
+          admin
+            .from("bookings")
+            .update({ payment_reference: paystackReference, payment_status: "pending" })
+            .eq("id", bookingIdFromMeta)
+        ).then(() => void 0).catch((err: unknown) =>
+          console.error("[paystack/initialize] failed to persist booking payment_reference:", err),
+        );
+      } else if (productOrderIdRaw) {
+        await Promise.resolve(
+          admin
+            .from("product_orders")
+            .update({ payment_reference: paystackReference })
+            .eq("id", productOrderIdRaw)
+        ).then(() => void 0).catch((err: unknown) =>
+          console.error("[paystack/initialize] failed to persist product_order payment_reference:", err),
+        );
+      }
+    }
 
     return successResponse({
       authorization_url: data.data.authorization_url,

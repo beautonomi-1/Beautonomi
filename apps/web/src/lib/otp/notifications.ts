@@ -52,13 +52,50 @@ export async function sendOTPToCustomer(options: SendOTPOptions): Promise<void> 
 }
 
 /**
- * Send notification when provider starts journey
+ * Notify customer that provider has arrived — no OTP/PIN wording.
+ * Used when verification is disabled (simple-arrival mode) so the customer
+ * still receives an "arrived" push even though there is no code to show.
+ */
+export async function sendProviderArrivedNotification(
+  customerId: string,
+  bookingNumber: string,
+  providerName: string,
+  bookingId: string,
+): Promise<void> {
+  try {
+    await sendToUser(
+      customerId,
+      {
+        title: "Provider Arrived",
+        message: `${providerName} has arrived at your location for booking #${bookingNumber}. Your service will begin shortly.`,
+        type: "provider_arrived",
+        bookingId: bookingNumber,
+        data: {
+          type: "provider_arrived",
+          booking_id: bookingId,
+          booking_number: bookingNumber,
+          provider_name: providerName,
+        },
+      },
+      ["push"],
+      { appType: "customer" },
+    );
+  } catch (error) {
+    console.error("Error sending provider arrived notification:", error);
+  }
+}
+
+/**
+ * Send notification when provider starts journey.
+ * @param bookingId - UUID (for deep-link routing to booking detail)
+ * @param bookingNumber - short display number (shown in notification text)
  */
 export async function sendProviderOnWayNotification(
   customerId: string,
   bookingNumber: string,
   providerName: string,
-  estimatedArrival?: string
+  bookingId: string,
+  estimatedArrival?: string,
 ): Promise<void> {
   try {
     await sendToUser(
@@ -70,13 +107,14 @@ export async function sendProviderOnWayNotification(
         bookingId: bookingNumber,
         data: {
           type: "provider_on_way",
+          booking_id: bookingId,
           booking_number: bookingNumber,
           provider_name: providerName,
           estimated_arrival: estimatedArrival,
         },
       },
       ["push", "email"],
-      { appType: "customer" }
+      { appType: "customer" },
     );
   } catch (error) {
     console.error("Error sending provider on way notification:", error);

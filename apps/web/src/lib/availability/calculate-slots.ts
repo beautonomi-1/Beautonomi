@@ -18,6 +18,7 @@ import {
   combineDateAndTime,
   generateTimeSlots,
 } from './time-utils';
+import { shiftMinuteRanges as sharedShiftMinuteRanges } from './shift-fit';
 
 /**
  * Calculate time segments for a booking service
@@ -118,18 +119,8 @@ function addDaysToDateKey(date: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-function shiftMinuteRanges(shift: { start_time: string; end_time: string }): Array<{ start: number; end: number; dayOffset: number }> {
-  const start = timeToMinutes(shift.start_time.substring(0, 5));
-  const end = timeToMinutes(shift.end_time.substring(0, 5));
-  if (end > start) return [{ start, end, dayOffset: 0 }];
-  if (end < start) {
-    return [
-      { start, end: 24 * 60, dayOffset: 0 },
-      { start: 0, end, dayOffset: 1 },
-    ];
-  }
-  return [];
-}
+/** Delegates to the shared shift-fit helper so both engines stay in lockstep. */
+const shiftMinuteRanges = sharedShiftMinuteRanges;
 
 /**
  * Apply gap avoidance filter

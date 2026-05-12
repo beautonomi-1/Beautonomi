@@ -126,7 +126,8 @@ export async function POST(
         customer.id,
         bookingData.booking_number,
         providerData?.business_name || "Provider",
-        estimated_arrival
+        id,
+        estimated_arrival,
       );
     }
 

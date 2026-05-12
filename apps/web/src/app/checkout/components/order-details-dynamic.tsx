@@ -296,8 +296,11 @@ export default function OrderDetailsDynamic({ bookingId, booking: initialBooking
     const atSalonSteps: BookingStep[] = [
       {
         key: "confirmed",
+        // "Booking Accepted" means the provider has confirmed. `pending` AND
+        // `pending_payment` are both pre-acceptance states — neither should
+        // mark this step as complete or current.
         label: "Booking Accepted",
-        completed: booking.status !== "pending",
+        completed: booking.status !== "pending" && booking.status !== "pending_payment",
         current: booking.status === "confirmed",
         timestamp: events.find(e => e.event_type === "confirmed")?.created_at,
       },

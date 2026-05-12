@@ -143,6 +143,7 @@ export async function POST(request: NextRequest) {
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "";
     const inAppParam = in_app ? "&in_app=1" : "";
     const callbackUrl = `${baseUrl}/provider/subscription?payment_success=true&billing_period=${billing_period}${inAppParam}`;
+    const cancelAction = `${baseUrl}/provider/subscription?payment_cancelled=1${in_app ? "&in_app=1" : ""}`;
     const { data: tenantRow } = await supabaseAdmin
       .from("tenants")
       .select("default_currency")
@@ -164,6 +165,7 @@ export async function POST(request: NextRequest) {
         subscription_plan_id: subscriptionPlanId,
         billing_period,
         tenant_id: tenantId,
+        cancel_action: cancelAction,
       },
       currency: tenantDefaultCurrency,
       tenantId,

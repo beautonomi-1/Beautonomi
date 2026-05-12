@@ -26,7 +26,7 @@ import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-
 import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
 import {
   getProviderBookingStatusTransitionBlockReason,
-  isValidProviderBookingStatusTransition,
+  isValidProviderBookingStatusTransitionWithContext,
 } from "@/lib/bookings/booking-status-transitions";
 import {
   computeBookingOutstandingDisplay,
@@ -277,6 +277,26 @@ export async function GET(
     }
 
     const bookingData = booking as BookingDbRow;
+
+    // Repair stale pending_payment bookings whose payment has already been confirmed.
+    // The lifecycle status should have advanced to "pending" or "confirmed" after the
+    // Paystack webhook/verify fired, but race conditions can leave it stuck.
+    // Normalize for this response so the provider sees the correct status immediately,
+    // and fire an async DB repair so future reads are also correct.
+    const _rawProviderStatus = bookingData.status as string | undefined;
+    const _rawProviderPaymentStatus = (bookingData as Record<string, unknown>).payment_status as string | undefined;
+    if (
+      _rawProviderStatus === "pending_payment" &&
+      (_rawProviderPaymentStatus === "paid" || _rawProviderPaymentStatus === "partially_paid")
+    ) {
+      (bookingData as Record<string, unknown>).status = "pending";
+      import("@/lib/bookings/sync-booking-after-paystack-success")
+        .then(({ syncBookingAfterPaystackSuccess }) =>
+          syncBookingAfterPaystackSuccess(supabaseAdmin, bookingData.id ?? id).catch(() => {})
+        )
+        .catch(() => {});
+    }
+
     const recurringSeries = (() => {
       const series = (bookingData as { recurring_appointments?: unknown }).recurring_appointments as
         | Record<string, unknown>
@@ -824,14 +844,20 @@ export async function PATCH(
       }
     }
 
-    // Validate status transition (strict provider lifecycle)
+    // Validate status transition (strict provider lifecycle, with at-home/at-salon awareness)
     if (requestedDbStatus) {
       const currentDbStatus = (currentBooking as BookingRow).status ?? "";
-      if (!isValidProviderBookingStatusTransition(currentDbStatus, requestedDbStatus)) {
+      const locationType = (currentBooking as BookingRow).location_type ?? null;
+      if (
+        !isValidProviderBookingStatusTransitionWithContext(currentDbStatus, requestedDbStatus, {
+          locationType,
+        })
+      ) {
         const paymentStatus = (currentBooking as BookingRow).payment_status ?? null;
         return errorResponse(
           getProviderBookingStatusTransitionBlockReason(currentDbStatus, requestedDbStatus, {
             payment_status: paymentStatus,
+            locationType,
           }),
           "INVALID_STATUS_TRANSITION",
           400,
@@ -839,6 +865,7 @@ export async function PATCH(
             current_status: currentDbStatus,
             requested_status: requestedDbStatus,
             payment_status: paymentStatus,
+            location_type: locationType,
           },
         );
       }
@@ -1954,6 +1981,17 @@ export async function PATCH(
 
     // Transform the fetched booking to match Booking type (same as GET endpoint)
     const bookingData = updatedBooking as BookingDbRow;
+
+    // Same pending_payment normalization as the GET path above.
+    const _patchRawStatus = bookingData.status as string | undefined;
+    const _patchRawPaymentStatus = (bookingData as Record<string, unknown>).payment_status as string | undefined;
+    if (
+      _patchRawStatus === "pending_payment" &&
+      (_patchRawPaymentStatus === "paid" || _patchRawPaymentStatus === "partially_paid")
+    ) {
+      (bookingData as Record<string, unknown>).status = "pending";
+    }
+
     const patchUnpaidCharges = Array.isArray((bookingData as any).additional_charges)
       ? (bookingData as any).additional_charges
           .filter((charge: any) => charge?.status !== "paid" && charge?.status !== "rejected")

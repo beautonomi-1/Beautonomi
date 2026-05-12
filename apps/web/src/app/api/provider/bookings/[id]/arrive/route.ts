@@ -5,7 +5,7 @@ import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { assertProviderUserCanAccessBookingBranch } from "@/lib/provider-booking/booking-branch-access";
 import { generateOTP, getOTPExpiry } from "@/lib/otp/generator";
-import { sendOTPToCustomer } from "@/lib/otp/notifications";
+import { sendOTPToCustomer, sendProviderArrivedNotification } from "@/lib/otp/notifications";
 import { generateVerificationCode, getQRCodeExpiry, type QRCodeData } from "@/lib/qr/generator";
 import { getVerificationSettings } from "@/lib/platform-settings";
 import type { Booking } from "@/types/beautonomi";
@@ -134,6 +134,17 @@ export async function POST(
         throw updateError;
       }
 
+      // Notify customer — no OTP in simple mode, use the generic arrived notification
+      const customerSimple = bookingData.customers;
+      if (customerSimple) {
+        await sendProviderArrivedNotification(
+          customerSimple.id,
+          bookingData.booking_number,
+          providerData?.business_name || "Provider",
+          id,
+        );
+      }
+
       // Fetch updated booking
       const { data: updatedBooking } = await supabase
         .from("bookings")
@@ -201,6 +212,17 @@ export async function POST(
 
       if (updateError) {
         throw updateError;
+      }
+
+      // Notify customer — verification methods disabled, use generic arrived notification
+      const customerDisabled = bookingData.customers;
+      if (customerDisabled) {
+        await sendProviderArrivedNotification(
+          customerDisabled.id,
+          bookingData.booking_number,
+          providerData?.business_name || "Provider",
+          id,
+        );
       }
 
       // Fetch updated booking
@@ -311,24 +333,32 @@ export async function POST(
       throw updateError;
     }
 
-    // Send OTP to customer if enabled
+    // Notify customer of arrival — OTP path sends PIN wording; all other paths send generic arrived push
     const customer = bookingData.customers;
-    if (customer && otp_enabled && otp) {
-      try {
-        await sendOTPToCustomer({
-          customerId: customer.id,
-          phone: customer.phone || "",
-          email: customer.email || "",
-          otp: otp,
-          bookingId: id,
-          bookingNumber: bookingData.booking_number,
-          providerName: providerData?.business_name || "Provider",
-          customerName: customer.full_name || "Customer",
-        });
-      } catch (otpError) {
-        // If OTP sending fails, log but don't fail the request
-        // QR code is still available as fallback
-        console.error("Failed to send OTP, QR code available as fallback:", otpError);
+    if (customer) {
+      if (otp_enabled && otp) {
+        try {
+          await sendOTPToCustomer({
+            customerId: customer.id,
+            phone: customer.phone || "",
+            email: customer.email || "",
+            otp: otp,
+            bookingId: id,
+            bookingNumber: bookingData.booking_number,
+            providerName: providerData?.business_name || "Provider",
+            customerName: customer.full_name || "Customer",
+          });
+        } catch (otpError) {
+          console.error("Failed to send OTP, QR code available as fallback:", otpError);
+        }
+      } else {
+        // QR-only or no-code: still inform customer provider has arrived
+        await sendProviderArrivedNotification(
+          customer.id,
+          bookingData.booking_number,
+          providerData?.business_name || "Provider",
+          id,
+        );
       }
     }
 

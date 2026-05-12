@@ -1,9 +1,10 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_SUPPORT } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
+import { getSupabaseBrowserClient } from "@/lib/supabase";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
@@ -128,6 +129,33 @@ export function SupportTicketsPage() {
     },
     onError: (err: Error) => adminToast.error(err.message || "Failed to create ticket"),
   });
+
+  // Realtime: invalidate the support tickets list when any ticket is created or updated.
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!allowed) return;
+    const sb = getSupabaseBrowserClient();
+    if (!sb) return;
+    const scheduleInvalidate = () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = setTimeout(() => {
+        debounceTimerRef.current = null;
+        void qc.invalidateQueries({ queryKey: adminQueryKeys.supportTickets.all() });
+      }, 600);
+    };
+    const channel = sb
+      .channel("admin-support-tickets-list")
+      .on("postgres_changes" as never, { event: "*", schema: "public", table: "support_tickets" }, scheduleInvalidate)
+      .subscribe();
+    return () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      try {
+        sb.removeChannel(channel);
+      } catch {
+        // Ignore
+      }
+    };
+  }, [allowed, qc]);
 
   const statusFilter = searchParams.get("status") ?? "all";
   const priorityFilter = searchParams.get("priority") ?? "all";

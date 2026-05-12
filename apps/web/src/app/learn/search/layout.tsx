@@ -9,6 +9,7 @@ export const metadata: Metadata = {
     canonical: "/learn/search",
     languages: getHreflangAlternateUrls("/learn/search"),
   },
+  robots: { index: false, follow: true, googleBot: { index: false, follow: true } },
 };
 
 export default function LearnSearchLayout({ children }: { children: ReactNode }) {

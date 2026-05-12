@@ -6,13 +6,28 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./native": "./src/native/index.ts",
-    "./web": "./src/web/index.ts"
+    "./native": {
+      "types": "./native-public.d.ts",
+      "react-native": "./src/native/index.ts",
+      "import": "./src/native/index.ts",
+      "default": "./src/native/index.ts"
+    },
+    "./web": {
+      "types": "./web-public.d.ts",
+      "import": "./src/web/index.ts",
+      "default": "./src/web/index.ts"
+    }
   },
   "dependencies": {
     "@beautonomi/ui-tokens": "workspace:*"
   },
   "peerDependencies": {
-    "react": ">=18"
+    "react": ">=18",
+    "react-native": ">=0.74"
+  },
+  "peerDependenciesMeta": {
+    "react-native": {
+      "optional": true
+    }
   }
 }

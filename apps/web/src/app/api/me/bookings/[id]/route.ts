@@ -54,6 +54,7 @@ export async function GET(
           duration_minutes,
           price,
           guest_name,
+          scheduled_start_at,
           offering:offerings(
             id,
             title,
@@ -64,14 +65,14 @@ export async function GET(
             id,
             name
           )
-        ),
+        ).order(scheduled_start_at, { ascending: true }),
         booking_addons:booking_addons(
           id,
           addon_id,
           addon_name,
           quantity,
           price
-        ),
+        ).order(id, { ascending: true }),
         booking_products:booking_products(
           id,
           product_id,
@@ -85,7 +86,7 @@ export async function GET(
             retail_price
           ),
           product_variant:product_variants(id, option_values)
-        ),
+        ).order(id, { ascending: true }),
         additional_charges:additional_charges(
           id,
           description,
@@ -122,7 +123,7 @@ export async function GET(
     }
 
     // Security: must be the customer themselves, the provider owner, or an active staff member
-    const bookingRow = booking as Record<string, unknown>;
+    const bookingRow = booking as unknown as Record<string, unknown>;
     const isCustomer = bookingRow.customer_id === auth.user.id;
     if (!isCustomer) {
       // Check if requester is the provider's owner
@@ -184,7 +185,55 @@ export async function GET(
         review_count?: number | null;
       };
     };
-    const bookingData = booking as BookingDataRow;
+    const bookingData = booking as unknown as BookingDataRow;
+
+    // If a booking is stuck in `pending_payment` but payment has already been
+    // confirmed (payment_status = "paid" or "partially_paid"), the lifecycle
+    // transition was missed (e.g. webhook fired before DB trigger, or payment
+    // was completed on an older code path). Repair asynchronously so the DB
+    // catches up, and normalise the status in this response to avoid confusing
+    // the customer app's status badge.
+    const rawStatus = bookingData.status as string | undefined;
+    const rawPaymentStatus = (bookingData as Record<string, unknown>).payment_status as string | undefined;
+    const isStuckPendingPayment =
+      rawStatus === "pending_payment" &&
+      (rawPaymentStatus === "paid" || rawPaymentStatus === "partially_paid");
+    if (isStuckPendingPayment) {
+      // Fire-and-forget repair — do not await so the GET is not slowed down.
+      import("@/lib/bookings/sync-booking-after-paystack-success")
+        .then(({ syncBookingAfterPaystackSuccess }) =>
+          syncBookingAfterPaystackSuccess(supabase, bookingData.id).catch(() => {})
+        )
+        .catch(() => {});
+      // Normalise the status in the response: partially_paid → "pending" (awaiting
+      // confirmation), paid → treat same way (sync will set "confirmed" if auto-confirm).
+      (bookingData as Record<string, unknown>).status = "pending";
+    }
+
+    // Compute a line-sum fallback for subtotal so that bookings whose
+    // bookings.subtotal was written as 0 (or NULL) still display correctly.
+    // This mirrors the fallback logic in build-booking-receipt.ts.
+    const linesSubtotalFallback = (() => {
+      const svcTotal = (bookingData.booking_services ?? []).reduce(
+        (sum: number, bs: unknown) => sum + Number((bs as Record<string, unknown>).price ?? 0),
+        0
+      );
+      const addonTotal = (bookingData.booking_addons ?? []).reduce(
+        (sum: number, ba: unknown) =>
+          sum + Number((ba as Record<string, unknown>).price ?? 0) * Number((ba as Record<string, unknown>).quantity ?? 1),
+        0
+      );
+      const productTotal = (bookingData.booking_products ?? []).reduce(
+        (sum: number, bp: unknown) =>
+          sum + Number((bp as Record<string, unknown>).total_price ?? (Number((bp as Record<string, unknown>).unit_price ?? 0) * Number((bp as Record<string, unknown>).quantity ?? 1))),
+        0
+      );
+      return svcTotal + addonTotal + productTotal;
+    })();
+    const storedSubtotal = Number((bookingData as Record<string, unknown>).subtotal ?? 0);
+    const resolvedSubtotal =
+      storedSubtotal > 0 || linesSubtotalFallback === 0 ? storedSubtotal : linesSubtotalFallback;
+
     const transformedBooking = {
       id: bookingData.id,
       booking_number: bookingData.booking_number,
@@ -199,7 +248,8 @@ export async function GET(
       completed_at: (bookingData as Record<string, unknown>).completed_at ?? undefined,
       location_type: bookingData.location_type === "at_salon" ? "at_salon" : "at_home",
       // Financial fields — all guarded with Number() to prevent undefined.toFixed() crashes
-      subtotal: Number((bookingData as Record<string, unknown>).subtotal ?? 0),
+      // resolvedSubtotal falls back to summed line prices when stored subtotal is 0 but lines exist.
+      subtotal: resolvedSubtotal,
       tip_amount: Number((bookingData as Record<string, unknown>).tip_amount ?? 0),
       discount_amount: Number((bookingData as Record<string, unknown>).discount_amount ?? 0),
       discount_code: (bookingData as Record<string, unknown>).discount_code ?? undefined,

@@ -550,8 +550,14 @@ export async function POST(request: NextRequest) {
         }
       } catch (error) {
         if (error instanceof z.ZodError) {
+          const message = error.issues
+            .map((issue) => {
+              const field = issue.path.length > 0 ? issue.path.join(".") : null;
+              return field ? `${field}: ${issue.message}` : issue.message;
+            })
+            .join(", ");
           return handleApiError(
-            new Error(error.issues.map((issue) => issue.message).join(", ")),
+            new Error(message),
             "Validation failed",
             "VALIDATION_ERROR",
             400

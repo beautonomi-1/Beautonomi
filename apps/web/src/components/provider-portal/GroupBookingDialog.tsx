@@ -65,6 +65,8 @@ interface ParticipantAddon {
 
 interface ParticipantData {
   booking_id?: string;
+  /** Linked existing provider_clients row id — fills name/phone/email on select */
+  customer_id?: string;
   client_name: string;
   client_email: string;
   client_phone: string;
@@ -75,6 +77,14 @@ interface ParticipantData {
   variant_id?: string;
   variant_name?: string;
   addons: ParticipantAddon[];
+}
+
+interface ClientSearchResult {
+  id: string;
+  customer_id: string;
+  full_name: string;
+  email?: string;
+  phone?: string;
 }
 
 // ─── Props ──────────────────────────────────────────────────────────────────
@@ -146,6 +156,48 @@ export function GroupBookingDialog({
   // ─── Search ────────────────────────────────────────────────────────────
   const [serviceSearchQuery, setServiceSearchQuery] = useState("");
   const [productSearchQuery, setProductSearchQuery] = useState("");
+
+  // ─── Per-participant client search ─────────────────────────────────────
+  // Map of participant index → { query, results, loading, open }
+  const [participantClientSearch, setParticipantClientSearch] = useState<Record<number, {
+    query: string; results: ClientSearchResult[]; loading: boolean; open: boolean;
+  }>>({});
+  const clientSearchTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
+  const participantNameRefs = useRef<Record<number, HTMLInputElement | null>>({});
+
+  const setParticipantClientSearchState = useCallback((idx: number, patch: Partial<{ query: string; results: ClientSearchResult[]; loading: boolean; open: boolean }>) => {
+    setParticipantClientSearch(prev => ({
+      ...prev,
+      [idx]: { query: "", results: [], loading: false, open: false, ...prev[idx], ...patch },
+    }));
+  }, []);
+
+  const searchClientsForParticipant = useCallback((idx: number, query: string) => {
+    setParticipantClientSearchState(idx, { query, open: query.length >= 2 });
+    if (clientSearchTimers.current[idx]) clearTimeout(clientSearchTimers.current[idx]);
+    if (query.trim().length < 2) {
+      setParticipantClientSearchState(idx, { results: [], loading: false });
+      return;
+    }
+    setParticipantClientSearchState(idx, { loading: true });
+    clientSearchTimers.current[idx] = setTimeout(async () => {
+      try {
+        const res = await providerPortalFetch(`/api/provider/clients?search=${encodeURIComponent(query.trim())}&limit=8`);
+        if (!res.ok) throw new Error("search failed");
+        const json = await res.json();
+        const rows: ClientSearchResult[] = (json.data || []).map((c: any) => ({
+          id: c.id,
+          customer_id: c.customer_id || c.id,
+          full_name: c.customer?.full_name || c.full_name || c.name || "",
+          email: c.customer?.email || c.email || undefined,
+          phone: c.customer?.phone || c.phone || undefined,
+        }));
+        setParticipantClientSearchState(idx, { results: rows, loading: false });
+      } catch {
+        setParticipantClientSearchState(idx, { results: [], loading: false });
+      }
+    }, 280);
+  }, [setParticipantClientSearchState]);
 
   // ─── Group-level products ──────────────────────────────────────────────
   const [groupProducts, setGroupProducts] = useState<AppointmentProduct[]>([]);
@@ -383,23 +435,38 @@ export function GroupBookingDialog({
   }, [open]);
 
   // ─── Participant helpers ───────────────────────────────────────────────
-  const handleAddParticipant = () => {
+  const handleAddParticipant = useCallback(() => {
     const svc = services.find(s => s.id === formData.service_id);
-    setParticipants(prev => [...prev, {
-      client_name: "",
-      client_email: "",
-      client_phone: "",
-      service_id: formData.service_id,
-      service_name: formData.service_name,
-      price: svc?.price || 0,
-      duration_minutes: svc?.duration_minutes || formData.duration_minutes,
-      addons: [],
-    }]);
-  };
+    setParticipants(prev => {
+      const newIdx = prev.length;
+      // Auto-focus the name field of the new participant after render
+      setTimeout(() => participantNameRefs.current[newIdx]?.focus(), 80);
+      return [...prev, {
+        client_name: "",
+        client_email: "",
+        client_phone: "",
+        service_id: formData.service_id,
+        service_name: formData.service_name,
+        price: svc?.price || 0,
+        duration_minutes: svc?.duration_minutes || formData.duration_minutes,
+        addons: [],
+      }];
+    });
+  }, [services, formData.service_id, formData.service_name, formData.duration_minutes]);
 
-  const handleRemoveParticipant = (index: number) => {
+  const handleRemoveParticipant = useCallback((index: number) => {
     setParticipants(prev => prev.filter((_, i) => i !== index));
-  };
+    // Compact search state: shift indexes above removed one down
+    setParticipantClientSearch(prev => {
+      const next: typeof prev = {};
+      Object.entries(prev).forEach(([k, v]) => {
+        const i = parseInt(k);
+        if (i < index) next[i] = v;
+        else if (i > index) next[i - 1] = v;
+      });
+      return next;
+    });
+  }, []);
 
   const handleParticipantChange = (index: number, field: string, value: any) => {
     setParticipants(prev => {
@@ -685,6 +752,10 @@ export function GroupBookingDialog({
         phone: p.client_phone || undefined,
         participant_phone: p.client_phone || undefined,
         booking_id: p.booking_id || undefined,
+        // §Group-booking-audit 2026-05: pass customer_id when an existing
+        // provider client was selected via search so the server-side booking
+        // insert can link the correct customer record for invoicing/history.
+        customer_id: p.customer_id || undefined,
         service_id: p.service_id || formData.service_id,
         service_name: p.service_name || formData.service_name,
         price: p.price + p.addons.reduce((s, a) => s + a.price, 0),
@@ -1145,10 +1216,10 @@ export function GroupBookingDialog({
                 </Button>
               </div>
               <p className="text-xs text-gray-500">
-                Add one row per person. The participant service, add-ons, and price field are what count toward the group total.
+                Search for an existing client or enter details manually. One row per person — service, add-ons and price flow into the group total and accounting.
               </p>
 
-              <div className="space-y-2 max-h-[400px] overflow-y-auto">
+              <div className="space-y-2 max-h-[480px] overflow-y-auto pr-0.5">
                 {participants.length === 0 ? (
                   <div className="text-center py-8 border-2 border-dashed rounded-xl">
                     <Users className="w-10 h-10 mx-auto text-gray-300 mb-2" />
@@ -1165,6 +1236,8 @@ export function GroupBookingDialog({
                     const catalogServiceId = participant.variant_id
                       ? services.find(s => s.id === participant.variant_id || (s as any).parent_service_id)?.id || participant.service_id
                       : participant.service_id;
+                    const clientSearch = participantClientSearch[index] || { query: "", results: [], loading: false, open: false };
+                    const isLastParticipant = index === participants.length - 1;
 
                     return (
                       <div key={index} className="p-3 bg-gray-50 rounded-xl border space-y-2.5">
@@ -1174,9 +1247,14 @@ export function GroupBookingDialog({
                             <div className="w-7 h-7 rounded-full bg-purple-100 flex items-center justify-center flex-shrink-0">
                               <span className="text-xs font-semibold text-purple-700">{index + 1}</span>
                             </div>
-                            <span className="text-sm font-medium text-gray-700 truncate">
+                            <span className="text-sm font-medium text-gray-700 truncate max-w-[160px]">
                               {participant.client_name || `Participant ${index + 1}`}
                             </span>
+                            {participant.customer_id && (
+                              <Badge variant="outline" className="text-[9px] h-4 border-purple-200 text-purple-700 bg-purple-50">
+                                Existing client
+                              </Badge>
+                            )}
                             {participant.variant_name && <Badge variant="outline" className="text-[9px] h-4">{participant.variant_name}</Badge>}
                           </div>
                           <Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveParticipant(index)} className="text-gray-400 hover:text-red-500 h-7 w-7">
@@ -1184,18 +1262,98 @@ export function GroupBookingDialog({
                           </Button>
                         </div>
 
+                        {/* ── Client search row ── */}
+                        {!participant.customer_id ? (
+                          <div className="relative">
+                            <div className="relative">
+                              <Search className="absolute left-2 top-2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                              <Input
+                                placeholder="Search existing clients…"
+                                value={clientSearch.query}
+                                onChange={e => searchClientsForParticipant(index, e.target.value)}
+                                onFocus={() => { if (clientSearch.query.length >= 2) setParticipantClientSearchState(index, { open: true }); }}
+                                onBlur={() => setTimeout(() => setParticipantClientSearchState(index, { open: false }), 200)}
+                                className="pl-7 h-8 text-xs bg-white"
+                                autoComplete="off"
+                              />
+                              {clientSearch.loading && <Loader2 className="absolute right-2 top-2 w-3.5 h-3.5 text-gray-400 animate-spin" />}
+                            </div>
+                            {clientSearch.open && clientSearch.results.length > 0 && (
+                              <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+                                {clientSearch.results.map(c => (
+                                  <button
+                                    key={c.id}
+                                    type="button"
+                                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-purple-50 transition-colors"
+                                    onMouseDown={e => e.preventDefault()}
+                                    onClick={() => {
+                                      setParticipants(prev => prev.map((p, i) => i !== index ? p : {
+                                        ...p,
+                                        customer_id: c.customer_id,
+                                        client_name: c.full_name,
+                                        client_email: c.email || p.client_email,
+                                        client_phone: c.phone || p.client_phone,
+                                      }));
+                                      setParticipantClientSearchState(index, { query: "", results: [], open: false });
+                                    }}
+                                  >
+                                    <div className="w-6 h-6 rounded-full bg-purple-100 flex items-center justify-center flex-shrink-0">
+                                      <User className="w-3 h-3 text-purple-600" />
+                                    </div>
+                                    <div className="min-w-0">
+                                      <p className="text-xs font-medium text-gray-900 truncate">{c.full_name}</p>
+                                      <p className="text-[10px] text-gray-500 truncate">{c.phone || c.email || "—"}</p>
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                            {clientSearch.open && clientSearch.query.length >= 2 && !clientSearch.loading && clientSearch.results.length === 0 && (
+                              <p className="mt-1 text-[10px] text-gray-400">No existing clients found — fill in details below.</p>
+                            )}
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            className="text-[10px] text-purple-600 hover:text-purple-800 underline underline-offset-2"
+                            onClick={() => setParticipants(prev => prev.map((p, i) => i !== index ? p : { ...p, customer_id: undefined }))}
+                          >
+                            Change client
+                          </button>
+                        )}
+
                         {/* Contact fields */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           <div>
                             <Label className="text-[10px] text-gray-400 uppercase tracking-wider">Name *</Label>
-                            <Input value={participant.client_name} onChange={e => handleParticipantChange(index, "client_name", e.target.value)} placeholder="Client name" required className="mt-0.5 h-9 text-sm" />
+                            <Input
+                              ref={el => { participantNameRefs.current[index] = el; }}
+                              value={participant.client_name}
+                              onChange={e => handleParticipantChange(index, "client_name", e.target.value)}
+                              placeholder="Client name"
+                              required
+                              className="mt-0.5 h-9 text-sm"
+                            />
                           </div>
                           <div>
                             <PhoneInput label="Phone" inputId={`group-booking-participant-phone-${index}`} value={participant.client_phone} onChange={e164 => handleParticipantChange(index, "client_phone", e164)} className="mt-0 space-y-0.5" />
                           </div>
                           <div>
                             <Label className="text-[10px] text-gray-400 uppercase tracking-wider">Email</Label>
-                            <Input type="email" value={participant.client_email} onChange={e => handleParticipantChange(index, "client_email", e.target.value)} placeholder="email@example.com" className="mt-0.5 h-9 text-sm" />
+                            <Input
+                              type="email"
+                              value={participant.client_email}
+                              onChange={e => handleParticipantChange(index, "client_email", e.target.value)}
+                              placeholder="email@example.com"
+                              className="mt-0.5 h-9 text-sm"
+                              onKeyDown={e => {
+                                // Enter on last participant's email → add another
+                                if (e.key === "Enter" && isLastParticipant) {
+                                  e.preventDefault();
+                                  handleAddParticipant();
+                                }
+                              }}
+                            />
                           </div>
                           <div>
                             <Label className="text-[10px] text-gray-400 uppercase tracking-wider">Service</Label>
@@ -1204,7 +1362,7 @@ export function GroupBookingDialog({
                               onValueChange={v => handleParticipantServiceSelect(index, v)}
                             >
                               <SelectTrigger className="mt-0.5 h-9 text-sm"><SelectValue placeholder="Service" /></SelectTrigger>
-                              <SelectContent>
+                              <SelectContent className="z-[200001]">
                                 {filteredServices.map(svc => (
                                   <SelectItem key={svc.id} value={svc.id}>
                                     {svc.name}
@@ -1235,7 +1393,7 @@ export function GroupBookingDialog({
                           </div>
                         )}
 
-                        {/* Add addon button */}
+                        {/* Bottom row: add extra, duration, price, add-another */}
                         <div className="flex items-center justify-between pt-1 border-t border-gray-200">
                           <div className="flex items-center gap-2">
                             <button type="button"
@@ -1248,11 +1406,24 @@ export function GroupBookingDialog({
                             </button>
                             <span className="text-[10px] text-gray-400">{pDur} min</span>
                           </div>
-                          <div className="flex items-center gap-1">
-                            <span className="text-xs text-gray-400">R</span>
-                            <Input type="number" value={participant.price} onChange={e => handleParticipantChange(index, "price", parseFloat(e.target.value) || 0)} min={0} step={0.01} className="h-8 w-24 text-sm text-right" />
-                            {participant.addons.length > 0 && (
-                              <span className="text-[10px] text-gray-400 ml-1">(+{formatMoney(participant.addons.reduce((s, a) => s + a.price, 0))})</span>
+                          <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1">
+                              <span className="text-xs text-gray-400">R</span>
+                              <Input type="number" value={participant.price} onChange={e => handleParticipantChange(index, "price", parseFloat(e.target.value) || 0)} min={0} step={0.01} className="h-8 w-20 text-sm text-right" />
+                              {participant.addons.length > 0 && (
+                                <span className="text-[10px] text-gray-400">(+{formatMoney(participant.addons.reduce((s, a) => s + a.price, 0))})</span>
+                              )}
+                            </div>
+                            {isLastParticipant && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={handleAddParticipant}
+                                className="h-8 text-xs border-purple-200 text-purple-700 hover:bg-purple-50"
+                              >
+                                <Plus className="w-3 h-3 mr-1" />Add another
+                              </Button>
                             )}
                           </div>
                         </div>

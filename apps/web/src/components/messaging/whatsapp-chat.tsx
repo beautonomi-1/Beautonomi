@@ -1,7 +1,7 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
 import { useClientMounted } from "@/hooks/use-client-mounted";
-import { Send, ArrowLeft, MoreVertical, Phone, Tag, User, Mail, Copy, Check, Paperclip, X, File, Play, Trash2, Pencil, Undo2, Info, Loader2, ExternalLink, Clock, MapPin, FileText } from "lucide-react";
+import { Send, ArrowLeft, MoreVertical, Phone, Tag, User, Mail, Copy, Check, Paperclip, X, File, Play, Trash2, Undo2, Info, Loader2, ExternalLink, Clock, MapPin, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -35,6 +35,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { format, isToday, isYesterday } from "date-fns";
 import CustomOfferModal from "./custom-offer-modal";
+import { CustomOfferCard } from "@beautonomi/ui/web";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
 
@@ -47,6 +48,8 @@ interface Attachment {
   price?: number;
   duration_minutes?: number;
   offer_id?: string;
+  /** Present on custom-offer / booking-linked attachments from messaging API. */
+  booking_number?: string | null;
   preferred_start_at?: string | null;
   withdrawn?: boolean;
   /** Set when file URLs are past retention or removed server-side */
@@ -675,11 +678,38 @@ export default function WhatsAppChat({
         }
       });
 
+    // Second channel: custom_offers status changes so offer cards update immediately
+    // when a customer pays, without waiting for the message attachment patch.
+    // RLS ensures we only receive rows the authenticated user can read.
+    const offerChannel = supabase
+      .channel(`${channelName}-offers`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "custom_offers" },
+        (payload) => {
+          const row = payload.new as { id?: string; status?: string; booking_id?: string | null };
+          const oid = row.id;
+          const status = row.status;
+          const bookingId = row.booking_id ?? null;
+          if (!oid || !status) return;
+          setOfferStatusById((prev) => {
+            if (!(oid in prev) && status === "pending") return prev;
+            return { ...prev, [oid]: { status, booking_id: bookingId } };
+          });
+        },
+      )
+      .subscribe();
+
     return () => {
       try {
         supabase.removeChannel(channel);
       } catch {
         // Ignore when channel is still connecting (e.g. React Strict Mode unmount)
+      }
+      try {
+        supabase.removeChannel(offerChannel);
+      } catch {
+        // Ignore
       }
     };
   };
@@ -1044,224 +1074,46 @@ export default function WhatsAppChat({
                     const att = message.attachments[0];
                     const oid = att.offer_id ?? "";
                     const ov = oid ? offerStatusById[oid] : undefined;
-                    const effStatus = (ov?.status ?? att.status ?? "").toLowerCase();
-                    const effBookingId = ov?.booking_id ?? att.booking_id ?? null;
-                    const isWithdrawn = att.withdrawn || effStatus === "withdrawn";
-                    const isDeclined = effStatus === "declined";
-                    const isExpired = att.expired || effStatus === "expired";
-                    const isFinalizeFailed = effStatus === "finalize_failed";
-                    const isPaid = effStatus === "paid" || !!effBookingId;
-                    const isPaymentPending = effStatus === "payment_pending";
-                    const isInactive =
-                      isWithdrawn || isExpired || isPaid || isDeclined || isFinalizeFailed;
-                    const canAccept = !isProviderChat && !isInactive && !isPaymentPending;
-                    const canDecline = !isProviderChat && !isInactive && !isPaymentPending && !!att.offer_id;
-                    const canRetract = isProviderChat && !isWithdrawn && !isExpired && !isPaid && !isDeclined;
-                    const canViewBooking = Boolean(isPaid && effBookingId);
                     return (
                     <div className="space-y-2">
                       {message.content && (
                         <p className="text-sm text-[#111b21]">{message.content}</p>
                       )}
-                      {/* Tappable card opens detail sheet */}
-                      <div
-                        className={cn(
-                          "relative overflow-hidden rounded-2xl shadow-lg min-w-[260px] max-w-[320px]",
-                          isWithdrawn || isExpired || isFinalizeFailed
-                            ? "opacity-75 bg-gradient-to-br from-slate-400 to-slate-500 border border-slate-400/50"
-                            : isPaid
-                              ? "bg-gradient-to-br from-emerald-700 via-emerald-800 to-emerald-900 border border-white/10"
-                              : "bg-gradient-to-br from-[#1a1a2e] via-[#16213e] to-[#0f3460] border border-white/10",
-                          att.offer_id ? "cursor-pointer" : "",
-                        )}
+                      <CustomOfferCard
+                        attachment={att}
+                        statusOverride={ov}
+                        isMe={message.sender_id === currentUserId}
+                        role={isProviderChat ? "provider" : "customer"}
                         onClick={() => att.offer_id && openOfferDetail(att.offer_id)}
-                      >
-                        {!isWithdrawn && !isExpired && !isPaid && (
-                          <div className="absolute inset-x-0 top-0 h-10 bg-gradient-to-b from-white/20 to-transparent pointer-events-none" />
-                        )}
-                        <div className="relative p-4 text-white">
-                          {/* Top row: brand + status badge */}
-                          <div className="flex items-center justify-between mb-4">
-                            <span className="text-xs font-semibold tracking-[0.2em] uppercase text-white/80">
-                              Custom Offer
-                            </span>
-                            {isWithdrawn && (
-                              <span className="text-[10px] font-semibold uppercase tracking-wider bg-white/20 text-white px-2 py-0.5 rounded-full">
-                                Withdrawn
-                              </span>
-                            )}
-                            {isFinalizeFailed && (
-                              <span className="text-[10px] font-semibold uppercase tracking-wider bg-rose-500/40 text-rose-50 px-2 py-0.5 rounded-full">
-                                Needs support
-                              </span>
-                            )}
-                            {isDeclined && !isWithdrawn && !isFinalizeFailed && (
-                              <span className="text-[10px] font-semibold uppercase tracking-wider bg-rose-400/30 text-rose-100 px-2 py-0.5 rounded-full">
-                                Declined
-                              </span>
-                            )}
-                            {isExpired && !isWithdrawn && (
-                              <span className="text-[10px] font-semibold uppercase tracking-wider bg-amber-400/30 text-amber-200 px-2 py-0.5 rounded-full">
-                                Expired
-                              </span>
-                            )}
-                            {isPaid && (
-                              <span className="text-[10px] font-semibold uppercase tracking-wider bg-emerald-400/30 text-emerald-100 px-2 py-0.5 rounded-full">
-                                Booked ✓
-                              </span>
-                            )}
-                            {isFinalizeFailed && (
-                              <span className="text-[10px] font-semibold uppercase tracking-wider bg-rose-500/40 text-rose-50 px-2 py-0.5 rounded-full">
-                                Needs support
-                              </span>
-                            )}
-                            {isPaymentPending && !isFinalizeFailed && (
-                              <span className="text-[10px] font-semibold uppercase tracking-wider bg-yellow-400/30 text-yellow-100 px-2 py-0.5 rounded-full flex items-center gap-1">
-                                <Loader2 className="w-2.5 h-2.5 animate-spin" />
-                                Processing
-                              </span>
-                            )}
-                          </div>
-                          {/* Amount */}
-                          <div className="mb-1 font-mono text-2xl font-bold tracking-wider">
-                            {att.currency} {att.price}
-                          </div>
-                          <div className="text-xs text-white/70 mb-3">
-                            {att.duration_minutes} mins
-                          </div>
-                          {att.expiration_at && (
-                            <div className="text-[11px] text-amber-100/90 mb-2 flex items-center gap-1">
-                              <Clock className="w-3 h-3 shrink-0" />
-                              {clientMounted
-                                ? `Expires ${format(new Date(att.expiration_at), "d MMM yyyy, HH:mm")}`
-                                : "Offer expiry"}
-                            </div>
-                          )}
-                          {att.preferred_start_at && !isInactive && (
-                            <div className="text-[11px] text-white/60 mb-3">
-                              {clientMounted
-                                ? format(new Date(att.preferred_start_at), "EEE, d MMM · HH:mm")
-                                : "–"}
-                            </div>
-                          )}
-                          {/* Tap hint */}
-                          {att.offer_id && !isInactive && (
-                            <div className="text-[10px] text-white/40 mb-2">Tap for details</div>
-                          )}
-                          {/* Provider: Retract + Edit */}
-                          {canRetract && att.offer_id && (
-                            <div
-                              className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-white/10"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-8 text-xs text-white/90 hover:bg-white/15 hover:text-white"
-                                onClick={async () => {
-                                  try {
-                                    await fetcher.post(`/api/provider/custom-offers/${att.offer_id}/retract`, {});
-                                    toast.success("Offer withdrawn");
-                                    loadMessages();
-                                    onConversationUpdate?.();
-                                  } catch {
-                                    toast.error("Failed to retract offer");
-                                  }
-                                }}
-                              >
-                                <Undo2 className="w-3.5 h-3.5 mr-1.5" />
-                                Retract
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-8 text-xs text-white/90 hover:bg-white/15 hover:text-white"
-                                onClick={() => {
-                                  setEditOfferId(att.offer_id ?? null);
-                                  setShowCustomOfferModal(true);
-                                }}
-                              >
-                                <Pencil className="w-3.5 h-3.5 mr-1.5" />
-                                Edit & resend
-                              </Button>
-                            </div>
-                          )}
-                          {/* Customer: Payment in progress */}
-                          {!isProviderChat && isPaymentPending && (
-                            <div className="flex flex-col gap-2 mt-3" onClick={(e) => e.stopPropagation()}>
-                              <div className="flex items-center gap-2 text-xs text-yellow-200/80 mb-1">
-                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                Payment in progress…
-                              </div>
-                              <Button
-                                size="sm"
-                                className="w-full bg-primary hover:bg-primary-hover text-white text-xs font-medium border border-transparent"
-                                onClick={() => {
-                                  setSelectedOfferIdForPayment(att.offer_id!);
-                                  setPaymentOptionOpen(true);
-                                }}
-                              >
-                                Resume Payment
-                              </Button>
-                            </div>
-                          )}
-                          {/* Customer: View Booking when paid */}
-                          {!isProviderChat && canViewBooking && (
-                            <Button
-                              size="sm"
-                              className="w-full mt-3 bg-white/20 hover:bg-white/30 text-white text-xs font-medium border border-white/30"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                window.location.href = `/account-settings/bookings/${effBookingId}`;
-                              }}
-                            >
-                              <ExternalLink className="w-3.5 h-3.5 mr-1.5" />
-                              View Booking
-                            </Button>
-                          )}
-                          {!isProviderChat && isPaid && !effBookingId && (
-                            <p className="mt-3 text-[11px] text-emerald-100/90">
-                              Payment received — your booking link will appear in a moment.
-                            </p>
-                          )}
-                          {/* Customer: Accept & Pay + Decline */}
-                          {canAccept && att.offer_id && (
-                            <div className="flex flex-col gap-2 mt-2" onClick={(e) => e.stopPropagation()}>
-                              <Button
-                                size="sm"
-                                className="w-full bg-primary hover:bg-primary-hover text-white text-xs font-medium"
-                                onClick={() => {
-                                  setSelectedOfferIdForPayment(att.offer_id!);
-                                  setPaymentOptionOpen(true);
-                                }}
-                              >
-                                Accept & Pay
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="w-full border-white/30 text-white text-xs bg-white/5 hover:bg-white/10"
-                                disabled={decliningOfferId === att.offer_id}
-                                onClick={() => void handleDeclineOffer(att.offer_id!)}
-                              >
-                                {decliningOfferId === att.offer_id ? (
-                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                ) : (
-                                  "Decline offer"
-                                )}
-                              </Button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      {!isProviderChat && !isInactive && (
-                        <div className="text-xs text-[#667781]">
-                          Or view:{" "}
-                          <a href="/account-settings/custom-requests" className="underline text-primary">
-                            Custom Requests
-                          </a>
-                        </div>
-                      )}
+                        onAccept={() => {
+                          setSelectedOfferIdForPayment(att.offer_id!);
+                          setPaymentOptionOpen(true);
+                        }}
+                        onDecline={() => att.offer_id && void handleDeclineOffer(att.offer_id)}
+                        isDeclineLoading={decliningOfferId === att.offer_id}
+                        onResume={() => {
+                          setSelectedOfferIdForPayment(att.offer_id!);
+                          setPaymentOptionOpen(true);
+                        }}
+                        onViewBooking={() => {
+                          const bid = ov?.booking_id ?? att.booking_id ?? null;
+                          if (bid) window.location.href = `/account-settings/bookings/${bid}`;
+                        }}
+                        onWithdraw={async () => {
+                          try {
+                            await fetcher.post(`/api/provider/custom-offers/${att.offer_id}/retract`, {});
+                            toast.success("Offer withdrawn");
+                            loadMessages();
+                            onConversationUpdate?.();
+                          } catch {
+                            toast.error("Failed to retract offer");
+                          }
+                        }}
+                        onEdit={() => {
+                          setEditOfferId(att.offer_id ?? null);
+                          setShowCustomOfferModal(true);
+                        }}
+                      />
                     </div>
                     );
                   })() : Array.isArray(message.attachments) &&
@@ -1307,9 +1159,16 @@ export default function WhatsAppChat({
                         <div className="text-emerald-600 text-xl mt-0.5">✓</div>
                         <div className="flex-1 min-w-0">
                           <div className="text-sm font-semibold text-emerald-800">Payment received — booking confirmed</div>
+                          {message.attachments[0]?.booking_number && (
+                            <div className="text-xs text-emerald-600 mt-0.5">#{message.attachments[0].booking_number}</div>
+                          )}
                           {message.attachments[0]?.booking_id && (
                             <a
-                              href={`/account-settings/bookings/${message.attachments[0].booking_id}`}
+                              href={
+                                isProviderChat
+                                  ? `/provider/bookings/${message.attachments[0].booking_id}`
+                                  : `/account-settings/bookings/${message.attachments[0].booking_id}`
+                              }
                               className="text-xs text-emerald-700 underline mt-1 inline-block"
                             >
                               View Booking →

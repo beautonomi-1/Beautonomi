@@ -19,6 +19,7 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { toCents, percentOf } from "@beautonomi/utils";
 import { patchCustomOfferMessageAttachments } from "@/lib/custom-offers/sync-offer-message-attachments";
 import { finalizeCustomOfferPayment } from "@/lib/custom-offers/finalize-custom-offer-payment";
+import { convertFromSmallestUnit } from "@/lib/payments/paystack-complete";
 import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
 import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
 import {
@@ -317,6 +318,13 @@ export async function postCustomOfferAccept(
     const callbackUrl =
       rawCallback.length > 0 && rawCallback.length <= 2048 ? rawCallback : webSuccessUrl;
 
+    // cancel_action: mobile callback gets `?cancelled=1`; web falls back to /checkout/cancelled
+    const isMobileCallback =
+      callbackUrl.startsWith("customer://") || callbackUrl.startsWith("exp://");
+    const cancelAction = isMobileCallback
+      ? `${callbackUrl}${callbackUrl.includes("?") ? "&" : "?"}cancelled=1`
+      : `${appUrl}/checkout/cancelled?payment_type=custom_offer&offer_id=${encodeURIComponent(id)}`;
+
     const email = (user as { email?: string }).email ?? "customer@example.com";
 
     // Pricing metadata that finalize uses to write booking + ledger rows.
@@ -508,9 +516,54 @@ export async function postCustomOfferAccept(
         return errorResponse(chargeResult.message || "Failed to charge card", "CHARGE_FAILED", 400);
       }
 
+      // Inline finalize — mirrors the zero-Paystack branch so the offer reaches
+      // "paid" synchronously instead of waiting for the async webhook.
+      // finalizeCustomOfferPayment is idempotent on (offerId, reference), so
+      // if the charge.success webhook fires later it will be a no-op.
+      const chargeReference = chargeResult.data?.reference ?? reference;
+      const chargeFeesMajor = convertFromSmallestUnit(
+        typeof chargeResult.data?.fees === "number" ? chargeResult.data.fees : 0,
+      );
+      const finalize = await finalizeCustomOfferPayment(adminSupabase, {
+        offerId: id,
+        reference: chargeReference,
+        paystackAmountMajor: amountToCollect,
+        paystackFeesMajor: chargeFeesMajor,
+        walletAmountApplied: walletAmount,
+        giftCardAmountApplied: giftCardAmount,
+        giftCardId,
+        giftCardCode,
+        loyaltyPointsRedeemed,
+        loyaltyDiscountAmount,
+        pricingMetadata,
+        customerEmail: email,
+        paymentProvider:
+          walletAmount > 0 || giftCardAmount > 0 ? "split" : "paystack",
+      });
+
+      if (!finalize.ok) {
+        // Funds were captured by Paystack — do not roll back wallet/gift tender.
+        // Mark offer as finalize_failed so support can reconcile manually.
+        await adminSupabase
+          .from("custom_offers")
+          .update({ status: "finalize_failed", updated_at: new Date().toISOString() })
+          .eq("id", id);
+        await patchCustomOfferMessageAttachments(adminSupabase, id, { status: "finalize_failed" });
+        console.error(
+          `[custom-offers/pay] inline finalize failed for offer ${id} ref ${chargeReference}: ${finalize.reason}`,
+        );
+        return errorResponse(
+          "Payment received but booking creation failed. Please contact support with your payment reference.",
+          "FINALIZE_FAILED",
+          500,
+        );
+      }
+
       return successResponse({
         charged: true,
-        reference: chargeResult.data?.reference ?? reference,
+        finalized: true,
+        booking_id: finalize.bookingId ?? null,
+        reference: chargeReference,
         deposit_required: providerRequiresDeposit,
         deposit_percentage: providerRequiresDeposit ? depositPct : 0,
         deposit_amount: paymentOption === "deposit" ? chargeAmount : 0,
@@ -532,7 +585,7 @@ export async function postCustomOfferAccept(
         currency: offer.currency || lastResortCurrency,
         reference,
         callback_url: callbackUrl,
-        metadata: pricingMetadata,
+        metadata: { ...pricingMetadata, cancel_action: cancelAction },
         tenantId,
       });
     } catch (initErr) {

@@ -25,6 +25,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
     return {
       title: "Article Not Found · Learning Center",
       description: "The article you're looking for doesn't exist.",
+      robots: { index: false, follow: true, googleBot: { index: false, follow: true } },
     };
   }
 
@@ -34,6 +35,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   return {
     title,
     description,
+    robots: { index: false, follow: true, googleBot: { index: false, follow: true } },
     alternates: {
       canonical: `${origin}${path}`,
       languages: getHreflangAlternateUrls(path),

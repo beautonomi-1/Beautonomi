@@ -45,6 +45,23 @@ export const PROVIDER_BOOKING_STATUS_TRANSITIONS: Record<
   checked_in: ["in_progress", "cancelled"],
 };
 
+/**
+ * Statuses whose semantics are salon-specific (`checked_in` = physical arrival
+ * to the salon waiting room; `waiting` = chair-side queue). At-home bookings
+ * use `current_stage` (`provider_on_way`, `provider_arrived`) for journey
+ * progression and should NEVER be moved into either of these statuses — doing
+ * so dead-ends the journey flow because journey endpoints require `confirmed`.
+ */
+const SALON_ONLY_BOOKING_STATUSES: ReadonlySet<BookingStatus> = new Set([
+  "checked_in",
+  "waiting",
+]);
+
+export function isSalonOnlyBookingStatus(status: string | null | undefined): boolean {
+  if (!status) return false;
+  return SALON_ONLY_BOOKING_STATUSES.has(status as BookingStatus);
+}
+
 export function isValidProviderBookingStatusTransition(
   from: string,
   to: string
@@ -55,11 +72,51 @@ export function isValidProviderBookingStatusTransition(
   return (allowed as readonly string[]).includes(to);
 }
 
+/**
+ * Validate a transition with location-type context. Adds two rules on top of
+ * the base transition graph:
+ *
+ * 1. **Reject salon-only targets for at-home bookings.** A house-call provider
+ *    cannot put a booking into `checked_in` or `waiting` — those have no
+ *    semantic meaning for the at-home journey and would dead-end it.
+ * 2. **Allow at-home recovery from a salon-only status to `confirmed`.** If a
+ *    legacy at-home booking is already stuck in `checked_in` or `waiting`
+ *    (because of older clients or admin error), the provider can roll it back
+ *    to `confirmed` to re-engage the journey flow.
+ */
+export function isValidProviderBookingStatusTransitionWithContext(
+  from: string,
+  to: string,
+  context: { locationType?: string | null } = {}
+): boolean {
+  if (from === to) return true;
+  const isAtHome = context.locationType === "at_home";
+
+  // Recovery edge: at-home + salon-only stuck → confirmed (not in the base table).
+  if (isAtHome && isSalonOnlyBookingStatus(from) && to === "confirmed") {
+    return true;
+  }
+
+  if (!isValidProviderBookingStatusTransition(from, to)) {
+    return false;
+  }
+
+  // Block at-home from being PATCHed into salon-only statuses.
+  if (isAtHome && isSalonOnlyBookingStatus(to)) {
+    return false;
+  }
+  return true;
+}
+
 export function getProviderBookingStatusTransitionBlockReason(
   from: string,
   to: string,
-  context: { payment_status?: string | null } = {}
+  context: { payment_status?: string | null; locationType?: string | null } = {}
 ): string {
+  const isAtHome = context.locationType === "at_home";
+  if (isAtHome && isSalonOnlyBookingStatus(to)) {
+    return `${to} is a salon-only status. House-call bookings progress via Start journey and Mark arrived — use those instead, or move directly to ${from === "confirmed" ? "in_progress (after arrival is verified)" : "the next house-call stage"}.`;
+  }
   if (TERMINAL_BOOKING_STATUSES.includes(from as BookingStatus)) {
     return `${from} bookings are final and cannot be changed.`;
   }
@@ -72,7 +129,10 @@ export function getProviderBookingStatusTransitionBlockReason(
   }
   const allowed = PROVIDER_BOOKING_STATUS_TRANSITIONS[from as BookingStatus] ?? [];
   if (allowed.length > 0) {
-    return `Cannot change this booking from ${from} to ${to}. Allowed next statuses: ${allowed.join(", ")}.`;
+    const filteredAllowed = isAtHome
+      ? allowed.filter((s) => !isSalonOnlyBookingStatus(s))
+      : allowed;
+    return `Cannot change this booking from ${from} to ${to}. Allowed next statuses: ${filteredAllowed.join(", ")}.`;
   }
   return `Cannot change this booking from ${from} to ${to}.`;
 }

@@ -50,6 +50,8 @@ type GroupReceiptData = {
   amount_paid?: number;
   total_refunded?: number;
   balance_due?: number;
+  estimated_session_amount?: number;
+  is_estimate_only?: boolean;
   payment_status?: string;
   currency?: string;
   notes?: string | null;
@@ -161,6 +163,19 @@ export async function GET(
       doc.moveDown(0.7);
     }
 
+    /**
+     * §Group-booking-audit 2026-05: when no participant bookings exist yet
+     * (`settlement_basis === "group_session_estimate"`), the only financial
+     * line is whatever the group session itself carries (typically travel
+     * fee). Painting that as a red "Balance due" suggested the provider was
+     * owed money even though there is no invoice to collect against. Now we
+     * surface it as a neutral "Estimated session amount" line so the receipt
+     * matches the participant-less reality the provider sees in the dialog.
+     */
+    const isEstimateOnly =
+      r.is_estimate_only === true ||
+      (r.settlement_basis === "group_session_estimate" && (r.participant_count || 0) === 0);
+    const estimateAmount = Number(r.estimated_session_amount || r.balance_due || 0);
     drawPdfTotals(
       doc,
       [
@@ -176,14 +191,18 @@ export async function GET(
         ...(Number(r.platform_fee_amount || 0) > 0
           ? [{ label: "Platform fee (customer-paid, retained by platform)", value: money(r.platform_fee_amount) }]
           : []),
-        ...(Number(r.group_session_total || 0) !== Number(r.total_amount || 0)
+        ...(!isEstimateOnly && Number(r.group_session_total || 0) !== Number(r.total_amount || 0)
           ? [{ label: "Group session total", value: money(r.group_session_total) }]
           : []),
         ...(Number(r.amount_paid || 0) > 0 ? [{ label: "Amount paid", value: money(r.amount_paid) }] : []),
         ...(Number(r.total_refunded || 0) > 0 ? [{ label: "Refunded", value: `-${money(r.total_refunded)}`, tone: "warning" as const }] : []),
-        ...(Number(r.balance_due || 0) > 0 ? [{ label: "Balance due", value: money(r.balance_due), tone: "danger" as const }] : []),
+        ...(isEstimateOnly
+          ? [{ label: "Estimated session amount", value: money(estimateAmount) }]
+          : Number(r.balance_due || 0) > 0
+            ? [{ label: "Balance due", value: money(r.balance_due), tone: "danger" as const }]
+            : []),
       ],
-      { label: "Total", value: money(r.total_amount) },
+      { label: isEstimateOnly ? "Session estimate" : "Total", value: money(r.total_amount) },
     );
 
     if (r.notes) {

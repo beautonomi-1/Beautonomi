@@ -422,11 +422,23 @@ export async function POST(request: NextRequest) {
       throw gbError;
     }
 
-    // Add participants if provided (booking_id is nullable after migration 485)
+    // Add participants if provided (booking_id is nullable after migration 485).
+    //
+    // §Group-booking-audit 2026-05: previously a participant insert failure
+    // was silently swallowed with `console.warn`, leaving an orphan group with
+    // R 0,00 services + travel fee — exactly the "Participants (0) / Total R
+    // 100" receipt the user reported. We now roll back the group on participant
+    // failure and surface the Postgres error (FK violation on service_id,
+    // unique violation on booking_id, etc.) so the operator can fix the
+    // underlying input instead of being stranded with a half-created group.
     if (normalizedParticipants.length > 0) {
       const participantRows = normalizedParticipants.map((p: any, idx: number) => ({
         group_booking_id: groupBooking.id,
         booking_id: p.booking_id || null,
+        // §Group-booking-audit 2026-05: store customer_id when an existing
+        // client was selected via search so receipts and future history
+        // lookups can join to the correct user profile.
+        customer_id: p.customer_id || null,
         participant_name: p.name || p.participant_name || p.client_name || '—',
         participant_email: p.email || p.participant_email || p.client_email || null,
         participant_phone: p.phone || p.participant_phone || p.client_phone || null,
@@ -443,7 +455,26 @@ export async function POST(request: NextRequest) {
         .insert(participantRows);
 
       if (pError) {
-        console.warn("Failed to insert participants:", pError);
+        console.error("Failed to insert participants for group", groupBooking.id, pError);
+        // Roll back the group so we never expose the orphan to providers.
+        await admin.from("group_bookings").delete().eq("id", groupBooking.id);
+
+        const dbCode = (pError as { code?: string }).code ?? null;
+        const dbMessage = (pError as { message?: string }).message ?? "";
+        const dbHint = (pError as { hint?: string }).hint ?? null;
+        const dbDetail = (pError as { details?: string }).details ?? null;
+        const friendly = dbMessage
+          ? `Group created, but participants could not be saved: ${dbMessage}`
+          : "Group created, but participants could not be saved. The group has been rolled back. Please retry.";
+        return errorResponse(
+          friendly,
+          dbCode === "23503" ? "PARTICIPANT_FK_VIOLATION"
+          : dbCode === "23505" ? "PARTICIPANT_UNIQUE_VIOLATION"
+          : dbCode === "23514" ? "PARTICIPANT_CHECK_VIOLATION"
+          : "PARTICIPANT_DB_ERROR",
+          400,
+          { db_code: dbCode, hint: dbHint, detail: dbDetail },
+        );
       }
 
       const linkedBookingIds = participantRows

@@ -94,6 +94,7 @@ export {
 export {
   getBookingLifecycleDisplay,
   getBookingPaymentDisplay,
+  resolveEffectiveBookingLifecycleStatus,
   type BookingDisplayTone,
   type BookingLifecycleDisplay,
   type BookingPaymentDisplay,

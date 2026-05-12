@@ -145,6 +145,20 @@ export async function GET(request: NextRequest) {
 
     // Transform bookings to match Booking interface
     const transformedBookings = (filteredBookings || []).map((booking: any) => {
+      // Coherence: a row stuck at `status = 'pending_payment'` while
+      // `payment_status` is paid/partially_paid is a transient state that the
+      // DB trigger now repairs (migration 595), but list responses must still
+      // present a coherent view if the trigger has not yet caught up. Map to
+      // `pending` (awaiting provider confirmation) so the customer's badge
+      // and any client-side filtering stay consistent with the detail page.
+      const _ps = (booking.payment_status || "").toLowerCase();
+      if (
+        booking.status === "pending_payment" &&
+        (_ps === "paid" || _ps === "partially_paid")
+      ) {
+        booking.status = "pending";
+      }
+
       // Keep database status for consistency, add customer status for display
       const customerStatus = mapStatusToCustomer(booking.status, booking.scheduled_at);
       

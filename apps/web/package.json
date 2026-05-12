@@ -43,6 +43,7 @@
     "@beautonomi/i18n": "workspace:*",
     "@beautonomi/phone": "workspace:*",
     "@beautonomi/shipping": "workspace:*",
+    "@beautonomi/ui": "workspace:*",
     "@beautonomi/ui-tokens": "workspace:*",
     "@beautonomi/utils": "workspace:*",
     "@mapbox/mapbox-gl-draw": "^1.5.1",

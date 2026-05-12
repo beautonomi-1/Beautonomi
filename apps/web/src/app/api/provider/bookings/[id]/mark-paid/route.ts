@@ -484,6 +484,26 @@ export async function POST(
     //   - correct handling of 'online', 'walk_in', and 'provider' booking sources
     // No app-level finance_transactions creation needed here.
 
+    // Lifecycle reconciliation: if this mark-paid clears outstanding for a
+    // booking that is still in `pending_payment` (rare, but possible if the
+    // online payment never completed and provider is recording cash), advance
+    // the lifecycle and apply the auto-confirm policy. Migration 595 also does
+    // this at the DB layer (advancing pending_payment → pending), but
+    // syncBookingAfterPaystackSuccess additionally honours the provider's
+    // require_confirmation_for_bookings setting (so auto-confirming providers
+    // jump straight to `confirmed`).
+    try {
+      const { syncBookingAfterPaystackSuccess } = await import(
+        "@/lib/bookings/sync-booking-after-paystack-success"
+      );
+      await syncBookingAfterPaystackSuccess(supabaseAdmin, bookingId);
+    } catch (syncErr) {
+      console.warn(
+        "[mark-paid] post-payment booking lifecycle sync failed:",
+        syncErr,
+      );
+    }
+
     // Create notification for customer (will be sent via OneSignal)
     try {
       const { insertNotification } = await import("@/lib/notifications/insert-notification");

@@ -196,6 +196,15 @@ export async function GET(request: NextRequest) {
       const customer = customersMap.get(booking.customer_id ?? "");
       const provider = providersMap.get(booking.provider_id ?? "");
       const location = locationsMap.get(booking.location_id ?? "");
+      // Lifecycle coherence: hide the transient `pending_payment` state when
+      // the booking has actually been paid. Migration 595 enforces this at the
+      // DB layer, but admin lists must be correct even if the trigger has not
+      // yet caught up on freshly-paid rows.
+      const _resolvedStatus =
+        booking.status === "pending_payment" &&
+        (ps === "paid" || ps === "partially_paid")
+          ? "pending"
+          : booking.status;
       return {
         id: booking.id,
         booking_number: booking.booking_number,
@@ -205,7 +214,7 @@ export async function GET(request: NextRequest) {
         customer_phone: customer?.phone || null,
         provider_id: booking.provider_id,
         provider_name: provider?.business_name || null,
-        status: booking.status,
+        status: _resolvedStatus,
         location_type: booking.location_type,
         location_id: booking.location_id,
         location_name: location?.name || null,

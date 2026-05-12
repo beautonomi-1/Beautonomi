@@ -209,6 +209,15 @@ type ParticipantFormRow = {
   serviceId: string;
   addOnIds: string[];
   notes: string;
+  /** Linked provider_clients row – set when an existing client is picked via search */
+  customerId?: string;
+};
+
+type ParticipantClientSearchState = {
+  query: string;
+  results: { id: string; customer_id: string; full_name: string; email?: string; phone?: string }[];
+  loading: boolean;
+  open: boolean;
 };
 type ProductRow = {
   id: string;
@@ -471,6 +480,9 @@ export default function GroupBookingsScreen() {
     packageId: "" as string,
   });
   const [createParticipants, setCreateParticipants] = useState<ParticipantFormRow[]>([]);
+  // Per-participant client search state (keyed by ParticipantFormRow.id)
+  const [participantSearchMap, setParticipantSearchMap] = useState<Record<string, ParticipantClientSearchState>>({});
+  const participantSearchTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const [createProducts, setCreateProducts] = useState<SelectedGroupProduct[]>([]);
   const [showPackagePicker, setShowPackagePicker] = useState(false);
   const [showProductPicker, setShowProductPicker] = useState(false);
@@ -998,6 +1010,75 @@ export default function GroupBookingsScreen() {
     setCreateParticipants((prev) =>
       prev.length <= 1 ? [createBlankParticipant(`participant-${Date.now()}`, createForm.serviceId)] : prev.filter((p) => p.id !== id),
     );
+    // Clean up search state for this participant
+    setParticipantSearchMap((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    if (participantSearchTimers.current[id]) {
+      clearTimeout(participantSearchTimers.current[id]);
+      delete participantSearchTimers.current[id];
+    }
+  }
+
+  function searchClientsForParticipant(participantId: string, query: string) {
+    setParticipantSearchMap((prev) => ({
+      ...prev,
+      [participantId]: {
+        ...(prev[participantId] || { results: [], loading: false }),
+        query,
+        open: query.trim().length >= 2,
+      },
+    }));
+    if (participantSearchTimers.current[participantId]) {
+      clearTimeout(participantSearchTimers.current[participantId]);
+    }
+    if (query.trim().length < 2) {
+      setParticipantSearchMap((prev) => ({
+        ...prev,
+        [participantId]: { ...prev[participantId], results: [], loading: false, open: false },
+      }));
+      return;
+    }
+    setParticipantSearchMap((prev) => ({
+      ...prev,
+      [participantId]: { ...prev[participantId], loading: true },
+    }));
+    participantSearchTimers.current[participantId] = setTimeout(async () => {
+      try {
+        const res = await api.get<any>(`/api/provider/clients?search=${encodeURIComponent(query.trim())}&limit=8`);
+        const rows = (res.data || []).map((c: any) => ({
+          id: c.id,
+          customer_id: c.customer_id || c.id,
+          full_name: c.customer?.full_name || c.full_name || c.name || "",
+          email: c.customer?.email || c.email || undefined,
+          phone: c.customer?.phone || c.phone || undefined,
+        }));
+        setParticipantSearchMap((prev) => ({
+          ...prev,
+          [participantId]: { ...prev[participantId], results: rows, loading: false },
+        }));
+      } catch {
+        setParticipantSearchMap((prev) => ({
+          ...prev,
+          [participantId]: { ...prev[participantId], results: [], loading: false },
+        }));
+      }
+    }, 300);
+  }
+
+  function selectClientForParticipant(participantId: string, client: { id: string; customer_id: string; full_name: string; email?: string; phone?: string }) {
+    updateCreateParticipantRow(participantId, {
+      name: client.full_name,
+      email: client.email || "",
+      phone: client.phone || "",
+      customerId: client.customer_id,
+    });
+    setParticipantSearchMap((prev) => ({
+      ...prev,
+      [participantId]: { query: "", results: [], loading: false, open: false },
+    }));
   }
 
   async function createParticipantBookingAndLink(args: {
@@ -1025,7 +1106,7 @@ export default function GroupBookingsScreen() {
     products?: SelectedGroupProduct[];
     durationMinutes: number;
     unitPrice: number;
-    participant: { name: string; phone?: string; email?: string; notes?: string };
+    participant: { name: string; phone?: string; email?: string; notes?: string; customerId?: string };
     isPrimary: boolean;
   }) {
     const scheduledAt = buildZonedIsoForWallClock(
@@ -1041,6 +1122,8 @@ export default function GroupBookingsScreen() {
       customer_name: args.participant.name.trim(),
       customer_phone: args.participant.phone?.trim() || undefined,
       customer_email: args.participant.email?.trim() || undefined,
+      // Link to existing customer record when provider searched for this client
+      customer_id: args.participant.customerId || undefined,
       scheduled_at: scheduledAt,
       location_type: args.locationType,
       location_id: args.locationType === "at_salon" ? (args.locationId || undefined) : undefined,
@@ -1256,6 +1339,7 @@ export default function GroupBookingsScreen() {
         serviceId: p.serviceId || createForm.serviceId,
         addOnIds: p.addOnIds,
         notes: p.notes.trim(),
+        customerId: p.customerId,
       }))
       .filter((p) => p.name.length > 0 || p.phone.length > 0 || p.email.length > 0);
     if (participantsToCreate.length === 0) {
@@ -1377,7 +1461,7 @@ export default function GroupBookingsScreen() {
           products: idx === 0 ? createProducts : [],
           durationMinutes: line.durationMinutes,
           unitPrice: line.price,
-          participant,
+          participant: { ...participant, customerId: participant.customerId },
           isPrimary: idx === 0,
         });
         if (res.error) {
@@ -3038,12 +3122,22 @@ export default function GroupBookingsScreen() {
               These people become real bookings immediately, so calendar availability and accounting stay aligned.
             </Text>
 
-            {createParticipants.map((participant, idx) => (
+            {createParticipants.map((participant, idx) => {
+              const search = participantSearchMap[participant.id] || { query: "", results: [], loading: false, open: false };
+              const isLast = idx === createParticipants.length - 1;
+              return (
               <View key={participant.id} style={twStyle("mb-3 rounded-xl border border-purple-100 bg-white p-3")}>
                 <View style={twStyle("mb-2 flex-row items-center justify-between")}>
-                  <Text style={twStyle("text-xs font-semibold uppercase text-gray-400")}>
-                    Participant {idx + 1}
-                  </Text>
+                  <View style={twStyle("flex-row items-center gap-2")}>
+                    <Text style={twStyle("text-xs font-semibold uppercase text-gray-400")}>
+                      Participant {idx + 1}
+                    </Text>
+                    {participant.customerId ? (
+                      <View style={twStyle("rounded-full bg-purple-50 border border-purple-200 px-2 py-0.5")}>
+                        <Text style={twStyle("text-[10px] font-medium text-purple-700")}>Existing client</Text>
+                      </View>
+                    ) : null}
+                  </View>
                   <TouchableOpacity
                     onPress={() => removeCreateParticipantRow(participant.id)}
                     hitSlop={8}
@@ -3053,6 +3147,57 @@ export default function GroupBookingsScreen() {
                     <Ionicons name="close-circle-outline" size={18} color="#ef4444" />
                   </TouchableOpacity>
                 </View>
+
+                {/* ── Client search ── */}
+                {!participant.customerId ? (
+                  <View style={twStyle("mb-2")}>
+                    <View style={twStyle("flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-3 py-2")}>
+                      <Ionicons name="search-outline" size={14} color="#9ca3af" />
+                      <TextInput
+                        style={[twStyle("ml-2 flex-1 text-sm text-gray-900"), { paddingVertical: 0 }]}
+                        placeholder="Search existing client…"
+                        placeholderTextColor="#9ca3af"
+                        value={search.query}
+                        onChangeText={(q) => searchClientsForParticipant(participant.id, q)}
+                        autoCapitalize="words"
+                        returnKeyType="search"
+                        accessibilityLabel={`Search clients for participant ${idx + 1}`}
+                      />
+                      {search.loading && <ActivityIndicator size="small" color="#7c3aed" />}
+                    </View>
+                    {search.open && search.results.length > 0 && (
+                      <View style={twStyle("mt-1 rounded-xl border border-gray-100 bg-white overflow-hidden")}>
+                        {search.results.map((c) => (
+                          <TouchableOpacity
+                            key={c.id}
+                            style={twStyle("flex-row items-center border-b border-gray-50 px-3 py-2.5")}
+                            onPress={() => selectClientForParticipant(participant.id, c)}
+                            accessibilityLabel={`Select ${c.full_name}`}
+                          >
+                            <Avatar name={c.full_name} size="sm" />
+                            <View style={twStyle("ml-2 flex-1")}>
+                              <Text style={twStyle("text-sm font-medium text-gray-900")}>{c.full_name}</Text>
+                              <Text style={twStyle("text-xs text-gray-500")} numberOfLines={1}>{c.phone || c.email || "—"}</Text>
+                            </View>
+                            <Ionicons name="chevron-forward" size={14} color="#d1d5db" />
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    )}
+                    {search.open && !search.loading && search.results.length === 0 && search.query.length >= 2 && (
+                      <Text style={twStyle("mt-1 text-center text-xs text-gray-400")}>No existing clients found — enter details below.</Text>
+                    )}
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    onPress={() => updateCreateParticipantRow(participant.id, { customerId: undefined })}
+                    style={twStyle("mb-2")}
+                    accessibilityRole="button"
+                  >
+                    <Text style={twStyle("text-xs text-purple-600 underline")}>Change client</Text>
+                  </TouchableOpacity>
+                )}
+
                 <Text style={twStyle("mb-1 text-xs font-medium text-gray-600")}>Name *</Text>
                 <TextInput
                   style={twStyle("mb-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900")}
@@ -3156,8 +3301,21 @@ export default function GroupBookingsScreen() {
                   placeholderTextColor="#9ca3af"
                   multiline
                 />
+                {/* Add another participant inline after the last row */}
+                {isLast && (
+                  <TouchableOpacity
+                    onPress={addCreateParticipantRow}
+                    style={twStyle("mt-3 flex-row items-center justify-center rounded-xl border border-dashed border-purple-200 py-2")}
+                    accessibilityRole="button"
+                    accessibilityLabel="Add another participant"
+                  >
+                    <Ionicons name="add" size={14} color="#7c3aed" />
+                    <Text style={twStyle("ml-1 text-xs font-semibold text-purple-700")}>Add another participant</Text>
+                  </TouchableOpacity>
+                )}
               </View>
-            ))}
+            );})}
+
           </View>
 
           <ActionButton

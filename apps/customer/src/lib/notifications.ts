@@ -263,6 +263,7 @@ export function navigateFromNotification(n: Notification): void {
     nType === "payment_pending" ||
     nType === "payment_method_expired" ||
     nType === "partial_payment_received" ||
+    nType === "provider_on_way" ||
     nType === "provider_arrived" ||
     nType === "booking_confirmed" ||
     nType === "booking_cancelled" ||

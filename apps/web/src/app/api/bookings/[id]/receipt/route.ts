@@ -212,6 +212,7 @@ export async function GET(
           price,
           currency,
           guest_name,
+          scheduled_start_at,
           tax_snapshot,
           offering:offerings(
             id,
@@ -219,14 +220,14 @@ export async function GET(
             price,
             duration_minutes
           )
-        ),
+        ).order(scheduled_start_at, { ascending: true }),
         booking_addons:booking_addons(
           id,
           addon_id,
           addon_name,
           quantity,
           price
-        ),
+        ).order(id, { ascending: true }),
         booking_products:booking_products(
           id,
           product_id,
@@ -240,7 +241,7 @@ export async function GET(
             retail_price
           ),
           product_variant:product_variants(id, option_values)
-        ),
+        ).order(id, { ascending: true }),
         booking_payments:booking_payments(
           id,
           amount,
@@ -301,7 +302,7 @@ export async function GET(
       );
     }
 
-    const booking = bookingRaw as BookingReceiptRow;
+    const booking = bookingRaw as unknown as BookingReceiptRow;
 
     const tenantRegion = booking.tenant_id
       ? await getTenantRegionConfig(booking.tenant_id)
@@ -352,7 +353,7 @@ export async function GET(
 
     const linesSubtotal = servicesTotal + productsTotal + addonsTotal;
     const finances = computeBookingReceiptFinancials({
-      row: bookingRaw as Record<string, unknown>,
+      row: bookingRaw as unknown as Record<string, unknown>,
       linesSubtotal,
       booking_payments: (booking.booking_payments || []) as Array<{ amount?: number; status?: string }>,
       additional_charges: booking.additional_charges || [],
@@ -436,17 +437,28 @@ export async function GET(
       },
     };
 
-    const bRaw = bookingRaw as Record<string, unknown>;
+    const bRaw = bookingRaw as unknown as Record<string, unknown>;
     const depositRequired = Boolean(bRaw.deposit_required);
     const depositAmount = Number(bRaw.deposit_amount || 0);
     const depositPercentage = Number(bRaw.deposit_percentage || 0);
     const paymentOption = (bRaw.payment_option as string) || "full";
 
+    // Lifecycle coherence (mirrors the customer/provider detail endpoints):
+    // resolve a stuck `pending_payment` booking with settled payment to
+    // `pending` so the receipt header reads "Awaiting confirmation" rather
+    // than "Payment pending".
+    const _receiptPaymentStatus = String(booking.payment_status ?? "").toLowerCase();
+    const _receiptStatus =
+      booking.status === "pending_payment" &&
+      (_receiptPaymentStatus === "paid" || _receiptPaymentStatus === "partially_paid")
+        ? "pending"
+        : booking.status;
+
     const receipt = {
       package_id: packageActuallyApplied ? rawPkgId : null,
       package_name: packageActuallyApplied ? (pkgJoined?.name ?? null) : null,
       booking_number: booking.booking_number,
-      status: booking.status,
+      status: _receiptStatus,
       booking_date: booking.created_at,
       service_date: booking.scheduled_at,
       customer: booking.customer,

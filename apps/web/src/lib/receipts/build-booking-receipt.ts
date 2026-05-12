@@ -38,8 +38,17 @@ export function computeBookingReceiptFinancials(input: {
 }) {
   const b = input.row;
   const storedSubtotal = b.subtotal != null ? Number(b.subtotal) : null;
+  // Use stored value when it is a valid, positive number.
+  // Fall back to linesSubtotal when stored is null/NaN OR stored is 0 but there
+  // are priced line items — the latter indicates a data-drift scenario (e.g. a
+  // migration bug, a zero-price write from a code path that has since been fixed)
+  // where the row-level subtotal was never correctly set but per-line prices are
+  // present.  A genuinely free booking has linesSubtotal === 0 too, so the result
+  // is still 0 in that case.
   const subtotal =
-    storedSubtotal != null && !Number.isNaN(storedSubtotal) ? storedSubtotal : input.linesSubtotal;
+    storedSubtotal != null && !Number.isNaN(storedSubtotal) && (storedSubtotal > 0 || input.linesSubtotal === 0)
+      ? storedSubtotal
+      : input.linesSubtotal;
 
   const tax = Number(b.tax_amount ?? 0);
   // Use || so platform_fee_amount of 0 falls through to legacy service_fee_amount (customer + provider parity).
