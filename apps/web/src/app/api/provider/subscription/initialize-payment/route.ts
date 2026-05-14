@@ -145,6 +145,9 @@ export async function POST(request: NextRequest) {
     const inAppParam = in_app ? "&in_app=1" : "";
     const callbackUrl = `${process.env.NEXT_PUBLIC_APP_URL || ""}/provider/subscription?payment_success=true&order_id=${order.id}${inAppParam}`;
 
+    const subAppUrl = process.env.NEXT_PUBLIC_APP_URL || "";
+    const subCancelAction = `${subAppUrl}/provider/subscription?payment_cancelled=1`;
+
     const paystackData = await initializePaystackTransaction({
       email,
       amountInSmallestUnit: convertToSmallestUnit(amount),
@@ -158,6 +161,7 @@ export async function POST(request: NextRequest) {
         billing_period,
         customer_code: customerCode,
         kind: "subscription_authorization",
+        cancel_action: subCancelAction,
       },
       tenantId,
     });

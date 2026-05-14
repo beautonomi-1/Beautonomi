@@ -217,7 +217,18 @@ export interface Appointment {
   scheduled_time: string;
   duration_minutes: number;
   price: number;
-  status: "booked" | "pending" | "started" | "completed" | "cancelled" | "no_show" | "confirmed" | "in_progress";
+  status:
+    | "booked"
+    | "pending"
+    | "pending_payment"
+    | "started"
+    | "completed"
+    | "cancelled"
+    | "no_show"
+    | "confirmed"
+    | "in_progress"
+    | "waiting"
+    | "checked_in";
   /** Raw DB booking.status when returned by provider APIs (pending = awaiting provider confirmation). */
   db_status?: "pending" | "confirmed" | "in_progress" | "completed" | "cancelled" | "no_show";
   // Updated tracking (for booking details timeline)

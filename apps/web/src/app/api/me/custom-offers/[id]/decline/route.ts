@@ -9,7 +9,7 @@ import {
   errorResponse,
 } from "@/lib/supabase/api-helpers";
 import { patchCustomOfferMessageAttachments } from "@/lib/custom-offers/sync-offer-message-attachments";
-import { sendTemplateNotification } from "@/lib/notifications/onesignal";
+import { getNotificationTemplate, sendTemplateNotification, sendToUser } from "@/lib/notifications/onesignal";
 
 /**
  * POST /api/me/custom-offers/[id]/decline
@@ -88,17 +88,36 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           const fn = (prof as { full_name?: string } | null)?.full_name;
           if (fn && fn.trim()) customerName = fn.trim();
 
-          await sendTemplateNotification(
-            "provider_custom_offer_declined",
-            [providerUserId],
-            {
-              customer_name: customerName,
-              offer_id: id,
-              request_id: offer.request_id ?? "",
-            },
-            ["push", "email"],
-            { appType: "provider" },
-          );
+          const template = await getNotificationTemplate("provider_custom_offer_declined");
+          if (template?.enabled) {
+            await sendTemplateNotification(
+              "provider_custom_offer_declined",
+              [providerUserId],
+              {
+                customer_name: customerName,
+                offer_id: id,
+                request_id: offer.request_id ?? "",
+              },
+              template.channels || ["push", "email"],
+              { appType: "provider" },
+            );
+          } else {
+            await sendToUser(
+              providerUserId,
+              {
+                title: "Custom offer declined",
+                message: `${customerName} declined your custom offer.`,
+                data: {
+                  type: "provider_custom_offer_declined",
+                  offer_id: id,
+                  request_id: offer.request_id ?? "",
+                },
+                url: `/provider/custom-requests/${offer.request_id ?? ""}`,
+              },
+              ["push", "email"],
+              { appType: "provider" },
+            );
+          }
         }
       } catch (e) {
         console.warn("[decline] notify provider failed:", e);

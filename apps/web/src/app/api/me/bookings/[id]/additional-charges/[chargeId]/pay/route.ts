@@ -99,6 +99,10 @@ export async function POST(
     const amountInSmallestUnit = convertToSmallestUnit(amount);
     const reference = generateTransactionReference("charge", chargeId);
 
+    const chargeAppUrl = process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com";
+    const chargeCallbackUrl = `${chargeAppUrl}/account-settings/bookings/${bookingId}/payment-callback?charge_id=${chargeId}`;
+    const chargeCancelAction = `${chargeAppUrl}/account-settings/bookings/${bookingId}?charge_cancelled=1&charge_id=${chargeId}`;
+
     // Initialize Paystack transaction
     const paystackResponse = await initializePaystackTransaction({
       email: customer.email,
@@ -113,8 +117,9 @@ export async function POST(
         charge_description: charge.description,
         customer_id: user.id,
         payment_type: "additional_charge",
+        cancel_action: chargeCancelAction,
       },
-      callback_url: `${process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com"}/account-settings/bookings/${bookingId}/payment-callback?charge_id=${chargeId}`,
+      callback_url: chargeCallbackUrl,
       tenantId: paymentTenantId,
     });
 

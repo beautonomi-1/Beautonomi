@@ -120,6 +120,10 @@ export async function POST(
     const amountInSmallestUnit = convertToSmallestUnit(remaining);
     const reference = generateTransactionReference("remaining", bookingId);
 
+    const remainingAppUrl = process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com";
+    const remainingCallbackUrl = `${remainingAppUrl}/account-settings/bookings/${bookingId}/payment-callback?pay_remaining=1`;
+    const remainingCancelAction = `${remainingAppUrl}/account-settings/bookings/${bookingId}?pay_remaining_cancelled=1`;
+
     const paystackResponse = await initializePaystackTransaction({
       email: customer.email,
       amountInSmallestUnit,
@@ -130,8 +134,9 @@ export async function POST(
         booking_number: booking.booking_number || booking.ref_number || bookingId.slice(0, 8).toUpperCase(),
         customer_id: user.id,
         payment_type: "booking_remaining",
+        cancel_action: remainingCancelAction,
       },
-      callback_url: `${process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com"}/account-settings/bookings/${bookingId}/payment-callback?pay_remaining=1`,
+      callback_url: remainingCallbackUrl,
       tenantId: paymentTenantId,
     });
 

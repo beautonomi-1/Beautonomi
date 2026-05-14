@@ -19,10 +19,10 @@ import {
   Trophy,
   CreditCard,
 } from "lucide-react";
-import { getGoogleCalendarUrl } from "@/lib/calendar/ics";
+import { getGoogleCalendarUrl, getOutlookCalendarUrl } from "@/lib/calendar/ics";
 import type { Booking } from "@/types/beautonomi";
 import { formatBookingDateInTimeZone, formatBookingTimeInTimeZone } from "@/lib/bookings/display-datetime";
-import { getBookingLifecycleDisplay, getBookingPaymentDisplay } from "@beautonomi/utils";
+import { getBookingLifecycleDisplay, getBookingPaymentDisplay, resolveEffectiveBookingLifecycleStatus } from "@beautonomi/utils";
 
 /** Booking as returned from GET /api/me/bookings/:id (includes expanded provider, location, etc.) */
 type BookingDetail = Booking & {
@@ -261,21 +261,36 @@ export default function BookingDetailPage() {
     );
   }
 
+  // Resolve a coherent lifecycle status: a row stuck at `pending_payment` with
+  // payment already settled should behave (and look) like `pending` everywhere
+  // on this screen — same active state, same cancel/reschedule rules, same
+  // badge colour. Uses the shared helper from `@beautonomi/utils` (same rules as
+  // `getBookingLifecycleDisplay`).
+  const _detailPaymentStatus = booking.payment_status;
+  const _detailOutstanding = booking.outstanding_balance;
+  const _detailEffectiveStatus = resolveEffectiveBookingLifecycleStatus({
+    status: booking.status,
+    paymentStatus: _detailPaymentStatus,
+    outstandingBalance: _detailOutstanding,
+  }) as Booking["status"];
+
   const canCancel =
-    booking.status === "confirmed" || booking.status === "pending";
-  const canReschedule = booking.status === "confirmed";
-  const isActive = ["pending", "confirmed", "started", "in_progress"].includes(booking.status);
+    _detailEffectiveStatus === "confirmed" || _detailEffectiveStatus === "pending";
+  const canReschedule = _detailEffectiveStatus === "confirmed" || _detailEffectiveStatus === "pending";
+  const isActive = ["pending", "confirmed", "started", "in_progress"].includes(_detailEffectiveStatus);
   const isCashBooking =
     (booking as unknown as Record<string, unknown>).payment_provider === "cash";
   const canPayOutstandingOnline =
     !isCashBooking &&
-    booking.status !== "cancelled" &&
+    _detailEffectiveStatus !== "cancelled" &&
     (booking.outstanding_balance ?? 0) > 0 &&
     (booking.payment_status === "pending" || booking.payment_status === "partially_paid");
   const providerName = booking.provider?.business_name ?? "your provider";
   const lifecycleDisplay = getBookingLifecycleDisplay({
     status: booking.status,
     providerName,
+    paymentStatus: _detailPaymentStatus,
+    outstandingBalance: _detailOutstanding,
   });
   const paymentDisplay = getBookingPaymentDisplay({
     paymentStatus: booking.payment_status,
@@ -366,13 +381,13 @@ export default function BookingDetailPage() {
           </h1>
           <span
             className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
-              booking.status === "confirmed"
+              _detailEffectiveStatus === "confirmed"
                 ? "bg-green-100 text-green-800"
-                : booking.status === "pending"
+                : _detailEffectiveStatus === "pending"
                 ? "bg-yellow-100 text-yellow-800"
-                : booking.status === "cancelled"
+                : _detailEffectiveStatus === "cancelled"
                 ? "bg-red-100 text-red-800"
-                : booking.status === "completed"
+                : _detailEffectiveStatus === "completed"
                 ? "bg-blue-100 text-blue-800"
                 : "bg-gray-100 text-gray-800"
             }`}
@@ -453,10 +468,12 @@ export default function BookingDetailPage() {
 
       {calendarEvent && booking.status !== "cancelled" && (
         <div className="bg-white border border-gray-200 rounded-lg p-4 md:p-6 mb-6">
-          <h2 className="text-lg md:text-xl font-semibold mb-3 text-gray-900">Add to your calendar</h2>
-          <p className="text-sm text-gray-600 mb-3">
-            Open in Google Calendar in your browser, or download an .ics file for Apple Calendar, Outlook, and other apps
-            (same options as the mobile app&apos;s calendar flow, adapted for web).
+          <h2 className="text-lg md:text-xl font-semibold mb-2 text-gray-900">Add this booking to your calendar</h2>
+          <p className="text-sm text-gray-600 mb-4">
+            Use <span className="font-medium text-gray-800">Google Calendar</span> or{" "}
+            <span className="font-medium text-gray-800">Outlook</span> in your browser, or download a calendar file (
+            <span className="font-medium text-gray-800">.ics</span>) for Apple Calendar, the Outlook desktop app, and
+            anything else that imports events.
           </p>
           <div className="flex flex-wrap gap-2">
             <a
@@ -469,12 +486,21 @@ export default function BookingDetailPage() {
               Google Calendar
             </a>
             <a
+              href={getOutlookCalendarUrl(calendarEvent)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center min-h-[40px] px-4 py-2 rounded-lg font-medium border border-gray-200 hover:bg-gray-50 transition-colors"
+            >
+              <Mail className="w-4 h-4 mr-1" />
+              Outlook (web)
+            </a>
+            <a
               href={`/api/me/bookings/${bookingId}/calendar.ics`}
               download
               className="inline-flex items-center justify-center min-h-[40px] px-4 py-2 rounded-lg font-medium border border-gray-200 hover:bg-gray-50 transition-colors"
             >
               <Calendar className="w-4 h-4 mr-1" />
-              Download .ics file
+              Calendar file (.ics)
             </a>
           </div>
         </div>

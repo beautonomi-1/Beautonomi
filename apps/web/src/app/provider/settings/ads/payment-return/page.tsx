@@ -14,6 +14,7 @@ function AdsPaymentReturnInner() {
   const sp = useSearchParams();
   const router = useRouter();
   const success = sp.get("success") === "1";
+  const cancelled = sp.get("cancelled") === "1";
   const orderId = sp.get("order_id") ?? "";
   const context = sp.get("context") ?? "web";
   const reference = sp.get("reference") || sp.get("trxref") || "";
@@ -83,7 +84,16 @@ function AdsPaymentReturnInner() {
   if (!success) {
     return (
       <div className="mx-auto max-w-md px-6 py-16 text-center">
-        <p className="text-gray-700">This payment return link is invalid or incomplete.</p>
+        {cancelled ? (
+          <>
+            <h1 className="text-xl font-semibold text-gray-900">Payment cancelled</h1>
+            <p className="mt-3 text-sm text-gray-600">
+              You cancelled the payment. No charge was made. You can try again from your Ads dashboard.
+            </p>
+          </>
+        ) : (
+          <p className="text-gray-700">This payment return link is invalid or incomplete.</p>
+        )}
         <Link href="/provider/settings/ads" className="mt-6 inline-block text-pink-600 underline">
           Back to Ads
         </Link>

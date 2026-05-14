@@ -113,7 +113,9 @@ export async function POST(
     }
 
     const reference = generateTransactionReference("additional", charge_id);
-    const callbackUrl = `${process.env.NEXT_PUBLIC_APP_URL || ""}/account-settings/bookings/${encodeURIComponent(id)}/payment-callback?charge_id=${encodeURIComponent(charge_id)}`;
+    const addlAppUrl = process.env.NEXT_PUBLIC_APP_URL || "";
+    const callbackUrl = `${addlAppUrl}/account-settings/bookings/${encodeURIComponent(id)}/payment-callback?charge_id=${encodeURIComponent(charge_id)}`;
+    const addlCancelAction = `${addlAppUrl}/account-settings/bookings/${encodeURIComponent(id)}?charge_cancelled=1&charge_id=${encodeURIComponent(charge_id)}`;
 
     const paystackData = await initializePaystackTransaction({
       email,
@@ -125,6 +127,7 @@ export async function POST(
         booking_id: id,
         additional_charge_id: charge_id,
         customer_id: bookingData.customer_id,
+        cancel_action: addlCancelAction,
       },
       tenantId: paymentTenantId,
     });

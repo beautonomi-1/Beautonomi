@@ -1143,6 +1143,7 @@ const CRITICAL_TRANSACTIONAL_TEMPLATES = new Set<string>([
   "payment_pending",
   "payment_method_expired",
   "partial_payment_received",
+  "additional_charge_requested",
   "refund_processed",
   "invoice_generated",
   "receipt_sent",

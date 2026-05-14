@@ -158,12 +158,29 @@ export default function SubscriptionPage() {
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const isPaymentSuccess = urlParams.get("payment_success") === "true";
+    const isPaymentCancelled = urlParams.get("payment_cancelled") === "1";
     const inApp = urlParams.get("in_app") === "1";
     const reference = urlParams.get("reference") || urlParams.get("trxref");
 
     let timeout: ReturnType<typeof setTimeout> | undefined;
 
     async function init() {
+      if (isPaymentCancelled) {
+        // User cancelled on the Paystack hosted page — clean URL and show info toast.
+        const cleanSearch = inApp ? "?in_app=1" : "";
+        window.history.replaceState({}, "", window.location.pathname + cleanSearch);
+        toast.info("Payment was cancelled. No charge was made.");
+        await loadData();
+
+        if (inApp && typeof window !== "undefined") {
+          const win = window as Window & { ReactNativeWebView?: { postMessage: (data: string) => void } };
+          win.ReactNativeWebView?.postMessage(
+            JSON.stringify({ type: "subscription_cancelled" }),
+          );
+        }
+        return;
+      }
+
       if (isPaymentSuccess && reference) {
         try {
           await fetcher.get(`/api/paystack/verify?reference=${encodeURIComponent(reference)}`);

@@ -389,15 +389,26 @@ async function handleGetProviderBookings(request: NextRequest) {
         paymentStatus: booking.payment_status,
       });
 
+      // If a booking is stuck in pending_payment but payment is confirmed, normalise
+      // the status for this response. This mirrors the detail-endpoint repair so the
+      // list card and detail page always agree.
+      const _listRawStatus = booking.status as string | undefined;
+      const _listPaymentStatus = (booking as Record<string, unknown>).payment_status as string | undefined;
+      const _listNormalizedStatus =
+        _listRawStatus === "pending_payment" &&
+        (_listPaymentStatus === "paid" || _listPaymentStatus === "partially_paid")
+          ? "pending"
+          : (_listRawStatus ?? "pending");
+
       return {
         id: booking.id,
         booking_number: booking.booking_number,
         customer_id: booking.customer_id,
         version: booking.version || 0,
         provider_id: booking.provider_id,
-        status: mapStatusFromDatabase(booking.status),
+        status: mapStatusFromDatabase(_listNormalizedStatus),
         /** DB enum so clients can style pending vs confirmed even when `status` is mapped to `booked`. */
-        db_status: booking.status,
+        db_status: _listNormalizedStatus,
         location_type: booking.location_type,
         location_id: booking.location_id,
         // Construct address object (include at-home / house-call detail fields for calendar + list UIs)
@@ -1675,10 +1686,24 @@ async function handleCreateProviderBooking(request: NextRequest) {
       if (error) {
         console.error("Error inserting booking:", error);
         console.error("Error details:", JSON.stringify(error, null, 2));
+        // §Group-booking-audit 2026-05: surface the real Postgres message
+        // (validate_booking_total CHECK violation, FK violation, etc.) so
+        // provider clients — especially the mobile group-creation flow —
+        // can report exactly which constraint blocked the booking instead
+        // of just "database error". Strip stack/internal hints by limiting
+        // to the well-known PostgresError-style fields.
+        const dbCode = (error as { code?: string }).code ?? null;
+        const dbMessage = (error as { message?: string }).message ?? "";
+        const dbHint = (error as { hint?: string }).hint ?? null;
+        const dbDetail = (error as { details?: string }).details ?? null;
+        const friendlyMessage = dbMessage
+          ? `Could not save the booking: ${dbMessage}`
+          : "A database error prevented the booking from being saved. Please try again.";
         return errorResponse(
-          "A database error prevented the booking from being saved. Please try again.",
-          "DB_ERROR",
+          friendlyMessage,
+          dbCode === "23514" ? "CHECK_VIOLATION" : dbCode === "23503" ? "FK_VIOLATION" : "DB_ERROR",
           500,
+          { db_code: dbCode, hint: dbHint, detail: dbDetail },
         );
       }
       if (!insertedBooking) {

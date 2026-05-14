@@ -51,6 +51,9 @@ import {
   type CheckoutProductVariant,
   variantOptionTypeLabel,
 } from "@/lib/booking-checkout-products";
+import { markReferenceProcessing } from "@/lib/paystack-verify-guard";
+import { pollBookingPaymentSettled } from "@/hooks/usePaystackPayment";
+import { getAnalyticsClient } from "@/lib/analytics-rn";
 
 /** Unwrap nested API envelope from GET /api/paystack/verify (booking path). */
 function bookingPaidFromPaystackVerifyBody(body: unknown): boolean {
@@ -2222,10 +2225,34 @@ export default function BookCheckoutScreen() {
             paymentUrl,
             ExpoLinking.createURL("book/paystack"),
           );
+
+          if (authResult.type === "cancel" || authResult.type === "dismiss") {
+            setProcessingPayment(false);
+            getAnalyticsClient()?.track("payment_cancelled", {
+              booking_id: bookingId,
+              reason: authResult.type,
+              source: "customer_mobile",
+            });
+            Alert.alert(t("checkout.paymentCancelledTitle", "Payment cancelled"), t("checkout.paymentCancelledBody", "You cancelled the payment. Your booking has not been confirmed."));
+            return;
+          }
+
           if (authResult.type === "success" && authResult.url) {
             try {
               const parsed = ExpoLinking.parse(authResult.url);
               const query = parsed.queryParams ?? {};
+
+              if (query.cancelled === "1") {
+                setProcessingPayment(false);
+                getAnalyticsClient()?.track("payment_cancelled", {
+                  booking_id: bookingId,
+                  reason: "cancel_action",
+                  source: "customer_mobile",
+                });
+                Alert.alert(t("checkout.paymentCancelledTitle", "Payment cancelled"), t("checkout.paymentCancelledBody", "You cancelled the payment. Your booking has not been confirmed."));
+                return;
+              }
+
               const ref = query.reference ?? query.trxref;
               returnedPaymentReference = Array.isArray(ref)
                 ? ref[0] ?? returnedPaymentReference
@@ -2237,12 +2264,21 @@ export default function BookCheckoutScreen() {
             }
           }
         } else {
-          await WebBrowser.openBrowserAsync(paymentUrl, {
-            presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
-          });
+          // Full redirect on Expo Web — matches the working pattern in custom-offer-checkout.tsx
+          if (typeof window !== "undefined") {
+            window.location.href = paymentUrl;
+          }
+          return;
         }
         setProcessingMessage(t("checkout.confirmingPayment"));
         if (saveCard) refreshCards();
+
+        // Mark reference so the deep-link route screen (book/paystack.tsx) skips
+        // a duplicate verify call if it also fires (cold-start / fast tap).
+        if (returnedPaymentReference) {
+          markReferenceProcessing(returnedPaymentReference);
+        }
+
         let paymentConfirmed = false;
         if (returnedPaymentReference) {
           const verifyRes = await api
@@ -2256,45 +2292,17 @@ export default function BookCheckoutScreen() {
         let confirmedBookingId = bookingId;
         let confirmedBookingStatus: string | undefined;
         if (!paymentConfirmed && bookingId) {
-          // §Final-audit 2026-04: poll BOTH `status` and `payment_status`
-          // to avoid false-positive confirms (booking can flip to
-          // `confirmed` via a non-payment path) and false-negatives
-          // (gateway marked paid but status still `pending_payment` until
-          // the webhook completes). Completion requires payment_status in
-          // {paid, partially_paid} OR a non-pending booking status.
-          const MAX_ATTEMPTS = 10;
-          const POLL_INTERVAL_MS = 2000;
-          for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+          paymentConfirmed = await pollBookingPaymentSettled(
+            bookingId,
+            (url) => api.get(url),
+          );
+          if (paymentConfirmed) {
+            confirmedBookingId = bookingId;
+            // Fetch status for downstream use — non-blocking
             try {
-              const check = await api.get<{
-                status?: string;
-                payment_status?: string;
-                id?: string;
-              }>(`/api/me/bookings/${encodeURIComponent(bookingId)}`);
-              const checkData = (check.data ?? null) as
-                | { status?: string; payment_status?: string }
-                | null;
-              const statusVal = checkData?.status;
-              const paymentStatusVal = checkData?.payment_status;
-              const paidByGateway =
-                paymentStatusVal === "paid" ||
-                paymentStatusVal === "partially_paid";
-              const statusConfirmed =
-                !!statusVal &&
-                statusVal !== "pending_payment" &&
-                statusVal !== "pending";
-              if (paidByGateway || statusConfirmed) {
-                confirmedBookingId = bookingId;
-                confirmedBookingStatus = statusVal;
-                paymentConfirmed = true;
-                break;
-              }
-            } catch {
-              // ignore poll errors
-            }
-            if (attempt < MAX_ATTEMPTS - 1) {
-              await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
-            }
+              const check = await api.get<{ status?: string }>(`/api/me/bookings/${encodeURIComponent(bookingId)}`);
+              confirmedBookingStatus = (check.data as { status?: string } | null)?.status;
+            } catch { /* ignore */ }
           }
         }
 

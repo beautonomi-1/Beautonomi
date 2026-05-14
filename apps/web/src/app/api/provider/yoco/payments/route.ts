@@ -370,12 +370,14 @@ export async function POST(request: Request) {
     const receiptUrl = (yocoPayment as { receipt_url?: string; receiptUrl?: string }).receipt_url
       ?? (yocoPayment as { receipt_url?: string; receiptUrl?: string }).receiptUrl;
 
+    const yocoId = yocoPayment.id || yocoPayment.paymentId;
+
     const { data: payment, error: insertError } = await supabase
       .from("provider_yoco_payments")
       .insert({
         provider_id: provider.id,
         device_id: device.id,
-        yoco_payment_id: yocoPayment.id || yocoPayment.paymentId,
+        yoco_payment_id: yocoId,
         yoco_device_id: yocoDeviceId,
         amount: amountInCents,
         currency,
@@ -394,11 +396,13 @@ export async function POST(request: Request) {
       .single();
 
     if (insertError || !payment) {
-      if ((insertError as { code?: string } | null)?.code === "23505" && (yocoPayment.id || yocoPayment.paymentId)) {
+
+      // Duplicate-key: Yoco payment already stored — return the existing row.
+      if ((insertError as { code?: string } | null)?.code === "23505" && yocoId) {
         const { data: existingPayment } = await supabase
           .from("provider_yoco_payments")
           .select("*")
-          .eq("yoco_payment_id", yocoPayment.id || yocoPayment.paymentId)
+          .eq("yoco_payment_id", yocoId)
           .maybeSingle();
         if (existingPayment) {
           const existing = existingPayment as {
@@ -434,8 +438,24 @@ export async function POST(request: Request) {
           });
         }
       }
-      console.error("Error storing payment:", insertError);
-      // Payment was processed by Yoco but failed to store - log for manual reconciliation
+
+      // Non-duplicate DB failure: the payment was processed by Yoco but failed to record.
+      // Return an error with the Yoco payment ID so the provider or ops team can reconcile manually.
+      console.error("Error storing Yoco payment (yoco_payment_id=%s):", yocoId, insertError);
+      return NextResponse.json(
+        {
+          data: null,
+          error: {
+            message:
+              "Payment was processed by the terminal but could not be recorded. " +
+              "Note this reference for your records and contact support: " +
+              String(yocoId ?? "unknown"),
+            code: "PAYMENT_RECORD_ERROR",
+            yoco_payment_id: yocoId ?? null,
+          },
+        },
+        { status: 500 },
+      );
     }
 
     await supabase
@@ -447,10 +467,9 @@ export async function POST(request: Request) {
       })
       .eq("id", device.id);
 
-    const yocoId = yocoPayment.id || yocoPayment.paymentId;
     return NextResponse.json({
       data: {
-        id: payment?.id || `temp-${Date.now()}`,
+        id: payment.id,
         yoco_payment_id: yocoId,
         reference: yocoId,
         device_id: device.id,

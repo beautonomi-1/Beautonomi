@@ -18,6 +18,7 @@ import * as ExpoLinking from "expo-linking";
 import { Colors } from "@/constants/colors";
 import { useResponsive } from "@/hooks/useResponsive";
 import { api } from "@/lib/api-client";
+import { markReferenceProcessing } from "@/lib/paystack-verify-guard";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { useAuth } from "@/providers/AuthProvider";
 import { haptic } from "@/lib/haptics";
@@ -154,11 +155,9 @@ export default function CustomOfferCheckoutScreen() {
       return;
     }
     setOffer(row);
-    const reqDeposit = Boolean(row.provider_deposit?.requires_deposit);
-    if (reqDeposit && row.status !== "paid") {
-      setPaymentOption("deposit");
-    }
-    const q = await api.get<QuotePayload>(`/api/me/custom-offers/${offerId}/quote?payment_option=${reqDeposit && row.status !== "paid" ? "deposit" : "full"}`);
+    const q = await api.get<QuotePayload>(
+      `/api/me/custom-offers/${offerId}/quote?payment_option=full`,
+    );
     if (!q.error && q.data) setQuote(q.data);
     else setQuote(null);
     setLoading(false);
@@ -244,7 +243,10 @@ export default function CustomOfferCheckoutScreen() {
 
         const data = res.data;
         if (data?.charged) {
-          const bookingId = await pollForBooking();
+          // When the server returns booking_id directly (inline finalize path),
+          // skip polling entirely and navigate immediately.
+          const directBookingId = (data as { booking_id?: string | null }).booking_id ?? null;
+          const bookingId = directBookingId ?? (await pollForBooking());
           await refreshSavedCards().catch(() => {});
           haptic.success();
           setProcessingPayment(false);
@@ -294,11 +296,25 @@ export default function CustomOfferCheckoutScreen() {
 
         setProcessingMessage("Confirming payment…");
         const browserResult = await WebBrowser.openAuthSessionAsync(url, paystackReturnPath ?? "");
+
+        if (browserResult.type === "cancel" || browserResult.type === "dismiss") {
+          setProcessingPayment(false);
+          Alert.alert("Payment cancelled", "You cancelled the payment.");
+          return;
+        }
+
         let reference: string | null = null;
         if (browserResult.type === "success" && browserResult.url) {
           try {
             const parsed = ExpoLinking.parse(browserResult.url);
             const q = parsed.queryParams ?? {};
+
+            if (q.cancelled === "1") {
+              setProcessingPayment(false);
+              Alert.alert("Payment cancelled", "You cancelled the payment.");
+              return;
+            }
+
             const ref = q.reference ?? q.trxref;
             reference = Array.isArray(ref) ? ref[0] ?? null : typeof ref === "string" ? ref : null;
           } catch {
@@ -306,6 +322,7 @@ export default function CustomOfferCheckoutScreen() {
           }
         }
         if (reference) {
+          markReferenceProcessing(reference);
           await api.get(`/api/paystack/verify?reference=${encodeURIComponent(reference)}`).catch(() => {});
         }
 
@@ -640,6 +657,9 @@ export default function CustomOfferCheckoutScreen() {
                   backgroundColor: paymentOption === "full" ? "rgba(255,0,119,0.06)" : "#fff",
                 }}
               >
+                <Text style={{ fontSize: 10, fontWeight: "700", color: PRIMARY, textAlign: "center", marginBottom: 4 }}>
+                  Recommended
+                </Text>
                 <Text style={{ fontWeight: "700", color: "#111827", textAlign: "center" }}>Pay in full</Text>
               </TouchableOpacity>
               <TouchableOpacity

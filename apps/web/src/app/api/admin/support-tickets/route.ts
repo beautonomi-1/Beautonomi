@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, handleApiError } from "@/lib/supabase/api-helpers";
 import type { UserRole } from "@/types/beautonomi";
 import { SUPPORT_TICKET_STAFF_ROLES } from "@/lib/support/support-ticket-staff";
@@ -14,8 +14,8 @@ function sanitizeIlikeTerm(raw: string) {
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await getSupabaseServer(request);
     await requireRoleInApi([...SUPPORT_TICKET_STAFF_ROLES] as UserRole[], request);
+    const supabase = getSupabaseAdmin();
 
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status");
@@ -108,8 +108,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await getSupabaseServer(request);
     const { user } = await requireRoleInApi([...SUPPORT_TICKET_STAFF_ROLES] as UserRole[], request);
+    const supabase = getSupabaseAdmin();
 
     const body = await request.json();
     const {

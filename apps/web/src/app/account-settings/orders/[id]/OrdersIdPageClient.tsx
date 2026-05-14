@@ -12,6 +12,7 @@ import {
   isWithinProductReturnWindow,
   PRODUCT_RETURN_WINDOW_DAYS,
 } from "@/lib/ecommerce/product-return-eligibility";
+import { fetcher, FetchError } from "@/lib/http/fetcher";
 
 interface ProductOrder {
   id: string;
@@ -135,17 +136,30 @@ export default function OrderDetailPage() {
       setLoading(true);
       setErrorMsg(null);
       try {
-        const res = await fetch(`/api/me/orders/${params.id}`, { cache: "no-store" });
-        const json = await res.json();
+        const json = await fetcher.get<{
+          data: { order: ProductOrder } | null;
+          error?: { message?: string; code?: string } | string;
+        }>(`/api/me/orders/${params.id}`, { staleTimeMs: 0 });
         if (json.data?.order) {
           setOrder(json.data.order);
-        } else if (res.status === 404) {
-          setErrorMsg("Order not found");
         } else {
-          setErrorMsg(json.error || "Something went wrong loading this order.");
+          const err = json.error;
+          const msg =
+            typeof err === "string"
+              ? err
+              : err && typeof err === "object" && "message" in err && typeof err.message === "string"
+                ? err.message
+                : "Something went wrong loading this order.";
+          setErrorMsg(msg);
         }
-      } catch {
-        setErrorMsg("Unable to connect. Please check your network and try again.");
+      } catch (e) {
+        if (e instanceof FetchError && e.status === 404) {
+          setErrorMsg("Order not found");
+        } else if (e instanceof FetchError) {
+          setErrorMsg(e.message || "Something went wrong loading this order.");
+        } else {
+          setErrorMsg("Unable to connect. Please check your network and try again.");
+        }
       }
       setLoading(false);
     })();
@@ -190,32 +204,36 @@ export default function OrderDetailPage() {
     setPaying(true);
     setErrorMsg(null);
     try {
-      const res = await fetch("/api/paystack/initialize", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email,
-          amount: Math.round(onlineAmountDue * 100),
-          metadata: {
-            product_order_id: order.id,
-            order_number: order.order_number,
-            type: "product_order",
-          },
-        }),
+      const cancelledPath = `/shop/cancelled?order_id=${encodeURIComponent(order.id)}&order_number=${encodeURIComponent(order.order_number)}`;
+      const payRes = await fetcher.post<{
+        data: { authorization_url: string; reference: string } | null;
+      }>("/api/paystack/initialize", {
+        email,
+        amount: Math.round(onlineAmountDue * 100),
+        metadata: {
+          product_order_id: order.id,
+          order_number: order.order_number,
+          type: "product_order",
+          cancel_action: cancelledPath,
+        },
       });
-      const json = await res.json().catch(() => ({}));
-      const url = json?.data?.authorization_url;
-      if (!res.ok || !url) {
-        const message =
-          json?.error?.message ||
-          json?.message ||
-          "We could not start payment for this order. Please try again.";
-        setErrorMsg(message);
+      const url = payRes?.data?.authorization_url;
+      if (!url) {
+        setErrorMsg("We could not start payment for this order. Please try again.");
         return;
       }
       window.location.href = url;
-    } catch {
-      setErrorMsg("Unable to start payment. Please check your network and try again.");
+    } catch (e) {
+      if (e instanceof FetchError) {
+        setErrorMsg(
+          e.message ||
+            (e.status === 403
+              ? "We could not verify this request. Refresh the page and try again."
+              : "We could not start payment for this order. Please try again."),
+        );
+      } else {
+        setErrorMsg("Unable to start payment. Please check your network and try again.");
+      }
     } finally {
       setPaying(false);
     }

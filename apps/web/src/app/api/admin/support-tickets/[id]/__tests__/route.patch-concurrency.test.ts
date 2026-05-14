@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 const mockRequireRoleInApi = vi.fn();
-const mockGetSupabaseServer = vi.fn();
+const mockGetSupabaseAdmin = vi.fn();
 
 vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/supabase/api-helpers")>();
@@ -12,8 +12,8 @@ vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
   };
 });
 
-vi.mock("@/lib/supabase/server", () => ({
-  getSupabaseServer: (...args: unknown[]) => mockGetSupabaseServer(...args),
+vi.mock("@/lib/supabase/admin", () => ({
+  getSupabaseAdmin: () => mockGetSupabaseAdmin(),
 }));
 
 vi.mock("@/lib/notifications/notification-service", () => ({
@@ -49,7 +49,7 @@ describe("PATCH /api/admin/support-tickets/[id] concurrency", () => {
       }),
     };
 
-    mockGetSupabaseServer.mockResolvedValue({
+    mockGetSupabaseAdmin.mockReturnValue({
       from: vi.fn(() => ({
         select: vi.fn(() => selectChain),
       })),

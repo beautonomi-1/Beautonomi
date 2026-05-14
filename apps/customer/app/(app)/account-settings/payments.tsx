@@ -157,10 +157,14 @@ export default function PaymentsScreen() {
         return;
       }
       const browserResult = await WebBrowser.openAuthSessionAsync(url, callbackUrl);
+      if (browserResult.type === "cancel" || browserResult.type === "dismiss") {
+        return;
+      }
       if (browserResult.type === "success" && browserResult.url) {
         try {
           const parsed = ExpoLinking.parse(browserResult.url);
           const query = parsed.queryParams ?? {};
+          if (query.cancelled === "1") return;
           const returnedRef = query.reference ?? query.trxref;
           reference = Array.isArray(returnedRef)
             ? returnedRef[0] ?? reference

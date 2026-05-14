@@ -4,9 +4,19 @@ import { Stack, router, useLocalSearchParams } from "expo-router";
 import { useTranslation } from "@beautonomi/i18n";
 import { Colors } from "@/constants/colors";
 import { api } from "@/lib/api-client";
+import { isReferenceProcessing, clearReferenceProcessing } from "@/lib/paystack-verify-guard";
 
 function pickRef(params: Record<string, string | string[] | undefined>): string {
   const raw = params.reference ?? params.trxref;
+  const v = typeof raw === "string" ? raw : Array.isArray(raw) ? raw[0] : "";
+  return typeof v === "string" ? v.trim() : "";
+}
+
+function pickParam(
+  params: Record<string, string | string[] | undefined>,
+  key: string,
+): string {
+  const raw = params[key];
   const v = typeof raw === "string" ? raw : Array.isArray(raw) ? raw[0] : "";
   return typeof v === "string" ? v.trim() : "";
 }
@@ -30,11 +40,32 @@ export default function MembershipPaystackReturnScreen() {
   const { t } = useTranslation();
   const params = useLocalSearchParams();
   const reference = useMemo(() => pickRef(params as Record<string, string | string[] | undefined>), [params]);
+  const cancelledFlag = useMemo(
+    () => pickParam(params as Record<string, string | string[] | undefined>, "cancelled"),
+    [params],
+  );
   const confirming = t("customer.mobile.screens.partnerProfile.membershipPaystackConfirming") as string;
   const returning = t("customer.mobile.screens.partnerProfile.membershipPaystackReturning") as string;
 
   useEffect(() => {
-    let cancelled = false;
+    let aborted = false;
+
+    if (cancelledFlag === "1") {
+      router.replace("/(app)/(tabs)/explore" as never);
+      return;
+    }
+
+    if (reference && isReferenceProcessing(reference)) {
+      clearReferenceProcessing(reference);
+      const t = setTimeout(() => {
+        if (!aborted) router.replace("/(app)/(tabs)/explore" as never);
+      }, 5000);
+      return () => {
+        aborted = true;
+        clearTimeout(t);
+      };
+    }
+
     (async () => {
       if (!reference) {
         router.replace("/(app)/(tabs)/explore" as never);
@@ -42,7 +73,7 @@ export default function MembershipPaystackReturnScreen() {
       }
       try {
         const res = await api.get<unknown>(`/api/paystack/verify?reference=${encodeURIComponent(reference)}`);
-        if (cancelled) return;
+        if (aborted) return;
         const status = unwrapVerifyStatus(res.data);
         if (status === "success") {
           router.replace("/(app)/(tabs)/explore" as never);
@@ -51,12 +82,12 @@ export default function MembershipPaystackReturnScreen() {
       } catch {
         /* fall through */
       }
-      if (!cancelled) router.replace("/(app)/(tabs)/explore" as never);
+      if (!aborted) router.replace("/(app)/(tabs)/explore" as never);
     })();
     return () => {
-      cancelled = true;
+      aborted = true;
     };
-  }, [reference]);
+  }, [reference, cancelledFlag]);
 
   return (
     <>

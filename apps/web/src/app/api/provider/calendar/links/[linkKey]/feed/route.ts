@@ -57,7 +57,12 @@ export async function GET(
     .eq("provider_id", link.provider_id)
     .gte("scheduled_at", from)
     .lte("scheduled_at", to)
-    .in("status", ["pending", "confirmed", "in_progress"]);
+    // Include `pending_payment` so the provider's subscribed calendar shows
+    // bookings whose customer has just initiated payment but the lifecycle
+    // status hasn't yet advanced (migration 595 will advance once the
+    // payment trigger fires; the feed should not omit those rows in the
+    // meantime).
+    .in("status", ["pending", "pending_payment", "confirmed", "in_progress"]);
 
   if (locationId) {
     q = q.eq("location_id", locationId);

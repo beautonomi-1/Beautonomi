@@ -9,7 +9,10 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 /**
  * GET /api/public/gift-cards/validate?code=XXX
  *
- * Authenticated validation endpoint for gift cards.
+ * Authenticated validation (balance lookup). Uses **cookies (web)** or
+ * **Authorization: Bearer** (Expo customer app) — pass `request` into
+ * `getSupabaseServer` so mobile sessions resolve.
+ *
  * Returns: { valid, balance, currency, message }
  */
 export async function GET(request: Request) {
@@ -35,7 +38,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ valid: false, message: "Gift card code is required" }, { status: 400 });
     }
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const {
       data: { user },
       error: userError,

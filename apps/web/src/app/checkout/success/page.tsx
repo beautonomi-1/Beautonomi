@@ -96,18 +96,37 @@ function CheckoutSuccessContent() {
     void run();
   }, [isWaitlist, isCustomOffer, paystackReference, bookingId]);
 
-  /** Custom-offer Paystack return: trigger verify so booking finalizes without waiting only on webhooks. */
+  /** Custom-offer Paystack return: trigger verify so booking finalizes, then immediately probe for booking_id. */
   useEffect(() => {
     if (!isCustomOffer || !offerId) return;
     const ref = paystackReference?.trim();
     if (!ref || customOfferVerifyStarted.current) return;
     customOfferVerifyStarted.current = true;
-    void fetch(`/api/paystack/verify?reference=${encodeURIComponent(ref)}`, {
-      credentials: "include",
-      headers: { Accept: "application/json" },
-    }).catch(() => {
-      customOfferVerifyStarted.current = false;
-    });
+    const run = async () => {
+      try {
+        await fetch(`/api/paystack/verify?reference=${encodeURIComponent(ref)}`, {
+          credentials: "include",
+          headers: { Accept: "application/json" },
+        });
+        // Immediately probe offer after verify — the inline finalize means
+        // booking_id may already be set by the time the fetch resolves.
+        const offerRes = await fetch(`/api/me/custom-offers/${encodeURIComponent(offerId)}`, {
+          credentials: "include",
+          headers: { Accept: "application/json" },
+        });
+        if (offerRes.ok) {
+          const json = await offerRes.json();
+          const bid = (json?.data ?? json)?.booking_id;
+          if (typeof bid === "string" && bid.length > 0) {
+            setCustomOfferBookingId(bid);
+            setCustomOfferPollingComplete(true);
+          }
+        }
+      } catch {
+        customOfferVerifyStarted.current = false;
+      }
+    };
+    void run();
   }, [isCustomOffer, offerId, paystackReference]);
 
   /** Realtime: booking_id appears as soon as the webhook / verify path finishes. */
@@ -560,6 +579,11 @@ function CheckoutSuccessContent() {
             tip > 0 ||
             giftCard > 0;
           if (!hasAnyLine && total <= 0) return null;
+          // Show Subtotal whenever other breakdown lines are present — a 0-subtotal
+          // with a positive total is confusing (customers paid something but the
+          // summary looks empty). The fallback in /api/me/bookings/[id] already
+          // recovers the correct value from line items, so this is a safety net.
+          const showSubtotal = sub > 0 || hasAnyLine;
           return (
             <div
               className="rounded-3xl border overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500 delay-125"
@@ -571,7 +595,7 @@ function CheckoutSuccessContent() {
                 </p>
               </div>
               <div className="px-6 py-5 space-y-1.5 text-sm">
-                {sub > 0 && (
+                {showSubtotal && (
                   <div className="flex justify-between" style={{ color: TEXT_SECONDARY }}>
                     <span>Subtotal</span>
                     <span>{formatMoney(sub, cur)}</span>

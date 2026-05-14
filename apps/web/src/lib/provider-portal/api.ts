@@ -4604,12 +4604,13 @@ export class ProviderApiClient implements ProviderApi {
   async startJourney(appointmentId: string, estimatedArrival?: string): Promise<Appointment> {
     try {
       const { fetcher } = await import("@/lib/http/fetcher");
-      const response = await fetcher.post<{ data: { booking: any } }>(
+      const response = await fetcher.post<{ data: { booking?: any; group_booking?: any } }>(
         `/api/provider/bookings/${appointmentId}/start-journey`,
         { estimated_arrival: estimatedArrival }
       );
-      // Transform booking to appointment format
-      return this.transformBookingToAppointment(response.data.booking);
+      return this.transformBookingToAppointment(
+        response.data.booking ?? response.data.group_booking,
+      );
     } catch (error) {
       console.error("Failed to start journey:", error);
       throw error;
@@ -4620,12 +4621,14 @@ export class ProviderApiClient implements ProviderApi {
     try {
       const { fetcher } = await import("@/lib/http/fetcher");
       const bookingId = rootBookingId(appointmentId);
-      const response = await fetcher.post<{ data: { booking: any; otp: string | null; qr_code: any; verification_code?: string } }>(
+      const response = await fetcher.post<{ data: { booking?: any; group_booking?: any; otp: string | null; qr_code: any; verification_code?: string } }>(
         `/api/provider/bookings/${bookingId}/arrive`,
         { latitude, longitude }
       );
       return {
-        appointment: this.transformBookingToAppointment(response.data.booking),
+        appointment: this.transformBookingToAppointment(
+          response.data.booking ?? response.data.group_booking,
+        ),
         otp: response.data.otp || null,
         qr_code: response.data.qr_code || null,
       };
@@ -4638,11 +4641,14 @@ export class ProviderApiClient implements ProviderApi {
   async startService(appointmentId: string): Promise<Appointment> {
     try {
       const { fetcher } = await import("@/lib/http/fetcher");
-      const bookingId = rootBookingId(appointmentId);
-      const response = await fetcher.post<{ data: { booking: any } }>(
-        `/api/provider/bookings/${bookingId}/start-service`
+      // Keep the original appointment id (e.g. `group:UUID`) so the API can
+      // route to the right handler; rootBookingId would strip the prefix.
+      const response = await fetcher.post<{ data: { booking?: any; group_booking?: any } }>(
+        `/api/provider/bookings/${appointmentId}/start-service`
       );
-      return this.transformBookingToAppointment(response.data.booking);
+      return this.transformBookingToAppointment(
+        response.data.booking ?? response.data.group_booking,
+      );
     } catch (error) {
       console.error("Failed to start service:", error);
       throw error;
@@ -4652,11 +4658,12 @@ export class ProviderApiClient implements ProviderApi {
   async completeService(appointmentId: string): Promise<Appointment> {
     try {
       const { fetcher } = await import("@/lib/http/fetcher");
-      const bookingId = rootBookingId(appointmentId);
-      const response = await fetcher.post<{ data: { booking: any } }>(
-        `/api/provider/bookings/${bookingId}/complete-service`
+      const response = await fetcher.post<{ data: { booking?: any; group_booking?: any } }>(
+        `/api/provider/bookings/${appointmentId}/complete-service`
       );
-      return this.transformBookingToAppointment(response.data.booking);
+      return this.transformBookingToAppointment(
+        response.data.booking ?? response.data.group_booking,
+      );
     } catch (error) {
       console.error("Failed to complete service:", error);
       throw error;
@@ -4664,14 +4671,29 @@ export class ProviderApiClient implements ProviderApi {
   }
 
   private transformBookingToAppointment(booking: any): Appointment {
+    // §Group-booking-audit 2026-05: group action endpoints used to 307-redirect
+    // to `/api/provider/group-bookings/[id]?action=...` whose response wraps the
+    // updated record under `group_booking` (not `booking`). When callers fed
+    // that `response.data.booking` (undefined) into this transform it threw
+    // `Cannot read properties of undefined (reading 'status')`. Guard with a
+    // friendly fallback shape so the start/complete/mark-paid flows surface a
+    // clear error instead of crashing the calendar.
+    if (!booking || typeof booking !== "object") {
+      throw new Error(
+        "Appointment update succeeded, but the API did not return a booking record. Refresh the list to see the latest status.",
+      );
+    }
     const { status, db_status } = this.mapAppointmentStatusFromBooking({
       status: booking.status,
       db_status: booking.db_status,
     });
+    const totalPriceRaw = booking.total_amount ?? booking.subtotal ?? booking.total_price ?? 0;
+    const totalPriceNum =
+      typeof totalPriceRaw === "number" ? totalPriceRaw : parseFloat(String(totalPriceRaw));
     return {
       id: booking.id,
-      ref_number: booking.booking_number,
-      client_name: booking.customer_name || "",
+      ref_number: booking.booking_number || booking.ref_number,
+      client_name: booking.customer_name || booking.title || "",
       service_id: booking.service_id || "",
       service_name: booking.service_name || "",
       team_member_id: booking.staff_id || "",
@@ -4679,7 +4701,7 @@ export class ProviderApiClient implements ProviderApi {
       scheduled_date: booking.scheduled_at?.split("T")[0] || "",
       scheduled_time: booking.scheduled_at?.split("T")[1]?.substring(0, 5) || "",
       duration_minutes: booking.duration_minutes || 60,
-      price: parseFloat(booking.total_amount || booking.subtotal || 0),
+      price: Number.isFinite(totalPriceNum) ? totalPriceNum : 0,
       status,
       created_by: booking.created_by || "",
       created_date: booking.created_at || new Date().toISOString(),

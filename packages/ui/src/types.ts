@@ -19,7 +19,8 @@ export interface ButtonProps {
   size?: ButtonSize;
   loading?: boolean;
   disabled?: boolean;
-  children: ReactNode;
+  /** Omitted when `loading` is true (spinner replaces label). */
+  children?: ReactNode;
   onPress?: () => void;
 }
 

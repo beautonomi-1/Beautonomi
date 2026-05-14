@@ -12,6 +12,7 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import type { PublicProviderCard } from "@/types/beautonomi";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { buildAdReachKey, runAdsAuction, recordAdImpressions } from "@/lib/ads/auction";
+import { getProviderIdsForGlobalCategory } from "@/lib/categories/provider-ids-for-global-category";
 
 export const dynamic = "force-dynamic";
 // Increase timeout for this route (Next.js default is 10s, we need more for parallel queries)
@@ -160,25 +161,21 @@ export async function GET(request: Request) {
       if (categoryData) {
         categoryId = categoryData.id;
         console.log(`Found category "${categoryData.name}" (${categoryId}) for slug "${categorySlug}"`);
-        
-        // Get provider IDs associated with this category
-        const { data: associations, error: assocError } = await supabase
-          .from("provider_global_category_associations")
-          .select("provider_id, providers!inner(tenant_id)")
-          .eq("global_category_id", categoryId)
-          .eq("providers.tenant_id", tenantId);
-        
-        if (assocError) {
-          console.error(`Error fetching associations for category ${categoryId}:`, assocError);
-        }
-        
-        if (associations && associations.length > 0) {
-          providerIdsForCategory = associations.map((a: any) => a.provider_id);
-          console.log(`Found ${providerIdsForCategory.length} providers associated with category "${categorySlug}"`);
-        } else {
-          // No providers in this category, return empty results
+
+        // Same discovery rules as GET /api/public/search ?category= — associations
+        // plus providers with active offerings linked to this global category.
+        try {
+          providerIdsForCategory = await getProviderIdsForGlobalCategory({
+            supabase,
+            globalCategoryId: categoryId,
+            tenantId,
+          });
+          console.log(
+            `Found ${providerIdsForCategory.length} providers for category "${categorySlug}" (associations + offerings)`,
+          );
+        } catch (assocErr) {
+          console.error(`Error fetching providers for category ${categoryId}:`, assocErr);
           providerIdsForCategory = [];
-          console.log(`No providers found for category "${categorySlug}"`);
         }
       } else {
         console.warn(`Category with slug "${categorySlug}" not found or inactive`);

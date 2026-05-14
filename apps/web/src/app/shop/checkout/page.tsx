@@ -280,6 +280,7 @@ export default function ProductCheckoutPage() {
       }
 
       // Initialize Paystack for remaining amount
+      const cancelledPath = `/shop/cancelled?order_id=${encodeURIComponent(order.id)}&order_number=${encodeURIComponent(order.order_number)}`;
       const payRes = await fetcher.post<{
         data: { authorization_url: string; reference: string };
       }>("/api/paystack/initialize", {
@@ -289,6 +290,7 @@ export default function ProductCheckoutPage() {
           product_order_id: order.id,
           order_number: order.order_number,
           type: "product_order",
+          cancel_action: cancelledPath,
         },
       });
 

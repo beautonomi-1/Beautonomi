@@ -13,6 +13,7 @@ import {
   Platform,
   Modal,
   KeyboardAvoidingView,
+  type ViewStyle,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
@@ -104,28 +105,42 @@ function formatTime(s: string, tz?: string | null) {
   }
 }
 
-function formatDateForCalendar(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
-}
-
 function parseValidDate(value: unknown): Date | null {
   if (typeof value !== "string" || !value) return null;
   const parsed = new Date(value);
   return Number.isFinite(parsed.getTime()) ? parsed : null;
 }
 
+/** UTC `YYYYMMDDTHHmmss` with trailing `Z` — matches `apps/web/src/lib/calendar/ics.ts` and server `.ics` generation. */
+function formatInstantForGoogleCalendar(d: Date): string {
+  return d.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+}
+
 function getGoogleCalendarUrl(params: { title: string; description: string; location: string; start: Date; end: Date }): string {
-  const startStr = formatDateForCalendar(params.start);
-  const endStr = formatDateForCalendar(params.end);
+  const startSeg = formatInstantForGoogleCalendar(params.start).replace("Z", "");
+  const endSeg = formatInstantForGoogleCalendar(params.end).replace("Z", "");
   const q = new URLSearchParams({
     action: "TEMPLATE",
     text: params.title,
-    dates: `${startStr}/${endStr}`,
+    dates: `${startSeg}/${endSeg}`,
     location: params.location,
-    details: params.description,
+    ...(params.description ? { details: params.description } : {}),
   });
   return `https://calendar.google.com/calendar/render?${q.toString()}`;
+}
+
+/** Outlook on the web — same deep-link pattern as `apps/web` checkout & account booking pages. */
+function getOutlookCalendarUrl(params: { title: string; description: string; location: string; start: Date; end: Date }): string {
+  const q = new URLSearchParams({
+    path: "/calendar/action/compose",
+    rru: "addevent",
+    subject: params.title,
+    startdt: params.start.toISOString(),
+    enddt: params.end.toISOString(),
+    body: params.description,
+    location: params.location,
+  });
+  return `https://outlook.live.com/owa/0/?${q.toString()}`;
 }
 
 const COMPLETION_MODAL_STORAGE_KEY = "booking_completion_modal_seen_";
@@ -299,7 +314,8 @@ export default function BookingDetailScreen() {
     if (!id || !booking) return;
     const locType = booking.location_type;
     const stage = booking.current_stage;
-    const enRoute = stage === "provider_on_way" || !!(booking as { provider_en_route_at?: string }).provider_en_route_at;
+    // Stage is source of truth — `provider_en_route_at` stays set after the visit (historical), so it must not imply "still en route".
+    const enRoute = stage === "provider_on_way";
     const arrived = stage === "provider_arrived" || !!(booking as { provider_arrived_at?: string }).provider_arrived_at;
     const terminal = booking.status === "cancelled" || booking.status === "completed";
     if (locType !== "at_home" || !enRoute || arrived || terminal) return;
@@ -359,6 +375,7 @@ export default function BookingDetailScreen() {
   const needsPinDisplay =
     booking &&
     booking.location_type === "at_home" &&
+    !["completed", "cancelled", "no_show"].includes(booking.status) &&
     (booking.current_stage === "provider_arrived" || (booking as any).provider_arrived_at) &&
     !booking.arrival_otp_verified &&
     !!booking.arrival_otp;
@@ -380,6 +397,7 @@ export default function BookingDetailScreen() {
   const needsQrDisplay =
     !!booking &&
     booking.location_type === "at_home" &&
+    !["completed", "cancelled", "no_show"].includes(booking.status) &&
     (booking.current_stage === "provider_arrived" || !!(booking as any).provider_arrived_at) &&
     !booking.arrival_otp_verified &&
     !(booking as { qr_code_verified?: boolean }).qr_code_verified &&
@@ -830,7 +848,7 @@ export default function BookingDetailScreen() {
       await FileSystem.writeAsStringAsync(fileUri, icsText, { encoding: FileSystem.EncodingType.UTF8 });
       await Share.share({
         url: fileUri,
-        title: "Share calendar file",
+        title: bd("calendarIcsCta"),
         message: Platform.OS === "android" ? icsText : undefined,
       });
     } catch (e) {
@@ -967,29 +985,47 @@ export default function BookingDetailScreen() {
   if (!booking) return null;
 
   const provider = booking.provider;
+  // Effective lifecycle: if payment has actually settled, treat a stuck
+  // `pending_payment` row as `pending` for all UI rules on this screen.
+  const _bookingOutstanding = (booking as any).outstanding_balance;
+  const _effectiveStatus =
+    booking.status === "pending_payment" &&
+    ((booking.payment_status === "paid" || booking.payment_status === "partially_paid") ||
+      (typeof _bookingOutstanding === "number" && _bookingOutstanding <= 0.005))
+      ? "pending"
+      : booking.status;
   const lifecycleDisplay = getBookingLifecycleDisplay({
     status: booking.status,
     providerName: provider?.business_name,
+    paymentStatus: booking.payment_status,
+    outstandingBalance: _bookingOutstanding,
   });
   const paymentDisplay = getBookingPaymentDisplay({
     paymentStatus: booking.payment_status,
     paymentProvider: (booking as any).payment_provider,
-    outstandingBalance: (booking as any).outstanding_balance,
+    outstandingBalance: _bookingOutstanding,
     paymentOption: (booking as any).payment_option,
     depositRequired: (booking as any).deposit_required,
   });
   const location = booking.location;
   const services = booking.services ?? booking.booking_services ?? [];
-  const isActive = ["pending", "confirmed", "started", "in_progress", "waiting", "checked_in"].includes(booking.status);
-  const canCancel = isActive && !["started", "in_progress", "waiting", "checked_in"].includes(booking.status);
+  const isActive = ["pending", "confirmed", "started", "in_progress", "waiting", "checked_in"].includes(_effectiveStatus);
+  const canCancel = isActive && !["started", "in_progress", "waiting", "checked_in"].includes(_effectiveStatus);
   const bookingRef = booking.booking_number || (booking.id ? booking.id.slice(0, 8).toUpperCase() : "");
   const helpUrl = (onDemandConfig?.ui_copy as Record<string, string> | undefined)?.waiting_help_url?.trim();
 
   const isAtHome = booking.location_type === "at_home";
+  /** House-call journey is over — do not treat historical timestamps as "still en route". */
+  const isHouseCallJourneyClosed = ["completed", "cancelled", "no_show"].includes(_effectiveStatus);
   const isProviderEnRoute =
-    booking.current_stage === "provider_on_way" || !!(booking as any).provider_en_route_at;
+    isAtHome &&
+    !isHouseCallJourneyClosed &&
+    booking.current_stage === "provider_on_way";
   const isProviderArrived =
-    booking.current_stage === "provider_arrived" || !!(booking as any).provider_arrived_at;
+    isAtHome &&
+    !isHouseCallJourneyClosed &&
+    (booking.current_stage === "provider_arrived" ||
+      !!(booking as { provider_arrived_at?: string | null }).provider_arrived_at);
   const estimatedArrival = parseValidDate((booking as any).estimated_arrival);
 
   const detailAddonRows = Array.isArray((booking as any).addons)
@@ -1883,7 +1919,7 @@ export default function BookingDetailScreen() {
                   color: booking.status === "confirmed" ? "#15803d" : booking.status === "cancelled" || booking.status === "no_show" ? "#B91C1C" : booking.status === "completed" ? "#1D4ED8" : booking.status === "in_progress" || booking.status === "started" ? "#7C3AED" : booking.status === "waiting" || booking.status === "checked_in" ? "#0369A1" : "#B45309",
                 }}
               >
-                {booking.status === "no_show" ? "No show" : booking.status === "in_progress" || booking.status === "started" ? "In progress" : booking.status === "checked_in" ? "Checked in" : booking.status}
+                {booking.status === "no_show" ? "No show" : booking.status === "in_progress" || booking.status === "started" ? "In progress" : booking.status === "checked_in" ? "Checked in" : booking.status === "pending_payment" ? "Payment pending" : booking.status === "pending" ? "Awaiting confirmation" : lifecycleDisplay.label}
               </Text>
             </View>
           </View>
@@ -2187,64 +2223,83 @@ export default function BookingDetailScreen() {
           const visitLine = isAtHome ? "House call" : "In-salon visit";
           const calDesc = `Booking #${booking.booking_number ?? ""}\n${visitLine}\n${(services || []).map((s: any) => `${s.offering_name ?? s.service_name ?? "Service"} (${s.duration_minutes ?? 0} min)`).join("\n")}`;
           if (!calStart || !calEnd) return null;
+          const calPayload = { title: calTitle, description: calDesc, location: calLocation, start: calStart, end: calEnd };
+          const chipRow: ViewStyle = {
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "center",
+            paddingVertical: 12,
+            paddingHorizontal: 14,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: Colors.gray[200],
+          };
+          const chipPrimary: ViewStyle =
+            Platform.OS !== "web"
+              ? { borderColor: Colors.primary, backgroundColor: Colors.primaryLight }
+              : { borderColor: Colors.gray[200], backgroundColor: "transparent" };
           return (
             <View style={{ marginBottom: 16 }}>
-              <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Add to calendar</Text>
-              <Text style={{ fontSize: 13, color: Colors.gray[600], marginBottom: 10 }}>
-                {Platform.OS === "web"
-                  ? "Open in Google Calendar or download an .ics file."
-                  : "Save directly to your phone calendar, open Google Calendar in the browser, or share an .ics file (e.g. to Outlook)."}
+              <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 6 }}>
+                {bd("calendarSectionTitle")}
+              </Text>
+              <Text style={{ fontSize: 13, color: Colors.gray[600], marginBottom: 12, lineHeight: 18 }}>
+                {Platform.OS === "web" ? bd("calendarSectionSubtitleWeb") : bd("calendarSectionSubtitleNative")}
               </Text>
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-                <TouchableOpacity
-                  onPress={() => {
-                    haptic.light();
-                    Linking.openURL(getGoogleCalendarUrl({ title: calTitle, description: calDesc, location: calLocation, start: calStart, end: calEnd }));
-                  }}
-                  style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 12, paddingHorizontal: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200] }}
-                  accessibilityRole="button"
-                  accessibilityLabel="Add to Google Calendar"
-                >
-                  <Ionicons name="calendar-outline" size={16} color={Colors.gray[700]} style={{ marginRight: 6 }} />
-                  <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>Google Calendar</Text>
-                </TouchableOpacity>
                 {Platform.OS !== "web" ? (
                   <TouchableOpacity
-                    onPress={() =>
-                      void handleSaveToDeviceCalendar({
-                        title: calTitle,
-                        description: calDesc,
-                        location: calLocation,
-                        start: calStart,
-                        end: calEnd,
-                      })
-                    }
+                    onPress={() => void handleSaveToDeviceCalendar(calPayload)}
                     disabled={nativeCalLoading}
-                    style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 12, paddingHorizontal: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200] }}
+                    style={[chipRow, chipPrimary]}
                     accessibilityRole="button"
-                    accessibilityLabel="Save booking to device calendar"
+                    accessibilityLabel={bd("calendarPhoneAppA11y")}
                   >
                     {nativeCalLoading ? (
-                      <ActivityIndicator size="small" color={Colors.gray[700]} style={{ marginRight: 6 }} />
+                      <ActivityIndicator size="small" color={Colors.primary} style={{ marginRight: 6 }} />
                     ) : (
-                      <Ionicons name="add-circle-outline" size={16} color={Colors.gray[700]} style={{ marginRight: 6 }} />
+                      <Ionicons name="phone-portrait-outline" size={16} color={Colors.primary} style={{ marginRight: 6 }} />
                     )}
-                    <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>Save to calendar</Text>
+                    <Text style={{ fontWeight: "600", color: Colors.primary }}>{bd("calendarPhoneAppCta")}</Text>
                   </TouchableOpacity>
                 ) : null}
                 <TouchableOpacity
+                  onPress={() => {
+                    haptic.light();
+                    Linking.openURL(getGoogleCalendarUrl(calPayload));
+                  }}
+                  style={chipRow}
+                  accessibilityRole="button"
+                  accessibilityLabel={bd("calendarGoogleA11y")}
+                >
+                  <Ionicons name="logo-google" size={16} color={Colors.gray[700]} style={{ marginRight: 6 }} />
+                  <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>{bd("calendarGoogleCta")}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => {
+                    haptic.light();
+                    Linking.openURL(getOutlookCalendarUrl(calPayload));
+                  }}
+                  style={chipRow}
+                  accessibilityRole="button"
+                  accessibilityLabel={bd("calendarOutlookA11y")}
+                >
+                  <Ionicons name="mail-outline" size={16} color={Colors.gray[700]} style={{ marginRight: 6 }} />
+                  <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>{bd("calendarOutlookCta")}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
                   onPress={handleAddToCalendarIcs}
                   disabled={icsLoading}
-                  style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 12, paddingHorizontal: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200] }}
+                  style={chipRow}
                   accessibilityRole="button"
-                  accessibilityLabel="Share or download calendar file"
+                  accessibilityLabel={bd("calendarIcsA11y")}
                 >
                   {icsLoading ? (
                     <ActivityIndicator size="small" color={Colors.gray[700]} style={{ marginRight: 6 }} />
                   ) : (
                     <Ionicons name="share-outline" size={16} color={Colors.gray[700]} style={{ marginRight: 6 }} />
                   )}
-                  <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>Share .ics file</Text>
+                  <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>{bd("calendarIcsCta")}</Text>
                 </TouchableOpacity>
               </View>
             </View>

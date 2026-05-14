@@ -235,7 +235,7 @@ export default function PartnerProfileClient({
             <TabsContent value="custom-service" className="mt-0">
               <RequestCustomServicePage
                 providerId={provider.id}
-                acceptsCustomRequests
+                acceptsCustomRequests={provider.accepts_custom_requests ?? true}
                 businessName={provider.business_name}
               />
             </TabsContent>

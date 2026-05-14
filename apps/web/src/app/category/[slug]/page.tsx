@@ -15,6 +15,10 @@ import {
 } from "@/lib/seo/public-site-origin";
 import { isGlobalCategoryIconImageUrl } from "@/lib/icons/global-category-lucide";
 import { withGlobalCategoryIconCacheBust } from "@beautonomi/utils";
+import { createNextRequestFromHeaders } from "@/lib/server/create-next-request";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { getProviderIdsForGlobalCategory } from "@/lib/categories/provider-ids-for-global-category";
 
 type Props = {
   params: Promise<{ slug: string }>;
@@ -86,7 +90,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function CategoryPage({ params }: Props) {
   const { slug } = await params;
-  const supabase = await getSupabaseServer();
+  const req = await createNextRequestFromHeaders(`/category/${slug}`);
+  let supabase: any;
+  try {
+    supabase = getSupabaseAdmin();
+  } catch {
+    supabase = await getSupabaseServer(req);
+  }
 
   // Fetch category with subcategories
   const { data: category, error: categoryError } = await supabase
@@ -110,21 +120,34 @@ export default async function CategoryPage({ params }: Props) {
     notFound();
   }
 
-  // Get category ID to find associated providers
+  // Get category ID to find associated providers (same rules as /api/public/search ?category=)
   const categoryId = category.id;
 
-  // Get provider IDs associated with this category
-  const { data: associations } = await supabase
-    .from("provider_global_category_associations")
-    .select("provider_id")
-    .eq("global_category_id", categoryId);
+  let tenantId: string | null = null;
+  try {
+    tenantId = await resolveTenantIdWithZaFallback(req);
+  } catch {
+    tenantId = null;
+  }
 
-  const providerIds = associations?.map((a) => a.provider_id) || [];
+  let providerIds: string[] = [];
+  if (tenantId) {
+    providerIds = await getProviderIdsForGlobalCategory({
+      supabase,
+      globalCategoryId: categoryId,
+      tenantId,
+    });
+  } else {
+    const { data: associations } = await supabase
+      .from("provider_global_category_associations")
+      .select("provider_id")
+      .eq("global_category_id", categoryId);
+    providerIds = associations?.map((a) => a.provider_id).filter(Boolean) || [];
+  }
 
-  // Fetch providers if we have any associations
   let providers: any[] = [];
   if (providerIds.length > 0) {
-    const { data: providersData } = await supabase
+    let q = supabase
       .from("providers")
       .select(`
         id,
@@ -142,7 +165,10 @@ export default async function CategoryPage({ params }: Props) {
       .eq("status", "active")
       .in("id", providerIds)
       .limit(20);
-
+    if (tenantId) {
+      q = q.eq("tenant_id", tenantId);
+    }
+    const { data: providersData } = await q;
     providers = providersData || [];
   }
 

@@ -411,6 +411,12 @@ export async function processPayment(
         ? clientCb
         : webSuccessUrl;
 
+    const isMobileBookingCallback =
+      callbackUrl.startsWith("customer://") || callbackUrl.startsWith("exp://");
+    const bookingCancelAction = isMobileBookingCallback
+      ? `${callbackUrl}${callbackUrl.includes("?") ? "&" : "?"}cancelled=1`
+      : `${baseUrl}/checkout/cancelled?booking_id=${encodeURIComponent(booking.id)}`;
+
     const savedPaymentMethodId = validatedDraft.payment_method_id ?? null;
     const saveCard = validatedDraft.save_card === true;
     const setAsDefault = validatedDraft.set_as_default === true;
@@ -656,6 +662,7 @@ export async function processPayment(
             hold_id: validatedDraft.hold_id || undefined,
             loyalty_points_used: loyaltyPointsRedeemed > 0 ? loyaltyPointsRedeemed : undefined,
             loyalty_discount_amount: v.loyaltyDiscountAmount > 0 ? v.loyaltyDiscountAmount : undefined,
+            cancel_action: bookingCancelAction,
             ...(recurringSubscribeEligible
               ? { subscribe_recurring_frequency: validatedDraft.subscribe_recurring!.frequency }
               : {}),

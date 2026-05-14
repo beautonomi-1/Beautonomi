@@ -78,6 +78,15 @@ export default function InAppBrowserScreen() {
             title: "Payment not completed",
             message: "The subscription payment did not go through. Check your card funds or try another payment method.",
           });
+          return;
+        }
+        if (raw?.type === "subscription_cancelled") {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          setPaymentResult({
+            status: "failed",
+            title: "Payment cancelled",
+            message: "You cancelled the payment. No charge was made.",
+          });
         }
       } catch {
         // ignore non-JSON messages

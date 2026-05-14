@@ -418,12 +418,12 @@ export default function ProviderBookingDetail() {
         description: chargeDescription.trim(),
         amount: amountNum,
       });
-      toast.success("Additional payment requested");
+      toast.success("Additional charge sent — customer notified");
       setChargeDescription("");
       setChargeAmount("");
       loadAdditionalCharges();
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Failed to request payment");
+      toast.error(err instanceof FetchError ? err.message : "Failed to send additional charge");
     } finally {
       setIsRequestingCharge(false);
     }
@@ -1000,6 +1000,8 @@ export default function ProviderBookingDetail() {
   }
 
   const b = booking;
+  /** Snapshot avoids TS narrowing `status` after `.includes()` checks below (TS 5.x). */
+  const bookingLifecycleStatus = b.status as Booking["status"];
 
   const unpaidChargesTotal = useMemo(
     () => additionalCharges
@@ -1008,14 +1010,16 @@ export default function ProviderBookingDetail() {
     [additionalCharges],
   );
 
-  const isActive = ["pending", "booked", "confirmed"].includes(b.status);
-  const isStarted = ["started", "in_progress"].includes(b.status);
-  const isCancelled = b.status === "cancelled";
-  const isNoShow = b.status === "no_show";
+  const isActive = ["pending", "booked", "confirmed", "waiting", "checked_in"].includes(bookingLifecycleStatus);
+  const isStarted = ["started", "in_progress"].includes(bookingLifecycleStatus);
+  const isCancelled = bookingLifecycleStatus === "cancelled";
+  const isNoShow = bookingLifecycleStatus === "no_show";
+  // "confirmed" means provider has actually confirmed the booking (not just pending/awaiting).
+  const isConfirmedOrLater = ["booked", "confirmed", "waiting", "checked_in", "started", "in_progress"].includes(bookingLifecycleStatus);
   const isAtHome = b.location_type === "at_home";
   const canStartJourney =
     isAtHome &&
-    (b.status === "confirmed" || b.status === "pending") &&
+    (bookingLifecycleStatus === "confirmed" || bookingLifecycleStatus === "booked") &&
     (b.current_stage == null || b.current_stage === "confirmed");
   const canMarkArrived = isAtHome && b.current_stage === "provider_on_way";
   const isEnRoute = isAtHome && b.current_stage === "provider_on_way";
@@ -1024,6 +1028,20 @@ export default function ProviderBookingDetail() {
     b.arrival_otp_verified === true || b.qr_code_verified === true;
   const arrivalOtpPending = b.arrival_otp_pending === true;
   const qrArrivalPending = b.qr_arrival_pending === true;
+  /**
+   * Mirrors `filterInProgressWhenAtHomeVerificationPending` in the provider app so we do not
+   * offer Start Service while PIN/QR is still pending (POST start-service would reject with
+   * VERIFICATION_NOT_COMPLETE when a verification method exists).
+   */
+  const atHomeHouseCallReadyForServiceStart =
+    isAtHome &&
+    b.current_stage === "provider_arrived" &&
+    !(!arrivalVerified && (arrivalOtpPending || qrArrivalPending));
+  /** Same lifecycle gate as provider mobile `allowedStatusTargets` / PATCH policy. */
+  const canStartService =
+    ["confirmed", "booked", "checked_in", "waiting"].includes(bookingLifecycleStatus) &&
+    (!isAtHome || atHomeHouseCallReadyForServiceStart);
+  const canStartServiceInJourney = canStartService && isArrived;
   const totalPaid = b.total_paid ?? 0;
   const totalRefunded = b.total_refunded ?? 0;
   const totalAmount = b.total_amount ?? 0;
@@ -1046,12 +1064,12 @@ export default function ProviderBookingDetail() {
   });
   const netPaidAfterRefunds = totalPaid - totalRefunded;
   const maxRefundable = Math.max(0, netPaidAfterRefunds);
-  const canMarkPaid = outstanding > 0 && (b.status === "completed" || isStarted);
+  const canMarkPaid = outstanding > 0 && (bookingLifecycleStatus === "completed" || isStarted);
   const canRefund = totalPaid > 0 && totalRefunded < totalPaid;
   /** Matches provider app + POST /send-payment-link (API rejects if already paid; needs email/SMS contact) */
   const canSendPaymentLink =
     outstanding > 0 &&
-    b.status !== "cancelled" &&
+    bookingLifecycleStatus !== "cancelled" &&
     b.payment_status !== "paid" &&
     !!(b.customer_email || b.customer_phone);
   const showYocoPayButton = yocoIntegrationEnabled && canMarkPaid;
@@ -1092,16 +1110,30 @@ export default function ProviderBookingDetail() {
             <div className="flex flex-wrap items-center gap-2">
               <span
                 className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
-                  booking.status === "confirmed"
+                  booking.status === "confirmed" || booking.status === "booked"
                     ? "bg-green-100 text-green-800"
                     : booking.status === "pending"
                     ? "bg-yellow-100 text-yellow-800"
                     : booking.status === "cancelled"
                     ? "bg-red-100 text-red-800"
-                    : "bg-blue-100 text-blue-800"
+                    : booking.status === "started" || booking.status === "in_progress"
+                    ? "bg-blue-100 text-blue-800"
+                    : booking.status === "completed"
+                    ? "bg-emerald-100 text-emerald-800"
+                    : booking.status === "no_show"
+                    ? "bg-amber-100 text-amber-800"
+                    : "bg-gray-100 text-gray-800"
                 }`}
               >
-                {booking.status}
+                {booking.status === "booked"
+                  ? "Confirmed"
+                  : booking.status === "started"
+                  ? "In Progress"
+                  : booking.status === "in_progress"
+                  ? "In Progress"
+                  : booking.status === "no_show"
+                  ? "No Show"
+                  : booking.status.charAt(0).toUpperCase() + booking.status.slice(1).replace(/_/g, " ")}
               </span>
               {(booking as any).booking_source === "walk_in" && (
                 <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">Walk-in</span>
@@ -1355,11 +1387,34 @@ export default function ProviderBookingDetail() {
               )}
               {isArrived && (
                 <div className="space-y-3">
-                  {arrivalVerified ? (
-                    <p className="text-sm font-medium text-green-800 rounded-lg bg-green-50 border border-green-200 py-2 px-3">
-                      Customer verified – you can start the service.
-                    </p>
-                  ) : (
+                  <p
+                    className={`text-sm font-medium rounded-lg border py-2 px-3 ${
+                      arrivalVerified
+                        ? "text-green-800 bg-green-50 border-green-200"
+                        : "text-amber-900 bg-amber-50 border-amber-200"
+                    }`}
+                  >
+                    {arrivalVerified
+                      ? "Customer verified – you can start the service."
+                      : "Provider arrived — complete PIN or QR verification when shown below, or start service if none is required."}
+                  </p>
+                  {canStartServiceInJourney && (
+                    <div className="space-y-2">
+                      <Button
+                        type="button"
+                        onClick={() => handleStatusChange("started")}
+                        disabled={isUpdating}
+                        className="min-h-[44px] bg-blue-600 hover:bg-blue-700"
+                      >
+                        Start service
+                      </Button>
+                      <p className="text-xs text-gray-500">
+                        Same action as <span className="font-medium">Start Service</span> in status actions below.
+                        Cancel and no-show stay there.
+                      </p>
+                    </div>
+                  )}
+                  {!arrivalVerified && (
                     <>
                       {arrivalOtpPending && (
                         <div className="rounded-lg bg-blue-50 border border-blue-200 p-4 space-y-3">
@@ -1526,6 +1581,26 @@ export default function ProviderBookingDetail() {
               <p className="text-sm text-gray-500">No services</p>
             )}
           </div>
+          {(booking as ProviderBookingDetail & { custom_offer?: { notes?: string | null; request?: { description?: string | null } | null } | null }).custom_offer &&
+           ((booking as any).custom_offer?.request?.description || (booking as any).custom_offer?.notes) ? (
+            <div className="mt-4 rounded-lg border border-violet-200 bg-violet-50 p-4">
+              <p className="text-xs font-bold text-violet-700 uppercase tracking-wider mb-2 flex items-center gap-1">
+                ✦ Custom Order
+              </p>
+              {(booking as any).custom_offer?.request?.description ? (
+                <div className="mb-2">
+                  <p className="text-xs font-semibold text-violet-600 uppercase tracking-wide mb-1">Client's request</p>
+                  <p className="text-sm text-violet-900 leading-relaxed">{(booking as any).custom_offer.request.description}</p>
+                </div>
+              ) : null}
+              {(booking as any).custom_offer?.notes ? (
+                <div>
+                  <p className="text-xs font-semibold text-violet-600 uppercase tracking-wide mb-1">Your notes</p>
+                  <p className="text-sm text-violet-900 leading-relaxed">{(booking as any).custom_offer.notes}</p>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
         {/* Products */}
@@ -1866,7 +1941,7 @@ export default function ProviderBookingDetail() {
 
           {["in_progress", "completed"].includes(booking.status) && (
             <div className="mt-6 border-t pt-4">
-              <h3 className="font-semibold mb-2">Request additional payment</h3>
+              <h3 className="font-semibold mb-2">Send additional charge</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <Input
                   placeholder="Description"
@@ -1886,7 +1961,7 @@ export default function ProviderBookingDetail() {
                 onClick={handleRequestAdditionalCharge}
                 disabled={isRequestingCharge}
               >
-                {isRequestingCharge ? "Requesting..." : "Request Payment"}
+                {isRequestingCharge ? "Sending…" : "Send additional charge"}
               </Button>
             </div>
           )}
@@ -1979,37 +2054,56 @@ export default function ProviderBookingDetail() {
 
         {/* Status Actions */}
         <div className="flex flex-col sm:flex-row gap-3">
-          {isActive && (
-            <>
-              <Button
-                onClick={() => handleStatusChange("confirmed")}
-                disabled={isUpdating || booking.status === "confirmed"}
-                className="flex-1 bg-green-600 hover:bg-green-700 min-h-[44px] text-sm sm:text-base"
-              >
-                <CheckCircle2 className="w-4 h-4 mr-2" />
-                Confirm
-              </Button>
-              {isAtHome ? (
-                (isArrived || booking.arrival_otp_verified || booking.qr_code_verified) && (
-                  <Button
-                    onClick={() => handleStatusChange("started")}
-                    disabled={isUpdating}
-                    className="flex-1 bg-blue-600 hover:bg-blue-700 min-h-[44px] text-sm sm:text-base"
-                  >
-                    Start Service
-                  </Button>
-                )
-              ) : (
-                <Button
-                  onClick={() => handleStatusChange("started")}
-                  disabled={isUpdating}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 min-h-[44px] text-sm sm:text-base"
-                >
-                  Start Service
-                </Button>
-              )}
-            </>
+          {/* Confirm — only for bookings awaiting provider confirmation */}
+          {bookingLifecycleStatus === "pending" && (
+            <Button
+              onClick={() => handleStatusChange("confirmed")}
+              disabled={isUpdating}
+              className="flex-1 bg-green-600 hover:bg-green-700 min-h-[44px] text-sm sm:text-base"
+            >
+              <CheckCircle2 className="w-4 h-4 mr-2" />
+              Confirm Booking
+            </Button>
           )}
+          {/* Salon physical check-in — only for at-salon bookings (house-calls use Mark arrived).
+              Marks the customer as physically arrived in the waiting room before chair time. */}
+          {!isAtHome && (bookingLifecycleStatus === "confirmed" || bookingLifecycleStatus === "booked") && (
+            <Button
+              onClick={() => handleStatusChange("checked_in")}
+              disabled={isUpdating}
+              variant="outline"
+              className="flex-1 min-h-[44px] text-sm sm:text-base border-primary text-primary hover:bg-primary/10"
+            >
+              <CheckCircle2 className="w-4 h-4 mr-2" />
+              Check in customer
+            </Button>
+          )}
+          {/* Start Service — for confirmed bookings (at-home gated by arrival/verification).
+              Salon can also start service straight from confirmed (skip waiting room) or from checked_in/waiting.
+              At-home uses the same `canStartService` rules as Start service in the At-home visit card. */}
+          {canStartService && (
+            <Button
+              onClick={() => handleStatusChange("started")}
+              disabled={isUpdating}
+              className="flex-1 bg-blue-600 hover:bg-blue-700 min-h-[44px] text-sm sm:text-base"
+            >
+              Start Service
+            </Button>
+          )}
+          {/* Recovery: at-home booking is stuck in a salon-only status (legacy data or
+              wrong-button mishap). Server allows checked_in/waiting → confirmed for at-home. */}
+          {isAtHome && (bookingLifecycleStatus === "checked_in" || bookingLifecycleStatus === "waiting") && (
+            <Button
+              onClick={() => handleStatusChange("confirmed")}
+              disabled={isUpdating}
+              variant="outline"
+              className="flex-1 min-h-[44px] text-sm sm:text-base border-amber-400 text-amber-700 hover:bg-amber-50"
+            >
+              <CheckCircle2 className="w-4 h-4 mr-2" />
+              Reset to confirmed (restart journey)
+            </Button>
+          )}
+          {/* Complete — for in-progress bookings */}
           {isStarted && (
             <Button
               onClick={() => handleStatusChange("completed")}
@@ -2118,50 +2212,57 @@ export default function ProviderBookingDetail() {
           )}
         </div>
 
-        {/* P8 (audit 2026-04): provider-initiated customer notifications.
-            These call the `/api/provider/bookings/[id]/notify-*` REST routes
-            directly so the detail page has UI parity with the WaitingRoom
-            server actions. */}
-        <div className="rounded-lg border p-4">
-          <div className="mb-3">
-            <h3 className="text-sm font-semibold text-gray-900">
-              Customer Notifications
-            </h3>
-            <p className="text-xs text-gray-600 mt-1">
-              Manually send confirmation, reminder or cancellation emails /
-              push to the customer.
-            </p>
+        {/* Customer notifications — only surface actions that make contextual sense.
+            Confirmation / reminder require the booking to be confirmed first;
+            showing them while awaiting payment or awaiting provider confirmation
+            is misleading (no confirmation email has been sent yet). */}
+        {(isConfirmedOrLater || isCancelled || isNoShow) && (
+          <div className="rounded-lg border p-4">
+            <div className="mb-3">
+              <h3 className="text-sm font-semibold text-gray-900">
+                Customer Notifications
+              </h3>
+              <p className="text-xs text-gray-600 mt-1">
+                Manually send confirmation, reminder or cancellation emails / push to the customer.
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-3">
+              {isConfirmedOrLater && (
+                <Button
+                  variant="outline"
+                  disabled={isNotifying}
+                  onClick={() => handleResendNotification("confirmation")}
+                  className="flex-1 min-h-[44px]"
+                >
+                  <Mail className="w-4 h-4 mr-2" />
+                  Resend Confirmation
+                </Button>
+              )}
+              {isConfirmedOrLater && (
+                <Button
+                  variant="outline"
+                  disabled={isNotifying}
+                  onClick={() => handleResendNotification("reminder")}
+                  className="flex-1 min-h-[44px]"
+                >
+                  <Clock className="w-4 h-4 mr-2" />
+                  Send Reminder
+                </Button>
+              )}
+              {(isCancelled || isNoShow) && (
+                <Button
+                  variant="outline"
+                  disabled={isNotifying}
+                  onClick={() => handleSendCancellationNotice()}
+                  className="flex-1 min-h-[44px]"
+                >
+                  <XCircle className="w-4 h-4 mr-2" />
+                  Cancellation Notice
+                </Button>
+              )}
+            </div>
           </div>
-          <div className="flex flex-col sm:flex-row gap-3">
-            <Button
-              variant="outline"
-              disabled={isNotifying}
-              onClick={() => handleResendNotification("confirmation")}
-              className="flex-1 min-h-[44px]"
-            >
-              <Mail className="w-4 h-4 mr-2" />
-              Resend Confirmation
-            </Button>
-            <Button
-              variant="outline"
-              disabled={isNotifying}
-              onClick={() => handleResendNotification("reminder")}
-              className="flex-1 min-h-[44px]"
-            >
-              <Clock className="w-4 h-4 mr-2" />
-              Send Reminder
-            </Button>
-            <Button
-              variant="outline"
-              disabled={isNotifying || !(isCancelled || isNoShow)}
-              onClick={() => handleSendCancellationNotice()}
-              className="flex-1 min-h-[44px]"
-            >
-              <XCircle className="w-4 h-4 mr-2" />
-              Cancellation Notice
-            </Button>
-          </div>
-        </div>
+        )}
 
         {/* Notes */}
         <div className="rounded-lg border p-4">

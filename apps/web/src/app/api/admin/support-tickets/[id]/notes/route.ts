@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, handleApiError } from "@/lib/supabase/api-helpers";
 import type { UserRole } from "@/types/beautonomi";
 import { SUPPORT_TICKET_STAFF_ROLES } from "@/lib/support/support-ticket-staff";
@@ -9,8 +9,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = await getSupabaseServer(request);
     const { user } = await requireRoleInApi([...SUPPORT_TICKET_STAFF_ROLES] as UserRole[], request);
+    const supabase = getSupabaseAdmin();
     const { id } = await params;
 
     const body = await request.json();

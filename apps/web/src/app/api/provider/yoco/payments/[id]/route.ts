@@ -15,7 +15,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireRole(["provider_owner", "provider_staff"]);    if (!auth) {
+    const auth = await requireRole(["provider_owner", "provider_staff"], request);
+    if (!auth) {
       return unauthorizedResponse("Authentication required");
     }
 

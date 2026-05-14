@@ -73,12 +73,28 @@ function readActiveProviderIdFromPortalCache(): string | null {
 }
 
 /**
- * Merge `x-provider-id` from portal sessionStorage for raw `fetch()` to `/api/provider/*`
- * (same hint as {@link fetchJson}). No-op on server or non-provider URLs.
+ * Merge `x-provider-id` from portal sessionStorage and `x-csrf-token` for
+ * mutation requests when calling raw `fetch()` to `/api/provider/*` (or any
+ * cookie-authenticated route).
+ *
+ * §Group-booking-audit 2026-05: callers like `mark-paid`, `start-service`, and
+ * `complete-service` were 403'ing because they used `providerPortalFetch` for
+ * POSTs without ever attaching the CSRF token that `proxy.ts` / `csrfCheck`
+ * requires. Auto-inject the token here to match `fetchJson`'s behavior and
+ * keep all entry points consistent.
  */
+const MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+function readCsrfTokenFromCookie(): string | null {
+  if (typeof document === "undefined") return null;
+  const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
+  return match?.[1] ?? null;
+}
+
 export function mergeProviderPortalFetchHeaders(
   url: string,
   headers?: HeadersInit,
+  method?: string,
 ): Record<string, string> {
   const out: Record<string, string> = {};
   if (headers) {
@@ -93,14 +109,22 @@ export function mergeProviderPortalFetchHeaders(
       if (id) out[ACTIVE_PROVIDER_ID_HEADER] = id;
     }
   }
+  const upperMethod = (method ?? "GET").toUpperCase();
+  if (MUTATION_METHODS.has(upperMethod)) {
+    const existingCsrf = out["x-csrf-token"] ?? out["X-CSRF-Token"];
+    if (!existingCsrf) {
+      const token = readCsrfTokenFromCookie();
+      if (token) out["x-csrf-token"] = token;
+    }
+  }
   return out;
 }
 
-/** Same-origin `fetch` with multi-org header parity for `/api/provider/*`. */
+/** Same-origin `fetch` with multi-org + CSRF header parity for credentialed API routes. */
 export function providerPortalFetch(url: string, init?: RequestInit): Promise<Response> {
   return fetch(url, {
     ...init,
-    headers: mergeProviderPortalFetchHeaders(url, init?.headers),
+    headers: mergeProviderPortalFetchHeaders(url, init?.headers, init?.method),
   });
 }
 

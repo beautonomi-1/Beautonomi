@@ -285,22 +285,82 @@ export async function createBookingRecord(
         servicesMap
       );
 
-      // Only insert the primary contact into booking_participants (UNIQUE(booking_id) allows one row per booking).
-      // Other participants are represented by guest_name on booking_services.
+      // ── Build full participants list for booking_participants ─────────────
+      // Web UI includes the primary booker as group_participants[0]; mobile only
+      // sends additional guests. Detect which case applies by checking whether
+      // the first participant's service_ids are a subset of draft.services.
+      const primaryOfferingIds = new Set(draft.services.map((s: any) => s.offering_id as string));
+      const firstPaxServiceIds: string[] = (v.groupParticipants[0]?.service_ids ?? v.groupParticipants[0]?.serviceIds ?? []) as string[];
+      const primaryIsInParticipants =
+        firstPaxServiceIds.length > 0 &&
+        firstPaxServiceIds.every((id: string) => primaryOfferingIds.has(id));
+
+      // Guests are all group_participants except the primary if they were included.
+      const guestParticipants: any[] = primaryIsInParticipants
+        ? v.groupParticipants.slice(1)
+        : v.groupParticipants;
+
+      // Compute pricing for primary contact from draft.services.
+      const primaryServiceTotal = draft.services.reduce((sum: number, s: any) => {
+        const svc = servicesMap.get(s.offering_id);
+        return sum + (svc ? Number(svc.price) : 0);
+      }, 0);
+      const primaryDurationMinutes = draft.services.reduce((sum: number, s: any) => {
+        const svc = servicesMap.get(s.offering_id);
+        return sum + (svc ? svc.duration_minutes : 0);
+      }, 0);
+      const primaryServiceId: string | null = draft.services.length > 0 ? (draft.services[0].offering_id ?? null) : null;
+      const primaryServiceOff = primaryServiceId ? v.offeringById.get(primaryServiceId) : null;
+      const primaryServiceName: string | null = (primaryServiceOff as any)?.title ?? null;
+
+      // Build the full participant list: primary (with booking_id) + guests (booking_id = null).
+      const allBookingParticipants = [
+        {
+          booking_id: booking.id as string | null,
+          participant_name: clientInfo.name || (booking as any).guest_name || "Primary Contact",
+          participant_email: clientInfo.email ?? null,
+          participant_phone: clientInfo.phone ?? null,
+          is_primary_contact: true,
+          price: primaryServiceTotal,
+          service_id: primaryServiceId,
+          service_name: primaryServiceName,
+          duration_minutes: primaryDurationMinutes || null,
+        },
+        ...guestParticipants.map((p: any) => {
+          const guestServiceIds: string[] = (p.service_ids ?? p.serviceIds ?? []) as string[];
+          const guestPrice = guestServiceIds.reduce((sum: number, id: string) => {
+            const svc = servicesMap.get(id);
+            return sum + (svc ? Number(svc.price) : 0);
+          }, 0);
+          const guestDuration = guestServiceIds.reduce((sum: number, id: string) => {
+            const svc = servicesMap.get(id);
+            return sum + (svc ? svc.duration_minutes : 0);
+          }, 0);
+          const firstSvcId: string | null = guestServiceIds[0] ?? null;
+          const guestServiceName: string | null = guestServiceIds
+            .map((id: string) => (v.offeringById.get(id) as any)?.title)
+            .filter(Boolean)
+            .join(", ") || null;
+          return {
+            booking_id: null as string | null,
+            participant_name: (p.name ?? p.participant_name ?? "Guest") as string,
+            participant_email: (p.email ?? p.participant_email ?? null) as string | null,
+            participant_phone: (p.phone ?? p.participant_phone ?? null) as string | null,
+            is_primary_contact: false,
+            price: guestPrice,
+            service_id: firstSvcId,
+            service_name: guestServiceName,
+            duration_minutes: guestDuration || null,
+          };
+        }),
+      ];
+
       const groupBooking = await createGroupBooking(
         adminSupabase,
         draft.provider_id,
         booking.id,
         [booking.id],
-        [
-          {
-            booking_id: booking.id,
-            participant_name: clientInfo.name || booking.guest_name || "Primary Contact",
-            participant_email: clientInfo.email || null,
-            participant_phone: clientInfo.phone || null,
-            is_primary_contact: true,
-          },
-        ]
+        allBookingParticipants,
       );
 
       (booking as any).group_booking_id = groupBooking.id;

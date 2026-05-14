@@ -14,6 +14,7 @@ import {
   Modal,
   Pressable,
   ScrollView,
+  InteractionManager,
   type NativeSyntheticEvent,
   type NativeScrollEvent,
 } from "react-native";
@@ -26,14 +27,14 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { CustomOfferSheet } from "@/components/CustomOfferSheet";
-import { formatTime, formatCurrency, formatDateTime } from "@/lib/format";
+import { formatTime, formatCurrency } from "@/lib/format";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { supabase } from "@/lib/supabase/client";
 import { Colors } from "@/constants/colors";
 import * as Haptics from "expo-haptics";
 import { twStyle } from "@/lib/twStyle";
 import { chatFlatListPerf } from "@/lib/flatListPerformance";
-import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { CustomOfferCard } from "@beautonomi/ui/native";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
@@ -117,7 +118,7 @@ function fileLikeAttachments(attachments: Message["attachments"]): FileLikeAttac
   return attachments.filter((a): a is FileLikeAttachment => {
     if (!a || typeof a !== "object") return false;
     const t = (a as { type?: string }).type;
-    if (t === "custom_offer" || t === "custom_request") return false;
+    if (t === "custom_offer" || t === "custom_request" || t === "custom_offer_paid") return false;
     return true;
   }) as FileLikeAttachment[];
 }
@@ -154,6 +155,7 @@ export default function ChatScreen() {
   // changes, together with the `scrollKey` trick that re-runs the
   // scroll effect on thread change even if the length is identical.
   const initialScrollDoneRef = useRef(false);
+  const initialScrollIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const {
     data: conversation,
@@ -164,6 +166,7 @@ export default function ChatScreen() {
     enabled: !!conversationId,
     staleTimeMs: 0,
   });
+  const prevLoadingRef = useRef(true);
   const { execute: sendMessage, loading: sending } = useApiPost<any, any>(
     `/api/provider/conversations/${conversationId ?? ""}/messages`
   );
@@ -211,20 +214,44 @@ export default function ChatScreen() {
   // if its message count happens to equal the previous one.
   useEffect(() => {
     initialScrollDoneRef.current = false;
+    prevLoadingRef.current = true;
+    if (initialScrollIdleTimerRef.current) {
+      clearTimeout(initialScrollIdleTimerRef.current);
+      initialScrollIdleTimerRef.current = null;
+    }
   }, [conversationId]);
 
-  useEffect(() => {
-    if (allMessages.length === 0) return;
-    const animated = initialScrollDoneRef.current;
-    const t = setTimeout(
-      () => flatListRef.current?.scrollToEnd({ animated }),
-      100,
-    );
-    initialScrollDoneRef.current = true;
-    return () => clearTimeout(t);
-  }, [conversationId, allMessages.length]);
+  const bumpScrollToLatestForOpenThread = useCallback(() => {
+    if (allMessages.length === 0 || initialScrollDoneRef.current) return;
+    const run = () => flatListRef.current?.scrollToEnd({ animated: false });
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        run();
+        InteractionManager.runAfterInteractions(() => {
+          run();
+        });
+      });
+    });
+    if (initialScrollIdleTimerRef.current) clearTimeout(initialScrollIdleTimerRef.current);
+    initialScrollIdleTimerRef.current = setTimeout(() => {
+      initialScrollIdleTimerRef.current = null;
+      initialScrollDoneRef.current = true;
+    }, 450);
+  }, [allMessages.length]);
 
-  // Supabase Realtime: live incoming messages and read receipt updates
+  // After the conversation payload lands, nudge scroll even if the first
+  // onContentSizeChange fired with incomplete row heights (images, etc.).
+  useEffect(() => {
+    if (prevLoadingRef.current && !loading && allMessages.length > 0) {
+      bumpScrollToLatestForOpenThread();
+    }
+    prevLoadingRef.current = loading;
+  }, [loading, allMessages.length, bumpScrollToLatestForOpenThread]);
+
+  // Supabase Realtime: live incoming messages and read receipt updates.
+  // Single `postgres_changes` binding (event: "*") — registering multiple `.on`
+  // postgres_callbacks then `.subscribe()` can throw "cannot add ... after subscribe()"
+  // on some RN / Realtime timing paths; one handler avoids that class of bug.
   useEffect(() => {
     if (!conversationId) return;
     setRealtimeMessages([]);
@@ -234,66 +261,90 @@ export default function ChatScreen() {
       .on(
         "postgres_changes",
         {
-          event: "INSERT",
+          event: "*",
           schema: "public",
           table: "messages",
           filter: `conversation_id=eq.${conversationId}`,
         },
         (payload) => {
-          const m = payload.new as RealtimeMessageRow;
-          if (!m.id || !m.created_at) return;
-          const rowId = m.id;
-          const rowCreatedAt = m.created_at;
-          setRealtimeMessages((prev) => {
-            if (prev.some((p) => p.id === rowId)) return prev;
-            const att = Array.isArray(m.attachments) ? m.attachments : [];
-            return [
-              ...prev,
-              {
-                id: rowId,
-                content: m.content ?? "",
-                sender_type: (m.sender_role === "customer" ? "customer" : "provider") as "provider" | "customer",
-                created_at: rowCreatedAt,
-                read_at: m.read_at ?? null,
-                attachments: att as Message["attachments"],
-              },
-            ];
-          });
-          // §Provider-audit 2026-04 (round 6): if a customer message
-          // arrives while the thread is open, immediately mark it read
-          // server-side. Without this the conversations list kept the
-          // unread badge until the user closed & reopened the thread.
-          if (m.sender_role === "customer") {
-            markReadRef.current(
-              `/api/provider/conversations/${conversationId}/mark-read`,
-              {},
-            );
+          const ev = (payload as { eventType?: string }).eventType;
+          if (ev === "INSERT") {
+            const m = payload.new as RealtimeMessageRow;
+            if (!m.id || !m.created_at) return;
+            const rowId = m.id;
+            const rowCreatedAt = m.created_at;
+            setRealtimeMessages((prev) => {
+              if (prev.some((p) => p.id === rowId)) return prev;
+              const att = Array.isArray(m.attachments) ? m.attachments : [];
+              return [
+                ...prev,
+                {
+                  id: rowId,
+                  content: m.content ?? "",
+                  sender_type: (m.sender_role === "customer" ? "customer" : "provider") as "provider" | "customer",
+                  created_at: rowCreatedAt,
+                  read_at: m.read_at ?? null,
+                  attachments: att as Message["attachments"],
+                },
+              ];
+            });
+            if (m.sender_role === "customer") {
+              markReadRef.current(
+                `/api/provider/conversations/${conversationId}/mark-read`,
+                {},
+              );
+            }
+            return;
           }
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "messages",
-          filter: `conversation_id=eq.${conversationId}`,
+          if (ev === "UPDATE") {
+            const updated = payload.new as RealtimeMessageRow;
+            setRealtimeMessages((prev) =>
+              prev.map((msg) =>
+                updated.id && msg.id === updated.id
+                  ? {
+                      ...msg,
+                      read_at: updated.read_at ?? null,
+                      attachments:
+                        Array.isArray(updated.attachments) && updated.attachments.length > 0
+                          ? (updated.attachments as Message["attachments"])
+                          : msg.attachments,
+                    }
+                  : msg,
+              ),
+            );
+            void refreshRef.current();
+          }
         },
-        (payload) => {
-          const updated = payload.new as RealtimeMessageRow;
-          setRealtimeMessages((prev) =>
-            prev.map((msg) =>
-              updated.id && msg.id === updated.id ? { 
-                ...msg, 
-                read_at: updated.read_at ?? null,
-                attachments: Array.isArray(updated.attachments) && updated.attachments.length > 0
-                  ? (updated.attachments as Message["attachments"])
-                  : msg.attachments
-              } : msg
-            )
-          );
+      )
+      .subscribe();
+
+    return () => {
+      try {
+        supabase.removeChannel(channel);
+      } catch {
+        // Ignore
+      }
+    };
+  }, [conversationId]);
+
+  // Subscribe to custom_offers status changes — when a customer pays,
+  // the offer status flips to "paid" and the message attachment gets patched.
+  // Subscribe here too so the card updates immediately without waiting for
+  // the message UPDATE to propagate.
+  const offersRealtimeGenRef = useRef(0);
+  useEffect(() => {
+    if (!conversationId) return;
+    const topic = `provider-offer-status:${conversationId}:${++offersRealtimeGenRef.current}`;
+    const channel = supabase
+      .channel(topic)
+      .on(
+        "postgres_changes" as never,
+        { event: "UPDATE", schema: "public", table: "custom_offers" },
+        () => {
+          // Trigger a full conversation refresh — this is consistent with how
+          // message UPDATE events are handled in the provider thread.
           void refreshRef.current();
-        }
+        },
       )
       .subscribe();
 
@@ -701,6 +752,7 @@ export default function ChatScreen() {
           <>
             <FlatList
               {...chatFlatListPerf}
+              key={conversationId ?? "none"}
               ref={flatListRef}
               data={allMessages}
               keyExtractor={(m: Message) => m.id}
@@ -712,10 +764,7 @@ export default function ChatScreen() {
                 paddingBottom: 220,
               }}
               onContentSizeChange={() => {
-                if (!initialScrollDoneRef.current && allMessages.length > 0) {
-                  initialScrollDoneRef.current = true;
-                  flatListRef.current?.scrollToEnd({ animated: false });
-                }
+                bumpScrollToLatestForOpenThread();
               }}
               onScroll={(e: NativeSyntheticEvent<NativeScrollEvent>) => {
                 const { contentSize, layoutMeasurement, contentOffset } = e.nativeEvent;
@@ -742,6 +791,10 @@ export default function ChatScreen() {
                     !!a && typeof a === "object" && (a as { type?: string }).type === "custom_offer"
                 );
                 const showOfferCard = !!offer;
+                const paidAtt = msg.attachments?.find(
+                  (a): a is { type: "custom_offer_paid"; booking_id?: string; booking_number?: string | null } =>
+                    !!a && typeof a === "object" && (a as { type?: string }).type === "custom_offer_paid"
+                );
                 const hasCustomRequest = msg.attachments?.some((a: { type?: string }) => a.type === "custom_request");
                 const customRequestAtt = msg.attachments?.find((a: { type?: string }) => a?.type === "custom_request") as
                   | { request_id?: string; id?: string }
@@ -749,20 +802,6 @@ export default function ChatScreen() {
                 const customRequestNavId = customRequestAtt?.request_id ?? customRequestAtt?.id;
                 const files = fileLikeAttachments(msg.attachments);
                 const hasText = !!(msg.content && msg.content.trim());
-
-                const isWithdrawnAtt = Boolean(offer?.withdrawn || offer?.status === "withdrawn");
-                const isDeclinedAtt = offer?.status === "declined";
-                const isExpiredAtt = Boolean(offer?.expired || offer?.status === "expired");
-                const isFinalizeFailedAtt = offer?.status === "finalize_failed";
-                const isPaidAtt = offer?.status === "paid" || Boolean(offer?.booking_id);
-                const canRetractOffer =
-                  isMe &&
-                  !!offer?.offer_id &&
-                  !isWithdrawnAtt &&
-                  !isExpiredAtt &&
-                  !isPaidAtt &&
-                  !isDeclinedAtt &&
-                  !isFinalizeFailedAtt;
 
                 const renderFileRow = (att: FileLikeAttachment, idx: number) => {
                   const key = `${msg.id}-f-${idx}-${att.name || att.url || idx}`;
@@ -831,96 +870,55 @@ export default function ChatScreen() {
                 return (
                   <View style={twStyle(`mb-3 ${isMe ? "items-end" : "items-start"}`)}>
                     {showOfferCard ? (
-                      <View
-                        style={twStyle(`max-w-[85%] rounded-2xl overflow-hidden ${
-                          isMe ? "rounded-br-sm bg-primary/10 border border-primary/20" : "rounded-bl-sm bg-gray-100 border border-gray-200"
-                        }`)}
+                      <CustomOfferCard
+                        attachment={offer}
+                        isMe={isMe}
+                        role="provider"
+                        onPress={() => offer?.offer_id && void openOfferDetail(offer.offer_id)}
+                        onViewBooking={() => {
+                          if (offer?.booking_id) {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            router.push(`/(app)/(tabs)/more/bookings/${offer.booking_id}` as never);
+                          }
+                        }}
+                        onWithdraw={() => offer?.offer_id && handleWithdrawOffer(offer.offer_id)}
+                      />
+                    ) : null}
+
+                    {paidAtt?.booking_id ? (
+                      <TouchableOpacity
+                        activeOpacity={0.85}
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          router.push(`/(app)/(tabs)/more/bookings/${paidAtt.booking_id}` as never);
+                        }}
+                        style={{
+                          maxWidth: "85%",
+                          borderRadius: 12,
+                          paddingHorizontal: 12,
+                          paddingVertical: 10,
+                          marginBottom: 4,
+                          backgroundColor: "#ECFDF5",
+                          borderWidth: 1,
+                          borderColor: "#A7F3D0",
+                          alignSelf: isMe ? "flex-end" : "flex-start",
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 8,
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel="View booking details"
                       >
-                        <TouchableOpacity
-                          activeOpacity={0.85}
-                          onPress={() => {
-                            if (offer?.offer_id) void openOfferDetail(offer.offer_id);
-                          }}
-                          accessibilityRole="button"
-                          accessibilityLabel="Open custom offer details"
-                        >
-                          <View style={twStyle("px-4 pt-3 pb-2")}>
-                            <View style={twStyle("flex-row items-center mb-1")}>
-                              <Ionicons name="pricetag" size={16} color={isMe ? Colors.primary : "#6b7280"} style={{ marginRight: 8 }} />
-                              <Text style={twStyle("text-sm font-semibold text-gray-900")}>Custom offer</Text>
-                            </View>
-                            {typeof offer?.price === "number" && (
-                              <Text style={twStyle("text-base font-medium text-gray-900 mt-0.5")}>
-                                {formatCurrency(offer.price, offer.currency ?? getTenantDefaultCurrency())}
-                              </Text>
-                            )}
-                            {offer?.duration_minutes != null && offer.duration_minutes > 0 && (
-                              <Text style={twStyle("text-sm text-gray-600 mt-0.5")}>{offer.duration_minutes} min</Text>
-                            )}
-                            {offer?.preferred_start_at && (
-                              <Text style={twStyle("text-sm text-gray-600 mt-0.5")}>
-                                {formatDateTime(offer.preferred_start_at)}
-                              </Text>
-                            )}
-                            {isWithdrawnAtt ? (
-                              <View style={twStyle("mt-2 px-2 py-1 rounded bg-amber-100 self-start")}>
-                                <Text style={twStyle("text-xs font-medium text-amber-800")}>Withdrawn</Text>
-                              </View>
-                            ) : isExpiredAtt ? (
-                              <View style={twStyle("mt-2 px-2 py-1 rounded bg-gray-100 self-start")}>
-                                <Text style={twStyle("text-xs font-medium text-gray-500")}>Expired</Text>
-                              </View>
-                            ) : isDeclinedAtt ? (
-                              <View style={twStyle("mt-2 px-2 py-1 rounded bg-gray-100 self-start")}>
-                                <Text style={twStyle("text-xs font-medium text-gray-500")}>Declined</Text>
-                              </View>
-                            ) : isFinalizeFailedAtt ? (
-                              <View style={twStyle("mt-2 px-2 py-1 rounded bg-rose-100 self-start")}>
-                                <Text style={twStyle("text-xs font-medium text-rose-800")}>Needs support</Text>
-                              </View>
-                            ) : isPaidAtt ? (
-                              <View style={twStyle("mt-2 px-2 py-1 rounded bg-emerald-100 self-start")}>
-                                <Text style={twStyle("text-xs font-medium text-emerald-800")}>Paid / Booked</Text>
-                              </View>
-                            ) : offer?.status === "payment_pending" ? (
-                              <View style={twStyle("mt-2 px-2 py-1 rounded bg-blue-100 self-start")}>
-                                <Text style={twStyle("text-xs font-medium text-blue-800")}>Payment in progress</Text>
-                              </View>
-                            ) : null}
-                          </View>
-                        </TouchableOpacity>
-                        {isPaidAtt && offer?.booking_id ? (
-                          <TouchableOpacity
-                            onPress={() => {
-                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                              router.push(`/(app)/(tabs)/more/bookings/${offer.booking_id}` as never);
-                            }}
-                            style={twStyle("mx-4 mb-2 px-3 py-2 rounded-lg bg-emerald-600 active:opacity-90")}
-                            activeOpacity={0.85}
-                          >
-                            <Text style={twStyle("text-sm font-semibold text-white text-center")}>View booking</Text>
-                          </TouchableOpacity>
-                        ) : null}
-                        {canRetractOffer ? (
-                          <TouchableOpacity
-                            onPress={() => offer.offer_id && handleWithdrawOffer(offer.offer_id)}
-                            style={twStyle("mx-4 mb-2 px-3 py-1.5 rounded-lg bg-amber-500 active:opacity-80")}
-                            activeOpacity={0.8}
-                          >
-                            <Text style={twStyle("text-sm font-medium text-white text-center")}>Withdraw offer</Text>
-                          </TouchableOpacity>
-                        ) : null}
-                        <View style={twStyle("px-4 pb-2 flex-row items-center justify-end")}>
-                          <Text style={[twStyle("text-[11px] text-gray-400"), { marginRight: 4 }]}>{formatTime(msg.created_at)}</Text>
-                          {isMe ? (
-                            <Ionicons
-                              name={msg.read_at ? "checkmark-done" : "checkmark"}
-                              size={14}
-                              color="#6b7280"
-                            />
-                          ) : null}
+                        <Text style={{ fontSize: 16, color: "#059669" }}>✓</Text>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ fontSize: 12, fontWeight: "700", color: "#065F46" }}>
+                            Booking confirmed{paidAtt.booking_number ? ` #${paidAtt.booking_number}` : ""}
+                          </Text>
+                          <Text style={{ fontSize: 11, color: "#047857", marginTop: 2 }}>
+                            Tap to view booking →
+                          </Text>
                         </View>
-                      </View>
+                      </TouchableOpacity>
                     ) : null}
 
                     {hasCustomRequest ? (

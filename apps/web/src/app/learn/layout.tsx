@@ -13,6 +13,8 @@ export const metadata: Metadata = {
     canonical: "/learn",
     languages: getHreflangAlternateUrls("/learn"),
   },
+  // Help / learning hub is for signed-in discovery and support — not branded SEO landing pages.
+  robots: { index: false, follow: true, googleBot: { index: false, follow: true } },
 };
 
 export default async function LearnLayout({ children }: { children: ReactNode }) {

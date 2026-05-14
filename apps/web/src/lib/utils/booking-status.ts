@@ -193,7 +193,14 @@ export function canCancel(status: BookingStatus): boolean {
 }
 
 /**
- * Check if status allows rescheduling
+ * Check if status allows rescheduling.
+ *
+ * `pending_payment` is the transient state the customer enters during the
+ * Paystack redirect; until payment clears we cannot reschedule (nothing has
+ * been promised to the provider yet, and we'd have to release any held slot
+ * the gateway is in the middle of charging against). Callers that have
+ * confirmed payment (e.g. `payment_status = paid`) should treat the booking
+ * as `pending` first via `resolveEffectiveBookingLifecycleStatus`.
  */
 export function canReschedule(status: BookingStatus): boolean {
   return ["pending", "confirmed"].includes(status);

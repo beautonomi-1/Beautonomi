@@ -12,6 +12,7 @@ import {
   expandSearchTokens,
   fuzzyTextRelevanceScore,
 } from "@/lib/search/fuzzy-rank";
+import { getProviderIdsForGlobalCategory } from "@/lib/categories/provider-ids-for-global-category";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -246,27 +247,11 @@ export async function GET(request: Request) {
       }
 
       if (categoryId) {
-        const [{ data: associationRows }, { data: offeringRows }] = await Promise.all([
-          supabase
-            .from("provider_global_category_associations")
-            .select("provider_id, providers!inner(tenant_id, status)")
-            .eq("global_category_id", categoryId)
-            .eq("providers.tenant_id", tenantId)
-            .eq("providers.status", "active"),
-          supabase
-            .from("offerings")
-            .select("provider_id, providers!inner(tenant_id, status)")
-            .eq("category_id", categoryId)
-            .eq("is_active", true)
-            .eq("providers.tenant_id", tenantId)
-            .eq("providers.status", "active"),
-        ]);
-        const categoryProviderIds = [
-          ...new Set([
-            ...(associationRows ?? []).map((row: any) => row.provider_id).filter(Boolean),
-            ...(offeringRows ?? []).map((row: any) => row.provider_id).filter(Boolean),
-          ]),
-        ];
+        const categoryProviderIds = await getProviderIdsForGlobalCategory({
+          supabase,
+          globalCategoryId: categoryId,
+          tenantId,
+        });
         if (categoryProviderIds.length === 0) {
           return NextResponse.json({
             data: {

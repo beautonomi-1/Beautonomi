@@ -49,7 +49,9 @@ export async function POST(request: NextRequest) {
     if (topupError) throw topupError;
 
     const reference = `wallet_topup_${(topup as any).id}`;
-    const callbackUrl = `${process.env.NEXT_PUBLIC_APP_URL || ""}/checkout/success?payment_type=wallet_topup`;
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "";
+    const callbackUrl = `${appUrl}/checkout/success?payment_type=wallet_topup`;
+    const cancelAction = `${appUrl}/wallet?topup_cancelled=1`;
 
     const paystackData = await initializePaystackTransaction({
       email,
@@ -63,6 +65,7 @@ export async function POST(request: NextRequest) {
         amount: Number(body.amount),
         currency,
         tenant_id: tenantId,
+        cancel_action: cancelAction,
       },
       tenantId,
     });

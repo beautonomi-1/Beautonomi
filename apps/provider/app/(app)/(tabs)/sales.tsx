@@ -7,7 +7,7 @@ import {
   Alert,
   ActivityIndicator,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { YocoPaymentSheet } from "@/components/YocoPaymentSheet";
@@ -208,8 +208,18 @@ const PAYMENT_METHODS: { label: string; value: PaymentMethod; icon: keyof typeof
   { label: "EFT", value: "eft", icon: "swap-horizontal-outline" },
 ];
 
+const TRANSACTIONS_HUB_HREF = "/(app)/(tabs)/more/transactions-hub" as const;
+const FROM_TRANSACTIONS_HUB = "transactions-hub";
+
 export default function SalesScreen() {
   const router = useRouter();
+  const { from: fromParam } = useLocalSearchParams<{ from?: string }>();
+  const fromTransactionsHub =
+    typeof fromParam === "string"
+      ? fromParam === FROM_TRANSACTIONS_HUB
+      : Array.isArray(fromParam)
+        ? fromParam[0] === FROM_TRANSACTIONS_HUB
+        : false;
   const tenantCurrency = getTenantDefaultCurrency();
   const { isTablet } = useResponsive();
   const adsModule = useModuleConfig("ads") as { enabled?: boolean } | undefined;
@@ -1283,6 +1293,13 @@ export default function SalesScreen() {
       <ScreenHeader
         title="Sales"
         subtitle={`${sales.length} transactions`}
+        {...(fromTransactionsHub
+          ? {
+              onBack: () => {
+                router.push(TRANSACTIONS_HUB_HREF as never);
+              },
+            }
+          : {})}
         rightAction={
           <TouchableOpacity
             style={{ minHeight: 44, minWidth: 44, alignItems: "center", justifyContent: "center", borderRadius: 22, backgroundColor: Colors.gray[100] }}

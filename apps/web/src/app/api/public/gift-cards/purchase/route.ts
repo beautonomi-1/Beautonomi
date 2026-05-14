@@ -153,6 +153,12 @@ export async function POST(request: NextRequest) {
 
     let paystackData: Awaited<ReturnType<typeof initializePaystackTransaction>>;
     try {
+      const isMobileGiftCallback =
+        callbackUrl.startsWith("customer://") || callbackUrl.startsWith("exp://");
+      const giftCancelAction = isMobileGiftCallback
+        ? `${callbackUrl}${callbackUrl.includes("?") ? "&" : "?"}cancelled=1`
+        : `${appBase}/gift-card/purchase/cancelled`;
+
       paystackData = await initializePaystackTransaction({
         email,
         amountInSmallestUnit: convertToSmallestUnit(totalAmount),
@@ -165,6 +171,7 @@ export async function POST(request: NextRequest) {
           recipient_email: parsed.data.recipient_email || null,
           quantity,
           attribution,
+          cancel_action: giftCancelAction,
           ...templateMetadata,
           // provider_id removed - platform-only gift cards
         },

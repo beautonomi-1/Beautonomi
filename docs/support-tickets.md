@@ -82,7 +82,7 @@ So **providers can contact support** by:
     1. Insert into `support_tickets` with `user_id`, `provider_id` where applicable, `requester_type`, `subject`, `description` (from message), `priority`, `status: 'open'`, `category`, support context fields, and last-message fields.  
        - **Do not** send `ticket_number`; the DB trigger sets it.
     2. Insert first message into `support_ticket_messages` (same text as description).
-    3. Call `notifySupportTicketCreated(userId, ticketNumber, subject, ticketId, ["email", "push"])` so the user gets a confirmation with the ticket number.
+    3. Call `notifySupportTicketCreated(..., ["email", "push"], recipientApp)` so the user gets a confirmation with the ticket number. **`recipientApp`** is `provider` when `requester_type` is provider (so push uses the provider OneSignal app), otherwise `customer`.
   - **Response:** Includes the created `ticket` (with `ticket_number`) and the initial message.
 
 - **Table:** `support_tickets` has `user_id` (who opened it), optional `provider_id`, `requester_type` (`customer`, `provider`, or `admin`), support context fields, unread tracking fields, and CSAT fields. The **ticket number is generated only by the trigger** on insert; no application code sets it.
@@ -108,12 +108,13 @@ So **providers can contact support** by:
 
 ## 7. CSAT and agent effectiveness
 
-- **Where users rate support:** When a ticket is `resolved` or `closed`, customer web, customer mobile, and provider mobile show a rating prompt on the ticket detail. Ticket lists also show “Rate this support experience” until a score is submitted.
+- **Where users rate support:** When a ticket is `resolved` or `closed`, customer web, customer mobile, and provider mobile show a rating prompt on the ticket detail for **that ticket’s owner** (`support_tickets.user_id` — the account that opened the ticket). Ticket lists also show “Rate this support experience” until a score is submitted. The copy is the same for customers and providers because both are the requester on their own tickets.
 - **Endpoint:** `POST /api/me/support-tickets/[id]/csat`
   - **Body:** `score` from 1 to 5 and optional `comment`.
-  - **Rules:** Only the ticket owner can rate it, and only after the ticket is resolved or closed.
+  - **Rules:** Only the ticket owner can rate it, and only after the ticket is resolved or closed. The API persists CSAT with the service role after those checks because **RLS does not grant ticket owners `UPDATE` on `support_tickets`** (only staff roles may update rows).
   - **Attribution:** The submitted score is stored on `support_tickets` with `csat_submitted_at` and `csat_agent_id`, using the assigned support agent at submission time.
 - **Admin measurement:** Admin support reports aggregate CSAT over time and attribute ratings to support agents, while still showing requester mix and top context types.
+- **Push / email:** Ticket created and ticket updated notifications use the **`support_ticket_created`** / **`support_ticket_updated`** templates. When staff sets status to resolved or closed, the update message explicitly mentions that the user can rate in the app. Push is routed to the **provider** OneSignal app for `requester_type = provider` tickets and to the **customer** app otherwise (so provider users are not asked only via customer-app pushes).
 
 ---
 
@@ -124,6 +125,6 @@ So **providers can contact support** by:
 | Do support tickets work on super admin? | Yes. Super admin (and support_agent in API) can list, open, reply, add notes, update status, see requester origin/context, and review CSAT at `/admin/support-tickets` and `/admin/support-tickets/[id]`. |
 | How can provider contact support? | **Web:** Help → Submit a Support Ticket (`/help/submit-ticket`). **App:** More → Support tickets. |
 | How are booking/ecommerce/payment queries tracked? | `support_context_type` captures booking, product order, gift card, payment, provider onboarding, account, technical, or other. `support_context_label` stores the readable reference. |
-| Where does the customer rate support? | On resolved/closed ticket detail pages in customer web/mobile and provider mobile through `POST /api/me/support-tickets/[id]/csat`. |
+| Where does the requester rate support? | On resolved/closed ticket detail pages in customer web/mobile and provider mobile through `POST /api/me/support-tickets/[id]/csat` (only the ticket owner, `user_id`). |
 | How is ticket number created? | By DB trigger `generate_support_ticket_number` before insert: `TKT-YYYYMMDD-NNNNNN` using sequence `ticket_number_seq`. |
 | How would this work end-to-end? | User (provider/customer) submits on web/app with context → `POST /api/me/support-tickets` → trigger sets `ticket_number` → user gets email/push with ticket number → super admin sees origin/context, replies/updates status → user rates the resolved ticket → reports measure CSAT by agent, origin, and support driver. |

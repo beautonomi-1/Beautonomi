@@ -20,6 +20,7 @@ import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { useCart } from "@/features/shop/useCart";
 import { emitCartUpdated } from "@/lib/cart-events";
+import { markReferenceProcessing } from "@/lib/paystack-verify-guard";
 import { useProductOrders } from "@/features/shop/useProductOrders";
 import { useAuth } from "@/providers/AuthProvider";
 import { haptic } from "@/lib/haptics";
@@ -534,17 +535,41 @@ export default function ProductCheckoutScreen() {
       setProcessingPayment(false);
       window.location.href = url;
     } else {
+      let shopBrowserResult: WebBrowser.WebBrowserAuthSessionResult | null = null;
       if (paystackReturnPath) {
-        await WebBrowser.openAuthSessionAsync(url, paystackReturnPath);
+        shopBrowserResult = await WebBrowser.openAuthSessionAsync(url, paystackReturnPath);
       } else {
         await WebBrowser.openBrowserAsync(url, {
           presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
         });
       }
 
+      if (
+        shopBrowserResult?.type === "cancel" ||
+        shopBrowserResult?.type === "dismiss"
+      ) {
+        setProcessingPayment(false);
+        Alert.alert("Payment cancelled", "You cancelled the payment.");
+        return;
+      }
+
+      if (shopBrowserResult?.type === "success" && shopBrowserResult.url) {
+        try {
+          const parsedReturn = ExpoLinking.parse(shopBrowserResult.url);
+          if (parsedReturn.queryParams?.cancelled === "1") {
+            setProcessingPayment(false);
+            Alert.alert("Payment cancelled", "You cancelled the payment.");
+            return;
+          }
+        } catch {
+          // ignore parse error, proceed normally
+        }
+      }
+
       setProcessingMessage(pc("confirmingPayment") || "Confirming your payment…");
       const reference = paystackRes.data.reference;
       if (reference) {
+        markReferenceProcessing(reference);
         await api.get(`/api/paystack/verify?reference=${encodeURIComponent(reference)}`).catch(() => {});
       }
 

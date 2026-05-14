@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
     }
     const { tenantId } = tenantRes;
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
     const parsed = validateBodySchema.safeParse(body);

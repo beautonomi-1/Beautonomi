@@ -118,6 +118,28 @@ export async function GET(
       return notFoundResponse("Booking not found");
     }
 
+    // Lifecycle coherence (mirrors customer + provider detail endpoints):
+    // a row stuck in `pending_payment` while already paid is misleading. The
+    // DB trigger (migration 595) repairs this automatically, but if a list
+    // hits this endpoint before the trigger has caught up, normalise here too.
+    const _payloadRow = payload.data as Record<string, unknown> | null;
+    if (_payloadRow) {
+      const _adminStatus = _payloadRow.status as string | undefined;
+      const _adminPaymentStatus = _payloadRow.payment_status as string | undefined;
+      if (
+        _adminStatus === "pending_payment" &&
+        (_adminPaymentStatus === "paid" || _adminPaymentStatus === "partially_paid")
+      ) {
+        _payloadRow.status = "pending";
+        // Fire-and-forget DB repair so future reads are also correct.
+        import("@/lib/bookings/sync-booking-after-paystack-success")
+          .then(({ syncBookingAfterPaystackSuccess }) =>
+            syncBookingAfterPaystackSuccess(supabase, id).catch(() => {}),
+          )
+          .catch(() => {});
+      }
+    }
+
     return successResponse(payload);
   } catch (error) {
     return handleApiError(error, "Failed to fetch booking");

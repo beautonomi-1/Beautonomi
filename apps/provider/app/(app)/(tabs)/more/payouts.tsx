@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -531,9 +531,28 @@ export function PayoutsContent() {
 }
 
 export default function PayoutsScreen() {
+  const { from: fromParam } = useLocalSearchParams<{ from?: string }>();
+  const fromTransactionsHub =
+    typeof fromParam === "string"
+      ? fromParam === "transactions-hub"
+      : Array.isArray(fromParam)
+        ? fromParam[0] === "transactions-hub"
+        : false;
+
   return (
     <ScreenContainer scrollable={false}>
-      <ScreenHeader title="Payouts" showBack subtitle="Withdraw earnings · More → Finance hub" />
+      <ScreenHeader
+        title="Payouts"
+        showBack
+        onBack={
+          fromTransactionsHub
+            ? () => {
+                router.push("/(app)/(tabs)/more/transactions-hub");
+              }
+            : undefined
+        }
+        subtitle="Withdraw earnings · More → Finance hub"
+      />
       <PayoutsContent />
     </ScreenContainer>
   );

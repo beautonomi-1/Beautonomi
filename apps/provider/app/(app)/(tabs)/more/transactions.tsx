@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo } from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { View, Text, TouchableOpacity, Alert, Share } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -103,7 +104,19 @@ function paymentMethodIcon(method: string | null): keyof typeof Ionicons.glyphMa
   }
 }
 
+const TRANSACTIONS_HUB_HREF = "/(app)/(tabs)/more/transactions-hub" as const;
+const FROM_TRANSACTIONS_HUB = "transactions-hub";
+
+function useFromTransactionsHub(): boolean {
+  const { from: fromParam } = useLocalSearchParams<{ from?: string }>();
+  if (typeof fromParam === "string") return fromParam === FROM_TRANSACTIONS_HUB;
+  if (Array.isArray(fromParam)) return fromParam[0] === FROM_TRANSACTIONS_HUB;
+  return false;
+}
+
 export default function TransactionsScreen() {
+  const router = useRouter();
+  const fromTransactionsHub = useFromTransactionsHub();
   const [refreshing, setRefreshing] = useState(false);
   const [period, setPeriod] = useState("month");
   const [typeFilter, setTypeFilter] = useState("all");
@@ -260,6 +273,13 @@ export default function TransactionsScreen() {
       <ScreenHeader
         title="Transactions"
         showBack
+        onBack={
+          fromTransactionsHub
+            ? () => {
+                router.push(TRANSACTIONS_HUB_HREF as never);
+              }
+            : undefined
+        }
         subtitle={`${filtered.length} transaction${filtered.length !== 1 ? "s" : ""}`}
         rightAction={
           <TouchableOpacity

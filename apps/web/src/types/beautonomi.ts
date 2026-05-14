@@ -391,7 +391,18 @@ export interface Booking {
   booking_number: string;
   customer_id: string;
   provider_id: string;
-  status: 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled' | 'no_show';
+  status:
+    | 'pending'
+    | 'pending_payment'
+    | 'confirmed'
+    | 'booked'
+    | 'started'
+    | 'in_progress'
+    | 'waiting'
+    | 'checked_in'
+    | 'completed'
+    | 'cancelled'
+    | 'no_show';
   /**
    * Raw DB workflow status from API (pending = needs provider confirmation).
    * `status` may be mapped to provider-facing values (e.g. pending+confirmed → booked).
@@ -401,6 +412,8 @@ export interface Booking {
   location_id: string | null;
   address: BookingAddress | null;
   scheduled_at: string; // ISO string
+  /** Wall-clock slot from API (preferred over `scheduled_at` when both exist). */
+  selected_datetime?: string;
   completed_at: string | null;
   cancelled_at: string | null;
   cancellation_reason: string | null;
@@ -433,6 +446,8 @@ export interface Booking {
   total_amount: number;
   total_paid: number;
   total_refunded: number;
+  /** Remaining balance when partially paid (detail / me booking APIs). */
+  outstanding_balance?: number;
   cancellation_fee: number;
   currency: string;
   payment_status:

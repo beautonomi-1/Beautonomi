@@ -22,6 +22,7 @@ import { applyPublicBookingHoldSnapshotToDraft } from "@/lib/bookings/apply-hold
 import { formatInTimeZone } from "date-fns-tz";
 import { normalizeProviderTimezone } from "@/lib/availability/time-utils";
 import { loadEffectiveStaffShifts } from "@/lib/availability/load-constraints";
+import { segmentFitsAnyShift } from "@/lib/availability/shift-fit";
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 
@@ -2048,27 +2049,12 @@ export async function validateBooking(
       return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
     };
 
-    const wallTimeToMinutes = (t: string): number => {
-      const parts = String(t).split(":").map((x) => parseInt(x, 10));
-      const h = parts[0] ?? 0;
-      const m = parts[1] ?? 0;
-      return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
-    };
-
-    const segmentFitsAtLeastOneShift = (
-      segStartMin: number,
-      segEndMin: number,
-      shifts: { start_time: string; end_time: string }[],
-    ): boolean => {
-      for (const shift of shifts) {
-        const openMin = wallTimeToMinutes(shift.start_time);
-        const closeMin = wallTimeToMinutes(shift.end_time);
-        if (closeMin > openMin && segStartMin >= openMin && segEndMin <= closeMin) {
-          return true;
-        }
-      }
-      return false;
-    };
+    // segmentFitsAnyShift is the shared helper from shift-fit.ts — it handles
+    // normal, overnight (end < start), and midnight-close shifts identically to
+    // the listing engine (calculate-slots.ts / shiftMinuteRanges). The old
+    // inline implementation only tested `closeMin > openMin` and silently
+    // rejected valid slots in overnight shifts, causing false 409 conflicts.
+    const segmentFitsAtLeastOneShift = segmentFitsAnyShift;
 
     const shiftCache = new Map<string, Awaited<ReturnType<typeof loadEffectiveStaffShifts>>>();
 

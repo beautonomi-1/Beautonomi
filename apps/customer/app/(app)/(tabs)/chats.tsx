@@ -15,6 +15,7 @@ import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
+import { supabase } from "@/lib/supabase/client";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -122,6 +123,43 @@ export default function ChatsScreen() {
       if (user) load(true);
     }, [user, load])
   );
+
+  // Realtime: refresh the conversation list when any of the customer's
+  // conversations change (new message, unread count, etc.).
+  // Mirrors the provider conversations subscription in apps/provider messaging/index.tsx.
+  useEffect(() => {
+    if (!user?.id) return;
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleRefresh = () => {
+      if (refreshTimer) return;
+      refreshTimer = setTimeout(() => {
+        refreshTimer = null;
+        void load(true);
+      }, 400);
+    };
+    const channel = supabase
+      .channel(`customer-conversations:${user.id}`)
+      .on(
+        "postgres_changes" as never,
+        {
+          event: "*",
+          schema: "public",
+          table: "conversations",
+          filter: `customer_id=eq.${user.id}`,
+        },
+        () => scheduleRefresh(),
+      )
+      .subscribe();
+
+    return () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      try {
+        supabase.removeChannel(channel);
+      } catch {
+        // Ignore when channel is still connecting
+      }
+    };
+  }, [user?.id, load]);
 
   // Re-sync session when opening chats (e.g. after tab switch or navigation) so we don't show "Log in" if session exists
   useEffect(() => {

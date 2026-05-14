@@ -104,7 +104,7 @@ class RouteMetrics {
     try {
       const body = JSON.stringify({ metrics: entries });
       if (navigator.sendBeacon) {
-        navigator.sendBeacon("/api/metrics", body);
+        navigator.sendBeacon("/api/public/metrics", body);
       }
     } catch {
       // swallow — metrics are best-effort

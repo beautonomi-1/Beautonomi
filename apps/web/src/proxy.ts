@@ -192,7 +192,18 @@ export async function proxy(request: NextRequest) {
       // CSRF protection for cookie-authenticated mutations.
       // Auth routes are exempt: they are pre-authentication endpoints with no
       // session cookie to protect, and the CSRF cookie may not exist yet.
-      if (!pathname.startsWith("/api/auth/")) {
+      //
+      // §Group-booking-audit 2026-05: also exempt low-risk idempotent sinks
+      // that legitimately cannot send the CSRF header — `sendBeacon` strips
+      // custom headers, and the retention sync POST may fire before the
+      // client has read its first CSRF cookie. These endpoints are
+      // read-mostly and rejecting them with 403 was producing noisy console
+      // errors on every dashboard load.
+      if (
+        !pathname.startsWith("/api/auth/") &&
+        pathname !== "/api/public/metrics" &&
+        pathname !== "/api/me/retention/sync-on-login"
+      ) {
         const csrfError = csrfCheck(request);
         if (csrfError) return csrfError;
       }

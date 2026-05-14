@@ -11,7 +11,7 @@ import AnimatedRe, {
 import { twStyle } from "@/lib/twStyle";
 import { formatCurrency } from "@/lib/format";
 import { Colors, Shadows } from "@/constants/colors";
-import { buildProviderBookingActionModel } from "@/lib/provider-booking-action-policy";
+import { buildProviderBookingActionModel, type ProviderBookingAction } from "@/lib/provider-booking-action-policy";
 
 export interface BookingScheduleCardCustomer {
   full_name: string | null;
@@ -54,7 +54,13 @@ interface BookingScheduleCardProps {
   pendingIds: Set<string>;
   isNextUpcoming: boolean;
   onOpen: (booking: BookingScheduleCardBooking) => void;
-  onApplyStatus: (id: string, target: string, msg: string) => void;
+  /**
+   * Receives the full action so it can route to the right endpoint
+   * (post-action route, custom payload, etc.). Journey actions like
+   * `start_journey` share `dbTarget: "confirmed"` with `confirm` and would
+   * otherwise be indistinguishable.
+   */
+  onApplyStatus: (id: string, action: ProviderBookingAction, msg: string) => void;
 }
 
 const STATUS_STYLE: Record<string, { bg: string; text: string }> = {
@@ -159,7 +165,21 @@ export function BookingScheduleCard({
   const statusAnimStyle = useAnimatedStyle(() => ({ opacity: statusOpacity.value }));
   const customerName = booking.customers?.full_name || "Customer";
   const serviceName = serviceSummary(booking.services);
-  const displayStatus = booking.db_status || booking.status;
+  // §Booking-lifecycle-coherence (audit 2026-05): when a booking is stuck at
+  // `pending_payment` but payment has actually settled (paid/partially_paid
+  // OR outstanding=0), display it as `pending` (awaiting provider). The
+  // provider list API normalises this server-side, but this defensive guard
+  // keeps the card correct even if a non-normalised caller reaches it.
+  const _scheduleRawDb = booking.db_status || booking.status;
+  const _schedulePaymentStatus = (booking.payment_status || "").toLowerCase();
+  const _scheduleOutstanding = booking.outstanding_balance;
+  const displayStatus =
+    _scheduleRawDb === "pending_payment" &&
+    (_schedulePaymentStatus === "paid" ||
+      _schedulePaymentStatus === "partially_paid" ||
+      (typeof _scheduleOutstanding === "number" && _scheduleOutstanding <= 0.005))
+      ? "pending"
+      : _scheduleRawDb;
   const ns = normalizeBookingStatus(displayStatus);
   const st = STATUS_STYLE[ns] ?? { bg: Colors.gray[100], text: Colors.gray[700] };
   const payment = getPaymentLabel(booking);
@@ -280,7 +300,7 @@ export function BookingScheduleCard({
                 <TouchableOpacity
                   onPress={() => {
                     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                    void onApplyStatus(booking.id, cta.dbTarget, `${cta.label} saved`);
+                    void onApplyStatus(booking.id, cta, `${cta.label} saved`);
                   }}
                   disabled={pendingIds.has(booking.id)}
                   style={[

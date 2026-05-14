@@ -1,6 +1,6 @@
 {
   "name": "provider",
-  "version": "1.0.35",
+  "version": "1.0.36",
   "main": "index.ts",
   "scripts": {
     "dev": "node ../../tooling/expo-dev/port-safe-expo-dev.js 8082 8084",
@@ -29,6 +29,7 @@
     "@beautonomi/i18n": "workspace:*",
     "@beautonomi/phone": "workspace:*",
     "@beautonomi/types": "workspace:*",
+    "@beautonomi/ui": "workspace:*",
     "@beautonomi/ui-tokens": "workspace:*",
     "@beautonomi/utils": "workspace:*",
     "@expo/vector-icons": "^15.1.1",
@@ -36,7 +37,7 @@
     "@react-native-community/datetimepicker": "8.4.4",
     "@react-native-community/netinfo": "11.4.1",
     "@react-native-community/slider": "5.0.1",
-    "@react-navigation/native": "^7.1.8",
+    "@react-navigation/native": "^7.2.2",
     "@sentry/react-native": "~7.2.0",
     "@shopify/flash-list": "2.0.2",
     "@supabase/supabase-js": "^2.104.1",

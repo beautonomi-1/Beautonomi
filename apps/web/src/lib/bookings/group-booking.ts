@@ -25,14 +25,36 @@ export interface GroupBooking {
 
 export interface BookingParticipant {
   id: string;
-  booking_id: string;
+  booking_id: string | null;
   group_booking_id: string;
   participant_name: string;
   participant_email: string | null;
   participant_phone: string | null;
   is_primary_contact: boolean;
+  price: number | null;
+  service_id: string | null;
+  service_name: string | null;
+  duration_minutes: number | null;
+  customer_id: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface GroupParticipantInput {
+  /** Nullable: guests created inline do not yet have an individual booking row */
+  booking_id: string | null;
+  participant_name: string;
+  participant_email?: string | null;
+  participant_phone?: string | null;
+  is_primary_contact?: boolean;
+  /** Per-participant service price for receipt line items */
+  price?: number | null;
+  /** Offering UUID so receipts can show the service name */
+  service_id?: string | null;
+  service_name?: string | null;
+  duration_minutes?: number | null;
+  /** Linked customer profile (for analytics / history) */
+  customer_id?: string | null;
 }
 
 /**
@@ -43,13 +65,7 @@ export async function createGroupBooking(
   providerId: string,
   primaryBookingId: string,
   bookingIds: string[],
-  participants: Array<{
-    booking_id: string;
-    participant_name: string;
-    participant_email?: string;
-    participant_phone?: string;
-    is_primary_contact?: boolean;
-  }>
+  participants: GroupParticipantInput[]
 ): Promise<GroupBooking> {
   // Get scheduled_at from primary booking
   const { data: primaryBooking, error: bookingError } = await supabase
@@ -121,21 +137,20 @@ export async function createGroupBooking(
 export async function linkBookingsToGroup(
   supabase: SupabaseClient,
   groupBookingId: string,
-  participants: Array<{
-    booking_id: string;
-    participant_name: string;
-    participant_email?: string;
-    participant_phone?: string;
-    is_primary_contact?: boolean;
-  }>
+  participants: GroupParticipantInput[]
 ): Promise<void> {
   const participantRecords = participants.map((p) => ({
-    booking_id: p.booking_id,
+    booking_id: p.booking_id ?? null,
     group_booking_id: groupBookingId,
     participant_name: p.participant_name,
-    participant_email: p.participant_email || null,
-    participant_phone: p.participant_phone || null,
-    is_primary_contact: p.is_primary_contact || false,
+    participant_email: p.participant_email ?? null,
+    participant_phone: p.participant_phone ?? null,
+    is_primary_contact: p.is_primary_contact ?? false,
+    price: typeof p.price === 'number' ? p.price : 0,
+    service_id: p.service_id ?? null,
+    service_name: p.service_name ?? null,
+    duration_minutes: p.duration_minutes ?? null,
+    customer_id: p.customer_id ?? null,
   }));
 
   const { error } = await supabase

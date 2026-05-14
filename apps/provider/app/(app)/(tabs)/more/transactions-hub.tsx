@@ -47,12 +47,15 @@ type ShortcutRow = {
   bg: string;
 };
 
+/** Query flag so destination screens can show an explicit back target to this hub (tab switches do not always preserve stack history). */
+const HUB_RETURN_SUFFIX = "?from=transactions-hub" as const;
+
 const SHORTCUTS: ShortcutRow[] = [
   {
     icon: "list-outline",
     label: "Finance ledger",
     subtitle: "Fees, payouts, tips, filters & CSV export",
-    route: "/(app)/(tabs)/more/transactions",
+    route: `/(app)/(tabs)/more/transactions${HUB_RETURN_SUFFIX}`,
     color: "#2563eb",
     bg: "#dbeafe",
   },
@@ -60,15 +63,23 @@ const SHORTCUTS: ShortcutRow[] = [
     icon: "card-outline",
     label: "Walk-in & POS sales",
     subtitle: "Appointments, products & add-ons",
-    route: "/(app)/(tabs)/sales",
+    route: `/(app)/(tabs)/sales${HUB_RETURN_SUFFIX}`,
     color: "#0d9488",
     bg: "#ccfbf1",
+  },
+  {
+    icon: "storefront-outline",
+    label: "Retail walk-in",
+    subtitle: "In-person product sales from your catalogue",
+    route: `/(app)/(tabs)/more/walk-in-sale${HUB_RETURN_SUFFIX}`,
+    color: "#c2410c",
+    bg: "#ffedd5",
   },
   {
     icon: "bar-chart-outline",
     label: "Sales by date range",
     subtitle: "Breakdown with CSV export",
-    route: "/(app)/(tabs)/more/sales-history",
+    route: `/(app)/(tabs)/more/sales-history${HUB_RETURN_SUFFIX}`,
     color: "#6366f1",
     bg: "#e0e7ff",
   },
@@ -76,7 +87,7 @@ const SHORTCUTS: ShortcutRow[] = [
     icon: "cash-outline",
     label: "Payouts",
     subtitle: "Withdrawals & pending balance",
-    route: "/(app)/(tabs)/more/payouts",
+    route: `/(app)/(tabs)/more/payouts${HUB_RETURN_SUFFIX}`,
     color: "#d97706",
     bg: "#fef3c7",
   },

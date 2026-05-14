@@ -683,8 +683,8 @@ export default function BookingsListScreen() {
   }, [mergedBookingsData, selectedDateKey, timeBlocks, closedDateKeys, selectedDate]);
 
   const handleApplyStatus = useCallback(
-    async (bookingId: string, target: string, successMessage: string) => {
-      const r = await applyStatus(bookingId, target);
+    async (bookingId: string, action: import("@/lib/provider-booking-action-policy").ProviderBookingAction, successMessage: string) => {
+      const r = await applyStatus(bookingId, action);
       if (r.error) {
         setToast({ message: mapProviderBookingActionError(r.error, r.errorCode), type: "error" });
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);

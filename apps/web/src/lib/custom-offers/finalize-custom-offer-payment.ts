@@ -9,8 +9,9 @@
  *     offer is fully covered by wallet + gift card (+ loyalty discount)
  *
  * Idempotent on `(offer_id, payment_reference)`. Tolerates split tenders:
- *   amount_paid = paystackAmount + walletAmount + giftCardAmount
- *   total_amount = amount_paid + loyaltyDiscountAmount  (loyalty is a discount, not a tender)
+ *   amount_paid (cashCollected) = paystackAmount + walletAmount + giftCardAmount
+ *   bookings.total_amount = cashCollected for full payments; coTotalAmount for deposit payments
+ *   loyaltyDiscountAmount is stored in bookings.loyalty_discount_amount — NOT added to total_amount
  *
  * Caller MUST pass an admin-scoped Supabase client (service_role).
  */
@@ -255,6 +256,10 @@ export async function finalizeCustomOfferPayment(
     const nextHour = new Date(Date.now() + 60 * 60 * 1000);
     nextHour.setMinutes(0, 0, 0);
     scheduledAt = nextHour.toISOString();
+    console.warn(
+      `[finalizeCustomOfferPayment] offer ${offerId} has no scheduled_at or preferred_start_at — ` +
+      `defaulting to next rounded hour (${scheduledAt}). Provider should confirm the booking time with the customer.`,
+    );
   }
   const bookingSubtotal = Number(offer.price || 0);
 
@@ -616,7 +621,9 @@ export async function finalizeCustomOfferPayment(
     reference: input.reference,
     amount: cashCollected,
     fees: paystackFeesMajor,
-    net_amount: cashCollected - paystackFeesMajor,
+    // net_amount represents the Paystack leg only (not wallet/gift — those have their own
+    // finance_transactions rows and would double-count if included here).
+    net_amount: paystackAmountMajor - paystackFeesMajor,
     status: "success",
     provider:
       input.paymentProvider ??
@@ -639,32 +646,45 @@ export async function finalizeCustomOfferPayment(
     provider_id: req.provider_id,
   });
 
-  await adminSupabase.from("finance_transactions").insert([
-    {
-      booking_id: booking.id,
-      provider_id: req.provider_id,
-      tenant_id: customOfferFinanceTenantId,
-      transaction_type: "payment",
-      amount: commissionBase,
-      fees: paystackFeesMajor,
-      commission: platformCommission,
-      net: platformCommission,
-      description: `Custom order payment [custom_offer:${offerId}]`,
-      created_at: new Date().toISOString(),
-    },
-    {
-      booking_id: booking.id,
-      provider_id: req.provider_id,
-      tenant_id: customOfferFinanceTenantId,
-      transaction_type: "provider_earnings",
-      amount: providerEarnings,
-      fees: 0,
-      commission: 0,
-      net: providerEarnings,
-      description: `Provider earnings (custom order) [custom_offer:${offerId}]`,
-      created_at: new Date().toISOString(),
-    },
-  ]);
+  try {
+    const { error: ftErr } = await adminSupabase.from("finance_transactions").insert([
+      {
+        booking_id: booking.id,
+        provider_id: req.provider_id,
+        tenant_id: customOfferFinanceTenantId,
+        transaction_type: "payment",
+        amount: commissionBase,
+        fees: paystackFeesMajor,
+        commission: platformCommission,
+        net: platformCommission,
+        description: `Custom order payment [custom_offer:${offerId}]`,
+        created_at: new Date().toISOString(),
+      },
+      {
+        booking_id: booking.id,
+        provider_id: req.provider_id,
+        tenant_id: customOfferFinanceTenantId,
+        transaction_type: "provider_earnings",
+        amount: providerEarnings,
+        fees: 0,
+        commission: 0,
+        net: providerEarnings,
+        description: `Provider earnings (custom order) [custom_offer:${offerId}]`,
+        created_at: new Date().toISOString(),
+      },
+    ]);
+    if (ftErr) {
+      console.error(
+        `[finalizeCustomOfferPayment] finance_transactions core insert failed for booking ${booking.id}:`,
+        ftErr,
+      );
+    }
+  } catch (ftCoreErr) {
+    console.error(
+      `[finalizeCustomOfferPayment] finance_transactions core insert threw for booking ${booking.id}:`,
+      ftCoreErr,
+    );
+  }
 
   const extraRows: Array<Record<string, unknown>> = [];
   if (serviceFeeAmount > 0) {
@@ -792,7 +812,20 @@ export async function finalizeCustomOfferPayment(
     });
   }
   if (extraRows.length > 0) {
-    await adminSupabase.from("finance_transactions").insert(extraRows);
+    try {
+      const { error: extraFtErr } = await adminSupabase.from("finance_transactions").insert(extraRows);
+      if (extraFtErr) {
+        console.error(
+          `[finalizeCustomOfferPayment] finance_transactions extras insert failed for booking ${booking.id}:`,
+          extraFtErr,
+        );
+      }
+    } catch (extraFtCoreErr) {
+      console.error(
+        `[finalizeCustomOfferPayment] finance_transactions extras insert threw for booking ${booking.id}:`,
+        extraFtCoreErr,
+      );
+    }
   }
 
   // Promotion usage (idempotent)

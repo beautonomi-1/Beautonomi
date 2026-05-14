@@ -184,18 +184,30 @@ export async function POST(request: Request) {
       }
     }
 
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "";
+    const resolvedCallbackUrl = callback_url || `${appUrl}/checkout/success`;
+
+    // cancel_action: mobile callback gets `?cancelled=1` appended; web falls back to /checkout/cancelled
+    const isMobileCallback =
+      resolvedCallbackUrl.startsWith("customer://") ||
+      resolvedCallbackUrl.startsWith("exp://");
+    const cancelAction = isMobileCallback
+      ? `${resolvedCallbackUrl}${resolvedCallbackUrl.includes("?") ? "&" : "?"}cancelled=1`
+      : `${appUrl}/checkout/cancelled?booking_id=${encodeURIComponent(booking_id)}`;
+
     // Initialize transaction with split if configured
     const paystackData = await initializePaystackTransaction({
       email,
       amountInSmallestUnit,
       currency: currency || lastResortCurrency,
       reference: transactionReference,
-      callback_url: callback_url || `${process.env.NEXT_PUBLIC_APP_URL || ""}/checkout/success`,
+      callback_url: resolvedCallbackUrl,
       metadata: {
         booking_id,
         customer_id: auth.user.id,
         save_card: saveCard,
         set_as_default: setAsDefault,
+        cancel_action: cancelAction,
         custom_fields: [
           {
             display_name: "Booking ID",

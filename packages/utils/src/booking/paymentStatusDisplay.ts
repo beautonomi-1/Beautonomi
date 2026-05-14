@@ -18,11 +18,45 @@ export type BookingPaymentDisplay = {
   isPaymentPending: boolean;
 };
 
+/**
+ * Resolve the *effective* lifecycle status. `pending_payment` is meant to be a
+ * transient state during the customer's payment redirect — once payment has
+ * settled (`payment_status` is `paid` / `partially_paid`, or `outstandingBalance`
+ * is 0), the booking should display as if it had advanced to `pending`
+ * (awaiting provider confirmation). The DB trigger and async repair both move
+ * the row to `pending`, but UI sometimes sees the stale row before that — this
+ * function makes display behave correctly even then.
+ */
+export function resolveEffectiveBookingLifecycleStatus(input: {
+  status?: string | null;
+  paymentStatus?: string | null;
+  outstandingBalance?: number | null;
+}): string {
+  const status = String(input.status || "pending").toLowerCase();
+  if (status !== "pending_payment") return status;
+
+  const paymentStatus = String(input.paymentStatus || "").toLowerCase();
+  const isPaid = paymentStatus === "paid" || paymentStatus === "partially_paid";
+  const hasOutstanding =
+    input.outstandingBalance !== undefined && input.outstandingBalance !== null;
+  const outstanding = Math.max(0, Number(input.outstandingBalance || 0));
+  if (isPaid || (hasOutstanding && outstanding <= 0.005)) return "pending";
+  return status;
+}
+
 export function getBookingLifecycleDisplay(input: {
   status?: string | null;
   providerName?: string | null;
+  /** Optional — when provided, a stuck `pending_payment` with settled payment is treated as `pending`. */
+  paymentStatus?: string | null;
+  /** Optional — outstanding balance is checked alongside `paymentStatus` when resolving `pending_payment`. */
+  outstandingBalance?: number | null;
 }): BookingLifecycleDisplay {
-  const status = String(input.status || "pending").toLowerCase();
+  const status = resolveEffectiveBookingLifecycleStatus({
+    status: input.status,
+    paymentStatus: input.paymentStatus,
+    outstandingBalance: input.outstandingBalance,
+  });
   const providerName = input.providerName?.trim() || "your provider";
 
   if (status === "pending_payment") {

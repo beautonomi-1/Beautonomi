@@ -72,6 +72,37 @@ vi.mock('@/lib/regions/config', () => ({
   }),
 }));
 
+/** Minimal chain for Supabase mocks (GET uses `maybeSingle` on providers; list uses `order`). */
+function mockBookingsQueryBuilder(orderRows: unknown[]) {
+  const order = vi.fn().mockImplementation(() => {
+    // 1st: main bookings list — `await query.order(...)`
+    // 2nd: group_bookings merge — `await groupQuery.order(...).limit(500)`
+    if (order.mock.calls.length === 1) {
+      return Promise.resolve({ data: orderRows, error: null });
+    }
+    return {
+      limit: vi.fn().mockResolvedValue({ data: [], error: null }),
+    };
+  });
+
+  return {
+    select: vi.fn().mockReturnThis(),
+    eq: vi.fn().mockReturnThis(),
+    is: vi.fn().mockReturnThis(),
+    in: vi.fn().mockReturnThis(),
+    or: vi.fn().mockReturnThis(),
+    gte: vi.fn().mockReturnThis(),
+    lte: vi.fn().mockReturnThis(),
+    limit: vi.fn().mockReturnThis(),
+    range: vi.fn().mockReturnThis(),
+    maybeSingle: vi.fn().mockResolvedValue({
+      data: { timezone: 'Africa/Johannesburg', id: mockUser.id },
+      error: null,
+    }),
+    order,
+  };
+}
+
 describe('Provider Bookings API', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -82,16 +113,7 @@ describe('Provider Bookings API', () => {
       const { getSupabaseServer } = await import('@/lib/supabase/server');
       const { getSupabaseAdmin } = await import('@/lib/supabase/admin');
       
-      const queryBuilder = {
-        select: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockReturnThis(),
-        gte: vi.fn().mockReturnThis(),
-        lte: vi.fn().mockReturnThis(),
-        order: vi.fn().mockResolvedValue({
-          data: [mockBooking],
-          error: null,
-        }),
-      };
+      const queryBuilder = mockBookingsQueryBuilder([mockBooking]);
 
       const mockSupabase = {
         from: vi.fn(() => queryBuilder),
@@ -114,14 +136,7 @@ describe('Provider Bookings API', () => {
       const { getSupabaseServer } = await import('@/lib/supabase/server');
       const { getSupabaseAdmin } = await import('@/lib/supabase/admin');
       
-      const queryBuilder = {
-        select: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockReturnThis(),
-        order: vi.fn().mockResolvedValue({
-          data: [],
-          error: null,
-        }),
-      };
+      const queryBuilder = mockBookingsQueryBuilder([]);
 
       const mockSupabase = {
         from: vi.fn(() => queryBuilder),
@@ -144,14 +159,7 @@ describe('Provider Bookings API', () => {
       const { getSupabaseServer } = await import('@/lib/supabase/server');
       const { getSupabaseAdmin } = await import('@/lib/supabase/admin');
       
-      const queryBuilder = {
-        select: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockReturnThis(),
-        order: vi.fn().mockResolvedValue({
-          data: [mockBooking],
-          error: null,
-        }),
-      };
+      const queryBuilder = mockBookingsQueryBuilder([mockBooking]);
 
       const mockSupabase = {
         from: vi.fn(() => queryBuilder),
@@ -182,6 +190,10 @@ describe('Provider Bookings API', () => {
         select: vi.fn().mockReturnThis(),
         insert: vi.fn().mockReturnThis(),
         eq: vi.fn().mockReturnThis(),
+        maybeSingle: vi.fn().mockResolvedValue({
+          data: { timezone: 'Africa/Johannesburg', id: mockUser.id },
+          error: null,
+        }),
         single: vi.fn().mockResolvedValue({
           data: mockBooking,
           error: null,

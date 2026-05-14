@@ -122,7 +122,8 @@ export async function POST(request: NextRequest) {
         ticket.ticket_number || ticket.id,
         validated.subject,
         ticket.id,
-        ["email", "push"]
+        ["email", "push"],
+        requesterType === "provider" ? "provider" : "customer"
       );
     } catch (notifyErr) {
       console.error("Support ticket created notification failed:", notifyErr);

@@ -13,6 +13,24 @@ const schema = z.object({
   utm_medium: z.string().optional(),
   utm_campaign: z.string().optional(),
   referrer_path: z.string().optional(),
+  /** Optional: mobile app scheme return URL (e.g. `customer://membership-paystack`). When present,
+   *  it is used as both the Paystack callback_url and to derive cancel_action with `?cancelled=1`. */
+  callback_url: z
+    .string()
+    .trim()
+    .optional()
+    .refine(
+      (v) => {
+        if (!v) return true;
+        return (
+          v.startsWith("https://") ||
+          v.startsWith("http://") ||
+          v.startsWith("customer://") ||
+          v.startsWith("exp://")
+        );
+      },
+      { message: "Invalid callback URL" },
+    ),
 });
 
 /**
@@ -40,6 +58,7 @@ export async function POST(request: NextRequest) {
       planId,
       expectedProviderId: providerId,
       tenantId,
+      callbackUrl: parsed.data.callback_url ?? undefined,
       attribution: {
         campaign_id: parsed.data.campaign_id,
         source: parsed.data.source ?? "customer_app_partner_profile",

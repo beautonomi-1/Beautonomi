@@ -222,10 +222,22 @@ export async function GET(
     const totalRefunded = childRows.reduce((sum, b) => sum + num(b.total_refunded), 0);
     const baseTotal = childRows.length > 0 ? childTotalAmount : groupTotal;
     const netCollected = Math.max(0, amountPaid - totalRefunded);
-    const balanceDue = Math.max(0, baseTotal - netCollected);
+    /**
+     * §Group-booking-audit 2026-05: an empty/estimate-only group has no
+     * invoice yet — we still want callers to see what the projected total
+     * is, but `balance_due` should be 0 (you cannot owe money on a session
+     * that hasn't been billed). Surface the projected amount separately as
+     * `estimated_session_amount` for the PDF/UI to render distinctly from a
+     * real outstanding balance.
+     */
+    const isEstimateOnly = childRows.length === 0 && participants.length === 0;
+    const balanceDue = isEstimateOnly ? 0 : Math.max(0, baseTotal - netCollected);
+    const estimatedSessionAmount = isEstimateOnly ? Math.max(0, baseTotal) : 0;
     const paymentStatus =
       childRows.length === 0
-        ? "not invoiced"
+        ? isEstimateOnly
+          ? "not_invoiced"
+          : "draft"
         : totalRefunded > 0 && amountPaid > 0 && totalRefunded >= amountPaid - 0.01
           ? "refunded"
           : totalRefunded > 0
@@ -305,6 +317,8 @@ export async function GET(
       amount_paid: amountPaid,
       total_refunded: totalRefunded,
       balance_due: balanceDue,
+      estimated_session_amount: estimatedSessionAmount,
+      is_estimate_only: isEstimateOnly,
       payment_status: paymentStatus,
       currency,
       notes: (group as any).notes || null,
