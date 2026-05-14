@@ -22,7 +22,7 @@ export async function GET(
       .from("support_tickets")
       .select(`
         *,
-        user:users!support_tickets_user_id_fkey(id, email, full_name, phone, role, is_active, created_at),
+        user:users!support_tickets_user_id_fkey(id, email, full_name, phone, role, created_at),
         provider:providers(id, business_name, email, phone, status, user_id, created_at),
         assigned_user:users!support_tickets_assigned_to_fkey(id, email, full_name)
       `)
