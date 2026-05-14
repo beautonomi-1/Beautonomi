@@ -71,11 +71,6 @@ interface CustomRequest {
   address_country?: string | null;
   offers?: CustomRequestOffer[];
 }
-type PaymentMethodSummary = {
-  id: string;
-  card_type?: string;
-  last4?: string;
-};
 
 type OfferDetailData = {
   id: string;
@@ -191,21 +186,18 @@ function requestAllowsOfferActions(item: CustomRequest): boolean {
 
 function RequestCard({
   item,
-  onAcceptPay,
-  onContinuePayment,
+  onPayOffer,
   onPressProvider,
   onCancel,
   onViewOfferDetail,
-  refreshingOfferId,
   cancellingRequestId,
 }: {
   item: CustomRequest;
-  onAcceptPay: (offerId: string) => void;
-  onContinuePayment: (paymentUrl: string) => void;
+  /** Opens canonical checkout (Bearer verify + Paystack return), same as chat. */
+  onPayOffer: (offerId: string) => void;
   onPressProvider: () => void;
   onCancel: (requestId: string) => void;
   onViewOfferDetail: (offerId: string) => void;
-  refreshingOfferId: string | null;
   cancellingRequestId: string | null;
 }) {
   const locationLabel = formatLocationLabel(item.location_type);
@@ -317,7 +309,6 @@ function RequestCard({
             const expired = o.expiration_at && new Date(o.expiration_at).getTime() < Date.now();
             const canAccept = actionsAllowed && canAcceptOffer(o);
             const canPayContinue = actionsAllowed && canContinuePayment(o);
-            const isRefreshing = refreshingOfferId === o.id;
             return (
               <TouchableOpacity
                 key={o.id}
@@ -353,19 +344,14 @@ function RequestCard({
                     <Text style={{ fontSize: 14, color: Colors.gray[400] }}>Withdrawn</Text>
                   ) : canPayContinue ? (
                     <TouchableOpacity
-                      onPress={() => onContinuePayment(o.payment_url!)}
-                      disabled={isRefreshing}
+                      onPress={() => onPayOffer(o.id)}
                       style={{ backgroundColor: "#1D4ED8", paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12 }}
                     >
-                      {isRefreshing ? (
-                        <ActivityIndicator size="small" color={Colors.white} />
-                      ) : (
-                        <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.white }}>Continue Payment</Text>
-                      )}
+                      <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.white }}>Continue Payment</Text>
                     </TouchableOpacity>
                   ) : canAccept ? (
-                    <TouchableOpacity onPress={() => onAcceptPay(o.id)} disabled={isRefreshing} style={{ backgroundColor: Colors.primary, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12 }}>
-                      {isRefreshing ? <ActivityIndicator size="small" color={Colors.white} /> : <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.white }}>Accept & Pay</Text>}
+                    <TouchableOpacity onPress={() => onPayOffer(o.id)} style={{ backgroundColor: Colors.primary, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12 }}>
+                      <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.white }}>Accept & Pay</Text>
                     </TouchableOpacity>
                   ) : !actionsAllowed && o.status !== "paid" ? (
                     <Text style={{ fontSize: 13, fontWeight: "500", color: Colors.gray[500] }}>Closed</Text>
@@ -401,7 +387,6 @@ export default function CustomRequestsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [refreshingOfferId, setRefreshingOfferId] = useState<string | null>(null);
   const [cancellingRequestId, setCancellingRequestId] = useState<string | null>(null);
   const [offerDetailVisible, setOfferDetailVisible] = useState(false);
   const [offerDetailLoading, setOfferDetailLoading] = useState(false);
@@ -448,90 +433,13 @@ export default function CustomRequestsScreen() {
     }, [load])
   );
 
-  const doAcceptPay = useCallback(
-    async (offerId: string, paymentOption: "full" | "deposit", paymentMethodId?: string) => {
-      setRefreshingOfferId(offerId);
-      try {
-        const res = await api.post<{ paymentUrl?: string; charged?: boolean }>(
-          `/api/me/custom-offers/${offerId}/accept`,
-          { payment_option: paymentOption, payment_method_id: paymentMethodId }
-        );
-        const paymentUrl =
-          (res.data as { paymentUrl?: string } | undefined)?.paymentUrl ??
-          (res as { data?: { paymentUrl?: string } }).data?.paymentUrl;
-        if (res.error) {
-          Alert.alert(errTitle, (res.error as { message?: string })?.message ?? crl("startPaymentFailed"));
-          return;
-        }
-        if (res.data?.charged) {
-          for (let i = 0; i < 15; i += 1) {
-            const state = await api.get<{ booking_id?: string | null }>(`/api/me/custom-offers/${offerId}`);
-            const bookingId = (state.data as { booking_id?: string | null } | undefined)?.booking_id ?? null;
-            if (bookingId) {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              router.replace({ pathname: "/(app)/booking-detail", params: { id: bookingId } });
-              return;
-            }
-            await new Promise((resolve) => setTimeout(resolve, 2000));
-          }
-          Alert.alert(errTitle, crl("startPaymentFailed"));
-          return;
-        }
-        if (paymentUrl) {
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          router.push({
-            pathname: "/(app)/in-app-browser",
-            params: { url: encodeURIComponent(paymentUrl), title: crl("completePaymentTitle") },
-          });
-        } else {
-          Alert.alert(crl("noPaymentLinkTitle"), crl("noPaymentLinkBody"));
-        }
-      } catch (e) {
-        Alert.alert(errTitle, e instanceof Error ? e.message : crl("startPaymentFailed"));
-      } finally {
-        setRefreshingOfferId(null);
-      }
-    },
-    [crl, errTitle]
-  );
-
-  const handleAcceptPay = useCallback(
-    async (offerId: string) => {
-      const methodsRes = await api.get<PaymentMethodSummary[]>("/api/me/payment-methods");
-      const methods = Array.isArray(methodsRes.data) ? methodsRes.data.slice(0, 3) : [];
-      if (methods.length > 0) {
-        Alert.alert(
-          crl("paymentOptionTitle"),
-          crl("paymentOptionBody"),
-          [
-            ...methods.map((m) => ({
-              text: `${crl("payWithSavedCard")} ${(m.card_type || "card").toUpperCase()} •••• ${m.last4 || "----"}`,
-              onPress: () => void doAcceptPay(offerId, "full", m.id),
-            })),
-            { text: crl("payDepositCta"), onPress: () => doAcceptPay(offerId, "deposit") },
-            { text: crl("payInFullCta"), onPress: () => doAcceptPay(offerId, "full"), style: "default" as const },
-            { text: t("common.cancel"), style: "cancel" as const },
-          ],
-          { cancelable: true },
-        );
-        return;
-      }
-      Alert.alert(crl("paymentOptionTitle"), crl("paymentOptionBody"), [
-        { text: t("common.cancel"), style: "cancel" },
-        { text: crl("payDepositCta"), onPress: () => doAcceptPay(offerId, "deposit") },
-        { text: crl("payInFullCta"), onPress: () => doAcceptPay(offerId, "full"), style: "default" },
-      ], { cancelable: true });
-    },
-    [doAcceptPay, crl, t]
-  );
-
-  const handleContinuePayment = useCallback((paymentUrl: string) => {
+  const openCustomOfferCheckout = useCallback((offerId: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     router.push({
-      pathname: "/(app)/in-app-browser",
-      params: { url: encodeURIComponent(paymentUrl), title: crl("completePaymentTitle") },
-    });
-  }, [crl]);
+      pathname: "/(app)/custom-offer-checkout",
+      params: { offer_id: offerId },
+    } as never);
+  }, []);
 
   const handlePressProvider = useCallback((item: CustomRequest) => {
     if (item.provider?.slug) {
@@ -617,12 +525,10 @@ export default function CustomRequestsScreen() {
         renderItem={({ item }) => (
           <RequestCard
             item={item}
-            onAcceptPay={handleAcceptPay}
-            onContinuePayment={handleContinuePayment}
+            onPayOffer={openCustomOfferCheckout}
             onPressProvider={() => handlePressProvider(item)}
             onCancel={handleCancelRequest}
             onViewOfferDetail={openOfferDetail}
-            refreshingOfferId={refreshingOfferId}
             cancellingRequestId={cancellingRequestId}
           />
         )}
@@ -745,11 +651,21 @@ export default function CustomRequestsScreen() {
                     <TouchableOpacity
                       onPress={() => {
                         setOfferDetailVisible(false);
-                        setTimeout(() => handleAcceptPay(d.id), 300);
+                        setTimeout(() => openCustomOfferCheckout(d.id), 300);
                       }}
                       style={{ marginTop: 24, borderRadius: 12, backgroundColor: Colors.primary, alignItems: "center", paddingVertical: 14 }}
                     >
                       <Text style={{ color: Colors.white, fontSize: 15, fontWeight: "700" }}>Accept & Pay</Text>
+                    </TouchableOpacity>
+                  ) : d.status === "payment_pending" && d.id ? (
+                    <TouchableOpacity
+                      onPress={() => {
+                        setOfferDetailVisible(false);
+                        setTimeout(() => openCustomOfferCheckout(d.id), 300);
+                      }}
+                      style={{ marginTop: 24, borderRadius: 12, backgroundColor: "#1D4ED8", alignItems: "center", paddingVertical: 14 }}
+                    >
+                      <Text style={{ color: Colors.white, fontSize: 15, fontWeight: "700" }}>Continue payment</Text>
                     </TouchableOpacity>
                   ) : isPaid && d.booking_id ? (
                     <TouchableOpacity

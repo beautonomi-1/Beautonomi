@@ -11,6 +11,9 @@ export interface Notification {
   data?: {
     conversation_id?: string;
     booking_id?: string;
+    custom_offer_id?: string;
+    offer_id?: string;
+    custom_request_id?: string;
     ticket_id?: string;
     order_id?: string;
     product_order_id?: string;
@@ -185,13 +188,26 @@ export function navigateFromNotification(n: Notification): void {
     return;
   }
 
-  // ── Custom requests / offers ─────────────────────────────────────────────
-  if (data.request_id || data.custom_request_id || data.custom_offer_id) {
-    router.push("/(app)/account-settings/custom-requests");
+  // ── Custom offers — open canonical checkout when we have an offer id (no booking_id: handled above)
+  const offerIdFromData =
+    (data.custom_offer_id != null && String(data.custom_offer_id).trim()) ||
+    (data.offer_id != null && String(data.offer_id).trim()) ||
+    "";
+  const offerIdFromLink = getLinkParam(link, "offer_id") || getLinkParam(link, "offer");
+  const offerIdTap = offerIdFromData || offerIdFromLink;
+  if (offerIdTap) {
+    router.push({
+      pathname: "/(app)/custom-offer-checkout",
+      params: { offer_id: offerIdTap },
+    } as never);
+    return;
+  }
+  if (data.request_id || data.custom_request_id) {
+    router.push("/(app)/account-settings/custom-requests" as never);
     return;
   }
   if (nType === "custom_request" || nType === "custom_offer" || nType === "custom_request_update" || nType === "custom_request_response") {
-    router.push("/(app)/account-settings/custom-requests");
+    router.push("/(app)/account-settings/custom-requests" as never);
     return;
   }
 

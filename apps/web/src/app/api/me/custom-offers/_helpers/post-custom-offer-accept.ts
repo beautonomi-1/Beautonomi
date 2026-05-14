@@ -57,7 +57,9 @@ async function notifyCustomerCustomOfferExpiredBestEffort(args: {
 }): Promise<void> {
   try {
     const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
-    const { sendTemplateNotification } = await import("@/lib/notifications/onesignal");
+    const { getNotificationTemplate, sendTemplateNotification, sendToUser } = await import(
+      "@/lib/notifications/onesignal"
+    );
     let providerName = "your provider";
     if (args.providerId) {
       const admin = getSupabaseAdmin();
@@ -69,17 +71,36 @@ async function notifyCustomerCustomOfferExpiredBestEffort(args: {
       const bn = (prow as { business_name?: string } | null)?.business_name;
       if (bn && bn.trim()) providerName = bn.trim();
     }
-    await sendTemplateNotification(
-      "customer_custom_offer_expired",
-      [args.customerId],
-      {
-        provider_name: providerName,
-        offer_id: args.offerId,
-        request_id: args.requestId ?? "",
-      },
-      ["push", "email"],
-      { appType: "customer" },
-    );
+    const template = await getNotificationTemplate("customer_custom_offer_expired");
+    if (template?.enabled) {
+      await sendTemplateNotification(
+        "customer_custom_offer_expired",
+        [args.customerId],
+        {
+          provider_name: providerName,
+          offer_id: args.offerId,
+          request_id: args.requestId ?? "",
+        },
+        template.channels || ["push", "email"],
+        { appType: "customer" },
+      );
+    } else {
+      await sendToUser(
+        args.customerId,
+        {
+          title: "Custom offer expired",
+          message: `A custom offer from ${providerName} has expired. Open the app to request a new quote if you still need the service.`,
+          data: {
+            type: "customer_custom_offer_expired",
+            offer_id: args.offerId,
+            request_id: args.requestId ?? "",
+          },
+          url: `/account-settings/custom-requests`,
+        },
+        ["push", "email"],
+        { appType: "customer" },
+      );
+    }
   } catch (e) {
     console.warn("[accept/expire] notify customer failed:", e);
   }

@@ -319,6 +319,36 @@ export default function CustomRequestsPageClient({
   }, [items, offerFormData.duration_minutes, offerFormData.location_id, offerFormData.staff_id, offerSlotParts.date, offerSlotParts.time, selectedRequestId, showOfferModal]);
 
   const [depositChoiceOfferId, setDepositChoiceOfferId] = useState<string | null>(null);
+  const [depositQuote, setDepositQuote] = useState<{
+    pricing?: { totalAmount?: number };
+    deposit?: { required?: boolean; percentage?: number; deposit_amount?: number; full_total?: number };
+  } | null>(null);
+  const [depositQuoteLoading, setDepositQuoteLoading] = useState(false);
+  const [depositOfferCurrency, setDepositOfferCurrency] = useState<string | undefined>(undefined);
+
+  const openDepositDialog = async (offerId: string, currency?: string) => {
+    setDepositChoiceOfferId(offerId);
+    setDepositOfferCurrency(currency);
+    setDepositQuote(null);
+    setDepositQuoteLoading(true);
+    try {
+      const res = await fetcher.get<{ data: typeof depositQuote }>(`/api/me/custom-offers/${offerId}/quote`);
+      setDepositQuote(res.data ?? null);
+    } catch {
+      // Graceful fallback — dialog still works without quote data
+    } finally {
+      setDepositQuoteLoading(false);
+    }
+  };
+
+  function formatMoney(amount: number, currency?: string): string {
+    if (!currency) return amount.toFixed(2);
+    try {
+      return new Intl.NumberFormat(undefined, { style: "currency", currency, maximumFractionDigits: 2 }).format(amount);
+    } catch {
+      return `${currency} ${amount.toFixed(2)}`;
+    }
+  }
 
   // Offer detail sheet
   const [offerDetailOpen, setOfferDetailOpen] = useState(false);
@@ -607,7 +637,7 @@ export default function CustomRequestsPageClient({
                                 ) : isPaymentPending ? (
                                   <Button variant="secondary" size="sm" disabled>Processing…</Button>
                                 ) : (
-                                  <Button size="sm" onClick={() => setDepositChoiceOfferId(o.id)}>Accept & Pay</Button>
+                                  <Button size="sm" onClick={() => openDepositDialog(o.id, o.currency)}>Accept & Pay</Button>
                                 )}
                               </div>
                             )}
@@ -1092,29 +1122,81 @@ export default function CustomRequestsPageClient({
       <Dialog open={!!depositChoiceOfferId} onOpenChange={(open) => !open && setDepositChoiceOfferId(null)}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Choose payment option</DialogTitle>
+            <DialogTitle>Complete Your Payment</DialogTitle>
             <DialogDescription>
-              How would you like to pay for this custom offer?
+              Confirm your booking by completing payment below.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-3 mt-2">
-            <Button
-              onClick={() => {
-                if (depositChoiceOfferId) acceptAndPay(depositChoiceOfferId, "full");
-                setDepositChoiceOfferId(null);
-              }}
-            >
-              Pay in Full
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => {
-                if (depositChoiceOfferId) acceptAndPay(depositChoiceOfferId, "deposit");
-                setDepositChoiceOfferId(null);
-              }}
-            >
-              Pay Deposit Only
-            </Button>
+            {depositQuoteLoading ? (
+              <div className="flex items-center justify-center py-6">
+                <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : (
+              <>
+                {/* Pay in Full — primary recommended action */}
+                <div className="rounded-xl border-2 border-primary bg-primary/5 p-4">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-semibold text-primary text-sm">Pay in Full</span>
+                    <span className="text-xs bg-primary text-white px-2 py-0.5 rounded-full font-medium">Recommended</span>
+                  </div>
+                  {depositQuote?.pricing?.totalAmount != null && (
+                    <div className="text-2xl font-bold text-gray-900 mb-1">
+                      {formatMoney(depositQuote.pricing.totalAmount, depositOfferCurrency)}
+                    </div>
+                  )}
+                  <p className="text-xs text-gray-500 mb-3">Secure instant confirmation · No balance due later</p>
+                  <Button
+                    className="w-full"
+                    onClick={() => {
+                      if (depositChoiceOfferId) acceptAndPay(depositChoiceOfferId, "full");
+                      setDepositChoiceOfferId(null);
+                    }}
+                  >
+                    Pay in Full
+                  </Button>
+                </div>
+
+                {/* Deposit — only shown when provider requires it */}
+                {depositQuote?.deposit?.required && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 h-px bg-gray-200" />
+                      <span className="text-xs text-gray-400 whitespace-nowrap">or pay a deposit</span>
+                      <div className="flex-1 h-px bg-gray-200" />
+                    </div>
+                    <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-medium text-sm text-gray-700">
+                          Pay {depositQuote.deposit.percentage}% Deposit
+                        </span>
+                        {depositQuote.deposit.deposit_amount != null && (
+                          <span className="text-sm font-semibold text-gray-900">
+                            {formatMoney(depositQuote.deposit.deposit_amount, depositOfferCurrency)}
+                          </span>
+                        )}
+                      </div>
+                      {depositQuote.deposit.full_total != null && depositQuote.deposit.deposit_amount != null && (
+                        <p className="text-xs text-gray-500 mb-2">
+                          Remaining {formatMoney(depositQuote.deposit.full_total - depositQuote.deposit.deposit_amount, depositOfferCurrency)} due before appointment
+                        </p>
+                      )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full text-gray-600"
+                        onClick={() => {
+                          if (depositChoiceOfferId) acceptAndPay(depositChoiceOfferId, "deposit");
+                          setDepositChoiceOfferId(null);
+                        }}
+                      >
+                        Pay Deposit Only
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </>
+            )}
           </div>
         </DialogContent>
       </Dialog>
@@ -1218,7 +1300,7 @@ export default function CustomRequestsPageClient({
                       disabled={isAcceptingDetail}
                       onClick={() => {
                         setOfferDetailOpen(false);
-                        setDepositChoiceOfferId(d.id);
+                        void openDepositDialog(d.id, d.currency);
                       }}
                     >
                       Accept & Pay

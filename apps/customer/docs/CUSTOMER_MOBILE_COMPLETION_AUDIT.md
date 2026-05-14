@@ -75,7 +75,7 @@ Dynamic segments are noted as `[id]` or described in parentheses.
 
 **Messaging:** `conversations`, `conversations/create`, `conversations/[id]/read`, `messages` (list), `messages` POST, `messages/upload`.
 
-**Custom requests / offers:** `custom-requests`, `custom-requests/upload`, `custom-requests/[id]/cancel`, `custom-offers/[id]/accept`.
+**Custom requests / offers:** `custom-requests`, `custom-requests/upload`, `custom-requests/[id]/cancel`. **Custom-offer payment (canonical):** `GET /api/me/custom-offers/[id]` (includes `provider_deposit`), `GET /api/me/custom-offers/[id]/quote`, `POST /api/me/custom-offers/[id]/pay` (same handler as `POST .../accept`). Customer **Chat** and **Custom requests** both route pay actions to `(app)/custom-offer-checkout`, which uses `WebBrowser.openAuthSessionAsync`, optional `callback_url` to `custom-offer-paystack`, then Bearer `GET /api/paystack/verify` and polling — not the generic in-app WebView — so completion does not rely on cookie-authenticated fetches on `/checkout/success`.
 
 **Loyalty & membership:** `loyalty-points`, `loyalty` (fallback), `loyalty/redeem`, `membership`, `membership/cancel`, `membership/subscribe`.
 

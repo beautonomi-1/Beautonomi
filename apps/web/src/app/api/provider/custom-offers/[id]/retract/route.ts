@@ -3,7 +3,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderIdForUser, successResponse, notFoundResponse, errorResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { requireRoleInApi } from "@/lib/supabase/api-helpers";
-import { sendTemplateNotification } from "@/lib/notifications/onesignal";
+import { getNotificationTemplate, sendTemplateNotification, sendToUser } from "@/lib/notifications/onesignal";
 import { patchCustomOfferMessageAttachments } from "@/lib/custom-offers/sync-offer-message-attachments";
 
 /**
@@ -99,17 +99,36 @@ export async function POST(
           const bn = (pnRow as { business_name?: string } | null)?.business_name;
           if (bn && bn.trim()) providerName = bn.trim();
 
-          await sendTemplateNotification(
-            "customer_custom_offer_withdrawn",
-            [customerId],
-            {
-              provider_name: providerName,
-              offer_id: offerId,
-              request_id: offerData.request_id ?? "",
-            },
-            ["push", "email"],
-            { appType: "customer" },
-          );
+          const template = await getNotificationTemplate("customer_custom_offer_withdrawn");
+          if (template?.enabled) {
+            await sendTemplateNotification(
+              "customer_custom_offer_withdrawn",
+              [customerId],
+              {
+                provider_name: providerName,
+                offer_id: offerId,
+                request_id: offerData.request_id ?? "",
+              },
+              template.channels || ["push", "email"],
+              { appType: "customer" },
+            );
+          } else {
+            await sendToUser(
+              customerId,
+              {
+                title: "Offer withdrawn",
+                message: `${providerName} withdrew a custom offer. You can still view your request in the app.`,
+                data: {
+                  type: "customer_custom_offer_withdrawn",
+                  offer_id: offerId,
+                  request_id: offerData.request_id ?? "",
+                },
+                url: `/account-settings/custom-requests?request_id=${encodeURIComponent(offerData.request_id ?? "")}`,
+              },
+              ["push", "email"],
+              { appType: "customer" },
+            );
+          }
         } catch (notifyErr) {
           console.warn("[retract] failed to notify customer:", notifyErr);
         }

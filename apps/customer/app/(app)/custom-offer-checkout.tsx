@@ -155,11 +155,9 @@ export default function CustomOfferCheckoutScreen() {
       return;
     }
     setOffer(row);
-    const reqDeposit = Boolean(row.provider_deposit?.requires_deposit);
-    if (reqDeposit && row.status !== "paid") {
-      setPaymentOption("deposit");
-    }
-    const q = await api.get<QuotePayload>(`/api/me/custom-offers/${offerId}/quote?payment_option=${reqDeposit && row.status !== "paid" ? "deposit" : "full"}`);
+    const q = await api.get<QuotePayload>(
+      `/api/me/custom-offers/${offerId}/quote?payment_option=full`,
+    );
     if (!q.error && q.data) setQuote(q.data);
     else setQuote(null);
     setLoading(false);
@@ -659,6 +657,9 @@ export default function CustomOfferCheckoutScreen() {
                   backgroundColor: paymentOption === "full" ? "rgba(255,0,119,0.06)" : "#fff",
                 }}
               >
+                <Text style={{ fontSize: 10, fontWeight: "700", color: PRIMARY, textAlign: "center", marginBottom: 4 }}>
+                  Recommended
+                </Text>
                 <Text style={{ fontWeight: "700", color: "#111827", textAlign: "center" }}>Pay in full</Text>
               </TouchableOpacity>
               <TouchableOpacity

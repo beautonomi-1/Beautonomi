@@ -134,6 +134,12 @@ export default function WhatsAppChat({
   const [paymentOptionOpen, setPaymentOptionOpen] = useState(false);
   const [selectedOfferIdForPayment, setSelectedOfferIdForPayment] = useState<string | null>(null);
   const [isAcceptingOffer, setIsAcceptingOffer] = useState(false);
+  const [paymentQuote, setPaymentQuote] = useState<{
+    pricing?: { totalAmount?: number; subtotal?: number };
+    deposit?: { required?: boolean; percentage?: number; deposit_amount?: number; full_total?: number };
+  } | null>(null);
+  const [paymentQuoteLoading, setPaymentQuoteLoading] = useState(false);
+  const [paymentOfferCurrency, setPaymentOfferCurrency] = useState<string | undefined>(undefined);
   const [decliningOfferId, setDecliningOfferId] = useState<string | null>(null);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   /** When message attachment JSON lags behind DB (e.g. after payment). */
@@ -284,11 +290,11 @@ export default function WhatsAppChat({
   const handleAcceptOffer = async (offerId: string, paymentOption: "full" | "deposit" = "full") => {
     setIsAcceptingOffer(true);
     try {
-      const res = await fetcher.post<{ data: { payment_url?: string; charged?: boolean } }>(
+      const res = await fetcher.post<{ data: { paymentUrl?: string; payment_url?: string; charged?: boolean } }>(
         `/api/me/custom-offers/${offerId}/pay`,
         { payment_option: paymentOption },
       );
-      const url = res.data?.payment_url;
+      const url = res.data?.paymentUrl ?? res.data?.payment_url;
       if (url) {
         window.location.href = url;
       } else if (res.data?.charged) {
@@ -297,12 +303,28 @@ export default function WhatsAppChat({
         setOfferDetailOpen(false);
         setTimeout(() => loadMessages(), 600);
       } else {
-        toast.error("Payment link was not returned");
+        toast.error("Unable to start payment. Please try again.");
       }
     } catch (err) {
       toast.error(err instanceof FetchError ? err.message : "Failed to accept offer");
     } finally {
       setIsAcceptingOffer(false);
+    }
+  };
+
+  const openPaymentDialog = async (offerId: string, currency?: string) => {
+    setSelectedOfferIdForPayment(offerId);
+    setPaymentOfferCurrency(currency);
+    setPaymentQuote(null);
+    setPaymentOptionOpen(true);
+    setPaymentQuoteLoading(true);
+    try {
+      const res = await fetcher.get<{ data: typeof paymentQuote }>(`/api/me/custom-offers/${offerId}/quote`);
+      setPaymentQuote(res.data ?? null);
+    } catch {
+      // Graceful fallback — dialog still works without quote data
+    } finally {
+      setPaymentQuoteLoading(false);
     }
   };
 
@@ -1093,14 +1115,12 @@ export default function WhatsAppChat({
                         role={isProviderChat ? "provider" : "customer"}
                         onClick={() => att.offer_id && openOfferDetail(att.offer_id)}
                         onAccept={() => {
-                          setSelectedOfferIdForPayment(att.offer_id!);
-                          setPaymentOptionOpen(true);
+                          void openPaymentDialog(att.offer_id!, att.currency);
                         }}
                         onDecline={() => att.offer_id && void handleDeclineOffer(att.offer_id)}
                         isDeclineLoading={decliningOfferId === att.offer_id}
                         onResume={() => {
-                          setSelectedOfferIdForPayment(att.offer_id!);
-                          setPaymentOptionOpen(true);
+                          void openPaymentDialog(att.offer_id!, att.currency);
                         }}
                         onViewBooking={() => {
                           const bid = ov?.booking_id ?? att.booking_id ?? null;
@@ -1426,27 +1446,85 @@ export default function WhatsAppChat({
       <Dialog open={paymentOptionOpen} onOpenChange={(open) => { if (!isAcceptingOffer) setPaymentOptionOpen(open); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Choose Payment Option</DialogTitle>
-            <DialogDescription>How would you like to pay for this offer?</DialogDescription>
+            <DialogTitle>Complete Your Payment</DialogTitle>
+            <DialogDescription>Confirm your booking by completing payment below.</DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-3 py-2">
-            <Button
-              className="w-full"
-              disabled={isAcceptingOffer}
-              onClick={() => selectedOfferIdForPayment && handleAcceptOffer(selectedOfferIdForPayment, "full")}
-            >
-              {isAcceptingOffer ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-              Pay in Full
-            </Button>
-            <Button
-              variant="outline"
-              className="w-full"
-              disabled={isAcceptingOffer}
-              onClick={() => selectedOfferIdForPayment && handleAcceptOffer(selectedOfferIdForPayment, "deposit")}
-            >
-              {isAcceptingOffer ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-              Pay Deposit
-            </Button>
+            {paymentQuoteLoading ? (
+              <div className="flex items-center justify-center py-4">
+                <Loader2 className="w-5 h-5 animate-spin text-primary" />
+              </div>
+            ) : (
+              <>
+                {/* Pay in Full — always the primary recommended action */}
+                <div className="rounded-xl border-2 border-primary bg-primary/5 p-4">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-semibold text-primary text-sm">Pay in Full</span>
+                    <span className="text-xs bg-primary text-white px-2 py-0.5 rounded-full font-medium">Recommended</span>
+                  </div>
+                  {paymentQuote?.pricing?.totalAmount != null && (
+                    <div className="text-2xl font-bold text-gray-900 mb-1">
+                      {paymentOfferCurrency
+                        ? (() => { try { return new Intl.NumberFormat(undefined, { style: "currency", currency: paymentOfferCurrency, maximumFractionDigits: 2 }).format(paymentQuote.pricing.totalAmount!); } catch { return `${paymentOfferCurrency} ${paymentQuote.pricing.totalAmount!.toFixed(2)}`; } })()
+                        : paymentQuote.pricing.totalAmount.toFixed(2)}
+                    </div>
+                  )}
+                  <p className="text-xs text-gray-500 mb-3">Secure instant confirmation · No balance due later</p>
+                  <Button
+                    className="w-full"
+                    disabled={isAcceptingOffer}
+                    onClick={() => selectedOfferIdForPayment && handleAcceptOffer(selectedOfferIdForPayment, "full")}
+                  >
+                    {isAcceptingOffer ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                    Pay in Full
+                  </Button>
+                </div>
+
+                {/* Deposit — only show when provider requires it */}
+                {paymentQuote?.deposit?.required && (
+                  <>
+                    <div className="flex items-center gap-2 my-1">
+                      <div className="flex-1 h-px bg-gray-200" />
+                      <span className="text-xs text-gray-400 whitespace-nowrap">or pay a deposit</span>
+                      <div className="flex-1 h-px bg-gray-200" />
+                    </div>
+                    <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-medium text-sm text-gray-700">
+                          Pay {paymentQuote.deposit.percentage}% Deposit
+                        </span>
+                        {paymentQuote.deposit.deposit_amount != null && (
+                          <span className="text-sm font-semibold text-gray-900">
+                            {paymentOfferCurrency
+                              ? (() => { try { return new Intl.NumberFormat(undefined, { style: "currency", currency: paymentOfferCurrency, maximumFractionDigits: 2 }).format(paymentQuote.deposit.deposit_amount!); } catch { return `${paymentOfferCurrency} ${paymentQuote.deposit.deposit_amount!.toFixed(2)}`; } })()
+                              : paymentQuote.deposit.deposit_amount.toFixed(2)}
+                          </span>
+                        )}
+                      </div>
+                      {paymentQuote.deposit.full_total != null && paymentQuote.deposit.deposit_amount != null && (
+                        <p className="text-xs text-gray-500 mb-2">
+                          Remaining{" "}
+                          {paymentOfferCurrency
+                            ? (() => { try { return new Intl.NumberFormat(undefined, { style: "currency", currency: paymentOfferCurrency, maximumFractionDigits: 2 }).format(paymentQuote.deposit.full_total! - paymentQuote.deposit.deposit_amount!); } catch { return `${paymentOfferCurrency} ${(paymentQuote.deposit.full_total! - paymentQuote.deposit.deposit_amount!).toFixed(2)}`; } })()
+                            : (paymentQuote.deposit.full_total - paymentQuote.deposit.deposit_amount).toFixed(2)}{" "}
+                          due before appointment
+                        </p>
+                      )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full text-gray-600"
+                        disabled={isAcceptingOffer}
+                        onClick={() => selectedOfferIdForPayment && handleAcceptOffer(selectedOfferIdForPayment, "deposit")}
+                      >
+                        {isAcceptingOffer ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                        Pay Deposit Only
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </>
+            )}
           </div>
           <DialogFooter>
             <Button variant="ghost" size="sm" disabled={isAcceptingOffer} onClick={() => setPaymentOptionOpen(false)}>
@@ -1617,8 +1695,7 @@ export default function WhatsAppChat({
                       disabled={isAcceptingOffer}
                       onClick={() => {
                         setOfferDetailOpen(false);
-                        setSelectedOfferIdForPayment(d.id);
-                        setPaymentOptionOpen(true);
+                        void openPaymentDialog(d.id, d.currency);
                       }}
                     >
                       Accept & Pay
