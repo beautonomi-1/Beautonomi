@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createMockNextRequest, MOCK_USERS } from "../helpers/mock-supabase";
 
 const mockRequireRoleInApi = vi.fn();
-const mockGetSupabaseServer = vi.fn();
+const mockGetSupabaseAdmin = vi.fn();
 
 type QueryResult = {
   data: unknown[];
@@ -22,8 +22,8 @@ function createQueryBuilder(result: QueryResult) {
   };
 }
 
-vi.mock("@/lib/supabase/server", () => ({
-  getSupabaseServer: (...args: unknown[]) => mockGetSupabaseServer(...args),
+vi.mock("@/lib/supabase/admin", () => ({
+  getSupabaseAdmin: (...args: unknown[]) => mockGetSupabaseAdmin(...args),
 }));
 
 vi.mock("@/lib/supabase/api-helpers", () => ({
@@ -47,7 +47,7 @@ describe("GET /api/admin/support-tickets", () => {
   it("applies filters, pagination, and sanitizes q for PostgREST .or()", async () => {
     const result: QueryResult = { data: [], error: null, count: 0 };
     const builder = createQueryBuilder(result);
-    mockGetSupabaseServer.mockResolvedValue({
+    mockGetSupabaseAdmin.mockReturnValue({
       from: vi.fn().mockReturnValue(builder),
     });
 
@@ -88,7 +88,7 @@ describe("GET /api/admin/support-tickets", () => {
     ];
     const result: QueryResult = { data: rows, error: null, count: 53 };
     const builder = createQueryBuilder(result);
-    mockGetSupabaseServer.mockResolvedValue({
+    mockGetSupabaseAdmin.mockReturnValue({
       from: vi.fn().mockReturnValue(builder),
     });
 

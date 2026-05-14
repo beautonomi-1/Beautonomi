@@ -201,7 +201,7 @@ export async function proxy(request: NextRequest) {
       // errors on every dashboard load.
       if (
         !pathname.startsWith("/api/auth/") &&
-        pathname !== "/api/metrics" &&
+        pathname !== "/api/public/metrics" &&
         pathname !== "/api/me/retention/sync-on-login"
       ) {
         const csrfError = csrfCheck(request);

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 /**
- * POST /api/metrics
+ * POST /api/public/metrics
  *
  * Best-effort client telemetry sink. The provider portal flushes
  * `route-metrics` buffers via `navigator.sendBeacon`, which cannot attach
@@ -12,7 +12,7 @@ import { NextRequest, NextResponse } from "next/server";
  * provider portal session (the CSRF middleware fired before any route
  * lookup). Add a small, always-200 sink that silently discards the body
  * if the JSON is malformed; do not log to Sentry — the volume would dwarf
- * real errors. `/api/metrics` is also exempt from CSRF in `src/proxy.ts`.
+ * real errors. `/api/public/metrics` is CSRF-exempt (public/no-auth path).
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
