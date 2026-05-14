@@ -49,6 +49,8 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      // Real `server-only` throws outside Next RSC; API tests import server modules that use it.
+      "server-only": path.resolve(__dirname, "./src/test-utils/server-only-stub.ts"),
     },
   },
 });

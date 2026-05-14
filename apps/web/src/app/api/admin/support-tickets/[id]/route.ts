@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import type { UserRole } from "@/types/beautonomi";
 import { SUPPORT_TICKET_STAFF_ROLES } from "@/lib/support/support-ticket-staff";
@@ -13,8 +13,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = await getSupabaseServer(request);
     await requireRoleInApi([...SUPPORT_TICKET_STAFF_ROLES] as UserRole[], request);
+    const supabase = getSupabaseAdmin();
 
     const { id } = await params;
 
@@ -27,9 +27,12 @@ export async function GET(
         assigned_user:users!support_tickets_assigned_to_fkey(id, email, full_name)
       `)
       .eq("id", id)
-      .single();
+      .maybeSingle();
 
     if (error) throw error;
+    if (!ticket) {
+      return NextResponse.json({ error: "Ticket not found" }, { status: 404 });
+    }
 
     // Get messages
     const { data: messages } = await supabase
@@ -66,8 +69,8 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = await getSupabaseServer(request);
     const { user } = await requireRoleInApi([...SUPPORT_TICKET_STAFF_ROLES] as UserRole[], request);
+    const supabase = getSupabaseAdmin();
 
     const { id } = await params;
 
@@ -183,9 +186,12 @@ export async function PATCH(
         await notifySupportTicketUpdated(
           data.user_id,
           data.ticket_number || id,
-          `Your ticket has been marked as ${updateData.status}.`,
+          `Your ticket has been marked as ${updateData.status}. You can rate your support experience in the app.`,
           id,
-          ["email", "push"]
+          ["email", "push"],
+          String((data as { requester_type?: string | null }).requester_type ?? "") === "provider"
+            ? "provider"
+            : "customer"
         );
       } catch (notifyErr) {
         console.error("Support ticket status notification failed:", notifyErr);

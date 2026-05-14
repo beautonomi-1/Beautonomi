@@ -21,7 +21,7 @@ const updateIntegrationSchema = z.object({
  */
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireRole(["provider_owner", "provider_staff"]);
+    const auth = await requireRole(["provider_owner", "provider_staff"], request);
     if (!auth) {
       return unauthorizedResponse("Authentication required");
     }
@@ -141,7 +141,7 @@ export async function POST(request: Request) {
  */
 export async function PUT(request: Request) {
   try {
-    const auth = await requireRole(["provider_owner"]); // Only owners can update integration
+    const auth = await requireRole(["provider_owner"], request); // Only owners can update integration
     if (!auth) {
       return unauthorizedResponse("Authentication required");
     }
@@ -169,7 +169,7 @@ export async function PUT(request: Request) {
     }
 
     // Get provider ID
-    const providerId = await getProviderIdForUser(auth.user.id);
+    const providerId = await getProviderIdForUser(auth.user.id, supabase);
     if (!providerId) {
       return NextResponse.json(
         {
@@ -319,7 +319,7 @@ export async function PUT(request: Request) {
  */
 export async function DELETE(request: NextRequest) {
   try {
-    const auth = await requireRole(["provider_owner"]);
+    const auth = await requireRole(["provider_owner"], request);
     if (!auth) {
       return unauthorizedResponse("Authentication required");
     }

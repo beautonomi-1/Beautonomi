@@ -13,6 +13,7 @@ import {
   Modal,
   Pressable,
   Linking,
+  InteractionManager,
 } from "react-native";
 import { Image } from "expo-image";
 import { useLocalSearchParams, Stack, router } from "expo-router";
@@ -234,6 +235,8 @@ export default function ChatScreen() {
   /** Merged into custom_offer bubbles so CTAs match DB after payment even if attachments lag. */
   const [offerStatusById, setOfferStatusById] = useState<Record<string, OfferStatusOverride>>({});
   const initialScrollDone = useRef(false);
+  const initialScrollIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevLoadingForScrollRef = useRef(true);
   const offerRehydrateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const offerStatusByIdRef = useRef(offerStatusById);
   offerStatusByIdRef.current = offerStatusById;
@@ -300,6 +303,31 @@ export default function ChatScreen() {
     [id, t]
   );
 
+  const bumpInitialScrollToLatest = useCallback(() => {
+    if (messages.length === 0 || initialScrollDone.current) return;
+    const run = () => flatListRef.current?.scrollToEnd({ animated: false });
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        run();
+        InteractionManager.runAfterInteractions(() => {
+          run();
+        });
+      });
+    });
+    if (initialScrollIdleTimerRef.current) clearTimeout(initialScrollIdleTimerRef.current);
+    initialScrollIdleTimerRef.current = setTimeout(() => {
+      initialScrollIdleTimerRef.current = null;
+      initialScrollDone.current = true;
+    }, 450);
+  }, [messages.length]);
+
+  useEffect(() => {
+    if (prevLoadingForScrollRef.current && !loading && messages.length > 0) {
+      bumpInitialScrollToLatest();
+    }
+    prevLoadingForScrollRef.current = loading;
+  }, [loading, messages.length, bumpInitialScrollToLatest]);
+
   // Resolve provider_id to conversation id (get-or-create) when opening from provider profile
   useEffect(() => {
     if (!user || id || !providerId) return;
@@ -339,6 +367,11 @@ export default function ChatScreen() {
     setHasMore(false);
     setOfferStatusById({});
     initialScrollDone.current = false;
+    prevLoadingForScrollRef.current = true;
+    if (initialScrollIdleTimerRef.current) {
+      clearTimeout(initialScrollIdleTimerRef.current);
+      initialScrollIdleTimerRef.current = null;
+    }
     loadMessages();
   }, [id, loadMessages]);
 
@@ -1071,15 +1104,13 @@ export default function ChatScreen() {
             )}
             <FlatList
               {...chatFlatListPerf}
+              key={id ?? "none"}
               ref={flatListRef}
               data={listItems}
               keyExtractor={(item) => item.key}
               contentContainerStyle={{ padding: contentPadding, paddingBottom: 8 }}
               onContentSizeChange={() => {
-                if (!initialScrollDone.current && messages.length > 0) {
-                  initialScrollDone.current = true;
-                  flatListRef.current?.scrollToEnd({ animated: false });
-                }
+                bumpInitialScrollToLatest();
               }}
               onScroll={({ nativeEvent }) => {
                 if (nativeEvent.contentOffset.y < 80) {

@@ -36,8 +36,7 @@ export function AppHeader() {
   const isChatsThread = Boolean(pathname?.match(/\/chats\/[^/?#]+/));
   const isFocusFlow = isMessagingThread || isChatsThread;
   if (isFocusFlow) return null;
-  const isDashboard = pathname === "/" || pathname?.endsWith("/dashboard");
-  const showNotificationBadge = !isDashboard && unreadCount > 0;
+  const showNotificationBadge = unreadCount > 0;
 
   const iconSize = 22;
   const iconColor = "#374151";

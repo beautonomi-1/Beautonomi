@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, handleApiError } from "@/lib/supabase/api-helpers";
 import type { UserRole } from "@/types/beautonomi";
 import { SUPPORT_TICKET_STAFF_ROLES } from "@/lib/support/support-ticket-staff";
@@ -19,8 +19,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = await getSupabaseServer(request);
     const { user } = await requireRoleInApi([...SUPPORT_TICKET_STAFF_ROLES] as UserRole[], request);
+    const supabase = getSupabaseAdmin();
     const { id } = await params;
 
     const body = await request.json();
@@ -41,13 +41,15 @@ export async function POST(
 
     const isInternal = is_internal === true;
 
-    // Verify user has access to this ticket and get details for notification
-    const { data: ticket } = await supabase
+    // Verify ticket exists (RLS would hide rows for some roles if we used the anon/session client;
+    // staff roles are enforced above via requireRoleInApi.)
+    const { data: ticket, error: ticketErr } = await supabase
       .from("support_tickets")
       .select("id, user_id, provider_id, ticket_number, subject, priority, first_staff_reply_at, status, requester_type, support_context_type, support_context_label")
       .eq("id", id)
-      .single();
+      .maybeSingle();
 
+    if (ticketErr) throw ticketErr;
     if (!ticket) {
       return NextResponse.json(
         { error: "Ticket not found" },
@@ -108,7 +110,10 @@ export async function POST(
           ticket.ticket_number || id,
           `Support replied: ${previewText}${ellip}`,
           id,
-          ["email", "push"]
+          ["email", "push"],
+          String((ticket as { requester_type?: string | null }).requester_type ?? "") === "provider"
+            ? "provider"
+            : "customer"
         );
       } catch (notifyErr) {
         console.error("Support ticket reply notification failed:", notifyErr);

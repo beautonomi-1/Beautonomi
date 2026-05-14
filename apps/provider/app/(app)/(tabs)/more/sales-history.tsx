@@ -5,6 +5,7 @@ import {
   TouchableOpacity,
   FlatList,
 } from "react-native";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -78,7 +79,18 @@ function paymentIcon(method: string): keyof typeof Ionicons.glyphMap {
   return "wallet-outline";
 }
 
+const TRANSACTIONS_HUB_HREF = "/(app)/(tabs)/more/transactions-hub" as const;
+const FROM_TRANSACTIONS_HUB = "transactions-hub";
+
 export default function SalesHistoryScreen() {
+  const router = useRouter();
+  const { from: fromParam } = useLocalSearchParams<{ from?: string }>();
+  const fromTransactionsHub =
+    typeof fromParam === "string"
+      ? fromParam === FROM_TRANSACTIONS_HUB
+      : Array.isArray(fromParam)
+        ? fromParam[0] === FROM_TRANSACTIONS_HUB
+        : false;
   useResponsive();
   const { selectedLocationId, provider } = useProvider();
   const [search, setSearch] = useState("");
@@ -146,6 +158,13 @@ export default function SalesHistoryScreen() {
       <ScreenHeader
         title="Sales History"
         showBack
+        onBack={
+          fromTransactionsHub
+            ? () => {
+                router.push(TRANSACTIONS_HUB_HREF as never);
+              }
+            : undefined
+        }
         subtitle={`${stats.count} sales`}
       />
 

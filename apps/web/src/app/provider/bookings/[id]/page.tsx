@@ -418,12 +418,12 @@ export default function ProviderBookingDetail() {
         description: chargeDescription.trim(),
         amount: amountNum,
       });
-      toast.success("Additional payment requested");
+      toast.success("Additional charge sent — customer notified");
       setChargeDescription("");
       setChargeAmount("");
       loadAdditionalCharges();
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Failed to request payment");
+      toast.error(err instanceof FetchError ? err.message : "Failed to send additional charge");
     } finally {
       setIsRequestingCharge(false);
     }
@@ -1028,6 +1028,20 @@ export default function ProviderBookingDetail() {
     b.arrival_otp_verified === true || b.qr_code_verified === true;
   const arrivalOtpPending = b.arrival_otp_pending === true;
   const qrArrivalPending = b.qr_arrival_pending === true;
+  /**
+   * Mirrors `filterInProgressWhenAtHomeVerificationPending` in the provider app so we do not
+   * offer Start Service while PIN/QR is still pending (POST start-service would reject with
+   * VERIFICATION_NOT_COMPLETE when a verification method exists).
+   */
+  const atHomeHouseCallReadyForServiceStart =
+    isAtHome &&
+    b.current_stage === "provider_arrived" &&
+    !(!arrivalVerified && (arrivalOtpPending || qrArrivalPending));
+  /** Same lifecycle gate as provider mobile `allowedStatusTargets` / PATCH policy. */
+  const canStartService =
+    ["confirmed", "booked", "checked_in", "waiting"].includes(bookingLifecycleStatus) &&
+    (!isAtHome || atHomeHouseCallReadyForServiceStart);
+  const canStartServiceInJourney = canStartService && isArrived;
   const totalPaid = b.total_paid ?? 0;
   const totalRefunded = b.total_refunded ?? 0;
   const totalAmount = b.total_amount ?? 0;
@@ -1373,11 +1387,34 @@ export default function ProviderBookingDetail() {
               )}
               {isArrived && (
                 <div className="space-y-3">
-                  {arrivalVerified ? (
-                    <p className="text-sm font-medium text-green-800 rounded-lg bg-green-50 border border-green-200 py-2 px-3">
-                      Customer verified – you can start the service.
-                    </p>
-                  ) : (
+                  <p
+                    className={`text-sm font-medium rounded-lg border py-2 px-3 ${
+                      arrivalVerified
+                        ? "text-green-800 bg-green-50 border-green-200"
+                        : "text-amber-900 bg-amber-50 border-amber-200"
+                    }`}
+                  >
+                    {arrivalVerified
+                      ? "Customer verified – you can start the service."
+                      : "Provider arrived — complete PIN or QR verification when shown below, or start service if none is required."}
+                  </p>
+                  {canStartServiceInJourney && (
+                    <div className="space-y-2">
+                      <Button
+                        type="button"
+                        onClick={() => handleStatusChange("started")}
+                        disabled={isUpdating}
+                        className="min-h-[44px] bg-blue-600 hover:bg-blue-700"
+                      >
+                        Start service
+                      </Button>
+                      <p className="text-xs text-gray-500">
+                        Same action as <span className="font-medium">Start Service</span> in status actions below.
+                        Cancel and no-show stay there.
+                      </p>
+                    </div>
+                  )}
+                  {!arrivalVerified && (
                     <>
                       {arrivalOtpPending && (
                         <div className="rounded-lg bg-blue-50 border border-blue-200 p-4 space-y-3">
@@ -1904,7 +1941,7 @@ export default function ProviderBookingDetail() {
 
           {["in_progress", "completed"].includes(booking.status) && (
             <div className="mt-6 border-t pt-4">
-              <h3 className="font-semibold mb-2">Request additional payment</h3>
+              <h3 className="font-semibold mb-2">Send additional charge</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <Input
                   placeholder="Description"
@@ -1924,7 +1961,7 @@ export default function ProviderBookingDetail() {
                 onClick={handleRequestAdditionalCharge}
                 disabled={isRequestingCharge}
               >
-                {isRequestingCharge ? "Requesting..." : "Request Payment"}
+                {isRequestingCharge ? "Sending…" : "Send additional charge"}
               </Button>
             </div>
           )}
@@ -2041,31 +2078,17 @@ export default function ProviderBookingDetail() {
               Check in customer
             </Button>
           )}
-          {/* Start Service — for confirmed bookings (at-home gated by arrival).
-              Salon can also start service straight from confirmed (skip waiting room) or from checked_in/waiting. */}
-          {(bookingLifecycleStatus === "confirmed" ||
-            bookingLifecycleStatus === "booked" ||
-            bookingLifecycleStatus === "checked_in" ||
-            bookingLifecycleStatus === "waiting") && (
-            isAtHome ? (
-              (isArrived || booking.arrival_otp_verified || booking.qr_code_verified) && (
-                <Button
-                  onClick={() => handleStatusChange("started")}
-                  disabled={isUpdating}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 min-h-[44px] text-sm sm:text-base"
-                >
-                  Start Service
-                </Button>
-              )
-            ) : (
-              <Button
-                onClick={() => handleStatusChange("started")}
-                disabled={isUpdating}
-                className="flex-1 bg-blue-600 hover:bg-blue-700 min-h-[44px] text-sm sm:text-base"
-              >
-                Start Service
-              </Button>
-            )
+          {/* Start Service — for confirmed bookings (at-home gated by arrival/verification).
+              Salon can also start service straight from confirmed (skip waiting room) or from checked_in/waiting.
+              At-home uses the same `canStartService` rules as Start service in the At-home visit card. */}
+          {canStartService && (
+            <Button
+              onClick={() => handleStatusChange("started")}
+              disabled={isUpdating}
+              className="flex-1 bg-blue-600 hover:bg-blue-700 min-h-[44px] text-sm sm:text-base"
+            >
+              Start Service
+            </Button>
           )}
           {/* Recovery: at-home booking is stuck in a salon-only status (legacy data or
               wrong-button mishap). Server allows checked_in/waiting → confirmed for at-home. */}

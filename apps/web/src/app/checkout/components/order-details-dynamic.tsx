@@ -358,8 +358,11 @@ export default function OrderDetailsDynamic({ bookingId, booking: initialBooking
   const bothArrivalMethodsVisible =
     Boolean(needsOTPVerification && booking.arrival_otp && arrivalQrRaw);
   const pendingCharges = additionalCharges.filter(c => c.status === "pending" || c.status === "approved");
-  const showETA = booking.location_type === "at_home" && 
-    (booking.current_stage === "provider_on_way" || booking.provider_en_route_at) && 
+  /** `provider_en_route_at` is historical — only `current_stage === "provider_on_way"` means still en route. */
+  const showETA =
+    booking.location_type === "at_home" &&
+    !["completed", "cancelled", "no_show"].includes(booking.status) &&
+    booking.current_stage === "provider_on_way" &&
     booking.estimated_arrival;
   const etaParts = showETA ? getCustomerEtaUiParts(booking.estimated_arrival ?? null) : { show: false, timeLabel: null as string | null, minutesLabel: "" };
 

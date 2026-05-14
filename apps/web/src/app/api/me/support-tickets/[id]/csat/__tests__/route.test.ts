@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 const mockRequireRoleInApi = vi.fn();
-const mockGetSupabaseServer = vi.fn();
+const mockGetSupabaseAdmin = vi.fn();
 
 vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/supabase/api-helpers")>();
@@ -12,8 +12,8 @@ vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
   };
 });
 
-vi.mock("@/lib/supabase/server", () => ({
-  getSupabaseServer: (...args: unknown[]) => mockGetSupabaseServer(...args),
+vi.mock("@/lib/supabase/admin", () => ({
+  getSupabaseAdmin: (...args: unknown[]) => mockGetSupabaseAdmin(...args),
 }));
 
 describe("POST /api/me/support-tickets/[id]/csat", () => {
@@ -52,7 +52,7 @@ describe("POST /api/me/support-tickets/[id]/csat", () => {
         }),
       })),
     };
-    mockGetSupabaseServer.mockResolvedValue(supabase);
+    mockGetSupabaseAdmin.mockReturnValue(supabase);
 
     const { POST } = await import("../route");
     const req = new NextRequest("http://localhost/api/me/support-tickets/ticket-1/csat", {

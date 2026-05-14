@@ -14,6 +14,7 @@ import {
   Modal,
   Pressable,
   ScrollView,
+  InteractionManager,
   type NativeSyntheticEvent,
   type NativeScrollEvent,
 } from "react-native";
@@ -26,7 +27,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { CustomOfferSheet } from "@/components/CustomOfferSheet";
-import { formatTime, formatCurrency, formatDateTime } from "@/lib/format";
+import { formatTime, formatCurrency } from "@/lib/format";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { supabase } from "@/lib/supabase/client";
 import { Colors } from "@/constants/colors";
@@ -34,7 +35,6 @@ import * as Haptics from "expo-haptics";
 import { twStyle } from "@/lib/twStyle";
 import { chatFlatListPerf } from "@/lib/flatListPerformance";
 import { CustomOfferCard } from "@beautonomi/ui/native";
-import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
@@ -155,6 +155,7 @@ export default function ChatScreen() {
   // changes, together with the `scrollKey` trick that re-runs the
   // scroll effect on thread change even if the length is identical.
   const initialScrollDoneRef = useRef(false);
+  const initialScrollIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const {
     data: conversation,
@@ -165,6 +166,7 @@ export default function ChatScreen() {
     enabled: !!conversationId,
     staleTimeMs: 0,
   });
+  const prevLoadingRef = useRef(true);
   const { execute: sendMessage, loading: sending } = useApiPost<any, any>(
     `/api/provider/conversations/${conversationId ?? ""}/messages`
   );
@@ -212,20 +214,44 @@ export default function ChatScreen() {
   // if its message count happens to equal the previous one.
   useEffect(() => {
     initialScrollDoneRef.current = false;
+    prevLoadingRef.current = true;
+    if (initialScrollIdleTimerRef.current) {
+      clearTimeout(initialScrollIdleTimerRef.current);
+      initialScrollIdleTimerRef.current = null;
+    }
   }, [conversationId]);
 
-  useEffect(() => {
-    if (allMessages.length === 0) return;
-    const animated = initialScrollDoneRef.current;
-    const t = setTimeout(
-      () => flatListRef.current?.scrollToEnd({ animated }),
-      100,
-    );
-    initialScrollDoneRef.current = true;
-    return () => clearTimeout(t);
-  }, [conversationId, allMessages.length]);
+  const bumpScrollToLatestForOpenThread = useCallback(() => {
+    if (allMessages.length === 0 || initialScrollDoneRef.current) return;
+    const run = () => flatListRef.current?.scrollToEnd({ animated: false });
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        run();
+        InteractionManager.runAfterInteractions(() => {
+          run();
+        });
+      });
+    });
+    if (initialScrollIdleTimerRef.current) clearTimeout(initialScrollIdleTimerRef.current);
+    initialScrollIdleTimerRef.current = setTimeout(() => {
+      initialScrollIdleTimerRef.current = null;
+      initialScrollDoneRef.current = true;
+    }, 450);
+  }, [allMessages.length]);
 
-  // Supabase Realtime: live incoming messages and read receipt updates
+  // After the conversation payload lands, nudge scroll even if the first
+  // onContentSizeChange fired with incomplete row heights (images, etc.).
+  useEffect(() => {
+    if (prevLoadingRef.current && !loading && allMessages.length > 0) {
+      bumpScrollToLatestForOpenThread();
+    }
+    prevLoadingRef.current = loading;
+  }, [loading, allMessages.length, bumpScrollToLatestForOpenThread]);
+
+  // Supabase Realtime: live incoming messages and read receipt updates.
+  // Single `postgres_changes` binding (event: "*") — registering multiple `.on`
+  // postgres_callbacks then `.subscribe()` can throw "cannot add ... after subscribe()"
+  // on some RN / Realtime timing paths; one handler avoids that class of bug.
   useEffect(() => {
     if (!conversationId) return;
     setRealtimeMessages([]);
@@ -235,66 +261,60 @@ export default function ChatScreen() {
       .on(
         "postgres_changes",
         {
-          event: "INSERT",
+          event: "*",
           schema: "public",
           table: "messages",
           filter: `conversation_id=eq.${conversationId}`,
         },
         (payload) => {
-          const m = payload.new as RealtimeMessageRow;
-          if (!m.id || !m.created_at) return;
-          const rowId = m.id;
-          const rowCreatedAt = m.created_at;
-          setRealtimeMessages((prev) => {
-            if (prev.some((p) => p.id === rowId)) return prev;
-            const att = Array.isArray(m.attachments) ? m.attachments : [];
-            return [
-              ...prev,
-              {
-                id: rowId,
-                content: m.content ?? "",
-                sender_type: (m.sender_role === "customer" ? "customer" : "provider") as "provider" | "customer",
-                created_at: rowCreatedAt,
-                read_at: m.read_at ?? null,
-                attachments: att as Message["attachments"],
-              },
-            ];
-          });
-          // §Provider-audit 2026-04 (round 6): if a customer message
-          // arrives while the thread is open, immediately mark it read
-          // server-side. Without this the conversations list kept the
-          // unread badge until the user closed & reopened the thread.
-          if (m.sender_role === "customer") {
-            markReadRef.current(
-              `/api/provider/conversations/${conversationId}/mark-read`,
-              {},
-            );
+          const ev = (payload as { eventType?: string }).eventType;
+          if (ev === "INSERT") {
+            const m = payload.new as RealtimeMessageRow;
+            if (!m.id || !m.created_at) return;
+            const rowId = m.id;
+            const rowCreatedAt = m.created_at;
+            setRealtimeMessages((prev) => {
+              if (prev.some((p) => p.id === rowId)) return prev;
+              const att = Array.isArray(m.attachments) ? m.attachments : [];
+              return [
+                ...prev,
+                {
+                  id: rowId,
+                  content: m.content ?? "",
+                  sender_type: (m.sender_role === "customer" ? "customer" : "provider") as "provider" | "customer",
+                  created_at: rowCreatedAt,
+                  read_at: m.read_at ?? null,
+                  attachments: att as Message["attachments"],
+                },
+              ];
+            });
+            if (m.sender_role === "customer") {
+              markReadRef.current(
+                `/api/provider/conversations/${conversationId}/mark-read`,
+                {},
+              );
+            }
+            return;
           }
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "messages",
-          filter: `conversation_id=eq.${conversationId}`,
+          if (ev === "UPDATE") {
+            const updated = payload.new as RealtimeMessageRow;
+            setRealtimeMessages((prev) =>
+              prev.map((msg) =>
+                updated.id && msg.id === updated.id
+                  ? {
+                      ...msg,
+                      read_at: updated.read_at ?? null,
+                      attachments:
+                        Array.isArray(updated.attachments) && updated.attachments.length > 0
+                          ? (updated.attachments as Message["attachments"])
+                          : msg.attachments,
+                    }
+                  : msg,
+              ),
+            );
+            void refreshRef.current();
+          }
         },
-        (payload) => {
-          const updated = payload.new as RealtimeMessageRow;
-          setRealtimeMessages((prev) =>
-            prev.map((msg) =>
-              updated.id && msg.id === updated.id ? { 
-                ...msg, 
-                read_at: updated.read_at ?? null,
-                attachments: Array.isArray(updated.attachments) && updated.attachments.length > 0
-                  ? (updated.attachments as Message["attachments"])
-                  : msg.attachments
-              } : msg
-            )
-          );
-          void refreshRef.current();
-        }
       )
       .subscribe();
 
@@ -732,6 +752,7 @@ export default function ChatScreen() {
           <>
             <FlatList
               {...chatFlatListPerf}
+              key={conversationId ?? "none"}
               ref={flatListRef}
               data={allMessages}
               keyExtractor={(m: Message) => m.id}
@@ -743,10 +764,7 @@ export default function ChatScreen() {
                 paddingBottom: 220,
               }}
               onContentSizeChange={() => {
-                if (!initialScrollDoneRef.current && allMessages.length > 0) {
-                  initialScrollDoneRef.current = true;
-                  flatListRef.current?.scrollToEnd({ animated: false });
-                }
+                bumpScrollToLatestForOpenThread();
               }}
               onScroll={(e: NativeSyntheticEvent<NativeScrollEvent>) => {
                 const { contentSize, layoutMeasurement, contentOffset } = e.nativeEvent;
@@ -784,20 +802,6 @@ export default function ChatScreen() {
                 const customRequestNavId = customRequestAtt?.request_id ?? customRequestAtt?.id;
                 const files = fileLikeAttachments(msg.attachments);
                 const hasText = !!(msg.content && msg.content.trim());
-
-                const isWithdrawnAtt = Boolean(offer?.withdrawn || offer?.status === "withdrawn");
-                const isDeclinedAtt = offer?.status === "declined";
-                const isExpiredAtt = Boolean(offer?.expired || offer?.status === "expired");
-                const isFinalizeFailedAtt = offer?.status === "finalize_failed";
-                const isPaidAtt = offer?.status === "paid" || Boolean(offer?.booking_id);
-                const canRetractOffer =
-                  isMe &&
-                  !!offer?.offer_id &&
-                  !isWithdrawnAtt &&
-                  !isExpiredAtt &&
-                  !isPaidAtt &&
-                  !isDeclinedAtt &&
-                  !isFinalizeFailedAtt;
 
                 const renderFileRow = (att: FileLikeAttachment, idx: number) => {
                   const key = `${msg.id}-f-${idx}-${att.name || att.url || idx}`;

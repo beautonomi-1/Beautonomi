@@ -7,6 +7,11 @@ import { requireRoleInApi, successResponse, handleApiError, getOffsetPaginationP
  *
  * Get customer's notifications. Uses admin client so RLS doesn't silently
  * block rows — ownership is enforced via explicit user_id filter.
+ *
+ * Query params:
+ * - `counts_only=1` — return only `total_unread` (single head count query). Use for bell/badge
+ *   polling so foreground resume does not run a full list query + count (reduces DB + JS work;
+ *   see customer NotificationsContext / Sentry app-hang mitigation).
  */
 export async function GET(request: NextRequest) {
   try {
@@ -14,6 +19,21 @@ export async function GET(request: NextRequest) {
     const supabase = getSupabaseAdmin();
 
     const { searchParams } = new URL(request.url);
+    if (searchParams.get("counts_only") === "1") {
+      const { count: unreadCount, error: unreadErr } = await supabase
+        .from("notifications")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", user.id)
+        .eq("is_read", false);
+      if (unreadErr) throw unreadErr;
+      return successResponse({
+        notifications: [],
+        total_unread: unreadCount ?? 0,
+        total: 0,
+        pagination: { limit: 0, offset: 0, has_more: false },
+      });
+    }
+
     const { limit, offset } = getOffsetPaginationParams(request, { defaultLimit: 30, maxLimit: 100 });
     const unreadOnly = searchParams.get("unread_only") === "true";
     const typeFilter = searchParams.get("type");

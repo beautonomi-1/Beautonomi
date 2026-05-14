@@ -21,7 +21,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ valid: false, message: "Promo code is required" }, { status: 400 });
     }
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const result = await validatePromoCode(supabase, { code, amount });
 

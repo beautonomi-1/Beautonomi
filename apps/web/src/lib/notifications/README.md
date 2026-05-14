@@ -437,15 +437,17 @@ Notifies new message.
 - **When to use**: When new message is received
 - **Channels**: push, email
 
-#### `notifySupportTicketCreated(userId, ticketNumber, ticketSubject, ticketId, channels?)`
+#### `notifySupportTicketCreated(userId, ticketNumber, ticketSubject, ticketId, channels?, recipientApp?)`
 Notifies support ticket created.
 - **When to use**: When support ticket is created
 - **Channels**: push, email
+- **`recipientApp`**: `customer` (default) or `provider` — which OneSignal app receives push (match `requester_type`).
 
-#### `notifySupportTicketUpdated(userId, ticketNumber, updateMessage, ticketId, channels?)`
+#### `notifySupportTicketUpdated(userId, ticketNumber, updateMessage, ticketId, channels?, recipientApp?)`
 Notifies support ticket updated.
 - **When to use**: When support ticket is updated
 - **Channels**: push, email
+- **`recipientApp`**: `customer` (default) or `provider` — which OneSignal app receives push (match ticket `requester_type`).
 
 ### Disputes & Complaints
 

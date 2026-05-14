@@ -35,7 +35,14 @@ export async function GET(request: NextRequest) {
     const limit = Number(request.nextUrl.searchParams.get("limit")) || 50;
     const offset = Number(request.nextUrl.searchParams.get("offset")) || 0;
 
-    const { data: sales, error, count } = await supabase
+    // Use service role for the listing query: `product_orders` SELECT for authenticated
+    // users is primarily gated by `user_tenant_roles` (migration 386). Provider staff
+    // linked via `provider_staff` often have no tenant role row, so the user-scoped
+    // client returned empty lists even when walk-in orders exist. Ownership is enforced
+    // by `.eq("provider_id", providerId)` after `getProviderIdForUser` (same pattern as
+    // GET /api/provider/sales).
+    const db = getSupabaseAdmin();
+    const { data: sales, error, count } = await db
       .from("product_orders")
       .select(
         "id, order_number, customer_id, subtotal, tax_amount, total_amount, payment_method, payment_reference, customer_name, customer_phone, created_at, product_order_items(product_name, quantity, unit_price)",

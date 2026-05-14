@@ -2643,7 +2643,9 @@ export async function notifySupportTicketCreated(
   ticketNumber: string,
   ticketSubject: string,
   ticketId: string,
-  channels?: NotificationChannel[]
+  channels?: NotificationChannel[],
+  /** Provider-opened tickets should target the provider OneSignal app; customers use the customer app. */
+  recipientApp: "customer" | "provider" = "customer"
 ) {
   const variables = {
     ticket_number: ticketNumber,
@@ -2656,7 +2658,7 @@ export async function notifySupportTicketCreated(
     [userId],
     variables,
     channels,
-    { appType: "customer" }
+    { appType: recipientApp }
   );
 }
 
@@ -2668,7 +2670,8 @@ export async function notifySupportTicketUpdated(
   ticketNumber: string,
   updateMessage: string,
   ticketId: string,
-  channels?: NotificationChannel[]
+  channels?: NotificationChannel[],
+  recipientApp: "customer" | "provider" = "customer"
 ) {
   const variables = {
     ticket_number: ticketNumber,
@@ -2681,7 +2684,7 @@ export async function notifySupportTicketUpdated(
     [userId],
     variables,
     channels,
-    { appType: "customer" }
+    { appType: recipientApp }
   );
 }
 

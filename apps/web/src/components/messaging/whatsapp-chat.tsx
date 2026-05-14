@@ -398,20 +398,27 @@ export default function WhatsAppChat({
   // Scroll to bottom when new messages arrive (only if user is near bottom or it's their own message)
   useEffect(() => {
     if (messages.length === 0) return;
-    
-    // On initial load, scroll to bottom once (but only if chat is visible)
+
+    // On initial load / thread switch: snap to bottom immediately, again after layout, and once more
+    // after images/async content change scrollHeight (same pattern as native apps).
     if (!hasInitiallyScrolled) {
-      // Wait a bit longer to ensure the container is rendered
-      setTimeout(() => {
+      const snap = () => {
         const container = messagesContainerRef.current;
         if (container) {
-          scrollToBottom(false); // Instant scroll on initial load
-          setHasInitiallyScrolled(true);
+          container.scrollTo({ top: container.scrollHeight, behavior: "auto" });
         }
-      }, 200);
-      return;
+      };
+      snap();
+      requestAnimationFrame(() => {
+        requestAnimationFrame(snap);
+      });
+      const idle = window.setTimeout(() => {
+        snap();
+        setHasInitiallyScrolled(true);
+      }, 400);
+      return () => window.clearTimeout(idle);
     }
-    
+
     // For new messages, only auto-scroll if user is near bottom or should auto-scroll
     if (shouldAutoScroll || isNearBottomRef.current) {
       setTimeout(() => {

@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import type { UserRole } from "@/types/beautonomi";
 import { SUPPORT_TICKET_STAFF_ROLES } from "@/lib/support/support-ticket-staff";
@@ -12,7 +12,7 @@ import { uploadSupportTicketFiles } from "@/lib/support/support-ticket-attachmen
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { user } = await requireRoleInApi([...SUPPORT_TICKET_STAFF_ROLES] as UserRole[], request);
-    const supabase = await getSupabaseServer(request);
+    const supabase = getSupabaseAdmin();
     const { id: ticketId } = await params;
 
     const { data: ticket } = await supabase.from("support_tickets").select("id").eq("id", ticketId).maybeSingle();

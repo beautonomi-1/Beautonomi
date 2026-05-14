@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -208,10 +208,27 @@ function walkInSaleErrorMessage(code: string | null | undefined, message: string
   }
 }
 
+const TRANSACTIONS_HUB_HREF = "/(app)/(tabs)/more/transactions-hub" as const;
+const FROM_TRANSACTIONS_HUB = "transactions-hub";
+
 export default function WalkInSaleScreen() {
   const tenantCurrency = getTenantDefaultCurrency();
   const { screenPadding } = useResponsive();
   const router = useRouter();
+  const { from: fromParam } = useLocalSearchParams<{ from?: string }>();
+  const fromTransactionsHub =
+    typeof fromParam === "string"
+      ? fromParam === FROM_TRANSACTIONS_HUB
+      : Array.isArray(fromParam)
+        ? fromParam[0] === FROM_TRANSACTIONS_HUB
+        : false;
+  const hubBackProps = fromTransactionsHub
+    ? {
+        onBack: () => {
+          router.push(TRANSACTIONS_HUB_HREF as never);
+        },
+      }
+    : {};
   const [refreshing, setRefreshing] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [productSearch, setProductSearch] = useState("");
@@ -500,7 +517,7 @@ export default function WalkInSaleScreen() {
   if (loadingSales && !salesData) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Walk-in Sale" showBack />
+        <ScreenHeader title="Walk-in Sale" showBack {...hubBackProps} />
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 48 }}>
           <LoadingState />
         </View>
@@ -511,7 +528,7 @@ export default function WalkInSaleScreen() {
   if (error && !salesData) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Walk-in Sale" showBack />
+        <ScreenHeader title="Walk-in Sale" showBack {...hubBackProps} />
         <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: 16 }}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
@@ -524,6 +541,7 @@ export default function WalkInSaleScreen() {
       <ScreenHeader
         title="Walk-in Sale"
         showBack
+        {...hubBackProps}
         subtitle="Products & ecommerce payments"
         rightAction={
           <TouchableOpacity

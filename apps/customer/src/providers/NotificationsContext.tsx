@@ -4,7 +4,7 @@
  * Subscribes to notifications table changes so the badge updates in real time.
  */
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { AppState, Platform } from "react-native";
+import { AppState, InteractionManager, Platform } from "react-native";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase/client";
@@ -39,10 +39,21 @@ type NotificationsContextValue = {
 
 const NotificationsContext = createContext<NotificationsContextValue | null>(null);
 
+/** Badge poll uses `counts_only=1` (one DB head query) instead of list+count — see GET /api/me/notifications. */
+const BADGE_COUNT_URL = "/api/me/notifications?counts_only=1" as const;
+
+/** Stagger after foreground so Amplitude / OneSignal / auth work on the same tick does not stack with badge fetch (Sentry: App hanging). */
+const FOREGROUND_REFETCH_DELAY_MS = 220;
+
+/** Coalesce postgres_changes bursts (same pattern as provider NotificationsCountContext). */
+const REALTIME_REFETCH_DEBOUNCE_MS = 120;
+
 export function NotificationsProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const [unreadCount, setUnreadCount] = useState(0);
   const refetchRef = useRef<() => Promise<void>>(() => Promise.resolve());
+  const foregroundTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const realtimeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const refetchUnreadCount = useCallback(async () => {
     if (!user?.id) {
@@ -51,7 +62,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     }
     try {
       const res = await api.get<{ total_unread?: number; data?: { total_unread?: number } }>(
-        "/api/me/notifications?limit=1"
+        BADGE_COUNT_URL
       );
       const body = res.data as any;
       const count = body?.total_unread ?? body?.data?.total_unread ?? 0;
@@ -75,12 +86,26 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     refetchUnreadCount();
   }, [refetchUnreadCount]);
 
-  // Refresh unread when app returns to foreground so badge matches server after marks elsewhere.
+  // Refresh unread when app returns to foreground — delayed + after interactions so we do not
+  // contend with other SDKs on the same "active" tick (battery + low-memory devices showed hangs).
   useEffect(() => {
     const sub = AppState.addEventListener("change", (next) => {
-      if (next === "active") void refetchUnreadCount();
+      if (next !== "active") return;
+      if (foregroundTimerRef.current) clearTimeout(foregroundTimerRef.current);
+      foregroundTimerRef.current = setTimeout(() => {
+        foregroundTimerRef.current = null;
+        InteractionManager.runAfterInteractions(() => {
+          void refetchUnreadCount();
+        });
+      }, FOREGROUND_REFETCH_DELAY_MS);
     });
-    return () => sub.remove();
+    return () => {
+      sub.remove();
+      if (foregroundTimerRef.current) {
+        clearTimeout(foregroundTimerRef.current);
+        foregroundTimerRef.current = null;
+      }
+    };
   }, [refetchUnreadCount]);
 
   // Home-screen icon badge (iOS / supported Android launchers) — stays in sync with in-app unread count.
@@ -110,12 +135,20 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
         "postgres_changes",
         { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}` },
         () => {
-          void refetchRef.current();
-          notifyNotificationsRealtimeListeners();
+          if (realtimeDebounceRef.current) clearTimeout(realtimeDebounceRef.current);
+          realtimeDebounceRef.current = setTimeout(() => {
+            realtimeDebounceRef.current = null;
+            void refetchRef.current();
+            notifyNotificationsRealtimeListeners();
+          }, REALTIME_REFETCH_DEBOUNCE_MS);
         }
       )
       .subscribe();
     return () => {
+      if (realtimeDebounceRef.current) {
+        clearTimeout(realtimeDebounceRef.current);
+        realtimeDebounceRef.current = null;
+      }
       try {
         supabase.removeChannel(channel);
       } catch {

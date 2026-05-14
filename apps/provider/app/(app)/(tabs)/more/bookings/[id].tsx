@@ -838,7 +838,7 @@ export default function BookingDetailScreen() {
     }, [id, refreshBookingDetail]),
   );
 
-  // Request payment (additional charge + notify customer)
+  // Send additional charge (POST request-payment: additional_charges row + notify customer)
   const [showRequestPayment, setShowRequestPayment] = useState(false);
   const [requestPaymentDescription, setRequestPaymentDescription] = useState("");
   const [requestPaymentAmount, setRequestPaymentAmount] = useState("");
@@ -1248,6 +1248,18 @@ export default function BookingDetailScreen() {
 
   const isActive = ["pending", "pending_payment", "confirmed", "waiting", "checked_in"].includes(currentDbStatus);
   const isStarted = currentDbStatus === "in_progress";
+  /**
+   * Same gate as Booking actions → "In progress" (POST start-service). Do not require
+   * `arrivalVerified` here: `allowedStatusTargets` already applies
+   * `filterInProgressWhenAtHomeVerificationPending` (no-PIN/QR house calls keep `in_progress`
+   * at `provider_arrived` without verified flags).
+   */
+  const canStartServiceInJourney =
+    canEditAppointments &&
+    isAtHome &&
+    isArrived &&
+    !isStarted &&
+    allowedStatusTargets.includes("in_progress");
   const totalAmount = b.total_amount ?? 0;
   const totalPaid = b.total_paid ?? 0;
   const totalRefunded = b.total_refunded ?? 0;
@@ -2232,7 +2244,7 @@ export default function BookingDetailScreen() {
               ) : null}
             </View>
             <Text style={twStyle("text-sm text-gray-800 leading-5 mb-3")}>
-              You travel to the client. Flow: confirm the booking, then Start journey when you leave, Mark arrived, then verify with their PIN and/or QR (per your settings), then start service.
+              You travel to the client. Flow: confirm the booking, then Start journey when you leave, Mark arrived, then verify with their PIN and/or QR (per your settings), then tap Start service in the Journey card (same as Booking actions → In progress).
             </Text>
             <Text style={twStyle("text-xs text-gray-700 leading-5 mb-2")}>{PROVIDER_HOUSE_CALL_EXCELLENCE_NUDGE}</Text>
             <TouchableOpacity
@@ -2568,7 +2580,7 @@ export default function BookingDetailScreen() {
             {b.custom_offer.request?.description ? (
               <View style={twStyle("mb-2")}>
                 <Text style={twStyle("text-xs font-semibold text-violet-700 uppercase tracking-wide mb-1")}>
-                  Client's request
+                  Client&apos;s request
                 </Text>
                 <Text style={twStyle("text-sm text-violet-900 leading-5")}>
                   {b.custom_offer.request.description}
@@ -2852,6 +2864,21 @@ export default function BookingDetailScreen() {
                     </TouchableOpacity>
                   </View>
                 )}
+                {canStartServiceInJourney ? (
+                  <TouchableOpacity
+                    onPress={() => void applyDbStatusTransition("in_progress")}
+                    disabled={mutating || patchLoading}
+                    style={twStyle("rounded-xl bg-primary py-3 items-center mt-1")}
+                    accessibilityRole="button"
+                    accessibilityLabel="Start service"
+                  >
+                    {mutating ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text style={twStyle("text-white font-semibold")}>Start service</Text>
+                    )}
+                  </TouchableOpacity>
+                ) : null}
               </>
             )}
             {isEnRoute && !isArrived && (
@@ -2929,8 +2956,10 @@ export default function BookingDetailScreen() {
 
         {isAtHome && allowedStatusTargets.length > 0 ? (
           <Text style={twStyle("text-[11px] text-gray-500 mb-3 px-1")}>
-            Need to cancel or mark a no-show? Use{" "}
-            <Text style={twStyle("font-semibold text-gray-700")}>Change status</Text> above. The Journey card handles arrival and starting service.
+            After the customer verifies arrival, use{" "}
+            <Text style={twStyle("font-semibold text-gray-700")}>Start service</Text> in the Journey card (same as{" "}
+            <Text style={twStyle("font-semibold text-gray-700")}>Booking actions</Text> → In progress). For cancel or
+            no-show, use Booking actions above.
           </Text>
         ) : null}
 
@@ -3220,11 +3249,13 @@ export default function BookingDetailScreen() {
                   onPress={() => setShowRequestPayment(true)}
                   disabled={requestingPayment}
                   style={twStyle("rounded-xl border border-gray-400 py-2.5 px-4")}
+                  accessibilityRole="button"
+                  accessibilityLabel="Send additional charge"
                 >
                   {requestingPayment ? (
                     <ActivityIndicator size="small" color="#000" />
                   ) : (
-                    <Text style={twStyle("font-medium text-gray-800")}>Request payment</Text>
+                    <Text style={twStyle("font-medium text-gray-800")}>Send additional charge</Text>
                   )}
                 </TouchableOpacity>
               )}
@@ -3689,15 +3720,15 @@ export default function BookingDetailScreen() {
         </View>
       </BottomSheet>
 
-      {/* Request payment (additional charge) */}
+      {/* Send additional charge (POST request-payment) */}
       <BottomSheet
         visible={showRequestPayment}
         onClose={() => { setShowRequestPayment(false); setRequestPaymentDescription(""); setRequestPaymentAmount(""); }}
-        title="Request payment"
+        title="Send additional charge"
       >
         <View>
           <Text style={twStyle("text-sm text-gray-600 mb-2")}>
-            Add an extra charge and notify the customer. They can pay online or you can mark as paid later.
+            Creates a pending line item and notifies the customer. They can pay online, or you can mark it paid later.
           </Text>
           <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Description</Text>
           <TextInput
@@ -3717,7 +3748,7 @@ export default function BookingDetailScreen() {
             keyboardType="decimal-pad"
           />
           <ActionButton
-            label={requestingPayment ? "Requesting…" : "Request payment"}
+            label={requestingPayment ? "Sending…" : "Send additional charge"}
             onPress={handleRequestPayment}
             loading={requestingPayment}
             fullWidth
@@ -3913,11 +3944,11 @@ export default function BookingDetailScreen() {
             </Text>
             {isAtHome ? (
               <Text style={{ fontSize: 12, color: Colors.gray[600], marginBottom: 16, lineHeight: 18 }}>
-                For house-calls, use{" "}
-                <Text style={{ fontWeight: "600", color: Colors.gray[800] }}>Start journey</Text>{" "}
-                and{" "}
-                <Text style={{ fontWeight: "600", color: Colors.gray[800] }}>Mark arrived</Text>{" "}
-                in the Journey card to progress the visit. These actions are for cancellations and no-shows.
+                For house calls, use{" "}
+                <Text style={{ fontWeight: "600", color: Colors.gray[800] }}>Start journey</Text>,{" "}
+                <Text style={{ fontWeight: "600", color: Colors.gray[800] }}>Mark arrived</Text>, verify the PIN/QR,
+                then <Text style={{ fontWeight: "600", color: Colors.gray[800] }}>Start service</Text> in the Journey
+                card (or pick In progress here — same action). Below: cancellations and no-shows.
               </Text>
             ) : null}
             <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>

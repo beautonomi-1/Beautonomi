@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
     }
 
     const data = validationResult.data;
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     // Get user_id if authenticated
     const { data: { user } } = await supabase.auth.getUser();

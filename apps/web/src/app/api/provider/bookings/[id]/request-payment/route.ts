@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { assertProviderUserCanAccessBookingBranch } from "@/lib/provider-booking/booking-branch-access";
 import { getTenantRegionConfig } from "@/lib/regions/config";
@@ -163,8 +163,8 @@ export async function POST(
       await insertNotification({
         user_id: bookingData.customer_id,
         type: "payment_request",
-        title: "Payment Requested",
-        message: `Your provider has requested an additional payment of ${newCharge.currency} ${Number(newCharge.amount).toFixed(2)} for: ${newCharge.description || "Additional charge"}. Booking #${bookingRef}.`,
+        title: "Additional payment requested",
+        message: `Your provider added an extra charge: ${newCharge.description || "Additional charge"} — ${newCharge.currency} ${Number(newCharge.amount).toFixed(2)}. Estimated balance due: ${newCharge.currency} ${remainingBalance.toFixed(2)}. Booking #${bookingRef}.`,
         data: {
           booking_id: id,
           charge_id: newCharge.id,
@@ -181,17 +181,17 @@ export async function POST(
     try {
       const { sendTemplateNotification } = await import("@/lib/notifications/onesignal");
       await sendTemplateNotification(
-        "partial_payment_received",
+        "additional_charge_requested",
         [bookingData.customer_id],
         {
-          partial_amount: `${newCharge.currency} ${Number(newCharge.amount).toFixed(2)}`,
+          charge_amount: `${newCharge.currency} ${Number(newCharge.amount).toFixed(2)}`,
+          charge_description: newCharge.description || "Additional charge",
           remaining_balance: `${newCharge.currency} ${remainingBalance.toFixed(2)}`,
           booking_number: bookingData.booking_number || bookingData.ref_number || "",
           booking_id: id,
-          charge_description: newCharge.description || "Additional charge",
         },
         ["push", "email"],
-        { appType: "customer" }
+        { appType: "customer", tenantId }
       );
     } catch (notifError) {
       console.error("Error sending additional payment request notification:", notifError);

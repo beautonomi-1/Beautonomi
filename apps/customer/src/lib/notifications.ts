@@ -263,6 +263,7 @@ export function navigateFromNotification(n: Notification): void {
     nType === "payment_pending" ||
     nType === "payment_method_expired" ||
     nType === "partial_payment_received" ||
+    nType === "additional_charge_requested" ||
     nType === "provider_on_way" ||
     nType === "provider_arrived" ||
     nType === "booking_confirmed" ||
@@ -275,7 +276,11 @@ export function navigateFromNotification(n: Notification): void {
       (data.bookingId != null ? String(data.bookingId) : "");
     if (bid) {
       router.push({ pathname: "/(app)/booking-detail", params: { id: bid } });
-    } else if (nType.startsWith("payment_") || nType === "partial_payment_received") {
+    } else if (
+      nType.startsWith("payment_") ||
+      nType === "partial_payment_received" ||
+      nType === "additional_charge_requested"
+    ) {
       router.push("/(app)/account-settings/payments");
     } else {
       router.push("/(app)/(tabs)/bookings" as never);

@@ -44,6 +44,19 @@ describe("filterInProgressWhenAtHomeVerificationPending", () => {
     ).toEqual(["cancelled"]);
   });
 
+  it("keeps in_progress when arrived with no verification pending (simple / no-PIN mode)", () => {
+    expect(
+      filterInProgressWhenAtHomeVerificationPending({
+        targets: ["in_progress", "cancelled", "no_show"],
+        atHome: true,
+        arrivalVerified: false,
+        arrivalOtpPending: false,
+        qrArrivalPending: false,
+        currentStage: "provider_arrived",
+      }),
+    ).toEqual(["in_progress", "cancelled", "no_show"]);
+  });
+
   it("keeps in_progress for salon (not at-home)", () => {
     expect(
       filterInProgressWhenAtHomeVerificationPending({

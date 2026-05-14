@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 const mockRequireRoleInApi = vi.fn();
-const mockGetSupabaseServer = vi.fn();
+const mockGetSupabaseAdmin = vi.fn();
 const mockNotifySupportTicketUpdated = vi.fn();
 
 vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
@@ -13,8 +13,8 @@ vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
   };
 });
 
-vi.mock("@/lib/supabase/server", () => ({
-  getSupabaseServer: (...args: unknown[]) => mockGetSupabaseServer(...args),
+vi.mock("@/lib/supabase/admin", () => ({
+  getSupabaseAdmin: () => mockGetSupabaseAdmin(),
 }));
 
 vi.mock("@/lib/notifications/notification-service", () => ({
@@ -37,7 +37,7 @@ describe("POST /api/admin/support-tickets/[id]/messages", () => {
           return {
             select: vi.fn(() => ({
               eq: vi.fn(() => ({
-                single: vi.fn(async () => ({
+                maybeSingle: vi.fn(async () => ({
                   data: {
                     user_id: "customer-1",
                     provider_id: null,
@@ -71,7 +71,7 @@ describe("POST /api/admin/support-tickets/[id]/messages", () => {
         throw new Error(`Unexpected table ${table}`);
       }),
     };
-    mockGetSupabaseServer.mockResolvedValue(supabase);
+    mockGetSupabaseAdmin.mockReturnValue(supabase);
 
     const { POST } = await import("../route");
     const req = new NextRequest("http://localhost/api/admin/support-tickets/ticket-1/messages", {

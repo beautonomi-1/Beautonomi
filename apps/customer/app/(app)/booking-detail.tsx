@@ -314,7 +314,8 @@ export default function BookingDetailScreen() {
     if (!id || !booking) return;
     const locType = booking.location_type;
     const stage = booking.current_stage;
-    const enRoute = stage === "provider_on_way" || !!(booking as { provider_en_route_at?: string }).provider_en_route_at;
+    // Stage is source of truth — `provider_en_route_at` stays set after the visit (historical), so it must not imply "still en route".
+    const enRoute = stage === "provider_on_way";
     const arrived = stage === "provider_arrived" || !!(booking as { provider_arrived_at?: string }).provider_arrived_at;
     const terminal = booking.status === "cancelled" || booking.status === "completed";
     if (locType !== "at_home" || !enRoute || arrived || terminal) return;
@@ -374,6 +375,7 @@ export default function BookingDetailScreen() {
   const needsPinDisplay =
     booking &&
     booking.location_type === "at_home" &&
+    !["completed", "cancelled", "no_show"].includes(booking.status) &&
     (booking.current_stage === "provider_arrived" || (booking as any).provider_arrived_at) &&
     !booking.arrival_otp_verified &&
     !!booking.arrival_otp;
@@ -395,6 +397,7 @@ export default function BookingDetailScreen() {
   const needsQrDisplay =
     !!booking &&
     booking.location_type === "at_home" &&
+    !["completed", "cancelled", "no_show"].includes(booking.status) &&
     (booking.current_stage === "provider_arrived" || !!(booking as any).provider_arrived_at) &&
     !booking.arrival_otp_verified &&
     !(booking as { qr_code_verified?: boolean }).qr_code_verified &&
@@ -1012,10 +1015,17 @@ export default function BookingDetailScreen() {
   const helpUrl = (onDemandConfig?.ui_copy as Record<string, string> | undefined)?.waiting_help_url?.trim();
 
   const isAtHome = booking.location_type === "at_home";
+  /** House-call journey is over — do not treat historical timestamps as "still en route". */
+  const isHouseCallJourneyClosed = ["completed", "cancelled", "no_show"].includes(_effectiveStatus);
   const isProviderEnRoute =
-    booking.current_stage === "provider_on_way" || !!(booking as any).provider_en_route_at;
+    isAtHome &&
+    !isHouseCallJourneyClosed &&
+    booking.current_stage === "provider_on_way";
   const isProviderArrived =
-    booking.current_stage === "provider_arrived" || !!(booking as any).provider_arrived_at;
+    isAtHome &&
+    !isHouseCallJourneyClosed &&
+    (booking.current_stage === "provider_arrived" ||
+      !!(booking as { provider_arrived_at?: string | null }).provider_arrived_at);
   const estimatedArrival = parseValidDate((booking as any).estimated_arrival);
 
   const detailAddonRows = Array.isArray((booking as any).addons)

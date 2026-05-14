@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
     const staffForDb = data.staff_id
       ? normalizePublicStaffIdForDatabase(data.staff_id).dbStaffId
       : null;
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     // Check if provider allows online waitlist
     const { data: provider, error: providerError } = await supabase
