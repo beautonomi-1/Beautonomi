@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -113,6 +113,22 @@ export default function LoginModal({
       }, 300);
     }
   }, [user, open, onAuthSuccess, setOpen]);
+
+  const resolveRoleFast = useCallback(async (providerContext: boolean): Promise<UserRole | null> => {
+    try {
+      const qs = providerContext ? "?portal=provider" : "";
+      const res = await fetch(`/api/me/role${qs}`, {
+        credentials: "include",
+        cache: "no-store",
+      });
+      if (!res.ok) return null;
+      const json = (await res.json()) as { data?: { role?: UserRole } };
+      return json?.data?.role ?? null;
+    } catch {
+      return null;
+    }
+  }, []);
+
   const [isLoading, setIsLoading] = useState(false);
   const [showEmailForm, setShowEmailForm] = useState(false);
   const [isSignup, setIsSignup] = useState(initialMode === "signup");
@@ -338,21 +354,6 @@ export default function LoginModal({
     setShowResendVerification(false);
 
     try {
-      const resolveRoleFast = async (providerContext: boolean): Promise<UserRole | null> => {
-        try {
-          const qs = providerContext ? "?portal=provider" : "";
-          const res = await fetch(`/api/me/role${qs}`, {
-            credentials: "include",
-            cache: "no-store",
-          });
-          if (!res.ok) return null;
-          const json = (await res.json()) as { data?: { role?: UserRole } };
-          return json?.data?.role ?? null;
-        } catch {
-          return null;
-        }
-      };
-
       if (isSignup) {
         // Sign up new user
         if (!fullName) {
@@ -479,21 +480,7 @@ export default function LoginModal({
         setError(null);
         setShowResendVerification(false);
 
-        // Provider-intent fast path: route immediately, then refresh in background.
-        // This avoids waiting on role/profile reads before navigation.
         const providerContext = redirectContext === "provider";
-        const providerIntent =
-          providerContext ||
-          (typeof window !== "undefined" && window.location.pathname.startsWith("/provider"));
-        if (providerIntent) {
-          if (isReady) track(EVENT_LOGIN_SUCCESS, { method: "email" });
-          toast.success("Logged in successfully!");
-          setOpen(false);
-          router.replace("/provider/dashboard");
-          void refreshUser().catch(() => {});
-          setIsLoading(false);
-          return;
-        }
 
         // Resolve role server-side first (fast path), with provider context upgrade when relevant.
         let finalRole =
@@ -665,7 +652,29 @@ export default function LoginModal({
     if (onAuthSuccess) return;
 
     if (redirectContext === "provider") {
-      router.replace("/provider/dashboard");
+      const role = (await resolveRoleFast(true)) ?? contextRole;
+      if (!role) {
+        router.replace("/provider/dashboard");
+        void refreshUser().catch(() => {});
+        return;
+      }
+      if (role === "superadmin") {
+        router.replace("/admin/dashboard");
+        void refreshUser().catch(() => {});
+        return;
+      }
+      if (role === "provider_owner" || role === "provider_staff") {
+        router.replace("/provider/dashboard");
+        void refreshUser().catch(() => {});
+        return;
+      }
+      if (role === "provider_onboarding") {
+        router.replace("/provider/get-started");
+        void refreshUser().catch(() => {});
+        return;
+      }
+      router.replace("/provider/onboarding");
+      void refreshUser().catch(() => {});
       return;
     }
     if (redirectUrl) {

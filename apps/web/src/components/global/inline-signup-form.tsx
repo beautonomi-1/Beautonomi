@@ -59,6 +59,10 @@ interface InlineSignupFormProps {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/** Visible circular consent control for signup only (do not change global Checkbox defaults). */
+const SIGNUP_CONSENT_CHECKBOX_CLASS =
+  "mt-0.5 h-6 w-6 shrink-0 rounded-full border-2 border-gray-400 data-[state=checked]:bg-primary data-[state=checked]:border-primary";
+
 function getPasswordStrength(pw: string): { score: number; label: string; color: string } {
   let score = 0;
   if (pw.length >= 8) score++;
@@ -593,6 +597,12 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
   };
 
   const handleSocialOAuth = async (provider: "google" | "apple") => {
+    if (!agreeTerms) {
+      setError(
+        "Please confirm you have read and agree to the Terms of Service and Privacy Policy (including product analytics and optional session replay while signed in).",
+      );
+      return;
+    }
     setIsLoading(true);
     setError(null);
 
@@ -651,7 +661,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
               {showResendVerification && (
                 <div className="mt-2">
                   <p className="text-xs text-gray-600 mb-1">
-                    If you haven't verified your email yet:
+                    If you haven&apos;t verified your email yet:
                   </p>
                   <button
                     onClick={handleResendVerification}
@@ -670,12 +680,17 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
       {/* Unified welcome — phone OTP, social, email code */}
       {!showEmailForm && !awaitingEmailVerification && (
         <>
+          {!agreeTerms && (
+            <p className="text-xs text-gray-600 mb-3" aria-live="polite">
+              Tick the box below to continue.
+            </p>
+          )}
           <div className="mb-4 flex items-start gap-3">
             <Checkbox
               id="signup-agree-terms-unified"
               checked={agreeTerms}
               onCheckedChange={(c) => setAgreeTerms(c === true)}
-              className="mt-0.5"
+              className={SIGNUP_CONSENT_CHECKBOX_CLASS}
               aria-describedby="signup-terms-unified-text"
             />
             <label htmlFor="signup-agree-terms-unified" id="signup-terms-unified-text" className="text-xs text-gray-600 cursor-pointer leading-relaxed">
@@ -696,7 +711,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
               variant="outline"
               className="w-full mb-3 flex items-center justify-start gap-3 px-4 h-12 hover:bg-gray-50 border-gray-300 text-base"
               onClick={() => void handleSocialOAuth("google")}
-              disabled={isLoading}
+              disabled={isLoading || !agreeTerms}
             >
               <FaGoogle className="text-lg" />
               <span>Continue with Google</span>
@@ -707,7 +722,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
               variant="outline"
               className="w-full mb-3 flex items-center justify-start gap-3 px-4 h-12 hover:bg-gray-50 border-gray-300 text-base"
               onClick={() => void handleSocialOAuth("apple")}
-              disabled={isLoading}
+              disabled={isLoading || !agreeTerms}
             >
               <FaApple className="text-lg" />
               <span>Continue with Apple</span>
@@ -741,7 +756,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
               <Button
                 className="w-full bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary text-white h-12 text-base font-medium mb-4"
                 onClick={() => void handlePhoneSendSignupOtp()}
-                disabled={isLoading}
+                disabled={isLoading || !agreeTerms}
               >
                 {isLoading ? "Sending…" : "Text me a code"}
               </Button>
@@ -816,7 +831,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
               setSentEmailSignupOtp("");
               setError(null);
             }}
-            disabled={isLoading}
+            disabled={isLoading || !agreeTerms}
           >
             <CiMail className="text-lg" />
             <span>Continue with email code</span>
@@ -831,7 +846,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
               setSignupEmailOtpSent(false);
               setError(null);
             }}
-            disabled={isLoading}
+            disabled={isLoading || !agreeTerms}
           >
             <span>Sign up with email &amp; password</span>
           </Button>
@@ -984,13 +999,37 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
                   </SelectContent>
                 </Select>
               </div>
+              <div className="mb-4 flex items-start gap-3">
+                <Checkbox
+                  id="signup-agree-terms-email-otp"
+                  checked={agreeTerms}
+                  onCheckedChange={(c) => setAgreeTerms(c === true)}
+                  className={SIGNUP_CONSENT_CHECKBOX_CLASS}
+                  aria-describedby="signup-terms-email-otp-text"
+                />
+                <label
+                  htmlFor="signup-agree-terms-email-otp"
+                  id="signup-terms-email-otp-text"
+                  className="text-xs text-gray-600 cursor-pointer leading-relaxed"
+                >
+                  I have read and agree to the{" "}
+                  <Link href="/terms-and-condition" className="text-primary font-medium underline hover:no-underline" target="_blank" rel="noopener noreferrer">
+                    Terms of Service
+                  </Link>{" "}
+                  and{" "}
+                  <Link href="/privacy-policy" className="text-primary font-medium underline hover:no-underline" target="_blank" rel="noopener noreferrer">
+                    Privacy Policy
+                  </Link>
+                  .
+                </label>
+              </div>
               <p className="text-xs text-gray-500 mb-4">
                 We&apos;ll send a {SUPABASE_AUTH_OTP_LENGTH}-digit code to your inbox (not a magic link).
               </p>
               <Button
                 className="w-full bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary text-white h-12 text-base font-medium mb-4"
                 onClick={() => void handleEmailSendSignupOtp()}
-                disabled={isLoading || !email?.trim()}
+                disabled={isLoading || !email?.trim() || !agreeTerms}
               >
                 {isLoading ? "Sending…" : "Send email code"}
               </Button>
@@ -1180,7 +1219,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
                   id="signup-agree-terms"
                   checked={agreeTerms}
                   onCheckedChange={(c) => setAgreeTerms(c === true)}
-                  className="mt-0.5"
+                  className={SIGNUP_CONSENT_CHECKBOX_CLASS}
                   aria-describedby="signup-terms-text"
                 />
                 <label htmlFor="signup-agree-terms" id="signup-terms-text" className="text-xs text-gray-600 cursor-pointer leading-relaxed">
@@ -1192,7 +1231,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
                   <Link href="/privacy-policy" className="text-primary font-medium underline hover:no-underline" target="_blank" rel="noopener noreferrer">
                     Privacy Policy
                   </Link>
-                  . I understand Beautonomi may use cookies and similar technologies, process personal data as described in the Privacy Policy, and (while I am signed in) use product analytics and limited session replay to operate and improve the service. I can update analytics preferences in my account privacy settings.
+                  .
                 </label>
               </div>
               <Button 

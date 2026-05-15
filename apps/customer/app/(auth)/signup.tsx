@@ -307,6 +307,14 @@ export default function SignupScreen() {
   }
 
   async function handleSocialOAuth(provider: "google" | "apple") {
+    if (!agreedToTerms) {
+      setErrors((p) => ({
+        ...p,
+        terms:
+          "Confirm you agree to the Terms of Service, Privacy Policy, and Cookie Policy (including product analytics and optional session replay while signed in).",
+      }));
+      return;
+    }
     haptic.light();
     setLoading(true);
     try {
@@ -317,6 +325,24 @@ export default function SignupScreen() {
         }
       } else {
         trackSignUp(provider);
+        const fullPhone =
+          phone.trim() ? `${countryCode}${stripLeadingZero(phone.replace(/\D/g, ""))}`.trim() : "";
+        const profilePayload: { phone?: string; signup_source?: string; preferred_language: string } = {
+          preferred_language: preferredLanguage,
+        };
+        if (fullPhone) profilePayload.phone = fullPhone;
+        if (signupSource) profilePayload.signup_source = signupSource;
+        await api.patch("/api/me/profile", profilePayload).catch(() => {});
+        await changeLanguage(preferredLanguage);
+        const refToAttach = referralCode ?? (await AsyncStorage.getItem(REFERRAL_REF_KEY));
+        if (refToAttach?.trim()) {
+          try {
+            await api.post("/api/me/referrals/attach", { referral_code: refToAttach.trim() });
+          } catch {
+            // Non-blocking
+          }
+          await AsyncStorage.removeItem(REFERRAL_REF_KEY);
+        }
         await navigateAfterNewCustomerSignup(params.return_to);
       }
     } catch {
@@ -383,13 +409,67 @@ export default function SignupScreen() {
           Join Beautonomi and discover the best beauty services near you
         </Text>
 
+        {/* Terms — above social + email so OAuth is never ahead of consent */}
+        {hasSocialAuth && !agreedToTerms ? (
+          <Text style={{ fontSize: 12, color: "#6B7280", marginBottom: 10 }} accessibilityLiveRegion="polite">
+            Tick the box below to continue with Google, Apple, or email sign up.
+          </Text>
+        ) : null}
+        <TouchableOpacity
+          onPress={() => { setAgreedToTerms(!agreedToTerms); setErrors((p) => ({ ...p, terms: "" })); }}
+          style={{ flexDirection: "row", alignItems: "flex-start", marginBottom: 16 }}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: agreedToTerms }}
+        >
+          <View
+            style={{
+              width: 24,
+              height: 24,
+              borderRadius: 12,
+              borderWidth: 2,
+              borderColor: agreedToTerms ? PRIMARY : errors.terms ? "#EF4444" : "#9CA3AF",
+              backgroundColor: agreedToTerms ? PRIMARY : "#fff",
+              alignItems: "center",
+              justifyContent: "center",
+              marginTop: 1,
+            }}
+          >
+            {agreedToTerms && <Ionicons name="checkmark" size={14} color="#fff" />}
+          </View>
+          <Text style={{ marginLeft: 10, flex: 1, fontSize: 13, color: "#6B7280", lineHeight: 20 }}>
+            I have read and agree to the{" "}
+            <Text
+              style={{ fontWeight: "600", color: "#111827", textDecorationLine: "underline" }}
+              onPress={() => Linking.openURL(webTermsOfServiceUrl()).catch(() => {})}
+            >
+              Terms of Service
+            </Text>{" "}
+            and{" "}
+            <Text
+              style={{ fontWeight: "600", color: "#111827", textDecorationLine: "underline" }}
+              onPress={() => Linking.openURL(webPrivacyPolicyUrl()).catch(() => {})}
+            >
+              Privacy Policy
+            </Text>
+            , and{" "}
+            <Text
+              style={{ fontWeight: "600", color: "#111827", textDecorationLine: "underline" }}
+              onPress={() => Linking.openURL(webCookiePolicyUrl()).catch(() => {})}
+            >
+              Cookie Policy
+            </Text>
+            . I understand Beautonomi may use cookies and similar technologies, process data as described in the Privacy Policy and Cookie Policy, and (while signed in) use product analytics and limited session replay. I can update analytics preferences in my account privacy settings.
+          </Text>
+        </TouchableOpacity>
+        {errors.terms ? <Text style={{ fontSize: 12, color: "#EF4444", marginTop: -8, marginBottom: 12 }}>{errors.terms}</Text> : null}
+
         {hasSocialAuth && (
           <>
             {/* Social signup */}
             {socialAuth.google && (
               <TouchableOpacity
                 onPress={() => void handleSocialOAuth("google")}
-                disabled={loading}
+                disabled={loading || !agreedToTerms}
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
@@ -412,7 +492,7 @@ export default function SignupScreen() {
             {socialAuth.apple && (
               <TouchableOpacity
                 onPress={() => void handleSocialOAuth("apple")}
-                disabled={loading}
+                disabled={loading || !agreedToTerms}
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
@@ -729,55 +809,6 @@ export default function SignupScreen() {
           </Text>
           <Ionicons name="chevron-down" size={18} color="#6B7280" />
         </TouchableOpacity>
-
-        {/* Terms checkbox */}
-        <TouchableOpacity
-          onPress={() => { setAgreedToTerms(!agreedToTerms); setErrors((p) => ({ ...p, terms: "" })); }}
-          style={{ flexDirection: "row", alignItems: "flex-start", marginBottom: 20 }}
-          accessibilityRole="checkbox"
-          accessibilityState={{ checked: agreedToTerms }}
-        >
-          <View
-            style={{
-              width: 22,
-              height: 22,
-              borderRadius: 6,
-              borderWidth: 1,
-              borderColor: agreedToTerms ? PRIMARY : errors.terms ? "#EF4444" : "#D1D5DB",
-              backgroundColor: agreedToTerms ? PRIMARY : "#fff",
-              alignItems: "center",
-              justifyContent: "center",
-              marginTop: 1,
-            }}
-          >
-            {agreedToTerms && <Ionicons name="checkmark" size={14} color="#fff" />}
-          </View>
-          <Text style={{ marginLeft: 10, flex: 1, fontSize: 13, color: "#6B7280", lineHeight: 20 }}>
-            I have read and agree to the{" "}
-            <Text
-              style={{ fontWeight: "600", color: "#111827", textDecorationLine: "underline" }}
-              onPress={() => Linking.openURL(webTermsOfServiceUrl()).catch(() => {})}
-            >
-              Terms of Service
-            </Text>{" "}
-            and{" "}
-            <Text
-              style={{ fontWeight: "600", color: "#111827", textDecorationLine: "underline" }}
-              onPress={() => Linking.openURL(webPrivacyPolicyUrl()).catch(() => {})}
-            >
-              Privacy Policy
-            </Text>
-            , and{" "}
-            <Text
-              style={{ fontWeight: "600", color: "#111827", textDecorationLine: "underline" }}
-              onPress={() => Linking.openURL(webCookiePolicyUrl()).catch(() => {})}
-            >
-              Cookie Policy
-            </Text>
-            . I understand Beautonomi may use cookies and similar technologies, process data as described in the Privacy Policy and Cookie Policy, and (while signed in) use product analytics and limited session replay. I can update analytics preferences in my account privacy settings.
-          </Text>
-        </TouchableOpacity>
-        {errors.terms ? <Text style={{ fontSize: 12, color: "#EF4444", marginTop: -12, marginBottom: 16 }}>{errors.terms}</Text> : null}
 
         {/* Submit */}
         <TouchableOpacity
