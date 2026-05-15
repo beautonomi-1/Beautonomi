@@ -1157,6 +1157,9 @@ const CRITICAL_TRANSACTIONAL_TEMPLATES = new Set<string>([
   "password_reset",
   "email_verification",
   "otp_verification",
+  // Conversations (customer ↔ provider)
+  "customer_new_message",
+  "provider_new_message",
 ]);
 
 function buildQueuePayload(

@@ -35,6 +35,8 @@ import {
   normalizeSupabaseAuthPhone,
   normalizeSupabaseSmsOtpToken,
   isCompleteOtpForLength,
+  SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS,
+  SUPABASE_SMS_OTP_RESEND_COOLDOWN_SECONDS,
 } from "@/lib/supabase-sms-otp";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { DEFAULT_AUTH } from "@/lib/config-bundle";
@@ -334,7 +336,7 @@ export default function LoginScreen() {
       // §UX-audit 2026-04: replaced the blocking "Check your phone" Alert
       // with an inline success state (banner above the OTP input) and
       // start the 30s resend cooldown. Less jarring, faster to act on.
-      setOtpResendIn(30);
+      setOtpResendIn(SUPABASE_SMS_OTP_RESEND_COOLDOWN_SECONDS);
       haptic.success();
     } finally {
       setLoading(false);
@@ -352,7 +354,7 @@ export default function LoginScreen() {
         Alert.alert(al("couldntResendTitle"), error.message);
         return;
       }
-      setOtpResendIn(30);
+      setOtpResendIn(SUPABASE_SMS_OTP_RESEND_COOLDOWN_SECONDS);
       haptic.light();
     } finally {
       setResendingOtp(false);
@@ -370,7 +372,7 @@ export default function LoginScreen() {
         Alert.alert(al("couldntResendTitle"), error.message);
         return;
       }
-      setEmailOtpResendIn(30);
+      setEmailOtpResendIn(SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS);
       haptic.light();
     } finally {
       setResendingEmailOtp(false);
@@ -450,7 +452,7 @@ export default function LoginScreen() {
       setEmailOtpCode("");
       // §UX-audit 2026-04: inline banner + resend cooldown instead of
       // blocking "Check your email" alert.
-      setEmailOtpResendIn(30);
+      setEmailOtpResendIn(SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS);
       haptic.success();
     } finally {
       setLoading(false);

@@ -133,7 +133,7 @@ export default function WaitlistSettingsScreen() {
   );
 
   return (
-    <ScreenContainer scrollable={false}>
+    <ScreenContainer scrollable={false} keyboardAvoiding={false}>
       <ScreenHeader title="Waitlist settings" onBack={() => router.back()} subtitle="Configure waitlist and waiting room" />
       <KeyboardAvoidingView
         style={twStyle("flex-1")}

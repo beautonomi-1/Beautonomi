@@ -1,6 +1,8 @@
-import { permanentRedirect } from "next/navigation";
+import { permanentRedirect, redirect } from "next/navigation";
 import { Suspense } from "react";
 import LoadingTimeout from "@/components/ui/loading-timeout";
+import { bookingUrlNeedsOnlineBookingFlowNew } from "@/lib/booking/booking-url-needs-new-flow";
+import { getSupabaseServer } from "@/lib/supabase/server";
 import BookProviderClient from "./book-provider-client";
 
 type SearchParams = Record<string, string | string[] | undefined>;
@@ -11,33 +13,47 @@ interface PageProps {
 }
 
 /**
- * `/book/[providerSlug]` is retained ONLY for:
- *  - Embedded express booking (`?embed=1`)
- *  - Multi-service deep links (`?services=id1,id2,...`)
+ * `/book/[providerSlug]` is the **express** booking surface (`OnlineBookingFlowNew`).
  *
- * All other visits are 308 redirected to the canonical `/booking?slug=...`.
- * F23 (audit): one canonical booking URL.
+ * Routing rules:
+ * 1) `embed=1` → ALWAYS stay on express (iframe / provider site embeds rely on this
+ *    deep-link parity for venue, addons, promo, gift card, product cart).
+ * 2) **Logged-in customers without `embed=1`** → 307 to `/booking?slug=…&…` so they
+ *    get the richer `BookingFlow` (auto-hydrated client info, saved addresses, saved
+ *    cards, loyalty / saved gift cards, recurring subscribe). The express flow is
+ *    optimised for guests / anonymous shortlinks and does not surface those affordances.
+ * 3) Bare `/book/[slug]` with no meaningful deep link → 308 to `/booking?slug=…` (legacy
+ *    canonical path).
+ * 4) Otherwise (guest + deep link) → render express (`OnlineBookingFlowNew`).
  */
 export default async function BookProviderPage({ params, searchParams }: PageProps) {
   const { providerSlug } = await params;
   const sp = (await searchParams) ?? {};
+  const embed = readParam(sp, "embed") === "1";
+  const authReturn = (readParam(sp, "auth_return") ?? "").trim();
+  const keepOnNewBookingFlow = bookingUrlNeedsOnlineBookingFlowNew(searchParamsToURLSearchParams(sp));
 
-  const embed = pick(sp, "embed") === "1";
-  const services = (pick(sp, "services") ?? "").split(",").filter(Boolean);
-  const multiServiceDeepLink = services.length > 1;
+  // (3) Bare /book/[slug] (no deep-link params) → permanent redirect to /booking?slug=…
+  if (!keepOnNewBookingFlow) {
+    permanentRedirect(`/booking?${buildBookingTarget(providerSlug, sp).toString()}`);
+  }
 
-  if (!embed && !multiServiceDeepLink) {
-    const target = new URLSearchParams();
-    target.set("slug", providerSlug);
-    for (const [k, v] of Object.entries(sp)) {
-      if (k === "slug") continue;
-      if (Array.isArray(v)) {
-        for (const item of v) if (item) target.append(k, item);
-      } else if (v != null) {
-        target.set(k, v);
+  // (2) Logged-in customers (non-embed, non-OAuth-return) → temporary redirect to /booking?slug=…&…
+  //
+  // We probe `auth.getUser()` server-side so there's no client flash of the express UI
+  // before the bounce. `embed=1` skips this so iframe deep links keep working. `auth_return`
+  // skips it so the express OAuth round-trip can finish bridging session storage before any
+  // re-routing happens (BeautonomiGateModal / preAuthGateOpen flow).
+  if (!embed && !authReturn) {
+    try {
+      const supabase = await getSupabaseServer();
+      const { data } = await supabase.auth.getUser();
+      if (data?.user) {
+        redirect(`/booking?${buildBookingTarget(providerSlug, sp).toString()}`);
       }
+    } catch {
+      // Auth probe failures must not break the guest flow — fall through to express.
     }
-    permanentRedirect(`/booking?${target.toString()}`);
   }
 
   return (
@@ -53,8 +69,36 @@ export default async function BookProviderPage({ params, searchParams }: PagePro
   );
 }
 
-function pick(sp: SearchParams, key: string): string | undefined {
+function readParam(sp: SearchParams, key: string): string | undefined {
   const v = sp[key];
-  if (Array.isArray(v)) return v[0];
-  return v;
+  if (Array.isArray(v)) return v.find((x) => typeof x === "string" && x.length > 0);
+  return typeof v === "string" ? v : undefined;
+}
+
+function buildBookingTarget(providerSlug: string, sp: SearchParams): URLSearchParams {
+  const target = new URLSearchParams();
+  target.set("slug", providerSlug);
+  for (const [k, v] of Object.entries(sp)) {
+    if (k === "slug") continue;
+    if (Array.isArray(v)) {
+      for (const item of v) if (item) target.append(k, item);
+    } else if (v != null) {
+      target.set(k, v);
+    }
+  }
+  return target;
+}
+
+function searchParamsToURLSearchParams(sp: SearchParams): URLSearchParams {
+  const u = new URLSearchParams();
+  for (const [k, v] of Object.entries(sp)) {
+    if (Array.isArray(v)) {
+      for (const item of v) {
+        if (item) u.append(k, item);
+      }
+    } else if (v != null && v !== "") {
+      u.set(k, v);
+    }
+  }
+  return u;
 }

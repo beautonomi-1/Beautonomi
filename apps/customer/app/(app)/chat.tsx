@@ -241,6 +241,8 @@ export default function ChatScreen() {
   const offerStatusByIdRef = useRef(offerStatusById);
   offerStatusByIdRef.current = offerStatusById;
   const flatListRef = useRef<FlatList>(null);
+  const messagesRealtimeGenRef = useRef(0);
+  const offersRealtimeGenRef = useRef(0);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const { pickFromLibrary, pickFromCamera } = useImagePicker();
   const { t } = useTranslation();
@@ -482,8 +484,9 @@ export default function ChatScreen() {
   // Realtime subscription
   useEffect(() => {
     if (!id) return;
+    const gen = ++messagesRealtimeGenRef.current;
     const channel = supabase
-      .channel(`messages:conversation:${id}`)
+      .channel(`messages:conversation:${id}:rt${gen}`)
       .on(
         "postgres_changes",
         {
@@ -545,8 +548,8 @@ export default function ChatScreen() {
   // RLS ensures we only receive rows the customer can read.
   useEffect(() => {
     if (!id || !user?.id) return;
-    let offerChannelGen = 0;
-    const topic = `customer-offer-status:${id}:${++offerChannelGen}`;
+    const gen = ++offersRealtimeGenRef.current;
+    const topic = `customer-offer-status:${id}:rt${gen}`;
     const channel = supabase
       .channel(topic)
       .on(

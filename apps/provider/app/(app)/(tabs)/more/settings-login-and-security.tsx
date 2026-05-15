@@ -276,7 +276,7 @@ export default function SettingsLoginAndSecurityScreen() {
   }
 
   return (
-    <ScreenContainer>
+    <ScreenContainer keyboardAvoiding={false}>
       <ScreenHeader title="Login & security" subtitle="Email, phone, password & sessions" onBack={() => router.back()} />
 
       <KeyboardAvoidingView

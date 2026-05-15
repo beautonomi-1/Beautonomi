@@ -15,8 +15,13 @@ import {
   ShoppingBag,
   ChevronLeft,
   AlertCircle,
+  CreditCard,
+  CheckCircle,
+  Plus,
+  ArrowLeft,
 } from "lucide-react";
 import Link from "next/link";
+import { toast } from "sonner";
 
 interface CartItem {
   id: string;
@@ -59,6 +64,16 @@ interface ShippingConfig {
   estimated_delivery_days: number;
 }
 
+interface SavedCard {
+  id: string;
+  card_type?: string;
+  last4?: string;
+  expiry_month?: number;
+  expiry_year?: number;
+  is_default: boolean;
+  is_active: boolean;
+}
+
 export default function ProductCheckoutPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -86,6 +101,73 @@ export default function ProductCheckoutPage() {
   const { enabled: walletEnabled } = useFeatureFlag("payment_wallet");
   const { bundle } = useConfigBundle();
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
+
+  const [savedCards, setSavedCards] = useState<SavedCard[]>([]);
+  const [cardsLoading, setCardsLoading] = useState(false);
+  const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
+  const [useNewCard, setUseNewCard] = useState(true);
+  const [settingDefaultId, setSettingDefaultId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!user) {
+      let cancelled = false;
+      queueMicrotask(() => {
+        if (cancelled) return;
+        setSavedCards([]);
+        setSelectedCardId(null);
+        setCardsLoading(false);
+        setUseNewCard(true);
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+    let cancelled = false;
+    setCardsLoading(true);
+    (async () => {
+      try {
+        const res = await fetcher.get<{ data: SavedCard[] }>("/api/me/payment-methods");
+        if (cancelled) return;
+        const active = (res?.data ?? []).filter((c) => c.is_active);
+        setSavedCards(active);
+        if (active.length === 0) {
+          setUseNewCard(true);
+          setSelectedCardId(null);
+        } else {
+          setSelectedCardId((prev) => {
+            if (prev && active.some((c) => c.id === prev)) return prev;
+            return (active.find((c) => c.is_default) ?? active[0])?.id ?? null;
+          });
+          setUseNewCard(false);
+        }
+      } catch {
+        if (!cancelled) {
+          setSavedCards([]);
+          setUseNewCard(true);
+        }
+      } finally {
+        if (!cancelled) setCardsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+  const handleSetDefaultCard = async (cardId: string) => {
+    setSettingDefaultId(cardId);
+    try {
+      await fetcher.patch(`/api/me/payment-methods/${cardId}`, { is_default: true });
+      const listRes = await fetcher.get<{ data: SavedCard[] }>("/api/me/payment-methods");
+      const active = (listRes.data || []).filter((c) => c.is_active);
+      setSavedCards(active);
+      toast.success("Default card updated");
+    } catch {
+      toast.error("Failed to set default card");
+    } finally {
+      setSettingDefaultId(null);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -279,8 +361,40 @@ export default function ProductCheckoutPage() {
         return;
       }
 
-      // Initialize Paystack for remaining amount
       const cancelledPath = `/shop/cancelled?order_id=${encodeURIComponent(order.id)}&order_number=${encodeURIComponent(order.order_number)}`;
+
+      const usingSavedCard =
+        paymentMethod === "paystack" &&
+        paystackEnabled &&
+        !useWallet &&
+        !useNewCard &&
+        Boolean(selectedCardId) &&
+        savedCards.some((c) => c.id === selectedCardId);
+
+      if (usingSavedCard && selectedCardId) {
+        try {
+          await fetcher.post("/api/payments/charge-saved-card", {
+            payment_method_id: selectedCardId,
+            email: user.email,
+            metadata: {
+              product_order_id: order.id,
+              type: "product_order",
+            },
+          });
+          router.push("/account-settings/orders");
+          return;
+        } catch (chargeErr) {
+          const msg =
+            chargeErr instanceof FetchError
+              ? chargeErr.message
+              : chargeErr instanceof Error
+                ? chargeErr.message
+                : "Card charge failed";
+          setPageError(`${msg} Complete payment below, or retry from your orders.`);
+        }
+      }
+
+      // Initialize Paystack for remaining amount (new card, wallet remainder, or saved-card fallback)
       const payRes = await fetcher.post<{
         data: { authorization_url: string; reference: string };
       }>("/api/paystack/initialize", {
@@ -310,7 +424,21 @@ export default function ProductCheckoutPage() {
     } finally {
       setPlacing(false);
     }
-  }, [providerId, fulfillment, selectedAddress, selectedLocation, paymentMethod, useWallet, user, total, router]);
+  }, [
+    providerId,
+    fulfillment,
+    selectedAddress,
+    selectedLocation,
+    paymentMethod,
+    useWallet,
+    user,
+    total,
+    router,
+    paystackEnabled,
+    savedCards,
+    useNewCard,
+    selectedCardId,
+  ]);
 
   if (loading) {
     return (
@@ -514,6 +642,120 @@ export default function ProductCheckoutPage() {
                     <p className="text-xs text-gray-500">Secure payment with card (card, EFT, etc.)</p>
                   </div>
                 </label>
+              )}
+              {paymentMethod === "paystack" && user && paystackEnabled && !useWallet && cardsLoading && (
+                <div className="space-y-2 pl-1">
+                  <div className="h-14 bg-gray-100 rounded-xl animate-pulse" />
+                  <div className="h-14 bg-gray-100 rounded-xl animate-pulse" />
+                </div>
+              )}
+              {paymentMethod === "paystack" && user && paystackEnabled && !useWallet && !cardsLoading && savedCards.length > 0 && (
+                <div className="space-y-3 pt-1">
+                  <p className="text-sm font-medium text-gray-700">Your saved cards</p>
+                  {!useNewCard ? (
+                    <>
+                      <div className="space-y-2">
+                        {savedCards.map((card) => {
+                          const active = selectedCardId === card.id;
+                          const brand = card.card_type
+                            ? card.card_type.charAt(0).toUpperCase() + card.card_type.slice(1)
+                            : "Card";
+                          const expiry =
+                            card.expiry_month && card.expiry_year
+                              ? `${String(card.expiry_month).padStart(2, "0")}/${String(card.expiry_year).slice(-2)}`
+                              : null;
+                          return (
+                            <div
+                              key={card.id}
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => {
+                                setSelectedCardId(card.id);
+                                setUseNewCard(false);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  setSelectedCardId(card.id);
+                                  setUseNewCard(false);
+                                }
+                              }}
+                              className={`w-full flex items-center gap-4 p-4 rounded-xl border-2 transition-all text-left cursor-pointer ${
+                                active
+                                  ? "border-pink-500 bg-pink-50"
+                                  : "border-gray-200 hover:border-gray-300 bg-white"
+                              }`}
+                            >
+                              <div
+                                className={`w-10 h-7 rounded-md flex items-center justify-center shrink-0 ${
+                                  active ? "bg-pink-100" : "bg-gray-100"
+                                }`}
+                              >
+                                <CreditCard className={`w-5 h-5 ${active ? "text-pink-600" : "text-gray-500"}`} />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className={`text-sm font-semibold ${active ? "text-pink-600" : "text-gray-900"}`}>
+                                    {brand}
+                                    {card.last4 ? ` •••• ${card.last4}` : ""}
+                                  </span>
+                                  {card.is_default ? (
+                                    <span className="px-2 py-0.5 bg-green-100 text-green-700 text-[10px] font-semibold rounded-full">
+                                      Default
+                                    </span>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        void handleSetDefaultCard(card.id);
+                                      }}
+                                      disabled={settingDefaultId === card.id}
+                                      className="text-[10px] font-semibold text-pink-600 hover:text-pink-700 underline disabled:opacity-50"
+                                    >
+                                      {settingDefaultId === card.id ? "Updating…" : "Set default"}
+                                    </button>
+                                  )}
+                                </div>
+                                {expiry ? <span className="text-xs text-gray-500">Expires {expiry}</span> : null}
+                              </div>
+                              {active ? <CheckCircle className="w-5 h-5 text-pink-600 shrink-0" /> : null}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setUseNewCard(true);
+                          setSelectedCardId(null);
+                        }}
+                        className="w-full flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-dashed border-gray-300 hover:border-gray-400 text-gray-600 hover:text-gray-800 transition-all"
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span className="text-sm font-medium">Use a new card</span>
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setUseNewCard(false);
+                          const def = savedCards.find((c) => c.is_default) ?? savedCards[0];
+                          if (def) setSelectedCardId(def.id);
+                        }}
+                        className="flex items-center gap-2 text-sm text-pink-600 hover:text-pink-700 font-medium transition-colors"
+                      >
+                        <ArrowLeft className="w-4 h-4" />
+                        Use a saved card instead
+                      </button>
+                      <p className="text-xs text-gray-500 pl-1">
+                        You will be redirected to our secure payment page to enter card details.
+                      </p>
+                    </>
+                  )}
+                </div>
               )}
               {paymentMethod === "paystack" && user && walletBalance > 0 && walletEnabled && (
                 <label className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 bg-gray-50/50 cursor-pointer">

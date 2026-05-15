@@ -54,6 +54,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   const refetchRef = useRef<() => Promise<void>>(() => Promise.resolve());
   const foregroundTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const realtimeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const notificationsRealtimeGenRef = useRef(0);
 
   const refetchUnreadCount = useCallback(async () => {
     if (!user?.id) {
@@ -129,8 +130,9 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
 
   useEffect(() => {
     if (!user?.id) return;
+    const gen = ++notificationsRealtimeGenRef.current;
     const channel = supabase
-      .channel(`notifications-count:user:${user.id}`)
+      .channel(`notifications-count:user:${user.id}:rt${gen}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}` },

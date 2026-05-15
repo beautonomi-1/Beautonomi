@@ -208,6 +208,7 @@ export function BottomSheet({
                   paddingBottom: 40 + insets.bottom,
                   backgroundColor: "#ffffff",
                 }}
+                nestedScrollEnabled
                 keyboardShouldPersistTaps="handled"
                 keyboardDismissMode="interactive"
                 showsVerticalScrollIndicator={false}

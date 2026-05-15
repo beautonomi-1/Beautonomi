@@ -8,6 +8,8 @@
  * apply gift card balance, redeem N loyalty points). Outputs are the per-tender
  * amounts and the residual `paystack_amount` the gateway must collect.
  *
+ * When loyalty is already applied in `computeCustomOfferPricing` (full-checkout
+ * custom offers / quote), pass `loyaltyPointsToRedeem: 0` here to avoid double-counting.
  * Validation note: gift-card balance and wallet balance are looked up
  * (read-only). The actual reservation / debit happens inside the /pay route
  * just before the Paystack call (so we can roll back on init failure).

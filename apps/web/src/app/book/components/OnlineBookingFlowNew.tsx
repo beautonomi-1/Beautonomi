@@ -46,6 +46,9 @@ import {
   cartMatchesPublicCatalogPackage,
   coerceSelectedDate,
   mergeExpressProductCartLines,
+  resolvePackageOfferingsFromFlatMenu,
+  type ProviderServiceLike,
+  type ResolvedOfferingLine,
   type PublicProductCatalogRow,
 } from "@beautonomi/utils";
 import { formatLocalDateYYYYMMDD } from "@/lib/dates/format-local-date-yyyymmdd";
@@ -63,74 +66,104 @@ import {
 } from "../constants";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 
-/** `fetcher.get` defaults to 15s client cache — availability must always be fresh (tab switches, holds, concurrent bookings). */
-const AVAILABILITY_FETCH_OPTS = { staleTimeMs: 0 } as const;
+/** Aligns with customer app `DEFAULT_SLOT_BUFFER_MINUTES` / `resolveOfferingBufferMinutes` fallback. */
+const DEFAULT_SLOT_BUFFER_MINUTES = 15;
 
-/** Express / URL pre-selection: resolve offering ids — always match a concrete variant id before treating id as parent (avoids wrong first-variant selection). */
-function buildPreselectedServiceEntries(
-  rawIds: string[],
+function buildProviderServicesLikeMenu(
   baseServices: ServiceOption[],
   variantsByServiceId: Record<string, ServiceVariant[]>,
-  isAtHomePricing: boolean,
-  fallbackCurrency: string
-): BookingServiceEntry[] {
-  const entries: BookingServiceEntry[] = [];
+  tenantCurrencyFallback: string
+): ProviderServiceLike[] {
+  return baseServices.map((svc) => ({
+    id: svc.id,
+    title: svc.title,
+    duration_minutes: svc.duration_minutes,
+    price: typeof svc.price === "number" ? svc.price : Number(svc.price) || 0,
+    currency: svc.currency ?? tenantCurrencyFallback,
+    buffer_minutes: (svc as { buffer_minutes?: number }).buffer_minutes,
+    variants: (variantsByServiceId[svc.id] ?? []).map((v) => ({
+      id: v.id,
+      title: v.title ?? v.variant_name,
+      duration_minutes: (v as { duration_minutes?: number }).duration_minutes ?? v.duration ?? 60,
+      price: typeof v.price === "number" ? v.price : Number(v.price) || 0,
+      buffer_minutes: (v as { buffer_minutes?: number }).buffer_minutes,
+    })),
+  }));
+}
+
+function normalizeDeepLinkOfferingIds(rawIds: string[], baseServices: ServiceOption[]): string[] {
+  const out: string[] = [];
   for (const raw of rawIds) {
     const id = raw.trim();
     if (!id) continue;
+    const bySlug = baseServices.find((s) => (s as { slug?: string }).slug === id);
+    out.push(bySlug ? bySlug.id : id);
+  }
+  return out;
+}
 
-    // 1) Explicit variant UUID / id (must win over parent match)
-    let variantHit: ServiceVariant | null = null;
-    for (const svc of baseServices) {
-      const variants = variantsByServiceId[svc.id] ?? [];
-      const v = variants.find((x) => x.id === id);
-      if (v) {
-        variantHit = v;
-        break;
-      }
-    }
-    if (variantHit) {
-      entries.push({
-        offering_id: variantHit.id,
-        title: variantHit.title,
-        duration_minutes: variantHit.duration,
-        price: variantHit.price,
-        currency: variantHit.currency ?? fallbackCurrency,
-      });
-      continue;
-    }
-
-    // 2) Parent / base service (slug or id), no variant row matched
-    const base = baseServices.find((s) => s.id === id || (s as { slug?: string }).slug === id);
-    if (!base) continue;
-
-    const variants = variantsByServiceId[base.id] ?? [];
-    if (variants.length > 0) {
-      // Deep link used parent id only: keep legacy behaviour (first variant) for old links
-      const v = variants[0];
-      entries.push({
-        offering_id: v.id,
-        title: v.title,
-        duration_minutes: v.duration,
-        price: v.price,
-        currency: v.currency ?? fallbackCurrency,
-      });
-    } else {
-      const price =
-        isAtHomePricing && base.at_home_price_adjustment
-          ? base.price + (base.at_home_price_adjustment ?? 0)
-          : base.price;
-      entries.push({
-        offering_id: base.id,
-        title: base.title,
-        duration_minutes: base.duration_minutes,
-        price,
-        currency: base.currency ?? fallbackCurrency,
-      });
+function applyAtHomeCatalogPrice(
+  line: ResolvedOfferingLine,
+  baseServices: ServiceOption[],
+  variantsByServiceId: Record<string, ServiceVariant[]>,
+  treatAsAtHome: boolean
+): number {
+  if (!treatAsAtHome) return line.price;
+  for (const svc of baseServices) {
+    const vars = variantsByServiceId[svc.id] ?? [];
+    if (vars.some((v) => v.id === line.offeringId)) return line.price;
+    if (svc.id === line.offeringId && vars.length === 0 && svc.at_home_price_adjustment) {
+      return line.price + (svc.at_home_price_adjustment ?? 0);
     }
   }
-  return entries;
+  return line.price;
 }
+
+function resolvedLinesToBookingEntries(
+  lines: ResolvedOfferingLine[],
+  baseServices: ServiceOption[],
+  variantsByServiceId: Record<string, ServiceVariant[]>,
+  treatAsAtHomeForPricing: boolean,
+  fallbackCurrency: string
+): BookingServiceEntry[] {
+  return lines.map((line) => ({
+    offering_id: line.offeringId,
+    title: line.title,
+    duration_minutes: line.duration_minutes,
+    price: applyAtHomeCatalogPrice(line, baseServices, variantsByServiceId, treatAsAtHomeForPricing),
+    currency: line.currency ?? fallbackCurrency,
+  }));
+}
+
+function resolveOfferingDurationBufferForSlot(
+  offeringId: string,
+  offeringsList: Array<{ id: string; duration_minutes?: number; buffer_minutes?: number }>,
+  variantsByServiceId: Record<string, ServiceVariant[]>
+): { duration: number; buffer: number } {
+  const base = offeringsList.find((o) => o.id === offeringId);
+  if (base) {
+    return {
+      duration: base.duration_minutes ?? 60,
+      buffer: base.buffer_minutes ?? DEFAULT_SLOT_BUFFER_MINUTES,
+    };
+  }
+  for (const svc of offeringsList) {
+    const vars = variantsByServiceId[svc.id] ?? [];
+    const v = vars.find((vv) => vv.id === offeringId);
+    if (v) {
+      const dur = (v as { duration_minutes?: number }).duration_minutes ?? v.duration ?? 60;
+      const buf =
+        (v as { buffer_minutes?: number }).buffer_minutes ??
+        (svc as { buffer_minutes?: number }).buffer_minutes ??
+        DEFAULT_SLOT_BUFFER_MINUTES;
+      return { duration: dur, buffer: buf };
+    }
+  }
+  return { duration: 60, buffer: DEFAULT_SLOT_BUFFER_MINUTES };
+}
+
+/** `fetcher.get` defaults to 15s client cache — availability must always be fresh (tab switches, holds, concurrent bookings). */
+const AVAILABILITY_FETCH_OPTS = { staleTimeMs: 0 } as const;
 
 function inferCategoryForPreselected(
   entries: BookingServiceEntry[],
@@ -294,6 +327,8 @@ interface OnlineBookingFlowNewProps {
     products?: string;
     /** Active `service_packages.id` — preselects bundle and line items */
     package?: string;
+    /** Referral / invite code — attached to signed-in user before hold (customer app parity). */
+    ref?: string;
   };
   embed?: boolean;
 }
@@ -313,6 +348,7 @@ export default function OnlineBookingFlowNew({
   const appliedQueryAddonsRef = useRef(false);
   const prevStepRef = useRef<BookingStep | null>(null);
   const packageProductLineIdsRef = useRef<Set<string>>(new Set());
+  const referralAttachSucceededRef = useRef(false);
 
   const [step, setStep] = useState<BookingStep>("venue");
   const [bookingData, setBookingData] = useState<BookingData>(() => ({
@@ -757,9 +793,15 @@ export default function OnlineBookingFlowNew({
         const map: Record<string, ServiceVariant[]> = { ...embeddedVariantMap, ...fetchedMap };
         setVariantsByServiceId(map);
 
+        const flatMenu = buildProviderServicesLikeMenu(baseServices, map, tenantCurrency);
+
         if (queryParams.services) {
-          const ids = queryParams.services.split(",").map((id) => id.trim()).filter(Boolean);
-          const entries = buildPreselectedServiceEntries(ids, baseServices, map, treatAsAtHomeForPricing, tenantCurrency);
+          const rawIds = queryParams.services.split(",").map((id) => id.trim()).filter(Boolean);
+          const normalized = normalizeDeepLinkOfferingIds(rawIds, baseServices);
+          const lines = resolvePackageOfferingsFromFlatMenu(normalized, flatMenu, tenantCurrency, "skip");
+          const entries = lines?.length
+            ? resolvedLinesToBookingEntries(lines, baseServices, map, treatAsAtHomeForPricing, tenantCurrency)
+            : [];
           if (entries.length > 0) {
             const inferred = inferCategoryForPreselected(entries, baseServices, map);
             setBookingData((prev) => ({
@@ -774,7 +816,11 @@ export default function OnlineBookingFlowNew({
             }));
           }
         } else if (queryParams.service) {
-          const entries = buildPreselectedServiceEntries([queryParams.service], baseServices, map, treatAsAtHomeForPricing, tenantCurrency);
+          const normalized = normalizeDeepLinkOfferingIds([queryParams.service], baseServices);
+          const lines = resolvePackageOfferingsFromFlatMenu(normalized, flatMenu, tenantCurrency, "strict");
+          const entries = lines?.length
+            ? resolvedLinesToBookingEntries(lines, baseServices, map, treatAsAtHomeForPricing, tenantCurrency)
+            : [];
           if (entries.length > 0) {
             const inferred = inferCategoryForPreselected(entries, baseServices, map);
             setBookingData((prev) => ({
@@ -806,8 +852,15 @@ export default function OnlineBookingFlowNew({
               pkg.services && pkg.services.length > 0
                 ? pkg.services
                 : (pkg.items ?? []).filter((x) => x.type === "service" || !x.type);
-            const ids = svcItems.map((it) => it.id).filter(Boolean);
-            const entries = buildPreselectedServiceEntries(ids, baseServices, map, treatAsAtHomeForPricing, tenantCurrency);
+            const ids = svcItems.map((it) => it.id).filter(Boolean) as string[];
+            const normalizedIds = normalizeDeepLinkOfferingIds(ids, baseServices);
+            let lines = resolvePackageOfferingsFromFlatMenu(normalizedIds, flatMenu, tenantCurrency, "strict");
+            if (!lines?.length && normalizedIds.length > 0) {
+              lines = resolvePackageOfferingsFromFlatMenu(normalizedIds, flatMenu, tenantCurrency, "skip");
+            }
+            const entries = lines?.length
+              ? resolvedLinesToBookingEntries(lines, baseServices, map, treatAsAtHomeForPricing, tenantCurrency)
+              : [];
             if (entries.length > 0) {
               const inferred = inferCategoryForPreselected(entries, baseServices, map);
               const subtotal =
@@ -981,25 +1034,26 @@ export default function OnlineBookingFlowNew({
     const spanForOfferingIds = (ids: string[]) => {
       let total = 0;
       for (let i = 0; i < ids.length; i++) {
-        const off = offeringsList.find((o) => o.id === ids[i]);
-        const dur = off?.duration_minutes ?? 60;
-        const buf = off?.buffer_minutes ?? 15;
-        total += dur + buf;
+        const { duration, buffer } = resolveOfferingDurationBufferForSlot(
+          ids[i],
+          offeringsList,
+          variantsByServiceId
+        );
+        total += duration + buffer;
       }
       return total;
     };
     const primaryIds = bookingData.selectedServices.map((s) => s.offering_id || (s as any).id).filter(Boolean);
     const primarySpan = primaryIds.length
-      ? spanForOfferingIds(primaryIds)
-      : bookingData.selectedServices.reduce((s, e) => s + ((e as any).duration_minutes ?? 60), 0) + 15;
+      ? spanForOfferingIds(primaryIds as string[])
+      : bookingData.selectedServices.reduce((s, e) => s + ((e as any).duration_minutes ?? 60), 0) + DEFAULT_SLOT_BUFFER_MINUTES;
     if (!bookingData.isGroupBooking || !bookingData.groupParticipants?.length) {
-      const durationMinutes = primaryIds.length
-        ? primarySpan - ((offeringsList.find((o) => o.id === primaryIds[primaryIds.length - 1])?.buffer_minutes ?? 15))
-        : primarySpan - 15;
-      const bufferMinutesLast = primaryIds.length
-        ? (offeringsList.find((o) => o.id === primaryIds[primaryIds.length - 1])?.buffer_minutes ?? 15)
-        : 15;
-      return { durationMinutes: durationMinutes || 60, bufferMinutes: bufferMinutesLast };
+      const lastId = primaryIds.length ? (primaryIds[primaryIds.length - 1] as string) : null;
+      const lastBuf = lastId
+        ? resolveOfferingDurationBufferForSlot(lastId, offeringsList, variantsByServiceId).buffer
+        : DEFAULT_SLOT_BUFFER_MINUTES;
+      const durationMinutes = primaryIds.length ? primarySpan - lastBuf : primarySpan - DEFAULT_SLOT_BUFFER_MINUTES;
+      return { durationMinutes: durationMinutes || 60, bufferMinutes: lastBuf };
     }
     let maxSpan = primarySpan;
     for (const p of bookingData.groupParticipants) {
@@ -1071,6 +1125,7 @@ export default function OnlineBookingFlowNew({
     multiServiceIdsParam,
     excludeHoldParam,
     travelBufferParam,
+    variantsByServiceId,
   ]);
 
   /** When entering the schedule step with no date, pick the earliest day that has a future bookable slot. */
@@ -1218,6 +1273,16 @@ export default function OnlineBookingFlowNew({
     if (bookingData.venueType === "at_home" && (!bookingData.atHomeAddress.line1?.trim() || !bookingData.atHomeAddress.city?.trim())) {
       toast.error("Please enter your address for at-home booking");
       return;
+    }
+
+    const refCode = queryParams.ref?.trim();
+    if (user?.id && refCode && !referralAttachSucceededRef.current) {
+      try {
+        await fetcher.post("/api/me/referrals/attach", { referral_code: refCode });
+        referralAttachSucceededRef.current = true;
+      } catch {
+        // Non-blocking: booking can proceed if attach fails (invalid code, network, etc.).
+      }
     }
 
     setCreatingHold(true);
@@ -1443,6 +1508,8 @@ export default function OnlineBookingFlowNew({
             onChange={updateData}
             onNext={handleVenueNext}
             providerName={provider.business_name}
+            providerId={provider.id}
+            displayCurrency={bookingData.currency}
             defaultCountryCode={tenantRegionCode}
           />
         )}
@@ -1637,6 +1704,9 @@ export default function OnlineBookingFlowNew({
             }
             onConfirm={handleConfirm}
             isCreatingHold={creatingHold}
+            onEditServices={() => setStep("services")}
+            onEditSchedule={() => setStep("schedule")}
+            onEditVenue={() => setStep("venue")}
           />
         )}
       </main>

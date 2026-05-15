@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   requireRoleInApi,
   successResponse,
@@ -83,17 +84,26 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       }
     }
 
+    const fullCheckoutEnabled = await isFeatureEnabledServer(
+      FEATURE_FLAG_KEYS.CUSTOM_OFFER_FULL_CHECKOUT,
+      tenantId,
+    );
+
     const travelFee = Number(offer.travel_fee ?? 0) >= 0 ? Number(offer.travel_fee ?? 0) : 0;
+    const adminSupabase = getSupabaseAdmin();
     const pricing = await computeCustomOfferPricing(supabase, {
       offerPrice: Number(offer.price || 0),
       travelFee,
       currency: offer.currency || lastResortCurrency,
       providerId: req.provider_id ?? "",
       customerId: req.customer_id ?? "",
+      tenantId,
+      supabaseAdmin: adminSupabase,
       tipAmount,
       promotionCode: promotionCode ?? null,
       locationType: req.location_type === "at_home" ? "at_home" : "at_salon",
       locationId: offer.location_id ?? null,
+      loyaltyPointsRequested: fullCheckoutEnabled ? loyaltyPointsToRedeem : 0,
     });
 
     if (pricing.ok === false) {
@@ -109,11 +119,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const providerRequiresDeposit = Boolean((providerRow as { requires_deposit?: boolean })?.requires_deposit);
     const depositPct = Number((providerRow as { deposit_percentage?: number })?.deposit_percentage || 30);
     const depositAmount = providerRequiresDeposit ? percentOf(pricing.result.totalAmount, depositPct) : 0;
-
-    const fullCheckoutEnabled = await isFeatureEnabledServer(
-      FEATURE_FLAG_KEYS.CUSTOM_OFFER_FULL_CHECKOUT,
-      tenantId,
-    );
 
     let wallet_balance = 0;
     try {
@@ -154,7 +159,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         currency: offer.currency || lastResortCurrency,
         useWallet,
         giftCardCode: giftCardCode ?? null,
-        loyaltyPointsToRedeem,
+        loyaltyPointsToRedeem: 0,
       });
     }
 

@@ -24,13 +24,15 @@ export function OnDemandIncomingListener() {
   const onDemandAcceptEnabled = acceptGlobalEnabled && acceptProviderEnabled;
   const { provider } = useProvider();
   const seenIdsRef = useRef<Set<string>>(new Set());
+  const onDemandRealtimeGenRef = useRef(0);
 
   // Realtime: subscribe to INSERTs on on_demand_requests for this provider
   useEffect(() => {
     if (!onDemandConfig.enabled || !onDemandAcceptEnabled || !provider?.id) return;
 
+    const gen = ++onDemandRealtimeGenRef.current;
     const channel = supabase
-      .channel(`on-demand-requests:${provider.id}`)
+      .channel(`on-demand-requests:${provider.id}:rt${gen}`)
       .on(
         "postgres_changes",
         {

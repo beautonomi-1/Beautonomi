@@ -12,6 +12,12 @@ export const SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS = 120;
 /** Supabase “Email OTP expiration” (seconds) — for email code login copy only. */
 export const SUPABASE_AUTH_EMAIL_OTP_EXPIRY_SECONDS = 3600;
 
+/** Minimum seconds between “Resend email code” taps (not the same as OTP validity). */
+export const SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS = 60;
+
+/** Minimum seconds between “Resend SMS” taps. */
+export const SUPABASE_SMS_OTP_RESEND_COOLDOWN_SECONDS = 30;
+
 export function normalizeSupabaseSmsOtpToken(raw: string): string {
   return raw.replace(/\D/g, "");
 }

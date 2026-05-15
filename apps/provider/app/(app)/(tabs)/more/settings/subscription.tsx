@@ -11,6 +11,7 @@ import * as Haptics from "expo-haptics";
 import { useRouter, useFocusEffect } from "expo-router";
 import { pushInAppBrowser } from "@/lib/in-app-web";
 import { useApi, useApiMutation } from "@/hooks/useApi";
+import { api } from "@/lib/api-client";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { SectionHeader } from "@/components/ui/SectionHeader";
@@ -288,6 +289,20 @@ export default function SubscriptionScreen() {
   }
 
   async function handleBillingAction() {
+    if (subscription?.billing_issue?.action === "update_payment" || subscription?.status === "past_due") {
+      try {
+        const { error: linkErr, data } = await api.get<{ link?: string }>("/api/provider/subscription/manage-link");
+        if (linkErr) {
+          Alert.alert("Error", "Could not generate card update link. You can also try completing payment below.");
+        } else if (data?.link) {
+          pushInAppBrowser(router, data.link, "Update Card");
+          return;
+        }
+      } catch (e) {
+        Alert.alert("Error", "Failed to get manage link.");
+      }
+    }
+
     const latest = subscription?.latest_order;
     const retryPlan = latest?.plan_id
       ? plans?.find(

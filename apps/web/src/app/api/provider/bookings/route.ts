@@ -991,20 +991,11 @@ async function handleCreateProviderBooking(request: NextRequest) {
       }
     }
 
-    // Generate booking number (use admin client to bypass RLS)
-    const { data: lastBooking } = await supabaseAdmin
-      .from("bookings")
-      .select("booking_number")
-      .eq("provider_id", providerId)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    let bookingNumber = "BK0001";
-    if (lastBooking?.booking_number) {
-      const lastNum = parseInt(lastBooking.booking_number.replace("BK", ""));
-      bookingNumber = `BK${String(lastNum + 1).padStart(4, "0")}`;
-    }
+    // Booking numbers are assigned by DB trigger `set_booking_number` →
+    // `generate_booking_number()` (BTN-… format). Do **not** generate
+    // client-side BK#### sequences here: they race under concurrent group
+    // participant creates and break once any booking uses BTN-… (parseInt
+    // on legacy BK logic → NaN → duplicate `bookings_tenant_id_booking_number_key`).
 
     // Get effective tax rate if not provided: provider tax_rate_percent → platform default → 0% fallback
     // Also fetch tax_inclusive flag from the provider record to correctly branch the pricing formula
@@ -1270,7 +1261,9 @@ async function handleCreateProviderBooking(request: NextRequest) {
     const bookingData: any = {
       provider_id: providerId,
       customer_id: customerId,
-      booking_number: bookingNumber,
+      // Empty string matches `create_booking_with_locking` and fires BEFORE INSERT trigger.
+      booking_number: "",
+      ...(tenantId ? { tenant_id: tenantId } : {}),
       scheduled_at: body.scheduled_at,
       location_type: bookingLocationType,
       location_id: locationId,
@@ -1696,12 +1689,26 @@ async function handleCreateProviderBooking(request: NextRequest) {
         const dbMessage = (error as { message?: string }).message ?? "";
         const dbHint = (error as { hint?: string }).hint ?? null;
         const dbDetail = (error as { details?: string }).details ?? null;
-        const friendlyMessage = dbMessage
-          ? `Could not save the booking: ${dbMessage}`
-          : "A database error prevented the booking from being saved. Please try again.";
+        const bookingNumberUniqueViolation =
+          dbCode === "23505" &&
+          (dbMessage.includes("bookings_tenant_id_booking_number_key") ||
+            dbMessage.includes("tenant_id_booking_number"));
+        const friendlyMessage = bookingNumberUniqueViolation
+          ? "Could not save the booking: duplicate booking reference for this business. Please try again; the system will assign a new reference."
+          : dbMessage
+            ? `Could not save the booking: ${dbMessage}`
+            : "A database error prevented the booking from being saved. Please try again.";
         return errorResponse(
           friendlyMessage,
-          dbCode === "23514" ? "CHECK_VIOLATION" : dbCode === "23503" ? "FK_VIOLATION" : "DB_ERROR",
+          bookingNumberUniqueViolation
+            ? "BOOKING_NUMBER_CONFLICT"
+            : dbCode === "23514"
+              ? "CHECK_VIOLATION"
+              : dbCode === "23503"
+                ? "FK_VIOLATION"
+                : dbCode === "23505"
+                  ? "UNIQUE_VIOLATION"
+                  : "DB_ERROR",
           500,
           { db_code: dbCode, hint: dbHint, detail: dbDetail },
         );

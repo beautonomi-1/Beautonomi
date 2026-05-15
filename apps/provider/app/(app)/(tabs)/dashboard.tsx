@@ -479,6 +479,7 @@ export default function DashboardScreen() {
 
   const dashboardRefreshRef = useRef(refreshRealtimeDashboardData);
   useEffect(() => { dashboardRefreshRef.current = refreshRealtimeDashboardData; }, [refreshRealtimeDashboardData]);
+  const dashboardBookingRealtimeGenRef = useRef(0);
 
   useEffect(() => {
     if (!isFocused || !provider?.id) return;
@@ -491,8 +492,9 @@ export default function DashboardScreen() {
       }, 500);
     };
 
+    const gen = ++dashboardBookingRealtimeGenRef.current;
     const channel = supabase
-      .channel("dashboard-booking-updates")
+      .channel(`dashboard-booking-updates-rt${gen}`)
       .on(
         "postgres_changes",
         {

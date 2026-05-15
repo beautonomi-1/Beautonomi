@@ -251,8 +251,22 @@ export async function POST(request: Request) {
         response = await handleSubscriptionEvent(event, supabase);
       } else if (eventType.startsWith("refund.")) {
         response = await handleRefundEvent(event, supabase);
+      } else if (eventType.startsWith("dispute.")) {
+        // Paystack dispute events: log with merchant/transaction context for manual review
+        const disputeData = event.data as Record<string, unknown> | null | undefined;
+        const disputeTx = typeof disputeData?.transaction === "object" && disputeData?.transaction
+          ? (disputeData.transaction as Record<string, unknown>)
+          : null;
+        console.warn(`[webhook] dispute event received: ${eventType}`, {
+          reference: (disputeTx?.reference ?? disputeData?.reference) as string | undefined,
+          amount: (disputeData?.amount ?? disputeTx?.amount) as number | undefined,
+          status: disputeData?.status as string | undefined,
+          resolution: disputeData?.resolution as string | undefined,
+          eventId,
+        });
+        response = NextResponse.json({ received: true });
       } else {
-        console.log(`Unhandled event type: ${eventType}`);
+        console.log(`[webhook] unhandled event type: ${eventType}`, { eventId });
         response = NextResponse.json({ received: true });
       }
 

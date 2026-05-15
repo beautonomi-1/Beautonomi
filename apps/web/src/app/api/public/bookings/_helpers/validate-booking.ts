@@ -1208,85 +1208,18 @@ export async function validateBooking(
 
   if (promoCode) {
     const providerId = draft.provider_id as string | undefined;
-    const selectCols =
-      "id, code, type, value, min_purchase_amount, max_discount_amount, valid_from, valid_until, usage_limit, usage_count, is_active, location_id, provider_id, applicable_providers";
 
-    // Prefer provider-scoped promo, then platform (provider_id null)
-    let promo: any = null;
-    if (providerId) {
-      const { data: providerPromo } = await (supabase.from("promotions") as any)
-        .select(selectCols)
-        .eq("code", promoCode)
-        .eq("provider_id", providerId)
-        .maybeSingle();
-      promo = providerPromo;
-    }
-    if (!promo) {
-      const { data: platformPromo } = await (supabase.from("promotions") as any)
-        .select(selectCols)
-        .eq("code", promoCode)
-        .is("provider_id", null)
-        .maybeSingle();
-      promo = platformPromo;
-    }
-
-    if (promo) {
-      // Platform promos with applicable_providers: only valid for those providers
-      const applicableProviders = (promo.applicable_providers as string[] | null) || [];
-      const providerOk =
-        promo.provider_id != null ||
-        applicableProviders.length === 0 ||
-        (providerId != null && applicableProviders.includes(providerId));
-
-      const now = new Date();
-      const validFrom = promo.valid_from ? new Date(promo.valid_from) : null;
-      const validUntil = promo.valid_until ? new Date(promo.valid_until) : null;
-
-      const withinWindow = (!validFrom || now >= validFrom) && (!validUntil || now <= validUntil);
-      const underLimit = promo.usage_limit == null || (promo.usage_count || 0) < promo.usage_limit;
-      const meetsMin = !promo.min_purchase_amount || prePromoSubtotal >= Number(promo.min_purchase_amount);
-      const locationOk =
-        promo.location_id == null ||
-        (draft.location_type === "at_salon" && draft.location_id === promo.location_id);
-
-      if (promo.is_active && providerOk && withinWindow && underLimit && meetsMin && locationOk) {
-        if (promo.type === "percentage")
-          promoDiscountAmount = percentOf(prePromoSubtotal, Number(promo.value || 0));
-        else promoDiscountAmount = Number(promo.value || 0);
-
-        if (promo.max_discount_amount)
-          promoDiscountAmount = Math.min(promoDiscountAmount, Number(promo.max_discount_amount));
-        promoDiscountAmount = Math.max(0, Math.min(promoDiscountAmount, prePromoSubtotal));
-        promotionId = promo.id;
-      }
-    }
-
-    // Fallback: check `coupons` table if not found in `promotions`
-    if (!promotionId) {
-      const { data: coupon } = await (supabase.from("coupons") as any)
-        .select("id, code, discount_type, discount_value, max_discount, is_active, expires_at, max_uses, used_count")
-        .eq("code", promoCode)
-        .eq("is_active", true)
-        .maybeSingle();
-
-      if (coupon) {
-        const now = new Date();
-        const notExpired = !coupon.expires_at || new Date(coupon.expires_at) >= now;
-        const underLimit = !coupon.max_uses || (coupon.used_count || 0) < coupon.max_uses;
-
-        if (notExpired && underLimit) {
-          if (coupon.discount_type === "percentage") {
-            promoDiscountAmount = percentOf(prePromoSubtotal, Number(coupon.discount_value || 0));
-            if (coupon.max_discount)
-              promoDiscountAmount = Math.min(promoDiscountAmount, Number(coupon.max_discount));
-          } else {
-            promoDiscountAmount = Number(coupon.discount_value || 0);
-          }
-          promoDiscountAmount = Math.max(0, Math.min(promoDiscountAmount, prePromoSubtotal));
-          promotionId = coupon.id;
-        }
-      }
-    }
+    const { resolveCheckoutPromotionDiscount } = await import("@/lib/pricing/checkout-promotion-discount");
+    const promoResolved = await resolveCheckoutPromotionDiscount(supabase, {
+      promoCode,
+      providerId,
+      promoTenantId: provider.tenant_id || marketTenantId || "",
+      prePromoSubtotal,
+      locationType: draft.location_type === "at_home" ? "at_home" : "at_salon",
+      locationId: draft.location_id ?? null,
+    });
+    promotionId = promoResolved.promotionId;
+    promoDiscountAmount = promoResolved.promotionDiscountAmount;
   }
 
   const combinedAfterPromo = Math.max(0, prePromoSubtotal - promoDiscountAmount);
@@ -1340,26 +1273,10 @@ export async function validateBooking(
   let taxRate: number;
   let taxIncluded = false; // whether tax is already included in prices (inclusive) vs added on top (exclusive)
   if (rawProviderTaxRate == null) {
-    // Load platform default — also check the `included` flag if a tax_rate reference row is configured
-    const { getPlatformDefaultTaxRate } = await import("@/lib/platform-tax-settings");
-    taxRate = await getPlatformDefaultTaxRate();
-    // Check for platform-level inclusive tax configuration
-    try {
-      const { data: taxRefRow } = await supabaseAdmin
-        .from("reference_data")
-        .select("metadata")
-        .eq("type", "tax_rate")
-        .eq("is_active", true)
-        .order("display_order", { ascending: true })
-        .limit(1)
-        .maybeSingle();
-      if (taxRefRow?.metadata && typeof taxRefRow.metadata === "object") {
-        const meta = taxRefRow.metadata as Record<string, unknown>;
-        if (meta.included === true) taxIncluded = true;
-      }
-    } catch {
-      // Non-critical; default to exclusive tax
-    }
+    const { getPlatformDefaultTaxRateAndInclusive } = await import("@/lib/pricing/checkout-tax-defaults");
+    const defaults = await getPlatformDefaultTaxRateAndInclusive(supabaseAdmin);
+    taxRate = defaults.taxRate;
+    taxIncluded = defaults.taxIncluded;
   } else {
     taxRate = Math.max(0, Number(rawProviderTaxRate));
     // Provider-level inclusive flag if set

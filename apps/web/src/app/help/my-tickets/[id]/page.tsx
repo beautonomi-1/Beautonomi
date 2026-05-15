@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
-import { fetcher } from "@/lib/http/fetcher";
+import { fetcher, deleteFetcherGetCacheEntriesMatching } from "@/lib/http/fetcher";
 import AuthGuard from "@/components/auth/auth-guard";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -81,7 +81,8 @@ export default function MyTicketDetailPage() {
     if (!id) return;
     try {
       const res = await fetcher.get<{ data?: { ticket?: Ticket; messages?: Message[] } }>(
-        `/api/me/support-tickets/${id}`
+        `/api/me/support-tickets/${id}`,
+        { staleTimeMs: 0 },
       );
       const data = (res as { data?: { ticket?: Ticket; messages?: Message[] } })?.data;
       setTicket(data?.ticket ?? null);
@@ -164,6 +165,7 @@ export default function MyTicketDetailPage() {
         score: csatScore,
         comment: csatComment.trim() || null,
       });
+      deleteFetcherGetCacheEntriesMatching("/api/me/support-tickets");
       await loadTicket();
       toast.success("Thanks for rating support");
     } catch (err) {
@@ -403,7 +405,9 @@ export default function MyTicketDetailPage() {
             <div className="space-y-4">
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-base">Rate this support experience</CardTitle>
+                  <CardTitle className="text-base">
+                    {typeof ticket.csat_score === "number" ? "Your support rating" : "Rate this support experience"}
+                  </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="flex flex-wrap gap-2">
@@ -436,7 +440,7 @@ export default function MyTicketDetailPage() {
                     className="bg-[#FF0077] hover:bg-[#D60565]"
                   >
                     {submittingCsat ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
-                    {ticket.csat_score ? "Update rating" : "Submit rating"}
+                    {typeof ticket.csat_score === "number" ? "Update rating" : "Submit rating"}
                   </Button>
                 </CardContent>
               </Card>

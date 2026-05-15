@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   Modal,
   Pressable,
   FlatList,
+  InteractionManager,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -26,6 +27,8 @@ import {
   normalizeSupabaseAuthPhone,
   normalizeSupabaseSmsOtpToken,
   isCompleteOtpForLength,
+  SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS,
+  SUPABASE_SMS_OTP_RESEND_COOLDOWN_SECONDS,
 } from "@/lib/supabase-sms-otp";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { DEFAULT_AUTH } from "@/lib/config-bundle";
@@ -40,8 +43,8 @@ import { trackLogin } from "@/lib/analytics";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { supabase } from "@/lib/supabase/client";
 import { logLoginSuccessBreadcrumb } from "@/lib/sentry";
-import { APP_URL } from "@/config/public-env";
 import { pushInAppBrowser } from "@/lib/in-app-web";
+import { webPrivacyPolicyUrl, webTermsOfServiceUrl } from "@/lib/legal-web";
 import { getSocialAuthConfig } from "@/lib/third-party-config";
 
 const PRIMARY = Colors.primary;
@@ -136,7 +139,6 @@ export default function LoginScreen() {
   const [emailOtpCode, setEmailOtpCode] = useState("");
   const [pendingEmailOtp, setPendingEmailOtp] = useState("");
   /** Cooldown timers (seconds) prevent users from spamming Supabase rate-limits during OTP resend. */
-  const RESEND_COOLDOWN_SECONDS = 30;
   const [smsResendCooldown, setSmsResendCooldown] = useState(0);
   const [emailResendCooldown, setEmailResendCooldown] = useState(0);
   const [resendingSms, setResendingSms] = useState(false);
@@ -145,6 +147,7 @@ export default function LoginScreen() {
     google: true,
     apple: true,
   });
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
 
   useEffect(() => {
     if (smsResendCooldown <= 0) return;
@@ -164,15 +167,29 @@ export default function LoginScreen() {
     auth.phone_provider_enabled && (mode === "phone" || !auth.email_provider_enabled);
   const showEmailLoginBlock =
     auth.email_provider_enabled && (mode === "email" || !auth.phone_provider_enabled);
-  const filteredCountries = countrySearch
-    ? COUNTRY_CODES.filter((c) => c.label.toLowerCase().includes(countrySearch.toLowerCase()))
-    : COUNTRY_CODES;
+  const filteredCountries = useMemo(() => {
+    if (!countrySearch) return COUNTRY_CODES;
+    const q = countrySearch.toLowerCase();
+    return COUNTRY_CODES.filter((c) => c.label.toLowerCase().includes(q));
+  }, [countrySearch]);
   const selectedCountry = COUNTRY_CODES.find((c) => c.code === countryCode);
 
   useEffect(() => {
-    getSocialAuthConfig().then(setSocialAuth).catch(() => {
-      setSocialAuth({ google: true, apple: true });
+    let cancelled = false;
+    const task = InteractionManager.runAfterInteractions(() => {
+      if (cancelled) return;
+      void getSocialAuthConfig()
+        .then((cfg) => {
+          if (!cancelled) setSocialAuth(cfg);
+        })
+        .catch(() => {
+          if (!cancelled) setSocialAuth({ google: true, apple: true });
+        });
     });
+    return () => {
+      cancelled = true;
+      task.cancel?.();
+    };
   }, []);
 
   useEffect(() => {
@@ -213,6 +230,12 @@ export default function LoginScreen() {
       setFormError("Phone sign-in is not enabled for this platform.");
       return;
     }
+    if (!agreedToTerms) {
+      setFormError(
+        "Please confirm you agree to the Terms of Service and Privacy Policy before we send a verification code.",
+      );
+      return;
+    }
     setFormError(null);
     setFormSuccess(null);
     if (!phone.trim()) {
@@ -235,7 +258,7 @@ export default function LoginScreen() {
       }
       setPendingPhone(e164);
       setOtpSent(true);
-      setSmsResendCooldown(RESEND_COOLDOWN_SECONDS);
+      setSmsResendCooldown(SUPABASE_SMS_OTP_RESEND_COOLDOWN_SECONDS);
       setFormSuccess(
         `We sent a ${smsOtpLen}-digit code. Check your phone (valid about ${smsOtpExpiryMin} ${
           smsOtpExpiryMin === 1 ? "minute" : "minutes"
@@ -260,7 +283,7 @@ export default function LoginScreen() {
         return;
       }
       setToken("");
-      setSmsResendCooldown(RESEND_COOLDOWN_SECONDS);
+      setSmsResendCooldown(SUPABASE_SMS_OTP_RESEND_COOLDOWN_SECONDS);
       setFormSuccess("A new verification code has been sent.");
     } catch (e: unknown) {
       setFormError(e instanceof Error ? e.message : "Failed to resend code.");
@@ -282,7 +305,7 @@ export default function LoginScreen() {
         return;
       }
       setEmailOtpCode("");
-      setEmailResendCooldown(RESEND_COOLDOWN_SECONDS);
+      setEmailResendCooldown(SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS);
       setFormSuccess("A new verification code has been sent.");
     } catch (e: unknown) {
       setFormError(e instanceof Error ? e.message : "Failed to resend code.");
@@ -322,6 +345,12 @@ export default function LoginScreen() {
   }
 
   async function handleSocialOAuth(provider: OAuthProvider) {
+    if (!agreedToTerms) {
+      setFormError(
+        "Please confirm you agree to the Terms of Service and Privacy Policy before continuing with Google or Apple.",
+      );
+      return;
+    }
     setFormError(null);
     setLoading(true);
     try {
@@ -376,6 +405,12 @@ export default function LoginScreen() {
       setFormError("Email sign-in is not enabled for this platform.");
       return;
     }
+    if (!agreedToTerms) {
+      setFormError(
+        "Please confirm you agree to the Terms of Service and Privacy Policy before we send a verification code.",
+      );
+      return;
+    }
     setFormError(null);
     setFormSuccess(null);
     const trimmed = email.trim();
@@ -397,7 +432,7 @@ export default function LoginScreen() {
       setPendingEmailOtp(trimmed);
       setEmailOtpSent(true);
       setEmailOtpCode("");
-      setEmailResendCooldown(RESEND_COOLDOWN_SECONDS);
+      setEmailResendCooldown(SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS);
       setFormSuccess(
         `We sent a ${emailOtpLen}-digit code to your email (valid about ${emailOtpExpiryMin} minutes).`,
       );
@@ -528,6 +563,49 @@ export default function LoginScreen() {
             <Text style={{ flex: 1, fontSize: 14, color: "#166534", lineHeight: 20 }}>{formSuccess}</Text>
           </View>
         ) : null}
+
+        {/* Consent — required for OTP / OAuth account creation; not for email+password sign-in */}
+        <TouchableOpacity
+          onPress={() => { setAgreedToTerms((v) => !v); setFormError(null); }}
+          style={{ flexDirection: "row", alignItems: "flex-start", marginBottom: 20 }}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: agreedToTerms }}
+        >
+          <View
+            style={{
+              width: 24,
+              height: 24,
+              borderRadius: 12,
+              borderWidth: 2,
+              borderColor: agreedToTerms ? PRIMARY : "#9CA3AF",
+              backgroundColor: agreedToTerms ? PRIMARY : "#fff",
+              alignItems: "center",
+              justifyContent: "center",
+              marginTop: 1,
+            }}
+          >
+            {agreedToTerms && <Ionicons name="checkmark" size={14} color="#fff" />}
+          </View>
+          <Text style={{ marginLeft: 10, flex: 1, fontSize: 13, color: "#4B5563", lineHeight: 20 }}>
+            I have read and agree to the{" "}
+            <Text
+              style={{ fontWeight: "600", color: "#111827", textDecorationLine: "underline" }}
+              onPress={() =>
+                pushInAppBrowser(router, webTermsOfServiceUrl(), "Terms of Service")
+              }
+            >
+              Terms of Service
+            </Text>{" "}
+            and{" "}
+            <Text
+              style={{ fontWeight: "600", color: "#111827", textDecorationLine: "underline" }}
+              onPress={() => pushInAppBrowser(router, webPrivacyPolicyUrl(), "Privacy Policy")}
+            >
+              Privacy Policy
+            </Text>
+            .
+          </Text>
+        </TouchableOpacity>
 
         {/* Mode toggle when both phone and email sign-in are enabled */}
         {auth.email_provider_enabled && auth.phone_provider_enabled ? (
@@ -694,9 +772,14 @@ export default function LoginScreen() {
                   {smsOtpExpiryMin === 1 ? "minute" : "minutes"}). Standard rates apply.{" "}
                   <Text
                     style={{ fontWeight: "600", color: "#111827", textDecorationLine: "underline" }}
-                    onPress={() =>
-                      pushInAppBrowser(router, `${APP_URL.replace(/\/$/, "")}/privacy-policy`, "Privacy Policy")
-                    }
+                    onPress={() => pushInAppBrowser(router, webTermsOfServiceUrl(), "Terms of Service")}
+                  >
+                    Terms of Service
+                  </Text>
+                  {" · "}
+                  <Text
+                    style={{ fontWeight: "600", color: "#111827", textDecorationLine: "underline" }}
+                    onPress={() => pushInAppBrowser(router, webPrivacyPolicyUrl(), "Privacy Policy")}
                   >
                     Privacy Policy
                   </Text>
@@ -741,7 +824,7 @@ export default function LoginScreen() {
               <>
                 <TouchableOpacity
                   onPress={handleSendOtp}
-                  disabled={loading}
+                  disabled={loading || !agreedToTerms}
                   style={{
                     backgroundColor: PRIMARY,
                     borderRadius: 12,
@@ -952,7 +1035,7 @@ export default function LoginScreen() {
                 </Text>
                 <TouchableOpacity
                   onPress={handleSendEmailOtp}
-                  disabled={loading}
+                  disabled={loading || !agreedToTerms}
                   style={{
                     backgroundColor: PRIMARY,
                     borderRadius: 12,
@@ -1066,7 +1149,7 @@ export default function LoginScreen() {
             {socialAuth.google && (
               <TouchableOpacity
                 onPress={() => void handleSocialOAuth("google")}
-                disabled={loading}
+                disabled={loading || !agreedToTerms}
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
@@ -1089,7 +1172,7 @@ export default function LoginScreen() {
             {socialAuth.apple && (
               <TouchableOpacity
                 onPress={() => void handleSocialOAuth("apple")}
-                disabled={loading}
+                disabled={loading || !agreedToTerms}
                 style={{
                   flexDirection: "row",
                   alignItems: "center",

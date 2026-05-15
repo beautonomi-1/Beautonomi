@@ -5,6 +5,13 @@
  * @see https://supabase.com/docs/guides/auth/passwordless-login/auth-email-otp — email OTP
  * @see https://supabase.com/docs/reference/javascript/auth-verifyotp
  *
+ * **Email: magic link vs numeric code (hosted Supabase)**  
+ * `signInWithOtp({ email })` does **not** choose OTP vs link in the client alone. The **Magic Link** email template
+ * must include `{{ .Token }}` (and should not rely only on `{{ .ConfirmationURL }}`) so users receive a
+ * numeric code. Match **Authentication → Email → Magic Link** template and **Email OTP expiration** in the
+ * Supabase dashboard to `platform_settings.settings.auth` (exposed via the public config bundle). See
+ * `supabase/email-templates/README.md` in this repo.
+ *
  * Token must be digits only (no spaces). Phone/email must match what was passed to `signInWithOtp` / `updateUser`.
  * Unified login/signup surfaces use `shouldCreateUser: true` so verifying an OTP can create an account.
  * Use `shouldCreateUser: false` only when you must block new registrations on that screen.
@@ -26,6 +33,16 @@ export const SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS = 120;
  * Use for user-facing “code valid for…” copy on email sign-in, not for SMS/phone.
  */
 export const SUPABASE_AUTH_EMAIL_OTP_EXPIRY_SECONDS = 3600;
+
+/**
+ * Minimum seconds between “Resend email code” taps in the UI (distinct from **code validity**, which is
+ * `email_otp_expiration_seconds` in platform auth settings / Supabase “Email OTP expiration”).
+ * Supabase commonly rate-limits repeat sends (~60s); using 60 avoids confusing errors right after send.
+ */
+export const SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS = 60;
+
+/** Same idea for SMS — shorter window is usually acceptable for phone. */
+export const SUPABASE_SMS_OTP_RESEND_COOLDOWN_SECONDS = 30;
 
 /** Strip non-digits from the user-entered code before `verifyOtp`. */
 export function normalizeSupabaseSmsOtpToken(raw: string): string {

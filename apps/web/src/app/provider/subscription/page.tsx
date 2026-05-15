@@ -183,7 +183,20 @@ export default function SubscriptionPage() {
 
       if (isPaymentSuccess && reference) {
         try {
-          await fetcher.get(`/api/paystack/verify?reference=${encodeURIComponent(reference)}`);
+          const verifyPayload = await fetcher.get<{
+            data?: { status?: string; message?: string };
+            error?: { message?: string };
+          }>(`/api/paystack/verify?reference=${encodeURIComponent(reference)}`, { staleTimeMs: 0 });
+          const inner = verifyPayload?.data;
+          if (
+            verifyPayload?.error ||
+            (inner && typeof inner === "object" && (inner.status === "error" || inner.status === "failed"))
+          ) {
+            console.warn(
+              "Subscription Paystack verify did not return success:",
+              inner?.message ?? verifyPayload?.error?.message,
+            );
+          }
         } catch {
           // Webhooks still reconcile this path; the banner below reflects the latest order state.
         }
@@ -349,6 +362,18 @@ export default function SubscriptionPage() {
   };
 
   const handleBillingAction = async () => {
+    if (subscription?.billing_issue?.action === "update_payment" || subscription?.status === "past_due") {
+      try {
+        const res = await fetcher.get<{ data: { link: string } }>("/api/provider/subscription/manage-link");
+        if (res.data?.link) {
+          window.location.href = res.data.link;
+          return;
+        }
+      } catch (err) {
+        toast.error("Could not generate card update link. You can also try completing payment below.");
+      }
+    }
+
     const latest = subscription?.latest_order;
     const retryPlan = latest?.plan_id
       ? plans.find(

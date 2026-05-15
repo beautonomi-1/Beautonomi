@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   RefreshControl,
   Alert,
   TextInput,
+  DeviceEventEmitter,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -29,6 +30,7 @@ import { formatCurrency } from "@/lib/format";
 import { displayRetailPriceMin, effectiveStockQuantity } from "@/lib/product-inventory-metrics";
 import { trackWalkInSaleCompleted } from "@/lib/analytics";
 import { percentOf, sumMoney } from "@beautonomi/utils";
+import { PROVIDER_PRODUCTS_CATALOG_CHANGED } from "@/lib/provider-products-catalog-events";
 
 interface ProductVariant {
   id: string;
@@ -313,6 +315,13 @@ export default function WalkInSaleScreen() {
       setRefreshing(false);
     }
   }, [refresh, refreshProducts]);
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(PROVIDER_PRODUCTS_CATALOG_CHANGED, () => {
+      void refreshProducts();
+    });
+    return () => sub.remove();
+  }, [refreshProducts]);
 
   const openNewSaleSheet = useCallback(() => {
     setSelectedSale(null);

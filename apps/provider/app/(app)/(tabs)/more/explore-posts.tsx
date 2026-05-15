@@ -1350,6 +1350,7 @@ export default function ExplorePostsScreen() {
                 if (urls.length === 0) return null;
                 return (
                   <View
+                    key={`explore-detail-media-${viewPost.id}`}
                     style={{
                       marginBottom: 16,
                       width: pageW,
@@ -1359,6 +1360,8 @@ export default function ExplorePostsScreen() {
                     {/*
                       Nested horizontal ScrollView must have an explicit height; otherwise
                       aspectRatio children do not lay out and images appear blank (RN).
+                      Still images use the same ExploreFeedMediaThumb as the grid — expo-image
+                      with h-full/w-full inside nested ScrollViews often gets zero layout here.
                     */}
                     <ScrollView
                       horizontal
@@ -1371,8 +1374,8 @@ export default function ExplorePostsScreen() {
                         <View key={`${url}-${idx}`} style={{ width: pageW, height: pageW }}>
                           <View
                             style={{
-                              width: "100%",
-                              height: "100%",
+                              width: pageW,
+                              height: pageW,
                               borderRadius: 12,
                               overflow: "hidden",
                               backgroundColor: "#111111",
@@ -1381,18 +1384,16 @@ export default function ExplorePostsScreen() {
                             {isVideoUrl(url) ? (
                               <Video
                                 source={{ uri: url }}
-                                style={StyleSheet.absoluteFillObject}
+                                style={{ width: pageW, height: pageW }}
                                 resizeMode={ResizeMode.CONTAIN}
                                 useNativeControls
                                 shouldPlay={false}
                                 isLooping
                               />
                             ) : (
-                              <Image
-                                source={{ uri: url }}
-                                style={twStyle("h-full w-full") as ExpoImageStyle}
-                                contentFit="contain"
-                                accessibilityLabel={`Post media ${idx + 1} of ${urls.length}`}
+                              <ExploreFeedMediaThumb
+                                uri={url}
+                                height={pageW}
                               />
                             )}
                             {urls.length > 1 ? (

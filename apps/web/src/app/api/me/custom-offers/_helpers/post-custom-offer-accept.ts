@@ -240,6 +240,11 @@ export async function postCustomOfferAccept(
       return errorResponse("This offer has been withdrawn.", "OFFER_WITHDRAWN", 400);
     }
 
+    const fullCheckoutEnabled = await isFeatureEnabledServer(
+      FEATURE_FLAG_KEYS.CUSTOM_OFFER_FULL_CHECKOUT,
+      tenantId,
+    );
+
     const travelFee = Number(offer.travel_fee ?? 0) >= 0 ? Number(offer.travel_fee ?? 0) : 0;
     const pricing = await computeCustomOfferPricing(supabase, {
       offerPrice: Number(offer.price || 0),
@@ -247,10 +252,13 @@ export async function postCustomOfferAccept(
       currency: offer.currency || lastResortCurrency,
       providerId: req?.provider_id ?? "",
       customerId: req?.customer_id ?? "",
+      tenantId,
+      supabaseAdmin: adminSupabase,
       tipAmount: body.tip_amount,
       promotionCode: body.promotion_code ?? null,
       locationType: req?.location_type === "at_home" ? "at_home" : "at_salon",
       locationId: offer.location_id ?? null,
+      loyaltyPointsRequested: fullCheckoutEnabled ? (body.loyalty_points_to_redeem ?? 0) : 0,
     });
 
     if (pricing.ok === false) {
@@ -275,17 +283,14 @@ export async function postCustomOfferAccept(
     // Mirrors booking checkout. Gated on `commerce.custom_offer_full_checkout` so
     // we can roll out incrementally per market. The actual gift-card reservation
     // and wallet debit happen below — split preview is just a math step here.
-    const fullCheckoutEnabled = await isFeatureEnabledServer(
-      FEATURE_FLAG_KEYS.CUSTOM_OFFER_FULL_CHECKOUT,
-      tenantId,
-    );
-
+    // Loyalty is already applied in `computeCustomOfferPricing` when full checkout is enabled.
     let walletAmount = 0;
     let giftCardAmount = 0;
     let giftCardId: string | null = null;
     let giftCardCode: string | null = null;
-    let loyaltyPointsRedeemed = 0;
-    let loyaltyDiscountAmount = 0;
+    /** Loyalty is applied inside `computeCustomOfferPricing` (same order as validate-booking); do not subtract again in splits. */
+    const loyaltyPointsRedeemed = result.loyaltyPointsRedeemed;
+    const loyaltyDiscountAmount = result.loyaltyDiscountAmount;
     let amountToCollect = chargeAmount;
 
     if (
@@ -314,7 +319,7 @@ export async function postCustomOfferAccept(
         currency: offer.currency || lastResortCurrency,
         useWallet: Boolean(body.use_wallet),
         giftCardCode: body.gift_card_code ?? null,
-        loyaltyPointsToRedeem: body.loyalty_points_to_redeem ?? 0,
+        loyaltyPointsToRedeem: 0,
       });
 
       if (splits.ok === false) {
@@ -324,8 +329,6 @@ export async function postCustomOfferAccept(
       giftCardAmount = splits.result.giftCardAmount;
       giftCardId = splits.result.giftCardId;
       giftCardCode = body.gift_card_code ? body.gift_card_code.trim().toUpperCase() : null;
-      loyaltyPointsRedeemed = splits.result.loyaltyPointsRedeemed;
-      loyaltyDiscountAmount = splits.result.loyaltyDiscountAmount;
       amountToCollect = splits.result.paystackAmount;
     }
 
@@ -360,6 +363,9 @@ export async function postCustomOfferAccept(
       service_fee_percentage: result.serviceFeePercentage,
       promotion_id: result.promotionId ?? "",
       promotion_discount_amount: result.promotionDiscountAmount,
+      membership_discount_amount: result.membershipDiscountAmount,
+      membership_plan_id: result.membershipPlanId ?? null,
+      membership_id: result.membershipId ?? null,
       commission_base: result.commissionBase,
       payment_option: paymentOption,
       total_amount: result.totalAmount,

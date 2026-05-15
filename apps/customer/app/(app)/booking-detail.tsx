@@ -448,11 +448,13 @@ export default function BookingDetailScreen() {
   // to ensure joined fields (services, provider info, etc.) stay consistent.
   const loadRef = useRef(load);
   loadRef.current = load;
+  const bookingDetailRealtimeGenRef = useRef(0);
   useEffect(() => {
     if (!id) return;
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const gen = ++bookingDetailRealtimeGenRef.current;
     const channel = supabase
-      .channel(`booking-detail-${id}`)
+      .channel(`booking-detail-${id}-rt${gen}`)
       .on(
         "postgres_changes",
         {

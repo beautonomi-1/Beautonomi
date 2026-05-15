@@ -12,6 +12,8 @@
  *   amount_paid (cashCollected) = paystackAmount + walletAmount + giftCardAmount
  *   bookings.total_amount = cashCollected for full payments; coTotalAmount for deposit payments
  *   loyaltyDiscountAmount is stored in bookings.loyalty_discount_amount — NOT added to total_amount
+ *   Persist membership on the booking row from metadata: membership_discount_amount,
+ *   membership_plan_id (salon plan), membership_id (platform memberships.id when platform tier wins).
  *
  * Caller MUST pass an admin-scoped Supabase client (service_role).
  */
@@ -188,6 +190,26 @@ export async function finalizeCustomOfferPayment(
   const promotionDiscountAmount = Number(meta.promotion_discount_amount ?? 0);
   const promotionId =
     meta.promotion_id && String(meta.promotion_id).trim() ? String(meta.promotion_id) : null;
+  const membershipDiscountAmount = Math.max(0, Number(meta.membership_discount_amount ?? 0));
+  const membershipPlanIdRaw = meta.membership_plan_id != null ? String(meta.membership_plan_id).trim() : "";
+  const membershipPlanId =
+    membershipPlanIdRaw && membershipPlanIdRaw !== "null" ? membershipPlanIdRaw : null;
+  const membershipIdRaw = meta.membership_id != null ? String(meta.membership_id).trim() : "";
+  const membershipId = membershipIdRaw && membershipIdRaw !== "null" ? membershipIdRaw : null;
+
+  /** `bookings.promotion_id` FK → `promotions(id)` only. Coupon checkout uses `coupons.id` as the resolved code id. */
+  let promotionIdForBooking: string | null = promotionId;
+  if (promotionId) {
+    const { data: promoFkRow } = await adminSupabase
+      .from("promotions")
+      .select("id")
+      .eq("id", promotionId)
+      .maybeSingle();
+    if (!promoFkRow?.id) {
+      promotionIdForBooking = null;
+    }
+  }
+
   const coPaymentOption = String(meta.payment_option || "full");
   const coTotalAmount = Number(meta.total_amount || 0);
   const coDepositAmount = Number(meta.deposit_amount || 0);
@@ -276,6 +298,9 @@ export async function finalizeCustomOfferPayment(
     subtotal: bookingSubtotal,
     tip_amount: tipAmount,
     discount_amount: promotionDiscountAmount,
+    membership_discount_amount: membershipDiscountAmount,
+    ...(membershipPlanId ? { membership_plan_id: membershipPlanId } : {}),
+    ...(membershipId ? { membership_id: membershipId } : {}),
     tax_rate: taxRate,
     tax_amount: taxAmount,
     service_fee_percentage: serviceFeePercentage,
@@ -301,7 +326,7 @@ export async function finalizeCustomOfferPayment(
     loyalty_points_earned: 0,
     loyalty_points_used: loyaltyPointsRedeemed,
     loyalty_discount_amount: loyaltyDiscountAmount,
-    promotion_id: promotionId,
+    promotion_id: promotionIdForBooking,
     promotion_discount_amount: promotionDiscountAmount,
     wallet_amount: walletAmountApplied,
     gift_card_amount: giftCardAmountApplied,
@@ -828,31 +853,33 @@ export async function finalizeCustomOfferPayment(
     }
   }
 
-  // Promotion usage (idempotent)
+  // Promotion usage (idempotent) — only for rows in `promotions` (coupons use a different id space).
   if (promotionId && promotionDiscountAmount > 0) {
-    try {
-      await adminSupabase
-        .from("promotion_usage")
-        .insert({
-          promotion_id: promotionId,
-          user_id: req.customer_id,
-          booking_id: booking.id,
-          discount_amount: promotionDiscountAmount,
-          used_at: new Date().toISOString(),
-        })
-        .select("id")
-        .single();
-      const { data: promoRow } = await adminSupabase
-        .from("promotions")
-        .select("usage_count")
-        .eq("id", promotionId)
-        .single();
-      const nextCount = Number((promoRow as { usage_count?: number } | null)?.usage_count || 0) + 1;
-      await adminSupabase.from("promotions").update({ usage_count: nextCount }).eq("id", promotionId);
-    } catch (promoErr) {
-      const msg = promoErr instanceof Error ? promoErr.message : String(promoErr);
-      if (!msg.toLowerCase().includes("duplicate") && !msg.toLowerCase().includes("unique")) {
-        console.error("[finalizeCustomOfferPayment] promotion_usage insert failed:", promoErr);
+    const { data: promoRow } = await adminSupabase
+      .from("promotions")
+      .select("id, usage_count")
+      .eq("id", promotionId)
+      .maybeSingle();
+    if (promoRow?.id) {
+      try {
+        await adminSupabase
+          .from("promotion_usage")
+          .insert({
+            promotion_id: promotionId,
+            user_id: req.customer_id,
+            booking_id: booking.id,
+            discount_amount: promotionDiscountAmount,
+            used_at: new Date().toISOString(),
+          })
+          .select("id")
+          .single();
+        const nextCount = Number((promoRow as { usage_count?: number }).usage_count || 0) + 1;
+        await adminSupabase.from("promotions").update({ usage_count: nextCount }).eq("id", promotionId);
+      } catch (promoErr) {
+        const msg = promoErr instanceof Error ? promoErr.message : String(promoErr);
+        if (!msg.toLowerCase().includes("duplicate") && !msg.toLowerCase().includes("unique")) {
+          console.error("[finalizeCustomOfferPayment] promotion_usage insert failed:", promoErr);
+        }
       }
     }
   }

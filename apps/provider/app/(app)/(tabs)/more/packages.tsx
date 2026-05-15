@@ -7,6 +7,7 @@ import {
   TextInput,
   Alert,
   Switch,
+  DeviceEventEmitter,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -23,6 +24,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatCurrency } from "@/lib/format";
+import { PROVIDER_PRODUCTS_CATALOG_CHANGED } from "@/lib/provider-products-catalog-events";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { Colors } from "@/constants/colors";
 import { normalizePackagesList, normalizeProductsList } from "@/lib/unpack-provider-api";
@@ -134,6 +136,13 @@ export default function PackagesScreen() {
       setRefreshing(false);
     }
   }, [refreshPackages, refreshServices, refreshProducts]);
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(PROVIDER_PRODUCTS_CATALOG_CHANGED, () => {
+      void refreshProducts();
+    });
+    return () => sub.remove();
+  }, [refreshProducts]);
 
   const filtered = useMemo(() => {
     let list = packages;

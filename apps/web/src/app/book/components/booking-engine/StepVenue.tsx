@@ -1,7 +1,8 @@
 "use client";
 
-import { MapPin, Home, ChevronRight } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { MapPin, Home, ChevronRight, Loader2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { cn, formatCurrency } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import dynamic from "next/dynamic";
@@ -14,6 +15,7 @@ import type {
   BookingData,
   LocationOption,
 } from "../../types/booking-engine";
+import { fetcher, FetchError } from "@/lib/http/fetcher";
 import {
   BOOKING_ACCENT,
   BOOKING_WAITLIST_BG,
@@ -28,12 +30,27 @@ import {
   BOOKING_ACTIVE_SCALE,
 } from "../../constants";
 
+type TravelFeePreviewState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | {
+      status: "success";
+      travelFee: number;
+      distanceKm?: number;
+      travelTimeMinutes?: number;
+    }
+  | { status: "error"; reason: string; distanceKm?: number };
+
 interface StepVenueProps {
   data: BookingData;
   locations: LocationOption[];
   onChange: (patch: Partial<BookingData>) => void;
   onNext: () => void;
   providerName?: string;
+  /** When set, at-home address changes trigger `/api/location/validate` (parity with customer app). */
+  providerId?: string | null;
+  /** Currency for travel fee display (tenant / booking). */
+  displayCurrency?: string;
   /** ISO 3166-1 alpha-2 from tenant config (config-bundle). Defaults to ZA for legacy flows. */
   defaultCountryCode?: string;
 }
@@ -44,9 +61,110 @@ export function StepVenue({
   onChange,
   onNext,
   providerName,
+  providerId,
+  displayCurrency = "ZAR",
   defaultCountryCode = "ZA",
 }: StepVenueProps) {
   const venueType = data.venueType;
+  const [travelPreview, setTravelPreview] = useState<TravelFeePreviewState>({ status: "idle" });
+  const previewSeq = useRef(0);
+
+  const atHomeAddressKey = useMemo(
+    () =>
+      [
+        data.atHomeAddress.line1.trim(),
+        data.atHomeAddress.city.trim(),
+        data.atHomeAddress.country?.trim() ?? "",
+        data.atHomeAddress.latitude ?? "",
+        data.atHomeAddress.longitude ?? "",
+      ].join("|"),
+    [
+      data.atHomeAddress.line1,
+      data.atHomeAddress.city,
+      data.atHomeAddress.country,
+      data.atHomeAddress.latitude,
+      data.atHomeAddress.longitude,
+    ],
+  );
+
+  useEffect(() => {
+    if (venueType !== "at_home" || !providerId) {
+      setTravelPreview({ status: "idle" });
+      return;
+    }
+    if (!data.atHomeAddress.line1.trim() || !data.atHomeAddress.city.trim()) {
+      setTravelPreview({ status: "idle" });
+      return;
+    }
+
+    setTravelPreview({ status: "loading" });
+    const seq = ++previewSeq.current;
+    const timeoutId = window.setTimeout(async () => {
+      const address =
+        [data.atHomeAddress.line1.trim(), data.atHomeAddress.city.trim(), data.atHomeAddress.country?.trim() ?? ""]
+          .filter(Boolean)
+          .join(", ") || "";
+      if (!address) {
+        if (previewSeq.current === seq) setTravelPreview({ status: "idle" });
+        return;
+      }
+      try {
+        const lat =
+          typeof data.atHomeAddress.latitude === "number" && Number.isFinite(data.atHomeAddress.latitude)
+            ? data.atHomeAddress.latitude
+            : undefined;
+        const lng =
+          typeof data.atHomeAddress.longitude === "number" && Number.isFinite(data.atHomeAddress.longitude)
+            ? data.atHomeAddress.longitude
+            : undefined;
+        const res = await fetcher.post<{
+          data?: {
+            valid?: boolean;
+            travelFee?: number;
+            distanceKm?: number;
+            travelTimeMinutes?: number;
+            reason?: string;
+          };
+        }>("/api/location/validate", {
+          address,
+          provider_id: providerId,
+          ...(typeof lat === "number" && typeof lng === "number" ? { latitude: lat, longitude: lng } : {}),
+        });
+        if (previewSeq.current !== seq) return;
+        const payload = res && typeof res === "object" && "data" in res ? (res as { data?: unknown }).data : res;
+        const d = payload as {
+          valid?: boolean;
+          travelFee?: number;
+          distanceKm?: number;
+          travelTimeMinutes?: number;
+          reason?: string;
+        };
+        if (d?.valid === true && typeof d.travelFee === "number") {
+          setTravelPreview({
+            status: "success",
+            travelFee: d.travelFee,
+            distanceKm: d.distanceKm,
+            travelTimeMinutes: d.travelTimeMinutes,
+          });
+        } else {
+          setTravelPreview({
+            status: "error",
+            reason: d?.reason ?? "We could not confirm travel to this address.",
+            distanceKm: d?.distanceKm,
+          });
+        }
+      } catch (e) {
+        if (previewSeq.current !== seq) return;
+        const msg = e instanceof FetchError ? e.message : "Address check failed. You can still try to continue.";
+        setTravelPreview({ status: "error", reason: msg });
+      }
+    }, 500);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [venueType, providerId, atHomeAddressKey, data.atHomeAddress.line1, data.atHomeAddress.city, data.atHomeAddress.country]);
+
   const atSalonOk = venueType === "at_salon" && (locations.length === 0 || data.selectedLocation != null);
   const atHomeOk =
     venueType === "at_home" &&
@@ -274,6 +392,51 @@ export function StepVenue({
               className="rounded-xl h-12 border bg-white/80"
               style={{ borderColor: BOOKING_BORDER }}
             />
+          </div>
+        </div>
+      )}
+
+      {venueType === "at_home" && providerId && travelPreview.status !== "idle" && (
+        <div
+          className="rounded-2xl border p-4 text-sm"
+          style={{
+            borderColor: travelPreview.status === "error" ? "rgba(220,38,38,0.35)" : BOOKING_BORDER,
+            backgroundColor: travelPreview.status === "error" ? "rgba(254,242,242,0.9)" : "rgba(249,250,251,0.95)",
+          }}
+        >
+          <div className="flex items-start gap-3">
+            {travelPreview.status === "loading" ? (
+              <div className="flex items-center gap-2 text-gray-600 w-full">
+                <Loader2 className="h-5 w-5 shrink-0 animate-spin" aria-hidden />
+                <span className="text-sm">Checking travel fee…</span>
+              </div>
+            ) : null}
+            {travelPreview.status === "success" ? (
+              <div className="min-w-0 flex-1 space-y-1">
+                <p className="font-semibold" style={{ color: BOOKING_TEXT_PRIMARY }}>
+                  Estimated travel fee: {formatCurrency(travelPreview.travelFee, displayCurrency)}
+                </p>
+                <p className="text-xs" style={{ color: BOOKING_TEXT_SECONDARY }}>
+                  {travelPreview.distanceKm != null || travelPreview.travelTimeMinutes != null ? (
+                    <>
+                      {travelPreview.distanceKm != null && `About ${travelPreview.distanceKm} km`}
+                      {travelPreview.distanceKm != null && travelPreview.travelTimeMinutes != null ? " · " : null}
+                      {travelPreview.travelTimeMinutes != null ? `~${travelPreview.travelTimeMinutes} min drive` : null}
+                    </>
+                  ) : null}
+                </p>
+                <p className="text-xs pt-1" style={{ color: BOOKING_TEXT_SECONDARY }}>
+                  Final amount may be confirmed at checkout after we secure your slot.
+                </p>
+              </div>
+            ) : null}
+            {travelPreview.status === "error" ? (
+              <div className="min-w-0 flex-1">
+                <p className="font-medium text-red-800">Travel area</p>
+                <p className="text-xs text-red-700/90 mt-1 leading-snug">{travelPreview.reason}</p>
+                <p className="text-xs text-gray-600 mt-2">You can still continue if you believe the address is correct.</p>
+              </div>
+            ) : null}
           </div>
         </div>
       )}

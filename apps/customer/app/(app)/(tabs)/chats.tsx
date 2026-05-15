@@ -64,6 +64,8 @@ export default function ChatsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  /** Unique Realtime topic suffix — Supabase forbids adding postgres_changes after subscribe(); remounts can reuse the same topic name before removeChannel finishes. */
+  const conversationsRealtimeGenRef = useRef(0);
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -137,8 +139,9 @@ export default function ChatsScreen() {
         void load(true);
       }, 400);
     };
+    const gen = ++conversationsRealtimeGenRef.current;
     const channel = supabase
-      .channel(`customer-conversations:${user.id}`)
+      .channel(`customer-conversations:${user.id}:rt${gen}`)
       .on(
         "postgres_changes" as never,
         {

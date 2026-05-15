@@ -297,7 +297,7 @@ export default function EditLocationScreen() {
   }
 
   return (
-    <ScreenContainer scrollable={false}>
+    <ScreenContainer scrollable={false} keyboardAvoiding={false}>
       <ScreenHeader title="Edit location" onBack={() => router.back()} />
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "padding"}

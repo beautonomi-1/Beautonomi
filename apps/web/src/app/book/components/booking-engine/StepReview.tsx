@@ -1,6 +1,6 @@
 "use client";
 
-import { Lock, Shield } from "lucide-react";
+import { Lock, Shield, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/utils";
 import { Label } from "@/components/ui/label";
@@ -41,6 +41,10 @@ interface StepReviewProps {
   onPolicyAcceptedChange: (accepted: boolean) => void;
   onConfirm: () => void;
   isCreatingHold: boolean;
+  /** Jump back to a specific step for editing — provided by OnlineBookingFlowNew */
+  onEditServices?: () => void;
+  onEditSchedule?: () => void;
+  onEditVenue?: () => void;
 }
 
 export function StepReview({
@@ -51,6 +55,9 @@ export function StepReview({
   onPolicyAcceptedChange,
   onConfirm,
   isCreatingHold,
+  onEditServices,
+  onEditSchedule,
+  onEditVenue,
 }: StepReviewProps) {
   const subtotal = data.servicesSubtotal;
   const addonsTotal = data.addonsSubtotal;
@@ -110,7 +117,18 @@ export function StepReview({
           boxShadow: BOOKING_SHADOW_CARD,
         }}
       >
-        <p className="text-xs uppercase tracking-wider mb-3 opacity-80">{providerName}</p>
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-xs uppercase tracking-wider opacity-80">{providerName}</p>
+          {onEditServices && (
+            <button
+              type="button"
+              onClick={onEditServices}
+              className="flex items-center gap-1 text-xs opacity-70 hover:opacity-100 transition-opacity touch-manipulation"
+            >
+              <Pencil className="h-3 w-3" /> Edit
+            </button>
+          )}
+        </div>
         {data.selectedPackage ? (
           <div className="flex justify-between text-sm py-1.5 border-b border-white/10">
             <span className="opacity-90">{data.selectedPackage.name} (package)</span>
@@ -122,7 +140,7 @@ export function StepReview({
               key={i}
               className="flex justify-between text-sm py-1.5 border-b border-white/10 last:border-0"
             >
-              <span className="opacity-90">{s.title}</span>
+              <span className="opacity-90">{s.title}{s.duration_minutes ? ` · ${s.duration_minutes} min` : ""}</span>
               <span className="opacity-95">{formatCurrency(s.price, s.currency)}</span>
             </div>
           ))
@@ -159,15 +177,41 @@ export function StepReview({
           backdropFilter: "blur(16px) saturate(180%)",
         }}
       >
-        <p style={{ color: BOOKING_TEXT_PRIMARY }}>
-          <strong>When:</strong> {whenStr}
-        </p>
-        <p style={{ color: BOOKING_TEXT_PRIMARY }}>
-          <strong>Where:</strong> {whereStr}
-        </p>
-        <p style={{ color: BOOKING_TEXT_PRIMARY }}>
-          <strong>With:</strong> {data.selectedStaff?.name ?? "Anyone available"}
-        </p>
+        <div className="flex items-start justify-between gap-2">
+          <div className="space-y-2 flex-1">
+            <p style={{ color: BOOKING_TEXT_PRIMARY }}>
+              <strong>When:</strong> {whenStr}
+            </p>
+            <p style={{ color: BOOKING_TEXT_PRIMARY }}>
+              <strong>Where:</strong> {whereStr}
+            </p>
+            <p style={{ color: BOOKING_TEXT_PRIMARY }}>
+              <strong>With:</strong> {data.selectedStaff?.name ?? "Anyone available"}
+            </p>
+          </div>
+          <div className="flex flex-col gap-2 shrink-0">
+            {onEditSchedule && (
+              <button
+                type="button"
+                onClick={onEditSchedule}
+                className="flex items-center gap-1 text-xs hover:underline touch-manipulation"
+                style={{ color: BOOKING_ACCENT }}
+              >
+                <Pencil className="h-3 w-3" /> Change time
+              </button>
+            )}
+            {onEditVenue && (
+              <button
+                type="button"
+                onClick={onEditVenue}
+                className="flex items-center gap-1 text-xs hover:underline touch-manipulation"
+                style={{ color: BOOKING_ACCENT }}
+              >
+                <Pencil className="h-3 w-3" /> Change venue
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Cancellation policy with Shield iconography */}

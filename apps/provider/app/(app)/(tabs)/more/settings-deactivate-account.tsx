@@ -73,7 +73,7 @@ export default function SettingsDeactivateAccountScreen() {
   }, [password, reason, signOut, router]);
 
   return (
-    <ScreenContainer>
+    <ScreenContainer keyboardAvoiding={false}>
       <ScreenHeader title="Deactivate account" subtitle="Temporarily disable your account" onBack={() => router.back()} />
 
       <KeyboardAvoidingView

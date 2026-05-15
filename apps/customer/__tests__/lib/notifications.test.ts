@@ -61,6 +61,19 @@ describe("navigateFromNotification", () => {
     expect(pushMock).toHaveBeenCalledWith("/(app)/(tabs)/chats");
   });
 
+  it("routes customer_new_message template pushes to chats when no conversation id", () => {
+    navigateFromNotification({
+      id: "n8",
+      type: "customer_new_message",
+      title: "New message",
+      message: "Hello",
+      is_read: false,
+      created_at: new Date().toISOString(),
+    });
+
+    expect(pushMock).toHaveBeenCalledWith("/(app)/(tabs)/chats");
+  });
+
   it("opens product order detail when notification data uses product_order_id", () => {
     navigateFromNotification({
       id: "n4",

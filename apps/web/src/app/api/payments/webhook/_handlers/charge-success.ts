@@ -139,7 +139,54 @@ export async function handleChargeFailed(
 // ─── charge.success internals ────────────────────────────────────────────────
 
 export async function processSuccessfulPayment(data: PaystackChargeData, supabase: SupabaseClient) {
-  const { reference, metadata, amount, fees, customer, authorization } = data;
+  const reference = data.reference;
+  const metaObj: Record<string, unknown> =
+    data.metadata && typeof data.metadata === "object" && !Array.isArray(data.metadata)
+      ? { ...(data.metadata as Record<string, unknown>) }
+      : {};
+  const hasNonAdsRoutingMetadata = Boolean(
+    metaObj.product_order_id ||
+      metaObj.wallet_topup_id ||
+      metaObj.gift_card_order_id ||
+      metaObj.membership_order_id ||
+      metaObj.provider_subscription_order_id ||
+      metaObj.custom_offer_id ||
+      metaObj.booking_id ||
+      metaObj.bookingId ||
+      metaObj.kind === "card_verification",
+  );
+  if (reference && !metaObj.ads_budget_order_id && !hasNonAdsRoutingMetadata) {
+    const { data: adsByRef } = await supabase
+      .from("ads_budget_orders")
+      .select("id, campaign_id, provider_id")
+      .eq("paystack_reference", String(reference))
+      .maybeSingle();
+    if (adsByRef) {
+      const ar = adsByRef as { id?: unknown; campaign_id?: string | null; provider_id?: string | null };
+      const orderIdStr = ar.id != null && ar.id !== "" ? String(ar.id) : "";
+      if (orderIdStr) {
+        metaObj.ads_budget_order_id = orderIdStr;
+        if (ar.campaign_id) metaObj.campaign_id = ar.campaign_id;
+        if (ar.provider_id) metaObj.provider_id = ar.provider_id;
+      }
+    }
+  }
+  if (reference && !metaObj.provider_subscription_order_id) {
+    const { data: subOrderByRef } = await supabase
+      .from("provider_subscription_orders")
+      .select("id")
+      .eq("paystack_reference", String(reference))
+      .maybeSingle();
+    if (subOrderByRef) {
+      const sid = (subOrderByRef as { id?: unknown }).id;
+      const idStr = sid != null && sid !== "" ? String(sid) : "";
+      if (idStr) {
+        metaObj.provider_subscription_order_id = idStr;
+      }
+    }
+  }
+  data.metadata = metaObj as PaystackChargeData["metadata"];
+  const { metadata, amount, fees, customer, authorization } = data;
 
   if (!reference || !metadata?.booking_id) {
     if (metadata?.product_order_id && reference) {
@@ -2085,11 +2132,9 @@ async function handleAdsBudgetOrderSuccess(
   payload: { reference: string; metadata: any; amount: number; fees: number },
   supabase: SupabaseClient,
 ) {
-  const orderId = payload.metadata.ads_budget_order_id as string;
-  const providerId = payload.metadata.provider_id as string;
-  const campaignId = payload.metadata.campaign_id as string;
-  if (!orderId || !providerId || !campaignId) {
-    console.error("Missing ads_budget_order_id, provider_id or campaign_id in metadata");
+  const orderId = String(payload.metadata?.ads_budget_order_id ?? "").trim();
+  if (!orderId) {
+    console.error("[ads_budget_order] missing ads_budget_order_id in charge metadata");
     return;
   }
 
@@ -2103,7 +2148,31 @@ async function handleAdsBudgetOrderSuccess(
     return;
   }
 
-  const amountInCurrency = convertFromSmallestUnit(payload.amount || 0);
+  const row = order as { provider_id?: string | null; campaign_id?: string | null };
+  const providerId = String(row.provider_id || payload.metadata?.provider_id || "").trim();
+  const campaignId = String(row.campaign_id || payload.metadata?.campaign_id || "").trim();
+  if (!providerId || !campaignId) {
+    console.error("[ads_budget_order] missing provider_id or campaign_id on order row + metadata", {
+      orderId,
+      row,
+    });
+    return;
+  }
+
+  const amountMajor = convertFromSmallestUnit(Number(payload.amount || 0));
+  const expectedMajor = Number((order as { amount?: number | string | null }).amount ?? 0);
+  const statusStr = String((order as { status?: string }).status ?? "");
+  if (statusStr !== "paid" && Math.abs(amountMajor - expectedMajor) > 0.02) {
+    console.error("[ads_budget_order] Paystack amount does not match ads_budget_orders.amount", {
+      orderId,
+      paystackAmountMajor: amountMajor,
+      expectedMajor,
+      reference: payload.reference,
+    });
+    return;
+  }
+
+  const amountInCurrency = amountMajor;
   const feesInCurrency = convertFromSmallestUnit(payload.fees || 0);
   const netAmount = amountInCurrency - feesInCurrency;
 

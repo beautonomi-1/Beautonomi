@@ -1273,6 +1273,20 @@ export async function disableSubscriptionByCode(
 }
 
 /**
+ * Generate a link to a hosted subscription management page where the customer
+ * can update their card, add a new card, or cancel their subscription.
+ */
+export async function getSubscriptionManageLink(
+  code: string,
+  options?: { tenantId?: string | null }
+): Promise<PaystackResponse<{ link: string }>> {
+  return paystackRequest(`/subscription/${code}/manage/link`, {
+    method: "GET",
+    tenantId: options?.tenantId,
+  });
+}
+
+/**
  * PRODUCTS
  */
 

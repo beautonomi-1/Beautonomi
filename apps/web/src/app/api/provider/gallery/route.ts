@@ -56,10 +56,23 @@ export async function GET(request: NextRequest) {
   }
 }
 
+const GALLERY_UPLOAD_MAX_BYTES = 8 * 1024 * 1024;
+
+function isAllowedGalleryMime(t: string): boolean {
+  const x = t.toLowerCase().split(";")[0]?.trim() || "";
+  return x === "image/jpeg" || x === "image/jpg" || x === "image/png" || x === "image/webp";
+}
+
+function parseApplyAs(value: unknown): "thumbnail" | "avatar" | null {
+  if (value === "thumbnail" || value === "avatar") return value;
+  return null;
+}
+
 /**
  * POST /api/provider/gallery
  * Add a new gallery item.
- * Body: { url?: string } (link) or { image_base64?: string } (data URL from mobile upload).
+ * - JSON: { url?: string } | { image_base64?: string (data URL) } — optional apply_as: "thumbnail" | "avatar"
+ * - multipart/form-data: file (required), optional apply_as — preferred from native (no base64 on device).
  */
 export async function POST(request: NextRequest) {
   try {
@@ -69,7 +82,6 @@ export async function POST(request: NextRequest) {
     }
     const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
-    const body = await request.json();
     const providerId = await getProviderIdForUser(user.id, supabase);
 
     if (!providerId) {
@@ -77,31 +89,71 @@ export async function POST(request: NextRequest) {
     }
 
     let url: string;
+    let applyAs: "thumbnail" | "avatar" | null = null;
 
-    const imageBase64 = body.image_base64 as string | undefined;
-    if (imageBase64 && typeof imageBase64 === "string" && imageBase64.startsWith("data:")) {
+    const contentType = request.headers.get("content-type") || "";
+
+    if (contentType.includes("multipart/form-data")) {
+      const formData = await request.formData();
+      applyAs = parseApplyAs(formData.get("apply_as"));
+      const file = formData.get("file");
+
+      if (!(file instanceof File)) {
+        return handleApiError(
+          new Error("file field is required"),
+          "file is required",
+          "VALIDATION_ERROR",
+          400
+        );
+      }
+      if (file.size === 0) {
+        return handleApiError(
+          new Error("Empty file"),
+          "Empty file",
+          "VALIDATION_ERROR",
+          400
+        );
+      }
+      if (file.size > GALLERY_UPLOAD_MAX_BYTES) {
+        return handleApiError(
+          new Error("File too large"),
+          "Image must be 8MB or smaller",
+          "VALIDATION_ERROR",
+          400
+        );
+      }
+      const normalizedType = (file.type || "image/jpeg").toLowerCase();
+      if (!isAllowedGalleryMime(normalizedType)) {
+        return handleApiError(
+          new Error("Invalid file type"),
+          "Only JPEG, PNG, and WebP are allowed",
+          "VALIDATION_ERROR",
+          400
+        );
+      }
+
       try {
-        const response = await fetch(imageBase64);
-        const blob = await response.blob();
-        const fileExt = blob.type?.split("/")[1] || "jpg";
+        const arrayBuffer = await file.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        const fileExt = file.name.split(".").pop()?.toLowerCase() || normalizedType.split("/")[1] || "jpg";
         const fileName = `${providerId}/gallery-${Date.now()}.${fileExt}`;
         const supabaseAdmin = getSupabaseAdmin();
         const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
           .from("provider-gallery")
-          .upload(fileName, blob, {
-            contentType: blob.type || "image/jpeg",
+          .upload(fileName, buffer, {
+            contentType: normalizedType || "image/jpeg",
             cacheControl: "3600",
             upsert: false,
           });
         if (uploadError || !uploadData?.path) {
           throw uploadError ?? new Error("Upload failed");
         }
-        const { data: { publicUrl } } = supabaseAdmin.storage
-          .from("provider-gallery")
-          .getPublicUrl(uploadData.path);
+        const {
+          data: { publicUrl },
+        } = supabaseAdmin.storage.from("provider-gallery").getPublicUrl(uploadData.path);
         url = publicUrl;
       } catch (e) {
-        console.error("Gallery image upload failed:", e);
+        console.error("Gallery multipart upload failed:", e);
         return handleApiError(
           e instanceof Error ? e : new Error("Upload failed"),
           "Failed to upload image",
@@ -110,16 +162,52 @@ export async function POST(request: NextRequest) {
         );
       }
     } else {
-      const urlParam = body.url;
-      if (!urlParam || typeof urlParam !== "string") {
-        return handleApiError(
-          new Error("url or image_base64 (data URL) is required"),
-          "url or image_base64 is required",
-          "VALIDATION_ERROR",
-          400
-        );
+      const body = (await request.json()) as Record<string, unknown>;
+      applyAs = parseApplyAs(body.apply_as);
+
+      const imageBase64 = body.image_base64 as string | undefined;
+      if (imageBase64 && typeof imageBase64 === "string" && imageBase64.startsWith("data:")) {
+        try {
+          const response = await fetch(imageBase64);
+          const blob = await response.blob();
+          const fileExt = blob.type?.split("/")[1] || "jpg";
+          const fileName = `${providerId}/gallery-${Date.now()}.${fileExt}`;
+          const supabaseAdmin = getSupabaseAdmin();
+          const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
+            .from("provider-gallery")
+            .upload(fileName, blob, {
+              contentType: blob.type || "image/jpeg",
+              cacheControl: "3600",
+              upsert: false,
+            });
+          if (uploadError || !uploadData?.path) {
+            throw uploadError ?? new Error("Upload failed");
+          }
+          const { data: { publicUrl } } = supabaseAdmin.storage
+            .from("provider-gallery")
+            .getPublicUrl(uploadData.path);
+          url = publicUrl;
+        } catch (e) {
+          console.error("Gallery image upload failed:", e);
+          return handleApiError(
+            e instanceof Error ? e : new Error("Upload failed"),
+            "Failed to upload image",
+            "UPLOAD_ERROR",
+            400
+          );
+        }
+      } else {
+        const urlParam = body.url;
+        if (!urlParam || typeof urlParam !== "string") {
+          return handleApiError(
+            new Error("url, image_base64 (data URL), or multipart file is required"),
+            "url or image_base64 or file is required",
+            "VALIDATION_ERROR",
+            400
+          );
+        }
+        url = urlParam;
       }
-      url = urlParam;
     }
 
     // Get current gallery
@@ -136,12 +224,11 @@ export async function POST(request: NextRequest) {
     const currentGallery: string[] = provider.gallery || [];
     const updatedGallery = [...currentGallery, url];
 
-    const { data: _updated, error } = await supabase
-      .from("providers")
-      .update({ gallery: updatedGallery })
-      .eq("id", providerId)
-      .select("gallery")
-      .single();
+    const updateRow: Record<string, unknown> = { gallery: updatedGallery };
+    if (applyAs === "thumbnail") updateRow.thumbnail_url = url;
+    if (applyAs === "avatar") updateRow.avatar_url = url;
+
+    const { error } = await supabase.from("providers").update(updateRow).eq("id", providerId).select("gallery").single();
 
     if (error) {
       throw error;

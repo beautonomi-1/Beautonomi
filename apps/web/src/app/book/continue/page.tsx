@@ -4,7 +4,7 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { getHoldTimeRemaining, percentOf, serverNowToClockOffsetMs } from "@beautonomi/utils";
 
 import { useSearchParams } from "next/navigation";
-import { useEffect, useState, useCallback, Suspense } from "react";
+import { useEffect, useState, useCallback, useRef, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { getGuestFingerprintHash } from "@/lib/public-booking/guest-fingerprint";
@@ -79,6 +79,8 @@ interface HoldData {
   staff_id: string | null;
   booking_services_snapshot: Array<{
     offering_id: string;
+    /** Written into snapshot during hold creation (title from offerings table). */
+    service_name?: string;
     staff_id: string | null;
     duration_minutes: number;
     price: number;
@@ -107,6 +109,13 @@ interface HoldData {
   payment_paystack?: boolean;
   payment_wallet?: boolean;
   gift_cards?: boolean;
+  cash_enabled_on_platform?: boolean;
+  tips_enabled?: boolean;
+  tip_presets?: number[];
+  /** Provider tax rate; 0 when no tax configured. */
+  tax_rate_percent?: number;
+  /** True = prices already include tax; false = tax added on top. */
+  tax_inclusive?: boolean;
   cancellation_policy?: HoldCancellationPolicy | null;
 }
 
@@ -130,11 +139,20 @@ function cancellationPolicyRequiresCustomerAck(policy: HoldCancellationPolicy | 
 
 function HoldSlotCountdown({ expiresAt, clockOffsetMs }: { expiresAt: string; clockOffsetMs: number }) {
   const [tick, setTick] = useState(() => getHoldTimeRemaining(expiresAt, clockOffsetMs));
+  const toastFiredRef = useRef(false);
   useEffect(() => {
     setTick(getHoldTimeRemaining(expiresAt, clockOffsetMs));
   }, [expiresAt, clockOffsetMs]);
   useEffect(() => {
-    const id = setInterval(() => setTick(getHoldTimeRemaining(expiresAt, clockOffsetMs)), 1000);
+    const id = setInterval(() => {
+      const next = getHoldTimeRemaining(expiresAt, clockOffsetMs);
+      setTick(next);
+      // Fire toast exactly once when the slot transitions to expired
+      if (next.expired && !toastFiredRef.current) {
+        toastFiredRef.current = true;
+        toast.warning("Your reserved slot has expired. Please go back and pick a new time.", { duration: 8000 });
+      }
+    }, 1000);
     return () => clearInterval(id);
   }, [expiresAt, clockOffsetMs]);
   const urgent = !tick.expired && tick.minutes < 2;
@@ -177,12 +195,32 @@ interface AddonInfo {
   currency: string;
 }
 
+type CatalogProductVariant = {
+  id: string;
+  retail_price: number;
+  /** Option values keyed by option type name (e.g. { Size: "Large" }) */
+  option_values?: Record<string, string>;
+  /** Flat display label for this variant (e.g. "Large / Red") */
+  display_label?: string;
+};
+
 type CatalogProduct = {
   id: string;
   name?: string;
   price?: number;
-  variants?: Array<{ id: string; retail_price: number }>;
+  retail_price?: number;
+  hasVariants?: boolean;
+  variants?: CatalogProductVariant[];
 };
+
+/** Build a readable variant label from option_values map (e.g. "Large / Red"). */
+function variantDisplayLabel(variant: CatalogProductVariant): string {
+  if (variant.display_label?.trim()) return variant.display_label.trim();
+  if (variant.option_values && Object.keys(variant.option_values).length > 0) {
+    return Object.values(variant.option_values).filter(Boolean).join(" / ");
+  }
+  return "";
+}
 
 function resolvePrefillProductLines(
   catalog: CatalogProduct[],
@@ -199,20 +237,26 @@ function resolvePrefillProductLines(
   for (const line of lines) {
     const p = catalog.find((x) => x.id === line.product_id);
     if (!p) continue;
-    let unitPrice = Number(p.price ?? 0) || 0;
+    let unitPrice = Number(p.price ?? p.retail_price ?? 0) || 0;
     const variantId = line.product_variant_id ?? null;
+    let variantLabel = "";
     if (variantId && Array.isArray(p.variants)) {
       const v = p.variants.find((vv) => vv.id === variantId);
-      if (v) unitPrice = Number(v.retail_price ?? 0) || unitPrice;
+      if (v) {
+        unitPrice = Number(v.retail_price ?? 0) || unitPrice;
+        variantLabel = variantDisplayLabel(v);
+      }
     }
     const q = Math.max(1, Math.floor(Number(line.quantity) || 1));
+    const baseName = (p.name ?? "Product").trim() || "Product";
+    const displayName = variantLabel ? `${baseName} – ${variantLabel}` : baseName;
     out.push({
       productId: line.product_id,
       productVariantId: variantId,
       quantity: q,
       unitPrice,
       totalPrice: unitPrice * q,
-      name: (p.name ?? "Product").trim() || "Product",
+      name: displayName,
     });
   }
   return out;
@@ -261,7 +305,12 @@ function BookContinueContent() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [hold, setHold] = useState<HoldData | null>(null);
   const [allowPayInPerson, setAllowPayInPerson] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<"card" | "cash">("card");
+  const [walletBalance, setWalletBalance] = useState(0);
+  const [giftCardCode, setGiftCardCode] = useState("");
+  const [giftCardValidating, setGiftCardValidating] = useState(false);
+  const [giftCardValid, setGiftCardValid] = useState<{ balance: number; currency: string } | null>(null);
+  const [giftCardError, setGiftCardError] = useState<string | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<"card" | "cash" | "wallet" | "giftcard">("card");
   const [paymentOption, setPaymentOption] = useState<"deposit" | "full">("deposit");
   const [bookingCustomValues, setBookingCustomValues] = useState<Record<string, string | number | boolean | null>>({});
   const [clientInfo, setClientInfo] = useState<{ firstName: string; lastName: string; email: string; phone: string } | null>(null);
@@ -293,6 +342,13 @@ function BookContinueContent() {
   const [membershipDiscountPercent, setMembershipDiscountPercent] = useState(0);
   const [membershipPlanId, setMembershipPlanId] = useState<string | null>(null);
   const [membershipPlanName, setMembershipPlanName] = useState<string | null>(null);
+  /** Loyalty points — mirrors customer app checkout (calculate-redemption + consume loyalty_points_used). */
+  const [loyaltyBalance, setLoyaltyBalance] = useState(0);
+  const [loyaltyPointsInput, setLoyaltyPointsInput] = useState("");
+  const [loyaltyPointsApplied, setLoyaltyPointsApplied] = useState(0);
+  const [loyaltyDiscountAmount, setLoyaltyDiscountAmount] = useState(0);
+  const [loyaltyValidating, setLoyaltyValidating] = useState(false);
+  const [loyaltyError, setLoyaltyError] = useState<string | null>(null);
   const [requestingNow, setRequestingNow] = useState(false);
   /** Mirrors customer app: disable checkout when the hold clock hits zero without waiting for a refetch. */
   const [isSlotExpired, setIsSlotExpired] = useState(false);
@@ -301,6 +357,7 @@ function BookContinueContent() {
   const [subscribeRecurring, setSubscribeRecurring] = useState(false);
   const [recurringFrequency, setRecurringFrequency] = useState<"weekly" | "biweekly" | "monthly">("weekly");
   const [groupBookingForRecurring, setGroupBookingForRecurring] = useState(false);
+  const [groupParticipants, setGroupParticipants] = useState<Array<{ name: string; email?: string | null; phone?: string | null; service_ids: string[]; notes?: string | null }>>([]);
   const { user } = useAuth();
   const { bundle } = useConfigBundle();
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
@@ -366,6 +423,15 @@ function BookContinueContent() {
           payment_paystack: (data as { payment_paystack?: boolean }).payment_paystack,
           payment_wallet: (data as { payment_wallet?: boolean }).payment_wallet,
           gift_cards: (data as { gift_cards?: boolean }).gift_cards,
+          cash_enabled_on_platform: (data as { cash_enabled_on_platform?: boolean }).cash_enabled_on_platform,
+          tips_enabled: (data as { tips_enabled?: boolean }).tips_enabled,
+          tip_presets: Array.isArray((data as { tip_presets?: number[] }).tip_presets)
+            ? (data as { tip_presets: number[] }).tip_presets
+            : undefined,
+          tax_rate_percent: (data as { tax_rate_percent?: number }).tax_rate_percent != null
+            ? Number((data as { tax_rate_percent: number }).tax_rate_percent)
+            : undefined,
+          tax_inclusive: Boolean((data as { tax_inclusive?: boolean }).tax_inclusive),
           cancellation_policy: (data as { cancellation_policy?: HoldCancellationPolicy | null }).cancellation_policy ?? null,
         };
         setCancellationPolicyAccepted(false);
@@ -456,21 +522,27 @@ function BookContinueContent() {
             if (rawGroup) {
               const parsed = JSON.parse(rawGroup) as {
                 isGroupBooking?: boolean;
-                groupParticipants?: unknown[];
+                groupParticipants?: Array<{ name: string; email?: string | null; phone?: string | null; service_ids: string[]; notes?: string | null }>;
               };
-              setGroupBookingForRecurring(
-                Boolean(parsed?.isGroupBooking && Array.isArray(parsed.groupParticipants) && parsed.groupParticipants.length > 0)
-              );
+              const hasGroup = Boolean(parsed?.isGroupBooking && Array.isArray(parsed.groupParticipants) && parsed.groupParticipants.length > 0);
+              setGroupBookingForRecurring(hasGroup);
+              setGroupParticipants(hasGroup ? parsed.groupParticipants! : []);
             } else {
               setGroupBookingForRecurring(false);
+              setGroupParticipants([]);
             }
           } catch {
             setGroupBookingForRecurring(false);
+            setGroupParticipants([]);
           }
           const savedPromo = sessionStorage.getItem("beautonomi_booking_promotion_code");
           if (savedPromo?.trim()) setPromotionCode(savedPromo.trim());
           const savedGift = sessionStorage.getItem("beautonomi_booking_gift_card_code");
-          if (savedGift?.trim()) setPrefillGiftCardCode(savedGift.trim());
+          if (savedGift?.trim()) {
+            setPrefillGiftCardCode(savedGift.trim());
+            // Pre-populate gift card input too if gift cards are enabled
+            setGiftCardCode(savedGift.trim());
+          }
           const savedPackageId = sessionStorage.getItem("beautonomi_booking_package_id");
           if (savedPackageId?.trim()) {
             setConsumePackageId(savedPackageId.trim());
@@ -516,10 +588,42 @@ function BookContinueContent() {
             .catch(() => ({ data: {} }));
           const data = (settingsRes as any)?.data ?? {};
           setAllowPayInPerson(data.allow_pay_in_person ?? false);
+          // Prefer tip_presets from hold (set by provider config) over generic provider settings
+          const presets = holdData.tip_presets;
           const tips = data.tip_suggestions;
-          setTipSuggestions(Array.isArray(tips) && tips.length > 0 ? tips : [0, 50, 100, 150, 200]);
+          setTipSuggestions(
+            Array.isArray(presets) && presets.length > 0
+              ? presets
+              : Array.isArray(tips) && tips.length > 0
+                ? tips
+                : [0, 50, 100, 150, 200]
+          );
         } catch {
           setAllowPayInPerson(false);
+        }
+
+        // Fetch wallet balance for logged-in users when wallet payments enabled
+        if (user && holdData.payment_wallet) {
+          fetcher
+            .get<{ data?: { wallet?: { balance: number } }; wallet?: { balance: number } }>("/api/me/wallet")
+            .then((res) => {
+              const raw = (res as any)?.data ?? res;
+              const balance = raw?.data?.wallet?.balance ?? raw?.wallet?.balance;
+              if (balance != null) setWalletBalance(Number(balance) || 0);
+            })
+            .catch(() => {});
+        }
+
+        // Fetch loyalty points balance for logged-in users (non-blocking)
+        if (user) {
+          fetcher
+            .get<{ data?: { balance?: number; points?: number }; balance?: number; points?: number }>("/api/me/loyalty-points/balance")
+            .then((res) => {
+              const raw = (res as any)?.data ?? res;
+              const pts = raw?.balance ?? raw?.points ?? (res as any)?.data?.balance ?? (res as any)?.data?.points;
+              if (pts != null && Number.isFinite(Number(pts))) setLoyaltyBalance(Math.max(0, Math.floor(Number(pts))));
+            })
+            .catch(() => {});
         }
 
         setStatus("review");
@@ -853,10 +957,18 @@ function BookContinueContent() {
     setValidationError(null);
     setStatus("consuming");
     try {
+      const resolvedPaymentMethod =
+        paymentMethod === "wallet" ? "card" : // wallet uses card channel + use_wallet:true
+        paymentMethod === "giftcard" ? "giftcard" :
+        paymentMethod;
+      const effectiveGiftCardCode =
+        paymentMethod === "giftcard" && giftCardCode.trim()
+          ? giftCardCode.trim()
+          : prefillGiftCardCode.trim() || undefined;
       const payload: Record<string, any> = {
-        payment_method: paymentMethod,
+        payment_method: resolvedPaymentMethod,
         payment_option: paymentOption,
-        use_wallet: undefined,
+        use_wallet: paymentMethod === "wallet" ? true : undefined,
         custom_field_values: Object.keys(bookingCustomValues).length > 0 ? bookingCustomValues : undefined,
         provider_form_responses:
           Object.keys(providerFormValues).length > 0 ? providerFormValues : undefined,
@@ -864,7 +976,7 @@ function BookContinueContent() {
         special_requests: specialRequests.trim() || undefined,
         tip_amount: tipAmount > 0 ? tipAmount : undefined,
         promotion_code: promotionCode.trim() || undefined,
-        gift_card_code: prefillGiftCardCode.trim() || undefined,
+        gift_card_code: effectiveGiftCardCode,
         guest_fingerprint_hash: getGuestFingerprintHash(),
       };
       if (prefillConsumeProducts.length > 0) {
@@ -875,6 +987,9 @@ function BookContinueContent() {
           unitPrice: r.unitPrice,
           totalPrice: r.totalPrice,
         }));
+      }
+      if (loyaltyPointsApplied > 0) {
+        payload.loyalty_points_used = loyaltyPointsApplied;
       }
       if (consumePackageId) {
         payload.package_id = consumePackageId;
@@ -994,6 +1109,8 @@ function BookContinueContent() {
       }
       setValidationError(msg);
       setStatus("review");
+      // Also surface as a toast so it's visible even when scrolled away from the inline error
+      toast.error(msg, { duration: 6000 });
     }
   };
 
@@ -1002,12 +1119,20 @@ function BookContinueContent() {
       <div className="min-h-screen flex flex-col items-center justify-center p-6" style={{ backgroundColor: BOOKING_BG }}>
         <div className="max-w-md text-center space-y-4">
           <h1 className="text-xl font-semibold" style={{ color: BOOKING_ACCENT }}>
-            Booking could not be completed
+            Something went wrong
           </h1>
           <p style={{ color: BOOKING_TEXT_SECONDARY }}>{errorMessage}</p>
-          <Button onClick={() => router.push("/search")} variant="outline">
-            Back to search
-          </Button>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <Button onClick={() => window.location.reload()} variant="default">
+              Try again
+            </Button>
+            <Button onClick={() => router.back()} variant="outline">
+              Go back
+            </Button>
+            <Button onClick={() => router.push("/search")} variant="ghost">
+              Find a provider
+            </Button>
+          </div>
         </div>
       </div>
     );
@@ -1054,11 +1179,86 @@ function BookContinueContent() {
     }
   };
 
+  const handleValidateGiftCard = async () => {
+    if (!giftCardCode.trim() || !hold) return;
+    setGiftCardError(null);
+    setGiftCardValidating(true);
+    try {
+      const res = await fetcher.get<{ valid?: boolean; balance?: number; currency?: string; message?: string }>(
+        `/api/public/gift-cards/validate?code=${encodeURIComponent(giftCardCode.trim())}&provider_id=${hold.provider_id}`
+      );
+      const data = res as any;
+      if (data?.valid && data?.balance != null) {
+        const giftCardCurrency = data.currency || hold?.booking_services_snapshot[0]?.currency || tenantCurrency;
+        setGiftCardValid({ balance: Number(data.balance), currency: giftCardCurrency });
+        setPaymentMethod("giftcard");
+      } else {
+        setGiftCardValid(null);
+        setGiftCardError(data?.message ?? "Invalid or expired gift card");
+      }
+    } catch {
+      setGiftCardValid(null);
+      setGiftCardError("Could not validate gift card");
+    } finally {
+      setGiftCardValidating(false);
+    }
+  };
+
+  const handleApplyLoyalty = async () => {
+    if (!user || !hold) return;
+    const raw = parseInt(loyaltyPointsInput.trim(), 10);
+    if (!Number.isFinite(raw) || raw <= 0) {
+      setLoyaltyError("Enter a valid number of points to redeem.");
+      return;
+    }
+    setLoyaltyError(null);
+    setLoyaltyValidating(true);
+    try {
+      const servicesBase = hold.booking_services_snapshot.reduce((s, sv) => s + sv.price, 0);
+      const addonsBase = addonDetails.reduce((s, a) => s + Number(a.price || 0), 0);
+      const productsBase = prefillConsumeProducts.reduce((s, p) => s + p.totalPrice, 0);
+      const travelBase = hold.travel_fee ?? 0;
+      const bookingSubtotal = servicesBase + addonsBase + productsBase + travelBase;
+      const res = await fetcher.post<{
+        data?: { points_to_redeem: number; discount_amount: number };
+        points_to_redeem?: number; discount_amount?: number;
+      }>("/api/me/loyalty-points/calculate-redemption", {
+        points_to_redeem: raw,
+        booking_subtotal: bookingSubtotal,
+      });
+      const payload = (res as any)?.data ?? res;
+      const pts = payload?.points_to_redeem ?? raw;
+      const disc = payload?.discount_amount;
+      if (disc != null && Number.isFinite(Number(disc)) && Number(disc) > 0) {
+        setLoyaltyPointsApplied(Math.floor(Number(pts)));
+        setLoyaltyDiscountAmount(Math.round(Number(disc) * 100) / 100);
+        setLoyaltyError(null);
+      } else {
+        setLoyaltyError("Could not calculate redemption. Check your balance and try again.");
+      }
+    } catch (e) {
+      setLoyaltyError(e instanceof Error ? e.message : "Could not apply loyalty points.");
+    } finally {
+      setLoyaltyValidating(false);
+    }
+  };
+
   if (status === "review" && hold) {
-    const servicesTotal = hold.booking_services_snapshot.reduce(
+    const currency = hold.booking_services_snapshot[0]?.currency ?? tenantCurrency;
+    const primaryServicesTotal = hold.booking_services_snapshot.reduce(
       (sum, s) => sum + (s.price || 0),
       0
     );
+    const groupParticipantsSubtotal = groupBookingForRecurring && groupParticipants.length > 0
+      ? groupParticipants.reduce((sum, p) => {
+          const servicesForParticipant = hold.booking_services_snapshot.filter(
+            (s) => p.service_ids.includes(s.offering_id) || p.service_ids.includes((s as any).id)
+          ) || [];
+          return sum + servicesForParticipant.reduce((s, svc) => s + svc.price, 0);
+        }, 0)
+      : 0;
+    const servicesTotal = primaryServicesTotal + groupParticipantsSubtotal;
+
     const addonsTotal = addonDetails.reduce((sum, a) => sum + (Number(a.price) || 0), 0);
     const productsFromLinkTotal = prefillConsumeProducts.reduce((s, p) => s + p.totalPrice, 0);
     const travelFee = hold.travel_fee ?? 0;
@@ -1073,16 +1273,23 @@ function BookContinueContent() {
         )
       : 0;
     const subtotalAfterMembership = Math.max(0, subtotalAfterPromo - membershipDiscountAmount);
-    const taxAmount = providerTaxRate > 0
-      ? Number(((subtotalAfterMembership * providerTaxRate) / 100).toFixed(2))
+    // Loyalty points discount (applied after membership — mirrors mobile order)
+    const subtotalAfterLoyalty = Math.max(0, subtotalAfterMembership - loyaltyDiscountAmount);
+    // Tax: use hold.tax_rate_percent when available (server authoritative), fall back to async state
+    const effectiveTaxRate = hold.tax_rate_percent ?? providerTaxRate;
+    const isTaxInclusive = hold.tax_inclusive ?? false;
+    const taxAmount = effectiveTaxRate > 0
+      ? isTaxInclusive
+        ? Math.round((subtotalAfterLoyalty - subtotalAfterLoyalty / (1 + effectiveTaxRate / 100)) * 100) / 100
+        : Math.round((subtotalAfterLoyalty * effectiveTaxRate) / 100 * 100) / 100
       : 0;
+    const subtotalForFee = isTaxInclusive ? subtotalAfterLoyalty : subtotalAfterLoyalty;
     const rawServiceFee =
       platformServiceFee.type === "percentage"
-        ? Number(((subtotalAfterMembership * platformServiceFee.percentage) / 100).toFixed(2))
+        ? Number(((subtotalForFee * platformServiceFee.percentage) / 100).toFixed(2))
         : platformServiceFee.fixed;
     const serviceFeeAmount = platformServiceFee.show ? rawServiceFee : 0;
-    const totalAmount = subtotalAfterMembership + taxAmount + serviceFeeAmount + tipAmount;
-    const currency = hold.booking_services_snapshot[0]?.currency ?? tenantCurrency;
+    const totalAmount = subtotalAfterLoyalty + (isTaxInclusive ? 0 : taxAmount) + serviceFeeAmount + tipAmount;
     const startDate = new Date(hold.start_at);
     const timeStr = startDate.toLocaleTimeString([], {
       hour: "2-digit",
@@ -1132,13 +1339,27 @@ function BookContinueContent() {
           >
             <h2 className="text-sm font-semibold opacity-90 pb-1">Booking summary</h2>
             {hold.booking_services_snapshot.map((s, i) => (
-              <div key={i} className="flex justify-between text-sm border-b border-white/10 pb-2 last:border-0">
+              <div key={`primary-${i}`} className="flex justify-between text-sm border-b border-white/10 pb-2">
                 <span className="opacity-90">
-                  Service {i + 1} · {s.duration_minutes} min
+                  {s.service_name || `Service ${i + 1}`} · {s.duration_minutes} min
                 </span>
                 <span className="opacity-95">{formatCurrency(s.price, s.currency)}</span>
               </div>
             ))}
+            {groupBookingForRecurring && groupParticipants.map((p, pIdx) => {
+              const servicesForParticipant = hold.booking_services_snapshot.filter(
+                (s) => p.service_ids.includes(s.offering_id) || p.service_ids.includes((s as any).id)
+              ) || [];
+              const participantTotal = servicesForParticipant.reduce((sum, s) => sum + s.price, 0);
+              return (
+                <div key={`participant-${pIdx}`} className="flex justify-between text-sm border-b border-white/10 pb-2">
+                  <span className="opacity-90">
+                    Group: {p.name || `Participant ${pIdx + 1}`}
+                  </span>
+                  <span className="opacity-95">{formatCurrency(participantTotal, currency)}</span>
+                </div>
+              );
+            })}
             {addonDetails.length > 0 && addonDetails.map((a) => (
               <div key={a.id} className="flex justify-between text-sm border-b border-white/10 pb-2">
                 <span className="opacity-90">{a.title}</span>
@@ -1177,10 +1398,17 @@ function BookContinueContent() {
                 <span>-{formatCurrency(membershipDiscountAmount, currency)}</span>
               </div>
             )}
+            {loyaltyDiscountAmount > 0 && (
+              <div className="flex justify-between text-sm border-b border-white/10 pb-2" style={{ color: "#86efac" }}>
+                <span>Loyalty points ({loyaltyPointsApplied} pts)</span>
+                <span>-{formatCurrency(loyaltyDiscountAmount, currency)}</span>
+              </div>
+            )}
             <div className="border-t border-white/10 pt-3 space-y-2">
               {taxAmount > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span className="opacity-80">Tax{providerTaxRate > 0 ? ` (${providerTaxRate}%)` : ""}</span>
+                  <span className="opacity-80">
+                    Tax{effectiveTaxRate > 0 ? ` (${effectiveTaxRate}%)` : ""}{isTaxInclusive ? " (incl.)" : ""}</span>
                   <span className="opacity-95">{formatCurrency(taxAmount, currency)}</span>
                 </div>
               )}
@@ -1190,10 +1418,12 @@ function BookContinueContent() {
                   <span className="opacity-95">{formatCurrency(serviceFeeAmount, currency)}</span>
                 </div>
               )}
-              <div className="flex justify-between text-sm">
-                <span className="opacity-80">Tip (optional)</span>
-                <span className="opacity-95">{formatCurrency(tipAmount, currency)}</span>
-              </div>
+              {tipAmount > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="opacity-80">Tip</span>
+                  <span className="opacity-95">{formatCurrency(tipAmount, currency)}</span>
+                </div>
+              )}
               <div className="flex justify-between font-semibold text-lg pt-2">
                 <span>Total</span>
                 <span style={{ color: BOOKING_ACCENT }}>{formatCurrency(totalAmount, currency)}</span>
@@ -1392,6 +1622,53 @@ function BookContinueContent() {
             {promoDiscount != null && promoDiscount > 0 && <p className="text-sm text-green-600">Discount applied.</p>}
           </div>
 
+          {user && loyaltyBalance > 0 && (
+            <div className="rounded-3xl p-5 space-y-3 border" style={cardStyle}>
+              <h2 className="font-medium flex items-center gap-2" style={{ color: BOOKING_TEXT_PRIMARY }}>
+                <Zap className="h-4 w-4" style={{ color: BOOKING_ACCENT }} /> Loyalty points
+              </h2>
+              <p className="text-sm" style={{ color: BOOKING_TEXT_SECONDARY }}>
+                Your balance: <span className="font-semibold">{loyaltyBalance.toLocaleString()} pts</span>
+                {loyaltyPointsApplied > 0 && (
+                  <> · <span className="text-green-600 font-semibold">{loyaltyPointsApplied.toLocaleString()} applied (-{formatCurrency(loyaltyDiscountAmount, currency)})</span></>
+                )}
+              </p>
+              {loyaltyPointsApplied === 0 && (
+                <div className="flex gap-2">
+                  <Input
+                    type="number"
+                    min={1}
+                    max={loyaltyBalance}
+                    placeholder={`Up to ${loyaltyBalance.toLocaleString()} pts`}
+                    value={loyaltyPointsInput}
+                    onChange={(e) => { setLoyaltyPointsInput(e.target.value); setLoyaltyError(null); }}
+                    className="flex-1"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleApplyLoyalty}
+                    disabled={!loyaltyPointsInput.trim() || loyaltyValidating}
+                  >
+                    {loyaltyValidating ? <Loader2 className="h-4 w-4 animate-spin" /> : "Redeem"}
+                  </Button>
+                </div>
+              )}
+              {loyaltyPointsApplied > 0 && (
+                <button
+                  type="button"
+                  className="text-sm underline"
+                  style={{ color: BOOKING_TEXT_SECONDARY }}
+                  onClick={() => { setLoyaltyPointsApplied(0); setLoyaltyDiscountAmount(0); setLoyaltyPointsInput(""); }}
+                >
+                  Remove loyalty discount
+                </button>
+              )}
+              {loyaltyError && <p className="text-sm text-destructive">{loyaltyError}</p>}
+            </div>
+          )}
+
+          {(hold.tips_enabled !== false) && (
           <div className="rounded-3xl p-5 space-y-3 border" style={cardStyle}>
             <h2 className="font-medium flex items-center gap-2" style={{ color: BOOKING_TEXT_PRIMARY }}>
               <Heart className="h-4 w-4" style={{ color: BOOKING_ACCENT }} /> Add a tip (optional)
@@ -1427,6 +1704,7 @@ function BookContinueContent() {
               />
             </div>
           </div>
+          )}
 
           <div className="rounded-3xl p-5 space-y-3 border" style={cardStyle}>
             <h2 className="font-medium" style={{ color: BOOKING_TEXT_PRIMARY }}>Additional details</h2>
@@ -1573,49 +1851,102 @@ function BookContinueContent() {
 
           <div className="rounded-3xl p-5 space-y-3 border" style={cardStyle}>
             <h2 className="font-medium" style={{ color: BOOKING_TEXT_PRIMARY }}>Payment</h2>
-            <p className="text-sm" style={{ color: BOOKING_TEXT_SECONDARY }}>
-              Pay online now or in person at the venue.
-            </p>
-            <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  if (!paystackEnabled) return;
-                  setPaymentMethod("card");
-                }}
-                disabled={!paystackEnabled}
-                className="flex-1 rounded-2xl py-3.5 px-4 font-medium flex items-center justify-center gap-2 min-h-[44px] transition-transform active:scale-[0.98] border-2 disabled:opacity-50 disabled:pointer-events-none"
-                style={{
-                  backgroundColor: paymentMethod === "card" ? BOOKING_ACCENT : "transparent",
-                  color: paymentMethod === "card" ? "#fff" : BOOKING_TEXT_PRIMARY,
-                  borderColor: paymentMethod === "card" ? BOOKING_ACCENT : BOOKING_BORDER,
-                }}
-              >
-                <CreditCard className="h-5 w-5" />
-                Pay online
-              </button>
+            {/* Primary payment method selector */}
+            <div className="grid grid-cols-2 gap-2">
+              {paystackEnabled && (
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod("card")}
+                  className="rounded-2xl py-3.5 px-4 font-medium flex items-center justify-center gap-2 min-h-[44px] transition-transform active:scale-[0.98] border-2"
+                  style={{
+                    backgroundColor: paymentMethod === "card" ? BOOKING_ACCENT : "transparent",
+                    color: paymentMethod === "card" ? "#fff" : BOOKING_TEXT_PRIMARY,
+                    borderColor: paymentMethod === "card" ? BOOKING_ACCENT : BOOKING_BORDER,
+                  }}
+                >
+                  <CreditCard className="h-4 w-4" />
+                  Pay online
+                </button>
+              )}
               {allowPayInPerson && (
                 <button
                   type="button"
                   onClick={() => setPaymentMethod("cash")}
-                  className="flex-1 rounded-2xl py-3.5 px-4 font-medium flex items-center justify-center gap-2 min-h-[44px] transition-transform active:scale-[0.98] border-2"
+                  className="rounded-2xl py-3.5 px-4 font-medium flex items-center justify-center gap-2 min-h-[44px] transition-transform active:scale-[0.98] border-2"
                   style={{
                     backgroundColor: paymentMethod === "cash" ? BOOKING_ACCENT : "transparent",
                     color: paymentMethod === "cash" ? "#fff" : BOOKING_TEXT_PRIMARY,
                     borderColor: paymentMethod === "cash" ? BOOKING_ACCENT : BOOKING_BORDER,
                   }}
                 >
-                  <Banknote className="h-5 w-5" />
+                  <Banknote className="h-4 w-4" />
                   Pay at venue
                 </button>
               )}
+              {user && hold.payment_wallet && walletBalance > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod("wallet")}
+                  className="rounded-2xl py-3.5 px-4 font-medium flex items-center justify-center gap-2 min-h-[44px] transition-transform active:scale-[0.98] border-2"
+                  style={{
+                    backgroundColor: paymentMethod === "wallet" ? BOOKING_ACCENT : "transparent",
+                    color: paymentMethod === "wallet" ? "#fff" : BOOKING_TEXT_PRIMARY,
+                    borderColor: paymentMethod === "wallet" ? BOOKING_ACCENT : BOOKING_BORDER,
+                  }}
+                >
+                  <CreditCard className="h-4 w-4" />
+                  Wallet ({formatCurrency(walletBalance, currency)})
+                </button>
+              )}
+              {hold.gift_cards && (
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod("giftcard")}
+                  className="rounded-2xl py-3.5 px-4 font-medium flex items-center justify-center gap-2 min-h-[44px] transition-transform active:scale-[0.98] border-2"
+                  style={{
+                    backgroundColor: paymentMethod === "giftcard" ? BOOKING_ACCENT : "transparent",
+                    color: paymentMethod === "giftcard" ? "#fff" : BOOKING_TEXT_PRIMARY,
+                    borderColor: paymentMethod === "giftcard" ? BOOKING_ACCENT : BOOKING_BORDER,
+                  }}
+                >
+                  <Tag className="h-4 w-4" />
+                  Gift card
+                </button>
+              )}
             </div>
+            {/* Gift card input (only when gift card method selected or cards enabled) */}
+            {hold.gift_cards && paymentMethod === "giftcard" && (
+              <div className="space-y-2 pt-1">
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Gift card code"
+                    value={giftCardCode}
+                    onChange={(e) => { setGiftCardCode(e.target.value.toUpperCase()); setGiftCardError(null); setGiftCardValid(null); }}
+                    className="flex-1"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleValidateGiftCard}
+                    disabled={!giftCardCode.trim() || giftCardValidating}
+                  >
+                    {giftCardValidating ? <Loader2 className="h-4 w-4 animate-spin" /> : "Apply"}
+                  </Button>
+                </div>
+                {giftCardError && <p className="text-sm text-destructive">{giftCardError}</p>}
+                {giftCardValid && (
+                  <p className="text-sm text-green-600">
+                    Gift card applied — balance: {formatCurrency(giftCardValid.balance, giftCardValid.currency)}
+                  </p>
+                )}
+              </div>
+            )}
             {cardOnlineBlocked && (
               <p className="text-sm pt-1" style={{ color: BOOKING_WAITLIST_TEXT }}>
                 Online card payment is unavailable for this market and this provider does not accept pay at venue. You cannot complete checkout here—please contact the salon or try another time.
               </p>
             )}
-            {paymentMethod === "card" && showDepositChoice && (
+            {(paymentMethod === "card" || paymentMethod === "wallet") && showDepositChoice && (
               <div className="space-y-2 pt-1">
                 <p className="text-xs font-medium" style={{ color: BOOKING_TEXT_SECONDARY }}>How much would you like to pay now?</p>
                 <div className="flex gap-2">

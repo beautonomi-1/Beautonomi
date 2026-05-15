@@ -262,6 +262,37 @@ export async function GET(request: NextRequest) {
       yearly: yearlyCount,
     };
 
+    // 11. Realized subscription cash from ledger (initial Paystack checkouts + renewals that write
+    // `finance_transactions` with `provider_subscription_payment`). MRR above is catalog-based;
+    // this is actual collected net (post-fees) for the selected tenant and optional date range.
+    let realizedSubscriptionRevenue = 0;
+    let realizedSubscriptionTransactionCount = 0;
+    let ftQuery = supabaseAdmin
+      .from("finance_transactions")
+      .select("net, amount, created_at")
+      .eq("transaction_type", "provider_subscription_payment")
+      .eq("tenant_id", tenantId)
+      .order("created_at", { ascending: false })
+      .limit(10_000);
+    if (startDate) {
+      ftQuery = ftQuery.gte("created_at", startDate);
+    }
+    if (endDate) {
+      ftQuery = ftQuery.lte("created_at", endDate);
+    }
+    const { data: ftSubRows, error: ftSubErr } = await ftQuery;
+    if (ftSubErr) {
+      console.error("subscription-metrics: finance_transactions read failed:", ftSubErr);
+    } else if (ftSubRows) {
+      for (const row of ftSubRows as { net?: number | string | null; amount?: number | string | null }[]) {
+        const v = Number(row.net ?? row.amount ?? 0);
+        if (Number.isFinite(v)) {
+          realizedSubscriptionRevenue += v;
+          realizedSubscriptionTransactionCount++;
+        }
+      }
+    }
+
     return successResponse({
       mrr: Math.round(mrr * 100) / 100,
       arr: Math.round(arr * 100) / 100,
@@ -280,6 +311,8 @@ export async function GET(request: NextRequest) {
       cancelled_this_month: cancelledThisMonth,
       revenue_trends: revenueTrends,
       top_providers: top10Providers,
+      realized_subscription_revenue: Math.round(realizedSubscriptionRevenue * 100) / 100,
+      realized_subscription_transaction_count: realizedSubscriptionTransactionCount,
     });
   } catch (error) {
     return handleApiError(error, "Failed to fetch subscription metrics");

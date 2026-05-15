@@ -311,7 +311,7 @@ export default function ServiceFormScreen() {
   }
 
   return (
-    <ScreenContainer>
+    <ScreenContainer keyboardAvoiding={false}>
       <ScreenHeader
         title={isEdit ? "Edit Service" : "Add Service"}
         onBack={() => router.back()}

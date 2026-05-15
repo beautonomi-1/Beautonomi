@@ -11,6 +11,7 @@ import {
   Switch,
   FlatList,
   type ListRenderItemInfo,
+  DeviceEventEmitter,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -30,6 +31,7 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ChipCombobox } from "@/components/ui/ChipCombobox";
 import { formatDuration, formatCurrency } from "@/lib/format";
 import { normalizeProductsList } from "@/lib/unpack-provider-api";
+import { PROVIDER_PRODUCTS_CATALOG_CHANGED } from "@/lib/provider-products-catalog-events";
 import { buildZonedIsoForWallClock } from "@/lib/tz";
 import { api } from "@/lib/api-client";
 import { twStyle } from "@/lib/twStyle";
@@ -573,13 +575,21 @@ export default function NewBookingScreen() {
   // so the previous `Array.isArray(productsRaw)` check always failed
   // and the product picker on the new-booking screen was permanently
   // empty. Unwrap via the shared helper used by packages.tsx.
-  const { data: productsRaw } = useApi<unknown>("/api/provider/products?limit=200");
+  const { data: productsRaw, refresh: refreshProducts } = useApi<unknown>("/api/provider/products?limit=200");
   const productsList = useMemo(
     () => normalizeProductsList(productsRaw) as Product[],
     [productsRaw],
   );
   const [selectedProducts, setSelectedProducts] = useState<SelectedProduct[]>([]);
   const [showProductPicker, setShowProductPicker] = useState(false);
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(PROVIDER_PRODUCTS_CATALOG_CHANGED, () => {
+      void refreshProducts();
+    });
+    return () => sub.remove();
+  }, [refreshProducts]);
+
   useEffect(() => {
     if (productsList.length === 0 || selectedProducts.length === 0) return;
     setSelectedProducts((prev) => {

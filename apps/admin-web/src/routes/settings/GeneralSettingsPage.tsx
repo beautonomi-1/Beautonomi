@@ -970,7 +970,7 @@ export function GeneralSettingsPage() {
             <label className="mb-0.5 block text-xs font-medium text-gray-700">Email OTP / link expiration (seconds)</label>
             <input
               type="number"
-              min={30}
+              min={120}
               max={604800}
               value={auth.email_otp_expiration_seconds}
               onChange={(e) => {

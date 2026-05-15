@@ -173,8 +173,11 @@ export async function signIn(data: SignInData) {
 }
 
 /**
- * Send a numeric email OTP for passwordless sign-in (no magic link).
- * Omit `emailRedirectTo` so Supabase sends a code when Email OTP is enabled in Auth settings.
+ * Send passwordless email sign-in (`signInWithOtp`).
+ * Omit `emailRedirectTo` (avoids tying the message to a redirect-only link flow).
+ * Whether the user receives a **numeric code** vs a **clickable magic link** is controlled by the
+ * **Magic Link** template in the Supabase dashboard (`{{ .Token }}` vs `{{ .ConfirmationURL }}`); see
+ * `supabase/email-templates/README.md`.
  * New accounts are created on successful verification (`shouldCreateUser: true`).
  */
 export async function sendEmailSignInOtp(email: string) {

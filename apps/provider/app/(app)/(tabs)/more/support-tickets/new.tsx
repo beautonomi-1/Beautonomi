@@ -109,7 +109,7 @@ export default function NewSupportTicketScreen() {
   };
 
   return (
-    <ScreenContainer>
+    <ScreenContainer keyboardAvoiding={false}>
       <ScreenHeader title="New support ticket" onBack={() => router.back()} />
       <KeyboardAvoidingView
         style={{ flex: 1 }}

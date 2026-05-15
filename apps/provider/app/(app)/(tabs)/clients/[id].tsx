@@ -449,7 +449,7 @@ export default function ClientDetailScreen() {
   const limitedPlatformLink = Boolean(customer.is_limited_platform_link);
 
   return (
-    <ScreenContainer scrollable={false}>
+    <ScreenContainer scrollable={false} keyboardAvoiding={false}>
       <ScreenHeader title="Client" showBack onBack={goBackToClients} />
 
       <KeyboardAvoidingView

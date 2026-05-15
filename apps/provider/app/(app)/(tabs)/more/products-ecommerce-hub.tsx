@@ -1,5 +1,5 @@
-import { useCallback, useState } from "react";
-import { View, Text, ScrollView, RefreshControl, TouchableOpacity } from "react-native";
+import { useCallback, useEffect, useState } from "react";
+import { View, Text, ScrollView, RefreshControl, TouchableOpacity, DeviceEventEmitter } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
@@ -9,6 +9,7 @@ import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Colors } from "@/constants/colors";
 import { formatCurrency } from "@/lib/format";
+import { PROVIDER_PRODUCTS_CATALOG_CHANGED } from "@/lib/provider-products-catalog-events";
 
 type Product = {
   id: string;
@@ -90,6 +91,15 @@ export default function ProductsEcommerceHubScreen() {
     } finally {
       setRefreshing(false);
     }
+  }, [refresh, refreshMetrics, refreshNavCounts]);
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(PROVIDER_PRODUCTS_CATALOG_CHANGED, () => {
+      void refresh();
+      void refreshMetrics();
+      void refreshNavCounts();
+    });
+    return () => sub.remove();
   }, [refresh, refreshMetrics, refreshNavCounts]);
 
   if (loading && !data) {

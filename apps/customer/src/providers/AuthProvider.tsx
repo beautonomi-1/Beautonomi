@@ -308,7 +308,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
       return { error: new Error("Enter a valid email address") };
     }
-    // Email OTP (no magic link): omit emailRedirectTo so Supabase delivers a 6-digit code instead.
+    // Passwordless email: no emailRedirectTo. Numeric code vs magic link comes from the Supabase
+    // "Magic Link" email template (`{{ .Token }}`); see supabase/email-templates/README.md.
     // shouldCreateUser: true so verifying the code creates the account.
     const { error } = await supabase.auth.signInWithOtp({
       email: trimmed,
