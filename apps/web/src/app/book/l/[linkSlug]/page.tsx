@@ -166,6 +166,8 @@ export default function ExpressBookLinkPage() {
           if (data.location_id) q.set("location", data.location_id);
         }
         if (searchParams?.get("embed") === "1") q.set("embed", "1");
+        const refParam = searchParams?.get("ref")?.trim();
+        if (refParam) q.set("ref", refParam);
 
         const pf = data.prefill;
         if (pf?.addon_ids?.length) q.set("addons", pf.addon_ids.join(","));

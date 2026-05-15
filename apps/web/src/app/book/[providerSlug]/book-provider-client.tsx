@@ -118,6 +118,7 @@ export default function BookProviderClient({ providerSlug }: Props) {
         gift_card: searchParams?.get("gift_card") ?? undefined,
         products: searchParams?.get("products") ?? undefined,
         package: searchParams?.get("package") ?? undefined,
+        ref: searchParams?.get("ref") ?? undefined,
       }}
       embed={embed}
     />

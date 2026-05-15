@@ -420,7 +420,7 @@ export async function POST(request: NextRequest) {
         const { data: offerings, error: offeringsError } = await supabase
           .from("offerings")
           .select(
-            "id, provider_id, duration_minutes, buffer_minutes, price, currency, is_active, at_home_price_adjustment, supports_at_home, online_booking_enabled, service_type"
+            "id, title, provider_id, duration_minutes, buffer_minutes, price, currency, is_active, at_home_price_adjustment, supports_at_home, online_booking_enabled, service_type"
           )
           .in("id", offeringIds);
 
@@ -518,6 +518,7 @@ export async function POST(request: NextRequest) {
         let cursor = new Date(startDate);
         const bookingServicesSnapshot: Array<{
           offering_id: string;
+          service_name?: string;
           staff_id: string | null;
           duration_minutes: number;
           price: number;
@@ -540,6 +541,7 @@ export async function POST(request: NextRequest) {
           const { dbStaffId: lineStaffDb } = normalizePublicStaffIdForDatabase(lineRaw ?? undefined);
           bookingServicesSnapshot.push({
             offering_id: off.id,
+            service_name: (off as { title?: string }).title?.trim() || undefined,
             staff_id: lineStaffDb ?? holdStaffIdForDb,
             duration_minutes: duration,
             price,

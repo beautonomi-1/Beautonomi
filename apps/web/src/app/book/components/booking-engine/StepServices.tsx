@@ -211,6 +211,11 @@ export function StepServices({
                     <div className="p-3 flex flex-wrap gap-2">
                       {variants.map((v) => {
                         const isSelected = data.selectedServices.some((e) => e.offering_id === v.id);
+                        const variantDuration = (v as any).duration ?? (v as any).duration_minutes;
+                        // Apply at-home price adjustment for variants too (mirrors mobile behaviour)
+                        const variantPrice = isAtHome && svc.at_home_price_adjustment
+                          ? v.price + (svc.at_home_price_adjustment ?? 0)
+                          : v.price;
                         return (
                           <button
                             key={v.id}
@@ -220,9 +225,8 @@ export function StepServices({
                               const entry = {
                                 offering_id: v.id,
                                 title: v.variant_name ?? v.title,
-                                // API returns 'duration'; embedded offerings list uses 'duration_minutes'
-                                duration_minutes: (v as any).duration ?? (v as any).duration_minutes ?? 60,
-                                price: v.price,
+                                duration_minutes: variantDuration ?? 60,
+                                price: variantPrice,
                                 currency: v.currency,
                               };
                               onSelectService(
@@ -241,7 +245,11 @@ export function StepServices({
                               color: isSelected ? "#fff" : BOOKING_TEXT_PRIMARY,
                             }}
                           >
-                            {v.variant_name ?? v.title} · {formatCurrency(v.price, v.currency)}
+                            <span className="block">{v.variant_name ?? v.title}</span>
+                            <span className="block text-xs opacity-80 mt-0.5">
+                              {formatCurrency(variantPrice, v.currency)}
+                              {variantDuration ? ` · ${variantDuration} min` : ""}
+                            </span>
                           </button>
                         );
                       })}
