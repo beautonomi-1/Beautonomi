@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import { useAuth } from "@/providers/AuthProvider";
@@ -257,6 +257,23 @@ function defaultBookingState(
   };
 }
 
+/**
+ * Translate the express `?location_type=at_home|at_salon` query param into the
+ * legacy `BookingState.mode` value so deep links from `/book/[slug]` (or the
+ * short-link resolver `/book/l/[linkSlug]`) land in the correct venue mode on
+ * `/booking`.
+ */
+function modeFromSearchParams(
+  searchParams: { get: (k: string) => string | null }
+): BookingMode | null {
+  const explicit = searchParams.get("mode");
+  if (explicit === "salon" || explicit === "mobile") return explicit;
+  const locationType = searchParams.get("location_type");
+  if (locationType === "at_home") return "mobile";
+  if (locationType === "at_salon") return "salon";
+  return null;
+}
+
 /** Empty draft while keeping the same entry URL (slug + service + mode) when present. */
 function freshBookingStateForUrl(
   user: { full_name?: string | null; email?: string | null; phone?: string | null } | null | undefined,
@@ -265,25 +282,39 @@ function freshBookingStateForUrl(
   const fresh = defaultBookingState(user);
   const providerSlug = searchParams.get("slug") || searchParams.get("partnerId") || searchParams.get("provider_id");
   const serviceId = searchParams.get("serviceId") || searchParams.get("service");
-  const modeParam = searchParams.get("mode");
+  const mode = modeFromSearchParams(searchParams);
   if (providerSlug && serviceId) {
     return {
       ...fresh,
-      mode: modeParam ? (modeParam as "salon" | "mobile") : "salon",
+      mode: mode ?? "salon",
     };
+  }
+  if (mode) {
+    return { ...fresh, mode };
   }
   return fresh;
 }
 
 export default function BookingFlow() {
-  const { user, isLoading: _authLoading } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { track, isReady } = useAmplitude();
 
-  /** Old bookmarks: `/booking?slug=…&promo=…` etc. → `/book/[slug]?…` for parity with `OnlineBookingFlowNew`. */
-  useLayoutEffect(() => {
+  /**
+   * Legacy bookmarks like `/booking?slug=…&promo=…` forward to the express
+   * `/book/[slug]?…` surface only for **guests** (and `embed=1`). Logged-in
+   * customers stay on this richer flow — auto-hydrated client info, saved
+   * addresses, saved cards, loyalty + saved gift cards, recurring subscribe —
+   * which is exactly what `apps/web/src/app/book/[providerSlug]/page.tsx` is
+   * sending them here for.
+   *
+   * Switched from `useLayoutEffect` to `useEffect` so we can wait for auth to
+   * settle (`authLoading`) before deciding whether to bounce.
+   */
+  useEffect(() => {
+    if (authLoading) return;
     if (searchParams.get("reset") === "1") return;
     const slug =
       searchParams.get("slug")?.trim() ||
@@ -291,11 +322,12 @@ export default function BookingFlow() {
       searchParams.get("provider_id")?.trim();
     if (!slug) return;
     if (!bookingUrlNeedsOnlineBookingFlowNew(searchParams)) return;
+    if (user && searchParams.get("embed") !== "1") return;
     const p = new URLSearchParams(searchParams.toString());
     for (const k of ["slug", "partnerId", "provider_id"]) p.delete(k);
     const q = p.toString();
     router.replace(`/book/${encodeURIComponent(slug)}${q ? `?${q}` : ""}`);
-  }, [searchParams, router]);
+  }, [authLoading, user, searchParams, router]);
 
   const checkoutTrackedRef = useRef(false);
   const prevFlowKeyRef = useRef<string | null>(null);
@@ -726,17 +758,19 @@ export default function BookingFlow() {
     }
   }, [searchParams]);
 
-  // Load pre-selected service from URL (mode only — step is driven by persistence + flowKey effect above)
+  // Load pre-selected service from URL (mode only — step is driven by persistence + flowKey effect above).
+  // Also honours the express deep-link param `?location_type=at_home|at_salon` so logged-in
+  // customers redirected from `/book/[slug]?service=…&location_type=…` land in the right venue mode.
   useEffect(() => {
+    if (bookingState.mode) return;
     const rawService = searchParams.get("serviceId") || searchParams.get("service");
     const providerSlug = searchParams.get("slug") || searchParams.get("partnerId") || searchParams.get("provider_id");
-    const modeParam = searchParams.get("mode"); // Optional mode from URL
+    const mode = modeFromSearchParams(searchParams);
 
     if (rawService && providerSlug) {
-      if (!bookingState.mode) {
-        const mode = modeParam ? (modeParam as "salon" | "mobile") : "salon";
-        updateBookingState({ mode });
-      }
+      updateBookingState({ mode: mode ?? "salon" });
+    } else if (mode) {
+      updateBookingState({ mode });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);

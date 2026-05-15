@@ -9,6 +9,7 @@ import Link from "next/link";
 import type { ExpressPrefill } from "@/lib/express-booking/prefill";
 import { productCartToQueryParam } from "@/lib/express-booking/prefill";
 import { getOsTypeFromNavigator } from "@/lib/utils/os-type";
+import { useAuth } from "@/providers/AuthProvider";
 
 interface ExpressLinkResponse {
   provider_slug: string;
@@ -110,6 +111,7 @@ export default function ExpressBookLinkPage() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { user, isLoading: authLoading } = useAuth();
   const linkSlug = params?.linkSlug as string;
   const [error, setError] = useState<string | null>(null);
   const [providerName, setProviderName] = useState("");
@@ -137,6 +139,9 @@ export default function ExpressBookLinkPage() {
 
   useEffect(() => {
     if (!linkSlug) return;
+    // Wait for auth to resolve so we can pick the right destination
+    // (logged-in customer → `/booking?slug=…`, guest/embed → `/book/[slug]?…`).
+    if (authLoading) return;
     const resolve = async () => {
       try {
         const res = await fetcher.get<{ data: ExpressLinkResponse }>(
@@ -149,6 +154,8 @@ export default function ExpressBookLinkPage() {
         }
 
         if (data.provider_name) setProviderName(data.provider_name);
+
+        const isEmbed = searchParams?.get("embed") === "1";
 
         const q = new URLSearchParams();
         if (data.service_ids?.length) {
@@ -165,7 +172,7 @@ export default function ExpressBookLinkPage() {
           q.set("location_type", "at_salon");
           if (data.location_id) q.set("location", data.location_id);
         }
-        if (searchParams?.get("embed") === "1") q.set("embed", "1");
+        if (isEmbed) q.set("embed", "1");
         const refParam = searchParams?.get("ref")?.trim();
         if (refParam) q.set("ref", refParam);
 
@@ -175,11 +182,18 @@ export default function ExpressBookLinkPage() {
         if (pf?.gift_card_code?.trim()) q.set("gift_card", pf.gift_card_code.trim());
         if (pf?.product_cart?.length) q.set("products", productCartToQueryParam(pf.product_cart));
 
-        const query = q.toString();
-        // Always land on `/book/[slug]?…` so `OnlineBookingFlowNew` runs (venue_type, staff,
-        // addons, promo, gift_card, products prefill + `/book/continue` session keys). The
-        // legacy `/booking` stack does not honour those query params for totals/checkout parity.
-        router.replace(`/book/${encodeURIComponent(data.provider_slug)}${query ? `?${query}` : ""}`);
+        // Logged-in customers (non-embed) get the richer `/booking` flow:
+        // auto-hydrated profile, saved addresses, saved cards, loyalty + saved
+        // gift cards, recurring subscribe. Guests and embeds stay on the express
+        // `/book/[slug]` surface for deep-link prefill parity.
+        if (user && !isEmbed) {
+          q.set("slug", data.provider_slug);
+          const query = q.toString();
+          router.replace(`/booking${query ? `?${query}` : ""}`);
+        } else {
+          const query = q.toString();
+          router.replace(`/book/${encodeURIComponent(data.provider_slug)}${query ? `?${query}` : ""}`);
+        }
       } catch (err) {
         const message =
           err instanceof FetchError
@@ -189,7 +203,7 @@ export default function ExpressBookLinkPage() {
       }
     };
     resolve();
-  }, [linkSlug, router, searchParams]);
+  }, [linkSlug, router, searchParams, user, authLoading]);
 
   const showBanner = platform !== "other" && !bannerDismissed;
 

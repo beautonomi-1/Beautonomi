@@ -1,6 +1,6 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import OnlineBookingFlowNew from "../components/OnlineBookingFlowNew";
 import LoadingTimeout from "@/components/ui/loading-timeout";
@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { useAmplitude } from "@/hooks/useAmplitude";
 import { EVENT_BOOKING_START } from "@/lib/analytics/amplitude/types";
+import { useAuth } from "@/providers/AuthProvider";
 
 interface Props {
   providerSlug: string;
@@ -18,10 +19,28 @@ interface Props {
  * Client entry for `/book/[providerSlug]` when the server keeps the request on this route
  * (any booking deep link: embed, single/multi service, express venue/staff/prefill, package, etc.).
  * Bare `/book/[slug]` with no query is 308-redirected to `/booking?slug=…` on the server.
+ *
+ * Logged-in customers are also redirected to `/booking?slug=…&…` server-side in
+ * `page.tsx` (richer flow with saved addresses, saved cards, loyalty, recurring,
+ * auto-hydrated profile). The defensive client hop below covers stale-cookie cases
+ * where the server probe missed an active Supabase session.
  */
 export default function BookProviderClient({ providerSlug }: Props) {
+  const router = useRouter();
   const searchParams = useSearchParams();
+  const { user, isLoading: authLoading } = useAuth();
   const embed = searchParams?.get("embed") === "1";
+  const authReturn = (searchParams?.get("auth_return") ?? "").trim();
+  const shouldRedirectToLegacyFlow = !embed && !authReturn && !authLoading && Boolean(user);
+
+  useEffect(() => {
+    if (!shouldRedirectToLegacyFlow) return;
+    const target = new URLSearchParams(searchParams?.toString() ?? "");
+    target.delete("slug");
+    target.set("slug", providerSlug);
+    const q = target.toString();
+    router.replace(`/booking${q ? `?${q}` : ""}`);
+  }, [shouldRedirectToLegacyFlow, providerSlug, router, searchParams]);
 
   const [provider, setProvider] = useState<{
     id: string;
@@ -73,6 +92,14 @@ export default function BookProviderClient({ providerSlug }: Props) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <p className="text-destructive">{error}</p>
+      </div>
+    );
+  }
+
+  if (shouldRedirectToLegacyFlow) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <LoadingTimeout loadingMessage="Loading your booking..." />
       </div>
     );
   }
