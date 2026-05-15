@@ -219,6 +219,17 @@ function normalizeBookingStatus(s: string): string {
   return x;
 }
 
+/** Prefer `db_status` when the list API denormalises a display `status` (parity with schedule cards). */
+function bookingLifecycleStatus(b: Pick<Booking, "status" | "db_status">): string {
+  return normalizeBookingStatus((b.db_status?.trim() || b.status || "").trim());
+}
+
+const TERMINAL_SCHEDULE_STATUSES = new Set(["cancelled", "canceled", "completed", "no_show"]);
+
+function isNonTerminalScheduleBooking(b: Pick<Booking, "status" | "db_status">): boolean {
+  return !TERMINAL_SCHEDULE_STATUSES.has(bookingLifecycleStatus(b));
+}
+
 const BLOCK_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
   break: "cafe-outline",
   lunch: "restaurant-outline",
@@ -559,7 +570,7 @@ export default function BookingsListScreen() {
       const prev = map.get(key) ?? { bookings: 0, hasPending: false, blocks: 0, isClosed: false };
       map.set(key, {
         bookings: prev.bookings + 1,
-        hasPending: prev.hasPending || ["pending", "pending_payment", "waiting"].includes(normalizeBookingStatus(b.db_status || b.status)),
+        hasPending: prev.hasPending || ["pending", "pending_payment", "waiting"].includes(bookingLifecycleStatus(b)),
         blocks: prev.blocks,
         isClosed: prev.isClosed,
       });
@@ -590,9 +601,8 @@ export default function BookingsListScreen() {
 
   const nextUpcomingId = useMemo(() => {
     const now = Date.now();
-    const terminal = new Set(["cancelled", "canceled", "completed", "no_show"]);
     const sorted = [...mergedBookingsData]
-      .filter((b) => b.scheduled_at && !terminal.has(normalizeBookingStatus(b.status)))
+      .filter((b) => b.scheduled_at && isNonTerminalScheduleBooking(b))
       .sort((a, b) => new Date(a.scheduled_at!).getTime() - new Date(b.scheduled_at!).getTime());
     return sorted.find((b) => new Date(b.scheduled_at!).getTime() > now)?.id ?? null;
   }, [mergedBookingsData]);
@@ -663,12 +673,17 @@ export default function BookingsListScreen() {
     const dayB = mergedBookingsData.filter(
       (b) => b.scheduled_at && format(new Date(b.scheduled_at), "yyyy-MM-dd") === selectedDateKey,
     );
-    const active = dayB.filter((b) => !["cancelled", "canceled", "no_show"].includes(normalizeBookingStatus(b.status)));
+    const active = dayB.filter((b) => !["cancelled", "canceled", "no_show"].includes(bookingLifecycleStatus(b)));
     const blockCount = timeBlocks.filter((t) => t.date === selectedDateKey && t.is_active).length;
-    const pending = dayB.filter((b) => ["pending", "pending_payment"].includes(normalizeBookingStatus(b.status))).length;
+    const pending = dayB.filter((b) => ["pending", "pending_payment"].includes(bookingLifecycleStatus(b))).length;
     const closed = closedDateKeys.has(selectedDateKey);
     const nextUp = dayB
-      .filter((b) => b.scheduled_at && new Date(b.scheduled_at).getTime() > Date.now())
+      .filter(
+        (b) =>
+          b.scheduled_at &&
+          new Date(b.scheduled_at).getTime() > Date.now() &&
+          isNonTerminalScheduleBooking(b),
+      )
       .sort((a, b) => new Date(a.scheduled_at!).getTime() - new Date(b.scheduled_at!).getTime())[0];
     return {
       label: isToday(selectedDate) ? "Today" : isTomorrow(selectedDate) ? "Tomorrow" : format(selectedDate, "EEE, MMM d"),
@@ -723,7 +738,7 @@ export default function BookingsListScreen() {
     let inProgressCount = 0;
     let completedCount = 0;
     for (const b of allBookings) {
-      const s = normalizeBookingStatus(b.db_status || b.status);
+      const s = bookingLifecycleStatus(b);
       if (s === "pending" || s === "pending_payment") pendingCount += 1;
       if (s === "in_progress" || s === "started" || s === "waiting" || s === "checked_in") inProgressCount += 1;
       if (s === "completed") completedCount += 1;

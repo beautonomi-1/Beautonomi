@@ -15,8 +15,9 @@ interface Props {
 }
 
 /**
- * Client-side embed / multi-service deep-link flow.
- * Server page has already filtered out non-embed visits via 308 redirect.
+ * Client entry for `/book/[providerSlug]` when the server keeps the request on this route
+ * (any booking deep link: embed, single/multi service, express venue/staff/prefill, package, etc.).
+ * Bare `/book/[slug]` with no query is 308-redirected to `/booking?slug=…` on the server.
  */
 export default function BookProviderClient({ providerSlug }: Props) {
   const searchParams = useSearchParams();
@@ -104,7 +105,7 @@ export default function BookProviderClient({ providerSlug }: Props) {
     <OnlineBookingFlowNew
       provider={provider}
       queryParams={{
-        service: searchParams?.get("service") ?? undefined,
+        service: searchParams?.get("service") ?? searchParams?.get("serviceId") ?? undefined,
         services: searchParams?.get("services") ?? undefined,
         staff: searchParams?.get("staff") ?? undefined,
         location: searchParams?.get("location") ?? undefined,

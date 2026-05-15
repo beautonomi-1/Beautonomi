@@ -173,15 +173,11 @@ export default function ExpressBookLinkPage() {
         if (pf?.gift_card_code?.trim()) q.set("gift_card", pf.gift_card_code.trim());
         if (pf?.product_cart?.length) q.set("products", productCartToQueryParam(pf.product_cart));
 
-        const multi = (data.service_ids?.length ?? 0) > 1;
-        const isEmbed = searchParams?.get("embed") === "1";
         const query = q.toString();
-        if (multi || isEmbed) {
-          router.replace(`/book/${encodeURIComponent(data.provider_slug)}${query ? `?${query}` : ""}`);
-        } else {
-          q.set("slug", data.provider_slug);
-          router.replace(`/booking?${q.toString()}`);
-        }
+        // Always land on `/book/[slug]?…` so `OnlineBookingFlowNew` runs (venue_type, staff,
+        // addons, promo, gift_card, products prefill + `/book/continue` session keys). The
+        // legacy `/booking` stack does not honour those query params for totals/checkout parity.
+        router.replace(`/book/${encodeURIComponent(data.provider_slug)}${query ? `?${query}` : ""}`);
       } catch (err) {
         const message =
           err instanceof FetchError

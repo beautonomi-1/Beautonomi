@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   TextInput,
   ActivityIndicator,
   Alert,
+  DeviceEventEmitter,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -20,6 +21,10 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { Colors } from "@/constants/colors";
 import { formatCurrency } from "@/lib/format";
+import {
+  PROVIDER_PRODUCTS_CATALOG_CHANGED,
+  emitProviderProductsCatalogChanged,
+} from "@/lib/provider-products-catalog-events";
 
 interface InventoryProduct {
   id: string;
@@ -68,6 +73,13 @@ export function InventoryContent() {
     }
   }, [refresh]);
 
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(PROVIDER_PRODUCTS_CATALOG_CHANGED, () => {
+      void refresh();
+    });
+    return () => sub.remove();
+  }, [refresh]);
+
   const openAdjust = useCallback(
     (p: InventoryProduct) => {
       if (p.has_variants) {
@@ -114,6 +126,7 @@ export function InventoryContent() {
       Alert.alert("Update failed", err);
       return;
     }
+    emitProviderProductsCatalogChanged();
     closeAdjust();
     await refresh();
   }, [adjustProduct, adjustQuantity, adjustLowStock, patchProduct, closeAdjust, refresh]);

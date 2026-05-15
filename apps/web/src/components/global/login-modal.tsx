@@ -45,6 +45,8 @@ import {
   normalizeSupabaseAuthPhone,
   normalizeSupabaseSmsOtpToken,
   isCompleteOtpForLength,
+  SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS,
+  SUPABASE_SMS_OTP_RESEND_COOLDOWN_SECONDS,
 } from "@/lib/supabase/auth-sms-otp";
 import type { UserRole } from "@/types/beautonomi";
 import { resolvePostLoginPathnameFromRole } from "@/lib/auth/post-login-return-path";
@@ -135,11 +137,12 @@ export default function LoginModal({
   const [emailOtpSent, setEmailOtpSent] = useState(false);
   const [emailOtpCode, setEmailOtpCode] = useState("");
   const [pendingEmailOtp, setPendingEmailOtp] = useState("");
-  /** §QA 2026-05: client-side resend cooldown — Supabase rate-limits hard otherwise. */
-  const RESEND_COOLDOWN_SECONDS = 30;
+  /** §QA 2026-05: resend cooldowns — distinct from OTP *validity* (see `emailOtpExpiresAt` / `otpExpiresAt`). */
   const [otpResendCooldown, setOtpResendCooldown] = useState(0);
   const [emailOtpResendCooldown, setEmailOtpResendCooldown] = useState(0);
   const [emailOtpResending, setEmailOtpResending] = useState(false);
+  const [emailOtpExpiresAt, setEmailOtpExpiresAt] = useState<number | null>(null);
+  const [emailOtpSecondsLeft, setEmailOtpSecondsLeft] = useState(0);
   const [preferredLanguage, setPreferredLanguage] = useState(() => {
     if (typeof navigator !== "undefined" && navigator.language) {
       const code = navigator.language.split("-")[0];
@@ -178,6 +181,7 @@ export default function LoginModal({
       setEmailOtpSent(false);
       setEmailOtpCode("");
       setPendingEmailOtp("");
+      setEmailOtpExpiresAt(null);
       setError(null);
     }
   }, [authPolicy.email_provider_enabled, showEmailForm]);
@@ -233,6 +237,7 @@ export default function LoginModal({
       setPendingEmailOtp("");
       setEmailOtpResending(false);
       setEmailOtpResendCooldown(0);
+      setEmailOtpExpiresAt(null);
       const langCode = typeof navigator !== "undefined" && navigator.language
         ? (() => { const c = navigator.language.split("-")[0]; return supportedLanguages.some((l) => l.code === c) ? c : "en"; })()
         : "en";
@@ -260,6 +265,20 @@ export default function LoginModal({
     const id = window.setInterval(tick, 1000);
     return () => window.clearInterval(id);
   }, [otpExpiresAt]);
+
+  useEffect(() => {
+    if (!emailOtpExpiresAt) {
+      setEmailOtpSecondsLeft(0);
+      return;
+    }
+    const tick = () => {
+      const remaining = Math.max(0, Math.ceil((emailOtpExpiresAt - Date.now()) / 1000));
+      setEmailOtpSecondsLeft(remaining);
+    };
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, [emailOtpExpiresAt]);
 
   useEffect(() => {
     if (otpResendCooldown <= 0) return;
@@ -638,6 +657,7 @@ export default function LoginModal({
     setEmailOtpSent(false);
     setEmailOtpCode("");
     setPendingEmailOtp("");
+    setEmailOtpExpiresAt(null);
   };
 
   const routeAfterOtpAuth = async () => {
@@ -743,7 +763,7 @@ export default function LoginModal({
       setOtpCode("");
       const expiresAt = Date.now() + authPolicy.sms_otp_expiration_seconds * 1000;
       setOtpExpiresAt(expiresAt);
-      setOtpResendCooldown(RESEND_COOLDOWN_SECONDS);
+      setOtpResendCooldown(SUPABASE_SMS_OTP_RESEND_COOLDOWN_SECONDS);
       toast.success("Check your phone for the verification code");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to send code";
@@ -768,7 +788,7 @@ export default function LoginModal({
       setOtpCode("");
       const expiresAt = Date.now() + authPolicy.sms_otp_expiration_seconds * 1000;
       setOtpExpiresAt(expiresAt);
-      setOtpResendCooldown(RESEND_COOLDOWN_SECONDS);
+      setOtpResendCooldown(SUPABASE_SMS_OTP_RESEND_COOLDOWN_SECONDS);
       toast.success("A new verification code has been sent");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to resend code";
@@ -821,8 +841,8 @@ export default function LoginModal({
     setError(null);
     try {
       const supabase = getSupabaseClient();
-      // Email OTP: omit emailRedirectTo so Supabase sends the 6-digit code (not a magic link).
-      // shouldCreateUser: true so verifying the code creates new accounts seamlessly.
+      // Passwordless email: no emailRedirectTo. Numeric code vs magic link is determined by the
+      // Supabase "Magic Link" email template (`{{ .Token }}`); see supabase/email-templates/README.md.
       const { error: otpError } = await supabase.auth.signInWithOtp({
         email: trimmed,
         options: { shouldCreateUser: true },
@@ -831,7 +851,8 @@ export default function LoginModal({
       setPendingEmailOtp(trimmed);
       setEmailOtpSent(true);
       setEmailOtpCode("");
-      setEmailOtpResendCooldown(RESEND_COOLDOWN_SECONDS);
+      setEmailOtpExpiresAt(Date.now() + authPolicy.email_otp_expiration_seconds * 1000);
+      setEmailOtpResendCooldown(SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS);
       toast.success(
         `Check your email for the ${emailOtpLen}-digit code (valid about ${emailOtpExpiryMin} minutes).`,
       );
@@ -857,7 +878,8 @@ export default function LoginModal({
       });
       if (otpError) throw otpError;
       setEmailOtpCode("");
-      setEmailOtpResendCooldown(RESEND_COOLDOWN_SECONDS);
+      setEmailOtpExpiresAt(Date.now() + authPolicy.email_otp_expiration_seconds * 1000);
+      setEmailOtpResendCooldown(SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS);
       toast.success("A new verification code has been sent");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to resend code";
@@ -1273,6 +1295,18 @@ export default function LoginModal({
                         className="mb-5"
                         length={emailOtpLen}
                       />
+                      <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between text-xs text-gray-500">
+                        <span>
+                          Code valid for{" "}
+                          <span className="font-semibold text-gray-700">
+                            {formatOtpCountdown(emailOtpSecondsLeft)}
+                          </span>{" "}
+                          (matches platform / Supabase email OTP expiry)
+                        </span>
+                        <span className="text-gray-400 sm:text-right">
+                          Link-only email? Add <code className="text-[11px]">{"{{ .Token }}"}</code> to the Supabase Magic Link template.
+                        </span>
+                      </div>
                       <div className="mb-4 flex items-center justify-end text-xs">
                         <button
                           type="button"
@@ -1309,6 +1343,7 @@ export default function LoginModal({
                           setEmailOtpCode("");
                           setPendingEmailOtp("");
                           setEmailOtpResendCooldown(0);
+                          setEmailOtpExpiresAt(null);
                           setError(null);
                         }}
                         className="w-full py-3 text-[15px] text-gray-500 hover:text-gray-900 font-medium touch-manipulation rounded-xl active:bg-gray-100 mb-6"

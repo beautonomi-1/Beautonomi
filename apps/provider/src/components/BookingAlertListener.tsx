@@ -62,6 +62,7 @@ export function BookingAlertListener() {
   const alertSoundRef = useRef<{ stop: () => void } | null>(null);
   const prefsRef = useRef<{ booking_alert_sound?: boolean }>({ booking_alert_sound: true });
   const appState = useRef(AppState.currentState);
+  const bookingAlertsRealtimeGenRef = useRef(0);
 
   // Load the provider's alert sound preference
   useEffect(() => {
@@ -132,8 +133,9 @@ export function BookingAlertListener() {
   useEffect(() => {
     if (!provider?.id) return;
 
+    const gen = ++bookingAlertsRealtimeGenRef.current;
     const channel = supabase
-      .channel(`booking-alerts:${provider.id}`)
+      .channel(`booking-alerts:${provider.id}:rt${gen}`)
       .on(
         "postgres_changes",
         {

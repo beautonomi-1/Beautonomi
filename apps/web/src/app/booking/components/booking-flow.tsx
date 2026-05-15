@@ -38,6 +38,7 @@ import {
   type PublicProductCatalogRow,
 } from "@beautonomi/utils";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { bookingUrlNeedsOnlineBookingFlowNew } from "@/lib/booking/booking-url-needs-new-flow";
 import { isCompleteE164 } from "@/lib/phone";
 
 /** Same pattern as step-your-info (Continue gating must match that step). */
@@ -280,6 +281,22 @@ export default function BookingFlow() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { track, isReady } = useAmplitude();
+
+  /** Old bookmarks: `/booking?slug=…&promo=…` etc. → `/book/[slug]?…` for parity with `OnlineBookingFlowNew`. */
+  useLayoutEffect(() => {
+    if (searchParams.get("reset") === "1") return;
+    const slug =
+      searchParams.get("slug")?.trim() ||
+      searchParams.get("partnerId")?.trim() ||
+      searchParams.get("provider_id")?.trim();
+    if (!slug) return;
+    if (!bookingUrlNeedsOnlineBookingFlowNew(searchParams)) return;
+    const p = new URLSearchParams(searchParams.toString());
+    for (const k of ["slug", "partnerId", "provider_id"]) p.delete(k);
+    const q = p.toString();
+    router.replace(`/book/${encodeURIComponent(slug)}${q ? `?${q}` : ""}`);
+  }, [searchParams, router]);
+
   const checkoutTrackedRef = useRef(false);
   const prevFlowKeyRef = useRef<string | null>(null);
   const [direction, setDirection] = useState(0);

@@ -39,7 +39,7 @@ export function WizardChrome() {
   const isLast = currentStep === STEPS.length;
 
   return (
-    <ScreenContainer scrollable={false} edges={["top"]} reserveTabBarSpace={false}>
+    <ScreenContainer scrollable={false} edges={["top"]} reserveTabBarSpace={false} keyboardAvoiding={false}>
       <ScreenHeader
         title={stepMeta?.title ?? "Setup"}
         showBack

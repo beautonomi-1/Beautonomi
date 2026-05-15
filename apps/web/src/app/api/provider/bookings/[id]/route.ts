@@ -35,6 +35,8 @@ import {
 import { resolveBookingDisplayTimeZone } from "@/lib/bookings/display-datetime";
 import { syncAppointmentProductOrder } from "@/lib/orders/sync-appointment-product-order";
 import { validateProviderBookingProducts } from "@/lib/bookings/validate-provider-booking-products";
+import { buildMergedGroupRowFromGroupDetailApi } from "@/lib/provider-booking/build-merged-group-row-from-group-detail";
+import { pickGroupBookingPatchPayload } from "@/lib/provider-booking/pick-group-booking-patch-payload";
 
 function mapStatusToDatabase(frontendStatus: string): string {
   return mapStatusFromProvider(frontendStatus as ProviderBookingStatus);
@@ -42,6 +44,20 @@ function mapStatusToDatabase(frontendStatus: string): string {
 
 function mapStatusFromDatabase(dbStatus: string): string {
   return mapStatusToProvider(dbStatus as BookingStatus);
+}
+
+/** Headers to forward when calling other provider API routes in-process (cookie + Bearer). */
+function internalProviderApiForwardHeaders(request: NextRequest): Record<string, string> {
+  const headers: Record<string, string> = {};
+  const cookie = request.headers.get("cookie");
+  if (cookie) headers.Cookie = cookie;
+  const auth = request.headers.get("authorization");
+  if (auth) headers.Authorization = auth;
+  const csrf = request.headers.get("x-csrf-token");
+  if (csrf) headers["x-csrf-token"] = csrf;
+  const xpid = request.headers.get("x-provider-id");
+  if (xpid) headers["x-provider-id"] = xpid;
+  return headers;
 }
 
 /** Raw booking row from DB with joined booking_services, booking_products, group_bookings */
@@ -180,14 +196,6 @@ export async function GET(
       return notFoundResponse("Booking ID is required");
     }
 
-    // Synthetic group:UUID ids come from the merged bookings list.
-    // Proxy to the dedicated group-bookings endpoint instead of returning 404.
-    if (id.startsWith("group:")) {
-      const groupId = id.slice("group:".length);
-      const groupUrl = new URL(`/api/provider/group-bookings/${groupId}`, request.url);
-      return NextResponse.redirect(groupUrl, 307);
-    }
-
     const permissionCheck = await requirePermission("view_calendar", request);
     if (!permissionCheck.authorized) {
       return permissionCheck.response!;
@@ -207,6 +215,72 @@ export async function GET(
     const tenantId = await resolveTenantIdWithZaFallback(request);
     const tenantRegion = await getTenantRegionConfig(tenantId);
     const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+
+    // Synthetic group:UUID ids come from the merged bookings list. Return the same merged-row
+    // shape as GET /api/provider/bookings (not a 307 to group-bookings, which breaks JSON clients
+    // and returns a different payload than the list/detail contract).
+    if (id.startsWith("group:")) {
+      const groupId = id.slice("group:".length);
+      const internalUrl = new URL(`/api/provider/group-bookings/${groupId}`, request.nextUrl.origin).toString();
+      const res = await fetch(internalUrl, {
+        method: "GET",
+        headers: internalProviderApiForwardHeaders(request),
+      });
+      const text = await res.text();
+      if (!res.ok) {
+        return new NextResponse(text, {
+          status: res.status,
+          headers: { "Content-Type": res.headers.get("content-type") ?? "application/json" },
+        });
+      }
+      let parsed: { data?: unknown };
+      try {
+        parsed = JSON.parse(text) as { data?: unknown };
+      } catch {
+        return errorResponse("Invalid group booking response", "INTERNAL_ERROR", 502);
+      }
+      const gb = parsed.data as Record<string, unknown> | null | undefined;
+      if (!gb || typeof gb !== "object") {
+        return notFoundResponse("Group booking not found");
+      }
+
+      const branchAccess = await assertProviderUserCanAccessBookingBranch(
+        supabaseAdmin,
+        user.id,
+        user.role,
+        providerId,
+        (gb.location_id as string | null | undefined) ?? null,
+      );
+      if (branchAccess.allowed === false) {
+        return errorResponse(branchAccess.message, "FORBIDDEN", 403);
+      }
+
+      let staffName: string | null = null;
+      let locationRow: { id?: string; name?: string; address_line1?: string; city?: string } | null = null;
+      if (gb.staff_id) {
+        const { data: sm } = await supabaseAdmin
+          .from("provider_staff")
+          .select("id, name")
+          .eq("id", gb.staff_id as string)
+          .maybeSingle();
+        staffName = (sm as { name?: string } | null)?.name ?? null;
+      }
+      if (gb.location_id) {
+        const { data: loc } = await supabaseAdmin
+          .from("provider_locations")
+          .select("id, name, address_line1, city")
+          .eq("id", gb.location_id as string)
+          .maybeSingle();
+        locationRow = loc as typeof locationRow;
+      }
+
+      const synthetic = buildMergedGroupRowFromGroupDetailApi(gb, {
+        lastResortCurrency,
+        staffName,
+        locationRow,
+      });
+      return successResponse(synthetic as unknown as BookingResponse);
+    }
 
     // Use admin client for the booking read (same as GET list) so RLS doesn't block
     // provider portal reads; we already scope by provider_id.
@@ -616,11 +690,53 @@ export async function PATCH(
 
     const supabase = await getSupabaseServer(request);
 
-    // Synthetic group:UUID ids — proxy status update to group-bookings endpoint.
+    // Synthetic group:UUID ids — forward in-process (Bearer + cookies). Cancel uses
+    // DELETE /api/provider/group-bookings/:id so child bookings + waitlist match the
+    // dedicated group cancel path; other edits use PATCH with only `group_bookings`
+    // fields (products JSONB + server recomputed totals via validateAndPriceGroupPackage).
     if (id.startsWith("group:")) {
       const groupId = id.slice("group:".length);
-      const groupUrl = new URL(`/api/provider/group-bookings/${groupId}`, request.url);
-      return NextResponse.redirect(groupUrl, 307);
+      const raw = body as Record<string, unknown>;
+      const internalBase = new URL(`/api/provider/group-bookings/${groupId}`, request.nextUrl.origin).toString();
+
+      if (requestedDbStatus === "cancelled") {
+        const cancelPayload: Record<string, unknown> = {};
+        if (typeof raw.cancellation_reason === "string" && raw.cancellation_reason.trim()) {
+          cancelPayload.cancellation_reason = raw.cancellation_reason.trim();
+        }
+        const res = await fetch(internalBase, {
+          method: "DELETE",
+          headers: {
+            ...internalProviderApiForwardHeaders(request),
+            ...(Object.keys(cancelPayload).length > 0 ? { "Content-Type": "application/json" } : {}),
+          },
+          body: Object.keys(cancelPayload).length > 0 ? JSON.stringify(cancelPayload) : undefined,
+        });
+        const text = await res.text();
+        return new NextResponse(text, {
+          status: res.status,
+          headers: {
+            "Content-Type": res.headers.get("content-type") ?? "application/json",
+          },
+        });
+      }
+
+      const forward = pickGroupBookingPatchPayload(raw);
+      const res = await fetch(internalBase, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...internalProviderApiForwardHeaders(request),
+        },
+        body: JSON.stringify(forward),
+      });
+      const text = await res.text();
+      return new NextResponse(text, {
+        status: res.status,
+        headers: {
+          "Content-Type": res.headers.get("content-type") ?? "application/json",
+        },
+      });
     }
 
     // Status is not required if we're updating other fields

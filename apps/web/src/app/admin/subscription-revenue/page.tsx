@@ -72,6 +72,9 @@ interface SubscriptionMetrics {
     business_name: string;
     revenue: number;
   }>;
+  /** Net subscription cash recorded in `finance_transactions` (renewals + paid checkouts). */
+  realized_subscription_revenue?: number;
+  realized_subscription_transaction_count?: number;
 }
 
 export default function SubscriptionRevenuePage() {
@@ -253,6 +256,29 @@ export default function SubscriptionRevenuePage() {
             </CardContent>
           </Card>
         </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Realized subscription cash (ledger)</CardTitle>
+            <CardDescription>
+              Net amounts summed from finance rows with transaction type provider subscription payment for this
+              tenant. Respects the date range above. MRR cards above are plan-catalog based; this reflects actual
+              collected subscription cash after Paystack fees.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap items-end gap-8">
+            <div>
+              <div className="text-2xl font-bold">
+                {formatMoney(metrics.realized_subscription_revenue ?? 0)}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">Total net (selected range)</p>
+            </div>
+            <div>
+              <div className="text-2xl font-bold">{metrics.realized_subscription_transaction_count ?? 0}</div>
+              <p className="text-xs text-muted-foreground mt-1">Ledger transactions</p>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Status and Billing Breakdown */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

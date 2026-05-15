@@ -568,6 +568,11 @@ export async function DELETE(
   try {
     const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
     const { id } = await params;
+    const body = await request.json().catch(() => ({} as Record<string, unknown>));
+    const cancellationReasonFromClient =
+      typeof body?.cancellation_reason === "string" && body.cancellation_reason.trim().length > 0
+        ? body.cancellation_reason.trim()
+        : null;
     const supabase = await getSupabaseServer(request);
     const admin = getSupabaseAdmin();
     const providerId = await getProviderIdForUser(user.id, supabase);
@@ -604,6 +609,9 @@ export async function DELETE(
       throw bookingFetchError;
     }
 
+    const childCancellationReason =
+      cancellationReasonFromClient ?? "Group booking cancelled by provider";
+
     // Cancel all associated bookings first
     const now = new Date().toISOString();
     const { error: bookingsCancelError } = await admin
@@ -611,7 +619,7 @@ export async function DELETE(
       .update({
         status: "cancelled",
         cancelled_at: now,
-        cancellation_reason: "Group booking cancelled by provider",
+        cancellation_reason: childCancellationReason,
         updated_at: now,
       })
       .eq("group_booking_id", id)

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   Modal,
   Pressable,
   FlatList,
+  InteractionManager,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -26,6 +27,8 @@ import {
   normalizeSupabaseAuthPhone,
   normalizeSupabaseSmsOtpToken,
   isCompleteOtpForLength,
+  SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS,
+  SUPABASE_SMS_OTP_RESEND_COOLDOWN_SECONDS,
 } from "@/lib/supabase-sms-otp";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { DEFAULT_AUTH } from "@/lib/config-bundle";
@@ -136,7 +139,6 @@ export default function LoginScreen() {
   const [emailOtpCode, setEmailOtpCode] = useState("");
   const [pendingEmailOtp, setPendingEmailOtp] = useState("");
   /** Cooldown timers (seconds) prevent users from spamming Supabase rate-limits during OTP resend. */
-  const RESEND_COOLDOWN_SECONDS = 30;
   const [smsResendCooldown, setSmsResendCooldown] = useState(0);
   const [emailResendCooldown, setEmailResendCooldown] = useState(0);
   const [resendingSms, setResendingSms] = useState(false);
@@ -164,15 +166,29 @@ export default function LoginScreen() {
     auth.phone_provider_enabled && (mode === "phone" || !auth.email_provider_enabled);
   const showEmailLoginBlock =
     auth.email_provider_enabled && (mode === "email" || !auth.phone_provider_enabled);
-  const filteredCountries = countrySearch
-    ? COUNTRY_CODES.filter((c) => c.label.toLowerCase().includes(countrySearch.toLowerCase()))
-    : COUNTRY_CODES;
+  const filteredCountries = useMemo(() => {
+    if (!countrySearch) return COUNTRY_CODES;
+    const q = countrySearch.toLowerCase();
+    return COUNTRY_CODES.filter((c) => c.label.toLowerCase().includes(q));
+  }, [countrySearch]);
   const selectedCountry = COUNTRY_CODES.find((c) => c.code === countryCode);
 
   useEffect(() => {
-    getSocialAuthConfig().then(setSocialAuth).catch(() => {
-      setSocialAuth({ google: true, apple: true });
+    let cancelled = false;
+    const task = InteractionManager.runAfterInteractions(() => {
+      if (cancelled) return;
+      void getSocialAuthConfig()
+        .then((cfg) => {
+          if (!cancelled) setSocialAuth(cfg);
+        })
+        .catch(() => {
+          if (!cancelled) setSocialAuth({ google: true, apple: true });
+        });
     });
+    return () => {
+      cancelled = true;
+      task.cancel?.();
+    };
   }, []);
 
   useEffect(() => {
@@ -235,7 +251,7 @@ export default function LoginScreen() {
       }
       setPendingPhone(e164);
       setOtpSent(true);
-      setSmsResendCooldown(RESEND_COOLDOWN_SECONDS);
+      setSmsResendCooldown(SUPABASE_SMS_OTP_RESEND_COOLDOWN_SECONDS);
       setFormSuccess(
         `We sent a ${smsOtpLen}-digit code. Check your phone (valid about ${smsOtpExpiryMin} ${
           smsOtpExpiryMin === 1 ? "minute" : "minutes"
@@ -260,7 +276,7 @@ export default function LoginScreen() {
         return;
       }
       setToken("");
-      setSmsResendCooldown(RESEND_COOLDOWN_SECONDS);
+      setSmsResendCooldown(SUPABASE_SMS_OTP_RESEND_COOLDOWN_SECONDS);
       setFormSuccess("A new verification code has been sent.");
     } catch (e: unknown) {
       setFormError(e instanceof Error ? e.message : "Failed to resend code.");
@@ -282,7 +298,7 @@ export default function LoginScreen() {
         return;
       }
       setEmailOtpCode("");
-      setEmailResendCooldown(RESEND_COOLDOWN_SECONDS);
+      setEmailResendCooldown(SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS);
       setFormSuccess("A new verification code has been sent.");
     } catch (e: unknown) {
       setFormError(e instanceof Error ? e.message : "Failed to resend code.");
@@ -397,7 +413,7 @@ export default function LoginScreen() {
       setPendingEmailOtp(trimmed);
       setEmailOtpSent(true);
       setEmailOtpCode("");
-      setEmailResendCooldown(RESEND_COOLDOWN_SECONDS);
+      setEmailResendCooldown(SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS);
       setFormSuccess(
         `We sent a ${emailOtpLen}-digit code to your email (valid about ${emailOtpExpiryMin} minutes).`,
       );

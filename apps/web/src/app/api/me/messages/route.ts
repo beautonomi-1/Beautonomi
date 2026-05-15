@@ -182,7 +182,7 @@ export async function POST(request: NextRequest) {
 
     // Fire-and-forget: update conversation metadata + send notifications
     updateConversationMeta(supabase, conversation_id, user.id, messagePreview, isCustomer).catch(() => {});
-    sendMessageNotification(supabase, conv, user, msg.id, messagePreview, isCustomer).catch((e) =>
+    sendMessageNotification(conv, user, msg.id, messagePreview, isCustomer).catch((e) =>
       console.error("Notification error:", e)
     );
 
@@ -232,53 +232,93 @@ async function updateConversationMeta(
 }
 
 async function sendMessageNotification(
-  supabase: Awaited<ReturnType<typeof getSupabaseServer>>,
   conv: any,
   user: any,
   messageId: string,
   messagePreview: string,
   isCustomer: boolean
 ) {
-  let recipientUserId: string | null = null;
+  /** Service role: staff list + push fan-out must not depend on the sender's RLS scope. */
+  const admin = getSupabaseAdmin();
+  let recipientUserIds: string[] = [];
 
   if (isCustomer) {
-    const { data: providerRow } = await supabase
+    const { data: providerRow } = await admin
       .from("providers")
       .select("user_id")
       .eq("id", conv.provider_id)
-      .single();
-    if (providerRow) recipientUserId = (providerRow as any).user_id;
+      .maybeSingle();
+    const { data: staffRows } = await admin
+      .from("provider_staff")
+      .select("user_id")
+      .eq("provider_id", conv.provider_id)
+      .eq("is_active", true);
+    const ids = new Set<string>();
+    const ownerId = providerRow != null ? (providerRow as { user_id?: string | null }).user_id : null;
+    if (typeof ownerId === "string" && ownerId.trim()) ids.add(ownerId.trim());
+    for (const row of staffRows ?? []) {
+      const uid = (row as { user_id?: string | null }).user_id;
+      if (typeof uid === "string" && uid.trim()) ids.add(uid.trim());
+    }
+    ids.delete(user.id);
+    recipientUserIds = [...ids];
   } else {
-    recipientUserId = conv.customer_id;
+    const cid = conv.customer_id;
+    if (typeof cid === "string" && cid.trim()) recipientUserIds = [cid.trim()];
   }
 
-  if (!recipientUserId || recipientUserId === user.id) return;
+  recipientUserIds = recipientUserIds.filter((id) => id && id !== user.id);
+  if (recipientUserIds.length === 0) return;
+
+  let providerBusinessNameForCustomer = "";
+  if (!isCustomer) {
+    const { data: prov } = await admin
+      .from("providers")
+      .select("business_name")
+      .eq("id", conv.provider_id)
+      .maybeSingle();
+    const bn = prov != null ? (prov as { business_name?: string | null }).business_name : null;
+    providerBusinessNameForCustomer =
+      typeof bn === "string" && bn.trim() ? bn.trim() : "Your provider";
+  }
 
   try {
-    const { sendToUser, sendTemplateNotification, getNotificationTemplate } = await import("@/lib/notifications/onesignal");
+    const { sendToUsers, sendTemplateNotification, getNotificationTemplate } = await import(
+      "@/lib/notifications/onesignal"
+    );
     const templateKey = isCustomer ? "provider_new_message" : "customer_new_message";
     const template = await getNotificationTemplate(templateKey);
 
     const appType = isCustomer ? ("provider" as const) : ("customer" as const);
+    const templateVars: Record<string, string> = {
+      type: "new_message",
+      message_preview: messagePreview,
+      conversation_id: String(conv.id),
+      ...(isCustomer
+        ? { sender_name: user.full_name || user.email || "Someone" }
+        : { provider_name: providerBusinessNameForCustomer }),
+    };
     if (template?.enabled) {
       await sendTemplateNotification(
         templateKey,
-        [recipientUserId],
-        {
-          sender_name: user.full_name || user.email || "Someone",
-          message_preview: messagePreview,
-          conversation_id: conv.id,
-        },
+        recipientUserIds,
+        templateVars,
         template.channels || ["push"],
         { appType }
       );
     } else {
-      await sendToUser(
-        recipientUserId,
+      await sendToUsers(
+        recipientUserIds,
         {
           title: isCustomer ? "New Message from Customer" : "New Message from Provider",
           message: messagePreview,
-          data: { type: "new_message", conversation_id: conv.id, message_id: messageId, url: isCustomer ? `/provider/messaging` : `/account-settings/messages?conversation=${conv.id}`, deep_link: isCustomer ? `/provider/messaging` : `/account-settings/messages?conversation=${conv.id}` },
+          data: {
+            type: "new_message",
+            conversation_id: conv.id,
+            message_id: messageId,
+            url: isCustomer ? `/provider/messaging` : `/account-settings/messages?conversation=${conv.id}`,
+            deep_link: isCustomer ? `/provider/messaging` : `/account-settings/messages?conversation=${conv.id}`,
+          },
           url: isCustomer ? `/provider/messaging` : `/account-settings/messages?conversation=${conv.id}`,
         },
         ["push"],
@@ -288,14 +328,16 @@ async function sendMessageNotification(
   } catch {}
 
   try {
-    const { insertNotification } = await import("@/lib/notifications/insert-notification");
-    await insertNotification({
-      user_id: recipientUserId,
-      type: "new_message",
-      title: isCustomer ? "New message" : "New message from provider",
-      message: messagePreview,
-      data: { conversation_id: conv.id, message_id: messageId },
-      action_url: isCustomer ? `/provider/messaging` : `/account-settings/messages?conversation=${conv.id}`,
-    });
+    const { insertNotifications } = await import("@/lib/notifications/insert-notification");
+    await insertNotifications(
+      recipientUserIds.map((user_id) => ({
+        user_id,
+        type: "new_message",
+        title: isCustomer ? "New message" : "New message from provider",
+        message: messagePreview,
+        data: { conversation_id: conv.id, message_id: messageId },
+        action_url: isCustomer ? `/provider/messaging` : `/account-settings/messages?conversation=${conv.id}`,
+      }))
+    );
   } catch {}
 }

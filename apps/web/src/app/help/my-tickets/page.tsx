@@ -50,7 +50,10 @@ function contextLabel(ticket: Ticket): string | null {
 }
 
 function shouldAskForCsat(ticket: Ticket): boolean {
-  return (ticket.status === "resolved" || ticket.status === "closed") && !ticket.csat_score;
+  return (
+    (ticket.status === "resolved" || ticket.status === "closed") &&
+    typeof ticket.csat_score !== "number"
+  );
 }
 
 export default function MyTicketsPage() {
@@ -61,7 +64,9 @@ export default function MyTicketsPage() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetcher.get<{ data?: { tickets?: Ticket[] } }>("/api/me/support-tickets");
+        const res = await fetcher.get<{ data?: { tickets?: Ticket[] } }>("/api/me/support-tickets", {
+          staleTimeMs: 0,
+        });
         const data = (res as { data?: { tickets?: Ticket[] } })?.data;
         setTickets(data?.tickets ?? []);
       } catch {
@@ -165,7 +170,7 @@ export default function MyTicketsPage() {
                             <span className="block font-medium text-[#FF0077]">
                               Rate this support experience
                             </span>
-                          ) : t.csat_score ? (
+                          ) : typeof t.csat_score === "number" ? (
                             <span className="block text-zinc-600">Your rating: {t.csat_score}/5</span>
                           ) : null}
                           <span className="block">

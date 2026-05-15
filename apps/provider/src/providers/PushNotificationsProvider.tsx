@@ -363,7 +363,7 @@ function usePushRegistration() {
       oneSignalInitKeyRef.current = null;
       lastUserIdRef.current = userId;
     }
-  }, [user]);
+  }, [user?.id]);
 
   // Fetch OneSignal app_id from backend
   useEffect(() => {
@@ -383,7 +383,7 @@ function usePushRegistration() {
     return () => {
       cancelled = true;
     };
-  }, [user]);
+  }, [user?.id]);
 
   // Initialize OneSignal and register device
   useEffect(() => {
@@ -443,13 +443,17 @@ function usePushRegistration() {
             (event: NotificationClickEvent) => {
               const raw = event.notification as unknown as {
                 additionalData?: Record<string, unknown>;
+                launchUrl?: string;
                 launchURL?: string;
               };
               const additionalData = raw.additionalData;
               const launchURL =
-                typeof raw.launchURL === "string" && raw.launchURL.trim()
+                (typeof raw.launchURL === "string" && raw.launchURL.trim()
                   ? raw.launchURL.trim()
-                  : "";
+                  : "") ||
+                (typeof raw.launchUrl === "string" && raw.launchUrl.trim()
+                  ? raw.launchUrl.trim()
+                  : "");
               const merged: Record<string, unknown> = {
                 ...(additionalData ?? {}),
                 ...(launchURL ? { url: launchURL, deep_link: launchURL } : {}),

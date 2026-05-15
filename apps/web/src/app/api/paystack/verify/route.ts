@@ -21,6 +21,7 @@ import { notifyProviderTeamUsers } from "@/lib/notifications/notify-provider-tea
 import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
 import { applyWalletTopupFromSuccessfulPaystackCharge } from "@/lib/wallet/apply-wallet-topup-from-paystack-success";
 import { processSuccessfulPayment } from "@/app/api/payments/webhook/_handlers/charge-success";
+import { convertFromSmallestUnit } from "@/lib/payments/paystack";
 
 /**
  * GET /api/paystack/verify
@@ -63,7 +64,61 @@ export async function GET(request: NextRequest) {
     const data = await paystackResponse.json();
 
     if (data.data.status === "success") {
-      const metadata = data.data.metadata || {};
+      const rawMeta = data.data.metadata;
+      let metadata: Record<string, unknown> =
+        rawMeta && typeof rawMeta === "object" && !Array.isArray(rawMeta)
+          ? { ...(rawMeta as Record<string, unknown>) }
+          : {};
+      // Paystack verify sometimes omits custom metadata on the transaction object.
+      // We always persist `paystack_reference` on `ads_budget_orders` at init — resolve by reference
+      // so charge.success + client verify can still fund the campaign (fixes "awaiting payment" stuck state).
+      const hasNonAdsRoutingMetadata = Boolean(
+        metadata.product_order_id ||
+          metadata.wallet_topup_id ||
+          metadata.gift_card_order_id ||
+          metadata.membership_order_id ||
+          metadata.provider_subscription_order_id ||
+          metadata.custom_offer_id ||
+          metadata.bookingId ||
+          metadata.booking_id ||
+          metadata.kind === "card_verification",
+      );
+      if (reference && !metadata.ads_budget_order_id && !hasNonAdsRoutingMetadata) {
+        const adminLookup = getSupabaseAdmin();
+        const { data: adsByRef } = await adminLookup
+          .from("ads_budget_orders")
+          .select("id, campaign_id, provider_id")
+          .eq("paystack_reference", reference)
+          .maybeSingle();
+        if (adsByRef) {
+          const ar = adsByRef as { id?: unknown; campaign_id?: string | null; provider_id?: string | null };
+          const orderIdStr = ar.id != null && ar.id !== "" ? String(ar.id) : "";
+          if (orderIdStr) {
+            metadata = {
+              ...metadata,
+              ads_budget_order_id: orderIdStr,
+              ...(ar.campaign_id ? { campaign_id: ar.campaign_id } : {}),
+              ...(ar.provider_id ? { provider_id: ar.provider_id } : {}),
+            };
+          }
+        }
+      }
+      if (reference && !metadata.provider_subscription_order_id) {
+        const adminSub = getSupabaseAdmin();
+        const { data: subOrderByRef } = await adminSub
+          .from("provider_subscription_orders")
+          .select("id")
+          .eq("paystack_reference", reference)
+          .maybeSingle();
+        if (subOrderByRef) {
+          const sid = (subOrderByRef as { id?: unknown }).id;
+          const idStr = sid != null && sid !== "" ? String(sid) : "";
+          if (idStr) {
+            metadata = { ...metadata, provider_subscription_order_id: idStr };
+          }
+        }
+      }
+      const verifiedChargeData = { ...data.data, metadata };
       // §Customer-launch (audit 2026-04): forward the request so Bearer
       // tokens from the mobile app are honoured during Paystack
       // verification (RLS was rejecting all mobile verify calls).
@@ -76,7 +131,7 @@ export async function GET(request: NextRequest) {
           : fallbackCurrency;
 
       // Handle product order payments
-      const productOrderId = metadata.product_order_id;
+      const productOrderId = metadata.product_order_id ? String(metadata.product_order_id) : "";
       if (productOrderId) {
         const { data: poBefore } = await (supabase.from("product_orders") as any)
           .select("tenant_id, provider_id, customer_id, total_amount, wallet_amount, payment_status, payment_reference")
@@ -254,7 +309,7 @@ export async function GET(request: NextRequest) {
             403,
           );
         }
-        await processSuccessfulPayment(data.data, admin);
+        await processSuccessfulPayment(verifiedChargeData, admin);
         return successResponse({
           status: "success",
           type: "gift_card_order",
@@ -281,7 +336,7 @@ export async function GET(request: NextRequest) {
             403,
           );
         }
-        await processSuccessfulPayment(data.data, admin);
+        await processSuccessfulPayment(verifiedChargeData, admin);
         return successResponse({
           status: "success",
           type: "membership_order",
@@ -291,7 +346,7 @@ export async function GET(request: NextRequest) {
       }
 
       if (metadata?.kind === "card_verification") {
-        await processSuccessfulPayment(data.data, getSupabaseAdmin());
+        await processSuccessfulPayment(verifiedChargeData, getSupabaseAdmin());
         return successResponse({
           status: "success",
           type: "card_verification",
@@ -344,16 +399,16 @@ export async function GET(request: NextRequest) {
             403,
           );
         }
-        const amountMajor = Number(data.data.amount || 0) / 100;
+        const amountMajor = convertFromSmallestUnit(Number(data.data.amount || 0));
         const expectedMajor = Number(orderRow.amount ?? 0);
-        if (String(orderRow.status ?? "") !== "paid" && Math.abs(amountMajor - expectedMajor) > 0.01) {
+        if (String(orderRow.status ?? "") !== "paid" && Math.abs(amountMajor - expectedMajor) > 0.02) {
           return errorResponse(
             "Payment amount does not match this ads order.",
             "AMOUNT_MISMATCH",
             400,
           );
         }
-        await processSuccessfulPayment(data.data, admin);
+        await processSuccessfulPayment(verifiedChargeData, admin);
         return successResponse({
           status: "success",
           type: "ads_budget_order",
@@ -418,7 +473,7 @@ export async function GET(request: NextRequest) {
             400,
           );
         }
-        await processSuccessfulPayment(data.data, admin);
+        await processSuccessfulPayment(verifiedChargeData, admin);
         return successResponse({
           status: "success",
           type: "provider_subscription_order",
@@ -446,7 +501,7 @@ export async function GET(request: NextRequest) {
             403,
           );
         }
-        await processSuccessfulPayment(data.data, admin);
+        await processSuccessfulPayment(verifiedChargeData, admin);
         return successResponse({
           status: "success",
           type: "custom_offer",
@@ -503,7 +558,7 @@ export async function GET(request: NextRequest) {
       }
 
       const admin = getSupabaseAdmin();
-      await processSuccessfulPayment(data.data, admin);
+      await processSuccessfulPayment(verifiedChargeData, admin);
 
       const { data: afterPay } = await admin
         .from("bookings")

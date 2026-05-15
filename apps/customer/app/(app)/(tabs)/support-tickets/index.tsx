@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect, useLayoutEffect } from "react";
+import { useCallback, useState, useEffect, useLayoutEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -9,7 +9,7 @@ import {
   StyleSheet,
   Platform,
 } from "react-native";
-import { useRouter, useNavigation } from "expo-router";
+import { useRouter, useNavigation, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
 import { api } from "@/lib/api-client";
@@ -73,7 +73,10 @@ function contextLabel(ticket: Ticket): string | null {
 }
 
 function shouldAskForCsat(ticket: Ticket): boolean {
-  return (ticket.status === "resolved" || ticket.status === "closed") && !ticket.csat_score;
+  return (
+    (ticket.status === "resolved" || ticket.status === "closed") &&
+    typeof ticket.csat_score !== "number"
+  );
 }
 
 function statusBgColor(status: string): string {
@@ -102,6 +105,18 @@ export default function SupportTicketsListScreen() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
   const { data, loading, error, refresh } = useApi<TicketsResponse>(`/api/me/support-tickets?limit=${PAGE_SIZE}&offset=0`);
+  const skipNextListFocusRefresh = useRef(true);
+
+  /** CSAT is written on the detail screen; list data is cached by useApi — refetch when returning to this screen (skip first focus; useApi already loads on mount). */
+  useFocusEffect(
+    useCallback(() => {
+      if (skipNextListFocusRefresh.current) {
+        skipNextListFocusRefresh.current = false;
+        return;
+      }
+      void refresh();
+    }, [refresh]),
+  );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -261,7 +276,7 @@ export default function SupportTicketsListScreen() {
               </Text>
               {shouldAskForCsat(t) ? (
                 <Text style={styles.csatPrompt}>Rate this support experience</Text>
-              ) : t.csat_score ? (
+              ) : typeof t.csat_score === "number" ? (
                 <Text style={styles.csatScore}>Your rating: {t.csat_score}/5</Text>
               ) : null}
             </TouchableOpacity>

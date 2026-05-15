@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   useWindowDimensions,
   Linking,
+  DeviceEventEmitter,
 } from "react-native";
 import * as Location from "expo-location";
 import { Ionicons } from "@expo/vector-icons";
@@ -37,6 +38,7 @@ import { useProvider } from "@/providers/ProviderContext";
 import { buildZonedIsoForWallClock } from "@/lib/tz";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { api } from "@/lib/api-client";
+import { PROVIDER_PRODUCTS_CATALOG_CHANGED } from "@/lib/provider-products-catalog-events";
 import { AddressAutocomplete } from "@/components/ui/AddressAutocomplete";
 import { AddressMapPinModal } from "@/components/AddressMapPinModal";
 import { pushInAppBrowser } from "@/lib/in-app-web";
@@ -355,7 +357,7 @@ export default function GroupBookingsScreen() {
   const locations = provider?.locations ?? [];
 
   const { data: servicesRaw } = useApi<ServiceRow[]>("/api/provider/services?include_variants=true");
-  const { data: productsRaw } = useApi<unknown>("/api/provider/products?limit=200");
+  const { data: productsRaw, refresh: refreshProducts } = useApi<unknown>("/api/provider/products?limit=200");
   const teamUrl = selectedLocationId
     ? `/api/provider/team?location_id=${encodeURIComponent(selectedLocationId)}`
     : "/api/provider/team";
@@ -373,6 +375,14 @@ export default function GroupBookingsScreen() {
   const { data: packagesRaw } = useApi<{ packages?: PackageRow[] }>(packagesUrl);
   const services = useMemo(() => (Array.isArray(servicesRaw) ? servicesRaw : []), [servicesRaw]);
   const productsList = useMemo(() => normalizeProductsList(productsRaw) as ProductRow[], [productsRaw]);
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(PROVIDER_PRODUCTS_CATALOG_CHANGED, () => {
+      void refreshProducts();
+    });
+    return () => sub.remove();
+  }, [refreshProducts]);
+
   const teamMembers = useMemo(() => (Array.isArray(teamRaw) ? teamRaw : []), [teamRaw]);
   const [selectedServiceCategory, setSelectedServiceCategory] = useState("all");
   const packagesList = useMemo<PackageRow[]>(

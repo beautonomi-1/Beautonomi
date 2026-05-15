@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Alert, Linking, Platform } from "react-native";
+import { Alert, InteractionManager, Linking, Platform } from "react-native";
 import Constants from "expo-constants";
 import { APP_URL, IOS_APP_STORE_ID, withWebApiTenantHeaders } from "@/config/public-env";
 
@@ -107,7 +107,12 @@ export function useForceUpdate() {
       }
     };
 
-    check();
+    const task = InteractionManager.runAfterInteractions(() => {
+      void check();
+    });
+    return () => {
+      task.cancel?.();
+    };
   }, []);
 
   return { updateRequired, openUpdate };

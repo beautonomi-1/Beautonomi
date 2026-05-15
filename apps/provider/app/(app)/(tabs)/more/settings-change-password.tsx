@@ -62,7 +62,7 @@ export default function SettingsChangePasswordScreen() {
   }, [currentPassword, newPassword, confirmPassword, putPassword, router]);
 
   return (
-    <ScreenContainer>
+    <ScreenContainer keyboardAvoiding={false}>
       <ScreenHeader
         title="Change password"
         subtitle="Update your account password"

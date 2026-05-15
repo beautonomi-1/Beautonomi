@@ -16,12 +16,11 @@ import { useAuth } from "@/providers/AuthProvider";
 import { signInWithOAuth, sendEmailSignInOtp } from "@/lib/supabase/auth";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import {
-  SUPABASE_AUTH_OTP_LENGTH,
-  SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS,
-  SUPABASE_AUTH_EMAIL_OTP_EXPIRY_SECONDS,
+  SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS,
+  SUPABASE_SMS_OTP_RESEND_COOLDOWN_SECONDS,
   normalizeSupabaseAuthPhone,
   normalizeSupabaseSmsOtpToken,
-  isCompleteSupabaseSmsOtp,
+  isCompleteOtpForLength,
 } from "@/lib/supabase/auth-sms-otp";
 import { toast } from "sonner";
 import logo from "../../../public/images/logo.svg";
@@ -31,6 +30,7 @@ import {
   sanitizeRelativeRedirect,
 } from "@/lib/auth/post-login-return-path";
 import { isCompleteE164 } from "@/lib/phone";
+import { DEFAULT_PUBLIC_AUTH, finalizePublicAuth, type PublicAuthPolicy } from "@/lib/config/auth-policy-public";
 
 /**
  * Translate Supabase auth error strings to user-friendly copy.
@@ -90,11 +90,25 @@ export default function LoginPage() {
   const [phoneInputError, setPhoneInputError] = useState<string | null>(null);
   const [emailInputError, setEmailInputError] = useState<string | null>(null);
   const [passwordFailedSuggestOtp, setPasswordFailedSuggestOtp] = useState(false);
-  /** Seconds left before OTP resend is enabled. Prevents spamming Supabase rate-limits. */
-  const RESEND_COOLDOWN_SECONDS = 30;
   const [otpResendCooldown, setOtpResendCooldown] = useState(0);
   const [emailOtpResendCooldown, setEmailOtpResendCooldown] = useState(0);
   const passwordRef = useRef<HTMLInputElement>(null);
+  const [publicAuth, setPublicAuth] = useState<PublicAuthPolicy>(DEFAULT_PUBLIC_AUTH);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    const env = process.env.NODE_ENV === "development" ? "development" : "production";
+    void fetch(`/api/public/config-bundle?platform=web&environment=${env}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json: { auth?: Partial<PublicAuthPolicy> } | null) => {
+        if (cancelled || !json?.auth) return;
+        setPublicAuth(finalizePublicAuth({ ...DEFAULT_PUBLIC_AUTH, ...json.auth }));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const getRedirectUrl = () => {
     if (typeof window === "undefined") return "/auth/callback";
@@ -291,8 +305,8 @@ export default function LoginPage() {
       setSentPhoneE164(phone);
       setOtpSent(true);
       setOtpCode("");
-      setOtpExpiresAt(Date.now() + SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS * 1000);
-      setOtpResendCooldown(RESEND_COOLDOWN_SECONDS);
+      setOtpExpiresAt(Date.now() + publicAuth.sms_otp_expiration_seconds * 1000);
+      setOtpResendCooldown(SUPABASE_SMS_OTP_RESEND_COOLDOWN_SECONDS);
       toast.success("Check your phone for the verification code");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to send OTP";
@@ -305,7 +319,7 @@ export default function LoginPage() {
 
   const handleVerifyPhoneOtp = async (codeOverride?: string) => {
     const token = normalizeSupabaseSmsOtpToken(codeOverride ?? otpCode);
-    if (!sentPhoneE164 || !isCompleteSupabaseSmsOtp(token)) return;
+    if (!sentPhoneE164 || !isCompleteOtpForLength(token, publicAuth.sms_otp_length)) return;
     setLoading(true);
     setFormError(null);
     try {
@@ -363,8 +377,8 @@ export default function LoginPage() {
       setSentEmailForOtp(trimmedEmail);
       setEmailOtpSent(true);
       setEmailOtpCode("");
-      setEmailOtpExpiresAt(Date.now() + SUPABASE_AUTH_EMAIL_OTP_EXPIRY_SECONDS * 1000);
-      setEmailOtpResendCooldown(RESEND_COOLDOWN_SECONDS);
+      setEmailOtpExpiresAt(Date.now() + publicAuth.email_otp_expiration_seconds * 1000);
+      setEmailOtpResendCooldown(SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS);
       toast.success("Check your email for the verification code");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to send email code";
@@ -377,7 +391,7 @@ export default function LoginPage() {
 
   const handleVerifyEmailOtp = async (codeOverride?: string) => {
     const token = normalizeSupabaseSmsOtpToken(codeOverride ?? emailOtpCode);
-    if (!sentEmailForOtp || !isCompleteSupabaseSmsOtp(token)) return;
+    if (!sentEmailForOtp || !isCompleteOtpForLength(token, publicAuth.email_otp_length)) return;
     setLoading(true);
     setFormError(null);
     try {
@@ -406,8 +420,8 @@ export default function LoginPage() {
       const { error } = await sendEmailSignInOtp(sentEmailForOtp);
       if (error) throw error;
       setEmailOtpCode("");
-      setEmailOtpExpiresAt(Date.now() + SUPABASE_AUTH_EMAIL_OTP_EXPIRY_SECONDS * 1000);
-      setEmailOtpResendCooldown(RESEND_COOLDOWN_SECONDS);
+      setEmailOtpExpiresAt(Date.now() + publicAuth.email_otp_expiration_seconds * 1000);
+      setEmailOtpResendCooldown(SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS);
       toast.success("A new verification code has been sent");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to resend code";
@@ -430,8 +444,8 @@ export default function LoginPage() {
       });
       if (error) throw error;
       setOtpCode("");
-      setOtpExpiresAt(Date.now() + SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS * 1000);
-      setOtpResendCooldown(RESEND_COOLDOWN_SECONDS);
+      setOtpExpiresAt(Date.now() + publicAuth.sms_otp_expiration_seconds * 1000);
+      setOtpResendCooldown(SUPABASE_SMS_OTP_RESEND_COOLDOWN_SECONDS);
       toast.success("A new verification code has been sent");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to resend code";
@@ -560,7 +574,7 @@ export default function LoginPage() {
                 <p className="mt-1.5 text-xs text-red-600" role="alert">{phoneInputError}</p>
               ) : (
                 <p className="mt-2 text-xs text-gray-500">
-                  We&apos;ll send a {SUPABASE_AUTH_OTP_LENGTH}-digit code via SMS.
+                  We&apos;ll send a {publicAuth.sms_otp_length}-digit code via SMS.
                 </p>
               )}
             </div>
@@ -582,19 +596,19 @@ export default function LoginPage() {
         {primaryLogin === "phone" && otpSent && (
           <div className="space-y-4">
             <p className="text-sm text-gray-600">
-              Enter the {SUPABASE_AUTH_OTP_LENGTH}-digit code sent to{" "}
+              Enter the {publicAuth.sms_otp_length}-digit code sent to{" "}
               <span className="font-semibold text-gray-900">{sentPhoneE164}</span>
             </p>
             <OtpDigitInput
               value={otpCode}
               onChange={setOtpCode}
               onComplete={(code) => {
-                if (!loading && isCompleteSupabaseSmsOtp(code)) void handleVerifyPhoneOtp(code);
+                if (!loading && isCompleteOtpForLength(code, publicAuth.sms_otp_length)) void handleVerifyPhoneOtp(code);
               }}
               disabled={loading}
               autoFocus
               label="Phone verification code"
-              length={SUPABASE_AUTH_OTP_LENGTH}
+              length={publicAuth.sms_otp_length}
             />
             <div className="flex items-center justify-between gap-3 text-xs">
               <span className="text-gray-500">
@@ -618,7 +632,7 @@ export default function LoginPage() {
             </div>
             <Button
               type="button"
-              disabled={loading || !isCompleteSupabaseSmsOtp(otpCode)}
+              disabled={loading || !isCompleteOtpForLength(otpCode, publicAuth.sms_otp_length)}
               onClick={() => void handleVerifyPhoneOtp()}
               className="w-full h-12 rounded-xl text-base font-bold bg-primary hover:bg-primary-hover text-white"
             >
@@ -668,7 +682,10 @@ export default function LoginPage() {
                 <p className="mt-1.5 text-xs text-red-600" role="alert">{emailInputError}</p>
               ) : (
                 <p className="mt-2 text-xs text-gray-500">
-                  We&apos;ll email a {SUPABASE_AUTH_OTP_LENGTH}-digit code (not a magic link). Same flow for new and returning users.
+                  We&apos;ll email a {publicAuth.email_otp_length}-digit code. If the message only has a sign-in link,
+                  add the <code className="text-[11px] bg-gray-100 px-1 rounded">{"{{ .Token }}"}</code> placeholder to
+                  the Supabase Magic Link email template (see{" "}
+                  <code className="text-[11px]">supabase/email-templates/README.md</code>).
                 </p>
               )}
             </div>
@@ -690,26 +707,27 @@ export default function LoginPage() {
         {primaryLogin === "email_otp" && emailOtpSent && (
           <div className="space-y-4">
             <p className="text-sm text-gray-600">
-              Enter the {SUPABASE_AUTH_OTP_LENGTH}-digit code sent to{" "}
+              Enter the {publicAuth.email_otp_length}-digit code sent to{" "}
               <span className="font-semibold text-gray-900">{sentEmailForOtp}</span>
             </p>
             <OtpDigitInput
               value={emailOtpCode}
               onChange={setEmailOtpCode}
               onComplete={(code) => {
-                if (!loading && isCompleteSupabaseSmsOtp(code)) void handleVerifyEmailOtp(code);
+                if (!loading && isCompleteOtpForLength(code, publicAuth.email_otp_length)) void handleVerifyEmailOtp(code);
               }}
               disabled={loading}
               autoFocus
               label="Email verification code"
-              length={SUPABASE_AUTH_OTP_LENGTH}
+              length={publicAuth.email_otp_length}
             />
             <div className="flex items-center justify-between gap-3 text-xs">
               <span className="text-gray-500">
-                Code expires in{" "}
+                Code valid for{" "}
                 <span className="font-semibold text-gray-700">
                   {formatOtpCountdown(emailOtpSecondsLeft)}
-                </span>
+                </span>{" "}
+                (from platform auth settings; match Supabase &quot;Email OTP expiration&quot;)
               </span>
               <button
                 type="button"
@@ -720,13 +738,13 @@ export default function LoginPage() {
                 {emailOtpResending
                   ? "Resending..."
                   : emailOtpResendCooldown > 0
-                    ? `Resend in ${emailOtpResendCooldown}s`
+                    ? `Resend in ${emailOtpResendCooldown}s (spacing only)`
                     : "Resend code"}
               </button>
             </div>
             <Button
               type="button"
-              disabled={loading || !isCompleteSupabaseSmsOtp(emailOtpCode)}
+              disabled={loading || !isCompleteOtpForLength(emailOtpCode, publicAuth.email_otp_length)}
               onClick={() => void handleVerifyEmailOtp()}
               className="w-full h-12 rounded-xl text-base font-bold bg-primary hover:bg-primary-hover text-white"
             >

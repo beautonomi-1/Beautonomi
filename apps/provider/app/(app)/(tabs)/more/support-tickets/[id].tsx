@@ -28,6 +28,7 @@ import { Colors } from "@/constants/colors";
 import { trackSupportTicketDetailView, trackSupportTicketReply } from "@/lib/analytics";
 import { labelForSupportTicketCategory } from "@/lib/supportTicketCategoryPresets";
 import { appendFormDataFileNative } from "@beautonomi/utils";
+import { invalidateSupportTicketsListCache } from "@/lib/api-response-cache";
 
 type Message = {
   id: string;
@@ -260,6 +261,7 @@ export default function SupportTicketDetailScreen() {
         Alert.alert("Could not submit rating", typeof res.error === "string" ? res.error : res.error.message || "Please try again");
         return;
       }
+      invalidateSupportTicketsListCache();
       Alert.alert("Thanks", "Your rating helps us improve support.");
       await loadTicket();
     } catch (e) {
@@ -319,7 +321,7 @@ export default function SupportTicketDetailScreen() {
   const canReply = ticket.status !== "closed" && ticket.status !== "resolved";
 
   return (
-    <ScreenContainer>
+    <ScreenContainer keyboardAvoiding={false}>
       <ScreenHeader title={ticket.ticket_number} onBack={() => router.back()} />
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "padding"}
@@ -501,7 +503,9 @@ export default function SupportTicketDetailScreen() {
 
             {(ticket.status === "closed" || ticket.status === "resolved") && (
               <View style={twStyle("mt-4")}>
-                <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Rate this support experience</Text>
+                <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>
+                  {typeof ticket.csat_score === "number" ? "Your support rating" : "Rate this support experience"}
+                </Text>
                 <View style={{ flexDirection: "row", gap: 8, marginBottom: 10 }}>
                   {[1, 2, 3, 4, 5].map((score) => (
                     <TouchableOpacity
@@ -533,7 +537,9 @@ export default function SupportTicketDetailScreen() {
                   maxLength={1000}
                 />
                 <ActionButton
-                  label={submittingCsat ? "Submitting…" : ticket.csat_score ? "Update rating" : "Submit rating"}
+                  label={
+                    submittingCsat ? "Submitting…" : typeof ticket.csat_score === "number" ? "Update rating" : "Submit rating"
+                  }
                   onPress={submitCsat}
                   fullWidth
                   disabled={!csatScore || submittingCsat}

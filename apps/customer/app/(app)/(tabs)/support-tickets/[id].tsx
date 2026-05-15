@@ -26,6 +26,7 @@ import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useTranslation } from "@beautonomi/i18n";
 import { useImagePicker } from "@/hooks/useImagePicker";
 import { appendFormDataFileNative } from "@beautonomi/utils";
+import { invalidateSupportTicketsListCache } from "@/lib/api-response-cache";
 
 type Message = {
   id: string;
@@ -482,7 +483,9 @@ export default function SupportTicketDetailScreen() {
 
           {!canReply && (
             <View style={styles.csatBlock}>
-              <Text style={styles.label}>Rate this support experience</Text>
+              <Text style={styles.label}>
+                {typeof ticket.csat_score === "number" ? "Your support rating" : "Rate this support experience"}
+              </Text>
               <View style={styles.csatRow}>
                 {[1, 2, 3, 4, 5].map((score) => (
                   <TouchableOpacity
@@ -511,7 +514,9 @@ export default function SupportTicketDetailScreen() {
                 style={[styles.sendBtn, (!csatScore || submittingCsat) && styles.sendBtnDisabled]}
                 accessibilityRole="button"
               >
-                <Text style={styles.sendBtnText}>{submittingCsat ? "Submitting…" : ticket.csat_score ? "Update rating" : "Submit rating"}</Text>
+                <Text style={styles.sendBtnText}>
+                  {submittingCsat ? "Submitting…" : typeof ticket.csat_score === "number" ? "Update rating" : "Submit rating"}
+                </Text>
               </TouchableOpacity>
               <Text style={styles.closedNote}>
                 This ticket is {ticket.status}. Open Help → New ticket if you need further help.

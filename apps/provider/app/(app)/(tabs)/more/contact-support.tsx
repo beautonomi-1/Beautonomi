@@ -54,7 +54,7 @@ export default function ContactSupportScreen() {
   };
 
   return (
-    <ScreenContainer scrollable={false}>
+    <ScreenContainer scrollable={false} keyboardAvoiding={false}>
       <ScreenHeader title="Contact support" onBack={() => router.back()} />
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "padding"}

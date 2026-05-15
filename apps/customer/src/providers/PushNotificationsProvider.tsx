@@ -165,7 +165,14 @@ function usePushRegistration() {
                 : typeof raw.launchURL === "string"
                   ? raw.launchURL
                   : undefined;
-            handleNotificationRoute(additionalData, {
+            // Parity with provider app: OneSignal often puts the action URL on the root
+            // notification as launchURL, not inside additionalData — merge so admin_broadcast
+            // and other deep links see `url` / `deep_link` in one place.
+            const merged: Record<string, unknown> = {
+              ...additionalData,
+              ...(launchUrl ? { url: launchUrl, deep_link: launchUrl } : {}),
+            };
+            handleNotificationRoute(merged, {
               launchUrl,
               title: raw.title,
               body: raw.body,

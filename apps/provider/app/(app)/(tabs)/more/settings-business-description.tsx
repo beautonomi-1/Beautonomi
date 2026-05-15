@@ -76,7 +76,7 @@ export default function SettingsBusinessDescriptionScreen() {
   }
 
   return (
-    <ScreenContainer>
+    <ScreenContainer keyboardAvoiding={false}>
       <ScreenHeader
         title="Business description"
         subtitle="Shown to customers"

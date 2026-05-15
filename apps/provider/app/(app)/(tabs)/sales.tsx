@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useRef } from "react";
+import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
+  DeviceEventEmitter,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -36,6 +37,7 @@ import {
 import { Colors } from "@/constants/colors";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { api } from "@/lib/api-client";
+import { PROVIDER_PRODUCTS_CATALOG_CHANGED } from "@/lib/provider-products-catalog-events";
 
 interface DashboardMetrics {
   revenue_today: number;
@@ -309,7 +311,7 @@ export default function SalesScreen() {
     "/api/provider/services?is_active=true",
     { enabled: isFocused, staleTimeMs: 60_000 },
   );
-  const { data: productsResponse } = useApi<ProductsResponse | ProductItem[]>(
+  const { data: productsResponse, refresh: refreshProducts } = useApi<ProductsResponse | ProductItem[]>(
     "/api/provider/products?limit=200",
     { enabled: isFocused, staleTimeMs: 60_000 },
   );
@@ -318,6 +320,14 @@ export default function SalesScreen() {
     if (Array.isArray(productsResponse)) return productsResponse;
     return productsResponse.products ?? [];
   }, [productsResponse]);
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(PROVIDER_PRODUCTS_CATALOG_CHANGED, () => {
+      void refreshProducts();
+    });
+    return () => sub.remove();
+  }, [refreshProducts]);
+
   const { data: staffMembers } = useApi<StaffMember[]>(
     selectedLocationId ? `/api/provider/staff?location_id=${selectedLocationId}` : "/api/provider/staff",
     { enabled: isFocused, staleTimeMs: 30_000 },

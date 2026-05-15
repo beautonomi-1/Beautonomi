@@ -160,14 +160,51 @@ async function handleSubscriptionDisable(payload: any, supabase: SupabaseClient)
     return;
   }
 
-  await supabase.from("provider_subscriptions")
-    .update({
-      status: "cancelled",
-      auto_renew: false,
-      cancelled_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq("paystack_subscription_code", subscriptionCode);
+  const { data: row } = await supabase
+    .from("provider_subscriptions")
+    .select("id, status, cancelled_at, expires_at")
+    .eq("paystack_subscription_code", subscriptionCode)
+    .maybeSingle();
+
+  if (!row) {
+    console.warn("subscription.disable: no local subscription row for", subscriptionCode);
+    return;
+  }
+
+  const now = new Date();
+  const expiresAt = row.expires_at ? new Date(row.expires_at as string) : null;
+  const cancelledAt = row.cancelled_at ? new Date(row.cancelled_at as string) : null;
+  const retainAccessUntilPeriodEnd =
+    (row as { status?: string }).status === "active" &&
+    cancelledAt != null &&
+    !Number.isNaN(cancelledAt.getTime()) &&
+    expiresAt != null &&
+    !Number.isNaN(expiresAt.getTime()) &&
+    expiresAt > now;
+
+  // Cancel-at-period-end: `/api/provider/subscription/cancel` sets `cancelled_at` while keeping status
+  // `active` until `expires_at`. Paystack `subscription.disable` can still fire once renewals stop;
+  // do not flip status to `cancelled` early or the provider loses premium access before period end.
+  if (retainAccessUntilPeriodEnd) {
+    await supabase
+      .from("provider_subscriptions")
+      .update({
+        auto_renew: false,
+        updated_at: now.toISOString(),
+      })
+      .eq("paystack_subscription_code", subscriptionCode);
+    console.log(
+      `[subscription] Paystack disabled renewals for ${subscriptionCode}; local row kept active until ${expiresAt.toISOString()}`,
+    );
+    return;
+  }
+
+  await supabase.from("provider_subscriptions").update({
+    status: "cancelled",
+    auto_renew: false,
+    cancelled_at: (row as { cancelled_at?: string | null }).cancelled_at ?? now.toISOString(),
+    updated_at: now.toISOString(),
+  }).eq("paystack_subscription_code", subscriptionCode);
 }
 
 async function handleSubscriptionEnable(payload: any, supabase: SupabaseClient) {
@@ -208,6 +245,165 @@ async function handleSubscriptionNotRenew(payload: any, supabase: SupabaseClient
     .eq("paystack_subscription_code", subscriptionCode);
 
   console.log(`Subscription ${subscriptionCode} marked as non-renewing`);
+}
+
+/**
+ * Paystack sends `invoice.update` after each renewal charge attempt with final invoice status.
+ * Successful renewals extend `expires_at`, record payment + finance rows, and notify.
+ * Exported for unit tests; production path is `handleSubscriptionEvent` → `invoice.update`.
+ */
+export async function recordSuccessfulProviderSubscriptionRenewalFromInvoice(
+  supabase: SupabaseClient,
+  args: {
+    subscriptionCode: string;
+    invoiceCode: string | undefined;
+    amount: number;
+    fees: number;
+    paidAt: string | number | Date;
+    payload: Record<string, unknown>;
+    providerId: string;
+  },
+): Promise<void> {
+  const { subscriptionCode, invoiceCode, amount, fees, paidAt, payload, providerId } = args;
+  const txnReference =
+    (invoiceCode && String(invoiceCode)) ||
+    (typeof (payload as { transaction?: { reference?: string } }).transaction?.reference === "string"
+      ? (payload as { transaction: { reference: string } }).transaction.reference
+      : `sub_renew:${subscriptionCode}:${String(paidAt)}`);
+
+  const { data: existingTx } = await supabase
+    .from("payment_transactions")
+    .select("id")
+    .eq("provider", "paystack")
+    .eq("reference", txnReference)
+    .maybeSingle();
+  if (existingTx) {
+    console.log(`[subscription] renewal already recorded for ref ${txnReference}`);
+    return;
+  }
+
+  const amountInCurrency = convertFromSmallestUnit(Number(amount || 0));
+  const feesInCurrency = convertFromSmallestUnit(Number(fees || 0));
+  const netAmount = amountInCurrency - feesInCurrency;
+
+  const { data: subscriptionDetails } = await supabase
+    .from("provider_subscriptions")
+    .select("billing_period, plan_id, provider_id, tenant_id")
+    .eq("paystack_subscription_code", subscriptionCode)
+    .single();
+
+  const renewalFinanceTenantId = await resolveTenantIdForFinanceLedger(supabase, {
+    tenant_id: (subscriptionDetails as { tenant_id?: string | null } | null)?.tenant_id ?? null,
+    provider_id: providerId,
+  });
+
+  const now = new Date();
+  const expiresAt = new Date(now);
+  type SubDetailsRow = {
+    billing_period?: string | null;
+    plan_id?: string;
+    provider_id?: string;
+    tenant_id?: string | null;
+  };
+  const billingPeriodForExpiry = (subscriptionDetails as SubDetailsRow | null)?.billing_period ?? "monthly";
+  if (billingPeriodForExpiry === "yearly") {
+    expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+  } else {
+    expiresAt.setMonth(expiresAt.getMonth() + 1);
+  }
+
+  const nextPaymentDate = (payload as { next_payment_date?: string }).next_payment_date || expiresAt;
+
+  await supabase
+    .from("provider_subscriptions")
+    .update({
+      status: "active",
+      last_payment_date: new Date(paidAt).toISOString(),
+      expires_at: expiresAt.toISOString(),
+      next_payment_date: nextPaymentDate ? new Date(nextPaymentDate as string | Date).toISOString() : null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("paystack_subscription_code", subscriptionCode);
+
+  await supabase.from("payment_transactions").insert({
+    booking_id: null,
+    reference: txnReference,
+    amount: amountInCurrency,
+    fees: feesInCurrency,
+    net_amount: netAmount,
+    status: "success",
+    provider: "paystack",
+    transaction_type: "provider_subscription_payment",
+    metadata: {
+      subscription_code: subscriptionCode,
+      invoice_code: invoiceCode ?? null,
+      kind: "subscription_renewal",
+    },
+    created_at: new Date().toISOString(),
+  });
+
+  await supabase.from("finance_transactions").insert({
+    booking_id: null,
+    provider_id: providerId,
+    tenant_id: renewalFinanceTenantId,
+    transaction_type: "provider_subscription_payment",
+    amount: netAmount,
+    fees: feesInCurrency,
+    commission: 0,
+    net: netAmount,
+    description: `Provider subscription renewal payment`,
+    created_at: new Date().toISOString(),
+  });
+
+  if (subscriptionDetails) {
+    try {
+      const { sendTemplateNotification } = await import("@/lib/notifications/onesignal");
+      const subDetails = subscriptionDetails as SubDetailsRow;
+      const billingPeriod = subDetails.billing_period ?? "monthly";
+
+      const { data: plan } = await supabase
+        .from("subscription_plans")
+        .select("name, currency, price_monthly, price_yearly")
+        .eq("id", subDetails.plan_id ?? "")
+        .single();
+
+      const { data: provider } = await supabase
+        .from("providers")
+        .select("user_id, business_name, tenant_id")
+        .eq("id", subDetails.provider_id ?? "")
+        .single();
+
+      if (provider?.user_id && plan) {
+        const planAmount =
+          billingPeriod === "yearly" ? plan.price_yearly || netAmount : plan.price_monthly || netAmount;
+        const provTenant = (provider as { tenant_id?: string | null }).tenant_id;
+        const subTenant = subDetails.tenant_id ?? null;
+        const tenantForCurrency = provTenant ?? subTenant;
+        const lastResortCurrency = tenantForCurrency
+          ? (await getTenantRegionConfig(tenantForCurrency))?.defaultCurrency ?? LAST_RESORT_CURRENCY
+          : LAST_RESORT_CURRENCY;
+        const currency = plan.currency || lastResortCurrency;
+
+        await sendTemplateNotification(
+          "subscription_renewed",
+          [provider.user_id],
+          {
+            business_name: provider.business_name || "Provider",
+            plan_name: plan.name || "Current Plan",
+            amount: `${currency} ${planAmount.toLocaleString()}`,
+            billing_period: billingPeriod,
+            next_payment_date: new Date(nextPaymentDate as string | Date).toLocaleDateString(),
+            app_url: process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com",
+            year: new Date().getFullYear().toString(),
+          },
+          ["push", "email", "sms"],
+          { appType: "provider" },
+        );
+      }
+    } catch (notifError) {
+      console.error("Error sending subscription renewal notification:", notifError);
+    }
+  }
 }
 
 async function handleSubscriptionExpiringCards(payload: any, supabase: SupabaseClient) {
@@ -262,8 +458,6 @@ async function handleSubscriptionInvoice(
   const invoiceCode = payload.invoice_code || payload.code;
   const amount = payload.amount || 0;
   const fees = payload.fees || 0;
-  const status = payload.status;
-  const paidAt = payload.paid_at;
 
   if (!subscriptionCode) {
     console.error("Missing subscription_code in invoice event");
@@ -295,15 +489,27 @@ async function handleSubscriptionInvoice(
   } else if (eventType === "invoice.update") {
     const dueDate = payload.due_date || payload.period_end || payload.next_payment_date;
     const invoiceStatus = payload.status;
+    const paidAtVal = payload.paid_at;
+
+    if (invoiceStatus === "success" && paidAtVal) {
+      await recordSuccessfulProviderSubscriptionRenewalFromInvoice(supabase, {
+        subscriptionCode,
+        invoiceCode,
+        amount,
+        fees,
+        paidAt: paidAtVal,
+        payload,
+        providerId,
+      });
+      return;
+    }
+
     const updatePayload: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
     };
     if (dueDate) updatePayload.next_payment_date = new Date(dueDate).toISOString();
     if (invoiceStatus === "failed" || invoiceStatus === "attention") {
       updatePayload.status = "past_due";
-    } else if (invoiceStatus === "success" && paidAt) {
-      updatePayload.status = "active";
-      updatePayload.last_payment_date = new Date(paidAt).toISOString();
     }
     await supabase.from("provider_subscriptions")
       .update(updatePayload)
@@ -365,136 +571,6 @@ async function handleSubscriptionInvoice(
       }
     } catch (notifErr) {
       console.warn("Failed to send subscription payment failed notification:", notifErr);
-    }
-  } else if (status === "success" && paidAt) {
-    // Successful renewal
-    const amountInCurrency = convertFromSmallestUnit(amount);
-    const feesInCurrency = convertFromSmallestUnit(fees);
-    const netAmount = amountInCurrency - feesInCurrency;
-
-    const { data: subscriptionDetails } = await supabase
-      .from("provider_subscriptions")
-      .select("billing_period, plan_id, provider_id, tenant_id")
-      .eq("paystack_subscription_code", subscriptionCode)
-      .single();
-
-    const renewalFinanceTenantId = await resolveTenantIdForFinanceLedger(supabase, {
-      tenant_id: (subscriptionDetails as { tenant_id?: string | null } | null)?.tenant_id ?? null,
-      provider_id: providerId,
-    });
-
-    const now = new Date();
-    const expiresAt = new Date(now);
-    type SubDetailsRow = {
-      billing_period?: string | null;
-      plan_id?: string;
-      provider_id?: string;
-      tenant_id?: string | null;
-    };
-    const billingPeriodForExpiry = (subscriptionDetails as SubDetailsRow | null)?.billing_period ?? "monthly";
-    if (billingPeriodForExpiry === "yearly") {
-      expiresAt.setFullYear(expiresAt.getFullYear() + 1);
-    } else {
-      expiresAt.setMonth(expiresAt.getMonth() + 1);
-    }
-
-    const nextPaymentDate = payload.next_payment_date || expiresAt;
-
-    await supabase.from("provider_subscriptions")
-      .update({
-        status: "active",
-        last_payment_date: new Date(paidAt).toISOString(),
-        expires_at: expiresAt.toISOString(),
-        next_payment_date: nextPaymentDate
-          ? new Date(nextPaymentDate as string | Date).toISOString()
-          : null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("paystack_subscription_code", subscriptionCode);
-
-    await supabase.from("payment_transactions").insert({
-      booking_id: null,
-      reference: invoiceCode,
-      amount: amountInCurrency,
-      fees: feesInCurrency,
-      net_amount: netAmount,
-      status: "success",
-      provider: "paystack",
-      transaction_type: "provider_subscription_payment",
-      metadata: {
-        subscription_code: subscriptionCode,
-        invoice_code: invoiceCode,
-        kind: "subscription_renewal",
-      },
-      created_at: new Date().toISOString(),
-    });
-
-    await supabase.from("finance_transactions").insert({
-      booking_id: null,
-      provider_id: providerId,
-      tenant_id: renewalFinanceTenantId,
-      transaction_type: "provider_subscription_payment",
-      amount: netAmount,
-      fees: feesInCurrency,
-      commission: 0,
-      net: netAmount,
-      description: `Provider subscription renewal payment`,
-      created_at: new Date().toISOString(),
-    });
-
-    // Send subscription_renewed notification
-    if (subscriptionDetails) {
-      try {
-        const { sendTemplateNotification } = await import("@/lib/notifications/onesignal");
-        const subDetails = subscriptionDetails as SubDetailsRow;
-        const billingPeriod = subDetails.billing_period ?? "monthly";
-
-        const { data: plan } = await supabase
-          .from("subscription_plans")
-          .select("name, currency, price_monthly, price_yearly")
-          .eq("id", subDetails.plan_id)
-          .single();
-
-        const { data: provider } = await supabase
-          .from("providers")
-          .select("user_id, business_name, tenant_id")
-          .eq("id", subDetails.provider_id)
-          .single();
-
-        if (provider?.user_id && plan) {
-          const planAmount =
-            billingPeriod === "yearly"
-              ? plan.price_yearly || netAmount
-              : plan.price_monthly || netAmount;
-          const provTenant = (provider as { tenant_id?: string | null }).tenant_id;
-          const subTenant = subDetails.tenant_id ?? null;
-          const tenantForCurrency = provTenant ?? subTenant;
-          const lastResortCurrency = tenantForCurrency
-            ? (await getTenantRegionConfig(tenantForCurrency))?.defaultCurrency ?? LAST_RESORT_CURRENCY
-            : LAST_RESORT_CURRENCY;
-          const currency = plan.currency || lastResortCurrency;
-
-          await sendTemplateNotification(
-            "subscription_renewed",
-            [provider.user_id],
-            {
-              business_name: provider.business_name || "Provider",
-              plan_name: plan.name || "Current Plan",
-              amount: `${currency} ${planAmount.toLocaleString()}`,
-              billing_period: billingPeriod,
-              next_payment_date: new Date(
-                nextPaymentDate as string | Date,
-              ).toLocaleDateString(),
-              app_url: process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com",
-              year: new Date().getFullYear().toString(),
-            },
-            ["push", "email", "sms"],
-            { appType: "provider" }
-          );
-        }
-      } catch (notifError) {
-        console.error("Error sending subscription renewal notification:", notifError);
-      }
     }
   }
 }

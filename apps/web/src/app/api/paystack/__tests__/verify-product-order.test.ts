@@ -19,8 +19,32 @@ vi.mock("@/lib/supabase/server", () => ({
   getSupabaseServer: (...args: unknown[]) => mockGetSupabaseServer(...args),
 }));
 
+function adsBudgetOrdersEmptyByReference() {
+  return {
+    select: vi.fn(() => ({
+      eq: vi.fn(() => ({
+        maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+      })),
+    })),
+  };
+}
+
 vi.mock("@/lib/supabase/admin", () => ({
-  getSupabaseAdmin: vi.fn(() => ({})),
+  getSupabaseAdmin: vi.fn(() => ({
+    from: vi.fn((table: string) => {
+      if (table === "ads_budget_orders") return adsBudgetOrdersEmptyByReference();
+      if (table === "provider_subscription_orders") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+            })),
+          })),
+        };
+      }
+      return {};
+    }),
+  })),
 }));
 
 vi.mock("@/lib/tenant/resolve-tenant-from-db", () => ({

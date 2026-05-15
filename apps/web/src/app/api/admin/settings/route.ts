@@ -454,8 +454,8 @@ function validateAuthSettings(a: PlatformSettings["auth"]): string | null {
   if (a.email_otp_length < 4 || a.email_otp_length > 10) {
     return "Auth: email OTP length must be between 4 and 10";
   }
-  if (a.email_otp_expiration_seconds < 30 || a.email_otp_expiration_seconds > 7 * 24 * 60 * 60) {
-    return "Auth: email OTP expiration must be between 30 seconds and 7 days";
+  if (a.email_otp_expiration_seconds < 120 || a.email_otp_expiration_seconds > 7 * 24 * 60 * 60) {
+    return "Auth: email OTP expiration must be between 2 minutes and 7 days";
   }
   if (a.sms_otp_length < 4 || a.sms_otp_length > 10) {
     return "Auth: SMS OTP length must be between 4 and 10";

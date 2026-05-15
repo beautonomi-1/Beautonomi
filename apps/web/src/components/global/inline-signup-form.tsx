@@ -32,6 +32,8 @@ import {
   normalizeSupabaseAuthPhone,
   normalizeSupabaseSmsOtpToken,
   isCompleteSupabaseSmsOtp,
+  SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS,
+  SUPABASE_SMS_OTP_RESEND_COOLDOWN_SECONDS,
 } from "@/lib/supabase/auth-sms-otp";
 import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
@@ -84,8 +86,9 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
   const [signupEmailOtpSent, setSignupEmailOtpSent] = useState(false);
   const [signupEmailOtpCode, setSignupEmailOtpCode] = useState("");
   const [sentEmailSignupOtp, setSentEmailSignupOtp] = useState("");
-  /** Resend cooldowns prevent users from spamming Supabase's hard rate-limits. */
-  const SIGNUP_RESEND_COOLDOWN_SECONDS = 30;
+  /** Resend cooldowns: SMS vs email (email spacing matches Supabase ~60s guardrails). */
+  const SIGNUP_SMS_RESEND_COOLDOWN_SECONDS = SUPABASE_SMS_OTP_RESEND_COOLDOWN_SECONDS;
+  const SIGNUP_EMAIL_RESEND_COOLDOWN_SECONDS = SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS;
   const [signupPhoneResendCooldown, setSignupPhoneResendCooldown] = useState(0);
   const [signupEmailResendCooldown, setSignupEmailResendCooldown] = useState(0);
   const [signupPhoneResending, setSignupPhoneResending] = useState(false);
@@ -457,7 +460,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
       setSentPhoneE164Signup(normalized);
       setSignupPhoneOtpSent(true);
       setSignupPhoneOtpCode("");
-      setSignupPhoneResendCooldown(SIGNUP_RESEND_COOLDOWN_SECONDS);
+      setSignupPhoneResendCooldown(SIGNUP_SMS_RESEND_COOLDOWN_SECONDS);
       toast.success("Check your phone for the verification code");
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Failed to send code";
@@ -480,7 +483,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
       });
       if (error) throw error;
       setSignupPhoneOtpCode("");
-      setSignupPhoneResendCooldown(SIGNUP_RESEND_COOLDOWN_SECONDS);
+      setSignupPhoneResendCooldown(SIGNUP_SMS_RESEND_COOLDOWN_SECONDS);
       toast.success("A new verification code has been sent");
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Failed to resend code";
@@ -499,7 +502,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
       const { error } = await sendEmailSignInOtp(sentEmailSignupOtp);
       if (error) throw error;
       setSignupEmailOtpCode("");
-      setSignupEmailResendCooldown(SIGNUP_RESEND_COOLDOWN_SECONDS);
+      setSignupEmailResendCooldown(SIGNUP_EMAIL_RESEND_COOLDOWN_SECONDS);
       toast.success("A new verification code has been sent");
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Failed to resend code";
@@ -554,7 +557,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
       setSentEmailSignupOtp(trimmedEmail);
       setSignupEmailOtpSent(true);
       setSignupEmailOtpCode("");
-      setSignupEmailResendCooldown(SIGNUP_RESEND_COOLDOWN_SECONDS);
+      setSignupEmailResendCooldown(SIGNUP_EMAIL_RESEND_COOLDOWN_SECONDS);
       toast.success("Check your email for the verification code");
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Failed to send email code";

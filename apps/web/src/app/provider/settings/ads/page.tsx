@@ -174,6 +174,7 @@ export default function ProviderAdsPage() {
   const [creating, setCreating] = useState(false);
   const [creatingPackId, setCreatingPackId] = useState<string | null>(null);
   const [updating, setUpdating] = useState<string | null>(null);
+  const [paymentConfirmedBanner, setPaymentConfirmedBanner] = useState(false);
   const [editCampaign, setEditCampaign] = useState<Campaign | null>(null);
   const [form, setForm] = useState({
     budget: "",
@@ -267,12 +268,15 @@ export default function ProviderAdsPage() {
 
   useEffect(() => {
     if (searchParams.get("payment_success") === "1") {
-      toast.success("Payment successful. Your campaign budget is now active.");
+      setPaymentConfirmedBanner(true);
+      toast.success(
+        "Payment confirmed. Your budget should appear on the campaign below; use Activate for CPC when you are ready to go live.",
+      );
       loadCampaigns();
       loadPerformance();
       window.history.replaceState({}, "", "/provider/settings/ads");
     }
-  }, [searchParams]);
+  }, [searchParams, loadCampaigns, loadPerformance]);
 
   const createDraft = async () => {
     const num = parseFloat(createForm.budget);
@@ -411,6 +415,20 @@ export default function ProviderAdsPage() {
           <AlertDescription>
             Sponsored listings are not available in your market yet. When ads are available, you will be able to boost your
             profile and track visibility, reach, clicks, and bookings here.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {paymentConfirmedBanner && enabled && (
+        <Alert className="mb-6 border-emerald-200 bg-emerald-50 text-emerald-950">
+          <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <span>
+              <strong>Payment confirmed.</strong> Your paid budget should appear on each campaign below. For CPC campaigns, tap{" "}
+              <strong>Activate</strong> when you are ready to go live (packs and time boosts may activate automatically).
+            </span>
+            <Button type="button" variant="outline" size="sm" className="shrink-0 border-emerald-300" onClick={() => setPaymentConfirmedBanner(false)}>
+              Dismiss
+            </Button>
           </AlertDescription>
         </Alert>
       )}

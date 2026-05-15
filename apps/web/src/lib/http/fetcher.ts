@@ -534,6 +534,16 @@ export function clearFetcherCache(): void {
   inflightGetRequests.clear();
 }
 
+/** Remove GET cache entries whose URL contains `substring` (e.g. `/api/me/support-tickets` after CSAT). */
+export function deleteFetcherGetCacheEntriesMatching(substring: string): void {
+  for (const key of [...getResponseCache.keys()]) {
+    if (key.includes(substring)) getResponseCache.delete(key);
+  }
+  for (const key of [...inflightGetRequests.keys()]) {
+    if (key.includes(substring)) inflightGetRequests.delete(key);
+  }
+}
+
 export interface CachedGetOptions extends Omit<FetchOptions, 'method' | 'body'> {
   staleTimeMs?: number;
 }

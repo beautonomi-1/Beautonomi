@@ -26,6 +26,7 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ChipCombobox } from "@/components/ui/ChipCombobox";
 import { twStyle } from "@/lib/twStyle";
 import { appendFormDataFileNative } from "@beautonomi/utils";
+import { emitProviderProductsCatalogChanged } from "@/lib/provider-products-catalog-events";
 
 interface ProductVariantRow {
   id?: string;
@@ -559,6 +560,7 @@ export default function ProductFormScreen() {
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      emitProviderProductsCatalogChanged();
       router.back();
     } else {
       const { error } = await createProduct("/api/provider/products", payload);
@@ -567,6 +569,7 @@ export default function ProductFormScreen() {
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      emitProviderProductsCatalogChanged();
       router.back();
     }
   };
@@ -600,10 +603,14 @@ export default function ProductFormScreen() {
   }
 
   return (
-    <ScreenContainer>
+    <ScreenContainer keyboardAvoiding={false}>
       <ScreenHeader
         title={isEdit ? "Edit Product" : "Add Product"}
-        subtitle={isEdit ? product?.name : "New product"}
+        subtitle={
+          isEdit
+            ? product?.name
+            : "Images, description, variants, tax, retail settings, and stock"
+        }
         onBack={() => router.back()}
       />
 

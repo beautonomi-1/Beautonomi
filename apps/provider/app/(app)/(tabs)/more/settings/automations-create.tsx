@@ -131,7 +131,7 @@ export default function AutomationsCreateScreen() {
   const isEmail = actionType === "email";
 
   return (
-    <ScreenContainer scrollable={false}>
+    <ScreenContainer scrollable={false} keyboardAvoiding={false}>
       <ScreenHeader
         title="Create automation"
         subtitle="Trigger, channel, and message template"

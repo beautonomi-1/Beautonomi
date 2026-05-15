@@ -1,6 +1,6 @@
-import { useCallback, useState, useEffect } from "react";
+import { useCallback, useState, useEffect, useRef } from "react";
 import { View, Text, TouchableOpacity, ScrollView, RefreshControl } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -57,7 +57,10 @@ function contextLabel(ticket: Ticket): string | null {
 }
 
 function shouldAskForCsat(ticket: Ticket): boolean {
-  return (ticket.status === "resolved" || ticket.status === "closed") && !ticket.csat_score;
+  return (
+    (ticket.status === "resolved" || ticket.status === "closed") &&
+    typeof ticket.csat_score !== "number"
+  );
 }
 
 function statusBgColor(status: string): string {
@@ -79,6 +82,18 @@ export default function SupportTicketsListScreen() {
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const { data, loading, error, refresh } = useApi<TicketsResponse>("/api/me/support-tickets");
+  const skipNextListFocusRefresh = useRef(true);
+
+  /** CSAT is submitted on the ticket detail screen; useApi caches this list — refetch when returning (skip first focus; useApi loads on mount). */
+  useFocusEffect(
+    useCallback(() => {
+      if (skipNextListFocusRefresh.current) {
+        skipNextListFocusRefresh.current = false;
+        return;
+      }
+      void refresh();
+    }, [refresh]),
+  );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -199,7 +214,7 @@ export default function SupportTicketsListScreen() {
                   <Text style={{ marginTop: 8, fontSize: 12, fontWeight: "700", color: Colors.primary }}>
                     Rate this support experience
                   </Text>
-                ) : t.csat_score ? (
+                ) : typeof t.csat_score === "number" ? (
                   <Text style={{ marginTop: 8, fontSize: 12, color: Colors.gray[600] }}>
                     Your rating: {t.csat_score}/5
                   </Text>

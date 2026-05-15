@@ -234,7 +234,9 @@ export async function POST(
           : (validated.attachments && validated.attachments.length > 0 ? "Sent an attachment" : "New message");
 
         // Send OneSignal push notification (try template first, fallback to hardcoded)
-        const { sendToUser, sendTemplateNotification, getNotificationTemplate } = await import("@/lib/notifications/onesignal");
+        const { sendToUser, sendTemplateNotification, getNotificationTemplate } = await import(
+          "@/lib/notifications/onesignal"
+        );
         
         // Try to use notification template
         const template = await getNotificationTemplate("customer_new_message");
@@ -252,6 +254,7 @@ export async function POST(
             "customer_new_message",
             [customerId],
             {
+              type: "new_message",
               provider_name: providerData?.business_name || "Your provider",
               message_preview: messagePreview,
               conversation_id: id,

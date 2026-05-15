@@ -18,6 +18,7 @@ import {
 } from "@/lib/http/fetcher";
 import { APPOINTMENT_STATUS, DEFAULT_APPOINTMENT_STATUS } from "./constants";
 import { transformBookingRowsToAppointments } from "./transform-bookings-to-calendar-appointments";
+import { pickGroupBookingPatchPayload } from "@/lib/provider-booking/pick-group-booking-patch-payload";
 import type {
   Provider,
   Salon,
@@ -525,6 +526,9 @@ function mapWaitlistPriorityField(p: unknown): "high" | "normal" | "low" {
 function rootBookingId(id: string): string {
   return id.includes("-svc-") ? id.split("-svc-")[0]! : id;
 }
+
+/** Synthetic id prefix for merged calendar rows (see provider bookings list). */
+const GROUP_APPOINTMENT_PREFIX = "group:";
 
 export class ProviderApiClient implements ProviderApi {
   /**
@@ -1278,78 +1282,155 @@ export class ProviderApiClient implements ProviderApi {
       if (Object.keys(updateData).length === 0) {
         throw new Error("No fields provided to update");
       }
-      
-      const response = await fetcher.patch<{ data: { booking: any } }>(`/api/provider/bookings/${bookingId}`, updateData);
-      const booking = response.data?.booking || response.data;
-      
+
+      const isGroupAppointment = id.startsWith(GROUP_APPOINTMENT_PREFIX);
+      let response: { data?: { booking?: unknown } & Record<string, unknown> };
+      if (isGroupAppointment) {
+        const groupId = id.slice(GROUP_APPOINTMENT_PREFIX.length);
+        const groupPayload = pickGroupBookingPatchPayload(updateData);
+        if (Object.keys(groupPayload).length === 0) {
+          throw new Error(
+            "This update could not be applied to a group booking (no supported fields). Try editing from the group booking screen.",
+          );
+        }
+        response = (await fetcher.patch(`/api/provider/group-bookings/${groupId}`, groupPayload)) as {
+          data?: { booking?: unknown } & Record<string, unknown>;
+        };
+      } else {
+        response = await fetcher.patch<{ data: { booking: any } }>(
+          `/api/provider/bookings/${bookingId}`,
+          updateData,
+        );
+      }
+
+      const booking = isGroupAppointment
+        ? ((response as { data?: Record<string, unknown> }).data as Record<string, unknown> | undefined)
+        : (response.data?.booking || response.data);
+
       if (!booking) {
         throw new Error("No booking data returned from API");
       }
-      
+
       // Transform back to Appointment format
       // Safely handle scheduled_at - it might be null or invalid
       let scheduledDate = "";
       let scheduledTime = "";
-      if (booking.scheduled_at) {
+      const scheduledAtRaw = (booking as { scheduled_at?: unknown }).scheduled_at;
+      if (scheduledAtRaw) {
         try {
-          const scheduledAt = new Date(booking.scheduled_at);
+          const scheduledAt = new Date(String(scheduledAtRaw));
           if (!isNaN(scheduledAt.getTime())) {
             scheduledDate = formatDate(scheduledAt, "yyyy-MM-dd");
             scheduledTime = formatDate(scheduledAt, "HH:mm");
           }
         } catch {
-          console.warn("Invalid scheduled_at date:", booking.scheduled_at);
+          console.warn("Invalid scheduled_at date:", scheduledAtRaw);
         }
       }
-      
-      // Get first service or default
-      const firstService = booking.services?.[0] || {};
+
+      // Get first service or default (group rows have no booking_services join on PATCH response)
+      const firstService = (booking as { services?: unknown[] }).services?.[0] || {};
       const { status, db_status } = this.mapAppointmentStatusFromBooking(booking);
 
+      const totalPriceGroup = Number((booking as { total_price?: unknown }).total_price ?? 0);
+      const totalPriceBooking = Number(
+        (booking as { total_amount?: unknown }).total_amount ??
+          (booking as { subtotal?: unknown }).subtotal ??
+          0,
+      );
+
       return {
-        id: booking.id,
-        ref_number: booking.booking_number || booking.id,
-        client_name: booking.customers?.full_name || "Client",
-        client_email: booking.customers?.email || "",
-        client_phone: booking.customers?.phone || "",
-        service_id: firstService.offering_id || firstService.service_id || "",
-        service_name: firstService.offering_name || firstService.service_name || "Service",
-        team_member_id: firstService.staff_id || data.team_member_id || "",
-        team_member_name: firstService.staff_name || data.team_member_name || "",
+        id: isGroupAppointment ? id : String((booking as { id?: unknown }).id ?? bookingId),
+        ref_number: isGroupAppointment
+          ? String((booking as { title?: unknown }).title ?? (booking as { id?: unknown }).id ?? "")
+          : String((booking as { booking_number?: unknown }).booking_number ?? (booking as { id?: unknown }).id ?? ""),
+        client_name: isGroupAppointment
+          ? String((booking as { title?: unknown }).title || "Group")
+          : String(
+              (booking as { customers?: { full_name?: string } }).customers?.full_name ||
+                (booking as { customer_name?: string }).customer_name ||
+                "Client",
+            ),
+        client_email: isGroupAppointment
+          ? ""
+          : String((booking as { customers?: { email?: string } }).customers?.email ?? ""),
+        client_phone: isGroupAppointment
+          ? ""
+          : String((booking as { customers?: { phone?: string } }).customers?.phone ?? ""),
+        service_id: isGroupAppointment
+          ? String((booking as { service_id?: string }).service_id ?? "")
+          : String(
+              (firstService as { offering_id?: string; service_id?: string }).offering_id ||
+                (firstService as { service_id?: string }).service_id ||
+                "",
+            ),
+        service_name: String(
+          (firstService as { offering_name?: string; service_name?: string }).offering_name ||
+            (firstService as { service_name?: string }).service_name ||
+            "Service",
+        ),
+        team_member_id: isGroupAppointment
+          ? String((booking as { staff_id?: string }).staff_id ?? "")
+          : String((firstService as { staff_id?: string }).staff_id || data.team_member_id || ""),
+        team_member_name: String((firstService as { staff_name?: string }).staff_name || data.team_member_name || ""),
         scheduled_date: scheduledDate,
         scheduled_time: scheduledTime,
-        duration_minutes: firstService.duration_minutes || 60,
-        price: booking.total_amount || booking.subtotal || firstService.price || 0,
+        duration_minutes: isGroupAppointment
+          ? Number((booking as { duration_minutes?: unknown }).duration_minutes ?? 60)
+          : Number((firstService as { duration_minutes?: number }).duration_minutes ?? 60),
+        price: isGroupAppointment
+          ? (Number.isFinite(totalPriceGroup) ? totalPriceGroup : 0)
+          : Number((booking as { total_amount?: unknown }).total_amount) ||
+            Number((booking as { subtotal?: unknown }).subtotal) ||
+            Number((firstService as { price?: unknown }).price) ||
+            0,
         status,
         created_by: "system",
-        created_date: booking.created_at || new Date().toISOString(),
-        notes: booking.special_requests,
+        created_date: String((booking as { created_at?: unknown }).created_at || new Date().toISOString()),
+        notes: isGroupAppointment
+          ? ((booking as { notes?: unknown }).notes as string | undefined)
+          : ((booking as { special_requests?: unknown }).special_requests as string | undefined),
         // Financial fields
-        subtotal: booking.subtotal || 0,
-        tax_amount: booking.tax_amount || 0,
-        tax_rate: booking.tax_rate || 0,
-        service_fee_percentage: booking.service_fee_percentage || 0,
-        service_fee_amount: booking.service_fee_amount || 0,
-        discount_amount: booking.discount_amount || 0,
-        discount_code: booking.discount_code || "",
-        discount_reason: booking.discount_reason || "",
-        tip_amount: booking.tip_amount || 0,
-        total_amount: booking.total_amount || 0,
-        total_paid: booking.total_paid || 0,
-        total_refunded: booking.total_refunded || 0,
-        payment_status: booking.payment_status,
-        current_stage: booking.current_stage,
-        booking_id: booking.id,
-        travel_fee: booking.travel_fee || 0,
+        subtotal: isGroupAppointment
+          ? (Number.isFinite(totalPriceGroup) ? totalPriceGroup : 0)
+          : Number((booking as { subtotal?: unknown }).subtotal) || 0,
+        tax_amount: isGroupAppointment ? 0 : Number((booking as { tax_amount?: unknown }).tax_amount) || 0,
+        tax_rate: isGroupAppointment ? 0 : Number((booking as { tax_rate?: unknown }).tax_rate) || 0,
+        service_fee_percentage: isGroupAppointment
+          ? 0
+          : Number((booking as { service_fee_percentage?: unknown }).service_fee_percentage) || 0,
+        service_fee_amount: isGroupAppointment
+          ? 0
+          : Number((booking as { service_fee_amount?: unknown }).service_fee_amount) || 0,
+        discount_amount: isGroupAppointment ? 0 : Number((booking as { discount_amount?: unknown }).discount_amount) || 0,
+        discount_code: isGroupAppointment ? "" : String((booking as { discount_code?: unknown }).discount_code ?? ""),
+        discount_reason: isGroupAppointment ? "" : String((booking as { discount_reason?: unknown }).discount_reason ?? ""),
+        tip_amount: isGroupAppointment ? 0 : Number((booking as { tip_amount?: unknown }).tip_amount) || 0,
+        total_amount: isGroupAppointment
+          ? (Number.isFinite(totalPriceGroup) ? totalPriceGroup : 0)
+          : Number.isFinite(totalPriceBooking)
+            ? totalPriceBooking
+            : 0,
+        total_paid: isGroupAppointment ? 0 : Number((booking as { total_paid?: unknown }).total_paid) || 0,
+        total_refunded: isGroupAppointment ? 0 : Number((booking as { total_refunded?: unknown }).total_refunded) || 0,
+        payment_status: isGroupAppointment
+          ? "pending"
+          : ((booking as { payment_status?: string }).payment_status as string | undefined),
+        current_stage: (booking as { current_stage?: string }).current_stage,
+        booking_id: isGroupAppointment ? id : String((booking as { id?: unknown }).id ?? ""),
+        travel_fee: Number((booking as { travel_fee?: unknown }).travel_fee) || 0,
         // Services array for detailed view
-        services: booking.services || [],
-        // Products array if available
-        products: booking.products || [],
+        services: (booking as { services?: unknown[] }).services || [],
+        // Products array if available (group: JSONB on group_bookings; booking: booking_products join)
+        products: ((booking as { products?: unknown }).products as unknown[]) || [],
         ...(db_status !== undefined ? { db_status } : {}),
       } as Appointment;
     } catch (error: any) {
+      const endpoint = id.startsWith(GROUP_APPOINTMENT_PREFIX)
+        ? `/api/provider/group-bookings/${id.slice(GROUP_APPOINTMENT_PREFIX.length)}`
+        : `/api/provider/bookings/${bookingId}`;
       await this.handleApiError(
-        `/api/provider/bookings/${bookingId}`,
+        endpoint,
         "PATCH",
         error,
         undefined,

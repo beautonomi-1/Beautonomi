@@ -88,7 +88,7 @@ export function finalizePublicAuth(
   const o = { ...DEFAULT_PUBLIC_AUTH, ...a } as PublicAuthPolicy;
   o.minimum_password_length = Math.min(128, Math.max(6, o.minimum_password_length));
   o.email_otp_length = Math.min(10, Math.max(4, o.email_otp_length));
-  o.email_otp_expiration_seconds = Math.min(604800, Math.max(30, o.email_otp_expiration_seconds));
+  o.email_otp_expiration_seconds = Math.min(604800, Math.max(120, o.email_otp_expiration_seconds));
   o.sms_otp_length = Math.min(10, Math.max(4, o.sms_otp_length));
   o.sms_otp_expiration_seconds = Math.min(24 * 60 * 60, Math.max(30, o.sms_otp_expiration_seconds));
   if (o.sms_provider !== "twilio") o.sms_provider = "twilio";

@@ -16,7 +16,11 @@ import {
   validatePosProductStock,
 } from "@/lib/provider-sales/pos-product-stock";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
+import { ensureWalkInCustomerLinkedForProductSale } from "@/lib/provider/ensure-walk-in-customer-for-product-sale";
+import { hasProviderCustomerActivityRelationship } from "@/lib/provider/client-access";
 
 /**
  * GET /api/provider/product-sales — list walk-in sales history
@@ -80,6 +84,8 @@ const walkInSaleSchema = z.object({
   payment_reference: z.string().max(200).optional(),
   customer_name: z.string().max(100).optional(),
   customer_phone: z.string().max(32).optional(),
+  /** Optional dial digits / ISO hint for national-format phones (matches clients/create). */
+  customer_phone_country_code: z.string().max(8).optional().nullable(),
   customer_id: z.string().uuid().optional(),
 });
 
@@ -144,27 +150,76 @@ export async function POST(request: NextRequest) {
         500,
       );
     }
-    const providerTaxRate = (providerRow as { is_vat_registered?: boolean | null; tax_rate_percent?: number | string | null } | null)
-      ?.is_vat_registered
-      ? Number((providerRow as { tax_rate_percent?: number | string | null }).tax_rate_percent ?? 0)
-      : 0;
 
-    if (parsed.customer_id) {
+    const walletTenantRegion = await getTenantRegionConfig(orderTenantId);
+    const walletCurrency = walletTenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+
+    let resolvedCustomerId: string | null = parsed.customer_id ?? null;
+
+    /**
+     * Walk-in retail: `bookings` INSERT drives `provider_clients` via DB trigger
+     * (`update_provider_client_stats`); `product_orders` does not. When the sale
+     * includes a walk-in name/phone, resolve/create `users` + `provider_clients`
+     * before insert so CRM and RLS (526) stay aligned with appointment flows.
+     */
+    if (!resolvedCustomerId) {
+      const nameT = parsed.customer_name?.trim() ?? "";
+      const phoneT = parsed.customer_phone?.trim() ?? "";
+      if (nameT || phoneT) {
+        const ensured = await ensureWalkInCustomerLinkedForProductSale({
+          supabaseAdmin: getSupabaseAdmin(),
+          providerId,
+          staffUserId: user.id,
+          walletCurrency,
+          customerName: nameT || null,
+          customerPhone: phoneT || null,
+          customerPhoneCountryCode: parsed.customer_phone_country_code ?? null,
+        });
+        if (ensured.ok === false) {
+          return errorResponse(ensured.message, ensured.code ?? "CLIENT_CREATE_ERROR", 400);
+        }
+        resolvedCustomerId = ensured.customerId;
+      }
+    } else {
       const { data: clientRow, error: clientLookupErr } = await supabase
         .from("provider_clients")
         .select("id")
         .eq("provider_id", providerId)
-        .eq("customer_id", parsed.customer_id)
+        .eq("customer_id", resolvedCustomerId)
         .maybeSingle();
       if (clientLookupErr) throw clientLookupErr;
       if (!clientRow) {
-        return errorResponse(
-          "Selected client is not in your saved client list.",
-          "VALIDATION_ERROR",
-          400,
-        );
+        const admin = getSupabaseAdmin();
+        const activity = await hasProviderCustomerActivityRelationship(admin, providerId, resolvedCustomerId);
+        if (!activity) {
+          return errorResponse(
+            "Selected client is not in your saved client list.",
+            "VALIDATION_ERROR",
+            400,
+          );
+        }
+        const { error: linkErr } = await admin.from("provider_clients").insert({
+          provider_id: providerId,
+          customer_id: resolvedCustomerId,
+          notes: null,
+          relationship_source: "product_order",
+          privacy_level: "standard",
+          source_metadata: {
+            linked_via: "walk_in_product_sale_customer_id",
+          },
+          linked_existing_platform_user: true,
+          created_by_user_id: user.id,
+        });
+        if (linkErr && linkErr.code !== "23505") {
+          throw linkErr;
+        }
       }
     }
+
+    const providerTaxRate = (providerRow as { is_vat_registered?: boolean | null; tax_rate_percent?: number | string | null } | null)
+      ?.is_vat_registered
+      ? Number((providerRow as { tax_rate_percent?: number | string | null }).tax_rate_percent ?? 0)
+      : 0;
 
     const posItems = mergedItems.map((i) => ({
       type: "product" as const,
@@ -312,7 +367,7 @@ export async function POST(request: NextRequest) {
       .insert({
         tenant_id: orderTenantId,
         order_number: orderNum,
-        customer_id: parsed.customer_id ?? null,
+        customer_id: resolvedCustomerId ?? null,
         provider_id: providerId,
         fulfillment_type: "collection",
         subtotal: subtotal.toFixed(2),

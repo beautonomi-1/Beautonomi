@@ -251,6 +251,7 @@ export default function BookingsScreen() {
   // Real-time: refresh list when any of the customer's bookings change (status updates, confirmations, etc.)
   const refetchRef = useRef(refetch);
   refetchRef.current = refetch;
+  const bookingsListRealtimeGenRef = useRef(0);
   useEffect(() => {
     if (!user?.id) return;
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -261,8 +262,9 @@ export default function BookingsScreen() {
         refetchRef.current();
       }, 600);
     };
+    const gen = ++bookingsListRealtimeGenRef.current;
     const channel = supabase
-      .channel(`bookings-list:customer:${user.id}`)
+      .channel(`bookings-list:customer:${user.id}:rt${gen}`)
       .on(
         "postgres_changes" as never,
         {

@@ -17,6 +17,9 @@ export type MessagesPageClientProps = {
 
 type Conversation = MessagesConversation;
 
+/** Monotonic Realtime topic suffix — avoids "cannot add postgres_changes after subscribe" on fast re-subscribe (Strict Mode / user id updates). */
+let customerWebConversationsRealtimeGen = 0;
+
 // Reserved for typing individual messages when needed
 interface _Message {
   id: string;
@@ -392,8 +395,9 @@ export function MessagesPageClient({ initial }: MessagesPageClientProps) {
         ? { event: "*" as const, schema: "public", table: "conversations", filter: `customer_id=eq.${userId}` }
         : { event: "*" as const, schema: "public", table: "conversations" };
 
+    const gen = ++customerWebConversationsRealtimeGen;
     const channel = supabase
-      .channel(userId ? `customer-conversations:${userId}` : "customer-conversations-updates")
+      .channel(userId ? `customer-conversations:${userId}:rt${gen}` : `customer-conversations-updates:rt${gen}`)
       .on("postgres_changes", channelOpts, () => scheduleLoad())
       .subscribe();
 

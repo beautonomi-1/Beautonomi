@@ -1,4 +1,11 @@
-import { View, ScrollView, RefreshControl, type ViewStyle } from "react-native";
+import {
+  View,
+  ScrollView,
+  RefreshControl,
+  KeyboardAvoidingView,
+  Platform,
+  type ViewStyle,
+} from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useResponsive } from "@/hooks/useResponsive";
 import { tabScreenScrollBottomPadding } from "@/constants/layout";
@@ -19,6 +26,14 @@ interface ScreenContainerProps {
   noPadding?: boolean;
   /** When false, omit tab-bar bottom reserve (stack-only flows such as onboarding or full-screen modals). Default true. */
   reserveTabBarSpace?: boolean;
+  /**
+   * Wrap screen body so focused inputs stay above the keyboard on iOS.
+   * Android uses `softwareKeyboardLayoutMode: "resize"` in app config; outer `behavior` is omitted there.
+   * Set false when the screen already wraps content in its own `KeyboardAvoidingView`.
+   */
+  keyboardAvoiding?: boolean;
+  /** Passed to `KeyboardAvoidingView` when `keyboardAvoiding` is true (stack headers, floating chrome). */
+  keyboardVerticalOffset?: number;
 }
 
 export function ScreenContainer({
@@ -30,6 +45,8 @@ export function ScreenContainer({
   style,
   noPadding = false,
   reserveTabBarSpace = true,
+  keyboardAvoiding = true,
+  keyboardVerticalOffset = 0,
 }: ScreenContainerProps) {
   const { screenPadding, isTablet, contentMaxWidth } = useResponsive();
   const insets = useSafeAreaInsets();
@@ -47,6 +64,7 @@ export function ScreenContainer({
       contentContainerStyle={{ paddingHorizontal: padding, paddingBottom: contentBottomPadding, backgroundColor: "#ffffff" }}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
       refreshControl={
         onRefresh ? (
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />
@@ -61,15 +79,28 @@ export function ScreenContainer({
     </View>
   );
 
+  const wrapped =
+    keyboardAvoiding ? (
+      <KeyboardAvoidingView
+        style={{ flex: 1, minHeight: 0, backgroundColor: "#ffffff" }}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={keyboardVerticalOffset}
+      >
+        {content}
+      </KeyboardAvoidingView>
+    ) : (
+      content
+    );
+
   return (
     <SafeAreaView
       edges={edges}
       style={[{ flex: 1, backgroundColor: "#ffffff" }, style]}
     >
       {isTablet && tabletWrapperStyle ? (
-        <View style={tabletWrapperStyle}>{content}</View>
+        <View style={tabletWrapperStyle}>{wrapped}</View>
       ) : (
-        content
+        wrapped
       )}
     </SafeAreaView>
   );

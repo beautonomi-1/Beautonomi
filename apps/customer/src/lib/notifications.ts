@@ -109,7 +109,8 @@ export function navigateFromNotification(n: Notification): void {
       void Linking.openURL(u);
       return;
     }
-    if (u && u.startsWith("/")) {
+    // Match provider app: any non-web deep link (Expo paths, custom schemes) — not only `/…`.
+    if (u) {
       router.push(u as never);
       return;
     }
@@ -165,7 +166,12 @@ export function navigateFromNotification(n: Notification): void {
     router.push({ pathname: "/(app)/chat", params: { id: linkedConversationId } });
     return;
   }
-  if (nType === "new_message" || nType === "message" || nType === "chat_message") {
+  if (
+    nType === "new_message" ||
+    nType === "message" ||
+    nType === "chat_message" ||
+    nType === "customer_new_message"
+  ) {
     router.push("/(app)/(tabs)/chats" as never);
     return;
   }

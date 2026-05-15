@@ -52,20 +52,25 @@ export function ConfigBundleProvider({ children }: { children: React.ReactNode }
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     try {
-      setLoading(true);
-      setError(null);
       clearConfigBundleCache();
       const data = await fetchConfigBundle({
         platform: "customer",
         environment: __DEV__ ? "development" : "production",
       });
-      setBundle(data);
+      requestAnimationFrame(() => {
+        setBundle(data);
+        setError(null);
+        setLoading(false);
+      });
     } catch (e) {
-      setBundle(defaultBundle);
-      setError(e instanceof Error ? e.message : "Failed to load config");
-    } finally {
-      setLoading(false);
+      requestAnimationFrame(() => {
+        setBundle(defaultBundle);
+        setError(e instanceof Error ? e.message : "Failed to load config");
+        setLoading(false);
+      });
     }
   }, []);
 

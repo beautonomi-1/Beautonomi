@@ -20,6 +20,7 @@ function AdsPaymentReturnInner() {
   const reference = sp.get("reference") || sp.get("trxref") || "";
   const [message, setMessage] = useState("Confirming your ads payment...");
   const [ready, setReady] = useState(false);
+  const [headline, setHeadline] = useState("Thanks — confirming with Paystack");
 
   useEffect(() => {
     if (!success) return;
@@ -41,40 +42,99 @@ function AdsPaymentReturnInner() {
       }
     };
 
-    const finish = (nextMessage: string, status: "success" | "pending" | "failed") => {
+    const finish = (nextMessage: string, status: "success" | "pending" | "failed", title?: string) => {
       if (cancelled) return;
       setMessage(nextMessage);
       setReady(true);
+      if (title) setHeadline(title);
       postNativeStatus(status, nextMessage);
     };
 
     const run = async () => {
       try {
-        if (reference) {
-          const res = await fetch(`/api/paystack/verify?reference=${encodeURIComponent(reference)}`, {
-            credentials: "include",
-          });
-          if (!res.ok) {
-            throw new Error("Could not verify payment immediately.");
-          }
+        if (!reference) {
+          throw new Error(
+            "MISSING_REFERENCE: Paystack did not return a transaction reference on this return URL. Open Ads and pull to refresh — your payment may still apply via webhook.",
+          );
         }
-        finish("Payment received. Your campaign is being activated.", "success");
-      } catch {
-        finish("Payment received. We are still syncing confirmation from Paystack.", "pending");
+
+        const res = await fetch(`/api/paystack/verify?reference=${encodeURIComponent(reference)}`, {
+          credentials: "include",
+        });
+        const payload = (await res.json().catch(() => null)) as {
+          data?: { status?: string; message?: string; type?: string };
+          error?: { message?: string; code?: string };
+        } | null;
+        if (!res.ok) {
+          throw new Error(
+            payload?.error?.message ||
+              (typeof payload?.data === "object" && payload?.data && "message" in payload.data
+                ? String((payload.data as { message?: string }).message)
+                : null) ||
+              "Could not verify payment immediately.",
+          );
+        }
+        if (payload?.error) {
+          throw new Error(payload.error.message || "Payment verification failed.");
+        }
+        const inner = payload?.data;
+        if (!inner || typeof inner !== "object") {
+          throw new Error("Invalid verification response from server.");
+        }
+        if (inner.status === "error") {
+          throw new Error(inner.message || "Payment could not be confirmed from Paystack metadata.");
+        }
+        // Verify returns { status: "failed" } when Paystack charge is not successful (not only "error").
+        if (inner.status !== "success") {
+          throw new Error(inner.message || "Payment verification was not successful.");
+        }
+        finish("Your ad budget is being activated. You can fund more boosts anytime from Ads.", "success", "Payment confirmed");
+        if (context !== "app") {
+          window.setTimeout(() => {
+            if (!cancelled) router.replace("/provider/settings/ads?payment_success=1");
+          }, 1400);
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "";
+        // Definitive failures (wrong user, amount, tenant, missing ref, Paystack not success, etc.)
+        const looksLikeHardFailure =
+          msg.includes("MISSING_REFERENCE") ||
+          msg.includes("Invalid verification") ||
+          msg.includes("not successful") ||
+          msg.includes("metadata") ||
+          msg.includes("VERIFY") ||
+          msg.includes("amount") ||
+          msg.includes("mismatch") ||
+          msg.includes("FORBIDDEN") ||
+          msg.includes("not found") ||
+          msg.includes("only confirm") ||
+          msg.includes("different market");
+        if (looksLikeHardFailure) {
+          finish(
+            msg.startsWith("MISSING_REFERENCE:")
+              ? msg.replace(/^MISSING_REFERENCE:\s*/, "")
+              : msg.includes("metadata") || msg.includes("not successful") || msg.includes("Invalid verification")
+                ? "We could not confirm this payment against your ad order from the return page. Open Ads and pull to refresh, or contact support with your Paystack reference."
+                : msg || "Payment could not be confirmed. Open Ads to check status or try again.",
+            "failed",
+            "We need one more step",
+          );
+        } else {
+          finish(
+            "Your bank may still be finalizing the charge. Open Ads in a moment and pull to refresh.",
+            "pending",
+            "Almost there",
+          );
+        }
+        if (context !== "app") {
+          window.setTimeout(() => {
+            if (!cancelled) router.replace("/provider/settings/ads");
+          }, 2200);
+        }
       }
     };
 
     void run();
-
-    if (context !== "app") {
-      const timeout = window.setTimeout(() => {
-        router.replace("/provider/settings/ads?payment_success=1");
-      }, reference ? 1600 : 2400);
-      return () => {
-        cancelled = true;
-        window.clearTimeout(timeout);
-      };
-    }
 
     return () => {
       cancelled = true;
@@ -103,7 +163,7 @@ function AdsPaymentReturnInner() {
 
   return (
     <div className="mx-auto max-w-md px-6 py-16 text-center">
-      <h1 className="text-xl font-semibold text-gray-900">Payment received</h1>
+      <h1 className="text-xl font-semibold text-gray-900">{headline}</h1>
       <p className="mt-3 text-sm text-gray-600">
         {message}
       </p>
