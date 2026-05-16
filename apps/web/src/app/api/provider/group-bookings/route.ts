@@ -192,13 +192,13 @@ export async function GET(request: NextRequest) {
             total_refunded: payment?.total_refunded ?? 0,
           };
         });
-        const uniqueParticipantBookingIds = [
-          ...new Set(
+        const uniqueParticipantBookingIds: string[] = Array.from(
+          new Set(
             participants
-              .map((participant: any) => participant.booking_id)
-              .filter((bookingId: unknown): bookingId is string => typeof bookingId === "string" && bookingId.length > 0),
+              .map((participant: { booking_id?: string | null }) => participant.booking_id)
+              .filter((bookingId): bookingId is string => typeof bookingId === "string" && bookingId.length > 0),
           ),
-        ];
+        );
         const linkedParticipantInvoiceTotal = uniqueParticipantBookingIds.reduce(
           (sum: number, bookingId: string) =>
             sum + (participantBookingTotalById.get(bookingId) ?? 0),
