@@ -9,7 +9,7 @@ export type ProviderActivityFeedItem = {
   type: string;
   description: string;
   created_at: string;
-  data?: { booking_id?: string; client_name?: string; amount?: number };
+  data?: { booking_id?: string; product_order_id?: string; client_name?: string; amount?: number };
 };
 
 export type ProviderActivityFeedPayload = {
@@ -22,6 +22,7 @@ export type ProviderActivityFeedPayload = {
 type LedgerFetchRow = {
   id: string;
   transaction_type: string;
+  description?: string | null;
   amount?: number | null;
   net?: number | null;
   created_at: string;
@@ -67,9 +68,9 @@ export async function buildProviderActivityFeed(
 
   const ledgerQuery = supabaseAdmin
     .from("finance_transactions")
-    .select("id, transaction_type, amount, net, created_at, booking_id, product_order_id")
+    .select("id, transaction_type, description, amount, net, created_at, booking_id, product_order_id")
     .eq("provider_id", providerId)
-    .in("transaction_type", ["provider_earnings", "payout"])
+    .in("transaction_type", ["provider_earnings", "payout", "tip", "travel_fee", "cancellation_fee"])
     .gte("created_at", since.toISOString())
     .order("created_at", { ascending: false })
     .limit(limit * mult);
@@ -77,7 +78,9 @@ export async function buildProviderActivityFeed(
   const [{ data: bookingRows }, { data: ledgerRaw }] = await Promise.all([bookingsQuery, ledgerQuery]);
 
   const rawLedger = (ledgerRaw ?? []) as LedgerFetchRow[];
-  let earningsRows = rawLedger.filter((r) => r.transaction_type === "provider_earnings");
+  let earningsRows = rawLedger.filter((r) =>
+    ["provider_earnings", "tip", "travel_fee", "cancellation_fee"].includes(r.transaction_type),
+  );
   const payoutRows = rawLedger.filter((r) => r.transaction_type === "payout");
 
   if (locationId && earningsRows.length > 0) {
@@ -136,12 +139,41 @@ export async function buildProviderActivityFeed(
     const signed =
       displayNet > 0 ? `+${displayNet.toFixed(2)}` : displayNet.toFixed(2);
 
+    let type = "ledger_earnings";
+    let description = `Earnings recognized · net ${signed}`;
+    if (isPayout) {
+      type = "payout_sent";
+      description = `Payout · net ${signed}`;
+    } else if (p.transaction_type === "tip") {
+      type = "tip_recognized";
+      description = `Tip recognized · net ${signed}`;
+    } else if (p.transaction_type === "travel_fee") {
+      type = "travel_fee_recognized";
+      description = `Travel fee recognized · net ${signed}`;
+    } else if (p.transaction_type === "cancellation_fee") {
+      type = "cancellation_fee_recognized";
+      description = `Cancellation fee recognized · net ${signed}`;
+    } else if ((p.description || "").toLowerCase().includes("additional charge")) {
+      type = "additional_charge_earnings";
+      description = `Additional charge earnings recognized · net ${signed}`;
+    } else if (p.product_order_id) {
+      type = "product_order_earnings";
+      description = `Product order earnings recognized · net ${signed}`;
+    } else if (p.booking_id) {
+      type = "booking_earnings";
+      description = `Appointment earnings recognized · net ${signed}`;
+    }
+
     activities.push({
       id: `ledger-${p.id}`,
-      type: isPayout ? "payout_sent" : "ledger_earnings",
-      description: isPayout ? `Payout · net ${signed}` : `Earnings recognized · net ${signed}`,
+      type,
+      description,
       created_at: p.created_at,
-      data: { booking_id: p.booking_id ?? undefined, amount: displayNet },
+      data: {
+        booking_id: p.booking_id ?? undefined,
+        product_order_id: p.product_order_id ?? undefined,
+        amount: displayNet,
+      },
     });
   });
 
@@ -166,7 +198,7 @@ export async function buildProviderActivityFeed(
     bookings:
       "Rows reflect bookings whose created_at falls in the window; description uses current status (e.g. completed vs new).",
     ledger:
-      "Earnings rows (provider_earnings) are branch-scoped when a location is selected. Payout rows in the window are always included (payouts are not tied to a single branch in this feed).",
+      "Earnings rows (provider_earnings, tip, travel_fee, cancellation_fee) are branch-scoped when a location is selected. Payout rows in the window are always included (payouts are not tied to a single branch in this feed).",
     reviews:
       locationId != null
         ? "Reviews are still shown organization-wide (no reliable branch filter on this feed)."

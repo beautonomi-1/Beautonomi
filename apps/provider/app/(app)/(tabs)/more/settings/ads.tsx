@@ -348,7 +348,9 @@ export default function AdsSettingsScreen() {
             if (!rawUrl.startsWith("http")) return false;
             const u = new URL(rawUrl);
             return (
-              u.pathname.includes("/provider/settings/ads/payment-return") && u.searchParams.get("success") === "1"
+              u.pathname.includes("/provider/settings/ads/payment-return") &&
+              u.searchParams.get("success") === "1" &&
+              u.searchParams.get("confirmed") === "1"
             );
           } catch {
             return false;
@@ -367,6 +369,11 @@ export default function AdsSettingsScreen() {
         },
       });
       await loadAll();
+      // Payment confirmation and campaign activation are server-side mutations.
+      // A short follow-up refresh prevents transient stale cards right after checkout.
+      setTimeout(() => {
+        void loadAll();
+      }, 1200);
     },
     [adsPaystackCheckout, loadAll],
   );

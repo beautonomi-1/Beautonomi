@@ -159,7 +159,7 @@ export async function getProviderDashboardResponse(request: NextRequest) {
     // by checking if they're related to bookings with the selected location
     const financeQuery = supabaseAdmin
       .from("finance_transactions")
-      .select("transaction_type, amount, net, created_at, booking_id, product_order_id")
+      .select("transaction_type, amount, net, description, created_at, booking_id, product_order_id")
       .eq("provider_id", providerId);
     
     // If location filter is provided, we'll need to filter finance transactions
@@ -304,6 +304,7 @@ export async function getProviderDashboardResponse(request: NextRequest) {
       createdDate: new Date(r.created_at),
       netValue: Number(r.net ?? r.amount ?? 0),
       amountValue: Number(r.amount || 0),
+      descriptionText: String(r.description || ""),
     }));
 
     // Optimized sum functions - single pass with pre-parsed data
@@ -329,9 +330,40 @@ export async function getProviderDashboardResponse(request: NextRequest) {
       return sum;
     };
 
-    // Total provider revenue is the provider earnings stream (includes bookings, add-ons, gift cards, memberships, and refund impacts).
-    const providerEarningsTotal = sumNet(["provider_earnings"]);
-    const totalRevenue = providerEarningsTotal;
+    const recognizedEarningTypes = new Set([
+      "provider_earnings",
+      "tip",
+      "travel_fee",
+      "cancellation_fee",
+    ]);
+    const recognizedRowValue = (row: { transaction_type: string; netValue: number; amountValue: number }) => {
+      if (row.transaction_type === "travel_fee") return row.amountValue;
+      return row.netValue;
+    };
+
+    // Provider earnings by source (service bookings vs product orders vs other).
+    const providerEarningsRows = parsedRows.filter((r) => r.transaction_type === "provider_earnings");
+    const additionalChargeEarningsTotal = providerEarningsRows
+      .filter((r) => r.descriptionText.toLowerCase().includes("additional charge"))
+      .reduce((sum, r) => sum + r.netValue, 0);
+    const bookingEarningsTotal = providerEarningsRows
+      .filter((r) => Boolean(r.booking_id))
+      .reduce((sum, r) => sum + r.netValue, 0);
+    const productOrderEarningsTotal = providerEarningsRows
+      .filter((r) => Boolean(r.product_order_id))
+      .reduce((sum, r) => sum + r.netValue, 0);
+    const otherEarningsTotal = providerEarningsRows
+      .filter((r) => !r.booking_id && !r.product_order_id)
+      .reduce((sum, r) => sum + r.netValue, 0);
+    const providerEarningsTotal = providerEarningsRows.reduce((sum, r) => sum + r.netValue, 0);
+    const serviceEarningsTotal = bookingEarningsTotal - additionalChargeEarningsTotal;
+
+    // Recognized revenue includes provider earnings + tips + travel fees + cancellation fees.
+    const recognizedRevenueTotal = parsedRows.reduce((sum, r) => {
+      if (!recognizedEarningTypes.has(r.transaction_type)) return sum;
+      return sum + recognizedRowValue(r);
+    }, 0);
+    const totalRevenue = recognizedRevenueTotal;
 
     // Gross sales (for reporting) — does not change provider net directly here.
     const giftCardSalesTotal = sumAmount(["gift_card_sale"]);
@@ -372,10 +404,21 @@ export async function getProviderDashboardResponse(request: NextRequest) {
       }
     }
 
-    const revenueToday = sumNet(["provider_earnings"], startOfToday);
-    const revenueThisWeek = sumNet(["provider_earnings"], startOfWeek);
-    const revenueThisMonth = sumNet(["provider_earnings"], startOfMonth);
-    const revenueLastMonth = sumNet(["provider_earnings"], startOfLastMonth, endOfLastMonth);
+    const sumRecognizedRevenue = (start?: Date, end?: Date) => {
+      let sum = 0;
+      for (const r of parsedRows) {
+        if (!recognizedEarningTypes.has(r.transaction_type)) continue;
+        if (start && r.createdDate < start) continue;
+        if (end && r.createdDate > end) continue;
+        sum += recognizedRowValue(r);
+      }
+      return sum;
+    };
+
+    const revenueToday = sumRecognizedRevenue(startOfToday);
+    const revenueThisWeek = sumRecognizedRevenue(startOfWeek);
+    const revenueThisMonth = sumRecognizedRevenue(startOfMonth);
+    const revenueLastMonth = sumRecognizedRevenue(startOfLastMonth, endOfLastMonth);
 
     const revenueGrowth =
       revenueLastMonth !== 0
@@ -442,7 +485,12 @@ export async function getProviderDashboardResponse(request: NextRequest) {
             type: string;
             description: string;
             created_at: string;
-            data?: { booking_id?: string; client_name?: string; amount?: number };
+            data?: {
+              booking_id?: string;
+              product_order_id?: string;
+              client_name?: string;
+              amount?: number;
+            };
           }>;
           today_bookings: Array<{
             id: string;
@@ -509,10 +557,10 @@ export async function getProviderDashboardResponse(request: NextRequest) {
         revenueByDay.set(format(d, "yyyy-MM-dd"), 0);
       }
       for (const r of parsedRows) {
-        if (r.transaction_type !== "provider_earnings") continue;
+        if (!recognizedEarningTypes.has(r.transaction_type)) continue;
         if (r.createdDate < weekStart || r.createdDate > now) continue;
         const key = formatInTz(r.createdDate, "yyyy-MM-dd", providerTz);
-        revenueByDay.set(key, (revenueByDay.get(key) ?? 0) + r.netValue);
+        revenueByDay.set(key, (revenueByDay.get(key) ?? 0) + recognizedRowValue(r));
       }
       const weeklyRevenue = Array.from(revenueByDay.entries()).map(([day, revenue]) => ({ day, revenue }));
 
@@ -817,7 +865,12 @@ export async function getProviderDashboardResponse(request: NextRequest) {
       pending_payments_count: pendingPaymentsCount,
       
       // Revenue streams
-      service_earnings_total: providerEarningsTotal,
+      service_earnings_total: serviceEarningsTotal,
+      booking_earnings_total: bookingEarningsTotal,
+      product_order_earnings_total: productOrderEarningsTotal,
+      additional_charge_earnings_total: additionalChargeEarningsTotal,
+      other_earnings_total: otherEarningsTotal,
+      recognized_earnings_total: recognizedRevenueTotal,
       tips_total: tipsTotal,
       tips_this_month: tipsThisMonth,
       gift_card_sales_total: giftCardSalesTotal,

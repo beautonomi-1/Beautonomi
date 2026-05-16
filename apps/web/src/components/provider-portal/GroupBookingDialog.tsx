@@ -406,6 +406,26 @@ export function GroupBookingDialog({
         duration_minutes: (p as any).duration_minutes || booking.duration_minutes,
         addons: Array.isArray((p as any).addons) ? (p as any).addons : [],
       })));
+      const existingProducts = Array.isArray((booking as any).products)
+        ? ((booking as any).products as any[]).map((product, index) => {
+            const quantity = Number(product?.quantity ?? 1) || 1;
+            const unitPrice = Number(product?.unit_price ?? product?.unitPrice ?? 0) || 0;
+            const totalPrice =
+              Number(product?.total_price ?? product?.totalPrice ?? 0) || unitPrice * quantity;
+            return {
+              id: String(product?.id ?? `existing-product-${index}`),
+              productId: String(product?.product_id ?? product?.productId ?? ""),
+              productName: String(product?.product_name ?? product?.productName ?? "Product"),
+              productVariantId: product?.product_variant_id ?? product?.productVariantId ?? null,
+              productVariantName:
+                product?.product_variant_name ?? product?.productVariantName ?? undefined,
+              quantity,
+              unitPrice,
+              totalPrice,
+            };
+          })
+        : [];
+      setGroupProducts(existingProducts);
     } else {
       setFormData({
         title: "",

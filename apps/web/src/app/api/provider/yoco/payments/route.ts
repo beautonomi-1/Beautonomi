@@ -131,7 +131,34 @@ export async function POST(request: Request) {
       .eq("provider_id", providerId)
       .single();
 
-    if (!device) {
+    type DeviceRow = {
+      id: string;
+      name?: string;
+      yoco_device_id?: string;
+      is_active?: boolean;
+      total_transactions?: number;
+      total_amount?: number;
+    };
+    type LegacyTerminalRow = {
+      id: string;
+      device_id?: string | null;
+      device_name?: string | null;
+      active?: boolean | null;
+      secret_key?: string | null;
+      api_key?: string | null;
+    };
+    type IntegrationRow = { secret_key?: string; public_key?: string; is_enabled?: boolean };
+
+    const { data: legacyTerminal } = !device
+      ? await supabase
+          .from("provider_yoco_terminals")
+          .select("id, device_id, device_name, active, secret_key, api_key")
+          .eq("id", validationResult.data.device_id)
+          .eq("provider_id", providerId)
+          .maybeSingle()
+      : { data: null as LegacyTerminalRow | null };
+
+    if (!device && !legacyTerminal) {
       return NextResponse.json(
         {
           data: null,
@@ -144,10 +171,19 @@ export async function POST(request: Request) {
       );
     }
 
-    type DeviceRow = { id: string; name?: string; yoco_device_id?: string; is_active?: boolean; total_transactions?: number; total_amount?: number };
-    type IntegrationRow = { secret_key?: string; public_key?: string; is_enabled?: boolean };
-    const deviceRow = device as DeviceRow;
-    if (!deviceRow.is_active) {
+    const deviceRow = (device as DeviceRow | null) ?? null;
+    const legacyRow = (legacyTerminal as LegacyTerminalRow | null) ?? null;
+    const usingLegacyTerminal = !deviceRow && !!legacyRow;
+    const deviceName = usingLegacyTerminal
+      ? String(legacyRow?.device_name || "Yoco terminal")
+      : String(deviceRow?.name || "Yoco device");
+    const yocoDeviceId = usingLegacyTerminal
+      ? String(legacyRow?.device_id || "")
+      : String(deviceRow?.yoco_device_id || "");
+    const billingDeviceId = usingLegacyTerminal ? null : (deviceRow?.id ?? null);
+    const isDeviceActive = usingLegacyTerminal ? legacyRow?.active !== false : deviceRow?.is_active === true;
+
+    if (!isDeviceActive) {
       return NextResponse.json(
         {
           data: null,
@@ -159,6 +195,18 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+    if (!yocoDeviceId) {
+      return NextResponse.json(
+        {
+          data: null,
+          error: {
+            message: "This device is missing a Yoco device id. Re-save the terminal in Yoco settings and try again.",
+            code: "DEVICE_NOT_CONFIGURED",
+          },
+        },
+        { status: 400 },
+      );
+    }
 
     const { data: integration } = await supabase
       .from("provider_yoco_integrations")
@@ -167,7 +215,11 @@ export async function POST(request: Request) {
       .single();
 
     const integrationRow = integration as IntegrationRow | null;
-    if (!integrationRow || !integrationRow.is_enabled) {
+    const canUseIntegrationSecret = Boolean(integrationRow?.is_enabled && integrationRow?.secret_key);
+    const legacySecretKey = usingLegacyTerminal
+      ? String(legacyRow?.secret_key || legacyRow?.api_key || "").trim()
+      : "";
+    if (!canUseIntegrationSecret && !legacySecretKey) {
       return NextResponse.json(
         {
           data: null,
@@ -180,8 +232,9 @@ export async function POST(request: Request) {
       );
     }
 
-    const secretKey = integrationRow.secret_key;
-    const yocoDeviceId = deviceRow.yoco_device_id;
+    const secretKey = canUseIntegrationSecret
+      ? String(integrationRow?.secret_key ?? "")
+      : legacySecretKey;
 
     // §Provider-launch (audit 2026-04): preflight the physical / Web POS
     // device with Yoco before we create a payment. Without this, a
@@ -323,7 +376,7 @@ export async function POST(request: Request) {
     // Yoco expects amount as Money object and metadata values as strings (API reference)
     const metadataRecord: Record<string, string> = {
       provider_id: providerId,
-      device_id: device.id,
+      device_id: validationResult.data.device_id,
       processed_by: auth.user.id,
       ...(appointmentId ? { appointment_id: appointmentId } : {}),
       ...(validationResult.data.sale_id ? { sale_id: validationResult.data.sale_id } : {}),
@@ -389,7 +442,7 @@ export async function POST(request: Request) {
       .from("provider_yoco_payments")
       .insert({
         provider_id: providerId,
-        device_id: device.id,
+        device_id: billingDeviceId,
         yoco_payment_id: yocoId,
         yoco_device_id: yocoDeviceId,
         amount: amountInCents,
@@ -435,8 +488,8 @@ export async function POST(request: Request) {
               id: existing.id,
               yoco_payment_id: existing.yoco_payment_id,
               reference: existing.yoco_payment_id,
-              device_id: existing.device_id,
-              device_name: device.name,
+              device_id: existing.device_id ?? validationResult.data.device_id,
+              device_name: deviceName,
               amount: existing.amount,
               amount_cents: existing.amount,
               currency: existing.currency,
@@ -471,22 +524,24 @@ export async function POST(request: Request) {
       );
     }
 
-    await supabase
-      .from("provider_yoco_devices")
-      .update({
-        last_used: new Date().toISOString(),
-        total_transactions: (deviceRow.total_transactions ?? 0) + 1,
-        total_amount: (deviceRow.total_amount ?? 0) + amountInCents,
-      })
-      .eq("id", device.id);
+    if (!usingLegacyTerminal && deviceRow?.id) {
+      await supabase
+        .from("provider_yoco_devices")
+        .update({
+          last_used: new Date().toISOString(),
+          total_transactions: (deviceRow.total_transactions ?? 0) + 1,
+          total_amount: (deviceRow.total_amount ?? 0) + amountInCents,
+        })
+        .eq("id", deviceRow.id);
+    }
 
     return NextResponse.json({
       data: {
         id: payment.id,
         yoco_payment_id: yocoId,
         reference: yocoId,
-        device_id: device.id,
-        device_name: device.name,
+        device_id: billingDeviceId ?? validationResult.data.device_id,
+        device_name: deviceName,
         amount: amountInCents,
         amount_cents: amountInCents,
         currency,

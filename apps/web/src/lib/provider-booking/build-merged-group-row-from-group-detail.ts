@@ -23,6 +23,7 @@ type GroupPaymentRollup = {
   walletGiftCoverage: number;
   coverage: number;
   balanceDue: number;
+  tipAmount: number;
   paymentStatus: string;
   hasRefundStatus: boolean;
 };
@@ -42,6 +43,7 @@ export function aggregateGroupChildPaymentRollup(
     walletGiftCoverage: 0,
     coverage: 0,
     balanceDue: 0,
+    tipAmount: 0,
     paymentStatus: "pending",
     hasRefundStatus: false,
   };
@@ -76,6 +78,7 @@ export function aggregateGroupChildPaymentRollup(
       walletGiftCoverage: acc.walletGiftCoverage + walletGiftCoverage,
       coverage: acc.coverage + childCoverage,
       balanceDue: acc.balanceDue + childBalanceDue,
+      tipAmount: acc.tipAmount + Math.max(0, Number(child?.tip_amount ?? 0)),
       paymentStatus: acc.paymentStatus,
       hasRefundStatus:
         acc.hasRefundStatus ||
@@ -141,13 +144,14 @@ export function buildMergedGroupRowFromGroupDetailApi(
   const productTotal = products.reduce((sum: number, p: any) => sum + (Number(p.total_price) || 0), 0);
   const total = Number(group.total_price ?? 0) || participantTotal + productTotal + (Number(group.travel_fee) || 0);
   const payment = aggregateGroupChildPaymentRollup(String(group.id ?? ""), group.bookings);
+  const displayTotal = payment.totalAmount > 0 ? Math.max(total, payment.totalAmount) : total;
   const balanceDue = Math.max(0, payment.totalAmount > 0 ? payment.balanceDue : total - payment.coverage);
   const groupPaymentStatus =
     payment.hasRefundStatus && payment.totalPaid > 0 && payment.totalRefunded >= payment.totalPaid - 0.01
       ? "refunded"
       : payment.hasRefundStatus
         ? "partially_refunded"
-        : total > 0 && balanceDue <= 0
+        : displayTotal > 0 && balanceDue <= 0
           ? "paid"
           : payment.totalPaid > 0 || payment.walletGiftCoverage > 0
             ? "partially_paid"
@@ -203,7 +207,7 @@ export function buildMergedGroupRowFromGroupDetailApi(
     addons: [],
     package_id: group.package_id || null,
     package_name: null,
-    subtotal: Math.max(0, total - (Number(group.travel_fee) || 0)),
+    subtotal: Math.max(0, displayTotal - (Number(group.travel_fee) || 0)),
     discount_amount: 0,
     discount_code: null,
     discount_reason: null,
@@ -211,8 +215,8 @@ export function buildMergedGroupRowFromGroupDetailApi(
     tax_rate: 0,
     service_fee_percentage: 0,
     service_fee_amount: 0,
-    tip_amount: 0,
-    total_amount: total,
+    tip_amount: Math.max(0, Number(payment.tipAmount ?? 0)),
+    total_amount: displayTotal,
     total_paid: payment.totalPaid,
     total_refunded: payment.totalRefunded,
     wallet_amount: Math.max(0, payment.walletGiftCoverage),

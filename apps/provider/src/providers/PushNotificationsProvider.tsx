@@ -406,6 +406,17 @@ function usePushRegistration() {
           },
         );
         if (res.error) {
+          const status = (res.error as { status?: number }).status;
+          if (status === 401 || status === 403) {
+            // During fresh provider signup the user can still be `customer` until
+            // onboarding completes/upgrades role. Skip noisy hard errors here.
+            addBreadcrumb(
+              "Device register skipped (role not ready)",
+              "push_notifications",
+              { code: res.error.code, source, status },
+            );
+            return;
+          }
           if (isTransientApiFailure(res.error)) {
             addBreadcrumb(
               "Device register skipped (transient network)",

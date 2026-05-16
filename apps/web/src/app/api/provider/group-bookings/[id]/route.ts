@@ -13,6 +13,10 @@ import {
 } from "@/lib/bookings/group-booking-package-pricing";
 import { computeWalletGiftCoverageOutstanding } from "@/lib/bookings/provider-booking-finance";
 
+function normalizeGroupBookingId(rawId: string): string {
+  return rawId.startsWith("group:") ? rawId.slice("group:".length) : rawId;
+}
+
 /**
  * GET /api/provider/group-bookings/[id]
  */
@@ -22,7 +26,8 @@ export async function GET(
 ) {
   try {
     const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
-    const { id } = await params;
+    const { id: rawId } = await params;
+    const id = normalizeGroupBookingId(rawId);
     const supabase = await getSupabaseServer(request);
     const admin = getSupabaseAdmin();
     const providerId = await getProviderIdForUser(user.id, supabase);
@@ -37,7 +42,7 @@ export async function GET(
         *,
         bookings:bookings(
           id, booking_number, ref_number, status, scheduled_at, total_amount,
-          total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status,
+          total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status, tip_amount,
           additional_charges(amount,status),
           customer:users!bookings_customer_id_fkey(id, full_name, email, phone, avatar_url)
         ),
@@ -91,18 +96,77 @@ export async function GET(
             total_paid: Number(booking.total_paid ?? 0),
             total_refunded: Number(booking.total_refunded ?? 0),
             wallet_gift_coverage: walletGiftCoverage,
+            tip_amount: Number(booking.tip_amount ?? 0),
           },
         ];
       }),
     );
-    const participants = (((groupBooking as any).booking_participants ?? []) as any[]).map((participant) => ({
-      ...participant,
-      ...(participant.booking_id ? bookingPaymentById.get(participant.booking_id) ?? {} : {}),
-    }));
+    const participants = (((groupBooking as any).booking_participants ?? []) as any[]).map(
+      (participant) => {
+        const payment = participant.booking_id
+          ? bookingPaymentById.get(participant.booking_id)
+          : null;
+        return {
+          id: participant.id,
+          booking_id: participant.booking_id ?? null,
+          group_booking_id: id,
+          client_name: participant.participant_name || "Guest",
+          client_email: participant.participant_email || null,
+          client_phone: participant.participant_phone || null,
+          is_primary_contact: Boolean(participant.is_primary_contact),
+          service_id: participant.service_id || "",
+          service_name: participant.service_name || "—",
+          price: Number(participant.price) || 0,
+          duration_minutes: participant.duration_minutes ?? null,
+          addons: Array.isArray(participant.addons) ? participant.addons : [],
+          checked_in: Boolean(participant.checked_in_at),
+          checked_in_time: participant.checked_in_at ?? null,
+          checked_out: Boolean(participant.checked_out_at),
+          checked_out_time: participant.checked_out_at ?? null,
+          payment_status: payment?.payment_status ?? "pending",
+          paid: payment?.paid ?? false,
+          balance_due: payment?.balance_due ?? Math.max(0, Number(participant.price) || 0),
+          total_paid: payment?.total_paid ?? 0,
+          total_refunded: payment?.total_refunded ?? 0,
+          wallet_gift_coverage: payment?.wallet_gift_coverage ?? 0,
+          tip_amount: payment?.tip_amount ?? 0,
+        };
+      },
+    );
+    const linkedParticipantInvoiceTotal = (((groupBooking as any).bookings ?? []) as any[])
+      .filter((booking: any) => booking?.status !== "cancelled" && booking?.status !== "no_show")
+      .reduce((sum: number, booking: any) => sum + (Number(booking?.total_amount ?? 0) || 0), 0);
+    const participantServiceTotal = participants.reduce(
+      (sum: number, participant: any) => sum + (Number(participant?.price ?? 0) || 0),
+      0,
+    );
+    const productTotal = Array.isArray((groupBooking as any).products)
+      ? ((groupBooking as any).products as any[]).reduce(
+          (sum: number, product: any) => sum + groupProductLineTotal(product),
+          0,
+        )
+      : 0;
+    const travelFee = (groupBooking as any).location_type === "at_home"
+      ? Math.max(0, Number((groupBooking as any).travel_fee ?? 0))
+      : 0;
+    const sessionEstimateTotal = groupPackageTotal({
+      participantTotal: participantServiceTotal,
+      productTotal,
+      travelFee,
+      packageDiscount: 0,
+    });
 
     return successResponse({
       ...groupBooking,
+      total_price:
+        linkedParticipantInvoiceTotal > 0
+          ? Math.max(
+              linkedParticipantInvoiceTotal,
+              Number((groupBooking as any).total_price ?? 0) || sessionEstimateTotal,
+            )
+          : Number((groupBooking as any).total_price ?? 0) || sessionEstimateTotal,
       booking_participants: participants,
+      participants,
       package_name: pkg?.name ?? null,
     });
   } catch (error) {
@@ -119,7 +183,8 @@ export async function PATCH(
 ) {
   try {
     const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
-    const { id } = await params;
+    const { id: rawId } = await params;
+    const id = normalizeGroupBookingId(rawId);
     const body = await request.json();
     const supabase = await getSupabaseServer(request);
     const admin = getSupabaseAdmin();
@@ -419,7 +484,8 @@ export async function POST(
 ) {
   try {
     const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
-    const { id } = await params;
+    const { id: rawId } = await params;
+    const id = normalizeGroupBookingId(rawId);
     const action = new URL(request.url).searchParams.get("action") ?? "";
     const body = await request.json().catch(() => ({}));
     const supabase = await getSupabaseServer(request);
@@ -456,7 +522,7 @@ export async function POST(
       if (bookingsError) throw bookingsError;
       const { data } = await admin
         .from("group_bookings")
-        .update({ updated_at: now })
+        .update({ status: "started", updated_at: now })
         .eq("id", id)
         .eq("provider_id", providerId)
         .select()
@@ -567,7 +633,8 @@ export async function DELETE(
 ) {
   try {
     const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
-    const { id } = await params;
+    const { id: rawId } = await params;
+    const id = normalizeGroupBookingId(rawId);
     const body = await request.json().catch(() => ({} as Record<string, unknown>));
     const cancellationReasonFromClient =
       typeof body?.cancellation_reason === "string" && body.cancellation_reason.trim().length > 0

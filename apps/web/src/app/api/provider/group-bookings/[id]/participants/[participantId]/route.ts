@@ -14,6 +14,10 @@ import {
   validateAndPriceGroupPackage,
 } from "@/lib/bookings/group-booking-package-pricing";
 
+function normalizeGroupBookingId(rawId: string): string {
+  return rawId.startsWith("group:") ? rawId.slice("group:".length) : rawId;
+}
+
 async function recalculateGroupBookingTotal(admin: ReturnType<typeof getSupabaseAdmin>, groupId: string) {
   const [{ data: group }, { data: participantRows }] = await Promise.all([
     admin
@@ -72,7 +76,8 @@ export async function DELETE(
     );
     const supabase = await getSupabaseServer(request);
     const admin = getSupabaseAdmin();
-    const { id: groupId, participantId } = await params;
+    const { id: rawGroupId, participantId } = await params;
+    const groupId = normalizeGroupBookingId(rawGroupId);
 
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) {

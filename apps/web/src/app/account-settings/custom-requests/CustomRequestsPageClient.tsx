@@ -320,7 +320,17 @@ export default function CustomRequestsPageClient({
 
   const [depositChoiceOfferId, setDepositChoiceOfferId] = useState<string | null>(null);
   const [depositQuote, setDepositQuote] = useState<{
-    pricing?: { totalAmount?: number };
+    pricing?: {
+      subtotal?: number;
+      travelFee?: number;
+      promotionDiscountAmount?: number;
+      membershipDiscountAmount?: number;
+      loyaltyDiscountAmount?: number;
+      taxAmount?: number;
+      serviceFeeAmount?: number;
+      tipAmount?: number;
+      totalAmount?: number;
+    };
     deposit?: { required?: boolean; percentage?: number; deposit_amount?: number; full_total?: number };
   } | null>(null);
   const [depositQuoteLoading, setDepositQuoteLoading] = useState(false);
@@ -1135,6 +1145,56 @@ export default function CustomRequestsPageClient({
             ) : (
               <>
                 {/* Pay in Full — primary recommended action */}
+                {depositQuote?.pricing ? (
+                  <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 p-3 text-sm space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-600">Service subtotal</span>
+                      <span className="font-medium text-gray-900">{formatMoney(Number(depositQuote.pricing.subtotal ?? 0), depositOfferCurrency)}</span>
+                    </div>
+                    {Number(depositQuote.pricing.travelFee ?? 0) > 0 && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-600">Travel fee</span>
+                        <span className="font-medium text-gray-900">{formatMoney(Number(depositQuote.pricing.travelFee ?? 0), depositOfferCurrency)}</span>
+                      </div>
+                    )}
+                    {Number(depositQuote.pricing.promotionDiscountAmount ?? 0) > 0 && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-emerald-700">Promotion discount</span>
+                        <span className="font-medium text-emerald-700">-{formatMoney(Number(depositQuote.pricing.promotionDiscountAmount ?? 0), depositOfferCurrency)}</span>
+                      </div>
+                    )}
+                    {Number(depositQuote.pricing.membershipDiscountAmount ?? 0) > 0 && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-emerald-700">Membership discount</span>
+                        <span className="font-medium text-emerald-700">-{formatMoney(Number(depositQuote.pricing.membershipDiscountAmount ?? 0), depositOfferCurrency)}</span>
+                      </div>
+                    )}
+                    {Number(depositQuote.pricing.loyaltyDiscountAmount ?? 0) > 0 && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-emerald-700">Loyalty discount</span>
+                        <span className="font-medium text-emerald-700">-{formatMoney(Number(depositQuote.pricing.loyaltyDiscountAmount ?? 0), depositOfferCurrency)}</span>
+                      </div>
+                    )}
+                    {Number(depositQuote.pricing.taxAmount ?? 0) > 0 && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-600">Tax</span>
+                        <span className="font-medium text-gray-900">{formatMoney(Number(depositQuote.pricing.taxAmount ?? 0), depositOfferCurrency)}</span>
+                      </div>
+                    )}
+                    {Number(depositQuote.pricing.serviceFeeAmount ?? 0) > 0 && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-600">Platform fee</span>
+                        <span className="font-medium text-gray-900">{formatMoney(Number(depositQuote.pricing.serviceFeeAmount ?? 0), depositOfferCurrency)}</span>
+                      </div>
+                    )}
+                    {Number(depositQuote.pricing.tipAmount ?? 0) > 0 && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-600">Tip</span>
+                        <span className="font-medium text-gray-900">{formatMoney(Number(depositQuote.pricing.tipAmount ?? 0), depositOfferCurrency)}</span>
+                      </div>
+                    )}
+                  </div>
+                ) : null}
                 <div className="rounded-xl border-2 border-primary bg-primary/5 p-4">
                   <div className="flex items-center justify-between mb-1">
                     <span className="font-semibold text-primary text-sm">Pay in Full</span>

@@ -114,8 +114,16 @@ export function ProviderPortalGate({ children }: { children: React.ReactNode }) 
           return;
         }
 
+        // Customer-role users entering from provider login should continue to
+        // onboarding rather than bouncing to the home page.
+        if (portal === "customer") {
+          clearGateCache();
+          router.replace("/provider/onboarding");
+          return;
+        }
+
         // Hard deny: the server says this user shouldn't be in the provider portal.
-        if (portal === "customer" || portal === "admin" || portal === "suspended") {
+        if (portal === "admin" || portal === "suspended") {
           clearGateCache();
           if (portal === "suspended") {
             router.replace("/account-suspended");

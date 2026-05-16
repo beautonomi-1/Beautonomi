@@ -272,9 +272,22 @@ export default function ProviderAdsPage() {
       toast.success(
         "Payment confirmed. Your budget should appear on the campaign below; use Activate for CPC when you are ready to go live.",
       );
-      loadCampaigns();
-      loadPerformance();
+      void loadCampaigns();
+      void loadPerformance();
+      // Defensive refresh retries to avoid transient stale status immediately post-verify.
+      const t1 = window.setTimeout(() => {
+        void loadCampaigns();
+        void loadPerformance();
+      }, 1200);
+      const t2 = window.setTimeout(() => {
+        void loadCampaigns();
+        void loadPerformance();
+      }, 2600);
       window.history.replaceState({}, "", "/provider/settings/ads");
+      return () => {
+        window.clearTimeout(t1);
+        window.clearTimeout(t2);
+      };
     }
   }, [searchParams, loadCampaigns, loadPerformance]);
 

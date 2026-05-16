@@ -58,13 +58,17 @@ type GroupReceiptData = {
   receipt_footer?: string | null;
 };
 
+function normalizeGroupBookingId(rawId: string): string {
+  return rawId.startsWith("group:") ? rawId.slice("group:".length) : rawId;
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const resolvedParams = await params;
-    const id = resolvedParams.id;
+    const id = normalizeGroupBookingId(resolvedParams.id);
 
     const token = new URL(request.url).searchParams.get("token");
     if (token) {
@@ -77,7 +81,9 @@ export async function GET(
       }
     }
 
-    const upstream = await getGroupReceiptJson(request, { params: Promise.resolve(resolvedParams) });
+    const upstream = await getGroupReceiptJson(request, {
+      params: Promise.resolve({ id }),
+    });
     if (!upstream.ok) {
       const text = await upstream.text();
       return new NextResponse(text, {

@@ -35,6 +35,11 @@ export interface ProviderDashboardStats {
   pending_payments_count: number;
 
   service_earnings_total: number;
+  booking_earnings_total?: number;
+  product_order_earnings_total?: number;
+  additional_charge_earnings_total?: number;
+  other_earnings_total?: number;
+  recognized_earnings_total?: number;
   tips_total?: number;
   tips_this_month?: number;
   gift_card_sales_total: number;

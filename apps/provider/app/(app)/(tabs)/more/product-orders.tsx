@@ -28,6 +28,7 @@ import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
+import { YocoPaymentSheet } from "@/components/YocoPaymentSheet";
 import { formatCurrency } from "@/lib/format";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { twStyle } from "@/lib/twStyle";
@@ -264,6 +265,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
   const [recordPaymentSheetOpen, setRecordPaymentSheetOpen] = useState(false);
   const [recordPaymentMethod, setRecordPaymentMethod] = useState<"cash" | "card_on_delivery" | "yoco">("cash");
   const [recordPaymentReference, setRecordPaymentReference] = useState("");
+  const [showYocoPaymentSheet, setShowYocoPaymentSheet] = useState(false);
 
   const pageSize = 50;
   const url = `/api/provider/product-orders?limit=${pageSize}&page=${page}${statusFilter ? `&status=${statusFilter}` : ""}`;
@@ -448,9 +450,9 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
     doUpdateStatus(cancelReasonOrderId, "cancelled", { cancellation_reason: reason });
   }, [cancelReason, cancelReasonOrderId, doUpdateStatus]);
 
-  const handleRecordCollectionPayment = useCallback(async () => {
+  const recordCollectionPayment = useCallback(async (referenceOverride?: string) => {
     if (!activeOrder) return;
-    const reference = recordPaymentReference.trim();
+    const reference = (referenceOverride ?? recordPaymentReference).trim();
     if (recordPaymentMethod === "yoco" && !reference) {
       Alert.alert("Reference required", "Enter the Yoco reference before recording this payment.");
       return;
@@ -471,10 +473,24 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
     setRecordPaymentSheetOpen(false);
     setRecordPaymentReference("");
     setRecordPaymentMethod("cash");
+    setShowYocoPaymentSheet(false);
     setViewOrder(null);
     setOrderDetail(null);
     refresh();
   }, [activeOrder, postOrderMutation, recordPaymentMethod, recordPaymentReference, refresh]);
+
+  const handleRecordCollectionPayment = useCallback(async () => {
+    await recordCollectionPayment();
+  }, [recordCollectionPayment]);
+
+  const handleYocoCollectionSuccess = useCallback(
+    async (result: { reference: string }) => {
+      setRecordPaymentMethod("yoco");
+      setRecordPaymentReference(result.reference);
+      await recordCollectionPayment(result.reference);
+    },
+    [recordCollectionPayment],
+  );
 
   const handleConfirmShipped = useCallback(() => {
     if (!pendingStatus) return;
@@ -1267,6 +1283,14 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
             style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             accessibilityLabel="Payment reference"
           />
+          {recordPaymentMethod === "yoco" ? (
+            <ActionButton
+              label="Charge on Yoco terminal"
+              onPress={() => setShowYocoPaymentSheet(true)}
+              variant="outline"
+              fullWidth
+            />
+          ) : null}
           <ActionButton
             label={postingOrderMutation ? "Recording…" : "Record payment"}
             onPress={handleRecordCollectionPayment}
@@ -1276,6 +1300,15 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
           />
         </View>
       </BottomSheet>
+
+      <YocoPaymentSheet
+        visible={showYocoPaymentSheet}
+        onClose={() => setShowYocoPaymentSheet(false)}
+        amountCents={Math.round(Number(activeOrder?.total_amount ?? 0) * 100)}
+        currency={activeOrder?.currency ?? currency}
+        description={`Product order ${activeOrder?.order_number ?? activeOrder?.id ?? ""}`}
+        onPaymentSuccess={(result) => void handleYocoCollectionSuccess(result)}
+      />
 
       <BottomSheet
         visible={trackingSheetOpen}

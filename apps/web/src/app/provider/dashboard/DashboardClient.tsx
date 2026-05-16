@@ -547,7 +547,15 @@ export function DashboardClient({
           <div className="space-y-3">
             <div className="flex items-center justify-between cursor-pointer hover:bg-gray-50 rounded p-2 transition-colors" role="button" tabIndex={0} onClick={() => navigateTo("/provider/finance")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") navigateTo("/provider/finance"); }}>
               <span className="text-sm text-gray-600">Service Earnings</span>
-              <span className="text-lg font-semibold text-green-600">{formatCurrency(stats.service_earnings_total || 0, tenantCurrency)}</span>
+              <span className="text-lg font-semibold text-green-600">{formatCurrency(stats.booking_earnings_total ?? stats.service_earnings_total ?? 0, tenantCurrency)}</span>
+            </div>
+            <div className="flex items-center justify-between cursor-pointer hover:bg-gray-50 rounded p-2 transition-colors" role="button" tabIndex={0} onClick={() => navigateTo("/provider/ecommerce/orders")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") navigateTo("/provider/ecommerce/orders"); }}>
+              <span className="text-sm text-gray-600">Product Order Earnings</span>
+              <span className="text-lg font-semibold text-emerald-700">{formatCurrency(stats.product_order_earnings_total || 0, tenantCurrency)}</span>
+            </div>
+            <div className="flex items-center justify-between cursor-pointer hover:bg-gray-50 rounded p-2 transition-colors" role="button" tabIndex={0} onClick={() => navigateTo("/provider/bookings")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") navigateTo("/provider/bookings"); }}>
+              <span className="text-sm text-gray-600">Additional Charge Earnings</span>
+              <span className="text-lg font-semibold text-teal-700">{formatCurrency(stats.additional_charge_earnings_total || 0, tenantCurrency)}</span>
             </div>
             <div className="flex items-center justify-between cursor-pointer hover:bg-gray-50 rounded p-2 transition-colors" role="button" tabIndex={0} onClick={() => navigateTo("/provider/finance")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") navigateTo("/provider/finance"); }}>
               <span className="text-sm text-gray-600">Tips</span>
@@ -565,7 +573,17 @@ export function DashboardClient({
               <span className="text-sm text-gray-600">Membership Sales</span>
               <span className="text-lg font-semibold text-indigo-600">{formatCurrency(stats.membership_sales_total || 0, tenantCurrency)}</span>
             </div>
+            {(stats.other_earnings_total ?? 0) > 0 ? (
+              <div className="flex items-center justify-between cursor-pointer hover:bg-gray-50 rounded p-2 transition-colors" role="button" tabIndex={0} onClick={() => navigateTo("/provider/finance")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") navigateTo("/provider/finance"); }}>
+                <span className="text-sm text-gray-600">Other Earnings</span>
+                <span className="text-lg font-semibold text-slate-700">{formatCurrency(stats.other_earnings_total || 0, tenantCurrency)}</span>
+              </div>
+            ) : null}
             <div className="border-t pt-2">
+              <div className="flex items-center justify-between p-2">
+                <span className="text-sm text-gray-800 font-medium">Recognized Earnings Total</span>
+                <span className="text-lg font-semibold text-gray-900">{formatCurrency(stats.recognized_earnings_total ?? stats.revenue_this_month ?? 0, tenantCurrency)}</span>
+              </div>
               <div className="flex items-center justify-between p-2">
                 <span className="text-sm text-red-600">Refunds</span>
                 <span className="text-lg font-semibold text-red-600">-{formatCurrency(stats.refunds_total || 0, tenantCurrency)}</span>

@@ -2227,6 +2227,9 @@ export default function BookCheckoutScreen() {
         setProcessingMessage(t("checkout.openingPaymentPage"));
         let returnedPaymentReference: string | null = data?.payment_reference ?? null;
         if (Platform.OS !== "web") {
+          // Important: close the blocking overlay before opening Paystack WebView.
+          // Two RN modals competing can leave users stuck on "opening payment page".
+          setProcessingPayment(false);
           const paystackReturnUrl = ExpoLinking.createURL("book/paystack");
           const authResult = await paystackHostedCheckout.waitForCheckout(paymentUrl, {
             title: t("checkout.securePaymentTitle", "Secure payment") as string,
@@ -2272,6 +2275,7 @@ export default function BookCheckoutScreen() {
           }
           return;
         }
+        setProcessingPayment(true);
         setProcessingMessage(t("checkout.confirmingPayment"));
         if (saveCard) refreshCards();
 

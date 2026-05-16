@@ -37,13 +37,26 @@ export function PaystackWebViewModal({
 }: PaystackWebViewModalProps) {
   const handledRef = useRef(false);
   const [webKey, setWebKey] = useState(0);
+  const [showSlowHint, setShowSlowHint] = useState(false);
 
   useEffect(() => {
     if (visible && authorizationUrl) {
       handledRef.current = false;
       setWebKey((k) => k + 1);
+      setShowSlowHint(false);
     }
   }, [visible, authorizationUrl]);
+
+  useEffect(() => {
+    if (!visible || !authorizationUrl) {
+      setShowSlowHint(false);
+      return;
+    }
+    const timer = setTimeout(() => {
+      setShowSlowHint(true);
+    }, 8000);
+    return () => clearTimeout(timer);
+  }, [visible, authorizationUrl, webKey]);
 
   const finish = useCallback(
     (outcome: "success" | "cancel" | "closed", url?: string) => {
@@ -104,6 +117,11 @@ export function PaystackWebViewModal({
     finish("closed");
   }, [finish]);
 
+  const retryLoad = useCallback(() => {
+    setShowSlowHint(false);
+    setWebKey((k) => k + 1);
+  }, []);
+
   if (Platform.OS === "web") {
     return null;
   }
@@ -138,6 +156,11 @@ export function PaystackWebViewModal({
             renderLoading={() => (
               <View style={styles.loading}>
                 <ActivityIndicator size="large" color={Colors.primary} />
+                {showSlowHint ? (
+                  <TouchableOpacity onPress={retryLoad} style={styles.retryWrap} accessibilityRole="button">
+                    <Text style={styles.retryText}>Still opening? Tap Retry</Text>
+                  </TouchableOpacity>
+                ) : null}
               </View>
             )}
           />
@@ -166,4 +189,16 @@ const styles = StyleSheet.create({
   title: { flex: 1, textAlign: "center", fontSize: 17, fontWeight: "600", color: Colors.gray[900] },
   webview: { flex: 1 },
   loading: { flex: 1, alignItems: "center", justifyContent: "center" },
+  retryWrap: {
+    marginTop: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: Colors.gray[100],
+  },
+  retryText: {
+    fontSize: 12,
+    color: Colors.gray[700],
+    fontWeight: "600",
+  },
 });

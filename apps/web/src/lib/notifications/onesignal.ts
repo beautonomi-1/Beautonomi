@@ -904,8 +904,13 @@ export async function sendTemplateNotification(
     channelsToSend = [...nonPref, ...allowed];
   }
 
-  // Quiet hours enforcement: suppress push notifications during quiet hours
-  if (channelsToSend.includes("push") && userIds.length > 0) {
+  // Quiet hours enforcement: suppress push notifications during quiet hours,
+  // but never suppress critical transactional templates.
+  if (
+    channelsToSend.includes("push") &&
+    userIds.length > 0 &&
+    !CRITICAL_TRANSACTIONAL_TEMPLATES.has(templateKey)
+  ) {
     try {
       const supabaseAdmin = getSupabaseAdmin();
       const { data: profiles } = await supabaseAdmin

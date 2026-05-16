@@ -1,4 +1,4 @@
-import { Tabs, useRouter, type Router } from "expo-router";
+import { Tabs, useRouter, usePathname, type Router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useMemo, useRef } from "react";
 import { View, Platform, AppState, type ViewStyle } from "react-native";
@@ -12,6 +12,9 @@ import { TAB_BAR_MIN_BOTTOM_INSET, tabBarOuterHeight } from "@/constants/layout"
 import { AppHeader } from "@/components/AppHeader";
 import { authFlowBreadcrumb, isSentryEnabled } from "@/lib/sentry";
 import { useApi } from "@/hooks/useApi";
+import { useNotificationsCount } from "@/providers/NotificationsCountContext";
+import { useProvider } from "@/providers/ProviderContext";
+import { supabase } from "@/lib/supabase/client";
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -77,9 +80,12 @@ function TabIcon({ name, focused }: { name: IconName; focused: boolean }) {
 
 export default function TabsLayout() {
   const router = useRouter();
+  const pathname = usePathname();
   const insets = useSafeAreaInsets();
   const { isTablet } = useResponsive();
   const { t } = useTranslation();
+  const { provider } = useProvider();
+  const { totalUnread: unreadNotifications, refresh: refreshUnreadCount } = useNotificationsCount();
   const { data: navCounts, refresh: refreshNavCounts } = useApi<ProviderNavCounts>(
     "/api/provider/nav-counts",
     { staleTimeMs: 15_000 },
@@ -95,6 +101,7 @@ export default function TabsLayout() {
       Number(navCounts?.pending_bookings ?? 0) -
       Number(navCounts?.waiting_room ?? 0) -
       Number(navCounts?.unread_messages ?? 0),
+    Number(unreadNotifications ?? 0),
   );
   const moreBadge = formatTabBadge(moreCriticalCount);
 
@@ -108,6 +115,7 @@ export default function TabsLayout() {
     if (now - lastNavRefreshRef.current < 5_000) return;
     lastNavRefreshRef.current = now;
     void refreshNavCounts();
+    void refreshUnreadCount();
   };
 
   useEffect(() => {
@@ -128,6 +136,105 @@ export default function TabsLayout() {
     });
     return () => sub.remove();
   }, []);
+
+  // Realtime badge updates across dashboard/bookings/chats/more counters.
+  useEffect(() => {
+    const providerId = provider?.id;
+    if (!providerId) return;
+    let debounce: ReturnType<typeof setTimeout> | undefined;
+    const channel = supabase
+      .channel(`provider-nav-counts:${providerId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "bookings",
+          filter: `provider_id=eq.${providerId}`,
+        },
+        () => {
+          if (debounce) clearTimeout(debounce);
+          debounce = setTimeout(() => {
+            refreshNavCountsDebounced.current();
+          }, 120);
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "product_orders",
+          filter: `provider_id=eq.${providerId}`,
+        },
+        () => {
+          if (debounce) clearTimeout(debounce);
+          debounce = setTimeout(() => {
+            refreshNavCountsDebounced.current();
+          }, 120);
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "conversations",
+          filter: `provider_id=eq.${providerId}`,
+        },
+        () => {
+          if (debounce) clearTimeout(debounce);
+          debounce = setTimeout(() => {
+            refreshNavCountsDebounced.current();
+          }, 120);
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "product_return_requests",
+          filter: `provider_id=eq.${providerId}`,
+        },
+        () => {
+          if (debounce) clearTimeout(debounce);
+          debounce = setTimeout(() => {
+            refreshNavCountsDebounced.current();
+          }, 120);
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "custom_requests",
+          filter: `provider_id=eq.${providerId}`,
+        },
+        () => {
+          if (debounce) clearTimeout(debounce);
+          debounce = setTimeout(() => {
+            refreshNavCountsDebounced.current();
+          }, 120);
+        },
+      )
+      .subscribe();
+    return () => {
+      if (debounce) clearTimeout(debounce);
+      try {
+        supabase.removeChannel(channel);
+      } catch {
+        // ignore
+      }
+    };
+  }, [provider?.id]);
+
+  // Ensure badges wake up immediately when returning to dashboard hub.
+  useEffect(() => {
+    if (!pathname?.includes("/(tabs)/dashboard")) return;
+    refreshNavCountsDebounced.current();
+  }, [pathname]);
 
   const safeBottom = Math.max(insets.bottom, TAB_BAR_MIN_BOTTOM_INSET);
   const TAB_BAR_HEIGHT = tabBarOuterHeight(insets.bottom);
@@ -174,6 +281,12 @@ export default function TabsLayout() {
         fontWeight: "600" as const,
         marginTop: 2,
       },
+      tabBarBadgeStyle: {
+        backgroundColor: "#ef4444",
+        color: "#ffffff",
+        fontSize: 10,
+        fontWeight: "700" as const,
+      },
       /**
        * Six tabs on a narrow phone used to overlap when squeezed into one row; that made the
        * last tab (More) register presses on the wrong route (often Chats). Scrolling tabs fixes it.
@@ -194,6 +307,7 @@ export default function TabsLayout() {
         tabPress: () => {
           void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           void refreshNavCounts();
+          void refreshUnreadCount();
         },
       }}
     >

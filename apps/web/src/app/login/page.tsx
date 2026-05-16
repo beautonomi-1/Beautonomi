@@ -70,6 +70,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [authIntent, setAuthIntent] = useState<"signin" | "signup">("signin");
   /** Primary path: phone OTP, email OTP (code), or legacy email+password. */
   const [primaryLogin, setPrimaryLogin] = useState<"phone" | "email_otp" | "email_password">("phone");
   const [phoneFull, setPhoneFull] = useState("");
@@ -528,6 +529,35 @@ export default function LoginPage() {
         <p className="text-center text-[14px] text-gray-500 mb-7">
           Sign in or create an account — phone, email code, social, or password.
         </p>
+
+        <div className="mb-4 rounded-xl border border-pink-200 bg-pink-50/70 p-3">
+          <p className="text-xs font-semibold text-pink-800 text-center mb-2">
+            New here or already have an account?
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setAuthIntent("signup");
+                router.push(nextUrl ? `/signup?next=${encodeURIComponent(nextUrl)}` : "/signup");
+              }}
+              className="rounded-lg border border-pink-300 bg-white px-3 py-2 text-xs font-semibold text-pink-700 hover:bg-pink-50 transition-colors"
+            >
+              I&apos;m new - Sign up
+            </button>
+            <button
+              type="button"
+              onClick={() => setAuthIntent("signin")}
+              className={`rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${
+                authIntent === "signin"
+                  ? "border border-pink-300 bg-white text-pink-700"
+                  : "border border-pink-200 bg-pink-100 text-pink-700"
+              }`}
+            >
+              I have account - Log in
+            </button>
+          </div>
+        </div>
 
         {formError && (
           <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3.5 mb-4" role="alert">

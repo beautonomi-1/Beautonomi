@@ -129,6 +129,7 @@ export default function LoginScreen() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [authIntent, setAuthIntent] = useState<"signin" | "signup">("signin");
   const [countrySearch, setCountrySearch] = useState("");
 
   const [formError, setFormError] = useState<string | null>(null);
@@ -490,6 +491,60 @@ export default function LoginScreen() {
         <Text style={{ textAlign: "center", fontSize: 15, color: "#6B7280", lineHeight: 22, marginBottom: 28 }}>
           Sign in or create an account · Beautonomi for service pros
         </Text>
+
+        <View
+          style={{
+            borderWidth: 1,
+            borderColor: "#FBCFE8",
+            backgroundColor: "#FFF1F7",
+            borderRadius: 14,
+            padding: 12,
+            marginBottom: 18,
+          }}
+        >
+          <Text style={{ textAlign: "center", fontSize: 13, fontWeight: "700", color: "#9D174D", marginBottom: 8 }}>
+            What are you trying to do?
+          </Text>
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            <TouchableOpacity
+              onPress={() => setAuthIntent("signup")}
+              style={{
+                flex: 1,
+                backgroundColor: authIntent === "signup" ? Colors.white : "#FCE7F3",
+                borderWidth: 1,
+                borderColor: authIntent === "signup" ? "#F9A8D4" : "#FBCFE8",
+                borderRadius: 10,
+                paddingVertical: 10,
+                alignItems: "center",
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="I am new, create provider account"
+            >
+              <Text style={{ fontSize: 13, fontWeight: "700", color: "#9D174D" }}>I am new · Sign up</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setAuthIntent("signin")}
+              style={{
+                flex: 1,
+                backgroundColor: authIntent === "signin" ? Colors.white : "#FCE7F3",
+                borderWidth: 1,
+                borderColor: authIntent === "signin" ? "#F9A8D4" : "#FBCFE8",
+                borderRadius: 10,
+                paddingVertical: 10,
+                alignItems: "center",
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="I already have account, sign in"
+            >
+              <Text style={{ fontSize: 13, fontWeight: "700", color: "#9D174D" }}>I have account · Log in</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={{ marginTop: 8, textAlign: "center", fontSize: 12, color: "#6B7280" }}>
+            {authIntent === "signup"
+              ? "Choose phone, email, Google, or Apple. We create your partner account after verification."
+              : "Use your existing phone, email, Google, or Apple account to continue."}
+          </Text>
+        </View>
 
         {/* Account status message (deactivated/suspended redirect) */}
         {statusMessage ? (
