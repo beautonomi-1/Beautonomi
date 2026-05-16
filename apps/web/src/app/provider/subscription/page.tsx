@@ -68,6 +68,14 @@ interface ProviderSubscription {
   } | null;
 }
 
+function isPaidSubscriptionState(sub: ProviderSubscription | null): boolean {
+  if (!sub?.plan) return false;
+  if (sub.plan.is_free === true) return false;
+  const monthly = Number(sub.plan.price_monthly ?? 0);
+  const yearly = Number(sub.plan.price_yearly ?? 0);
+  return monthly > 0 || yearly > 0;
+}
+
 function planDisplayPrice(plan: SubscriptionPlan): number {
   const n = plan.price ?? plan.amount ?? 0;
   return Number(n);
@@ -206,8 +214,11 @@ export default function SubscriptionPage() {
       if (!isPaymentSuccess) return;
 
       const latestStatus = loaded?.latest_order?.status;
-      const failed = latestStatus === "failed" || loaded?.billing_issue?.type === "payment_failed";
-      const pending = latestStatus === "pending" || loaded?.billing_issue?.type === "payment_pending";
+      const loadedIsPaid = isPaidSubscriptionState(loaded);
+      const failed =
+        loadedIsPaid && (latestStatus === "failed" || loaded?.billing_issue?.type === "payment_failed");
+      const pending =
+        loadedIsPaid && (latestStatus === "pending" || loaded?.billing_issue?.type === "payment_pending");
       const status = failed ? "failed" : pending ? "pending" : "success";
 
       setInAppReturnStatus(status);
@@ -446,6 +457,7 @@ export default function SubscriptionPage() {
   const expiresAt = subscription?.expires_at ? new Date(subscription.expires_at) : null;
   const isPaidPlan = Boolean(subscription && isPaidCurrentPlan(currentPlan));
   const billingLabel = subscription ? billingActionLabel(subscription, isPaidPlan) : null;
+  const visibleBillingIssue = isPaidPlan ? subscription?.billing_issue : null;
   const showCancel =
     Boolean(subscription && subscription.status === "active" && !subscription.cancelled_at && isPaidPlan);
 
@@ -571,16 +583,16 @@ export default function SubscriptionPage() {
                 </div>
               )}
 
-              {subscription.billing_issue ? (
+              {visibleBillingIssue ? (
                 <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
                   <p className="font-semibold">
-                    {subscription.billing_issue.type === "payment_failed"
+                    {visibleBillingIssue.type === "payment_failed"
                       ? "Payment was not completed"
-                      : subscription.billing_issue.type === "past_due"
+                      : visibleBillingIssue.type === "past_due"
                         ? "Payment action needed"
                         : "Billing action needed"}
                   </p>
-                  <p className="mt-1 leading-relaxed">{subscription.billing_issue.message}</p>
+                  <p className="mt-1 leading-relaxed">{visibleBillingIssue.message}</p>
                 </div>
               ) : null}
 

@@ -40,6 +40,7 @@ export async function GET(request: NextRequest) {
       paystack_sync_note?: string | null;
       plan?: Record<string, unknown>;
     };
+    const currentPlanIsFree = sub.plan?.is_free === true;
     if (sub.plan && typeof sub.plan.id === "string") {
       let tenantId: string | null = null;
       try {
@@ -87,8 +88,9 @@ export async function GET(request: NextRequest) {
         }
       | null;
 
-    const billingIssue =
-      sub.status === "past_due"
+    const billingIssue = currentPlanIsFree
+      ? null
+      : sub.status === "past_due"
         ? {
             type: "past_due",
             message:

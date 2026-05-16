@@ -43,31 +43,52 @@ export async function GET(
       .eq("id", id)
       .eq("provider_id", providerId)
       .single();
-
-    if (error || !device) {
-      return NextResponse.json(
-        {
-          data: null,
-          error: {
-            message: "Device not found",
-            code: "NOT_FOUND",
-          },
+    if (!error && device) {
+      return NextResponse.json({
+        data: {
+          id: device.id,
+          name: device.name,
+          device_id: (device as any).yoco_device_id,
+          location_id: device.location_id,
+          is_active: device.is_active,
+          created_date: device.created_at,
         },
-        { status: 404 }
-      );
+        error: null,
+      });
     }
 
-    return NextResponse.json({
-      data: {
-        id: device.id,
-        name: device.name,
-        device_id: (device as any).yoco_device_id,
-        location_id: device.location_id,
-        is_active: device.is_active,
-        created_date: device.created_at,
+    const { data: legacyTerminal } = await supabase
+      .from("provider_yoco_terminals")
+      .select("id, device_id, device_name, location_name, active, created_at")
+      .eq("id", id)
+      .eq("provider_id", providerId)
+      .maybeSingle();
+    if (legacyTerminal) {
+      return NextResponse.json({
+        data: {
+          id: legacyTerminal.id,
+          name: legacyTerminal.device_name,
+          device_id: legacyTerminal.device_id,
+          location_id: null,
+          location_name: legacyTerminal.location_name ?? null,
+          is_active: legacyTerminal.active !== false,
+          created_date: legacyTerminal.created_at,
+          legacy_terminal: true,
+        },
+        error: null,
+      });
+    }
+
+    return NextResponse.json(
+      {
+        data: null,
+        error: {
+          message: "Device not found",
+          code: "NOT_FOUND",
+        },
       },
-      error: null,
-    });
+      { status: 404 }
+    );
   } catch (error: any) {
     const msg = error?.message ?? "";
     if (msg === "Authentication required" || msg.startsWith("Insufficient permissions")) {
@@ -145,32 +166,58 @@ export async function PUT(
       .eq("provider_id", providerId)
       .select()
       .single();
-
-    if (error || !device) {
-      console.error("Error updating device:", error);
-      return NextResponse.json(
-        {
-          data: null,
-          error: {
-            message: "Failed to update device",
-            code: "UPDATE_ERROR",
-          },
+    if (!error && device) {
+      return NextResponse.json({
+        data: {
+          id: device.id,
+          name: device.name,
+          device_id: device.yoco_device_id,
+          location_id: device.location_id,
+          is_active: device.is_active,
+          created_date: device.created_at,
         },
-        { status: 500 }
-      );
+        error: null,
+      });
     }
 
-    return NextResponse.json({
-      data: {
-        id: device.id,
-        name: device.name,
-        device_id: device.yoco_device_id,
-        location_id: device.location_id,
-        is_active: device.is_active,
-        created_date: device.created_at,
+    const legacyPatch: Record<string, unknown> = {};
+    if (validationResult.data.name !== undefined) legacyPatch.device_name = validationResult.data.name;
+    if (validationResult.data.is_active !== undefined) legacyPatch.active = validationResult.data.is_active;
+    if (validationResult.data.location_id !== undefined) legacyPatch.location_name = null;
+    const { data: legacyUpdated } = await (supabase
+      .from("provider_yoco_terminals") as any)
+      .update(legacyPatch)
+      .eq("id", id)
+      .eq("provider_id", providerId)
+      .select()
+      .maybeSingle();
+    if (legacyUpdated) {
+      return NextResponse.json({
+        data: {
+          id: legacyUpdated.id,
+          name: legacyUpdated.device_name,
+          device_id: legacyUpdated.device_id,
+          location_id: null,
+          location_name: legacyUpdated.location_name ?? null,
+          is_active: legacyUpdated.active !== false,
+          created_date: legacyUpdated.created_at,
+          legacy_terminal: true,
+        },
+        error: null,
+      });
+    }
+
+    console.error("Error updating device:", error);
+    return NextResponse.json(
+      {
+        data: null,
+        error: {
+          message: "Failed to update device",
+          code: "UPDATE_ERROR",
+        },
       },
-      error: null,
-    });
+      { status: 500 }
+    );
   } catch (error: any) {
     const msg = error?.message ?? "";
     if (msg === "Authentication required" || msg.startsWith("Insufficient permissions")) {
@@ -221,24 +268,51 @@ export async function DELETE(
       );
     }
 
-    const { error } = await supabase
+    const { data: modernDevice } = await supabase
       .from("provider_yoco_devices")
-      .delete()
+      .select("id")
       .eq("id", id)
-      .eq("provider_id", providerId);
+      .eq("provider_id", providerId)
+      .maybeSingle();
 
-    if (error) {
-      console.error("Error deleting device:", error);
-      return NextResponse.json(
-        {
-          data: null,
-          error: {
-            message: "Failed to delete device",
-            code: "DELETE_ERROR",
+    if (modernDevice) {
+      const { error } = await supabase
+        .from("provider_yoco_devices")
+        .delete()
+        .eq("id", id)
+        .eq("provider_id", providerId);
+      if (error) {
+        console.error("Error deleting device:", error);
+        return NextResponse.json(
+          {
+            data: null,
+            error: {
+              message: "Failed to delete device",
+              code: "DELETE_ERROR",
+            },
           },
-        },
-        { status: 500 }
-      );
+          { status: 500 }
+        );
+      }
+    } else {
+      const { error: legacyDeleteError } = await supabase
+        .from("provider_yoco_terminals")
+        .delete()
+        .eq("id", id)
+        .eq("provider_id", providerId);
+      if (legacyDeleteError) {
+        console.error("Error deleting legacy device:", legacyDeleteError);
+        return NextResponse.json(
+          {
+            data: null,
+            error: {
+              message: "Failed to delete device",
+              code: "DELETE_ERROR",
+            },
+          },
+          { status: 500 }
+        );
+      }
     }
 
     return NextResponse.json({

@@ -46,6 +46,7 @@ export default function GroupBookingsPage() {
   // Detail sheet
   const [detailBooking, setDetailBooking] = useState<GroupBooking | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [isStatusChanging, setIsStatusChanging] = useState(false);
 
   const loadGroupBookings = useCallback(async () => {
@@ -92,6 +93,9 @@ export default function GroupBookingsPage() {
     loadGroupBookings();
   }, [hasMounted, loadGroupBookings]);
 
+  const normalizeGroupBookingId = (id: string) =>
+    id.startsWith("group:") ? id.slice("group:".length) : id;
+
   const handleSearch = () => { setPage(1); loadGroupBookings(); };
   const handleCreate = () => { setSelectedBooking(null); setIsDialogOpen(true); };
 
@@ -121,15 +125,26 @@ export default function GroupBookingsPage() {
   };
 
   const handleStatusChange = async (bookingId: string, newStatus: string) => {
+    const normalizedBookingId = normalizeGroupBookingId(bookingId);
     setIsStatusChanging(true);
     try {
-      await fetcher.patch(`/api/provider/group-bookings/${bookingId}`, { status: newStatus });
+      if (newStatus === "started") {
+        await fetcher.post(`/api/provider/group-bookings/${normalizedBookingId}?action=start_service`);
+      } else if (newStatus === "completed") {
+        await fetcher.post(`/api/provider/group-bookings/${normalizedBookingId}?action=complete_service`);
+      } else {
+        await fetcher.patch(`/api/provider/group-bookings/${normalizedBookingId}`, { status: newStatus });
+      }
       toast.success(`Group booking marked as ${newStatus}`);
       // Optimistically update detail sheet
-      if (detailBooking?.id === bookingId) {
+      if (detailBooking?.id === normalizedBookingId) {
         setDetailBooking(prev => prev ? { ...prev, status: newStatus as GroupBooking["status"] } : null);
       }
-      loadGroupBookings();
+      await loadGroupBookings();
+      if (isDetailOpen) {
+        const refreshed = await providerApi.getGroupBooking(normalizedBookingId);
+        setDetailBooking(refreshed);
+      }
     } catch (error) {
       console.error("Failed to update status:", error);
       toast.error("Failed to update booking status");
@@ -139,11 +154,12 @@ export default function GroupBookingsPage() {
   };
 
   const handleCheckIn = async (bookingId: string, participantId: string) => {
+    const normalizedBookingId = normalizeGroupBookingId(bookingId);
     try {
-      await providerApi.checkInGroupParticipant(bookingId, participantId);
+      await providerApi.checkInGroupParticipant(normalizedBookingId, participantId);
       toast.success("Participant checked in");
       // Optimistically update
-      if (detailBooking?.id === bookingId && detailBooking.participants) {
+      if (detailBooking?.id === normalizedBookingId && detailBooking.participants) {
         setDetailBooking(prev => prev ? {
           ...prev,
           participants: prev.participants?.map(p =>
@@ -159,10 +175,11 @@ export default function GroupBookingsPage() {
   };
 
   const handleCheckOut = async (bookingId: string, participantId: string) => {
+    const normalizedBookingId = normalizeGroupBookingId(bookingId);
     try {
-      await providerApi.checkOutGroupParticipant(bookingId, participantId);
+      await providerApi.checkOutGroupParticipant(normalizedBookingId, participantId);
       toast.success("Participant checked out");
-      if (detailBooking?.id === bookingId && detailBooking.participants) {
+      if (detailBooking?.id === normalizedBookingId && detailBooking.participants) {
         setDetailBooking(prev => prev ? {
           ...prev,
           participants: prev.participants?.map(p =>
@@ -177,9 +194,38 @@ export default function GroupBookingsPage() {
     }
   };
 
-  const openDetail = (booking: GroupBooking) => {
-    setDetailBooking(booking);
+  const handleRecordPayment = async (bookingId: string, paymentMethod: "cash" | "card" | "bank_transfer" | "other") => {
+    const normalizedBookingId = normalizeGroupBookingId(bookingId);
+    try {
+      await fetcher.post(`/api/provider/group-bookings/${normalizedBookingId}?action=mark_paid`, {
+        payment_method: paymentMethod,
+      });
+      toast.success("Payment recorded for linked participant bookings");
+      await loadGroupBookings();
+      if (isDetailOpen) {
+        const refreshed = await providerApi.getGroupBooking(normalizedBookingId);
+        setDetailBooking(refreshed);
+      }
+    } catch (error) {
+      console.error("Failed to record group payment:", error);
+      toast.error("Failed to record payment");
+    }
+  };
+
+  const openDetail = async (booking: GroupBooking) => {
+    const normalizedBookingId = normalizeGroupBookingId(booking.id);
+    setDetailBooking({ ...booking, id: normalizedBookingId });
     setIsDetailOpen(true);
+    setIsDetailLoading(true);
+    try {
+      const fresh = await providerApi.getGroupBooking(normalizedBookingId);
+      setDetailBooking(fresh);
+    } catch (error) {
+      console.error("Failed to load group booking detail:", error);
+      toast.error("Failed to load latest group booking details");
+    } finally {
+      setIsDetailLoading(false);
+    }
   };
 
   const openParticipantBookingForRefund = (bookingId?: string | null) => {
@@ -194,14 +240,15 @@ export default function GroupBookingsPage() {
   };
 
   const handleDownloadReceipt = async (bookingId: string, refNumber?: string) => {
+    const normalizedBookingId = normalizeGroupBookingId(bookingId);
     try {
-      const response = await fetch(`/api/provider/group-bookings/${encodeURIComponent(bookingId)}/receipt/pdf`);
+      const response = await fetch(`/api/provider/group-bookings/${encodeURIComponent(normalizedBookingId)}/receipt/pdf`);
       if (!response.ok) throw new Error("Failed to generate group receipt");
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `group-receipt-${refNumber || bookingId}.pdf`;
+      link.download = `group-receipt-${refNumber || normalizedBookingId}.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -553,11 +600,15 @@ export default function GroupBookingsPage() {
       {/* Comprehensive Detail Sheet */}
       <Sheet open={isDetailOpen} onOpenChange={setIsDetailOpen}>
         <SheetContent side="right" className="w-full sm:max-w-2xl overflow-y-auto">
+          {isDetailLoading && (
+            <div className="py-6 text-sm text-gray-500">Loading latest group booking details...</div>
+          )}
           {detailBooking && <GroupBookingDetailPanel
             booking={detailBooking}
             onStatusChange={handleStatusChange}
             onCheckIn={handleCheckIn}
             onCheckOut={handleCheckOut}
+            onRecordPayment={handleRecordPayment}
             onOpenParticipantBooking={openParticipantBookingForRefund}
             onEdit={() => { setIsDetailOpen(false); handleEdit(detailBooking); }}
             onCancel={() => handleDelete(detailBooking.id, detailBooking.status)}
@@ -576,6 +627,10 @@ interface DetailPanelProps {
   onStatusChange: (id: string, status: string) => void;
   onCheckIn: (bookingId: string, participantId: string) => void;
   onCheckOut: (bookingId: string, participantId: string) => void;
+  onRecordPayment: (
+    bookingId: string,
+    paymentMethod: "cash" | "card" | "bank_transfer" | "other",
+  ) => void;
   onOpenParticipantBooking: (bookingId?: string | null) => void;
   onEdit: () => void;
   onCancel: () => void;
@@ -588,6 +643,7 @@ function GroupBookingDetailPanel({
   onStatusChange,
   onCheckIn,
   onCheckOut,
+  onRecordPayment,
   onOpenParticipantBooking,
   onEdit,
   onCancel,
@@ -599,6 +655,7 @@ function GroupBookingDetailPanel({
   const completed = booking.status === "completed";
   const isFinal = cancelled || completed;
   const started = booking.status === "started";
+  const canStart = booking.status === "booked" || booking.status === "confirmed";
 
   const formatDt = (iso?: string | null) => {
     if (!iso) return null;
@@ -607,13 +664,35 @@ function GroupBookingDetailPanel({
   };
 
   const statusActions: Array<{ label: string; value: string; icon: React.ReactNode; className?: string }> = [
-    ...(booking.status === "booked" ? [{ label: "Mark Started", value: "started", icon: <Play className="w-4 h-4" />, className: "bg-yellow-50 border-yellow-300 text-yellow-800 hover:bg-yellow-100" }] : []),
+    ...(canStart ? [{ label: "Mark Started", value: "started", icon: <Play className="w-4 h-4" />, className: "bg-yellow-50 border-yellow-300 text-yellow-800 hover:bg-yellow-100" }] : []),
     ...(started ? [{ label: "Mark Completed", value: "completed", icon: <CheckSquare className="w-4 h-4" />, className: "bg-green-50 border-green-300 text-green-800 hover:bg-green-100" }] : []),
   ];
 
   const checkedIn = participants.filter(p => p.checked_in).length;
   const checkedOut = participants.filter(p => p.checked_out).length;
   const participantRevenue = participants.reduce((sum, p) => sum + (Number(p.price) || 0), 0);
+  const paidParticipants = participants.filter((p) => (p as any).payment_status === "paid").length;
+  const participantTips = participants.reduce(
+    (sum, p) => sum + (Number((p as any).tip_amount) || 0),
+    0,
+  );
+  const participantCollected = participants.reduce(
+    (sum, p) =>
+      sum +
+      Math.max(
+        0,
+        (Number((p as any).total_paid) || 0) - (Number((p as any).total_refunded) || 0),
+      ),
+    0,
+  );
+  const groupProducts = Array.isArray((booking as any).products) ? ((booking as any).products as any[]) : [];
+  const groupProductTotal = groupProducts.reduce(
+    (sum: number, product: any) =>
+      sum +
+      (Number(product?.total_price ?? product?.totalPrice) ||
+        (Number(product?.unit_price ?? product?.unitPrice ?? 0) * Number(product?.quantity ?? 1))),
+    0,
+  );
 
   return (
     <div className="space-y-6 pb-8">
@@ -747,9 +826,33 @@ function GroupBookingDetailPanel({
         <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Financials</h3>
         <div className="bg-gray-50 rounded-xl p-4 space-y-2 text-sm">
           <div className="flex justify-between">
+            <span className="text-gray-600">Participants paid</span>
+            <span className="font-medium">
+              {paidParticipants}/{participants.length}
+            </span>
+          </div>
+          <div className="flex justify-between">
             <span className="text-gray-600">Participant services</span>
             <span className="font-medium"><Money amount={participantRevenue} /></span>
           </div>
+          {groupProductTotal > 0 && (
+            <div className="flex justify-between">
+              <span className="text-gray-600">Products</span>
+              <span className="font-medium"><Money amount={groupProductTotal} /></span>
+            </div>
+          )}
+          {participantTips > 0 && (
+            <div className="flex justify-between">
+              <span className="text-gray-600">Tips</span>
+              <span className="font-medium"><Money amount={participantTips} /></span>
+            </div>
+          )}
+          {participantCollected > 0 && (
+            <div className="flex justify-between">
+              <span className="text-gray-600">Collected (net of refunds)</span>
+              <span className="font-medium"><Money amount={participantCollected} /></span>
+            </div>
+          )}
           {(booking as any).travel_fee > 0 && (
             <div className="flex justify-between">
               <span className="text-gray-600">Travel fee</span>
@@ -769,6 +872,52 @@ function GroupBookingDetailPanel({
             </p>
           )}
         </div>
+        {!isFinal && participants.length > 0 && (
+          <div className="rounded-xl border border-gray-200 p-3">
+            <p className="text-xs text-gray-500 mb-2">
+              Record payment method for remaining linked participant invoices
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" onClick={() => onRecordPayment(booking.id, "cash")}>
+                <DollarSign className="w-4 h-4 mr-1" />
+                Cash
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => onRecordPayment(booking.id, "card")}>
+                Card
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => onRecordPayment(booking.id, "bank_transfer")}>
+                Bank transfer
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => onRecordPayment(booking.id, "other")}>
+                Other
+              </Button>
+            </div>
+          </div>
+        )}
+        {groupProducts.length > 0 && (
+          <div className="rounded-xl border border-gray-200 p-3">
+            <p className="text-xs text-gray-500 mb-2">Products in this group booking</p>
+            <div className="space-y-2">
+              {groupProducts.map((product: any, index: number) => {
+                const quantity = Number(product?.quantity ?? 1) || 1;
+                const unitPrice = Number(product?.unit_price ?? product?.unitPrice ?? 0) || 0;
+                const totalPrice =
+                  Number(product?.total_price ?? product?.totalPrice ?? 0) || unitPrice * quantity;
+                const name = String(product?.product_name ?? product?.productName ?? `Product ${index + 1}`);
+                return (
+                  <div key={`${name}-${index}`} className="flex items-center justify-between text-sm">
+                    <span className="text-gray-700">
+                      {name} x{quantity}
+                    </span>
+                    <span className="font-medium">
+                      <Money amount={totalPrice} />
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </section>
 
       <Separator />
@@ -824,6 +973,11 @@ function GroupBookingDetailPanel({
                         ? <span className="text-xs text-amber-600 font-medium">✓ Checked in</span>
                         : <span className="text-xs text-gray-400">Not arrived</span>}
                     </div>
+                    {(p as any).payment_status && (
+                      <div className="mt-1 text-xs text-gray-500 capitalize">
+                        Payment: {String((p as any).payment_status).replace(/_/g, " ")}
+                      </div>
+                    )}
                   </div>
                 </div>
 

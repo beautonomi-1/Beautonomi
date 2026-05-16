@@ -59,6 +59,8 @@ type QuotePayload = {
     subtotal: number;
     travelFee: number;
     promotionDiscountAmount: number;
+    membershipDiscountAmount?: number;
+    loyaltyDiscountAmount?: number;
     taxAmount: number;
     taxRate: number;
     serviceFeeAmount: number;
@@ -300,7 +302,9 @@ export default function CustomOfferCheckoutScreen() {
           return;
         }
 
-        setProcessingMessage("Confirming payment…");
+        // Important: close blocking overlay before opening Paystack WebView.
+        // Concurrent RN modals can prevent checkout from appearing.
+        setProcessingPayment(false);
         const pr = await paystackHostedCheckout.waitForCheckout(url, {
           title: "Pay custom offer",
           matchSuccess: (u) =>
@@ -328,6 +332,8 @@ export default function CustomOfferCheckoutScreen() {
           await api.get(`/api/paystack/verify?reference=${encodeURIComponent(reference)}`).catch(() => {});
         }
 
+        setProcessingPayment(true);
+        setProcessingMessage("Confirming payment…");
         let bookingId: string | null = await pollForBooking();
         if (!bookingId) {
           await new Promise((r) => setTimeout(r, 1500));
@@ -544,6 +550,22 @@ export default function CustomOfferCheckoutScreen() {
                   <Text style={{ color: "#047857" }}>Promotion</Text>
                   <Text style={{ fontWeight: "600", color: "#047857" }}>
                     −{fmt(Number(quote.pricing.promotionDiscountAmount))}
+                  </Text>
+                </View>
+              ) : null}
+              {Number(quote.pricing.membershipDiscountAmount ?? 0) > 0 ? (
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                  <Text style={{ color: "#047857" }}>Membership discount</Text>
+                  <Text style={{ fontWeight: "600", color: "#047857" }}>
+                    −{fmt(Number(quote.pricing.membershipDiscountAmount))}
+                  </Text>
+                </View>
+              ) : null}
+              {!quote.splits && Number(quote.pricing.loyaltyDiscountAmount ?? 0) > 0 ? (
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                  <Text style={{ color: "#047857" }}>Loyalty discount</Text>
+                  <Text style={{ fontWeight: "600", color: "#047857" }}>
+                    −{fmt(Number(quote.pricing.loyaltyDiscountAmount))}
                   </Text>
                 </View>
               ) : null}

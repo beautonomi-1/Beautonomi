@@ -158,6 +158,12 @@ export async function GET(request: NextRequest) {
           ];
         }),
       );
+      const participantBookingTotalById = new Map(
+        (participantPaymentsRes.data ?? []).map((booking: any) => [
+          booking.id,
+          Number(booking.total_amount ?? 0) || 0,
+        ]),
+      );
 
       groupBookings = raw.map((row: any) => {
         const at = row.scheduled_at ? new Date(row.scheduled_at) : null;
@@ -186,20 +192,40 @@ export async function GET(request: NextRequest) {
             total_refunded: payment?.total_refunded ?? 0,
           };
         });
+        const uniqueParticipantBookingIds: string[] = Array.from(
+          new Set(
+            participants
+              .map((participant: { booking_id?: string | null }) => participant.booking_id)
+              .filter((bookingId): bookingId is string => typeof bookingId === "string" && bookingId.length > 0),
+          ),
+        );
+        const linkedParticipantInvoiceTotal = uniqueParticipantBookingIds.reduce(
+          (sum: number, bookingId: string) =>
+            sum + (participantBookingTotalById.get(bookingId) ?? 0),
+          0,
+        );
         const participantTotal = participants.reduce((sum: number, p: any) => sum + (Number(p.price) || 0), 0);
         const productTotal = Array.isArray(row.products)
           ? row.products.reduce((sum: number, p: any) => sum + groupProductLineTotal(p), 0)
           : 0;
         const pkg = Array.isArray(row.service_packages) ? row.service_packages[0] : row.service_packages;
         const packageDiscount = pkg ? computeCatalogPackageServiceDiscount(pkg, participantTotal) : 0;
-        const totalPrice = row.total_price != null
-          ? Number(row.total_price) || 0
-          : groupPackageTotal({
-              participantTotal,
-              productTotal,
-              travelFee: Number(row.travel_fee) || 0,
-              packageDiscount,
-            });
+        const computedGroupSessionTotal = groupPackageTotal({
+          participantTotal,
+          productTotal,
+          travelFee: Number(row.travel_fee) || 0,
+          packageDiscount,
+        });
+        const totalPrice = linkedParticipantInvoiceTotal > 0
+          ? Math.max(
+              linkedParticipantInvoiceTotal,
+              row.total_price != null
+                ? Number(row.total_price) || 0
+                : computedGroupSessionTotal,
+            )
+          : row.total_price != null
+              ? Number(row.total_price) || 0
+              : computedGroupSessionTotal;
         const sid = row.service_id as string | null | undefined;
         const tid = row.staff_id as string | null | undefined;
         return {

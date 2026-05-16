@@ -54,6 +54,12 @@ interface DashboardMetrics {
   appointments_this_week: number;
   appointments_this_month: number;
   service_earnings_total: number;
+  booking_earnings_total?: number;
+  product_order_earnings_total?: number;
+  additional_charge_earnings_total?: number;
+  other_earnings_total?: number;
+  recognized_earnings_total?: number;
+  tips_total?: number;
   travel_fees_total: number;
   gamification?: {
     total_points: number;
@@ -128,6 +134,7 @@ interface ActivityItem {
   created_at: string;
   data?: {
     booking_id?: string;
+    product_order_id?: string;
     client_name?: string;
     amount?: number;
   };
@@ -170,7 +177,18 @@ function getActivityIcon(type: string): {
       return { name: "close-circle-outline", color: "#ef4444", bg: "#fef2f2" };
     case "payment_received":
     case "ledger_earnings":
+    case "booking_earnings":
       return { name: "cash-outline", color: "#22c55e", bg: "#f0fdf4" };
+    case "product_order_earnings":
+      return { name: "bag-handle-outline", color: "#059669", bg: "#ecfdf5" };
+    case "tip_recognized":
+      return { name: "heart-outline", color: "#16a34a", bg: "#f0fdf4" };
+    case "travel_fee_recognized":
+      return { name: "car-outline", color: "#7c3aed", bg: "#f5f3ff" };
+    case "additional_charge_earnings":
+      return { name: "add-circle-outline", color: "#0f766e", bg: "#f0fdfa" };
+    case "cancellation_fee_recognized":
+      return { name: "receipt-outline", color: "#b45309", bg: "#fffbeb" };
     case "payout_sent":
       return { name: "arrow-forward-circle-outline", color: "#7c3aed", bg: "#f5f3ff" };
     case "new_review":
@@ -847,8 +865,56 @@ export default function DashboardScreen() {
         </View>
       </View>
 
+      <SectionHeader title="Earnings Mix" />
+      <View style={{ borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 14, marginBottom: 12 }}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
+          <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Services</Text>
+          <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>
+            {formatCurrency(m?.booking_earnings_total ?? m?.service_earnings_total ?? 0)}
+          </Text>
+        </View>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
+          <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Product orders</Text>
+          <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>
+            {formatCurrency(m?.product_order_earnings_total ?? 0)}
+          </Text>
+        </View>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
+          <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Additional charges</Text>
+          <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>
+            {formatCurrency(m?.additional_charge_earnings_total ?? 0)}
+          </Text>
+        </View>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
+          <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Tips</Text>
+          <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>
+            {formatCurrency(m?.tips_total ?? 0)}
+          </Text>
+        </View>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
+          <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Travel fees</Text>
+          <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>
+            {formatCurrency(m?.travel_fees_total ?? 0)}
+          </Text>
+        </View>
+        {(m?.other_earnings_total ?? 0) > 0 ? (
+          <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
+            <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Other earnings</Text>
+            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>
+              {formatCurrency(m?.other_earnings_total ?? 0)}
+            </Text>
+          </View>
+        ) : null}
+        <View style={{ marginTop: 4, borderTopWidth: 1, borderTopColor: Colors.gray[100], paddingTop: 8, flexDirection: "row", justifyContent: "space-between" }}>
+          <Text style={{ fontSize: 13, fontWeight: "700", color: Colors.gray[800] }}>Recognized total</Text>
+          <Text style={{ fontSize: 15, fontWeight: "700", color: Colors.gray[900] }}>
+            {formatCurrency(m?.recognized_earnings_total ?? 0)}
+          </Text>
+        </View>
+      </View>
+
       {/* Weekly Revenue Chart */}
-      <SectionHeader title="Revenue Trend (7 Days)" />
+      <SectionHeader title="Recognized Earnings Trend (7 Days)" />
       {insightsLoading ? (
         <Card variant="default" padding="md">
           <View style={{ alignItems: "center", paddingVertical: 20 }}>
@@ -1206,6 +1272,8 @@ export default function DashboardScreen() {
                     router.push(
                       `/(app)/(tabs)/bookings/${item.data.booking_id}` as never,
                     );
+                  } else if (item.data?.product_order_id) {
+                    router.push("/(app)/(tabs)/more/product-orders" as never);
                   }
                 }}
                 accessibilityLabel={`${item.description}, ${formatTimeAgo(item.created_at)}`}

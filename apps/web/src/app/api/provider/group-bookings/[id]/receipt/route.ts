@@ -75,12 +75,17 @@ function participantAddonSummary(addons: unknown): string | null {
   return labels.length > 0 ? labels.join(", ") : `${addons.length} add-on${addons.length === 1 ? "" : "s"}`;
 }
 
+function normalizeGroupBookingId(rawId: string): string {
+  return rawId.startsWith("group:") ? rawId.slice("group:".length) : rawId;
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { id } = await params;
+    const { id: rawId } = await params;
+    const id = normalizeGroupBookingId(rawId);
     const url = new URL(request.url);
     const token = url.searchParams.get("token");
     const admin = getSupabaseAdmin();
@@ -220,7 +225,7 @@ export async function GET(
       return sum + Math.max(paidViaRows, legacyWalletGift);
     }, 0);
     const totalRefunded = childRows.reduce((sum, b) => sum + num(b.total_refunded), 0);
-    const baseTotal = childRows.length > 0 ? childTotalAmount : groupTotal;
+    const baseTotal = childRows.length > 0 ? Math.max(childTotalAmount, groupTotal) : groupTotal;
     const netCollected = Math.max(0, amountPaid - totalRefunded);
     /**
      * §Group-booking-audit 2026-05: an empty/estimate-only group has no
@@ -312,7 +317,7 @@ export async function GET(
       travel_fee: travelFee,
       tax_amount: taxAmount,
       platform_fee_amount: platformFeeAmount,
-      total_amount: childRows.length > 0 ? childTotalAmount : groupTotal,
+      total_amount: childRows.length > 0 ? Math.max(childTotalAmount, groupTotal) : groupTotal,
       group_session_total: groupTotal,
       amount_paid: amountPaid,
       total_refunded: totalRefunded,

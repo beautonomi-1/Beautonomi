@@ -4026,7 +4026,8 @@ export class ProviderApiClient implements ProviderApi {
 
   async getGroupBooking(id: string): Promise<GroupBooking> {
     const { fetcher } = await import("@/lib/http/fetcher");
-    const res = (await fetcher.get(`/api/provider/group-bookings/${id}`)) as { data?: GroupBooking };
+    const normalizedId = id.startsWith("group:") ? id.slice("group:".length) : id;
+    const res = (await fetcher.get(`/api/provider/group-bookings/${normalizedId}`)) as { data?: GroupBooking };
     const row = (res as any)?.data;
     if (!row) throw new Error("Group booking not found");
     return row as GroupBooking;
@@ -4040,8 +4041,9 @@ export class ProviderApiClient implements ProviderApi {
 
   async updateGroupBooking(id: string, data: Partial<GroupBooking>): Promise<GroupBooking> {
     const { fetcher } = await import("@/lib/http/fetcher");
+    const normalizedId = id.startsWith("group:") ? id.slice("group:".length) : id;
     const response = await fetcher.patch<{ data: GroupBooking }>(
-      `/api/provider/group-bookings/${id}`,
+      `/api/provider/group-bookings/${normalizedId}`,
       data
     );
     return (response as any).data;
@@ -4049,7 +4051,8 @@ export class ProviderApiClient implements ProviderApi {
 
   async deleteGroupBooking(id: string): Promise<void> {
     const { fetcher } = await import("@/lib/http/fetcher");
-    await fetcher.delete(`/api/provider/group-bookings/${id}`);
+    const normalizedId = id.startsWith("group:") ? id.slice("group:".length) : id;
+    await fetcher.delete(`/api/provider/group-bookings/${normalizedId}`);
   }
 
   async addParticipantToGroupBooking(
@@ -4093,15 +4096,21 @@ export class ProviderApiClient implements ProviderApi {
 
   async checkInGroupParticipant(groupBookingId: string, participantId: string): Promise<void> {
     const { fetcher } = await import("@/lib/http/fetcher");
+    const normalizedId = groupBookingId.startsWith("group:")
+      ? groupBookingId.slice("group:".length)
+      : groupBookingId;
     await fetcher.post(
-      `/api/provider/group-bookings/${groupBookingId}/participants/${participantId}/check-in`
+      `/api/provider/group-bookings/${normalizedId}/participants/${participantId}/check-in`
     );
   }
 
   async checkOutGroupParticipant(groupBookingId: string, participantId: string): Promise<void> {
     const { fetcher } = await import("@/lib/http/fetcher");
+    const normalizedId = groupBookingId.startsWith("group:")
+      ? groupBookingId.slice("group:".length)
+      : groupBookingId;
     await fetcher.post(
-      `/api/provider/group-bookings/${groupBookingId}/participants/${participantId}/check-out`
+      `/api/provider/group-bookings/${normalizedId}/participants/${participantId}/check-out`
     );
   }
 

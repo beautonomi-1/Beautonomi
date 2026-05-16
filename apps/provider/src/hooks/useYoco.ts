@@ -144,6 +144,43 @@ export function useYocoDevices() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const normalizeDevice = useCallback((raw: unknown): YocoDevice | null => {
+    if (!raw || typeof raw !== "object") return null;
+    const row = raw as Record<string, unknown>;
+    const id = typeof row.id === "string" ? row.id : "";
+    if (!id) return null;
+    const fallbackDeviceId =
+      typeof row.device_id === "string" && row.device_id.length > 0
+        ? row.device_id
+        : "";
+    const serialNumber =
+      typeof row.serial_number === "string" && row.serial_number.length > 0
+        ? row.serial_number
+        : fallbackDeviceId;
+    const deviceType =
+      row.device_type === "card_machine" || row.device_type === "web_pos"
+        ? row.device_type
+        : "web_pos";
+    const isActive =
+      typeof row.is_active === "boolean"
+        ? row.is_active
+        : row.active === true;
+    return {
+      id,
+      name: typeof row.name === "string" && row.name.length > 0 ? row.name : "Yoco device",
+      serial_number: serialNumber,
+      device_type: deviceType,
+      location_id: typeof row.location_id === "string" ? row.location_id : null,
+      location_name: typeof row.location_name === "string" ? row.location_name : undefined,
+      is_active: isActive,
+      last_used_at: typeof row.last_used_at === "string" ? row.last_used_at : null,
+      created_at:
+        typeof row.created_at === "string" && row.created_at.length > 0
+          ? row.created_at
+          : new Date().toISOString(),
+    };
+  }, []);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -158,14 +195,18 @@ export function useYocoDevices() {
         const list = Array.isArray(data)
           ? data
           : (data as { data: YocoDevice[] })?.data ?? [];
-        setDevices(list);
+        setDevices(
+          list
+            .map((row) => normalizeDevice(row))
+            .filter((row): row is YocoDevice => row != null),
+        );
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load devices");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [normalizeDevice]);
 
   useEffect(() => {
     load();

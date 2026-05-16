@@ -89,7 +89,18 @@ function AdsPaymentReturnInner() {
           throw new Error(inner.message || "Payment verification was not successful.");
         }
         finish("Your ad budget is being activated. You can fund more boosts anytime from Ads.", "success", "Payment confirmed");
-        if (context !== "app") {
+        if (context === "app") {
+          const confirmedParams = new URLSearchParams();
+          confirmedParams.set("success", "1");
+          confirmedParams.set("confirmed", "1");
+          if (orderId) confirmedParams.set("order_id", orderId);
+          confirmedParams.set("context", "app");
+          window.setTimeout(() => {
+            if (!cancelled) {
+              window.location.replace(`/provider/settings/ads/payment-return?${confirmedParams.toString()}`);
+            }
+          }, 300);
+        } else {
           window.setTimeout(() => {
             if (!cancelled) router.replace("/provider/settings/ads?payment_success=1");
           }, 1400);

@@ -567,7 +567,7 @@ async function handleGetProviderBookings(request: NextRequest) {
       groupIds.length
         ? supabaseAdmin
             .from("bookings")
-            .select("id, group_booking_id, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status, status, additional_charges(amount,status)")
+            .select("id, group_booking_id, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status, tip_amount, status, additional_charges(amount,status)")
             .eq("provider_id", providerId)
             .in("group_booking_id", groupIds)
         : Promise.resolve({ data: [] as any[] }),
@@ -581,6 +581,7 @@ async function handleGetProviderBookings(request: NextRequest) {
       walletGiftCoverage: number;
       coverage: number;
       balanceDue: number;
+      tipAmount: number;
       paymentStatus: string;
       hasRefundStatus: boolean;
     }>();
@@ -593,6 +594,7 @@ async function handleGetProviderBookings(request: NextRequest) {
         walletGiftCoverage: 0,
         coverage: 0,
         balanceDue: 0,
+        tipAmount: 0,
         paymentStatus: "pending",
         hasRefundStatus: false,
       };
@@ -618,6 +620,7 @@ async function handleGetProviderBookings(request: NextRequest) {
         walletGiftCoverage: prev.walletGiftCoverage + walletGiftCoverage,
         coverage: prev.coverage + childCoverage,
         balanceDue: prev.balanceDue + childBalanceDue,
+        tipAmount: prev.tipAmount + Math.max(0, Number(child.tip_amount ?? 0)),
         paymentStatus: prev.paymentStatus,
         hasRefundStatus:
           prev.hasRefundStatus ||
@@ -660,16 +663,18 @@ async function handleGetProviderBookings(request: NextRequest) {
         walletGiftCoverage: 0,
         coverage: 0,
         balanceDue: 0,
+        tipAmount: 0,
         paymentStatus: "pending",
         hasRefundStatus: false,
       };
       const balanceDue = Math.max(0, payment.totalAmount > 0 ? payment.balanceDue : total - payment.coverage);
+      const displayTotal = payment.totalAmount > 0 ? Math.max(total, payment.totalAmount) : total;
       const groupPaymentStatus =
         payment.hasRefundStatus && payment.totalPaid > 0 && payment.totalRefunded >= payment.totalPaid - 0.01
           ? "refunded"
           : payment.hasRefundStatus
             ? "partially_refunded"
-            : total > 0 && balanceDue <= 0
+            : displayTotal > 0 && balanceDue <= 0
               ? "paid"
               : payment.totalPaid > 0 || payment.walletGiftCoverage > 0
                 ? "partially_paid"
@@ -719,7 +724,7 @@ async function handleGetProviderBookings(request: NextRequest) {
         addons: [],
         package_id: group.package_id || null,
         package_name: null,
-        subtotal: Math.max(0, total - (Number(group.travel_fee) || 0)),
+        subtotal: Math.max(0, displayTotal - (Number(group.travel_fee) || 0)),
         discount_amount: 0,
         discount_code: null,
         discount_reason: null,
@@ -727,8 +732,8 @@ async function handleGetProviderBookings(request: NextRequest) {
         tax_rate: 0,
         service_fee_percentage: 0,
         service_fee_amount: 0,
-        tip_amount: 0,
-        total_amount: total,
+        tip_amount: Math.max(0, Number(payment.tipAmount ?? 0)),
+        total_amount: displayTotal,
         total_paid: payment.totalPaid,
         total_refunded: payment.totalRefunded,
         wallet_amount: Math.max(0, payment.walletGiftCoverage),

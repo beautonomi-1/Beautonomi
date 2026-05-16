@@ -43,19 +43,30 @@ export function YocoPaymentSheet({
   onPaymentSuccess,
 }: YocoPaymentSheetProps) {
   const router = useRouter();
-  const { integration: yocoIntegration, loading: integrationLoading } = useYocoIntegration();
-  const { devices, loading: devicesLoading } = useYocoDevices();
+  const { integration: yocoIntegration, loading: integrationLoading, reload: reloadIntegration } = useYocoIntegration();
+  const { devices, loading: devicesLoading, reload: reloadDevices } = useYocoDevices();
   const { processPayment, processing } = useYocoPayment();
   const [selectedDevice, setSelectedDevice] = useState<YocoDevice | null>(null);
 
-  const isConnected =
+  const isIntegrationConnected =
     yocoIntegration?.is_enabled === true && yocoIntegration?.api_key_set === true;
   const activeDevices = devices.filter((d) => d.is_active);
+  const isConnected = isIntegrationConnected || activeDevices.length > 0;
   const loading = integrationLoading || devicesLoading;
+
+  useEffect(() => {
+    if (!visible) return;
+    void reloadIntegration();
+    void reloadDevices();
+  }, [visible, reloadIntegration, reloadDevices]);
 
   useEffect(() => {
     if (activeDevices.length === 1 && !selectedDevice) {
       setSelectedDevice(activeDevices[0]);
+      return;
+    }
+    if (selectedDevice && !activeDevices.some((d) => d.id === selectedDevice.id)) {
+      setSelectedDevice(activeDevices.length > 0 ? activeDevices[0] : null);
     }
   }, [activeDevices, selectedDevice]);
 

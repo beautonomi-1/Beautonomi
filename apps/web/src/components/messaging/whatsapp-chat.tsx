@@ -1,5 +1,5 @@
 "use client";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useClientMounted } from "@/hooks/use-client-mounted";
 import { Send, ArrowLeft, MoreVertical, Phone, Tag, User, Mail, Copy, Check, Paperclip, X, File, Play, Trash2, Undo2, Info, Loader2, ExternalLink, Clock, MapPin, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -135,7 +135,17 @@ export default function WhatsAppChat({
   const [selectedOfferIdForPayment, setSelectedOfferIdForPayment] = useState<string | null>(null);
   const [isAcceptingOffer, setIsAcceptingOffer] = useState(false);
   const [paymentQuote, setPaymentQuote] = useState<{
-    pricing?: { totalAmount?: number; subtotal?: number };
+    pricing?: {
+      totalAmount?: number;
+      subtotal?: number;
+      travelFee?: number;
+      promotionDiscountAmount?: number;
+      membershipDiscountAmount?: number;
+      loyaltyDiscountAmount?: number;
+      taxAmount?: number;
+      serviceFeeAmount?: number;
+      tipAmount?: number;
+    };
     deposit?: { required?: boolean; percentage?: number; deposit_amount?: number; full_total?: number };
   } | null>(null);
   const [paymentQuoteLoading, setPaymentQuoteLoading] = useState(false);
@@ -327,6 +337,19 @@ export default function WhatsAppChat({
       setPaymentQuoteLoading(false);
     }
   };
+
+  const formatPaymentMoney = useCallback((amount: number, currency?: string) => {
+    if (!currency) return amount.toFixed(2);
+    try {
+      return new Intl.NumberFormat(undefined, {
+        style: "currency",
+        currency,
+        maximumFractionDigits: 2,
+      }).format(amount);
+    } catch {
+      return `${currency} ${amount.toFixed(2)}`;
+    }
+  }, []);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -1456,6 +1479,56 @@ export default function WhatsAppChat({
               </div>
             ) : (
               <>
+                {paymentQuote?.pricing ? (
+                  <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 p-3 text-sm space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-600">Service subtotal</span>
+                      <span className="font-medium text-gray-900">{formatPaymentMoney(Number(paymentQuote.pricing.subtotal ?? 0), paymentOfferCurrency)}</span>
+                    </div>
+                    {Number(paymentQuote.pricing.travelFee ?? 0) > 0 && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-600">Travel fee</span>
+                        <span className="font-medium text-gray-900">{formatPaymentMoney(Number(paymentQuote.pricing.travelFee ?? 0), paymentOfferCurrency)}</span>
+                      </div>
+                    )}
+                    {Number(paymentQuote.pricing.promotionDiscountAmount ?? 0) > 0 && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-emerald-700">Promotion discount</span>
+                        <span className="font-medium text-emerald-700">-{formatPaymentMoney(Number(paymentQuote.pricing.promotionDiscountAmount ?? 0), paymentOfferCurrency)}</span>
+                      </div>
+                    )}
+                    {Number(paymentQuote.pricing.membershipDiscountAmount ?? 0) > 0 && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-emerald-700">Membership discount</span>
+                        <span className="font-medium text-emerald-700">-{formatPaymentMoney(Number(paymentQuote.pricing.membershipDiscountAmount ?? 0), paymentOfferCurrency)}</span>
+                      </div>
+                    )}
+                    {Number(paymentQuote.pricing.loyaltyDiscountAmount ?? 0) > 0 && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-emerald-700">Loyalty discount</span>
+                        <span className="font-medium text-emerald-700">-{formatPaymentMoney(Number(paymentQuote.pricing.loyaltyDiscountAmount ?? 0), paymentOfferCurrency)}</span>
+                      </div>
+                    )}
+                    {Number(paymentQuote.pricing.taxAmount ?? 0) > 0 && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-600">Tax</span>
+                        <span className="font-medium text-gray-900">{formatPaymentMoney(Number(paymentQuote.pricing.taxAmount ?? 0), paymentOfferCurrency)}</span>
+                      </div>
+                    )}
+                    {Number(paymentQuote.pricing.serviceFeeAmount ?? 0) > 0 && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-600">Platform fee</span>
+                        <span className="font-medium text-gray-900">{formatPaymentMoney(Number(paymentQuote.pricing.serviceFeeAmount ?? 0), paymentOfferCurrency)}</span>
+                      </div>
+                    )}
+                    {Number(paymentQuote.pricing.tipAmount ?? 0) > 0 && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-600">Tip</span>
+                        <span className="font-medium text-gray-900">{formatPaymentMoney(Number(paymentQuote.pricing.tipAmount ?? 0), paymentOfferCurrency)}</span>
+                      </div>
+                    )}
+                  </div>
+                ) : null}
                 {/* Pay in Full — always the primary recommended action */}
                 <div className="rounded-xl border-2 border-primary bg-primary/5 p-4">
                   <div className="flex items-center justify-between mb-1">
@@ -1464,9 +1537,7 @@ export default function WhatsAppChat({
                   </div>
                   {paymentQuote?.pricing?.totalAmount != null && (
                     <div className="text-2xl font-bold text-gray-900 mb-1">
-                      {paymentOfferCurrency
-                        ? (() => { try { return new Intl.NumberFormat(undefined, { style: "currency", currency: paymentOfferCurrency, maximumFractionDigits: 2 }).format(paymentQuote.pricing.totalAmount!); } catch { return `${paymentOfferCurrency} ${paymentQuote.pricing.totalAmount!.toFixed(2)}`; } })()
-                        : paymentQuote.pricing.totalAmount.toFixed(2)}
+                      {formatPaymentMoney(paymentQuote.pricing.totalAmount, paymentOfferCurrency)}
                     </div>
                   )}
                   <p className="text-xs text-gray-500 mb-3">Secure instant confirmation · No balance due later</p>
@@ -1495,18 +1566,17 @@ export default function WhatsAppChat({
                         </span>
                         {paymentQuote.deposit.deposit_amount != null && (
                           <span className="text-sm font-semibold text-gray-900">
-                            {paymentOfferCurrency
-                              ? (() => { try { return new Intl.NumberFormat(undefined, { style: "currency", currency: paymentOfferCurrency, maximumFractionDigits: 2 }).format(paymentQuote.deposit.deposit_amount!); } catch { return `${paymentOfferCurrency} ${paymentQuote.deposit.deposit_amount!.toFixed(2)}`; } })()
-                              : paymentQuote.deposit.deposit_amount.toFixed(2)}
+                            {formatPaymentMoney(paymentQuote.deposit.deposit_amount, paymentOfferCurrency)}
                           </span>
                         )}
                       </div>
                       {paymentQuote.deposit.full_total != null && paymentQuote.deposit.deposit_amount != null && (
                         <p className="text-xs text-gray-500 mb-2">
                           Remaining{" "}
-                          {paymentOfferCurrency
-                            ? (() => { try { return new Intl.NumberFormat(undefined, { style: "currency", currency: paymentOfferCurrency, maximumFractionDigits: 2 }).format(paymentQuote.deposit.full_total! - paymentQuote.deposit.deposit_amount!); } catch { return `${paymentOfferCurrency} ${(paymentQuote.deposit.full_total! - paymentQuote.deposit.deposit_amount!).toFixed(2)}`; } })()
-                            : (paymentQuote.deposit.full_total - paymentQuote.deposit.deposit_amount).toFixed(2)}{" "}
+                          {formatPaymentMoney(
+                            paymentQuote.deposit.full_total! - paymentQuote.deposit.deposit_amount!,
+                            paymentOfferCurrency,
+                          )}{" "}
                           due before appointment
                         </p>
                       )}

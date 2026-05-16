@@ -208,6 +208,9 @@ export default function GiftCardPurchaseScreen() {
         setProcessingMessage(gc("openingPaymentPage") || "Opening payment page…");
         if (Platform.OS !== "web") {
           const returnUrl = ExpoLinking.createURL("account-settings/payments");
+          // Important: close blocking overlay before opening Paystack WebView.
+          // Concurrent RN modals can prevent checkout from appearing.
+          setProcessingPayment(false);
           const pr = await paystackHostedCheckout.waitForCheckout(paymentUrl, {
             title: gc("securePaymentTitle") || "Secure payment",
             matchSuccess: (u) => matchesExpoReturnUrl(u, returnUrl) && !isCancelledPaystackUrl(u),
@@ -224,6 +227,7 @@ export default function GiftCardPurchaseScreen() {
           await Linking.openURL(paymentUrl);
         }
 
+        setProcessingPayment(true);
         setProcessingMessage(gc("confirmingPayment") || "Confirming your payment…");
         if (reference) {
           await api.get(`/api/paystack/verify?reference=${encodeURIComponent(reference)}`).catch(() => {});

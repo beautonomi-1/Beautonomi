@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get devices from database - optimized query selecting only needed fields
+    // Primary source: provider_yoco_devices
     const { data: devices, error } = await supabase
       .from("provider_yoco_devices")
       .select(`
@@ -70,7 +70,17 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Map database fields to API response format (provider app expects serial_number, device_type)
+    // Backward compatibility: include legacy terminals for providers not fully migrated.
+    // This prevents "no device to select" when a provider still has rows in provider_yoco_terminals.
+    const { data: legacyTerminals, error: legacyError } = await supabase
+      .from("provider_yoco_terminals")
+      .select("id, device_id, device_name, location_name, active, created_at")
+      .eq("provider_id", providerId)
+      .order("created_at", { ascending: false });
+    if (legacyError) {
+      console.warn("Error fetching legacy Yoco terminals:", legacyError);
+    }
+
     const mappedDevices = (devices || []).map((device: any) => ({
       id: device.id,
       name: device.name,
@@ -87,8 +97,32 @@ export async function GET(request: NextRequest) {
       created_at: device.created_at,
     }));
 
+    const existingYocoIds = new Set(
+      mappedDevices
+        .map((d: { device_id?: string }) => (typeof d.device_id === "string" ? d.device_id : ""))
+        .filter(Boolean),
+    );
+    const mappedLegacy = (legacyTerminals || [])
+      .filter((t: any) => t?.device_id && !existingYocoIds.has(String(t.device_id)))
+      .map((terminal: any) => ({
+        id: terminal.id,
+        name: terminal.device_name || "Yoco terminal",
+        device_id: terminal.device_id,
+        serial_number: terminal.device_id,
+        device_type: "card_machine" as const,
+        location_id: null,
+        location_name: terminal.location_name ?? null,
+        is_active: terminal.active !== false,
+        total_transactions: 0,
+        total_amount: 0,
+        last_used: null,
+        created_date: terminal.created_at,
+        created_at: terminal.created_at,
+        legacy_terminal: true,
+      }));
+
     return NextResponse.json({
-      data: mappedDevices,
+      data: [...mappedDevices, ...mappedLegacy],
       error: null,
     });
   } catch (error: any) {

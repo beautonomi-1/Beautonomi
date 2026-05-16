@@ -490,7 +490,7 @@ export default function SubscriptionScreen() {
         </Text>
       </View>
 
-      {subscription?.paystack_sync_pending ? (
+      {paidSubscriber && subscription?.paystack_sync_pending ? (
         <View
           style={twStyle("mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4")}
         >
@@ -579,7 +579,7 @@ export default function SubscriptionScreen() {
             </View>
           ) : null}
 
-          {subscription.billing_issue ? (
+          {paidSubscriber && subscription.billing_issue ? (
             <View style={twStyle("mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4")}>
               <Text style={twStyle("text-sm font-semibold text-amber-900")}>
                 {subscription.billing_issue.type === "payment_failed"

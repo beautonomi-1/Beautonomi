@@ -370,6 +370,17 @@ export default function Index() {
         return;
       }
 
+      // New signups (customer/provider_onboarding portal) are expected to miss
+      // provider-gated profile access until onboarding creates/upgrades provider role.
+      // Route them to onboarding instead of trapping them behind profile errors.
+      if (isAuthError && needsOnboarding) {
+        setHasProfile(false);
+        setCheckingProfile(false);
+        setProfileLoadError(false);
+        clearProfileDeadline();
+        return;
+      }
+
       const isTransient = !!err && isTransientApiFailure(err);
 
       if (isAuthError && attempt < PROFILE_AUTH_RETRY_MAX - 1) {
@@ -406,6 +417,17 @@ export default function Index() {
 
   useEffect(() => {
     if (portalState !== "ok" || !session) return;
+    if (needsOnboarding) {
+      setCheckingProfile(false);
+      setProfileLoadError(false);
+      setHasProfile(false);
+      clearProfileDeadline();
+      if (profileRetryTimeoutRef.current) {
+        clearTimeout(profileRetryTimeoutRef.current);
+        profileRetryTimeoutRef.current = null;
+      }
+      return;
+    }
 
     let cancelled = false;
     setCheckingProfile(true);
@@ -436,7 +458,7 @@ export default function Index() {
     };
     // runProfileCheck is intentionally omitted to avoid re-running on every identity change
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [portalState, session?.user?.id]);
+  }, [portalState, session?.user?.id, needsOnboarding]);
 
   useEffect(() => {
     if (!__DEV__) return;

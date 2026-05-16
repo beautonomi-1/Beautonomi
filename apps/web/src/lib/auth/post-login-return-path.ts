@@ -32,6 +32,16 @@ export function isCustomerSkewedPostLoginPath(pathname: string): boolean {
 }
 
 export function resolvePortalAwareReturnPathname(portal: Portal, requestedPathname: string): string {
+  if (portal === "customer") {
+    // Provider-intent login can briefly resolve as customer before provider role
+    // is upgraded. Keep the journey seamless by sending them into onboarding.
+    if (
+      requestedPathname === "/provider" ||
+      requestedPathname.startsWith("/provider/")
+    ) {
+      return "/provider/onboarding";
+    }
+  }
   if (portal === "provider_onboarding") {
     const allowedSetupPath =
       requestedPathname === "/provider/onboarding" ||

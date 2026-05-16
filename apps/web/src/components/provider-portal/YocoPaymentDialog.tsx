@@ -53,6 +53,7 @@ export function YocoPaymentDialog({
 
   useEffect(() => {
     if (open) {
+      setSelectedDeviceId("");
       loadDevices();
       setCustomAmount(amount.toString());
       setPaymentResult(null);

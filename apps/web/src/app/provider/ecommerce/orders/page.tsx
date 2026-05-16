@@ -5,8 +5,10 @@ import { useSearchParams } from "next/navigation";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 import { fetcher, clearFetcherCache } from "@/lib/http/fetcher";
 import { cn } from "@/lib/utils";
+import type { YocoPayment } from "@/lib/provider-portal/types";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { YocoPaymentDialog } from "@/components/provider-portal/YocoPaymentDialog";
 import {
   ShoppingBag,
   ChevronLeft,
@@ -120,6 +122,8 @@ export default function ProviderProductOrdersPage() {
   // so customers can tap straight through from their order detail page.
   const [carrierInput, setCarrierInput] = useState("");
   const [trackingUrlInput, setTrackingUrlInput] = useState("");
+  const [yocoDialogOpen, setYocoDialogOpen] = useState(false);
+  const [yocoOrder, setYocoOrder] = useState<ProductOrder | null>(null);
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
@@ -251,6 +255,28 @@ export default function ProviderProductOrdersPage() {
     setTrackingDialog(null);
   };
 
+  const openYocoCollection = (order: ProductOrder) => {
+    setYocoOrder(order);
+    setYocoDialogOpen(true);
+  };
+
+  const handleYocoCollectionSuccess = async (payment: YocoPayment) => {
+    if (!yocoOrder) return;
+    try {
+      await fetcher.post(`/api/provider/product-orders/${yocoOrder.id}/mark-collected`, {
+        payment_method: "yoco",
+        reference: payment.yoco_payment_id,
+        idempotency_key: `web-yoco-${yocoOrder.id}-${payment.yoco_payment_id}`,
+      });
+      clearFetcherCache();
+      await fetchOrders();
+      setYocoDialogOpen(false);
+      setYocoOrder(null);
+    } catch {
+      setError("Card charged, but recording collection failed. Retry recording payment with the same reference.");
+    }
+  };
+
   return (
     <div className="space-y-6 min-w-0 max-w-full overflow-x-hidden px-1 sm:px-0">
       <div>
@@ -331,6 +357,10 @@ export default function ProviderProductOrdersPage() {
               const totalAmount = Number(o.total_amount ?? 0);
               const providerEarnings = Math.max(0, totalAmount - platformFee);
               const isAppointmentOrder = o.order_source === "appointment";
+              const canCollectWithYoco =
+                o.payment_status !== "paid" &&
+                o.status !== "cancelled" &&
+                o.status !== "refunded";
               return (
                 <div
                   key={o.id}
@@ -430,6 +460,14 @@ export default function ProviderProductOrdersPage() {
                               {updating === o.id ? "..." : a.label}
                             </button>
                           ))}
+                        {canCollectWithYoco ? (
+                          <button
+                            onClick={() => openYocoCollection(o)}
+                            className="px-3 py-1.5 text-xs font-medium text-white rounded-lg bg-gray-900 hover:bg-black"
+                          >
+                            Collect with Yoco
+                          </button>
+                        ) : null}
                       </div>
                     </div>
                   </div>
@@ -439,6 +477,18 @@ export default function ProviderProductOrdersPage() {
           </div>
         )}
       </div>
+
+      {yocoOrder ? (
+        <YocoPaymentDialog
+          open={yocoDialogOpen}
+          onOpenChange={(open) => {
+            setYocoDialogOpen(open);
+            if (!open) setYocoOrder(null);
+          }}
+          amount={Number(yocoOrder.total_amount || 0)}
+          onSuccess={handleYocoCollectionSuccess}
+        />
+      ) : null}
 
       {totalPages > 1 && (
         <div className="flex items-center justify-center gap-2">

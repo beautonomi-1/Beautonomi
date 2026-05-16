@@ -9,6 +9,10 @@ import {
   userHasProviderAccessAdmin,
 } from "@/lib/supabase/api-helpers";
 
+function normalizeGroupBookingId(rawId: string): string {
+  return rawId.startsWith("group:") ? rawId.slice("group:".length) : rawId;
+}
+
 /**
  * POST /api/provider/group-bookings/[id]/participants/[participantId]/check-in
  * 
@@ -21,7 +25,8 @@ export async function POST(
   try {
     const admin = getSupabaseAdmin();
     const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
-    const { id, participantId } = await params;
+    const { id: rawId, participantId } = await params;
+    const id = normalizeGroupBookingId(rawId);
 
     const { data: group, error: groupError } = await admin
       .from("group_bookings")
@@ -63,7 +68,7 @@ export async function POST(
         .from("bookings")
         .update({
           status: "checked_in",
-          checked_in_at: now,
+          checked_in_time: now,
           updated_at: now,
         })
         .eq("id", participant.booking_id)

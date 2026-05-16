@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { PaystackWebViewModal } from "@/components/payments/PaystackWebViewModal";
 
 export type InAppPaystackResult =
@@ -30,6 +30,11 @@ export function useInAppPaystackCheckout() {
       },
     ): Promise<InAppPaystackResult> => {
       return new Promise((resolve) => {
+        // Defensive: if a previous checkout promise is still unresolved, close it
+        // before replacing the session so callers never hang indefinitely.
+        if (resolverRef.current) {
+          resolverRef.current({ outcome: "closed" });
+        }
         resolverRef.current = resolve;
         setSession({
           url,
@@ -38,6 +43,16 @@ export function useInAppPaystackCheckout() {
           matchCancel: options.matchCancel,
         });
       });
+    },
+    [],
+  );
+
+  useEffect(
+    () => () => {
+      if (resolverRef.current) {
+        resolverRef.current({ outcome: "closed" });
+        resolverRef.current = null;
+      }
     },
     [],
   );
