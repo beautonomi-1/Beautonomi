@@ -4550,6 +4550,13 @@ function Step14PlanSelection({
           </AlertDescription>
         </Alert>
       )}
+      <Alert className="rounded-2xl border-slate-200 bg-slate-50 sm:rounded-3xl">
+        <AlertCircle className="h-4 w-4 text-slate-700" />
+        <AlertDescription className="text-sm leading-relaxed text-slate-800">
+          <strong className="text-slate-900">Checkout behavior:</strong> Free plan activates instantly. Paid plan
+          continues for card payment and returns here automatically.
+        </AlertDescription>
+      </Alert>
     </div>
   );
 }

@@ -2,15 +2,20 @@
  * Paystack payment flow for native app.
  *
  * Supports two flows:
- * 1. New card: Initialize -> open hosted checkout in WebBrowser -> webhook saves card if requested
+ * 1. New card: Initialize -> in-app WebView hosted checkout -> verify + poll
  * 2. Saved card: Charge authorization directly via API (no redirect needed)
  */
-import { useState, useCallback, useEffect, useRef } from "react";
-import * as WebBrowser from "expo-web-browser";
+import { useState, useCallback } from "react";
 import * as ExpoLinking from "expo-linking";
 import { api } from "@/lib/api-client";
 import { getAnalyticsClient } from "@/lib/analytics-rn";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
+import {
+  extractPaystackReferenceFromUrl,
+  isCancelledPaystackUrl,
+  matchesExpoReturnUrl,
+} from "@/lib/paystack-webview-utils";
 
 interface PaystackInitResponse {
   authorization_url: string;
@@ -71,16 +76,6 @@ export async function pollBookingPaymentSettled(
   return false;
 }
 
-/** Returns true if the deep-link return URL signals the user cancelled on Paystack. */
-function isCancelledUrl(url: string): boolean {
-  try {
-    const parsed = ExpoLinking.parse(url);
-    return parsed.queryParams?.cancelled === "1";
-  } catch {
-    return false;
-  }
-}
-
 /** Returns true if the returned URL is a Paystack internal close URL (3DS stranded). */
 function isPaystackCloseUrl(url: string): boolean {
   try {
@@ -94,17 +89,7 @@ function isPaystackCloseUrl(url: string): boolean {
 export function usePaystackPayment() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const authSessionActiveRef = useRef(false);
-
-  // Dismiss any lingering auth session when the calling component unmounts.
-  useEffect(() => {
-    return () => {
-      if (authSessionActiveRef.current) {
-        WebBrowser.dismissAuthSession();
-        authSessionActiveRef.current = false;
-      }
-    };
-  }, []);
+  const checkout = useInAppPaystackCheckout();
 
   const pay = useCallback(
     async (params: PayParams) => {
@@ -112,7 +97,8 @@ export function usePaystackPayment() {
       setError(null);
 
       try {
-        const returnUrl = ExpoLinking.createURL("book/paystack");
+        // Unified callback route for all in-app Paystack flows.
+        const returnUrl = ExpoLinking.createURL("paystack-callback");
         const res = await api.post<PaystackInitResponse>("/api/payments/initialize", {
           booking_id: params.booking_id,
           amount: params.amount,
@@ -145,23 +131,34 @@ export function usePaystackPayment() {
           save_card: params.save_card ?? false,
         });
 
-        authSessionActiveRef.current = true;
-        const browserResult = await WebBrowser.openAuthSessionAsync(data.authorization_url, returnUrl);
-        authSessionActiveRef.current = false;
+        const pr = await checkout.waitForCheckout(data.authorization_url, {
+          title: "Pay booking",
+          matchSuccess: (u) => matchesExpoReturnUrl(u, returnUrl) && !isCancelledPaystackUrl(u),
+          matchCancel: (u) => isCancelledPaystackUrl(u),
+        });
 
         let reference = data.reference;
 
-        if (browserResult.type === "cancel" || browserResult.type === "dismiss") {
+        if (pr.outcome === "cancel") {
           getAnalyticsClient()?.track("payment_cancelled", {
             booking_id: params.booking_id,
-            reason: browserResult.type,
+            reason: "cancel_action",
             source: "customer_mobile",
           });
           return { success: false, cancelled: true };
         }
 
-        if (browserResult.type === "success" && browserResult.url) {
-          if (isCancelledUrl(browserResult.url)) {
+        if (pr.outcome === "closed") {
+          getAnalyticsClient()?.track("payment_dismissed", {
+            booking_id: params.booking_id,
+            source: "customer_mobile",
+          });
+          // Still verify + poll — user may have completed payment then dismissed quickly,
+          // or Paystack may have settled via webhook while the sheet was open.
+        }
+
+        if (pr.outcome === "success" && pr.url) {
+          if (isCancelledPaystackUrl(pr.url)) {
             getAnalyticsClient()?.track("payment_cancelled", {
               booking_id: params.booking_id,
               reason: "cancel_action",
@@ -170,22 +167,11 @@ export function usePaystackPayment() {
             return { success: false, cancelled: true };
           }
 
-          // 3DS-stranded: Paystack closed on its own domain without a reference
-          if (isPaystackCloseUrl(browserResult.url)) {
+          if (isPaystackCloseUrl(pr.url)) {
             // Webhook may have already processed — fall through to polling
           } else {
-            try {
-              const parsed = ExpoLinking.parse(browserResult.url);
-              const query = parsed.queryParams ?? {};
-              const returnedRef = query.reference ?? query.trxref;
-              reference = Array.isArray(returnedRef)
-                ? returnedRef[0] ?? reference
-                : typeof returnedRef === "string" && returnedRef.trim()
-                  ? returnedRef.trim()
-                  : reference;
-            } catch {
-              // Fall back to the reference returned by initialize.
-            }
+            const extracted = extractPaystackReferenceFromUrl(pr.url);
+            if (extracted) reference = extracted;
           }
         }
 
@@ -197,28 +183,17 @@ export function usePaystackPayment() {
           if (!vr.error && vr.data) {
             const raw = vr.data as Record<string, unknown>;
             const inner = raw?.data && typeof raw.data === "object" ? (raw.data as Record<string, unknown>) : raw;
-            const st = typeof inner?.status === "string" ? inner.status : typeof raw?.status === "string" ? raw.status : "";
+            const st =
+              typeof inner?.status === "string" ? inner.status : typeof raw?.status === "string" ? raw.status : "";
             if (st === "success") paymentConfirmed = true;
           }
         }
 
-        // Poll booking status using the shared strongest-criteria helper.
         if (!paymentConfirmed && params.booking_id) {
-          paymentConfirmed = await pollBookingPaymentSettled(
-            params.booking_id,
-            (url) => api.get(url),
-          );
+          paymentConfirmed = await pollBookingPaymentSettled(params.booking_id, (url) => api.get(url));
         }
 
-        const dismissed =
-          browserResult.type !== "success" || (browserResult.type === "success" && !browserResult.url);
-
-        if (dismissed) {
-          getAnalyticsClient()?.track("payment_dismissed", {
-            booking_id: params.booking_id,
-            source: "customer_mobile",
-          });
-        }
+        const dismissed = pr.outcome === "closed";
 
         return {
           success: paymentConfirmed,
@@ -232,7 +207,7 @@ export function usePaystackPayment() {
         setLoading(false);
       }
     },
-    []
+    [checkout],
   );
 
   const payWithSavedCard = useCallback(
@@ -258,12 +233,7 @@ export function usePaystackPayment() {
         const data = res.data;
         const txStatus = data?.status || data?.transaction?.status;
 
-        // 3DS required: bank returned send_otp or requires_authorization.
-        // Fall back to the hosted checkout page so the user can complete the
-        // 3DS challenge — same behaviour as the Paystack web SDK.
         if (txStatus === "send_otp" || txStatus === "requires_authorization") {
-          // We need to re-initialize to get a fresh authorization_url.
-          // The caller should surface this as a redirect — return a sentinel.
           setLoading(false);
           return { success: false, requires3ds: true };
         }
@@ -287,8 +257,8 @@ export function usePaystackPayment() {
         return { success: false };
       }
     },
-    []
+    [],
   );
 
-  return { pay, payWithSavedCard, loading, error };
+  return { pay, payWithSavedCard, loading, error, paystackModal: checkout.modal };
 }

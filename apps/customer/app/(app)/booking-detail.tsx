@@ -24,6 +24,7 @@ import { APP_URL, getBackendUrl, withWebApiTenantHeaders } from "@/config/public
 import { api } from "@/lib/api-client";
 import { Colors } from "@/constants/colors";
 import { usePaystackPayment } from "@/hooks/usePaystackPayment";
+import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
 import { StaticMapImage, openInMaps } from "@/components/StaticMapImage";
@@ -33,7 +34,6 @@ import { getApiErrorMessage } from "@/lib/api-error";
 import { supabase } from "@/lib/supabase/client";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Clipboard from "expo-clipboard";
-import * as WebBrowser from "expo-web-browser";
 import * as Calendar from "expo-calendar";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import {
@@ -173,7 +173,8 @@ export default function BookingDetailScreen() {
     [t],
   );
   const onDemandConfig = useModuleConfig("on_demand");
-  const { pay, loading: payLoading, error: payError } = usePaystackPayment();
+  const { pay, loading: payLoading, error: payError, paystackModal } = usePaystackPayment();
+  const payRemainingCheckout = useInAppPaystackCheckout();
   const [booking, setBooking] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -653,13 +654,7 @@ export default function BookingDetailScreen() {
         return;
       }
 
-      // §Final-audit 2026-04: previously this always routed to the
-      // `/in-app-browser` WebView screen. `react-native-webview` is not
-      // supported on Expo web export, so customers hitting the PWA/web
-      // build could not complete pay-remaining. Use `WebBrowser` on
-      // native (same shell as the primary checkout) and a direct
-      // `Linking.openURL` fallback on web, then poll the booking until
-      // `outstanding_balance` clears.
+      // Native: in-app Paystack WebView intercepts the web `payment-callback` return URL, then we poll.
       if (Platform.OS === "web") {
         try {
           window.open(url, "_blank", "noopener,noreferrer");
@@ -667,13 +662,32 @@ export default function BookingDetailScreen() {
           Linking.openURL(url).catch(() => {});
         }
       } else {
-        try {
-          await WebBrowser.openBrowserAsync(url, {
-            presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
-          });
-        } catch {
-          Linking.openURL(url).catch(() => {});
-        }
+        const appBase = (APP_URL ?? "").replace(/\/$/, "");
+        await payRemainingCheckout.waitForCheckout(url, {
+          title: "Pay remaining balance",
+          matchSuccess: (rawUrl) => {
+            try {
+              if (!rawUrl.startsWith("http")) return false;
+              const u = new URL(rawUrl);
+              if (u.searchParams.get("cancelled") === "1") return false;
+              if (!appBase || !u.href.startsWith(appBase)) return false;
+              return (
+                u.pathname.includes("/account-settings/bookings/") &&
+                u.pathname.endsWith("/payment-callback") &&
+                u.searchParams.get("pay_remaining") === "1"
+              );
+            } catch {
+              return false;
+            }
+          },
+          matchCancel: (rawUrl) => {
+            try {
+              return new URL(rawUrl).searchParams.get("cancelled") === "1";
+            } catch {
+              return false;
+            }
+          },
+        });
       }
 
       const MAX_ATTEMPTS = 10;
@@ -2609,6 +2623,8 @@ export default function BookingDetailScreen() {
         </Pressable>
         </KeyboardAvoidingView>
       </Modal>
+      {paystackModal}
+      {payRemainingCheckout.modal}
     </>
   );
 }

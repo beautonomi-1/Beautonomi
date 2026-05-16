@@ -3,6 +3,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 /**
  * Idempotent `booking_payments` rows for wallet / gift portions so
  * `update_booking_payment_status` sums match economic reality (wallet+card → paid).
+ *
+ * When `initialStatus` is `pending`, the finance ledger trigger does not run until
+ * `completeWalletGiftSyntheticPayments` marks the row `completed` (after Paystack /
+ * no-gateway ledger rows exist) — prevents double commission on split tender (F1).
  */
 export async function ensureWalletGiftBookingPayments(
   admin: SupabaseClient,
@@ -11,21 +15,25 @@ export async function ensureWalletGiftBookingPayments(
     tenantId: string | null | undefined;
     walletAmount: number;
     giftCardAmount: number;
+    /** Default `completed` for pure wallet/gift settlements; use `pending` when a Paystack card leg will follow. */
+    initialStatus?: "pending" | "completed";
   },
 ): Promise<void> {
   const { bookingId, tenantId } = input;
   const walletAmount = Math.round(Math.max(0, Number(input.walletAmount) || 0) * 100) / 100;
   const giftCardAmount = Math.round(Math.max(0, Number(input.giftCardAmount) || 0) * 100) / 100;
+  const initialStatus = input.initialStatus ?? "completed";
 
   const insertOne = async (kind: "wallet" | "gift_card", amount: number) => {
     if (amount <= 0) return;
     const paymentProviderId = `${kind}_booking:${bookingId}`;
     const { data: existing } = await admin
       .from("booking_payments")
-      .select("id")
+      .select("id, status")
       .eq("booking_id", bookingId)
       .eq("payment_provider_id", paymentProviderId)
       .maybeSingle();
+    if (existing && (existing as { status?: string }).status === "completed") return;
     if (existing) return;
 
     const row: Record<string, unknown> = {
@@ -34,7 +42,7 @@ export async function ensureWalletGiftBookingPayments(
       payment_method: kind,
       payment_provider: kind,
       payment_provider_id: paymentProviderId,
-      status: "completed",
+      status: initialStatus,
       notes: `${kind} applied at checkout`,
       payment_provider_data: { source: "ensure_wallet_gift_booking_payments" },
     };
@@ -48,4 +56,20 @@ export async function ensureWalletGiftBookingPayments(
 
   await insertOne("wallet", walletAmount);
   await insertOne("gift_card", giftCardAmount);
+}
+
+/** Mark synthetic wallet/gift booking_payments `completed` after Paystack / no-gateway ledger exists (F1). */
+export async function completeWalletGiftSyntheticPayments(
+  admin: SupabaseClient,
+  bookingId: string,
+): Promise<void> {
+  const { error } = await admin
+    .from("booking_payments")
+    .update({ status: "completed", notes: "Synthetic wallet/gift leg — completed after gateway ledger" })
+    .eq("booking_id", bookingId)
+    .in("payment_provider", ["wallet", "gift_card"])
+    .eq("status", "pending");
+  if (error) {
+    console.error("[completeWalletGiftSyntheticPayments] update failed:", error);
+  }
 }

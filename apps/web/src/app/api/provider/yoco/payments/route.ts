@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
+import { getProviderIdForUser } from "@/lib/supabase/api-helpers";
 import { checkYocoFeatureAccess } from "@/lib/subscriptions/feature-access";
 import { z } from "zod";
 import { convertToCents, validateYocoAmount, YOCO_ENDPOINTS } from "@/lib/payments/yoco";
@@ -69,13 +70,25 @@ export async function POST(request: Request) {
     const appointmentId =
       validationResult.data.appointment_id ?? validationResult.data.booking_id ?? null;
 
-    // Get provider ID
+    // Resolve active provider context (owner/staff, multi-provider safe).
+    const providerId = await getProviderIdForUser(auth.user.id, supabase, { request });
+    if (!providerId) {
+      return NextResponse.json(
+        {
+          data: null,
+          error: {
+            message: "Provider not found",
+            code: "PROVIDER_NOT_FOUND",
+          },
+        },
+        { status: 404 }
+      );
+    }
     const { data: provider } = await supabase
       .from("providers")
       .select("id, tenant_id")
-      .or(`user_id.eq.${auth.user.id},id.in.(select provider_id from provider_staff where user_id.eq.${auth.user.id})`)
+      .eq("id", providerId)
       .single();
-
     if (!provider) {
       return NextResponse.json(
         {
@@ -96,7 +109,7 @@ export async function POST(request: Request) {
     const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
     // Subscription gate: Yoco is a paid feature (app shows upgrade message for SUBSCRIPTION_REQUIRED)
-    const yocoAccess = await checkYocoFeatureAccess(provider.id);
+    const yocoAccess = await checkYocoFeatureAccess(providerId, supabase);
     if (!yocoAccess.enabled) {
       return NextResponse.json(
         {
@@ -115,7 +128,7 @@ export async function POST(request: Request) {
       .from("provider_yoco_devices")
       .select("id, name, yoco_device_id, is_active")
       .eq("id", validationResult.data.device_id)
-      .eq("provider_id", provider.id)
+      .eq("provider_id", providerId)
       .single();
 
     if (!device) {
@@ -150,7 +163,7 @@ export async function POST(request: Request) {
     const { data: integration } = await supabase
       .from("provider_yoco_integrations")
       .select("secret_key, public_key, is_enabled")
-      .eq("provider_id", provider.id)
+      .eq("provider_id", providerId)
       .single();
 
     const integrationRow = integration as IntegrationRow | null;
@@ -230,7 +243,7 @@ export async function POST(request: Request) {
       let reuseQuery = supabase
         .from("provider_yoco_payments")
         .select("id, yoco_payment_id, yoco_device_id, amount, currency, status, created_at, device_id")
-        .eq("provider_id", provider.id)
+        .eq("provider_id", providerId)
         .eq("status", "pending")
         .gte("created_at", new Date(Date.now() - PENDING_WINDOW_MINUTES * 60 * 1000).toISOString())
         .order("created_at", { ascending: false })
@@ -309,7 +322,7 @@ export async function POST(request: Request) {
 
     // Yoco expects amount as Money object and metadata values as strings (API reference)
     const metadataRecord: Record<string, string> = {
-      provider_id: provider.id,
+      provider_id: providerId,
       device_id: device.id,
       processed_by: auth.user.id,
       ...(appointmentId ? { appointment_id: appointmentId } : {}),
@@ -375,7 +388,7 @@ export async function POST(request: Request) {
     const { data: payment, error: insertError } = await supabase
       .from("provider_yoco_payments")
       .insert({
-        provider_id: provider.id,
+        provider_id: providerId,
         device_id: device.id,
         yoco_payment_id: yocoId,
         yoco_device_id: yocoDeviceId,
@@ -516,14 +529,9 @@ export async function GET(request: Request) {
     const supabase = await getSupabaseServer(request);
     const { searchParams } = new URL(request.url);
 
-    // Get provider ID
-    const { data: provider } = await supabase
-      .from("providers")
-      .select("id")
-      .or(`user_id.eq.${auth.user.id},id.in.(select provider_id from provider_staff where user_id.eq.${auth.user.id})`)
-      .single();
-
-    if (!provider) {
+    // Resolve active provider context (owner/staff, multi-provider safe).
+    const providerId = await getProviderIdForUser(auth.user.id, supabase, { request });
+    if (!providerId) {
       return NextResponse.json(
         {
           data: null,
@@ -547,7 +555,7 @@ export async function GET(request: Request) {
     let query = supabase
       .from("provider_yoco_payments")
       .select("*, provider_yoco_devices(name)", { count: "exact" })
-      .eq("provider_id", provider.id);
+      .eq("provider_id", providerId);
 
     // Apply filters
     if (status) {

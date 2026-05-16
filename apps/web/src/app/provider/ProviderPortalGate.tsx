@@ -7,7 +7,8 @@ import { useAuth } from "@/providers/AuthProvider";
 
 const GATE_CACHE_KEY = "provider_gate_status";
 const GATE_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
-const MAX_RETRY_ATTEMPTS = 2;
+const AUTH_RETRY_ATTEMPTS = 4;
+const TRANSIENT_RETRY_ATTEMPTS = 4;
 
 function readGateCache(): boolean {
   if (typeof window === "undefined") return false;
@@ -129,15 +130,21 @@ export function ProviderPortalGate({ children }: { children: React.ReactNode }) 
       } catch (error) {
         if (cancelled) return;
 
-        // 401/403 → redirect out of the portal (auth lost / not permitted).
+        // 401/403 can be transient right after OTP/OAuth handoff; retry before forcing redirect.
         if (error instanceof FetchError && (error.status === 401 || error.status === 403)) {
+          if (attempt < AUTH_RETRY_ATTEMPTS) {
+            setTimeout(() => {
+              if (!cancelled) run();
+            }, 350 * attempt);
+            return;
+          }
           clearGateCache();
           router.replace(error.status === 401 ? "/auth" : "/");
           return;
         }
 
-        // Otherwise retry up to MAX_RETRY_ATTEMPTS with linear backoff.
-        if (attempt < MAX_RETRY_ATTEMPTS) {
+        // Otherwise retry with linear backoff for transient network/server failures.
+        if (attempt < TRANSIENT_RETRY_ATTEMPTS) {
           setTimeout(() => {
             if (!cancelled) run();
           }, 1500 * attempt);

@@ -95,7 +95,7 @@ export async function PUT(request: NextRequest) {
 
     // Check subscription allows custom integrations (skip for superadmin)
     if (user.role !== "superadmin") {
-      const marketingAccess = await checkMarketingFeatureAccess(providerId);
+      const marketingAccess = await checkMarketingFeatureAccess(providerId, supabase);
       if (!marketingAccess.customIntegrations) {
         return errorResponse(
           "Marketing integrations require a subscription upgrade. Please upgrade your plan to use custom email integrations.",

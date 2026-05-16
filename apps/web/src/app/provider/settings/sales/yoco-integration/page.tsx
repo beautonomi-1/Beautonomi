@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle2, XCircle, ExternalLink, CreditCard } from "lucide-react";
+import { CheckCircle2, XCircle, ExternalLink, CreditCard, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
 import { SubscriptionGate } from "@/components/provider/SubscriptionGate";
@@ -23,6 +23,7 @@ export default function YocoIntegrationPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [showKeys, setShowKeys] = useState(false);
+  const [showSecretKey, setShowSecretKey] = useState(false);
   const [subscriptionRequired, setSubscriptionRequired] = useState(false);
   
   const [formData, setFormData] = useState({
@@ -228,7 +229,7 @@ export default function YocoIntegrationPage() {
             <div>
               <h3 className="text-lg font-semibold mb-1">API Credentials</h3>
               <p className="text-sm text-gray-600">
-                Your Yoco API keys for secure payment processing
+                Use your Yoco API credentials for Web POS payments (live keys for production).
               </p>
             </div>
             <Button
@@ -240,22 +241,55 @@ export default function YocoIntegrationPage() {
             </Button>
           </div>
 
+          <Alert className="mb-4 bg-blue-50 border-blue-200">
+            <AlertDescription className="text-blue-900 text-sm">
+              <p className="font-medium mb-1">How to find your keys</p>
+              <ol className="list-decimal pl-5 space-y-1">
+                <li>Sign in to your Yoco business dashboard.</li>
+                <li>Open the section for API credentials or developer/API settings.</li>
+                <li>Copy your live public key and live secret key, then paste them here.</li>
+              </ol>
+              <p className="mt-2">
+                If the menu labels changed, use the{" "}
+                <a
+                  href="https://developer.yoco.com/api-reference"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline font-medium"
+                >
+                  Yoco documentation
+                </a>{" "}
+                for the latest steps.
+              </p>
+            </AlertDescription>
+          </Alert>
+
           {showKeys ? (
             <div className="space-y-4">
               <div>
                 <Label htmlFor="secret_key">Secret Key</Label>
-                <Input
-                  id="secret_key"
-                  type="password"
-                  placeholder="sk_live_..."
-                  value={formData.secret_key}
-                  onChange={(e) =>
-                    setFormData({ ...formData, secret_key: e.target.value })
-                  }
-                  className="mt-1"
-                />
+                <div className="relative mt-1">
+                  <Input
+                    id="secret_key"
+                    type={showSecretKey ? "text" : "password"}
+                    placeholder="sk_live_..."
+                    value={formData.secret_key}
+                    onChange={(e) =>
+                      setFormData({ ...formData, secret_key: e.target.value })
+                    }
+                    className="pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowSecretKey((v) => !v)}
+                    className="absolute inset-y-0 right-0 flex items-center px-3 text-gray-500 hover:text-gray-700"
+                    aria-label={showSecretKey ? "Hide secret key" : "Show secret key"}
+                  >
+                    {showSecretKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
                 <p className="text-xs text-gray-500 mt-1">
-                  Keep this key secure. Never share it publicly.
+                  Used for server-to-server Web POS calls. Keep this key private.
                 </p>
               </div>
 
@@ -271,6 +305,9 @@ export default function YocoIntegrationPage() {
                   }
                   className="mt-1"
                 />
+                <p className="text-xs text-gray-500 mt-1">
+                  Account identifier for your Yoco integration. Store the matching live key.
+                </p>
               </div>
 
               <div>
@@ -329,7 +366,7 @@ export default function YocoIntegrationPage() {
               className="text-sm text-pink-600 hover:text-pink-700 flex items-center gap-2"
             >
               <ExternalLink className="w-4 h-4" />
-              View Yoco API Documentation
+              View Yoco API docs (latest key location)
             </a>
           </div>
         </SectionCard>

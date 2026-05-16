@@ -12,7 +12,12 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import * as WebBrowser from "expo-web-browser";
+import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
+import {
+  extractPaystackReferenceFromUrl,
+  isCancelledPaystackUrl,
+  matchesExpoReturnUrl,
+} from "@/lib/paystack-webview-utils";
 import * as ExpoLinking from "expo-linking";
 import { Colors, Shadows } from "@/constants/colors";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -152,6 +157,7 @@ export default function ProductCheckoutScreen() {
   const [refetchingAddresses, setRefetchingAddresses] = useState(false);
   const { cards: savedCards, defaultCard, refresh: refreshSavedCards } = useSavedCards(!!user);
   const { payWithSavedCard } = usePaystackPayment();
+  const paystackHostedCheckout = useInAppPaystackCheckout();
   const [useNewCard, setUseNewCard] = useState(true);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   /**
@@ -526,48 +532,40 @@ export default function ProductCheckoutScreen() {
       return;
     }
 
-    // 3. Open Paystack payment page. Use the native browser flow, not the WebView
-    // callback page, because the web callback depends on web cookies while the app
-    // authenticates API calls with a Bearer token.
+    // 3. In-app Paystack WebView; return URL matches `callback_url` above.
     const url = paystackRes.data.authorization_url;
     setProcessingMessage(pc("openingPaymentPage") || "Opening payment page…");
     if (Platform.OS === "web") {
       setProcessingPayment(false);
       window.location.href = url;
     } else {
-      let shopBrowserResult: WebBrowser.WebBrowserAuthSessionResult | null = null;
-      if (paystackReturnPath) {
-        shopBrowserResult = await WebBrowser.openAuthSessionAsync(url, paystackReturnPath);
-      } else {
-        await WebBrowser.openBrowserAsync(url, {
-          presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
-        });
+      if (!paystackReturnPath) {
+        setProcessingPayment(false);
+        return;
       }
+      const pr = await paystackHostedCheckout.waitForCheckout(url, {
+        title: (pc("securePaymentTitle") as string) || "Secure payment",
+        matchSuccess: (u) => matchesExpoReturnUrl(u, paystackReturnPath) && !isCancelledPaystackUrl(u),
+        matchCancel: (u) => isCancelledPaystackUrl(u),
+      });
 
-      if (
-        shopBrowserResult?.type === "cancel" ||
-        shopBrowserResult?.type === "dismiss"
-      ) {
+      if (pr.outcome === "cancel") {
         setProcessingPayment(false);
         Alert.alert("Payment cancelled", "You cancelled the payment.");
         return;
       }
 
-      if (shopBrowserResult?.type === "success" && shopBrowserResult.url) {
-        try {
-          const parsedReturn = ExpoLinking.parse(shopBrowserResult.url);
-          if (parsedReturn.queryParams?.cancelled === "1") {
-            setProcessingPayment(false);
-            Alert.alert("Payment cancelled", "You cancelled the payment.");
-            return;
-          }
-        } catch {
-          // ignore parse error, proceed normally
-        }
-      }
-
       setProcessingMessage(pc("confirmingPayment") || "Confirming your payment…");
-      const reference = paystackRes.data.reference;
+      let reference = paystackRes.data.reference;
+      if (pr.outcome === "success" && pr.url) {
+        if (isCancelledPaystackUrl(pr.url)) {
+          setProcessingPayment(false);
+          Alert.alert("Payment cancelled", "You cancelled the payment.");
+          return;
+        }
+        const extracted = extractPaystackReferenceFromUrl(pr.url);
+        if (extracted) reference = extracted;
+      }
       if (reference) {
         markReferenceProcessing(reference);
         await api.get(`/api/paystack/verify?reference=${encodeURIComponent(reference)}`).catch(() => {});
@@ -614,7 +612,7 @@ export default function ProductCheckoutScreen() {
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- orders/paymentMethod from context
-  }, [provider_id, fulfillment, selectedAddress, selectedLocation, providerItems, orders.createOrder, orders.fetchOrderDetail, router, user, total, useWallet, useNewCard, selectedCardId, savedCards, payWithSavedCard, refreshSavedCards, refreshSession, fetchCart, pc, errTitle, t, paymentMethod, fb]);
+  }, [provider_id, fulfillment, selectedAddress, selectedLocation, providerItems, orders.createOrder, orders.fetchOrderDetail, router, user, total, useWallet, useNewCard, selectedCardId, savedCards, payWithSavedCard, refreshSavedCards, refreshSession, fetchCart, pc, errTitle, t, paymentMethod, fb, paystackHostedCheckout]);
 
   if (loading) {
     return (
@@ -693,6 +691,7 @@ export default function ProductCheckoutScreen() {
   }
 
   return (
+    <>
     <SafeAreaView style={{ flex: 1, backgroundColor: "#F9FAFB" }} edges={["top"]}>
       <PaymentProcessingOverlay visible={processingPayment} message={processingMessage} />
       <PaymentSuccessOverlay
@@ -1380,5 +1379,7 @@ export default function ProductCheckoutScreen() {
         </TouchableOpacity>
       </View>
     </SafeAreaView>
+    {paystackHostedCheckout.modal}
+    </>
   );
 }

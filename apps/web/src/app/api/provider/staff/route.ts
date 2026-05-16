@@ -340,7 +340,7 @@ export async function POST(request: Request) {
     }
 
     // Check subscription allows staff management
-    const staffAccess = await checkStaffManagementFeatureAccess(providerId);
+    const staffAccess = await checkStaffManagementFeatureAccess(providerId, supabase);
     if (!staffAccess.enabled) {
       return errorResponse(
         "Staff management requires a subscription upgrade. Please upgrade your plan to add staff members.",

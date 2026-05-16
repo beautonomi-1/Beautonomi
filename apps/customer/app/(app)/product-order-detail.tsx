@@ -15,7 +15,12 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import * as FileSystem from "expo-file-system/legacy";
-import * as WebBrowser from "expo-web-browser";
+import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
+import {
+  extractPaystackReferenceFromUrl,
+  isCancelledPaystackUrl,
+  matchesExpoReturnUrl,
+} from "@/lib/paystack-webview-utils";
 import * as ExpoLinking from "expo-linking";
 import { api } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase/client";
@@ -139,6 +144,7 @@ export default function ProductOrderDetailScreen() {
   const [order, setOrder] = useState<ProductOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [paying, setPaying] = useState(false);
+  const paystackHostedCheckout = useInAppPaystackCheckout();
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: Math.min(600, contentMaxWidth), alignSelf: "center" as const, width: "100%" as const } : {};
 
@@ -274,9 +280,23 @@ export default function ProductOrderDetailScreen() {
         return;
       }
 
-      await WebBrowser.openAuthSessionAsync(url, paystackReturnPath);
+      const pr = await paystackHostedCheckout.waitForCheckout(url, {
+        title: pod("securePaymentTitle") || "Secure payment",
+        matchSuccess: (u) =>
+          !!paystackReturnPath && matchesExpoReturnUrl(u, paystackReturnPath) && !isCancelledPaystackUrl(u),
+        matchCancel: (u) => isCancelledPaystackUrl(u),
+      });
 
-      const reference = paystackRes.data.reference;
+      if (pr.outcome === "cancel") {
+        Alert.alert(pod("paymentCancelledTitle"), pod("paymentCancelledBody"));
+        return;
+      }
+
+      let reference = paystackRes.data.reference;
+      if (pr.outcome === "success" && pr.url && !isCancelledPaystackUrl(pr.url)) {
+        const extracted = extractPaystackReferenceFromUrl(pr.url);
+        if (extracted) reference = extracted;
+      }
       if (reference) {
         await api.get(`/api/paystack/verify?reference=${encodeURIComponent(reference)}`).catch(() => {});
       }
@@ -308,6 +328,7 @@ export default function ProductOrderDetailScreen() {
   };
 
   return (
+    <>
     <SafeAreaView style={{ flex: 1, backgroundColor: "#F9FAFB" }} edges={["top"]}>
       {/* Header */}
       <View
@@ -1004,5 +1025,7 @@ export default function ProductOrderDetailScreen() {
         )}
       </ScrollView>
     </SafeAreaView>
+    {paystackHostedCheckout.modal}
+    </>
   );
 }

@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Check subscription allows automations
-    const automationAccess = await checkAutomationFeatureAccess(providerId);
+    const automationAccess = await checkAutomationFeatureAccess(providerId, supabase);
     if (!automationAccess.enabled) {
       return errorResponse(SUBSCRIPTION_UPGRADE_SHORT, "SUBSCRIPTION_REQUIRED", 403);
     }
@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check subscription allows automations
-    const automationAccess = await checkAutomationFeatureAccess(providerId);
+    const automationAccess = await checkAutomationFeatureAccess(providerId, supabase);
     if (!automationAccess.enabled) {
       return errorResponse(SUBSCRIPTION_UPGRADE_SHORT, "SUBSCRIPTION_REQUIRED", 403);
     }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
+import { getProviderIdForUser } from "@/lib/supabase/api-helpers";
 import { YOCO_ENDPOINTS } from "@/lib/payments/yoco";
 
 /**
@@ -23,14 +24,9 @@ export async function GET(
     const { id } = await params;
     const supabase = await getSupabaseServer(request);
 
-    // Get provider ID
-    const { data: provider } = await supabase
-      .from("providers")
-      .select("id")
-      .or(`user_id.eq.${auth.user.id},id.in.(select provider_id from provider_staff where user_id.eq.${auth.user.id})`)
-      .single();
-
-    if (!provider) {
+    // Resolve active provider context (owner/staff, multi-provider safe).
+    const providerId = await getProviderIdForUser(auth.user.id, supabase, { request });
+    if (!providerId) {
       return NextResponse.json(
         {
           data: null,
@@ -48,7 +44,7 @@ export async function GET(
       .from("provider_yoco_payments")
       .select("*")
       .eq("id", id)
-      .eq("provider_id", provider.id)
+      .eq("provider_id", providerId)
       .single();
 
     if (error || !payment) {
@@ -73,7 +69,7 @@ export async function GET(
         const { data: integration } = await supabase
           .from("provider_yoco_integrations")
           .select("secret_key")
-          .eq("provider_id", provider.id)
+          .eq("provider_id", providerId)
           .single();
 
         const integrationRow = integration as IntegrationRow | null;

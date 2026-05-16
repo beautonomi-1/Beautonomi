@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 const mockRequireRoleInApi = vi.fn();
-const mockGetProviderIdForUser = vi.fn();
 const mockGetSupabaseServer = vi.fn();
 const mockRegisterDevice = vi.fn();
 
@@ -11,7 +10,6 @@ vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
   return {
     ...actual,
     requireRoleInApi: (...args: unknown[]) => mockRequireRoleInApi(...args),
-    getProviderIdForUser: (...args: unknown[]) => mockGetProviderIdForUser(...args),
   };
 });
 
@@ -27,7 +25,6 @@ describe("POST /api/provider/devices", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockRequireRoleInApi.mockResolvedValue({ user: { id: "provider-user-1" } });
-    mockGetProviderIdForUser.mockResolvedValue("provider-1");
     mockGetSupabaseServer.mockResolvedValue({ from: vi.fn() });
     mockRegisterDevice.mockResolvedValue({ success: true });
   });
@@ -47,6 +44,10 @@ describe("POST /api/provider/devices", () => {
 
     expect(response.status).toBe(200);
     expect(body.data).toEqual({ registered: true });
+    expect(mockRequireRoleInApi).toHaveBeenCalledWith(
+      ["provider_owner", "provider_staff", "provider_onboarding", "superadmin"],
+      request,
+    );
     expect(mockRegisterDevice).toHaveBeenCalledWith(
       expect.anything(),
       "provider-user-1",

@@ -18,7 +18,10 @@ import {
   ActivityIndicator,
   ScrollView,
   TextInput,
+  RefreshControl,
+  AppState,
 } from "react-native";
+import { useFocusEffect } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import * as Linking from "expo-linking";
 import { Ionicons } from "@expo/vector-icons";
@@ -87,6 +90,8 @@ export default function IdentityVerificationScreen() {
 
   const [statusData, setStatusData] = useState<VerificationStatus | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // Manual upload state
@@ -98,16 +103,21 @@ export default function IdentityVerificationScreen() {
   // SumSub launch state
   const [launching, setLaunching] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const load = useCallback(async (options?: { silent?: boolean }) => {
+    const silent = options?.silent === true;
+    if (silent) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const res = await api.get<VerificationStatus>(
         `/api/me/verification?environment=${encodeURIComponent(env)}`
       );
       if (res.error) {
-        setError(res.error.message || iv("loadStatusFailed"));
-        setStatusData(null);
+        if (!silent) setError(res.error.message || iv("loadStatusFailed"));
+        if (!silent) setStatusData(null);
         return;
       }
       const d = res.data as Record<string, unknown> | null;
@@ -122,17 +132,41 @@ export default function IdentityVerificationScreen() {
           : [],
         manual_verification: (d?.manual_verification as VerificationStatus["manual_verification"]) ?? null,
       });
+      setLastRefreshedAt(new Date());
     } catch (e) {
-      setError(e instanceof Error ? e.message : iv("loadFailed"));
-      setStatusData(null);
+      if (!silent) setError(e instanceof Error ? e.message : iv("loadFailed"));
+      if (!silent) setStatusData(null);
     } finally {
-      setLoading(false);
+      if (silent) {
+        setRefreshing(false);
+      } else {
+        setLoading(false);
+      }
     }
   }, [env, iv]);
 
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
+
   useEffect(() => {
-    load();
+    const sub = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "active") {
+        void load({ silent: true });
+      }
+    });
+    return () => sub.remove();
   }, [load]);
+
+  useEffect(() => {
+    if (launching || uploading) return;
+    const poll = setInterval(() => {
+      void load({ silent: true });
+    }, 30000);
+    return () => clearInterval(poll);
+  }, [launching, uploading, load]);
 
   // ─── SumSub flow ────────────────────────────────────────────────────────
   const openSumsub = useCallback(async () => {
@@ -223,7 +257,7 @@ export default function IdentityVerificationScreen() {
       Alert.alert(iv("submittedTitle"), iv("submittedBody"));
       setSelectedFile(null);
       setCountry("");
-      load();
+      await load({ silent: true });
     } catch {
       Alert.alert(errTitle, iv("uploadRetry"));
     } finally {
@@ -278,6 +312,18 @@ export default function IdentityVerificationScreen() {
     }
   }, []);
 
+  const formatLastRefreshed = useCallback((date: Date | null) => {
+    if (!date) return null;
+    try {
+      return date.toLocaleTimeString(undefined, {
+        hour: "numeric",
+        minute: "2-digit",
+      });
+    } catch {
+      return null;
+    }
+  }, []);
+
   const openSubmissionDocument = useCallback(
     async (row: VerificationSubmission) => {
       if (!row.has_document_file) {
@@ -307,12 +353,53 @@ export default function IdentityVerificationScreen() {
   );
 
   return (
-    <ScreenFrame loading={loading} error={error} onRetry={load}>
+    <ScreenFrame loading={loading} error={error} onRetry={() => void load()} scrollable={false}>
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ padding: 20, paddingBottom: 40 }}
         keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              void load({ silent: true });
+            }}
+            tintColor={Colors.primary}
+          />
+        }
       >
+        <TouchableOpacity
+          onPress={() => {
+            haptic.light();
+            void load({ silent: true });
+          }}
+          disabled={refreshing}
+          style={{
+            alignSelf: "flex-start",
+            borderRadius: RADIUS_BUTTON,
+            backgroundColor: refreshing ? Colors.gray[200] : Colors.gray[100],
+            paddingHorizontal: 12,
+            paddingVertical: 8,
+            marginBottom: 16,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 6,
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Refresh verification status"
+          accessibilityHint="Reloads identity verification status from the server"
+        >
+          <Ionicons name="refresh" size={14} color={Colors.primary} />
+          <Text style={{ color: Colors.primary, fontSize: 13, fontWeight: "600" }}>
+            {refreshing ? "Refreshing..." : "Refresh status"}
+          </Text>
+        </TouchableOpacity>
+        {formatLastRefreshed(lastRefreshedAt) ? (
+          <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 16 }}>
+            Last updated at {formatLastRefreshed(lastRefreshedAt)}
+          </Text>
+        ) : null}
+
         {isVerified && (
           <View style={{ alignItems: "center", marginBottom: 24 }}>
             <View

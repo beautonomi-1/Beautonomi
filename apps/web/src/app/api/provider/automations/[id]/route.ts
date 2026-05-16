@@ -71,7 +71,7 @@ export async function PATCH(
     }
 
     // Check subscription allows automations
-    const automationAccess = await checkAutomationFeatureAccess(providerId);
+    const automationAccess = await checkAutomationFeatureAccess(providerId, supabase);
     if (!automationAccess.enabled) {
       return errorResponse(SUBSCRIPTION_UPGRADE_SHORT, "SUBSCRIPTION_REQUIRED", 403);
     }

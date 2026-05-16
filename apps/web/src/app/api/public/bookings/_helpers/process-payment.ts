@@ -18,7 +18,10 @@ import { percentOf, subtractMoney } from "@beautonomi/utils";
 import { resolvePaymentTenantForBookingRequest } from "@/lib/bookings/resolve-payment-tenant";
 import { recordBookingPaystackPayment } from "@/lib/bookings/record-booking-paystack-payment";
 import { syncBookingAfterPaystackSuccess } from "@/lib/bookings/sync-booking-after-paystack-success";
-import { ensureWalletGiftBookingPayments } from "@/lib/bookings/ensure-wallet-gift-booking-payments";
+import {
+  completeWalletGiftSyntheticPayments,
+  ensureWalletGiftBookingPayments,
+} from "@/lib/bookings/ensure-wallet-gift-booking-payments";
 import { getPlatformPaymentTypesForTenant } from "@/lib/payments/platform-payment-types";
 import { insertCustomerRecurringSeriesFromPaidBooking } from "@/lib/recurring/insert-customer-recurring-from-paid-booking";
 import { subscribeRecurringEligible } from "@/lib/recurring/subscribe-recurring-eligibility";
@@ -211,12 +214,6 @@ export async function processPayment(
   // Capture gift card immediately if no card payment or nothing left
   if (giftCardAmountApplied > 0 && (paymentMethod !== "card" || amountToCollect <= 0)) {
     await (supabase.rpc as any)("capture_gift_card_redemption", { p_booking_id: booking.id });
-    await ensureWalletGiftBookingPayments(supabaseAdmin, {
-      bookingId: booking.id,
-      tenantId: booking.tenant_id,
-      walletAmount: 0,
-      giftCardAmount: giftCardAmountApplied,
-    });
   }
 
   // ── Wallet application ───────────────────────────────────────────────────
@@ -266,6 +263,7 @@ export async function processPayment(
           tenantId: booking.tenant_id,
           walletAmount: walletAmountApplied,
           giftCardAmount: 0,
+          initialStatus: paymentMethod === "card" && amountToCollect > 0 ? "pending" : "completed",
         });
 
         amountToCollect = Math.max(0, amountToCollect - walletAmountApplied);
@@ -330,6 +328,17 @@ export async function processPayment(
       tenantId: booking.tenant_id,
       walletAmount: walletAmountApplied,
       giftCardAmount: giftCardAmountApplied,
+      initialStatus: "pending",
+    });
+
+    await insertNoGatewayLedger(supabase, {
+      booking,
+      draft,
+      v,
+      giftCardAmountApplied,
+      giftCardCode,
+      walletAmountApplied,
+      marketTenantId: flagTenantId,
     });
 
     await (supabase.from("bookings") as any)
@@ -341,16 +350,7 @@ export async function processPayment(
       })
       .eq("id", booking.id);
 
-    // ── Ledger entries (no gateway fees) ─────────────────────────────────
-    await insertNoGatewayLedger(supabase, {
-      booking,
-      draft,
-      v,
-      giftCardAmountApplied,
-      giftCardCode,
-      walletAmountApplied,
-      marketTenantId: flagTenantId,
-    });
+    await completeWalletGiftSyntheticPayments(supabaseAdmin, booking.id);
 
     if (recurringSubscribeEligible) {
       const recurringPay = paymentMethod === "cash" ? "cash" : "card";
@@ -550,6 +550,7 @@ export async function processPayment(
                 tenantId: booking.tenant_id,
                 walletAmount: walletAmountApplied,
                 giftCardAmount: giftCardAmountApplied,
+                initialStatus: "pending",
               });
             }
           } catch (giftCaptureErr) {

@@ -11,6 +11,7 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { FilterChipGroup } from "@/components/ui/FilterChip";
 import { Colors } from "@/constants/colors";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { hubTransactionTypeTitle, ledgerRowDisplaySign } from "@/lib/providerLedgerDisplay";
 
 const FINANCE_RANGE_OPTIONS: { label: string; value: "week" | "month" | "year" | "all" }[] = [
   { label: "Week", value: "week" },
@@ -228,11 +229,13 @@ export default function TransactionsHubScreen() {
           <View style={{ paddingBottom: 16, paddingHorizontal: 16 }}>
             {transactions.map((t) => {
               const net = t.net ?? t.amount ?? 0;
-              const isNegative = net < 0;
-              const typeLabel =
-                t.transaction_type === "walk_in_additional_charge"
-                  ? "Walk-in add-on"
-                  : (t.transaction_type ?? "").replace(/_/g, " ");
+              const sign = ledgerRowDisplaySign({
+                transaction_type: t.transaction_type,
+                net: t.net,
+                amount: t.amount,
+              });
+              const isDebit = sign < 0;
+              const typeLabel = hubTransactionTypeTitle(t.transaction_type ?? "");
               return (
                 <View
                   key={t.id}
@@ -251,8 +254,9 @@ export default function TransactionsHubScreen() {
                       {formatDateTimeSafe(t.date ?? t.created_at)}
                     </Text>
                   </View>
-                  <Text style={{ fontSize: 16, fontWeight: "600", color: isNegative ? "#dc2626" : Colors.gray[900] }}>
-                    {isNegative ? "" : "+"}{tenantCurrency} {Math.abs(net).toLocaleString()}
+                  <Text style={{ fontSize: 16, fontWeight: "600", color: isDebit ? "#dc2626" : "#15803d" }}>
+                    {isDebit ? "−" : "+"}
+                    {tenantCurrency} {Math.abs(net).toLocaleString()}
                   </Text>
                 </View>
               );

@@ -84,7 +84,7 @@ export async function GET(request: NextRequest) {
         id: "identity",
         label: "Verify identity",
         timeEstimate: "5 min",
-        completed: verification?.status === "approved",
+        completed: Boolean(userData.identity_verified),
         required: false,
       },
       {

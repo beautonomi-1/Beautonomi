@@ -1,3 +1,4 @@
+import * as Clipboard from "expo-clipboard";
 import { useEffect, useState, useCallback, useMemo, type ReactNode } from "react";
 import {
   View,
@@ -39,7 +40,12 @@ import { formatMoney } from "@beautonomi/utils";
 import { useTranslation } from "@beautonomi/i18n";
 import { haptic } from "@/lib/haptics";
 import { horizontalFlatListPerf } from "@/lib/flatListPerformance";
-import * as Clipboard from "expo-clipboard";
+import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
+import {
+  extractPaystackReferenceFromUrl,
+  isCancelledPaystackUrl,
+  matchesExpoReturnUrl,
+} from "@/lib/paystack-webview-utils";
 import * as ExpoLinking from "expo-linking";
 import type {
   PublicProviderDetail,
@@ -1074,6 +1080,7 @@ export default function PartnerProfileScreen() {
   const bottomSafe = Math.max(insets.bottom, TAB_BAR_MIN_BOTTOM_INSET);
   const stickyBarPaddingBottom = 12 + bottomSafe;
   const scrollSpacerForStickyBar = 56 + bottomSafe;
+  const membershipPaystackCheckout = useInAppPaystackCheckout();
 
   const [provider, setProvider] = useState<PublicProviderDetail | null>(null);
   const [services, setServices] = useState<ProviderServicesResponse | null>(null);
@@ -1520,29 +1527,20 @@ export default function PartnerProfileScreen() {
               let paystackRef = subscribeReference;
 
               if (Platform.OS !== "web") {
-                const WebBrowser = await import("expo-web-browser");
                 const returnUrl = ExpoLinking.createURL("membership-paystack");
-                const result = await WebBrowser.openAuthSessionAsync(url, returnUrl);
-                if (result.type === "cancel" || result.type === "dismiss") {
+                const pr = await membershipPaystackCheckout.waitForCheckout(url, {
+                  title: pp("membershipPaystackTitle") || "Membership payment",
+                  matchSuccess: (u) => matchesExpoReturnUrl(u, returnUrl) && !isCancelledPaystackUrl(u),
+                  matchCancel: (u) => isCancelledPaystackUrl(u),
+                });
+                if (pr.outcome === "cancel") {
                   haptic.error();
                   Alert.alert("Payment cancelled", "You cancelled the payment. Your membership has not been activated.");
                   return;
                 }
-                if (result.type === "success" && result.url) {
-                  try {
-                    const parsed = ExpoLinking.parse(result.url);
-                    const q = parsed.queryParams ?? {};
-                    if (q.cancelled === "1") {
-                      haptic.error();
-                      Alert.alert("Payment cancelled", "You cancelled the payment. Your membership has not been activated.");
-                      return;
-                    }
-                    const returnedRef = q.reference ?? q.trxref;
-                    const refStr = Array.isArray(returnedRef) ? returnedRef[0] : returnedRef;
-                    if (typeof refStr === "string" && refStr.trim()) paystackRef = refStr.trim();
-                  } catch {
-                    /* keep subscribe reference */
-                  }
+                if (pr.outcome === "success" && pr.url && !isCancelledPaystackUrl(pr.url)) {
+                  const extracted = extractPaystackReferenceFromUrl(pr.url);
+                  if (extracted) paystackRef = extracted;
                 }
               } else {
                 const WebBrowser = await import("expo-web-browser");
@@ -2875,6 +2873,7 @@ export default function PartnerProfileScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+      {membershipPaystackCheckout.modal}
     </>
   );
 }

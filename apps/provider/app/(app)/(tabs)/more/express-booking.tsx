@@ -530,8 +530,10 @@ export default function ExpressBookingScreen() {
             </View>
           ) : null}
 
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 8, marginBottom: 4 }}>
-            <SectionHeader title="Express Links" />
+          <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", rowGap: 8, marginTop: 8, marginBottom: 4 }}>
+            <View style={{ flexShrink: 1, minWidth: "55%" }}>
+              <SectionHeader title="Express Links" />
+            </View>
             <TouchableOpacity
               style={{
                 flexDirection: "row",
@@ -802,8 +804,8 @@ export default function ExpressBookingScreen() {
                       const staffCount = Array.isArray(el.staff_ids) ? el.staff_ids.length : 0;
                       return (
                         <View key={el.id} style={{ marginTop: idx === 0 ? 0 : 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16 }}>
-                          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                            <View style={{ flex: 1 }}>
+                          <View>
+                            <View>
                               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                                 <Text style={{ fontWeight: "500", color: Colors.gray[900], flexShrink: 1 }}>{el.name}</Text>
                                 <Text style={{ borderRadius: 999, overflow: "hidden", backgroundColor: el.is_active === false ? Colors.gray[100] : "#dcfce7", paddingHorizontal: 8, paddingVertical: 2, fontSize: 10, color: el.is_active === false ? Colors.gray[500] : "#166534" }}>
@@ -836,33 +838,19 @@ export default function ExpressBookingScreen() {
                                 )}
                               </View>
                             </View>
-                            <View style={{ flexDirection: "row" }}>
+                            <View style={{ marginTop: 12, gap: 8 }}>
+                              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
                               <TouchableOpacity
-                                style={{ marginRight: 8, borderRadius: 8, backgroundColor: "#eef2ff", paddingHorizontal: 12, paddingVertical: 8 }}
+                                style={{ flexDirection: "row", alignItems: "center", borderRadius: 8, backgroundColor: "#eef2ff", paddingHorizontal: 12, paddingVertical: 8 }}
                                 onPress={() => openEditExpressLinkForm(el)}
                                 accessibilityLabel="Edit express link"
                                 accessibilityRole="button"
                               >
                                 <Ionicons name="create-outline" size={18} color="#4f46e5" />
+                                <Text style={{ marginLeft: 6, fontSize: 12, fontWeight: "600", color: "#4338ca" }}>Edit</Text>
                               </TouchableOpacity>
                               <TouchableOpacity
-                                style={{ marginRight: 8, borderRadius: 8, backgroundColor: el.is_active === false ? "#dcfce7" : "#fee2e2", paddingHorizontal: 12, paddingVertical: 8 }}
-                                onPress={() => void handleToggleExpressLinkActive(el)}
-                                accessibilityLabel={el.is_active === false ? "Activate express link" : "Deactivate express link"}
-                                accessibilityRole="button"
-                              >
-                                <Ionicons name={el.is_active === false ? "play-outline" : "pause-outline"} size={18} color={el.is_active === false ? "#15803d" : "#b91c1c"} />
-                              </TouchableOpacity>
-                              <TouchableOpacity
-                                style={{ marginRight: 8, borderRadius: 8, backgroundColor: "#ede9fe", paddingHorizontal: 12, paddingVertical: 8 }}
-                                onPress={() => setPrefillModalLink(el)}
-                                accessibilityLabel="Edit checkout prefill for short link"
-                                accessibilityRole="button"
-                              >
-                                <Ionicons name="pricetag-outline" size={18} color="#6d28d9" />
-                              </TouchableOpacity>
-                              <TouchableOpacity
-                                style={{ marginRight: 8, borderRadius: 8, backgroundColor: Colors.gray[100], paddingHorizontal: 12, paddingVertical: 8 }}
+                                style={{ flexDirection: "row", alignItems: "center", borderRadius: 8, backgroundColor: Colors.gray[100], paddingHorizontal: 12, paddingVertical: 8 }}
                                 onPress={async () => {
                                   try {
                                     await Clipboard.setStringAsync(fullUrl);
@@ -877,9 +865,43 @@ export default function ExpressBookingScreen() {
                                 accessibilityRole="button"
                               >
                                 <Ionicons name={isCopied ? "checkmark-circle" : "copy-outline"} size={18} color={isCopied ? "#059669" : "#6b7280"} />
+                                <Text style={{ marginLeft: 6, fontSize: 12, fontWeight: "600", color: isCopied ? "#059669" : Colors.gray[700] }}>
+                                  {isCopied ? "Copied" : "Copy"}
+                                </Text>
                               </TouchableOpacity>
                               <TouchableOpacity
-                                style={{ marginRight: 8, borderRadius: 8, backgroundColor: Colors.gray[100], paddingHorizontal: 12, paddingVertical: 8 }}
+                                style={{ flexDirection: "row", alignItems: "center", borderRadius: 8, backgroundColor: Colors.gray[100], paddingHorizontal: 12, paddingVertical: 8 }}
+                                onPress={() => Share.share(shareBookingPayload(fullUrl, { shortLabel: el.name }))}
+                                accessibilityLabel="Share short link"
+                                accessibilityRole="button"
+                              >
+                                <Ionicons name="share-outline" size={18} color="#6b7280" />
+                                <Text style={{ marginLeft: 6, fontSize: 12, fontWeight: "600", color: Colors.gray[700] }}>Share</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={{ flexDirection: "row", alignItems: "center", borderRadius: 8, backgroundColor: el.is_active === false ? "#dcfce7" : "#fee2e2", paddingHorizontal: 12, paddingVertical: 8 }}
+                                onPress={() => void handleToggleExpressLinkActive(el)}
+                                accessibilityLabel={el.is_active === false ? "Activate express link" : "Deactivate express link"}
+                                accessibilityRole="button"
+                              >
+                                <Ionicons name={el.is_active === false ? "play-outline" : "pause-outline"} size={18} color={el.is_active === false ? "#15803d" : "#b91c1c"} />
+                                <Text style={{ marginLeft: 6, fontSize: 12, fontWeight: "600", color: el.is_active === false ? "#166534" : "#991b1b" }}>
+                                  {el.is_active === false ? "Activate" : "Pause"}
+                                </Text>
+                              </TouchableOpacity>
+                              </View>
+                              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                              <TouchableOpacity
+                                style={{ flexDirection: "row", alignItems: "center", borderRadius: 8, backgroundColor: "#ede9fe", paddingHorizontal: 12, paddingVertical: 8 }}
+                                onPress={() => setPrefillModalLink(el)}
+                                accessibilityLabel="Edit checkout prefill for short link"
+                                accessibilityRole="button"
+                              >
+                                <Ionicons name="pricetag-outline" size={18} color="#6d28d9" />
+                                <Text style={{ marginLeft: 6, fontSize: 12, fontWeight: "600", color: "#6d28d9" }}>Prefill</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={{ flexDirection: "row", alignItems: "center", borderRadius: 8, backgroundColor: Colors.gray[100], paddingHorizontal: 12, paddingVertical: 8 }}
                                 onPress={async () => {
                                   try {
                                     await Clipboard.setStringAsync(embedUrl);
@@ -893,27 +915,22 @@ export default function ExpressBookingScreen() {
                                 accessibilityRole="button"
                               >
                                 <Ionicons name="code-slash-outline" size={18} color="#6b7280" />
-                              </TouchableOpacity>
-                              <TouchableOpacity
-                                style={{ marginRight: 8, borderRadius: 8, backgroundColor: Colors.gray[100], paddingHorizontal: 12, paddingVertical: 8 }}
-                                onPress={() => Share.share(shareBookingPayload(fullUrl, { shortLabel: el.name }))}
-                                accessibilityLabel="Share short link"
-                                accessibilityRole="button"
-                              >
-                                <Ionicons name="share-outline" size={18} color="#6b7280" />
+                                <Text style={{ marginLeft: 6, fontSize: 12, fontWeight: "600", color: Colors.gray[700] }}>Embed</Text>
                               </TouchableOpacity>
                               {APP_URL ? (
                                 <TouchableOpacity
-                                  style={{ marginRight: 8, borderRadius: 8, backgroundColor: "#e0e7ff", paddingHorizontal: 12, paddingVertical: 8 }}
+                                  style={{ flexDirection: "row", alignItems: "center", borderRadius: 8, backgroundColor: "#e0e7ff", paddingHorizontal: 12, paddingVertical: 8 }}
                                   onPress={() => router.push("/(app)/(tabs)/more/settings/booking-link" as never)}
                                   accessibilityLabel="Manage links"
                                   accessibilityRole="button"
                                 >
                                   <Ionicons name="settings-outline" size={18} color="#6366f1" />
+                                  <Text style={{ marginLeft: 6, fontSize: 12, fontWeight: "600", color: "#4f46e5" }}>Manage</Text>
                                 </TouchableOpacity>
                               ) : null}
                             </View>
                           </View>
+                        </View>
                         </View>
                       );
                     })}

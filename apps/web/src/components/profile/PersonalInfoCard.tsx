@@ -413,6 +413,9 @@ export default function PersonalInfoCard({
   };
 
   const getVerificationStatus = () => {
+    if (user.identity_verified) {
+      return { text: "Verified", color: "text-emerald-700 bg-emerald-50 border-emerald-200" };
+    }
     const status = user.identity_verification_status || "none";
     const hasSubmittedAt = !!user.identity_verification_submitted_at;
     
@@ -679,15 +682,20 @@ export default function PersonalInfoCard({
                             View uploaded document
                           </Button>
                         )}
-                        {(user.identity_verification_status === "none" || 
+                        {(user.can_submit_verification ||
                           user.identity_verification_status === "rejected" ||
-                          (user.identity_verification_status === "pending" && !user.identity_verification_document_url)) && (
+                          (user.identity_verification_status === "none" &&
+                            !user.identity_verified) ||
+                          (user.identity_verification_status === "pending" &&
+                            !user.identity_verification_document_url)) && (
                           <Button
                             size="sm"
                             className="bg-[#FF0077] hover:bg-[#E6006A] text-white"
                             onClick={() => openEditModal("identity")}
                           >
-                            {user.identity_verification_status === "rejected" ? "Upload new document" : "Start verification"}
+                            {user.identity_verification_status === "rejected"
+                              ? "Upload new document"
+                              : "Start verification"}
                           </Button>
                         )}
                       </div>

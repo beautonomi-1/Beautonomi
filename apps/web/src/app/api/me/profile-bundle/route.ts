@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, handleApiError } from "@/lib/supabase/api-helpers";
+import { resolveIdentityVerificationDisplay } from "@/lib/verification/resolve-identity-verification-display";
 
 /**
  * GET /api/me/profile-bundle
@@ -95,8 +96,17 @@ export async function GET(request: NextRequest) {
     const first_name = nameParts[0] || "";
     const last_name = nameParts.slice(1).join(" ") || "";
 
-    const verificationStatus = (verification as any)?.status || (userData as any).identity_verification_status || "none";
-    const identityVerified = verificationStatus === "approved";
+    const identityFields = resolveIdentityVerificationDisplay(
+      userData as { identity_verified?: boolean | null; identity_verification_status?: string | null },
+      verification as {
+        id?: string;
+        status?: string;
+        submitted_at?: string | null;
+        rejection_reason?: string | null;
+        document_url?: string | null;
+        document_type?: string | null;
+      } | null,
+    );
 
     const profile = {
       ...userData,
@@ -149,13 +159,7 @@ export async function GET(request: NextRequest) {
         country_code: (userData as any).emergency_contact_country_code ?? "",
         phone: (userData as any).emergency_contact_phone || "",
       },
-      identity_verified: identityVerified,
-      identity_verification_status: verificationStatus,
-      identity_verification_submitted_at: (verification as any)?.submitted_at ?? null,
-      identity_verification_rejection_reason: (verification as any)?.rejection_reason ?? null,
-      identity_verification_document_url: (verification as any)?.document_url ?? null,
-      identity_verification_document_type: (verification as any)?.document_type ?? null,
-      identity_verification_id: (verification as any)?.id ?? null,
+      ...identityFields,
       about: (profileData as any)?.about ?? null,
       interests: (profileData as any)?.interests ?? null,
       beauty_preferences: (profileData as any)?.beauty_preferences || {},

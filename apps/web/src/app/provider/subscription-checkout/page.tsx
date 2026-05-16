@@ -254,7 +254,10 @@ export default function SubscriptionCheckoutPage() {
         const data = (res as any)?.data;
         if (data?.is_free || data?.subscription_id) {
           toast.success("Free plan activated successfully!");
-          router.push("/provider/subscription");
+          // In-app checkout should mirror paid flow completion so the native
+          // WebView listener can close and return to the app screen.
+          const inAppSuffix = inApp ? "?payment_success=true&in_app=1" : "";
+          router.push(`/provider/subscription${inAppSuffix}`);
           return;
         }
         setError("Could not activate free plan. Please try again.");
@@ -389,6 +392,12 @@ export default function SubscriptionCheckoutPage() {
         <h1 className="text-2xl font-bold text-gray-900 mb-8">
           {plan.is_free ? "Activate your free plan" : "Complete your subscription"}
         </h1>
+        <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+          <span className="font-semibold text-slate-900">Checkout behavior:</span>{" "}
+          {plan.is_free
+            ? "Free plan activates instantly."
+            : "Paid plan continues for card payment and returns here automatically."}
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           <div className="order-2 md:order-1">
             <CartCard

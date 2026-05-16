@@ -40,7 +40,7 @@ export async function PATCH(
     }
 
     // Check subscription allows express booking
-    const expressAccess = await checkExpressBookingFeatureAccess(providerId);
+    const expressAccess = await checkExpressBookingFeatureAccess(providerId, supabase);
     if (!expressAccess.enabled) {
       return errorResponse(
         SUBSCRIPTION_UPGRADE_SHORT,

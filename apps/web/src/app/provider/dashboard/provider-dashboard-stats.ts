@@ -41,6 +41,9 @@ export interface ProviderDashboardStats {
   membership_sales_total: number;
   refunds_total: number;
 
+  platform_fees_deducted?: number;
+  platform_commission_paid?: number;
+  /** @deprecated use platform_commission_paid */
   platform_fees_paid?: number;
   expenses_total?: number;
   expenses_this_month?: number;
@@ -97,6 +100,7 @@ export interface ProviderDashboardStats {
     supports_house_calls: boolean;
     supports_salon: boolean;
     max_service_distance_km: number | null;
+    is_distance_filter_enabled?: boolean;
   };
   dashboard_bundle_version?: number;
 }

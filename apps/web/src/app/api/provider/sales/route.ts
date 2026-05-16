@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getProviderIdForUser, notFoundResponse, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
-import { requirePermission } from "@/lib/auth/requirePermission";
+import { requireAnyPermission, requirePermission } from "@/lib/auth/requirePermission";
 import { createClient } from "@supabase/supabase-js";
 import {
   applyPosProductStockDecrements,
@@ -43,8 +43,11 @@ function normalizeSalePaymentMethodForDb(raw: string | undefined | null): string
  */
 export async function GET(request: NextRequest) {
   try {
-    // Check permission to view sales
-    const permissionCheck = await requirePermission('view_sales', request);
+    // Align with finance/transactions: staff with reports or payment permissions can view POS sales.
+    const permissionCheck = await requireAnyPermission(
+      ["view_sales", "view_reports", "process_payments"],
+      request,
+    );
     if (!permissionCheck.authorized) {
       return permissionCheck.response!;
     }

@@ -11,6 +11,7 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { enforcePeriodLock } from "@/lib/finance/period-lock";
+import { getCollectedTotalForBooking } from "@/lib/finance/get-collected-total-for-booking";
 
 const refundSchema = z.object({
   amount: z.number().min(0.01).optional(), // If not provided, full refund
@@ -130,7 +131,23 @@ export async function POST(
     const effectiveTenantId = bookingData.tenant_id ?? tenantId;
     const tenantRegion = effectiveTenantId ? await getTenantRegionConfig(effectiveTenantId) : null;
     const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
-    const refundAmount = validationResult.data.amount ?? Number(txData.amount);
+    const collectedCap = await getCollectedTotalForBooking(supabase, txData.booking_id);
+    const maxRefundable = Math.min(Number(txData.amount), collectedCap);
+    const requestedRefund = validationResult.data.amount ?? Number(txData.amount);
+    if (requestedRefund > maxRefundable) {
+      return NextResponse.json(
+        {
+          data: null,
+          error: {
+            message:
+              "Refund amount cannot exceed this transaction's amount or remaining collected total for the booking (after prior refunds)",
+            code: "INVALID_REFUND_AMOUNT",
+          },
+        },
+        { status: 400 }
+      );
+    }
+    const refundAmount = requestedRefund;
     const { reason } = validationResult.data;
 
     const financeTenantId = await resolveTenantIdForFinanceLedger(supabase, {
@@ -139,19 +156,6 @@ export async function POST(
     });
     const lockGuard = await enforcePeriodLock(supabase, financeTenantId, new Date().toISOString());
     if (lockGuard) return lockGuard;
-
-    if (refundAmount > Number(txData.amount)) {
-      return NextResponse.json(
-        {
-          data: null,
-          error: {
-            message: "Refund amount cannot exceed transaction amount",
-            code: "INVALID_REFUND_AMOUNT",
-          },
-        },
-        { status: 400 }
-      );
-    }
 
     // Credit customer wallet (refunds always go to wallet)
     const rpc = supabase.rpc as unknown as (name: string, args: Record<string, unknown>) => Promise<{ error: unknown }>;

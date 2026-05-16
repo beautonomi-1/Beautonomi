@@ -24,7 +24,10 @@ import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id
 import { resolveCommissionPercentageForProvider } from "@/lib/finance/resolve-commission-percentage";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
-import { ensureWalletGiftBookingPayments } from "@/lib/bookings/ensure-wallet-gift-booking-payments";
+import {
+  completeWalletGiftSyntheticPayments,
+  ensureWalletGiftBookingPayments,
+} from "@/lib/bookings/ensure-wallet-gift-booking-payments";
 import { recordLoyaltyRedemption } from "@/lib/loyalty/record-redemption";
 import { patchCustomOfferMessageAttachments } from "@/lib/custom-offers/sync-offer-message-attachments";
 
@@ -511,15 +514,6 @@ export async function finalizeCustomOfferPayment(
     }
   }
 
-  if (walletAmountApplied > 0 || giftCardAmountApplied > 0) {
-    await ensureWalletGiftBookingPayments(adminSupabase, {
-      bookingId: booking.id,
-      tenantId: bookingTenantId,
-      walletAmount: walletAmountApplied,
-      giftCardAmount: giftCardAmountApplied,
-    });
-  }
-
   // Reserve + capture gift card redemption now that the booking exists.
   // The reserve RPC enforces balance + currency + active checks atomically and
   // is idempotent on `(booking_id)` so a webhook retry is safe.
@@ -590,6 +584,16 @@ export async function finalizeCustomOfferPayment(
     }
   }
 
+  if (walletAmountApplied > 0 || giftCardAmountApplied > 0) {
+    await ensureWalletGiftBookingPayments(adminSupabase, {
+      bookingId: booking.id,
+      tenantId: bookingTenantId,
+      walletAmount: walletAmountApplied,
+      giftCardAmount: giftCardAmountApplied,
+      initialStatus: paystackAmountMajor > 0 ? "pending" : "completed",
+    });
+  }
+
   // ── 9. legacy `payments` row (used by receipt + customer history) ─────────
   await adminSupabase.from("payments").insert({
     booking_id: booking.id,
@@ -625,14 +629,47 @@ export async function finalizeCustomOfferPayment(
     providerId: req.provider_id ?? null,
   });
 
-  const rawCommissionBase =
-    Number(meta.commission_base) > 0
-      ? Number(meta.commission_base)
+  const bRow = booking as Record<string, unknown>;
+  const bookingTotalForCommission = Number(bRow.total_amount ?? bookingTotalAmount ?? 0);
+  const tipForCommission = Number(bRow.tip_amount ?? tipAmount ?? 0);
+  const taxForCommission = Number(bRow.tax_amount ?? taxAmount ?? 0);
+  const travelForCommission = Number(bRow.travel_fee ?? travelFee ?? 0);
+  const customerPlatformFeeForCommission = Number(
+    (bRow.platform_fee_amount as number | undefined) ??
+      (bRow.service_fee_amount as number | undefined) ??
+      serviceFeeAmount ??
+      0,
+  );
+  /** Align with Paystack `charge-success`: base excludes tip/tax/travel/customer platform fee (membership/loyalty already in total). */
+  const commissionBaseFromBookingTotals =
+    bookingTotalForCommission > 0
+      ? Math.max(
+          0,
+          bookingTotalForCommission -
+            tipForCommission -
+            taxForCommission -
+            travelForCommission -
+            customerPlatformFeeForCommission,
+        )
       : Math.max(0, bookingSubtotal - promotionDiscountAmount);
 
-  // Scale commission to actually-collected cash (deposit / partial wallet) so reports tie
-  // out against the ledger sum rather than the gross offer value.
-  const scaleDenom = isDepositPayment ? coTotalAmount : Math.max(1, rawCommissionBase + travelFee);
+  const rawCommissionBaseMeta = Number(meta.commission_base) > 0 ? Number(meta.commission_base) : null;
+  let rawCommissionBase = commissionBaseFromBookingTotals;
+  if (rawCommissionBaseMeta != null) {
+    const drift = Math.abs(rawCommissionBaseMeta - commissionBaseFromBookingTotals);
+    if (drift > 0.015) {
+      console.warn("[finalizeCustomOfferPayment] metadata.commission_base drift vs booking totals; using recomputed base", {
+        bookingId: booking.id,
+        metaBase: rawCommissionBaseMeta,
+        recomputed: commissionBaseFromBookingTotals,
+      });
+    } else {
+      rawCommissionBase = rawCommissionBaseMeta;
+    }
+  }
+
+  // Scale commission to actually-collected cash — match Paystack: rawCommissionBase × (collected / bookingTotal).
+  const scaleDenom = isDepositPayment ? coTotalAmount : Math.max(0.01, bookingTotalForCommission);
   const scaleNumer = isDepositPayment ? cashCollected : Math.max(0, cashCollected);
   const commissionBase =
     scaleDenom > 0
@@ -851,6 +888,10 @@ export async function finalizeCustomOfferPayment(
         extraFtCoreErr,
       );
     }
+  }
+
+  if (walletAmountApplied > 0 || giftCardAmountApplied > 0) {
+    await completeWalletGiftSyntheticPayments(adminSupabase, booking.id);
   }
 
   // Promotion usage (idempotent) — only for rows in `promotions` (coupons use a different id space).

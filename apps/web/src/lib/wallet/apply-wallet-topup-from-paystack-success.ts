@@ -101,26 +101,26 @@ export async function applyWalletTopupFromSuccessfulPaystackCharge(
     created_at: new Date().toISOString(),
   });
 
-  // Record in finance_transactions so the double-entry shadow ledger posts DR Cash / CR Wallet Liability
-  const { data: existingFinanceTx } = await supabase
-    .from("finance_transactions")
-    .select("id")
-    .eq("transaction_type", "wallet_topup")
-    .eq("description", `Wallet topup: ${topupId}`)
-    .maybeSingle();
-
-  if (!existingFinanceTx) {
-    await supabase.from("finance_transactions").insert({
-      booking_id: null,
-      provider_id: null,
-      tenant_id: topupWalletTenantId,
-      transaction_type: "wallet_topup",
-      amount: amountInCurrency,
-      fees: 0,
-      commission: 0,
-      net: amountInCurrency,
-      description: `Wallet topup: ${topupId}`,
-      created_at: new Date().toISOString(),
-    });
+  // Record in finance_transactions so the double-entry shadow ledger posts DR Cash / CR Wallet Liability.
+  // F21: unique index on description — concurrent webhooks treat 23505 as benign.
+  const { error: finErr } = await supabase.from("finance_transactions").insert({
+    booking_id: null,
+    provider_id: null,
+    tenant_id: topupWalletTenantId,
+    transaction_type: "wallet_topup",
+    amount: amountInCurrency,
+    fees: 0,
+    commission: 0,
+    net: amountInCurrency,
+    description: `Wallet topup: ${topupId}`,
+    created_at: new Date().toISOString(),
+  });
+  if (finErr) {
+    const msg = String((finErr as { message?: string }).message || finErr || "");
+    const code = String((finErr as { code?: string }).code || "");
+    if (code === "23505" || msg.toLowerCase().includes("duplicate") || msg.toLowerCase().includes("unique")) {
+      return;
+    }
+    console.error("[wallet_topup] finance_transactions insert failed:", finErr);
   }
 }

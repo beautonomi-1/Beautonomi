@@ -92,7 +92,7 @@ export async function GET(
     }
 
     // Check subscription allows calendar sync
-    const calendarAccess = await checkCalendarSyncFeatureAccess(providerId);
+    const calendarAccess = await checkCalendarSyncFeatureAccess(providerId, supabase);
     if (!calendarAccess.enabled) {
       return NextResponse.json(
         {

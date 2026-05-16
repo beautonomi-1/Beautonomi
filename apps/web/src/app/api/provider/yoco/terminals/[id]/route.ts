@@ -15,12 +15,13 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireRole(["provider_owner", "provider_staff"]);
+    const auth = await requireRole(["provider_owner", "provider_staff"], request);
     if (!auth) {
       return unauthorizedResponse("Authentication required");
     }
 
-    const providerId = await getProviderIdForUser(auth.user.id);
+    const supabase = await getSupabaseServer(request);
+    const providerId = await getProviderIdForUser(auth.user.id, supabase, { request });
     if (!providerId) {
       return NextResponse.json(
         { data: null, error: { message: "Provider not found", code: "NOT_FOUND" } },
@@ -29,7 +30,6 @@ export async function GET(
     }
 
     const { id } = await params;
-    const supabase = await getSupabaseServer(request);
     const { data: device, error } = await supabase
       .from("provider_yoco_devices")
       .select("id, name, yoco_device_id, location_name, is_active, created_at, updated_at")

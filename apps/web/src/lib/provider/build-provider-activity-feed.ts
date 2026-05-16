@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { subDays } from "date-fns";
 import { dateRangeBoundsUtc, formatDateYmd, nowInTz } from "@/lib/dates/provider-tz";
 import { filterLedgerRowsForLocation } from "@/lib/reports/provider-report-utils";
+import { ledgerRowDisplaySign } from "@/lib/provider/provider-ledger-transaction-view";
 
 export type ProviderActivityFeedItem = {
   id: string;
@@ -124,16 +125,23 @@ export async function buildProviderActivityFeed(
   });
 
   ledgerRows.forEach((p) => {
-    const net = Number(p.net ?? p.amount ?? 0);
+    const rawNet = Number(p.net ?? p.amount ?? 0);
     const isPayout = p.transaction_type === "payout";
-    const signed = net >= 0 ? `+${net.toFixed(2)}` : net.toFixed(2);
+    const sign = ledgerRowDisplaySign({
+      transaction_type: p.transaction_type,
+      net: p.net,
+      amount: p.amount,
+    });
+    const displayNet = sign * Math.abs(rawNet);
+    const signed =
+      displayNet > 0 ? `+${displayNet.toFixed(2)}` : displayNet.toFixed(2);
 
     activities.push({
       id: `ledger-${p.id}`,
       type: isPayout ? "payout_sent" : "ledger_earnings",
       description: isPayout ? `Payout · net ${signed}` : `Earnings recognized · net ${signed}`,
       created_at: p.created_at,
-      data: { booking_id: p.booking_id ?? undefined, amount: net },
+      data: { booking_id: p.booking_id ?? undefined, amount: displayNet },
     });
   });
 

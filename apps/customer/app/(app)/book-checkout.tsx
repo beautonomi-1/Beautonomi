@@ -29,7 +29,12 @@ import { haptic } from "@/lib/haptics";
 import { Skeleton } from "@/components/Skeleton";
 import { PaymentProcessingOverlay } from "@/components/payment/PaymentProcessingOverlay";
 import { useSavedCards } from "@/hooks/useSavedCards";
-import * as WebBrowser from "expo-web-browser";
+import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
+import {
+  extractPaystackReferenceFromUrl,
+  isCancelledPaystackUrl,
+  matchesExpoReturnUrl,
+} from "@/lib/paystack-webview-utils";
 import * as ExpoLinking from "expo-linking";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { clearPendingExcludeHoldId } from "@/lib/booking-flow-hold";
@@ -639,6 +644,7 @@ export default function BookCheckoutScreen() {
   const [processingPayment, setProcessingPayment] = useState(false);
   const [processingMessage, setProcessingMessage] = useState(() => t("checkout.processingPayment"));
   const consumeInFlightRef = useRef(false);
+  const paystackHostedCheckout = useInAppPaystackCheckout();
   const checkoutIdempotencyKeyRef = useRef<string | null>(null);
   /** Tracks whether the initial hold load has completed — suppresses the focus re-check on first mount. */
   const holdLoadedRef = useRef(false);
@@ -2221,47 +2227,43 @@ export default function BookCheckoutScreen() {
         setProcessingMessage(t("checkout.openingPaymentPage"));
         let returnedPaymentReference: string | null = data?.payment_reference ?? null;
         if (Platform.OS !== "web") {
-          const authResult = await WebBrowser.openAuthSessionAsync(
-            paymentUrl,
-            ExpoLinking.createURL("book/paystack"),
-          );
+          const paystackReturnUrl = ExpoLinking.createURL("book/paystack");
+          const authResult = await paystackHostedCheckout.waitForCheckout(paymentUrl, {
+            title: t("checkout.securePaymentTitle", "Secure payment") as string,
+            matchSuccess: (u) => matchesExpoReturnUrl(u, paystackReturnUrl) && !isCancelledPaystackUrl(u),
+            matchCancel: (u) => isCancelledPaystackUrl(u),
+          });
 
-          if (authResult.type === "cancel" || authResult.type === "dismiss") {
+          if (authResult.outcome === "cancel") {
             setProcessingPayment(false);
             getAnalyticsClient()?.track("payment_cancelled", {
               booking_id: bookingId,
-              reason: authResult.type,
+              reason: "cancel_action",
               source: "customer_mobile",
             });
-            Alert.alert(t("checkout.paymentCancelledTitle", "Payment cancelled"), t("checkout.paymentCancelledBody", "You cancelled the payment. Your booking has not been confirmed."));
+            Alert.alert(
+              t("checkout.paymentCancelledTitle", "Payment cancelled"),
+              t("checkout.paymentCancelledBody", "You cancelled the payment. Your booking has not been confirmed."),
+            );
             return;
           }
 
-          if (authResult.type === "success" && authResult.url) {
-            try {
-              const parsed = ExpoLinking.parse(authResult.url);
-              const query = parsed.queryParams ?? {};
-
-              if (query.cancelled === "1") {
-                setProcessingPayment(false);
-                getAnalyticsClient()?.track("payment_cancelled", {
-                  booking_id: bookingId,
-                  reason: "cancel_action",
-                  source: "customer_mobile",
-                });
-                Alert.alert(t("checkout.paymentCancelledTitle", "Payment cancelled"), t("checkout.paymentCancelledBody", "You cancelled the payment. Your booking has not been confirmed."));
-                return;
-              }
-
-              const ref = query.reference ?? query.trxref;
-              returnedPaymentReference = Array.isArray(ref)
-                ? ref[0] ?? returnedPaymentReference
-                : typeof ref === "string" && ref.trim()
-                  ? ref.trim()
-                  : returnedPaymentReference;
-            } catch {
-              // Keep the server-issued reference fallback below.
+          if (authResult.outcome === "success" && authResult.url) {
+            if (isCancelledPaystackUrl(authResult.url)) {
+              setProcessingPayment(false);
+              getAnalyticsClient()?.track("payment_cancelled", {
+                booking_id: bookingId,
+                reason: "cancel_action",
+                source: "customer_mobile",
+              });
+              Alert.alert(
+                t("checkout.paymentCancelledTitle", "Payment cancelled"),
+                t("checkout.paymentCancelledBody", "You cancelled the payment. Your booking has not been confirmed."),
+              );
+              return;
             }
+            const extracted = extractPaystackReferenceFromUrl(authResult.url);
+            if (extracted) returnedPaymentReference = extracted;
           }
         } else {
           // Full redirect on Expo Web — matches the working pattern in custom-offer-checkout.tsx
@@ -2346,7 +2348,7 @@ export default function BookCheckoutScreen() {
       setConsuming(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- pay helpers and navigateToBooking are stable refs
-  }, [hold_id, hold, user, bookContinueReturnTo, paymentMethod, paymentOption, useWallet, selectedCardId, useNewCard, savedCards, saveCard, total, depositAmount, hasDeposit, currency, bookingCustomDefinitions, bookingCustomValues, providerForms, providerFormValues, specialRequests, houseCallInstructionsPrefill, promotionCode, tipAmount, routeRescheduleBookingId, giftCardCode, giftCardValid, selectedAddonIds, isGroupBooking, groupParticipants, selectedProducts, snapshotOfferingIds, selectedPackageId, paystackEnabled, walletEnabled, subscribeRecurring, recurringFrequency, loyaltyPointsApplied, cancellationPolicyAccepted, serverClockOffsetMs, refreshSession, amountPaidOnCompletion, t]);
+  }, [hold_id, hold, user, bookContinueReturnTo, paymentMethod, paymentOption, useWallet, selectedCardId, useNewCard, savedCards, saveCard, total, depositAmount, hasDeposit, currency, bookingCustomDefinitions, bookingCustomValues, providerForms, providerFormValues, specialRequests, houseCallInstructionsPrefill, promotionCode, tipAmount, routeRescheduleBookingId, giftCardCode, giftCardValid, selectedAddonIds, isGroupBooking, groupParticipants, selectedProducts, snapshotOfferingIds, selectedPackageId, paystackEnabled, walletEnabled, subscribeRecurring, recurringFrequency, loyaltyPointsApplied, cancellationPolicyAccepted, serverClockOffsetMs, refreshSession, amountPaidOnCompletion, t, paystackHostedCheckout]);
 
   /* ─── Loading skeleton ─── */
   if (loading) {
@@ -4349,6 +4351,7 @@ export default function BookCheckoutScreen() {
           </View>
         </View>
       )}
+      {paystackHostedCheckout.modal}
     </>
   );
 }

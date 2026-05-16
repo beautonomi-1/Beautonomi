@@ -196,7 +196,7 @@ async function processBookingRefundInner(
     const lateLabel = options.isLateCancellation ? "late cancellation" : "cancellation";
     const description = `Refund for booking ${bookingRef}: ${lateLabel} — ${policy.late_cancellation_type}`;
 
-    // Insert refund record FIRST (audit trail before money moves)
+    // Insert refund record as pending — ledger clawback runs only after wallet credit succeeds (F6).
     const { data: refundRecord, error: refundError } = await supabaseAdmin
       .from("booking_refunds")
       .insert({
@@ -204,8 +204,8 @@ async function processBookingRefundInner(
         amount: refundAmount,
         reason: `Cancellation refund (${lateLabel}) — ${policy.late_cancellation_type}`,
         refund_method: "store_credit",
-        status: "completed",
-        notes: "Cancellation policy refund – credited to customer wallet",
+        status: "pending",
+        notes: "Cancellation policy refund – crediting customer wallet",
       })
       .select("id")
       .single();
@@ -244,6 +244,22 @@ async function processBookingRefundInner(
         .update({ status: "failed", notes: `Wallet credit failed: ${walletError.message}` })
         .eq("id", (refundRecord as { id: string }).id);
       return { success: false, error: "Failed to credit customer wallet. Refund recorded for retry." };
+    }
+
+    const { error: finalizeErr } = await supabaseAdmin
+      .from("booking_refunds")
+      .update({
+        status: "completed",
+        notes: "Cancellation policy refund – credited to customer wallet",
+      })
+      .eq("id", (refundRecord as { id: string }).id);
+
+    if (finalizeErr) {
+      logger.error("processBookingRefund.refund_finalize_failed", finalizeErr, {
+        bookingId,
+        refundId: (refundRecord as { id: string }).id,
+      });
+      return { success: false, error: "Failed to finalize refund record" };
     }
 
     // Record booking event for audit trail

@@ -13,7 +13,12 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import * as WebBrowser from "expo-web-browser";
+import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
+import {
+  extractPaystackReferenceFromUrl,
+  isCancelledPaystackUrl,
+  matchesExpoReturnUrl,
+} from "@/lib/paystack-webview-utils";
 import * as ExpoLinking from "expo-linking";
 import { Colors } from "@/constants/colors";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -105,6 +110,7 @@ export default function CustomOfferCheckoutScreen() {
   const [useWallet, setUseWallet] = useState(false);
   const [giftCardCode, setGiftCardCode] = useState("");
   const [loyaltyPointsToRedeem, setLoyaltyPointsToRedeem] = useState("");
+  const paystackHostedCheckout = useInAppPaystackCheckout();
 
   const currency = offer?.currency || getTenantDefaultCurrency();
   const fmt = useCallback((n: number) => formatMoney(n, currency), [currency]);
@@ -295,31 +301,27 @@ export default function CustomOfferCheckoutScreen() {
         }
 
         setProcessingMessage("Confirming payment…");
-        const browserResult = await WebBrowser.openAuthSessionAsync(url, paystackReturnPath ?? "");
+        const pr = await paystackHostedCheckout.waitForCheckout(url, {
+          title: "Pay custom offer",
+          matchSuccess: (u) =>
+            !!paystackReturnPath && matchesExpoReturnUrl(u, paystackReturnPath) && !isCancelledPaystackUrl(u),
+          matchCancel: (u) => isCancelledPaystackUrl(u),
+        });
 
-        if (browserResult.type === "cancel" || browserResult.type === "dismiss") {
+        if (pr.outcome === "cancel") {
           setProcessingPayment(false);
           Alert.alert("Payment cancelled", "You cancelled the payment.");
           return;
         }
 
         let reference: string | null = null;
-        if (browserResult.type === "success" && browserResult.url) {
-          try {
-            const parsed = ExpoLinking.parse(browserResult.url);
-            const q = parsed.queryParams ?? {};
-
-            if (q.cancelled === "1") {
-              setProcessingPayment(false);
-              Alert.alert("Payment cancelled", "You cancelled the payment.");
-              return;
-            }
-
-            const ref = q.reference ?? q.trxref;
-            reference = Array.isArray(ref) ? ref[0] ?? null : typeof ref === "string" ? ref : null;
-          } catch {
-            reference = null;
+        if (pr.outcome === "success" && pr.url) {
+          if (isCancelledPaystackUrl(pr.url)) {
+            setProcessingPayment(false);
+            Alert.alert("Payment cancelled", "You cancelled the payment.");
+            return;
           }
+          reference = extractPaystackReferenceFromUrl(pr.url);
         }
         if (reference) {
           markReferenceProcessing(reference);
@@ -364,7 +366,7 @@ export default function CustomOfferCheckoutScreen() {
         Alert.alert("Error", e instanceof Error ? e.message : "Payment failed");
       }
     },
-    [offerId, offer?.request?.service_name, pollForBooking, refreshSavedCards, router],
+    [offerId, offer?.request?.service_name, pollForBooking, refreshSavedCards, router, paystackHostedCheckout],
   );
 
   const handlePay = useCallback(async () => {
@@ -511,6 +513,7 @@ export default function CustomOfferCheckoutScreen() {
   }
 
   return (
+    <>
     <SafeAreaView style={{ flex: 1, backgroundColor: "#F9FAFB" }} edges={["top"]}>
       {header}
 
@@ -849,5 +852,7 @@ export default function CustomOfferCheckoutScreen() {
         onDismiss={() => setSuccessOverlay(null)}
       />
     </SafeAreaView>
+    {paystackHostedCheckout.modal}
+    </>
   );
 }

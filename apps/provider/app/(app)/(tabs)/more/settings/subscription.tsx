@@ -8,8 +8,8 @@ import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { View, Text, TouchableOpacity, Alert, AppState, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useRouter, useFocusEffect } from "expo-router";
-import { pushInAppBrowser } from "@/lib/in-app-web";
+import { useFocusEffect } from "expo-router";
+import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { api } from "@/lib/api-client";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -167,7 +167,6 @@ function statusPillClasses(sub: Subscription): { bg: string; text: string } {
 }
 
 export default function SubscriptionScreen() {
-  const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const [upgradingId, setUpgradingId] = useState<string | null>(null);
   const appState = useRef(AppState.currentState);
@@ -181,6 +180,36 @@ export default function SubscriptionScreen() {
     staleTimeMs: 0,
   });
   const { execute: postAction } = useApiMutation("post");
+
+  const paystackCheckout = useInAppPaystackCheckout();
+
+  const openSubscriptionPaystack = useCallback(
+    async (url: string, title: string) => {
+      await paystackCheckout.waitForCheckout(url, {
+        title,
+        matchSuccess: (rawUrl) => {
+          try {
+            if (!rawUrl.startsWith("http")) return false;
+            const u = new URL(rawUrl);
+            return u.pathname.includes("/provider/subscription") && u.searchParams.get("payment_success") === "true";
+          } catch {
+            return false;
+          }
+        },
+        matchCancel: (rawUrl) => {
+          try {
+            if (!rawUrl.startsWith("http")) return false;
+            const u = new URL(rawUrl);
+            return u.pathname.includes("/provider/subscription") && u.searchParams.get("payment_cancelled") === "1";
+          } catch {
+            return false;
+          }
+        },
+      });
+      refresh();
+    },
+    [paystackCheckout, refresh],
+  );
 
   const [billingSegment, setBillingSegment] = useState<"monthly" | "yearly">("monthly");
   const visiblePlansList = useMemo(() => {
@@ -216,10 +245,9 @@ export default function SubscriptionScreen() {
   }, [refresh]);
 
   // §Provider-audit 2026-04 (round 9): refresh whenever the screen regains
-  // focus. Paystack checkout opens via `pushInAppBrowser` which stays in the
-  // app process, so `AppState` never fires inactive→active and the
-  // subscription status could stay stale after a completed upgrade until
-  // the user pulled to refresh.
+  // focus. In-app Paystack WebView checkout also keeps the app foregrounded,
+  // so `AppState` inactive→active may not fire; we refresh on focus and after
+  // checkout completes.
   useFocusEffect(
     useCallback(() => {
       refresh();
@@ -281,7 +309,7 @@ export default function SubscriptionScreen() {
     }
     const url = d?.payment_url;
     if (url) {
-      pushInAppBrowser(router, url, "Renew subscription");
+      await openSubscriptionPaystack(url, "Renew subscription");
     } else {
       Alert.alert("No payment link", "Unable to start renewal. Please try again or contact support.");
     }
@@ -295,7 +323,7 @@ export default function SubscriptionScreen() {
         if (linkErr) {
           Alert.alert("Error", "Could not generate card update link. You can also try completing payment below.");
         } else if (data?.link) {
-          pushInAppBrowser(router, data.link, "Update Card");
+          await openSubscriptionPaystack(data.link, "Update Card");
           return;
         }
       } catch (e) {
@@ -392,7 +420,7 @@ export default function SubscriptionScreen() {
       }
       const upUrl = upgraded?.authorization_url ?? upgraded?.payment_url;
       if (upUrl) {
-        pushInAppBrowser(router, upUrl, "Subscription checkout");
+        await openSubscriptionPaystack(upUrl, "Subscription checkout");
         refresh();
         return;
       }
@@ -409,12 +437,12 @@ export default function SubscriptionScreen() {
       const d = data as { authorization_url?: string; payment_url?: string; requires_payment?: boolean };
       const url = d?.authorization_url ?? d?.payment_url;
       if (d?.requires_payment && url) {
-        pushInAppBrowser(router, url, "Subscription checkout");
+        await openSubscriptionPaystack(url, "Subscription checkout");
         refresh();
         return;
       }
       if (url) {
-        pushInAppBrowser(router, url, "Subscription checkout");
+        await openSubscriptionPaystack(url, "Subscription checkout");
       } else {
         Alert.alert("No payment link", "Unable to start checkout. Please try again or contact support.");
       }
@@ -448,6 +476,7 @@ export default function SubscriptionScreen() {
   const statusPill = subscription ? statusPillClasses(subscription) : null;
 
   return (
+    <>
     <ScreenContainer refreshing={refreshing} onRefresh={handleRefresh}>
       <ScreenHeader title="Subscription" showBack subtitle="Plan & billing" />
 
@@ -643,6 +672,8 @@ export default function SubscriptionScreen() {
 
       <View style={twStyle("h-10")} />
     </ScreenContainer>
+    {paystackCheckout.modal}
+    </>
   );
 }
 

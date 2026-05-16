@@ -42,6 +42,34 @@ export function validateStep(
         errors.push("Please select at least one service category");
       }
       break;
+    case 11: {
+      const services = formData.services || [];
+      for (let i = 0; i < services.length; i++) {
+        const service = services[i];
+        const label = `Service ${i + 1}`;
+        if (!service?.title?.trim()) errors.push(`${label}: title is required`);
+        if (!service?.category_id?.trim()) errors.push(`${label}: category is required`);
+        if (!Number.isFinite(service?.duration_minutes) || Number(service?.duration_minutes) <= 0) {
+          errors.push(`${label}: duration must be greater than 0`);
+        }
+        if (!Number.isFinite(service?.price) || Number(service?.price) < 0) {
+          errors.push(`${label}: price must be 0 or higher`);
+        }
+        if (!service?.supports_at_home && !service?.supports_at_salon) {
+          errors.push(`${label}: select at least one availability option`);
+        }
+        const addons = service?.addons || [];
+        for (let j = 0; j < addons.length; j++) {
+          const addon = addons[j];
+          const addonLabel = `${label} add-on ${j + 1}`;
+          if (!addon?.name?.trim()) errors.push(`${addonLabel}: name is required`);
+          if (!Number.isFinite(addon?.price) || Number(addon?.price) < 0) {
+            errors.push(`${addonLabel}: price must be 0 or higher`);
+          }
+        }
+      }
+      break;
+    }
     case 12: {
       const hours = formData.operating_hours;
       if (!hours || Object.keys(hours).length === 0) {

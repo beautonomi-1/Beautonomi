@@ -8,6 +8,7 @@ export interface ProviderProfileSummary {
   supports_house_calls: boolean;
   supports_salon: boolean;
   max_service_distance_km: number | null;
+  is_distance_filter_enabled?: boolean;
 }
 
 interface ProviderIdentityStripProps {
@@ -31,7 +32,12 @@ export function ProviderIdentityStrip({
   profile,
 }: ProviderIdentityStripProps) {
   const router = useRouter();
-  const { supports_house_calls, supports_salon, max_service_distance_km } = profile;
+  const {
+    supports_house_calls,
+    supports_salon,
+    max_service_distance_km,
+    is_distance_filter_enabled,
+  } = profile;
 
   const serviceTypes: string[] = [];
   if (supports_house_calls) serviceTypes.push("At-home");
@@ -100,7 +106,10 @@ export function ProviderIdentityStrip({
       </div>
 
       {/* At-home radius when relevant — click to change in Distance Settings */}
-      {supports_house_calls && max_service_distance_km != null && max_service_distance_km > 0 && (
+      {supports_house_calls &&
+        is_distance_filter_enabled === true &&
+        max_service_distance_km != null &&
+        max_service_distance_km > 0 && (
         <>
           <span className="h-4 w-px bg-gray-200" aria-hidden />
           <button

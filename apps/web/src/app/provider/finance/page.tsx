@@ -26,6 +26,7 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { Lock } from "lucide-react";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 import { PAYOUT_COUNTRIES, getCurrencyForCountry } from "@/lib/payments/payout-countries";
+import { ledgerRowDisplaySign } from "@/lib/provider/provider-ledger-transaction-view";
 
 interface EarningsData {
   total_earnings: number;
@@ -56,6 +57,17 @@ interface EarningsData {
   cancellation_fees_this_period?: number;
   additional_charges_total?: number;
   additional_charges_this_period?: number;
+  membership_discounts_this_period?: number;
+  loyalty_discounts_this_period?: number;
+  promo_discounts_this_period?: number;
+  membership_discounts_total?: number;
+  loyalty_discounts_total?: number;
+  promo_discounts_total?: number;
+  raw_payout_balance?: number;
+  has_negative_payout_balance?: boolean;
+  balance_owed_to_platform?: number;
+  ledger_currencies?: string[];
+  ledger_currency_note?: string | null;
 }
 
 interface Transaction {
@@ -677,6 +689,9 @@ export default function ProviderFinance() {
             <p className="text-xs text-gray-500 mt-2 leading-relaxed">
               Net provider share from the selected period&apos;s ledger rows. This is not the same as all-time available payout balance.
             </p>
+            <p className="text-xs text-gray-400 mt-1">
+              Gift card / membership sales below are liability movements — do not add them to earnings totals.
+            </p>
           </div>
           <div className="bg-white border rounded-lg p-6">
             <div className="flex items-center justify-between mb-2">
@@ -693,6 +708,12 @@ export default function ProviderFinance() {
                 : ""}
               . Cash settled outside the app is not included.
             </p>
+            {earnings.has_negative_payout_balance ? (
+              <p className="text-xs font-medium text-amber-800 mt-2">
+                Balance owed to platform: {fmt(earnings.balance_owed_to_platform ?? 0)} (raw ledger balance{" "}
+                {fmt(earnings.raw_payout_balance ?? 0)}). Withdrawable amount is floored at 0 until settled.
+              </p>
+            ) : null}
           </div>
           <div className="bg-white border rounded-lg p-6">
             <div className="flex items-center justify-between mb-2">
@@ -732,7 +753,39 @@ export default function ProviderFinance() {
               <p className="text-2xl font-semibold text-orange-600">
                 {fmt(earnings.platform_fees_deducted_this_period ?? earnings.platform_fees_deducted ?? 0)}
               </p>
-              <p className="text-xs text-gray-500 mt-1">Commission retained by platform</p>
+              <p className="text-xs text-gray-500 mt-1">
+                Customer-paid booking &amp; shop platform fees (ledger), not your % commission line
+              </p>
+            </div>
+          )}
+          {((earnings.membership_discounts_this_period ?? 0) > 0 ||
+            (earnings.loyalty_discounts_this_period ?? 0) > 0 ||
+            (earnings.promo_discounts_this_period ?? 0) > 0) && (
+            <div className="bg-white border rounded-lg p-6 md:col-span-2 lg:col-span-3">
+              <p className="text-sm font-medium text-gray-800 mb-2">Discounts on bookings ({rangeLabel})</p>
+              <p className="text-xs text-gray-500 mb-4">
+                Already included in what the customer paid — informational only, not added on top of earnings.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {(earnings.membership_discounts_this_period ?? 0) > 0 && (
+                  <div>
+                    <p className="text-xs text-gray-600">Membership discount</p>
+                    <p className="text-lg font-semibold text-slate-800">{fmt(earnings.membership_discounts_this_period ?? 0)}</p>
+                  </div>
+                )}
+                {(earnings.loyalty_discounts_this_period ?? 0) > 0 && (
+                  <div>
+                    <p className="text-xs text-gray-600">Loyalty discount</p>
+                    <p className="text-lg font-semibold text-slate-800">{fmt(earnings.loyalty_discounts_this_period ?? 0)}</p>
+                  </div>
+                )}
+                {(earnings.promo_discounts_this_period ?? 0) > 0 && (
+                  <div>
+                    <p className="text-xs text-gray-600">Promo / coupon discount</p>
+                    <p className="text-lg font-semibold text-slate-800">{fmt(earnings.promo_discounts_this_period ?? 0)}</p>
+                  </div>
+                )}
+              </div>
             </div>
           )}
           <div className="bg-white border rounded-lg p-6">
@@ -747,12 +800,14 @@ export default function ProviderFinance() {
             <p className="text-2xl font-semibold">
               {fmt(earnings.gift_card_sales_this_period || 0)}
             </p>
+            <p className="text-xs text-gray-500 mt-1">Not additive with service earnings (liability / float)</p>
           </div>
           <div className="bg-white border rounded-lg p-6">
             <p className="text-sm text-gray-600 mb-2">Membership Sales</p>
             <p className="text-2xl font-semibold">
               {fmt(earnings.membership_sales_this_period || 0)}
             </p>
+            <p className="text-xs text-gray-500 mt-1">Not additive with service earnings (deferred revenue)</p>
           </div>
           <div className="bg-white border rounded-lg p-6">
             <p className="text-sm text-gray-600 mb-2">Refunds</p>
@@ -925,140 +980,11 @@ export default function ProviderFinance() {
                 <p className="text-gray-600">Loading transaction details...</p>
               </div>
             ) : selectedTransaction ? (
-              <div className="space-y-6 py-4">
-                {/* Transaction Overview */}
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <h3 className="font-semibold mb-3">Transaction Overview</h3>
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Description:</span>
-                      <span className="font-medium">{selectedTransaction.description}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Date:</span>
-                      <span className="font-medium">
-                        {new Date(selectedTransaction.date).toLocaleDateString("en-US", {
-                          year: "numeric",
-                          month: "long",
-                          day: "numeric",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Status:</span>
-                      <span className="font-medium capitalize">{selectedTransaction.status}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Type:</span>
-                      <span className="font-medium capitalize">{selectedTransaction.transaction_type?.replace("_", " ") || selectedTransaction.type}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Amount Breakdown */}
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <h3 className="font-semibold mb-3">Amount Breakdown</h3>
-                  <div className="space-y-2">
-                    {selectedTransaction.net !== undefined && selectedTransaction.net !== selectedTransaction.amount && (
-                      <>
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Gross Amount:</span>
-                          <span className="font-medium">
-                            {selectedTransaction.currency} {selectedTransaction.amount.toFixed(2)}
-                          </span>
-                        </div>
-                        {selectedTransaction.fees && selectedTransaction.fees > 0 && (
-                          <div className="flex justify-between">
-                            <span className="text-gray-600">Fees:</span>
-                            <span className="font-medium text-red-600">
-                              -{selectedTransaction.currency} {selectedTransaction.fees.toFixed(2)}
-                            </span>
-                          </div>
-                        )}
-                        {selectedTransaction.commission && selectedTransaction.commission > 0 && (
-                          <div className="flex justify-between">
-                            <span className="text-gray-600">Platform Commission:</span>
-                            <span className="font-medium text-red-600">
-                              -{selectedTransaction.currency} {selectedTransaction.commission.toFixed(2)}
-                            </span>
-                          </div>
-                        )}
-                        <div className="flex justify-between pt-2 border-t">
-                          <span className="font-semibold">Net Amount:</span>
-                          <span className="font-semibold text-green-600">
-                            {selectedTransaction.currency} {selectedTransaction.net.toFixed(2)}
-                          </span>
-                        </div>
-                      </>
-                    )}
-                    {(!selectedTransaction.net || selectedTransaction.net === selectedTransaction.amount) && (
-                      <div className="flex justify-between">
-                        <span className="font-semibold">Amount:</span>
-                        <span className="font-semibold text-green-600">
-                          {selectedTransaction.currency} {selectedTransaction.amount.toFixed(2)}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Booking Details (if available) */}
-                {transactionDetails && selectedTransaction.booking_id && (
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <h3 className="font-semibold mb-3">Booking Details</h3>
-                    <div className="space-y-2">
-                      {transactionDetails.booking_number && (
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Booking Number:</span>
-                          <span className="font-medium">{transactionDetails.booking_number}</span>
-                        </div>
-                      )}
-                      {transactionDetails.total_amount && (
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Booking Total:</span>
-                          <span className="font-medium">
-                            {fmt(Number(transactionDetails.total_amount))}
-                          </span>
-                        </div>
-                      )}
-                      {transactionDetails.service_fee_amount && Number(transactionDetails.service_fee_amount) > 0 && (
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Platform Fee:</span>
-                          <span className="font-medium">
-                            {fmt(Number(transactionDetails.service_fee_amount))}
-                          </span>
-                        </div>
-                      )}
-                      {transactionDetails.tax_amount && Number(transactionDetails.tax_amount) > 0 && (
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Tax (VAT):</span>
-                          <span className="font-medium">
-                            {fmt(Number(transactionDetails.tax_amount))}
-                          </span>
-                        </div>
-                      )}
-                      {transactionDetails.travel_fee && Number(transactionDetails.travel_fee) > 0 && (
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Travel Fee:</span>
-                          <span className="font-medium">
-                            {fmt(Number(transactionDetails.travel_fee))}
-                          </span>
-                        </div>
-                      )}
-                      {transactionDetails.booking_source && (
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Booking Source:</span>
-                          <span className="font-medium capitalize">
-                            {transactionDetails.booking_source.replace("_", " ")}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
+              <FinanceTransactionDetailBody
+                transaction={selectedTransaction}
+                transactionDetails={transactionDetails}
+                fmt={fmt}
+              />
             ) : (
               <div className="py-8 text-center">
                 <p className="text-gray-600">No additional details available</p>
@@ -1071,17 +997,206 @@ export default function ProviderFinance() {
   );
 }
 
+/** Ledger debit/credit sign for finance page rows (API `type` + optional `transaction_type`). */
+function financePageLedgerSign(t: Pick<Transaction, "transaction_type" | "type" | "amount" | "net">): 1 | -1 {
+  const tt = t.transaction_type ?? "";
+  if (typeof tt === "string" && tt.length > 0) {
+    return ledgerRowDisplaySign({
+      transaction_type: tt,
+      net: t.net,
+      amount: t.amount,
+    });
+  }
+  if (t.type === "payout" || t.type === "refund" || t.type === "platform_fee") return -1;
+  if (t.amount < 0 || (t.net !== undefined && t.net < 0)) return -1;
+  return 1;
+}
+
+/** Signed primary line and Tailwind colour for provider-facing ledger semantics (matches list rows). */
+function providerFacingLedgerDisplay(t: Transaction): { signedPrimary: number; primaryClass: string } {
+  const sign = financePageLedgerSign(t);
+  const tt = t.transaction_type ?? "";
+  const basis = Number(t.net ?? t.amount ?? 0);
+  const signedPrimary = sign * Math.abs(basis);
+  const primaryClass =
+    tt === "provider_earnings" && signedPrimary < 0
+      ? "text-red-600"
+      : sign < 0
+        ? "text-amber-700"
+        : signedPrimary < 0
+          ? "text-red-600"
+          : "text-green-600";
+  return { signedPrimary, primaryClass };
+}
+
+function FinanceTransactionDetailBody({
+  transaction,
+  transactionDetails,
+  fmt,
+}: {
+  transaction: Transaction;
+  transactionDetails: Record<string, unknown> | null;
+  fmt: (amount: number) => string;
+}) {
+  const { signedPrimary, primaryClass } = providerFacingLedgerDisplay(transaction);
+  const hasNetSplit =
+    transaction.net !== undefined && transaction.net !== transaction.amount;
+
+  return (
+    <div className="space-y-6 py-4">
+      <div className="bg-gray-50 rounded-lg p-4">
+        <h3 className="font-semibold mb-3">Transaction Overview</h3>
+        <div className="space-y-2">
+          <div className="flex justify-between">
+            <span className="text-gray-600">Description:</span>
+            <span className="font-medium">{transaction.description}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-600">Date:</span>
+            <span className="font-medium">
+              {new Date(transaction.date).toLocaleDateString("en-US", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-600">Status:</span>
+            <span className="font-medium capitalize">{transaction.status}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-600">Type:</span>
+            <span className="font-medium capitalize">
+              {transaction.transaction_type?.replace("_", " ") || transaction.type}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-gray-50 rounded-lg p-4">
+        <h3 className="font-semibold mb-3">Amount Breakdown</h3>
+        <div className="space-y-2">
+          {hasNetSplit ? (
+            <>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Gross Amount:</span>
+                <span className="font-medium">
+                  {transaction.currency} {transaction.amount.toFixed(2)}
+                </span>
+              </div>
+              {transaction.fees && transaction.fees > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Fees:</span>
+                  <span className="font-medium text-red-600">
+                    -{transaction.currency} {transaction.fees.toFixed(2)}
+                  </span>
+                </div>
+              )}
+              {transaction.commission && transaction.commission > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Platform Commission:</span>
+                  <span className="font-medium text-red-600">
+                    -{transaction.currency} {transaction.commission.toFixed(2)}
+                  </span>
+                </div>
+              )}
+              <div className="flex justify-between pt-2 border-t">
+                <span className="font-semibold">Net Amount:</span>
+                <span className={`font-semibold ${primaryClass}`}>
+                  {transaction.currency} {signedPrimary.toFixed(2)}
+                </span>
+              </div>
+            </>
+          ) : (
+            <div className="flex justify-between">
+              <span className="font-semibold">Amount:</span>
+              <span className={`font-semibold ${primaryClass}`}>
+                {transaction.currency} {signedPrimary.toFixed(2)}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {transactionDetails && transaction.booking_id ? (
+        <div className="bg-gray-50 rounded-lg p-4">
+          <h3 className="font-semibold mb-3">Booking Details</h3>
+          <div className="space-y-2">
+            {transactionDetails.booking_number && (
+              <div className="flex justify-between">
+                <span className="text-gray-600">Booking Number:</span>
+                <span className="font-medium">{String(transactionDetails.booking_number)}</span>
+              </div>
+            )}
+            {transactionDetails.total_amount && (
+              <div className="flex justify-between">
+                <span className="text-gray-600">Booking Total:</span>
+                <span className="font-medium">{fmt(Number(transactionDetails.total_amount))}</span>
+              </div>
+            )}
+            {transactionDetails.service_fee_amount && Number(transactionDetails.service_fee_amount) > 0 && (
+              <div className="flex justify-between">
+                <span className="text-gray-600">Platform Fee:</span>
+                <span className="font-medium">{fmt(Number(transactionDetails.service_fee_amount))}</span>
+              </div>
+            )}
+            {transactionDetails.tax_amount && Number(transactionDetails.tax_amount) > 0 && (
+              <div className="flex justify-between">
+                <span className="text-gray-600">Tax (VAT):</span>
+                <span className="font-medium">{fmt(Number(transactionDetails.tax_amount))}</span>
+              </div>
+            )}
+            {transactionDetails.travel_fee && Number(transactionDetails.travel_fee) > 0 && (
+              <div className="flex justify-between">
+                <span className="text-gray-600">Travel Fee:</span>
+                <span className="font-medium">{fmt(Number(transactionDetails.travel_fee))}</span>
+              </div>
+            )}
+            {transactionDetails.booking_source && (
+              <div className="flex justify-between">
+                <span className="text-gray-600">Booking Source:</span>
+                <span className="font-medium capitalize">
+                  {String(transactionDetails.booking_source).replace("_", " ")}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function TransactionRow({ transaction, onClick }: { transaction: Transaction; onClick: () => void }) {
+  const tt = transaction.transaction_type;
   const isPlatformRetained =
     transaction.type === "platform_fee" ||
-    transaction.transaction_type === "service_fee" ||
-    transaction.transaction_type === "platform_fee";
+    tt === "service_fee" ||
+    tt === "platform_fee";
+  const isLedgerFeeLike =
+    isPlatformRetained ||
+    tt === "tax" ||
+    tt === "provider_subscription_payment" ||
+    tt === "provider_ads_payment";
+
+  const displaySign = financePageLedgerSign(transaction);
+  const displayAbs = Math.abs(Number(transaction.net ?? transaction.amount ?? 0));
 
   const getTypeColor = () => {
-    if (isPlatformRetained) return "text-amber-600";
+    if (isLedgerFeeLike) return "text-amber-600";
+    if (tt === "tip") return "text-green-600";
+    if (tt === "travel_fee") return "text-purple-600";
+    if (tt === "cancellation_fee") {
+      return (transaction.net ?? transaction.amount) < 0 ? "text-red-600" : "text-green-600";
+    }
     switch (transaction.type) {
       case "booking":
-        return "text-green-600";
+        return tt === "provider_earnings" && (transaction.net ?? transaction.amount) < 0
+          ? "text-red-600"
+          : "text-green-600";
       case "payout":
         return "text-blue-600";
       case "refund":
@@ -1121,16 +1236,9 @@ function TransactionRow({ transaction, onClick }: { transaction: Transaction; on
       </div>
       <div className="flex items-center gap-4">
         <p className={`font-semibold ${getTypeColor()}`}>
-          {transaction.type === "payout" ||
-          transaction.type === "refund" ||
-          transaction.type === "platform_fee" ||
-          isPlatformRetained ||
-          transaction.amount < 0 ||
-          (transaction.net !== undefined && transaction.net < 0)
-            ? "-"
-            : "+"}
+          {displaySign < 0 ? "-" : "+"}
           {transaction.currency}{" "}
-          {Math.abs(transaction.amount).toFixed(2)}
+          {displayAbs.toFixed(2)}
         </p>
         <span
           className={`px-2 py-1 rounded text-xs font-medium ${getStatusColor()}`}

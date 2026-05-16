@@ -294,6 +294,7 @@ export function OnboardingWizardProvider({ children }: { children: ReactNode }) 
         message?: string;
         subscription_endpoint?: string | null;
         selected_plan_id?: string | null;
+        selected_plan_is_free?: boolean;
       } | null;
 
       try {
@@ -305,7 +306,8 @@ export function OnboardingWizardProvider({ children }: { children: ReactNode }) 
       await refreshProvider();
 
       const planId = data?.selected_plan_id;
-      if (planId) {
+      const subscriptionEndpoint = data?.subscription_endpoint;
+      if (planId && subscriptionEndpoint) {
         const { APP_URL } = await import("@/config/public-env");
         const base = (APP_URL || "").replace(/\/$/, "");
         if (base) {

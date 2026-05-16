@@ -15,6 +15,7 @@ export interface ProfileUser {
   phone_verified: boolean;
   identity_verified: boolean;
   identity_verification_status: string;
+  can_submit_verification?: boolean;
   identity_verification_submitted_at?: string | null;
   identity_verification_rejection_reason?: string | null;
   identity_verification_document_url?: string | null;

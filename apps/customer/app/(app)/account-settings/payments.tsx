@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { View, Text, TextInput, TouchableOpacity, Alert, ActivityIndicator } from "react-native";
 import { router } from "expo-router";
-import * as WebBrowser from "expo-web-browser";
+import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
+import {
+  extractPaystackReferenceFromUrl,
+  isCancelledPaystackUrl,
+  matchesExpoReturnUrl,
+} from "@/lib/paystack-webview-utils";
 import * as ExpoLinking from "expo-linking";
 import { Ionicons } from "@expo/vector-icons";
 import { useTranslation } from "@beautonomi/i18n";
@@ -39,6 +44,7 @@ export default function PaymentsScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [addingCard, setAddingCard] = useState(false);
+  const paystackHostedCheckout = useInAppPaystackCheckout();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -156,24 +162,17 @@ export default function PaymentsScreen() {
         Alert.alert(t("common.error"), t("customer.paymentsScreen.couldNotStartVerification"));
         return;
       }
-      const browserResult = await WebBrowser.openAuthSessionAsync(url, callbackUrl);
-      if (browserResult.type === "cancel" || browserResult.type === "dismiss") {
+      const pr = await paystackHostedCheckout.waitForCheckout(url, {
+        title: t("customer.paymentsScreen.addCardTitle", "Add card") as string,
+        matchSuccess: (u) => matchesExpoReturnUrl(u, callbackUrl) && !isCancelledPaystackUrl(u),
+        matchCancel: (u) => isCancelledPaystackUrl(u),
+      });
+      if (pr.outcome === "cancel") {
         return;
       }
-      if (browserResult.type === "success" && browserResult.url) {
-        try {
-          const parsed = ExpoLinking.parse(browserResult.url);
-          const query = parsed.queryParams ?? {};
-          if (query.cancelled === "1") return;
-          const returnedRef = query.reference ?? query.trxref;
-          reference = Array.isArray(returnedRef)
-            ? returnedRef[0] ?? reference
-            : typeof returnedRef === "string" && returnedRef.trim()
-              ? returnedRef.trim()
-              : reference;
-        } catch {
-          // Keep the initialize reference fallback.
-        }
+      if (pr.outcome === "success" && pr.url && !isCancelledPaystackUrl(pr.url)) {
+        const extracted = extractPaystackReferenceFromUrl(pr.url);
+        if (extracted) reference = extracted;
       }
       if (reference) {
         await api.get(`/api/paystack/verify?reference=${encodeURIComponent(reference)}`).catch(() => {});
@@ -216,6 +215,7 @@ export default function PaymentsScreen() {
     couponCount === 1 ? t("customer.paymentsScreen.oneActiveCoupon") : t("customer.paymentsScreen.nActiveCoupons", { count: couponCount });
 
   return (
+    <>
     <ScreenFrame loading={loading} error={error} onRetry={load}>
       <View>
         <View>
@@ -354,5 +354,7 @@ export default function PaymentsScreen() {
         </View>
       </View>
     </ScreenFrame>
+    {paystackHostedCheckout.modal}
+    </>
   );
 }

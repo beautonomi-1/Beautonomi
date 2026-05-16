@@ -1,8 +1,10 @@
 "use client";
 import Image from "next/image";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import Breadcrumb from "../components/breadcrumb";
 import BackButton from "../components/back-button";
+import VerificationStatusCard from "@/components/profile/VerificationStatusCard";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { PhoneInput } from "@/components/ui/phone-input";
@@ -101,6 +103,55 @@ export function PersonalInfoClient({ initial }: { initial: PersonalInfoInitialPa
   const [isLoading, setIsLoading] = useState(() => !initial.personalInfo);
   const [isSaving, setIsSaving] = useState(false);
   const [sumsubAvailable, setSumsubAvailable] = useState(initial.sumsubAvailable);
+  const [verificationStatus, setVerificationStatus] = useState<
+    "none" | "pending" | "verified" | "failed"
+  >("none");
+  const [verificationCanSubmit, setVerificationCanSubmit] = useState(false);
+  const [verificationFailureReason, setVerificationFailureReason] = useState<string | undefined>();
+
+  const refreshVerification = useCallback(async () => {
+    try {
+      const res = await fetch("/api/me/verification");
+      if (!res.ok) return;
+      const json = await res.json();
+      const d = json?.data;
+      if (!d) return;
+      const verified = Boolean(d.verified);
+      const status = (d.status as string) ?? "none";
+      setVerificationCanSubmit(Boolean(d.can_submit_verification));
+      setSumsubAvailable(Boolean(d.sumsub_available));
+      if (verified || status === "approved") {
+        setVerificationStatus("verified");
+      } else if (
+        status === "pending" ||
+        status === "in_progress" ||
+        status === "submitted" ||
+        status === "under_review"
+      ) {
+        setVerificationStatus("pending");
+      } else if (status === "rejected") {
+        setVerificationStatus("failed");
+        const submissions = Array.isArray(d.submissions) ? d.submissions : [];
+        const reason = submissions.find((s: { rejection_reason?: string }) => s.rejection_reason)
+          ?.rejection_reason;
+        setVerificationFailureReason(reason);
+      } else {
+        setVerificationStatus("none");
+        setVerificationFailureReason(undefined);
+      }
+    } catch {
+      /* non-blocking */
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshVerification();
+    const onFocus = () => {
+      void refreshVerification();
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [refreshVerification]);
   const [countries, setCountries] = useState<Country[]>(initial.countries);
   const [defaultCountryCode, setDefaultCountryCode] = useState<string>(() => {
     const fromServer = initial.defaultCountryCode;
@@ -227,7 +278,7 @@ export function PersonalInfoClient({ initial }: { initial: PersonalInfoInitialPa
             ...prev,
             governmentId: 'Pending verification',
           }));
-          
+          await refreshVerification();
           closeModal();
         } else {
           const error = await verificationResponse.json();
@@ -403,11 +454,28 @@ export function PersonalInfoClient({ initial }: { initial: PersonalInfoInitialPa
             onEdit={() => openModal('phone')}
             editLabel="Change phone"
           />
-          <InfoItem
-            label="Government ID"
-            value={personalInfo.governmentId}
-            onAdd={personalInfo.governmentId === 'Not provided' ? () => openModal('governmentId') : undefined}
-          />
+          <div className="mb-4 md:mb-6 pb-4 md:pb-6 border-b border-gray-200">
+            <div className="flex justify-between items-center mb-2">
+              <span className="font-medium text-sm md:text-base text-gray-900">Government ID</span>
+              <Link
+                href="/account-settings/identity-verification"
+                className="text-sm text-[#FF0077] hover:text-[#D60565] underline font-medium"
+              >
+                Manage verification
+              </Link>
+            </div>
+            <VerificationStatusCard
+              status={verificationStatus}
+              failureReason={verificationFailureReason}
+              onAction={() => {
+                if (verificationCanSubmit) {
+                  openModal("governmentId");
+                } else {
+                  window.location.href = "/account-settings/identity-verification";
+                }
+              }}
+            />
+          </div>
           <InfoItem
             label="Address"
             value={personalInfo.address.street && personalInfo.address.city ? `${personalInfo.address.street}, ${personalInfo.address.city}` : 'Not provided'}
