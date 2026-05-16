@@ -1,5 +1,5 @@
 /**
- * Ads – native ad campaigns and performance (no WebView).
+ * Ads – native ad campaigns and performance. Paystack checkout uses an in-app WebView modal.
  * Create and manage campaigns; view impressions, clicks, and spend.
  */
 import { useCallback, useState, useEffect, useRef } from "react";
@@ -16,7 +16,7 @@ import {
   Platform,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { pushInAppBrowser } from "@/lib/in-app-web";
+import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useModuleConfig, useFeatureFlag } from "@/providers/ConfigBundleProvider";
@@ -337,6 +337,40 @@ export default function AdsSettingsScreen() {
     }
   }, [enabled]);
 
+  const adsPaystackCheckout = useInAppPaystackCheckout();
+
+  const openAdsPaystack = useCallback(
+    async (payUrl: string) => {
+      await adsPaystackCheckout.waitForCheckout(payUrl, {
+        title: "Ad payment",
+        matchSuccess: (rawUrl) => {
+          try {
+            if (!rawUrl.startsWith("http")) return false;
+            const u = new URL(rawUrl);
+            return (
+              u.pathname.includes("/provider/settings/ads/payment-return") && u.searchParams.get("success") === "1"
+            );
+          } catch {
+            return false;
+          }
+        },
+        matchCancel: (rawUrl) => {
+          try {
+            if (!rawUrl.startsWith("http")) return false;
+            const u = new URL(rawUrl);
+            return (
+              u.pathname.includes("/provider/settings/ads/payment-return") && u.searchParams.get("cancelled") === "1"
+            );
+          } catch {
+            return false;
+          }
+        },
+      });
+      await loadAll();
+    },
+    [adsPaystackCheckout, loadAll],
+  );
+
   useEffect(() => {
     setLoading(true);
     loadAll();
@@ -418,7 +452,7 @@ export default function AdsSettingsScreen() {
       const payUrl = adsCreatePaymentUrl(data);
       if (payUrl) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        pushInAppBrowser(router, payUrl, "Ad payment");
+        await openAdsPaystack(payUrl);
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -429,7 +463,7 @@ export default function AdsSettingsScreen() {
     } finally {
       setCreating(false);
     }
-  }, [createForm, loadAll, tenantCurrency, router, confirmAdsCheckout]);
+  }, [createForm, loadAll, tenantCurrency, confirmAdsCheckout, openAdsPaystack]);
 
   const handleBuyPack = useCallback(
     async (pack: ImpressionPack) => {
@@ -465,7 +499,7 @@ export default function AdsSettingsScreen() {
         const payUrl = adsCreatePaymentUrl(data);
         if (payUrl) {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          pushInAppBrowser(router, payUrl, "Ad payment");
+          await openAdsPaystack(payUrl);
           return;
         }
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -477,7 +511,7 @@ export default function AdsSettingsScreen() {
         setCreatingPackId(null);
       }
     },
-    [loadAll, router, createForm.global_category_ids, confirmAdsCheckout, tenantCurrency]
+    [loadAll, createForm.global_category_ids, confirmAdsCheckout, tenantCurrency, openAdsPaystack]
   );
 
   const handleUpdateCampaign = useCallback(async () => {
@@ -590,6 +624,7 @@ export default function AdsSettingsScreen() {
   }
 
   return (
+    <>
     <ScreenContainer scrollable={false}>
       <ScreenHeader
         title="Paid ads"
@@ -748,7 +783,7 @@ export default function AdsSettingsScreen() {
                         if (campaign?.id) setCampaigns((prev) => [campaign, ...prev]);
                         const payUrl = adsCreatePaymentUrl(data);
                         if (payUrl) {
-                          pushInAppBrowser(router, payUrl, "Ad payment");
+                          await openAdsPaystack(payUrl);
                           return;
                         }
                         Alert.alert("Success", "Campaign created.");
@@ -897,13 +932,20 @@ export default function AdsSettingsScreen() {
 
           {/* Campaigns */}
           <View style={twStyle("mb-4")}>
-            <View style={twStyle("flex-row items-center justify-between mb-3")}>
-              <View>
+            <View style={twStyle("mb-3 flex-row flex-wrap items-start justify-between gap-2")}>
+              <View style={twStyle("flex-1 min-w-[65%]")}>
                 <Text style={twStyle("text-sm font-semibold text-gray-700")}>Campaigns</Text>
                 <Text style={twStyle("text-xs text-gray-500")}>Edit targeting, pause/activate, and track delivery per campaign.</Text>
               </View>
               {cpcBudgetAvailable && (
-                <ActionButton label="New campaign" onPress={() => setCreateOpen(true)} variant="primary" size="sm" icon="add" />
+                <ActionButton
+                  label="New campaign"
+                  onPress={() => setCreateOpen(true)}
+                  variant="primary"
+                  size="sm"
+                  icon="add"
+                  style={twStyle("self-start")}
+                />
               )}
             </View>
             {cpcBudgetAvailable && defaultModel === "cpc_budget" ? (
@@ -1223,5 +1265,7 @@ export default function AdsSettingsScreen() {
         )}
       </BottomSheet>
     </ScreenContainer>
+    {adsPaystackCheckout.modal}
+    </>
   );
 }

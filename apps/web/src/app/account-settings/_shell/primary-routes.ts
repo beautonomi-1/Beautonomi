@@ -5,6 +5,7 @@
 export const CUSTOMER_PRIMARY_ROUTES = [
   "/account-settings",
   "/account-settings/personal-info",
+  "/account-settings/identity-verification",
   "/account-settings/bookings",
   "/account-settings/orders",
   "/account-settings/returns",

@@ -12,8 +12,11 @@ import { formatDateYmd, fromBusinessTime, nowInTz } from "@/lib/dates/provider-t
 import { filterLedgerRowsForLocation, getProviderReportContext } from "@/lib/reports/provider-report-utils";
 import {
   mapFinanceLedgerRowToProviderUi,
+  PROVIDER_LEDGER_VISIBLE_TYPES,
   type ProviderLedgerUiRow,
 } from "@/lib/provider/provider-ledger-transaction-view";
+
+const VISIBLE_TYPES_LIST = Array.from(PROVIDER_LEDGER_VISIBLE_TYPES);
 
 function csvCell(value: unknown): string {
   if (value == null) return "";
@@ -93,6 +96,7 @@ export async function POST(request: NextRequest) {
         .select("id, transaction_type, amount, net, created_at, description, booking_id, product_order_id, metadata")
         .eq("provider_id", providerId)
         .gte("created_at", periodStart(period, reportContext.timezone).toISOString())
+        .in("transaction_type", VISIBLE_TYPES_LIST)
         .order("created_at", { ascending: false })
         .range(from, from + pageSize - 1);
       if (error) throw error;

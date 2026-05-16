@@ -182,6 +182,17 @@ export default function GroupBookingsPage() {
     setIsDetailOpen(true);
   };
 
+  const openParticipantBookingForRefund = (bookingId?: string | null) => {
+    const id = bookingId?.trim();
+    if (!id) {
+      toast.error("This participant does not have a linked booking yet");
+      return;
+    }
+    if (typeof window !== "undefined") {
+      window.location.assign(`/provider/bookings/${encodeURIComponent(id)}`);
+    }
+  };
+
   const handleDownloadReceipt = async (bookingId: string, refNumber?: string) => {
     try {
       const response = await fetch(`/api/provider/group-bookings/${encodeURIComponent(bookingId)}/receipt/pdf`);
@@ -547,6 +558,7 @@ export default function GroupBookingsPage() {
             onStatusChange={handleStatusChange}
             onCheckIn={handleCheckIn}
             onCheckOut={handleCheckOut}
+            onOpenParticipantBooking={openParticipantBookingForRefund}
             onEdit={() => { setIsDetailOpen(false); handleEdit(detailBooking); }}
             onCancel={() => handleDelete(detailBooking.id, detailBooking.status)}
             onDownloadReceipt={() => handleDownloadReceipt(detailBooking.id, detailBooking.ref_number)}
@@ -564,13 +576,24 @@ interface DetailPanelProps {
   onStatusChange: (id: string, status: string) => void;
   onCheckIn: (bookingId: string, participantId: string) => void;
   onCheckOut: (bookingId: string, participantId: string) => void;
+  onOpenParticipantBooking: (bookingId?: string | null) => void;
   onEdit: () => void;
   onCancel: () => void;
   onDownloadReceipt: () => void;
   isStatusChanging: boolean;
 }
 
-function GroupBookingDetailPanel({ booking, onStatusChange, onCheckIn, onCheckOut, onEdit, onCancel, onDownloadReceipt, isStatusChanging }: DetailPanelProps) {
+function GroupBookingDetailPanel({
+  booking,
+  onStatusChange,
+  onCheckIn,
+  onCheckOut,
+  onOpenParticipantBooking,
+  onEdit,
+  onCancel,
+  onDownloadReceipt,
+  isStatusChanging,
+}: DetailPanelProps) {
   const participants: GroupBookingParticipant[] = booking.participants ?? [];
   const cancelled = booking.status === "cancelled";
   const completed = booking.status === "completed";
@@ -817,6 +840,18 @@ function GroupBookingDetailPanel({ booking, onStatusChange, onCheckIn, onCheckOu
                     ) : null}
                   </div>
                 )}
+                {p.booking_id ? (
+                  <div className="ml-7">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onOpenParticipantBooking(p.booking_id)}
+                      className="h-8 text-xs bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100"
+                    >
+                      Open booking to refund
+                    </Button>
+                  </div>
+                ) : null}
               </div>
             ))}
           </div>

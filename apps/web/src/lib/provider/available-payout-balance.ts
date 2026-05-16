@@ -11,7 +11,8 @@ export type GetAvailablePayoutBalanceOptions = {
  * Compute available balance for payout (ledger-based):
  * - Sum provider_earnings (net) excluding direct walk-in (cash/Yoco) — platform doesn't hold that money.
  * - Add refund rows (net is negative), with the same walk-in exclusion when tied to a booking.
- * - Optionally exclude earnings newer than holdDays (payout hold period). Refunds always apply (clawback).
+ * - Optionally exclude earnings newer than holdDays (payout hold period) for **provider_earnings, tip, and travel_fee**
+ *   (F15: hold applies consistently to platform-held booking take). Refunds always apply (clawback).
  * - Subtract completed payouts (finance_transactions type 'payout').
  * - Subtract pending/processing payout requests (payouts table).
  */
@@ -99,6 +100,11 @@ export async function getAvailablePayoutBalance(
       completedPayouts += Number(row.amount || 0);
       continue;
     }
+    if (row.transaction_type === "provider_subscription_payment" || row.transaction_type === "provider_ads_payment") {
+      // F16: subscription/ads are platform-billed charges against the provider's platform-held balance.
+      onlineEarnings -= Math.abs(Number(row.net ?? row.amount ?? 0));
+      continue;
+    }
     if (row.transaction_type === "refund") {
       if (excludeWalkInNotOnPlatform(row.booking_id)) continue;
       onlineEarnings += Number(row.net ?? row.amount ?? 0);
@@ -118,6 +124,7 @@ export async function getAvailablePayoutBalance(
     // Tips and travel fees are platform-held pass-throughs owed to the provider.
     if (row.transaction_type === "tip" || row.transaction_type === "travel_fee") {
       if (excludeWalkInNotOnPlatform(row.booking_id)) continue;
+      if (holdDays > 0 && row.created_at && row.created_at > availableFrom) continue;
       onlineEarnings += Number(row.net ?? row.amount ?? 0);
       continue;
     }

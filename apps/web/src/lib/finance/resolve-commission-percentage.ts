@@ -8,7 +8,15 @@ export async function resolveCommissionPercentageForProvider(
   supabase: SupabaseClient,
   opts: { tenantId: string | null | undefined; providerId: string | null | undefined },
 ): Promise<number> {
-  const resolvedTenantId = opts.tenantId ?? null;
+  let resolvedTenantId = opts.tenantId ?? null;
+  if (!resolvedTenantId && opts.providerId) {
+    const { data: prow } = await supabase
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", opts.providerId)
+      .maybeSingle();
+    resolvedTenantId = (prow as { tenant_id?: string | null } | null)?.tenant_id ?? null;
+  }
   let settingsQuery = supabase
     .from("platform_settings")
     .select("settings")

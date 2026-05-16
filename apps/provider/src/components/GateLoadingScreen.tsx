@@ -40,7 +40,7 @@ export interface GateLoadingScreenProps {
   message?: string;
   primaryColor?: string;
   backgroundColor?: string;
-  /** Show the "beautonomi" wordmark beneath the glyph. Defaults to true. */
+  /** Show the "Beautonomi" wordmark beneath the glyph. Defaults to true. */
   showWordmark?: boolean;
   testID?: string;
 }
@@ -184,7 +184,7 @@ export function GateLoadingScreen({
 
       {showWordmark ? (
         <AnimatedView style={[styles.wordmarkWrap, wordmarkStyle]}>
-          <Text style={[styles.wordmark, { color: accent }]}>beautonomi</Text>
+          <Text style={[styles.wordmark, { color: accent }]}>Beautonomi</Text>
         </AnimatedView>
       ) : null}
 

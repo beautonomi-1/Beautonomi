@@ -1,13 +1,14 @@
 import { useState, useCallback, useEffect } from "react";
 import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, Alert, ScrollView } from "react-native";
 import { useFocusEffect } from "expo-router";
-import * as WebBrowser from "expo-web-browser";
+import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
 import { useTranslation } from "@beautonomi/i18n";
 import { formatMoney } from "@beautonomi/utils";
 import { api } from "@/lib/api-client";
 import { ScreenFrame } from "@/components/ScreenFrame";
 import { Colors } from "@/constants/colors";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { APP_URL } from "@/config/public-env";
 import { useAuth } from "@/providers/AuthProvider";
 import { useSavedCards } from "@/hooks/useSavedCards";
 import { usePaystackPayment } from "@/hooks/usePaystackPayment";
@@ -53,6 +54,7 @@ export default function WalletScreen() {
 
   const { cards: savedCards, defaultCard, refresh: refreshCards } = useSavedCards(!!user);
   const { payWithSavedCard } = usePaystackPayment();
+  const paystackHostedCheckout = useInAppPaystackCheckout();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -162,8 +164,28 @@ export default function WalletScreen() {
           Alert.alert(t("common.error"), t("customer.walletScreen.noPaymentLink"));
           return;
         }
-        await WebBrowser.openBrowserAsync(paymentUrl, {
-          presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
+        const appBase = (APP_URL ?? "").replace(/\/$/, "");
+        await paystackHostedCheckout.waitForCheckout(paymentUrl, {
+          title: t("customer.walletScreen.topUpSecureTitle", "Wallet top-up") as string,
+          matchSuccess: (rawUrl) => {
+            try {
+              if (!rawUrl.startsWith("http") || !appBase) return false;
+              const u = new URL(rawUrl);
+              if (!u.href.startsWith(appBase)) return false;
+              if (u.searchParams.get("cancelled") === "1") return false;
+              return u.pathname.includes("/checkout/success") && u.searchParams.get("payment_type") === "wallet_topup";
+            } catch {
+              return false;
+            }
+          },
+          matchCancel: (rawUrl) => {
+            try {
+              const u = new URL(rawUrl);
+              return u.searchParams.get("topup_cancelled") === "1" || u.searchParams.get("cancelled") === "1";
+            } catch {
+              return false;
+            }
+          },
         });
       }
 
@@ -223,6 +245,7 @@ export default function WalletScreen() {
   };
 
   return (
+    <>
     <ScreenFrame loading={loading} error={error} onRetry={load} refreshing={refreshing} onRefresh={handleRefresh}>
       <ScrollView showsVerticalScrollIndicator={false}>
         <View style={{ backgroundColor: "#FDF2F8", borderRadius: 16, padding: 24, alignItems: "center" }}>
@@ -350,5 +373,7 @@ export default function WalletScreen() {
         </View>
       </ScrollView>
     </ScreenFrame>
+    {paystackHostedCheckout.modal}
+    </>
   );
 }

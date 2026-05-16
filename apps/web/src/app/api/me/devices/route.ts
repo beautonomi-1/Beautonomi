@@ -20,7 +20,10 @@ const deviceSchema = z.object({
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
+    const { user } = await requireRoleInApi(
+      ["customer", "provider_owner", "provider_staff", "provider_onboarding", "superadmin"],
+      request,
+    );
 
     const body = await request.json();
     const validationResult = deviceSchema.safeParse(body);
@@ -59,7 +62,10 @@ export async function POST(request: NextRequest) {
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
+    const { user } = await requireRoleInApi(
+      ["customer", "provider_owner", "provider_staff", "provider_onboarding", "superadmin"],
+      request,
+    );
 
     const supabase = await getSupabaseServer(request);
 

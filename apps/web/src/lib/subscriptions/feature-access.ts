@@ -283,9 +283,10 @@ export async function isProviderSubscriptionFeatureEnabled(
  * Check if provider has access to marketing features
  */
 export async function checkMarketingFeatureAccess(
-  providerId: string
+  providerId: string,
+  supabaseClient?: SupabaseClient
 ): Promise<MarketingFeatureAccess> {
-  const supabase = await getSupabaseServer();
+  const supabase = supabaseClient ?? (await getSupabaseServer());
   const tier = await getProviderSubscriptionTier(supabase, providerId);
 
   if (!tier) {
@@ -313,9 +314,10 @@ export async function checkMarketingFeatureAccess(
  * Check if provider has access to chat features
  */
 export async function checkChatFeatureAccess(
-  providerId: string
+  providerId: string,
+  supabaseClient?: SupabaseClient
 ): Promise<ChatFeatureAccess> {
-  const supabase = await getSupabaseServer();
+  const supabase = supabaseClient ?? (await getSupabaseServer());
   const tier = await getProviderSubscriptionTier(supabase, providerId);
 
   if (!tier) {
@@ -337,12 +339,17 @@ export async function checkChatFeatureAccess(
 }
 
 /**
- * Check if provider has access to Yoco features
+ * Check if provider has access to Yoco features.
+ *
+ * @param supabaseClient - Use the same client as the API route (`getSupabaseServer(request)`).
+ *   If omitted, uses cookie-only `getSupabaseServer()`, which can break Bearer-token / mobile calls
+ *   and yield false "subscription required" responses.
  */
 export async function checkYocoFeatureAccess(
-  providerId: string
+  providerId: string,
+  supabaseClient?: SupabaseClient
 ): Promise<YocoFeatureAccess> {
-  const supabase = await getSupabaseServer();
+  const supabase = supabaseClient ?? (await getSupabaseServer());
   const tier = await getProviderSubscriptionTier(supabase, providerId);
 
   if (!tier) {
@@ -366,9 +373,10 @@ export async function checkYocoFeatureAccess(
  */
 export async function canUseMarketingChannel(
   providerId: string,
-  channel: "email" | "sms" | "whatsapp"
+  channel: "email" | "sms" | "whatsapp",
+  supabaseClient?: SupabaseClient
 ): Promise<boolean> {
-  const access = await checkMarketingFeatureAccess(providerId);
+  const access = await checkMarketingFeatureAccess(providerId, supabaseClient);
   return access.enabled && access.channels.includes(channel);
 }
 
@@ -392,9 +400,10 @@ export async function canUseYocoIntegration(providerId: string): Promise<boolean
  * Check if provider has access to staff management features
  */
 export async function checkStaffManagementFeatureAccess(
-  providerId: string
+  providerId: string,
+  supabaseClient?: SupabaseClient
 ): Promise<StaffManagementFeatureAccess> {
-  const supabase = await getSupabaseServer();
+  const supabase = supabaseClient ?? (await getSupabaseServer());
   const tier = await getProviderSubscriptionTier(supabase, providerId);
 
   if (!tier) {
@@ -443,9 +452,10 @@ export async function checkLocationFeatureAccess(
  * Check if provider has access to booking limits
  */
 export async function checkBookingLimitsFeatureAccess(
-  providerId: string
+  providerId: string,
+  supabaseClient?: SupabaseClient
 ): Promise<BookingLimitsFeatureAccess> {
-  const supabase = await getSupabaseServer();
+  const supabase = supabaseClient ?? (await getSupabaseServer());
   const tier = await getProviderSubscriptionTier(supabase, providerId);
 
   if (!tier) {
@@ -466,9 +476,10 @@ export async function checkBookingLimitsFeatureAccess(
  * Check if provider has access to analytics features
  */
 export async function checkAnalyticsFeatureAccess(
-  providerId: string
+  providerId: string,
+  supabaseClient?: SupabaseClient
 ): Promise<AnalyticsFeatureAccess> {
-  const supabase = await getSupabaseServer();
+  const supabase = supabaseClient ?? (await getSupabaseServer());
   const tier = await getProviderSubscriptionTier(supabase, providerId);
 
   if (!tier) {
@@ -497,9 +508,10 @@ export async function checkAnalyticsFeatureAccess(
  * Check if provider has access to marketing automations
  */
 export async function checkAutomationFeatureAccess(
-  providerId: string
+  providerId: string,
+  supabaseClient?: SupabaseClient
 ): Promise<AutomationFeatureAccess> {
-  const supabase = await getSupabaseServer();
+  const supabase = supabaseClient ?? (await getSupabaseServer());
   const tier = await getProviderSubscriptionTier(supabase, providerId);
 
   if (!tier) {
@@ -549,9 +561,10 @@ export async function checkRecurringAppointmentFeatureAccess(
  * Check if provider has access to express booking links
  */
 export async function checkExpressBookingFeatureAccess(
-  providerId: string
+  providerId: string,
+  supabaseClient?: SupabaseClient
 ): Promise<ExpressBookingFeatureAccess> {
-  const supabase = await getSupabaseServer();
+  const supabase = supabaseClient ?? (await getSupabaseServer());
   const tier = await getProviderSubscriptionTier(supabase, providerId);
 
   if (!tier) {
@@ -572,9 +585,10 @@ export async function checkExpressBookingFeatureAccess(
  * Check if provider has access to calendar sync
  */
 export async function checkCalendarSyncFeatureAccess(
-  providerId: string
+  providerId: string,
+  supabaseClient?: SupabaseClient
 ): Promise<CalendarSyncFeatureAccess> {
-  const supabase = await getSupabaseServer();
+  const supabase = supabaseClient ?? (await getSupabaseServer());
   const tier = await getProviderSubscriptionTier(supabase, providerId);
 
   if (!tier) {
@@ -597,9 +611,10 @@ export async function checkCalendarSyncFeatureAccess(
  * Get all feature access for a provider (extended)
  */
 export async function getProviderFeatureAccess(
-  providerId: string
+  providerId: string,
+  supabaseClient?: SupabaseClient
 ): Promise<ProviderFeatureAccess> {
-  const supabase = await getSupabaseServer();
+  const supabase = supabaseClient ?? (await getSupabaseServer());
   const tier = await getProviderSubscriptionTier(supabase, providerId);
 
   if (!tier) {

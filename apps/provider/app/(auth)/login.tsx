@@ -147,7 +147,6 @@ export default function LoginScreen() {
     google: true,
     apple: true,
   });
-  const [agreedToTerms, setAgreedToTerms] = useState(false);
 
   useEffect(() => {
     if (smsResendCooldown <= 0) return;
@@ -228,12 +227,6 @@ export default function LoginScreen() {
   async function handleSendOtp() {
     if (!auth.phone_provider_enabled) {
       setFormError("Phone sign-in is not enabled for this platform.");
-      return;
-    }
-    if (!agreedToTerms) {
-      setFormError(
-        "Please confirm you agree to the Terms of Service and Privacy Policy before we send a verification code.",
-      );
       return;
     }
     setFormError(null);
@@ -345,12 +338,6 @@ export default function LoginScreen() {
   }
 
   async function handleSocialOAuth(provider: OAuthProvider) {
-    if (!agreedToTerms) {
-      setFormError(
-        "Please confirm you agree to the Terms of Service and Privacy Policy before continuing with Google or Apple.",
-      );
-      return;
-    }
     setFormError(null);
     setLoading(true);
     try {
@@ -403,12 +390,6 @@ export default function LoginScreen() {
   async function handleSendEmailOtp() {
     if (!auth.email_provider_enabled) {
       setFormError("Email sign-in is not enabled for this platform.");
-      return;
-    }
-    if (!agreedToTerms) {
-      setFormError(
-        "Please confirm you agree to the Terms of Service and Privacy Policy before we send a verification code.",
-      );
       return;
     }
     setFormError(null);
@@ -563,49 +544,6 @@ export default function LoginScreen() {
             <Text style={{ flex: 1, fontSize: 14, color: "#166534", lineHeight: 20 }}>{formSuccess}</Text>
           </View>
         ) : null}
-
-        {/* Consent — required for OTP / OAuth account creation; not for email+password sign-in */}
-        <TouchableOpacity
-          onPress={() => { setAgreedToTerms((v) => !v); setFormError(null); }}
-          style={{ flexDirection: "row", alignItems: "flex-start", marginBottom: 20 }}
-          accessibilityRole="checkbox"
-          accessibilityState={{ checked: agreedToTerms }}
-        >
-          <View
-            style={{
-              width: 24,
-              height: 24,
-              borderRadius: 12,
-              borderWidth: 2,
-              borderColor: agreedToTerms ? PRIMARY : "#9CA3AF",
-              backgroundColor: agreedToTerms ? PRIMARY : "#fff",
-              alignItems: "center",
-              justifyContent: "center",
-              marginTop: 1,
-            }}
-          >
-            {agreedToTerms && <Ionicons name="checkmark" size={14} color="#fff" />}
-          </View>
-          <Text style={{ marginLeft: 10, flex: 1, fontSize: 13, color: "#4B5563", lineHeight: 20 }}>
-            I have read and agree to the{" "}
-            <Text
-              style={{ fontWeight: "600", color: "#111827", textDecorationLine: "underline" }}
-              onPress={() =>
-                pushInAppBrowser(router, webTermsOfServiceUrl(), "Terms of Service")
-              }
-            >
-              Terms of Service
-            </Text>{" "}
-            and{" "}
-            <Text
-              style={{ fontWeight: "600", color: "#111827", textDecorationLine: "underline" }}
-              onPress={() => pushInAppBrowser(router, webPrivacyPolicyUrl(), "Privacy Policy")}
-            >
-              Privacy Policy
-            </Text>
-            .
-          </Text>
-        </TouchableOpacity>
 
         {/* Mode toggle when both phone and email sign-in are enabled */}
         {auth.email_provider_enabled && auth.phone_provider_enabled ? (
@@ -824,7 +762,7 @@ export default function LoginScreen() {
               <>
                 <TouchableOpacity
                   onPress={handleSendOtp}
-                  disabled={loading || !agreedToTerms}
+                  disabled={loading}
                   style={{
                     backgroundColor: PRIMARY,
                     borderRadius: 12,
@@ -1035,7 +973,7 @@ export default function LoginScreen() {
                 </Text>
                 <TouchableOpacity
                   onPress={handleSendEmailOtp}
-                  disabled={loading || !agreedToTerms}
+                  disabled={loading}
                   style={{
                     backgroundColor: PRIMARY,
                     borderRadius: 12,
@@ -1136,6 +1074,33 @@ export default function LoginScreen() {
           </Text>
         )}
 
+        <Text
+          style={{
+            fontSize: 12,
+            color: "#6B7280",
+            textAlign: "center",
+            lineHeight: 18,
+            marginTop: 20,
+            marginBottom: hasSocialAuth ? 8 : 20,
+          }}
+        >
+          By continuing, you agree to our{" "}
+          <Text
+            style={{ fontWeight: "600", color: "#111827", textDecorationLine: "underline" }}
+            onPress={() => pushInAppBrowser(router, webTermsOfServiceUrl(), "Terms of Service")}
+          >
+            Terms of Service
+          </Text>{" "}
+          and{" "}
+          <Text
+            style={{ fontWeight: "600", color: "#111827", textDecorationLine: "underline" }}
+            onPress={() => pushInAppBrowser(router, webPrivacyPolicyUrl(), "Privacy Policy")}
+          >
+            Privacy Policy
+          </Text>
+          .
+        </Text>
+
         {hasSocialAuth && (
           <>
             {/* OAuth separator */}
@@ -1149,7 +1114,7 @@ export default function LoginScreen() {
             {socialAuth.google && (
               <TouchableOpacity
                 onPress={() => void handleSocialOAuth("google")}
-                disabled={loading || !agreedToTerms}
+                disabled={loading}
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
@@ -1172,7 +1137,7 @@ export default function LoginScreen() {
             {socialAuth.apple && (
               <TouchableOpacity
                 onPress={() => void handleSocialOAuth("apple")}
-                disabled={loading || !agreedToTerms}
+                disabled={loading}
                 style={{
                   flexDirection: "row",
                   alignItems: "center",

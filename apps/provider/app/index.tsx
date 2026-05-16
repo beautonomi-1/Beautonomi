@@ -25,6 +25,8 @@ const PROFILE_CHECK_DELAY_MS = 0;
 const AUTH_RETRY_DELAY_MS = 0;
 const PORTAL_TIMEOUT_MS = 12 * 1000; // 12s – avoid infinite loading
 const PROFILE_TIMEOUT_MS = 12 * 1000; // 12s – avoid infinite loading
+const PROFILE_AUTH_RETRY_MAX = 4;
+const PROFILE_TRANSIENT_RETRY_MAX = 4;
 /** Extra GET /api/me/portal attempts when the failure is offline/transient (RN status_code 0). */
 const PORTAL_TRANSIENT_RETRY_MAX = 4;
 /** GET /api/me/role retries inside fetchRoleFallback before surfacing an error. */
@@ -74,6 +76,7 @@ export default function Index() {
   const [profileLoadError, setProfileLoadError] = useState(false); // timeout or network
   const retryCountRef = useRef(0);
   const profileRetryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const profileDeadlineRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Phase 1: portal check (is this user a provider?)
   useEffect(() => {
@@ -326,7 +329,22 @@ export default function Index() {
   }, [loading, session?.user?.id, portalRetryKey]);
 
   // Phase 2: profile check (only when portal is ok)
-  const runProfileCheck = (isRetry: boolean) => {
+  const clearProfileDeadline = () => {
+    if (profileDeadlineRef.current) {
+      clearTimeout(profileDeadlineRef.current);
+      profileDeadlineRef.current = null;
+    }
+  };
+
+  const scheduleProfileRetry = (attempt: number) => {
+    if (profileRetryTimeoutRef.current) {
+      clearTimeout(profileRetryTimeoutRef.current);
+    }
+    const delayMs = Math.max(AUTH_RETRY_DELAY_MS, 250 + attempt * 350);
+    profileRetryTimeoutRef.current = setTimeout(() => runProfileCheck(attempt + 1), delayMs);
+  };
+
+  const runProfileCheck = (attempt: number) => {
     setProfileLoadError(false);
     setCheckingProfile(true);
     api.get<{ id: string }>("/api/provider/profile").then((res) => {
@@ -334,6 +352,7 @@ export default function Index() {
         setHasProfile(true);
         setCheckingProfile(false);
         setProfileLoadError(false);
+        clearProfileDeadline();
         return;
       }
 
@@ -347,12 +366,21 @@ export default function Index() {
         setHasProfile(false);
         setCheckingProfile(false);
         setProfileLoadError(false);
+        clearProfileDeadline();
         return;
       }
 
-      if (isAuthError && !isRetry && retryCountRef.current < 1) {
-        retryCountRef.current += 1;
-        profileRetryTimeoutRef.current = setTimeout(() => runProfileCheck(true), AUTH_RETRY_DELAY_MS);
+      const isTransient = !!err && isTransientApiFailure(err);
+
+      if (isAuthError && attempt < PROFILE_AUTH_RETRY_MAX - 1) {
+        retryCountRef.current = attempt + 1;
+        scheduleProfileRetry(attempt);
+        return;
+      }
+
+      if (isTransient && attempt < PROFILE_TRANSIENT_RETRY_MAX - 1) {
+        retryCountRef.current = attempt + 1;
+        scheduleProfileRetry(attempt);
         return;
       }
 
@@ -361,11 +389,18 @@ export default function Index() {
       setHasProfile(null);
       setProfileLoadError(true);
       setCheckingProfile(false);
+      clearProfileDeadline();
     }).catch((e) => {
-      // Network/throw error — show retry UI; do NOT route to onboarding.
+      if (isTransientApiFailure(e) && attempt < PROFILE_TRANSIENT_RETRY_MAX - 1) {
+        retryCountRef.current = attempt + 1;
+        scheduleProfileRetry(attempt);
+        return;
+      }
+      // Network/throw error exhausted — show retry UI; do NOT route to onboarding.
       setHasProfile(null);
       setProfileLoadError(true);
       setCheckingProfile(false);
+      clearProfileDeadline();
     });
   };
 
@@ -377,22 +412,23 @@ export default function Index() {
     setProfileLoadError(false);
     retryCountRef.current = 0;
 
-    const timeoutId = setTimeout(() => {
+    profileDeadlineRef.current = setTimeout(() => {
       if (cancelled) return;
       setCheckingProfile(false);
       setHasProfile(null);
       setProfileLoadError(true); // show retry UI
+      profileDeadlineRef.current = null;
     }, PROFILE_TIMEOUT_MS);
 
     const t = setTimeout(() => {
       if (cancelled) return;
-      runProfileCheck(false);
+      runProfileCheck(0);
     }, PROFILE_CHECK_DELAY_MS);
 
     return () => {
       cancelled = true;
       clearTimeout(t);
-      clearTimeout(timeoutId);
+      clearProfileDeadline();
       if (profileRetryTimeoutRef.current) {
         clearTimeout(profileRetryTimeoutRef.current);
         profileRetryTimeoutRef.current = null;
@@ -583,7 +619,7 @@ export default function Index() {
         <TouchableOpacity
           onPress={() => {
             setProfileLoadError(false);
-            runProfileCheck(false);
+            runProfileCheck(0);
           }}
           style={{ backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 }}
         >

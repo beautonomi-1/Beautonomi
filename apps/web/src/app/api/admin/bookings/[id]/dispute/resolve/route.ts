@@ -9,6 +9,7 @@ import { fetchBookingInAdminTenant } from "@/lib/tenant/admin-booking-tenant";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
+import { getCollectedTotalForBooking } from "@/lib/finance/get-collected-total-for-booking";
 
 const resolveDisputeSchema = z.object({
   resolution: z.enum(["refund_full", "refund_partial", "deny"]),
@@ -116,17 +117,18 @@ export async function POST(
 
     // Handle refunds: always credit customer wallet (no Paystack call)
     if (resolution === "refund_full" || resolution === "refund_partial") {
+      const collectedCap = await getCollectedTotalForBooking(supabase, id);
       const refundAmt =
         resolution === "refund_full"
-          ? bookingData.total_amount
+          ? collectedCap
           : refund_amount || 0;
 
-      if (refundAmt <= 0 || refundAmt > bookingData.total_amount) {
+      if (refundAmt <= 0 || refundAmt > collectedCap) {
         return NextResponse.json(
           {
             data: null,
             error: {
-              message: "Refund amount must be positive and cannot exceed booking total",
+              message: "Refund amount must be positive and cannot exceed collected amount minus prior refunds",
               code: "INVALID_REFUND_AMOUNT",
             },
           },

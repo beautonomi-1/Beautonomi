@@ -52,6 +52,7 @@ export default function YocoDevicesScreen() {
   const [showAddSheet, setShowAddSheet] = useState(false);
   const [editDevice, setEditDevice] = useState<YocoDevice | null>(null);
   const [showConnectSheet, setShowConnectSheet] = useState(false);
+  const [showKeyHelp, setShowKeyHelp] = useState(false);
 
   const [formName, setFormName] = useState("");
   const [formLocationId, setFormLocationId] = useState<string | null>(null);
@@ -60,6 +61,7 @@ export default function YocoDevicesScreen() {
   // Yoco API key form
   const [apiKey, setApiKey] = useState("");
   const [secretKey, setSecretKey] = useState("");
+  const [showSecretKey, setShowSecretKey] = useState(false);
   const [connecting, setConnecting] = useState(false);
 
   const resetForm = useCallback(() => {
@@ -148,6 +150,7 @@ export default function YocoDevicesScreen() {
       setShowConnectSheet(false);
       setApiKey("");
       setSecretKey("");
+      setShowSecretKey(false);
     }
   }
 
@@ -241,7 +244,10 @@ export default function YocoDevicesScreen() {
             </TouchableOpacity>
           ) : (
             <TouchableOpacity
-              onPress={() => setShowConnectSheet(true)}
+              onPress={() => {
+                setShowSecretKey(false);
+                setShowConnectSheet(true);
+              }}
               style={twStyle("flex-1 items-center rounded-xl bg-indigo-600 py-2.5")}
               accessibilityRole="button"
               accessibilityLabel="Connect Yoco"
@@ -443,14 +449,35 @@ export default function YocoDevicesScreen() {
         subtitle="Enter your Yoco API credentials"
         snapHeight="auto"
       >
+        <TouchableOpacity
+          onPress={() => setShowKeyHelp((v) => !v)}
+          style={twStyle("mb-2 flex-row items-center justify-between rounded-xl border border-gray-200 bg-white px-3 py-2.5")}
+          accessibilityRole="button"
+          accessibilityLabel="How to find Yoco keys"
+        >
+          <Text style={twStyle("text-sm font-medium text-gray-800")}>How to find your keys</Text>
+          <Ionicons name={showKeyHelp ? "chevron-up-outline" : "chevron-down-outline"} size={16} color="#6b7280" />
+        </TouchableOpacity>
+
+        {showKeyHelp ? (
+          <View style={twStyle("mb-2 rounded-xl bg-blue-50 p-3")}>
+            <Text style={twStyle("text-xs text-blue-700")}>
+              1) Sign in to Yoco dashboard.{"\n"}
+              2) Open API credentials / developer settings.{"\n"}
+              3) Copy your live public key and live secret key into these fields.
+            </Text>
+          </View>
+        ) : null}
+
         <View style={twStyle("mb-2 rounded-xl bg-blue-50 p-3")}>
           <Text style={twStyle("text-xs text-blue-700")}>
-            Find your API keys in your Yoco dashboard under Settings → API Keys.
+            Use your Yoco API credentials for Web POS. Dashboard menus can change, so open Yoco docs from your portal if
+            you cannot find the keys quickly.
           </Text>
         </View>
 
         <View style={twStyle("mb-4")}>
-          <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>API Key *</Text>
+          <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Public Key *</Text>
           <TextInput
             style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900")}
             value={apiKey}
@@ -461,21 +488,37 @@ export default function YocoDevicesScreen() {
             autoCorrect={false}
             accessibilityLabel="Yoco API key"
           />
+          <Text style={twStyle("mt-1 text-xs text-gray-500")}>Use your live public key for production.</Text>
         </View>
 
         <View style={twStyle("mb-6")}>
           <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Secret Key *</Text>
-          <TextInput
-            style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900")}
-            value={secretKey}
-            onChangeText={setSecretKey}
-            placeholder="sk_live_..."
-            placeholderTextColor="#9ca3af"
-            autoCapitalize="none"
-            autoCorrect={false}
-            secureTextEntry
-            accessibilityLabel="Yoco secret key"
-          />
+          <View style={twStyle("flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-4 py-1.5")}>
+            <TextInput
+              style={twStyle("flex-1 py-3 text-sm text-gray-900")}
+              value={secretKey}
+              onChangeText={setSecretKey}
+              placeholder="sk_live_..."
+              placeholderTextColor="#9ca3af"
+              autoCapitalize="none"
+              autoCorrect={false}
+              secureTextEntry={!showSecretKey}
+              accessibilityLabel="Yoco secret key"
+            />
+            <TouchableOpacity
+              onPress={() => setShowSecretKey((v) => !v)}
+              style={twStyle("min-h-[44px] min-w-[44px] items-center justify-center")}
+              accessibilityRole="button"
+              accessibilityLabel={showSecretKey ? "Hide secret key" : "Show secret key"}
+            >
+              <Ionicons
+                name={showSecretKey ? "eye-off-outline" : "eye-outline"}
+                size={20}
+                color="#6b7280"
+              />
+            </TouchableOpacity>
+          </View>
+          <Text style={twStyle("mt-1 text-xs text-gray-500")}>Used for secure server-side Web POS requests.</Text>
         </View>
 
         <ActionButton

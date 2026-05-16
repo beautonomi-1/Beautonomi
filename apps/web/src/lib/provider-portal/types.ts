@@ -776,6 +776,7 @@ export interface GroupBooking {
 export interface GroupBookingParticipant {
   id: string;
   group_booking_id: string;
+  booking_id?: string;
   client_id?: string;
   client_name: string;
   is_primary_contact?: boolean;

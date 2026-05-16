@@ -171,6 +171,7 @@ export async function GET(request: NextRequest) {
 
       const vatCollected = vatTransactions.reduce(
         (sum: number, t: any) => {
+          // F7: tax rows keep net=0; VAT liability is tracked on `amount`.
           const net = Number(t.net ?? 0);
           return sum + (net !== 0 ? net : Number(t.amount ?? 0));
         },

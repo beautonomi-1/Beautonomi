@@ -1,9 +1,7 @@
 import { NextRequest } from "next/server";
 import {
   requireRoleInApi,
-  getProviderIdForUser,
   successResponse,
-  notFoundResponse,
   handleApiError,
   errorResponse,
 } from "@/lib/supabase/api-helpers";
@@ -23,10 +21,11 @@ const deviceSchema = z.object({
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
+    const { user } = await requireRoleInApi(
+      ["provider_owner", "provider_staff", "provider_onboarding", "superadmin"],
+      request,
+    );
     const supabase = await getSupabaseServer(request);
-    const providerId = await getProviderIdForUser(user.id, supabase, { request });
-    if (!providerId) return notFoundResponse("Provider not found");
 
     const body = await request.json();
     const validationResult = deviceSchema.safeParse(body);

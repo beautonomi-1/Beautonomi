@@ -11,6 +11,7 @@ import { getAvailablePayoutBalance } from "@/lib/provider/available-payout-balan
 import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
 import { fromBusinessTime, formatInTz, nowInTz, resolveTz } from "@/lib/dates/provider-tz";
 import { buildProviderActivityFeed } from "@/lib/provider/build-provider-activity-feed";
+import { filterLedgerRowsForLocation } from "@/lib/reports/provider-report-utils";
 
 const DASHBOARD_CACHE_TTL_MS = 5000;
 const MAX_DASHBOARD_CACHE_ENTRIES = 400;
@@ -91,7 +92,7 @@ export async function getProviderDashboardResponse(request: NextRequest) {
 
     const { data: providerData, error: providerError } = await supabaseAdmin
       .from('providers')
-      .select('id, tenant_id, status, business_name, rating_average, review_count, offers_mobile_services, max_service_distance_km, timezone')
+      .select('id, tenant_id, status, business_name, rating_average, review_count, offers_mobile_services, max_service_distance_km, is_distance_filter_enabled, timezone')
       .eq('id', providerId)
       .maybeSingle();
     if (providerError || !providerData) {
@@ -112,6 +113,7 @@ export async function getProviderDashboardResponse(request: NextRequest) {
       .eq('location_type', 'salon');
     const supportsSalon = (salonLocationCount ?? 0) > 0;
     const maxServiceDistanceKm = providerData.max_service_distance_km ?? null;
+    const isDistanceFilterEnabled = providerData.is_distance_filter_enabled === true;
 
     const providerTz = resolveTz((providerData as { timezone?: string | null }).timezone);
     const now = new Date();
@@ -157,7 +159,7 @@ export async function getProviderDashboardResponse(request: NextRequest) {
     // by checking if they're related to bookings with the selected location
     const financeQuery = supabaseAdmin
       .from("finance_transactions")
-      .select("transaction_type, amount, net, created_at, booking_id")
+      .select("transaction_type, amount, net, created_at, booking_id, product_order_id")
       .eq("provider_id", providerId);
     
     // If location filter is provided, we'll need to filter finance transactions
@@ -292,26 +294,8 @@ export async function getProviderDashboardResponse(request: NextRequest) {
 
     // Revenue streams from finance ledger (already loaded in parallel above)
     let rows = ledgerResult.data || [];
-    
-    // Filter finance transactions by location if location_id is provided
-    // We need to join with bookings to get location_id
     if (locationId && rows.length > 0) {
-      // Get booking IDs for the selected location
-      const locationBookingIds = new Set(
-        allBookings.map((b: any) => b.id)
-      );
-      
-      // Filter finance transactions to only those related to bookings in this location
-      rows = rows.filter((r: any) => {
-        // If transaction has booking_id, check if booking is in selected location
-        if (r.booking_id) {
-          return locationBookingIds.has(r.booking_id);
-        }
-        // For transactions without booking_id (e.g., gift cards, memberships),
-        // we might want to include them or exclude them based on business logic
-        // For now, exclude them when filtering by location
-        return false;
-      });
+      rows = await filterLedgerRowsForLocation(supabaseAdmin as any, providerId, rows as any, locationId);
     }
     
     // Optimize: Pre-filter and pre-parse dates for faster processing
@@ -359,11 +343,15 @@ export async function getProviderDashboardResponse(request: NextRequest) {
     const travelFeesLastMonth = sumAmount(["travel_fee"], startOfLastMonth, endOfLastMonth);
     const travelFeesTotal = sumAmount(["travel_fee"]);
 
-    // Refund impact on provider earnings (negative provider_earnings rows) - optimized
+    // Refunds: match finance API — sum |net| on `refund` rows plus legacy negative provider_earnings (F10).
     let refundsTotal = 0;
     for (const r of parsedRows) {
+      if (r.transaction_type === "refund") {
+        refundsTotal += Math.abs(r.netValue);
+        continue;
+      }
       if (r.transaction_type === "provider_earnings" && r.netValue < 0) {
-        refundsTotal += r.netValue;
+        refundsTotal += Math.abs(r.netValue);
       }
     }
 
@@ -374,10 +362,13 @@ export async function getProviderDashboardResponse(request: NextRequest) {
     const expensesTotal = sumAmount(EXPENSE_TYPES);
     const expensesThisMonth = sumAmount(EXPENSE_TYPES, startOfMonth);
 
-    let platformFeesPaid = 0;
+    let platformFeesDeducted = 0;
+    let platformCommissionPaid = 0;
     for (const r of parsedRows) {
-      if (r.transaction_type === "payment") {
-        platformFeesPaid += Math.abs(r.netValue);
+      if (r.transaction_type === "platform_fee" || r.transaction_type === "service_fee") {
+        platformFeesDeducted += Math.abs(r.netValue);
+      } else if (r.transaction_type === "payment") {
+        platformCommissionPaid += Math.abs(r.netValue);
       }
     }
 
@@ -406,10 +397,14 @@ export async function getProviderDashboardResponse(request: NextRequest) {
     const payoutSettings = ((scopedSettings.data as { settings?: Record<string, unknown> } | null)?.settings as any)
       ?.payouts ?? {};
     const holdDays = Number(payoutSettings.payout_hold_days ?? 0);
-    const { availableBalance } = await getAvailablePayoutBalance(supabaseAdmin as any, providerId, {
-      holdDays,
-      tenantId: providerTenantId,
-    });
+    const { availableBalance, pendingPayoutsSum, rawBalance, hasNegativeBalance } = await getAvailablePayoutBalance(
+      supabaseAdmin as any,
+      providerId,
+      {
+        holdDays,
+        tenantId: providerTenantId,
+      },
+    );
     
     // Calculate pending payments (unpaid bookings)
     let unpaidBookingsQuery = supabaseAdmin
@@ -817,6 +812,7 @@ export async function getProviderDashboardResponse(request: NextRequest) {
       
       // Financial status
       available_balance: Math.max(0, availableBalance),
+      pending_payout_queue: pendingPayoutsSum,
       pending_payments_amount: pendingPaymentsAmount,
       pending_payments_count: pendingPaymentsCount,
       
@@ -828,8 +824,17 @@ export async function getProviderDashboardResponse(request: NextRequest) {
       membership_sales_total: membershipSalesTotal,
       refunds_total: Math.abs(refundsTotal),
 
-      // Expenses (subscriptions, ads, platform fees)
-      platform_fees_paid: platformFeesPaid,
+      /** F11: dashboard ledger sums are all-time (no date filter), unlike finance API default period. */
+      metrics_time_basis: "lifetime_all_time",
+      raw_payout_balance: rawBalance,
+      has_negative_payout_balance: hasNegativeBalance,
+      balance_owed_to_platform: hasNegativeBalance ? Math.abs(rawBalance) : 0,
+
+      // Customer-paid platform fees (ledger) vs %-commission on payment rows (platform take).
+      platform_fees_deducted: platformFeesDeducted,
+      platform_commission_paid: platformCommissionPaid,
+      /** @deprecated misleading name — use platform_commission_paid */
+      platform_fees_paid: platformCommissionPaid,
       expenses_total: expensesTotal,
       expenses_this_month: expensesThisMonth,
       
@@ -858,6 +863,7 @@ export async function getProviderDashboardResponse(request: NextRequest) {
         supports_house_calls: supportsHouseCalls,
         supports_salon: supportsSalon,
         max_service_distance_km: maxServiceDistanceKm,
+        is_distance_filter_enabled: isDistanceFilterEnabled,
       },
       dashboard_bundle_version: includeInsights ? 1 : 0,
       insights,

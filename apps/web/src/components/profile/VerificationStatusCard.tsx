@@ -69,7 +69,8 @@ export default function VerificationStatusCard({
           bgColor: "bg-gray-50",
           borderColor: "border-gray-200",
           title: "Get Verified",
-          description: "Before you book or become a Beauty Partner on Beautonomi, you'll need to complete this step.",
+          description:
+            "Upload a government-issued ID to verify your identity. If you were asked to re-verify, use the button below.",
           buttonText: "Upload ID",
           buttonVariant: "default" as const,
           showButton: true,

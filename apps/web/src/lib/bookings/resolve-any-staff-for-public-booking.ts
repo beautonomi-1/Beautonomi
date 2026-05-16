@@ -82,7 +82,8 @@ export async function pickFirstStaffForNullStaffLines(args: {
     for (const line of withStaff) {
       const segStart = new Date(line.scheduled_start_at);
       const segEnd = new Date(line.scheduled_end_at);
-      const buf = offeringBufferMinutesById.get(line.offering_id) ?? 15;
+      // Keep parity with public availability: missing/invalid buffer = 0, not 15.
+      const buf = offeringBufferMinutesById.get(line.offering_id) ?? 0;
       const effectiveEnd = new Date(segEnd.getTime() + buf * 60000);
       const cal = await isProviderCalendarWindowBlocked(supabaseAdmin, {
         providerId,

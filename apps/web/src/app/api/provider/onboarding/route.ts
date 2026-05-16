@@ -8,6 +8,13 @@ import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-
 import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
+const slugifyCategory = (value: string): string =>
+  value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "uncategorized";
+
 const onboardingSchema = z.object({
   // New fields
   team_size: z.enum(["freelancer", "small", "medium", "large"]).optional().nullable(),
@@ -540,15 +547,169 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Auto-generate basic services if none provided but categories selected
-    let servicesToCreate = services || [];
-    if (servicesToCreate.length === 0 && global_category_ids && global_category_ids.length > 0) {
-      // Get category names to generate relevant services
-      const { data: categories } = await supabaseAdmin
+    const selectedGlobalCategoryIds = Array.from(
+      new Set((global_category_ids || []).filter((id): id is string => typeof id === "string" && id.length > 0)),
+    );
+    const globalCategoryDetailsById = new Map<string, { id: string; name: string; slug: string }>();
+    const providerCategoryByGlobalId = new Map<string, string>();
+
+    if (selectedGlobalCategoryIds.length > 0) {
+      const { data: globalCategories, error: globalCategoriesError } = await supabaseAdmin
         .from("global_categories")
         .select("id, name, slug")
-        .in("id", global_category_ids);
+        .in("id", selectedGlobalCategoryIds);
 
+      if (globalCategoriesError) {
+        console.error("Error fetching selected global categories:", globalCategoriesError);
+      }
+
+      const normalizedGlobalCategories = (globalCategories || []).map((category: any) => ({
+        id: String(category.id),
+        name: String(category.name || "Uncategorized"),
+        slug: slugifyCategory(String(category.slug || category.name || "uncategorized")),
+      }));
+      normalizedGlobalCategories.forEach((category) => {
+        globalCategoryDetailsById.set(category.id, category);
+      });
+
+      if (normalizedGlobalCategories.length > 0) {
+        const globalSlugs = Array.from(new Set(normalizedGlobalCategories.map((category) => category.slug)));
+        const { data: existingProviderCategories, error: existingProviderCategoriesError } = await supabaseAdmin
+          .from("provider_categories")
+          .select("id, slug")
+          .eq("provider_id", providerId)
+          .in("slug", globalSlugs);
+
+        if (existingProviderCategoriesError) {
+          console.error("Error fetching provider categories:", existingProviderCategoriesError);
+        }
+
+        const providerCategoryBySlug = new Map<string, string>();
+        (existingProviderCategories || []).forEach((category: any) => {
+          providerCategoryBySlug.set(String(category.slug), String(category.id));
+        });
+
+        const { data: maxProviderCategoryOrder } = await supabaseAdmin
+          .from("provider_categories")
+          .select("display_order")
+          .eq("provider_id", providerId)
+          .order("display_order", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        let nextDisplayOrder =
+          typeof maxProviderCategoryOrder?.display_order === "number" ? maxProviderCategoryOrder.display_order + 1 : 0;
+
+        for (const globalCategory of normalizedGlobalCategories) {
+          if (providerCategoryBySlug.has(globalCategory.slug)) {
+            providerCategoryByGlobalId.set(globalCategory.id, providerCategoryBySlug.get(globalCategory.slug)!);
+            continue;
+          }
+
+          const { data: createdProviderCategory, error: createProviderCategoryError } = await supabaseAdmin
+            .from("provider_categories")
+            .insert({
+              provider_id: providerId,
+              name: globalCategory.name,
+              slug: globalCategory.slug,
+              display_order: nextDisplayOrder,
+              is_active: true,
+            })
+            .select("id, slug")
+            .single();
+
+          if (createProviderCategoryError || !createdProviderCategory) {
+            console.error("Error creating provider category from onboarding global category:", {
+              global_category_id: globalCategory.id,
+              provider_id: providerId,
+              message: createProviderCategoryError?.message || "No category returned",
+            });
+            continue;
+          }
+
+          nextDisplayOrder += 1;
+          providerCategoryBySlug.set(String(createdProviderCategory.slug), String(createdProviderCategory.id));
+          providerCategoryByGlobalId.set(globalCategory.id, String(createdProviderCategory.id));
+        }
+      }
+    }
+
+    const ensureProviderCategoryForGlobalCategory = async (globalCategoryId: string | null | undefined) => {
+      if (!globalCategoryId) return null;
+      if (providerCategoryByGlobalId.has(globalCategoryId)) {
+        return providerCategoryByGlobalId.get(globalCategoryId)!;
+      }
+
+      let globalCategory = globalCategoryDetailsById.get(globalCategoryId);
+      if (!globalCategory) {
+        const { data: fetchedGlobalCategory, error: fetchedGlobalCategoryError } = await supabaseAdmin
+          .from("global_categories")
+          .select("id, name, slug")
+          .eq("id", globalCategoryId)
+          .maybeSingle();
+        if (fetchedGlobalCategoryError || !fetchedGlobalCategory) {
+          if (fetchedGlobalCategoryError) {
+            console.error("Error fetching global category for onboarding service:", fetchedGlobalCategoryError);
+          }
+          return null;
+        }
+        globalCategory = {
+          id: String(fetchedGlobalCategory.id),
+          name: String(fetchedGlobalCategory.name || "Uncategorized"),
+          slug: slugifyCategory(String(fetchedGlobalCategory.slug || fetchedGlobalCategory.name || "uncategorized")),
+        };
+        globalCategoryDetailsById.set(globalCategory.id, globalCategory);
+      }
+
+      const { data: existingProviderCategory } = await supabaseAdmin
+        .from("provider_categories")
+        .select("id")
+        .eq("provider_id", providerId)
+        .eq("slug", globalCategory.slug)
+        .maybeSingle();
+      if (existingProviderCategory?.id) {
+        const existingId = String(existingProviderCategory.id);
+        providerCategoryByGlobalId.set(globalCategory.id, existingId);
+        return existingId;
+      }
+
+      const { data: maxProviderCategoryOrder } = await supabaseAdmin
+        .from("provider_categories")
+        .select("display_order")
+        .eq("provider_id", providerId)
+        .order("display_order", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const displayOrder =
+        typeof maxProviderCategoryOrder?.display_order === "number" ? maxProviderCategoryOrder.display_order + 1 : 0;
+      const { data: createdProviderCategory, error: createProviderCategoryError } = await supabaseAdmin
+        .from("provider_categories")
+        .insert({
+          provider_id: providerId,
+          name: globalCategory.name,
+          slug: globalCategory.slug,
+          display_order: displayOrder,
+          is_active: true,
+        })
+        .select("id")
+        .single();
+      if (createProviderCategoryError || !createdProviderCategory?.id) {
+        if (createProviderCategoryError) {
+          console.error("Error creating provider category for onboarding service:", createProviderCategoryError);
+        }
+        return null;
+      }
+      const createdId = String(createdProviderCategory.id);
+      providerCategoryByGlobalId.set(globalCategory.id, createdId);
+      return createdId;
+    };
+
+    // Auto-generate basic services if none provided but categories selected
+    let servicesToCreate = services || [];
+    let servicesWereAutoGenerated = false;
+    if (servicesToCreate.length === 0 && selectedGlobalCategoryIds.length > 0) {
+      const categories = selectedGlobalCategoryIds
+        .map((id) => globalCategoryDetailsById.get(id))
+        .filter((category): category is { id: string; name: string; slug: string } => Boolean(category));
       // Generate basic services based on categories
       const serviceTemplates: Record<string, any[]> = {
         "hair": [
@@ -615,11 +776,20 @@ export async function POST(request: NextRequest) {
 
       // Limit to 5 services max for auto-generation
       servicesToCreate = generatedServices.slice(0, 5);
+      servicesWereAutoGenerated = servicesToCreate.length > 0;
     }
 
     // Create services/offerings if provided or auto-generated
     if (servicesToCreate.length > 0) {
-      const offerings = servicesToCreate.map((service) => ({
+      const defaultGlobalCategoryId = selectedGlobalCategoryIds[0] || null;
+      const offerings = [];
+      for (const service of servicesToCreate) {
+        const resolvedGlobalCategoryId =
+          (typeof service?.category_id === "string" && service.category_id.length > 0
+            ? service.category_id
+            : defaultGlobalCategoryId) || null;
+        const resolvedProviderCategoryId = await ensureProviderCategoryForGlobalCategory(resolvedGlobalCategoryId);
+        offerings.push({
         provider_id: providerId,
         title: service.title,
         description: service.description || null,
@@ -628,9 +798,12 @@ export async function POST(request: NextRequest) {
         currency: service.currency || tenantDefaultCurrency,
         supports_at_home: service.supports_at_home || false,
         supports_at_salon: service.supports_at_salon !== false, // Default to true
-        category_id: service.category_id || null,
+        category_id: resolvedGlobalCategoryId,
+        provider_category_id: resolvedProviderCategoryId,
+        is_onboarding_auto_generated: servicesWereAutoGenerated,
         is_active: true,
-      }));
+        });
+      }
 
       const { data: createdOfferings, error: servicesError } = await supabaseAdmin
         .from("offerings")
@@ -645,7 +818,7 @@ export async function POST(request: NextRequest) {
         // Create addons for each service
         const addonsToCreate: any[] = [];
         createdOfferings.forEach((offering, index) => {
-          const serviceData = services[index];
+          const serviceData = servicesToCreate[index];
           const serviceAddons = serviceData?.addons || [];
           serviceAddons.forEach((addon) => {
             addonsToCreate.push({
@@ -899,10 +1072,43 @@ export async function POST(request: NextRequest) {
       console.warn("ensureProviderFreeSubscriptionRow (non-fatal):", subErr);
     }
 
-    // Note: Subscription creation requires payment authorization via Paystack
-    // The selected_plan_id is passed in the response so the frontend can handle
-    // subscription creation after onboarding completes via /api/provider/subscriptions/create
-    // This allows the provider to complete the payment authorization flow
+    let selectedPlanRequiresCheckout = false;
+    let selectedPlanIsFree = false;
+    if (selected_plan_id) {
+      const scopedSelectedPlan = await fetchScopedSingle<Record<string, unknown>>({
+        supabase: supabaseAdmin,
+        table: "pricing_plans",
+        tenantId,
+        select: "id, price, paystack_plan_code_monthly, paystack_plan_code_yearly",
+        apply: (q) => q.eq("id", selected_plan_id).eq("is_active", true),
+        orderBy: { column: "updated_at", ascending: false },
+      });
+      const selectedPlan = scopedSelectedPlan.data as
+        | {
+            id?: string;
+            price?: string | number | null;
+            paystack_plan_code_monthly?: string | null;
+            paystack_plan_code_yearly?: string | null;
+          }
+        | null;
+
+      const hasMonthlyCode = Boolean(selectedPlan?.paystack_plan_code_monthly);
+      const hasYearlyCode = Boolean(selectedPlan?.paystack_plan_code_yearly);
+      const hasAnyPaystackCode = hasMonthlyCode || hasYearlyCode;
+
+      const numericPrice = Number.parseFloat(
+        String(selectedPlan?.price ?? "")
+          .replace(/[^0-9.]/g, "")
+          .trim(),
+      );
+      const isFreeByPrice =
+        !selectedPlan?.price ||
+        Number.isNaN(numericPrice) ||
+        numericPrice === 0 ||
+        /free/i.test(String(selectedPlan?.price ?? ""));
+      selectedPlanIsFree = isFreeByPrice && !hasAnyPaystackCode;
+      selectedPlanRequiresCheckout = !selectedPlanIsFree;
+    }
 
     // Build success message with details
     let message = autoApprove 
@@ -931,7 +1137,9 @@ export async function POST(request: NextRequest) {
       message,
       auto_approved: autoApprove,
       selected_plan_id: selected_plan_id || null,
-      subscription_endpoint: selected_plan_id ? "/api/provider/subscriptions/create" : null,
+      selected_plan_is_free: selectedPlanIsFree,
+      subscription_endpoint:
+        selected_plan_id && selectedPlanRequiresCheckout ? "/api/provider/subscriptions/create" : null,
       auto_configured: {
         zones: selected_zone_ids?.length || 0,
         services: servicesToCreate.length > 0 && services.length === 0 ? servicesToCreate.length : 0,

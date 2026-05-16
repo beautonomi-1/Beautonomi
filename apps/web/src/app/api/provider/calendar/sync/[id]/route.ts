@@ -32,7 +32,7 @@ export async function PATCH(
     }
 
     // Check subscription allows calendar sync
-    const calendarAccess = await checkCalendarSyncFeatureAccess(providerId);
+    const calendarAccess = await checkCalendarSyncFeatureAccess(providerId, supabase);
     if (!calendarAccess.enabled) {
       return errorResponse(SUBSCRIPTION_UPGRADE_SHORT, "SUBSCRIPTION_REQUIRED", 403);
     }

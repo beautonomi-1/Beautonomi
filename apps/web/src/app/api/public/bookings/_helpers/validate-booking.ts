@@ -1645,7 +1645,8 @@ export async function validateBooking(
     if (allStaffNull && draft.provider_id) {
       const offeringBufferMinutesById = new Map<string, number>();
       for (const [oid, off] of offeringById) {
-        offeringBufferMinutesById.set(oid, Number(off?.buffer_minutes ?? 15));
+        // Keep parity with public availability: missing/invalid buffer = 0, not 15.
+        offeringBufferMinutesById.set(oid, Number(off?.buffer_minutes ?? 0));
       }
       const { pickFirstStaffForNullStaffLines } = await import(
         "@/lib/bookings/resolve-any-staff-for-public-booking"
@@ -1703,7 +1704,8 @@ export async function validateBooking(
 
     const offeringBufferMinutesById = new Map<string, number>();
     for (const [oid, off] of offeringById) {
-      offeringBufferMinutesById.set(oid, Number(off?.buffer_minutes ?? 15));
+      // Keep parity with public availability: missing/invalid buffer = 0, not 15.
+      offeringBufferMinutesById.set(oid, Number(off?.buffer_minutes ?? 0));
     }
 
     const snapshotLines = bookingServicesData.map((line: any) => ({
@@ -1839,7 +1841,7 @@ export async function validateBooking(
           }
         } else {
           const lastLine = snapshotLines[snapshotLines.length - 1];
-          const lastBuf = offeringBufferMinutesById.get(lastLine.offering_id) ?? 15;
+          const lastBuf = offeringBufferMinutesById.get(lastLine.offering_id) ?? 0;
           const lockEndAt = new Date(new Date(lastLine.scheduled_end_at).getTime() + lastBuf * 60000);
           const lockRes = await lockBookingServices(
             supabase,
@@ -1931,7 +1933,8 @@ export async function validateBooking(
       const segStart = new Date(line.scheduled_start_at);
       const segEnd = new Date(line.scheduled_end_at);
       const off = offeringById.get(line.offering_id);
-      const buf = Number(off?.buffer_minutes ?? 15);
+      // Keep parity with public availability: missing/invalid buffer = 0, not 15.
+      const buf = Number(off?.buffer_minutes ?? 0);
       const isLastSegment = i === bookingServicesData.length - 1;
       const travelTail = isLastSegment ? travelBufferMinutes : 0;
       const effectiveEnd = new Date(segEnd.getTime() + (buf + travelTail) * 60000);
@@ -1980,7 +1983,8 @@ export async function validateBooking(
       const segStart = new Date(line.scheduled_start_at);
       const segEnd = new Date(line.scheduled_end_at);
       const off = offeringById.get(line.offering_id);
-      const buf = Number(off?.buffer_minutes ?? 15);
+      // Keep parity with public availability: missing/invalid buffer = 0, not 15.
+      const buf = Number(off?.buffer_minutes ?? 0);
       const isLastSegment = i === bookingServicesData.length - 1;
       const travelTail = isLastSegment ? travelBufferMinutes : 0;
       const effectiveSegEnd = new Date(segEnd.getTime() + (buf + travelTail) * 60000);

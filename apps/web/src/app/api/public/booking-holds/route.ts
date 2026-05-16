@@ -555,7 +555,8 @@ export async function POST(request: NextRequest) {
         const offeringBufferMinutesById = new Map<string, number>(
           Array.from(offeringById.entries()).map(([id, o]) => [
             id,
-            Number(o.buffer_minutes ?? 15),
+            // Keep parity with public availability: missing/invalid buffer = 0, not 15.
+            Number(o.buffer_minutes ?? 0),
           ])
         );
 
@@ -608,7 +609,7 @@ export async function POST(request: NextRequest) {
           for (const line of bookingServicesSnapshot) {
             const segStart = new Date(line.scheduled_start_at);
             const segEnd = new Date(line.scheduled_end_at);
-            const buf = offeringBufferMinutesById.get(line.offering_id) ?? 15;
+            const buf = offeringBufferMinutesById.get(line.offering_id) ?? 0;
             const effectiveEnd = new Date(segEnd.getTime() + buf * 60000);
             const cal = await isProviderCalendarWindowBlocked(supabase, {
               providerId: provider_id,

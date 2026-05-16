@@ -23,7 +23,7 @@ export async function GET(
     const { id } = await params;
     const supabase = await getSupabaseServer(request);
 
-    const providerId = await getProviderIdForUser(user.id, supabase);
+    const providerId = await getProviderIdForUser(user.id, supabase, { request });
     if (!providerId) {
       return NextResponse.json(
         {
@@ -124,7 +124,7 @@ export async function PUT(
       );
     }
 
-    const providerId = await getProviderIdForUser(user.id, supabase);
+    const providerId = await getProviderIdForUser(user.id, supabase, { request });
     if (!providerId) {
       return NextResponse.json(
         {
@@ -207,7 +207,7 @@ export async function DELETE(
     const { id } = await params;
     const supabase = await getSupabaseServer(request);
 
-    const providerId = await getProviderIdForUser(user.id, supabase);
+    const providerId = await getProviderIdForUser(user.id, supabase, { request });
     if (!providerId) {
       return NextResponse.json(
         {

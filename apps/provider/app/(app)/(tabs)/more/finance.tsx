@@ -43,6 +43,12 @@ interface FinanceEarnings {
   cancellation_fees_this_period?: number;
   additional_charges_total?: number;
   additional_charges_this_period?: number;
+  membership_discounts_this_period?: number;
+  loyalty_discounts_this_period?: number;
+  promo_discounts_this_period?: number;
+  membership_discounts_total?: number;
+  loyalty_discounts_total?: number;
+  promo_discounts_total?: number;
 }
 
 interface FinanceTransaction {
@@ -322,6 +328,45 @@ export function FinanceOverviewContent() {
               )}
             </View>
           </>
+        )}
+
+        {((earnings.membership_discounts_this_period ?? 0) > 0 ||
+          (earnings.loyalty_discounts_this_period ?? 0) > 0 ||
+          (earnings.promo_discounts_this_period ?? 0) > 0) && (
+          <View style={twStyle("mb-4")}>
+            <Text style={twStyle("mb-2 text-sm font-semibold text-gray-700")}>
+              Discounts on bookings ({rangeLabel})
+            </Text>
+            <Text style={twStyle("mb-2 text-xs text-gray-500")}>
+              Already reflected in what the customer paid — not added on top of earnings.
+            </Text>
+            <View style={twStyle("flex-row flex-wrap")}>
+              {(earnings.membership_discounts_this_period ?? 0) > 0 && (
+                <View style={[twStyle("rounded-2xl border border-slate-100 bg-slate-50/80 p-3 mb-2"), { width: "48%", marginRight: "4%" }]}>
+                  <Text style={twStyle("text-xs font-medium text-slate-700")}>Membership discount</Text>
+                  <Text style={twStyle("mt-0.5 text-base font-semibold text-slate-900")}>
+                    {formatCurrency(earnings.membership_discounts_this_period ?? 0, currency)}
+                  </Text>
+                </View>
+              )}
+              {(earnings.loyalty_discounts_this_period ?? 0) > 0 && (
+                <View style={[twStyle("rounded-2xl border border-slate-100 bg-slate-50/80 p-3 mb-2"), { width: "48%" }]}>
+                  <Text style={twStyle("text-xs font-medium text-slate-700")}>Loyalty discount</Text>
+                  <Text style={twStyle("mt-0.5 text-base font-semibold text-slate-900")}>
+                    {formatCurrency(earnings.loyalty_discounts_this_period ?? 0, currency)}
+                  </Text>
+                </View>
+              )}
+              {(earnings.promo_discounts_this_period ?? 0) > 0 && (
+                <View style={[twStyle("rounded-2xl border border-slate-100 bg-slate-50/80 p-3 mb-2"), { width: "48%", marginRight: "4%" }]}>
+                  <Text style={twStyle("text-xs font-medium text-slate-700")}>Promo / coupon discount</Text>
+                  <Text style={twStyle("mt-0.5 text-base font-semibold text-slate-900")}>
+                    {formatCurrency(earnings.promo_discounts_this_period ?? 0, currency)}
+                  </Text>
+                </View>
+              )}
+            </View>
+          </View>
         )}
 
         <View style={twStyle("mb-2 flex-row items-center justify-between")}>

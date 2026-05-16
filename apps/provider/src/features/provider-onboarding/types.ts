@@ -28,6 +28,13 @@ export interface OnboardingService {
   supports_at_home: boolean;
   supports_at_salon: boolean;
   category_id?: string;
+  addons?: Array<{
+    name: string;
+    description?: string;
+    price: number;
+    currency?: string;
+    duration_minutes?: number;
+  }>;
 }
 
 export interface OnboardingFormData {

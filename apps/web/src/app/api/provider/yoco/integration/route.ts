@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
     const supabase = await getSupabaseServer(request);
 
     // Get provider ID
-    const providerId = await getProviderIdForUser(auth.user.id, supabase);
+    const providerId = await getProviderIdForUser(auth.user.id, supabase, { request });
     if (!providerId) {
       return NextResponse.json(
         {
@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Check subscription allows Yoco integration (for viewing, allow but show upgrade prompt)
-    const yocoAccess = await checkYocoFeatureAccess(providerId);
+    const yocoAccess = await checkYocoFeatureAccess(providerId, supabase);
 
     const { data: integration, error } = await supabase
       .from("provider_yoco_integrations")
@@ -169,7 +169,7 @@ export async function PUT(request: Request) {
     }
 
     // Get provider ID
-    const providerId = await getProviderIdForUser(auth.user.id, supabase);
+    const providerId = await getProviderIdForUser(auth.user.id, supabase, { request });
     if (!providerId) {
       return NextResponse.json(
         {
@@ -184,7 +184,7 @@ export async function PUT(request: Request) {
     }
 
     // Check subscription allows Yoco integration
-    const yocoAccess = await checkYocoFeatureAccess(providerId);
+    const yocoAccess = await checkYocoFeatureAccess(providerId, supabase);
     if (!yocoAccess.enabled) {
       return NextResponse.json(
         {
@@ -325,7 +325,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     const supabase = await getSupabaseServer(request);
-    const providerId = await getProviderIdForUser(auth.user.id, supabase);
+    const providerId = await getProviderIdForUser(auth.user.id, supabase, { request });
     if (!providerId) {
       return NextResponse.json(
         {

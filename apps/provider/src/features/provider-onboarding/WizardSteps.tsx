@@ -1102,30 +1102,122 @@ function Step10Categories() {
 function Step11Services() {
   const { formData, updateFormData } = useOnboardingWizard();
   const tenantCurrency = getTenantDefaultCurrency();
+  const [allCats, setAllCats] = useState<Cat[]>([]);
+  const [loadingCats, setLoadingCats] = useState(true);
+  const [categoryId, setCategoryId] = useState("");
   const [title, setTitle] = useState("");
   const [price, setPrice] = useState("");
   const [dur, setDur] = useState("60");
+  const [description, setDescription] = useState("");
+  const [supportsAtSalon, setSupportsAtSalon] = useState(formData.business_type !== "mobile");
+  const [supportsAtHome, setSupportsAtHome] = useState(formData.business_type !== "salon");
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [addonName, setAddonName] = useState("");
+  const [addonPrice, setAddonPrice] = useState("");
+  const [addonDuration, setAddonDuration] = useState("");
+  const [addonDescription, setAddonDescription] = useState("");
+  const [draftAddons, setDraftAddons] = useState<NonNullable<OnboardingService["addons"]>>([]);
   const services = formData.services || [];
+  const selectedCategoryIds = formData.global_category_ids || [];
+  const selectedCategories = allCats.filter((cat) => selectedCategoryIds.includes(cat.id));
+  const categoryNameById = new Map(selectedCategories.map((cat) => [cat.id, cat.name]));
+
+  useEffect(() => {
+    (async () => {
+      const res = await api.get<Cat[]>("/api/public/categories/global?all=true");
+      setAllCats(Array.isArray(res.data) ? res.data : []);
+      setLoadingCats(false);
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (categoryId && selectedCategoryIds.includes(categoryId)) return;
+    if (selectedCategoryIds.length > 0) {
+      setCategoryId(selectedCategoryIds[0]);
+    } else {
+      setCategoryId("");
+    }
+  }, [categoryId, selectedCategoryIds]);
+
+  useEffect(() => {
+    setSupportsAtSalon(formData.business_type !== "mobile");
+    setSupportsAtHome(formData.business_type !== "salon");
+  }, [formData.business_type]);
+
+  const addAddon = () => {
+    const parsedAddonPrice = parseFloat(addonPrice);
+    const parsedAddonDuration = addonDuration ? parseInt(addonDuration, 10) : undefined;
+    if (!addonName.trim()) {
+      Alert.alert("Add-on", "Enter an add-on name.");
+      return;
+    }
+    if (Number.isNaN(parsedAddonPrice) || parsedAddonPrice < 0) {
+      Alert.alert("Add-on", "Enter a valid add-on price.");
+      return;
+    }
+    setDraftAddons((prev) => [
+      ...prev,
+      {
+        name: addonName.trim(),
+        description: addonDescription.trim() || undefined,
+        price: parsedAddonPrice,
+        currency: tenantCurrency,
+        duration_minutes: parsedAddonDuration && parsedAddonDuration > 0 ? parsedAddonDuration : undefined,
+      },
+    ]);
+    setAddonName("");
+    setAddonPrice("");
+    setAddonDuration("");
+    setAddonDescription("");
+  };
 
   const add = () => {
     const p = parseFloat(price);
     const d = parseInt(dur, 10) || 60;
-    if (!title.trim() || Number.isNaN(p)) {
-      Alert.alert("Service", "Enter title and price.");
+    if (!selectedCategoryIds.length) {
+      Alert.alert("Service", "Select at least one category in the previous step first.");
+      return;
+    }
+    if (!categoryId) {
+      Alert.alert("Service", "Select a category to continue.");
+      return;
+    }
+    if (!title.trim()) {
+      Alert.alert("Service", "Enter a service name.");
+      return;
+    }
+    if (Number.isNaN(p) || p < 0) {
+      Alert.alert("Service", "Enter a valid service price.");
+      return;
+    }
+    if (Number.isNaN(d) || d <= 0) {
+      Alert.alert("Service", "Duration must be more than 0 minutes.");
+      return;
+    }
+    if (!supportsAtSalon && !supportsAtHome) {
+      Alert.alert("Service", "Choose at least one availability option: salon or at-home.");
       return;
     }
     const s: OnboardingService = {
       title: title.trim(),
+      category_id: categoryId,
+      description: description.trim() || undefined,
       duration_minutes: d,
       price: p,
-      currency: getTenantDefaultCurrency(),
-      supports_at_home: formData.business_type !== "salon",
-      supports_at_salon: formData.business_type !== "mobile",
+      currency: tenantCurrency,
+      supports_at_home: supportsAtHome,
+      supports_at_salon: supportsAtSalon,
+      addons: draftAddons.length ? draftAddons : [],
     };
     updateFormData({ services: [...services, s] });
     setTitle("");
     setPrice("");
     setDur("60");
+    setDescription("");
+    setShowAdvanced(false);
+    setSupportsAtSalon(formData.business_type !== "mobile");
+    setSupportsAtHome(formData.business_type !== "salon");
+    setDraftAddons([]);
   };
 
   const remove = (i: number) => {
@@ -1136,6 +1228,14 @@ function Step11Services() {
 
   return (
     <View style={twStyle("gap-4")}>
+      <View style={twStyle("rounded-2xl border border-sky-200 bg-sky-50 p-4")}>
+        <Text style={twStyle("text-sm font-semibold text-sky-900")}>Add services now or skip</Text>
+        <Text style={twStyle("mt-1 text-sm leading-5 text-sky-900")}>
+          Add your first sellable services in a few taps. If you skip, we will draft starter services from your selected
+          categories.
+        </Text>
+      </View>
+
       {services.map((s, i) => (
         <View
           key={`${s.title}-${i}`}
@@ -1143,8 +1243,17 @@ function Step11Services() {
         >
           <View style={twStyle("flex-1 pr-2")}>
             <Text style={twStyle("text-base font-semibold text-gray-900")}>{s.title}</Text>
+            <Text style={twStyle("mt-1 text-xs font-medium text-gray-700")}>
+              {s.category_id ? categoryNameById.get(s.category_id) || "Selected category" : "No category"}
+            </Text>
             <Text style={twStyle("text-xs text-gray-600")}>
               {s.duration_minutes} min · {s.currency || tenantCurrency} {s.price}
+            </Text>
+            <Text style={twStyle("mt-1 text-xs text-gray-600")}>
+              {s.supports_at_salon ? "At salon" : ""}
+              {s.supports_at_salon && s.supports_at_home ? " • " : ""}
+              {s.supports_at_home ? "At home" : ""}
+              {s.addons?.length ? ` • ${s.addons.length} add-on${s.addons.length === 1 ? "" : "s"}` : ""}
             </Text>
           </View>
           <TouchableOpacity onPress={() => remove(i)}>
@@ -1152,10 +1261,42 @@ function Step11Services() {
           </TouchableOpacity>
         </View>
       ))}
+
+      {loadingCats ? (
+        <View style={twStyle("py-8 items-center")}>
+          <ActivityIndicator color={Colors.primary} />
+        </View>
+      ) : null}
+
       <View style={twStyle("rounded-2xl border-2 border-gray-200 bg-white p-4 gap-3")}>
         <Text style={twStyle(labelCls)}>Add a service</Text>
-        <Text style={twStyle("text-sm text-gray-600")}>You can add more services later in the catalogue.</Text>
-        <TextInput value={title} onChangeText={setTitle} placeholder="Name" style={twStyle(inputCls)} />
+        <Text style={twStyle("text-sm text-gray-600")}>
+          We will place this under your matching provider catalogue category after signup.
+        </Text>
+        <Text style={twStyle(labelCls)}>Category *</Text>
+        {selectedCategories.length > 0 ? (
+          <View style={twStyle("gap-2")}>
+            {selectedCategories.map((cat) => {
+              const selected = categoryId === cat.id;
+              return (
+                <TouchableOpacity
+                  key={cat.id}
+                  onPress={() => setCategoryId(cat.id)}
+                  style={twStyle(
+                    `rounded-xl border px-3 py-3 ${selected ? "border-primary bg-rose-50" : "border-gray-200 bg-gray-50"}`,
+                  )}
+                >
+                  <Text style={twStyle(`text-sm font-medium ${selected ? "text-primary" : "text-gray-800"}`)}>{cat.name}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        ) : (
+          <View style={twStyle("rounded-xl border border-amber-200 bg-amber-50 p-3")}>
+            <Text style={twStyle("text-sm text-amber-900")}>Select at least one category in Step 10 to add services here.</Text>
+          </View>
+        )}
+        <TextInput value={title} onChangeText={setTitle} placeholder="Service name" style={twStyle(inputCls)} />
         <TextInput
           value={price}
           onChangeText={setPrice}
@@ -1164,6 +1305,88 @@ function Step11Services() {
           style={twStyle(inputCls)}
         />
         <TextInput value={dur} onChangeText={setDur} placeholder="Minutes" keyboardType="number-pad" style={twStyle(inputCls)} />
+
+        <TouchableOpacity
+          onPress={() => setShowAdvanced((prev) => !prev)}
+          style={twStyle("flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-3 py-3")}
+        >
+          <Text style={twStyle("text-sm font-semibold text-gray-800")}>More options (description, availability, add-ons)</Text>
+          <Ionicons name={showAdvanced ? "chevron-up" : "chevron-down"} size={18} color="#6b7280" />
+        </TouchableOpacity>
+
+        {showAdvanced ? (
+          <View style={twStyle("gap-3 rounded-xl border border-gray-200 bg-gray-50 p-3")}>
+            <TextInput
+              value={description}
+              onChangeText={setDescription}
+              placeholder="Description (optional)"
+              style={twStyle(`${inputCls} min-h-[90px]`)}
+              multiline
+              numberOfLines={3}
+            />
+
+            <View style={twStyle("rounded-xl border border-gray-200 bg-white p-3 gap-3")}>
+              <View style={twStyle("flex-row items-center justify-between")}>
+                <Text style={twStyle("text-sm font-medium text-gray-800")}>Available at salon</Text>
+                <Switch value={supportsAtSalon} onValueChange={setSupportsAtSalon} />
+              </View>
+              <View style={twStyle("flex-row items-center justify-between")}>
+                <Text style={twStyle("text-sm font-medium text-gray-800")}>Available at home</Text>
+                <Switch value={supportsAtHome} onValueChange={setSupportsAtHome} />
+              </View>
+            </View>
+
+            <View style={twStyle("rounded-xl border border-gray-200 bg-white p-3 gap-2")}>
+              <Text style={twStyle("text-sm font-semibold text-gray-900")}>Add-ons (optional)</Text>
+              {draftAddons.map((addon, idx) => (
+                <View key={`${addon.name}-${idx}`} style={twStyle("flex-row items-center justify-between rounded-lg bg-gray-50 px-3 py-2")}>
+                  <View style={twStyle("flex-1 pr-2")}>
+                    <Text style={twStyle("text-sm font-medium text-gray-900")}>{addon.name}</Text>
+                    <Text style={twStyle("text-xs text-gray-600")}>
+                      {addon.currency || tenantCurrency} {addon.price}
+                      {addon.duration_minutes ? ` • +${addon.duration_minutes} min` : ""}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => setDraftAddons((prev) => prev.filter((_, i) => i !== idx))}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove add-on ${addon.name}`}
+                  >
+                    <Ionicons name="close-circle" size={20} color="#ef4444" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+
+              <TextInput value={addonName} onChangeText={setAddonName} placeholder="Add-on name" style={twStyle(inputCls)} />
+              <TextInput
+                value={addonPrice}
+                onChangeText={setAddonPrice}
+                placeholder={`Add-on price (${tenantCurrency})`}
+                keyboardType="decimal-pad"
+                style={twStyle(inputCls)}
+              />
+              <TextInput
+                value={addonDuration}
+                onChangeText={setAddonDuration}
+                placeholder="Extra minutes (optional)"
+                keyboardType="number-pad"
+                style={twStyle(inputCls)}
+              />
+              <TextInput
+                value={addonDescription}
+                onChangeText={setAddonDescription}
+                placeholder="Add-on description (optional)"
+                style={twStyle(inputCls)}
+              />
+              <TouchableOpacity
+                onPress={addAddon}
+                style={twStyle("rounded-xl border border-primary bg-white py-3 items-center")}
+              >
+                <Text style={twStyle("text-sm font-semibold text-primary")}>Add add-on</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : null}
       </View>
       <TouchableOpacity
         onPress={add}

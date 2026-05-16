@@ -11,7 +11,10 @@ import {
   useWindowDimensions,
   Linking,
   DeviceEventEmitter,
+  Platform,
+  Share as RNShare,
 } from "react-native";
+import { cacheDirectory, downloadAsync } from "expo-file-system/legacy";
 import * as Location from "expo-location";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -37,13 +40,15 @@ import { validateE164Phone } from "@/lib/phone-country-codes";
 import { useProvider } from "@/providers/ProviderContext";
 import { buildZonedIsoForWallClock } from "@/lib/tz";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
-import { api } from "@/lib/api-client";
+import { api, getApiBaseUrl } from "@/lib/api-client";
 import { PROVIDER_PRODUCTS_CATALOG_CHANGED } from "@/lib/provider-products-catalog-events";
 import { AddressAutocomplete } from "@/components/ui/AddressAutocomplete";
 import { AddressMapPinModal } from "@/components/AddressMapPinModal";
 import { pushInAppBrowser } from "@/lib/in-app-web";
 import { StaticMapImage } from "@/components/ui/StaticMapImage";
 import { reverseGeocodeCoordinates } from "@/lib/reverse-geocode-address";
+import { webApiTenantHeaders } from "@/config/public-env";
+import { supabase } from "@/lib/supabase/client";
 import { countryFilterIso2FromStorage } from "@beautonomi/utils";
 import { normalizeProductsList } from "@/lib/unpack-provider-api";
 
@@ -56,6 +61,7 @@ import { normalizeProductsList } from "@/lib/unpack-provider-api";
 // never crashes when the backend tweaks the payload.
 interface Participant {
   id: string;
+  booking_id?: string | null;
   // Historic / create-endpoint shape
   customer_name?: string;
   customer_phone?: string;
@@ -1715,20 +1721,101 @@ export default function GroupBookingsScreen() {
   async function openGroupReceipt(group: GroupBooking) {
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      const base = getApiBaseUrl().replace(/\/$/, "");
+      const pdfPath = `/api/provider/group-bookings/${encodeURIComponent(group.id)}/receipt/pdf`;
+      const safeName = `group_receipt_${(group.ref_number || group.id).replace(/[^\w.-]+/g, "_")}.pdf`;
+
+      const tryBearerDownload = async (): Promise<boolean> => {
+        const { data } = await supabase.auth.getSession();
+        const token = data.session?.access_token;
+        if (!token || !base) return false;
+        const pdfUrl = `${base}${pdfPath}`;
+        const headers: Record<string, string> = {
+          Authorization: `Bearer ${token}`,
+          ...webApiTenantHeaders(),
+        };
+        if (Platform.OS === "web") {
+          const r = await fetch(pdfUrl, { headers, credentials: "omit" });
+          if (!r.ok) return false;
+          const blob = await r.blob();
+          const objectUrl = URL.createObjectURL(blob);
+          if (typeof window !== "undefined") {
+            window.open(objectUrl, "_blank", "noopener,noreferrer");
+            setTimeout(() => URL.revokeObjectURL(objectUrl), 120_000);
+          }
+          return true;
+        }
+        if (!cacheDirectory) return false;
+        const fileUri = `${cacheDirectory}${safeName}`;
+        const dl = await downloadAsync(pdfUrl, fileUri, { headers });
+        if (dl.status !== 200) return false;
+        await RNShare.share({
+          url: fileUri,
+          message: `Group receipt ${group.ref_number || group.id}`,
+        });
+        return true;
+      };
+
+      if (await tryBearerDownload()) {
+        return;
+      }
+
       const res = await api.post<{ url: string; expires_at: string }>(
         `/api/provider/group-bookings/${encodeURIComponent(group.id)}/receipt/signed-url`,
         {},
       );
-      if (res.error || !res.data?.url) {
-        Alert.alert("Group receipt", "Could not open the group receipt right now. Please try again.");
+      const signedUrl = res.data?.url;
+      if (res.error || !signedUrl) {
+        const msg =
+          (res.error as { message?: string } | null)?.message ??
+          "Could not open the group receipt right now. Please try again.";
+        Alert.alert("Group receipt", msg);
         return;
       }
-      pushInAppBrowser(router, res.data.url, "Group receipt");
+      if (Platform.OS === "web") {
+        pushInAppBrowser(router, signedUrl, "Group receipt");
+        return;
+      }
+      if (!cacheDirectory) {
+        Alert.alert("Group receipt", "File storage is not available on this device.");
+        return;
+      }
+      const fileUri = `${cacheDirectory}${safeName}`;
+      const dl = await downloadAsync(signedUrl, fileUri);
+      if (dl.status !== 200) {
+        const hint =
+          dl.status === 401 || dl.status === 403
+            ? "Your session may have expired. Please refresh and try again."
+            : `The server returned status ${dl.status}.`;
+        Alert.alert("Group receipt", `Could not download the PDF. ${hint}`);
+        return;
+      }
+      await RNShare.share({
+        url: fileUri,
+        message: `Group receipt ${group.ref_number || group.id}`,
+      });
     } catch (err) {
       const msg =
         err instanceof Error ? err.message : "Something went wrong while opening the group receipt.";
       Alert.alert("Group receipt", msg);
     }
+  }
+
+  function openParticipantRefund(participant: Participant) {
+    const bookingId = participant.booking_id?.trim();
+    if (!bookingId) {
+      Alert.alert(
+        "Refund participant",
+        "This participant does not have a linked booking yet, so there is nothing to refund.",
+      );
+      return;
+    }
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSelectedGroup(null);
+    router.push({
+      pathname: "/(app)/(tabs)/more/bookings/[id]",
+      params: { id: bookingId },
+    } as never);
   }
 
   async function handleRemoveParticipant(participant: Participant) {
@@ -2123,6 +2210,17 @@ export default function GroupBookingsScreen() {
                           ) : null}
                         </View>
                       )}
+                      {p.booking_id ? (
+                        <TouchableOpacity
+                          onPress={() => openParticipantRefund(p)}
+                          style={twStyle("mt-2 flex-row items-center justify-center rounded-md bg-amber-50 py-2")}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Refund ${displayName}`}
+                        >
+                          <Ionicons name="cash-outline" size={14} color="#b45309" style={{ marginRight: 4 }} />
+                          <Text style={twStyle("text-xs font-semibold text-amber-700")}>Refund participant</Text>
+                        </TouchableOpacity>
+                      ) : null}
                     </View>
                   );
                 })
@@ -2142,23 +2240,23 @@ export default function GroupBookingsScreen() {
                 style={twStyle("mb-3 flex-row items-center justify-center rounded-lg bg-amber-50 py-2.5")}
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  const groupId = selectedGroup.id;
-                  setSelectedGroup(null);
+                  const participantsWithBooking = (selectedGroup.participants ?? []).filter(
+                    (participant) => !!participant.booking_id,
+                  );
+                  if (participantsWithBooking.length === 0) {
+                    Alert.alert(
+                      "Refund participant",
+                      "No participants in this group have linked bookings yet, so refunds are not available.",
+                    );
+                    return;
+                  }
+                  if (participantsWithBooking.length === 1) {
+                    openParticipantRefund(participantsWithBooking[0]);
+                    return;
+                  }
                   Alert.alert(
                     "Refund participant",
-                    "Refunds are issued against each participant's individual booking. Open the group booking detail, select the participant's booking, then use the refund action inside.",
-                    [
-                      { text: "Cancel", style: "cancel" },
-                      {
-                        text: "Open group booking",
-                        onPress: () => {
-                          router.push({
-                            pathname: "/(app)/(tabs)/more/group-bookings",
-                            params: { open_group_id: groupId },
-                          } as never);
-                        },
-                      },
-                    ],
+                    "Use the Refund participant button on the specific participant row below to refund the correct booking.",
                   );
                 }}
                 accessibilityRole="button"

@@ -71,6 +71,7 @@ interface DashboardMetrics {
     supports_house_calls: boolean;
     supports_salon: boolean;
     max_service_distance_km: number | null;
+    is_distance_filter_enabled?: boolean;
   };
   dashboard_bundle_version?: number;
   insights?: {
@@ -649,7 +650,7 @@ export default function DashboardScreen() {
       {m && (
         <View
           style={{ marginBottom: 16, flexDirection: "row", flexWrap: "wrap", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, paddingHorizontal: 12, paddingVertical: 10 }}
-          accessibilityLabel={`Rating ${m.average_rating?.toFixed(1) ?? "0.0"}, ${m.total_reviews ?? 0} reviews. Level: ${gam?.current_badge?.name ?? "Getting started"}. ${m.provider_profile?.supports_house_calls ? "At-home" : ""} ${m.provider_profile?.supports_salon ? "At-salon" : ""}. ${m.provider_profile?.supports_house_calls && m.provider_profile?.max_service_distance_km ? `Within ${m.provider_profile.max_service_distance_km} km` : ""}`}
+          accessibilityLabel={`Rating ${m.average_rating?.toFixed(1) ?? "0.0"}, ${m.total_reviews ?? 0} reviews. Level: ${gam?.current_badge?.name ?? "Getting started"}. ${m.provider_profile?.supports_house_calls ? "At-home" : ""} ${m.provider_profile?.supports_salon ? "At-salon" : ""}. ${m.provider_profile?.supports_house_calls && m.provider_profile?.is_distance_filter_enabled === true && m.provider_profile?.max_service_distance_km ? `Within ${m.provider_profile.max_service_distance_km} km` : ""}`}
         >
             <TouchableOpacity
               style={{ flexDirection: "row", alignItems: "center", borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, marginRight: 12 }}
@@ -708,6 +709,7 @@ export default function DashboardScreen() {
               </View>
             )}
             {m.provider_profile?.supports_house_calls &&
+              m.provider_profile?.is_distance_filter_enabled === true &&
               m.provider_profile?.max_service_distance_km != null &&
               m.provider_profile.max_service_distance_km > 0 && (
                 <TouchableOpacity

@@ -34,7 +34,10 @@ import { tryCreateCustomerRecurringFromPaystackChargeMetadata } from "@/lib/recu
 import { applyWalletTopupFromSuccessfulPaystackCharge } from "@/lib/wallet/apply-wallet-topup-from-paystack-success";
 import { recordBookingPaystackPayment } from "@/lib/bookings/record-booking-paystack-payment";
 import { syncBookingAfterPaystackSuccess } from "@/lib/bookings/sync-booking-after-paystack-success";
-import { ensureWalletGiftBookingPayments } from "@/lib/bookings/ensure-wallet-gift-booking-payments";
+import {
+  completeWalletGiftSyntheticPayments,
+  ensureWalletGiftBookingPayments,
+} from "@/lib/bookings/ensure-wallet-gift-booking-payments";
 import { patchCustomOfferMessageAttachments } from "@/lib/custom-offers/sync-offer-message-attachments";
 import { finalizeCustomOfferPaymentFromPaystackEvent } from "@/lib/custom-offers/finalize-custom-offer-payment";
 
@@ -487,13 +490,6 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
     }
   }
 
-  await ensureWalletGiftBookingPayments(supabase, {
-    bookingId: metadata.booking_id,
-    tenantId: bookingData.tenant_id ?? financeTenantId ?? null,
-    walletAmount: walletAmountFromMeta,
-    giftCardAmount: giftCardCaptured ? giftCardAmountFromMeta : 0,
-  });
-
   await syncBookingAfterPaystackSuccess(supabase, metadata.booking_id, {
     paymentReference: reference,
     paymentProvider: "paystack",
@@ -604,6 +600,7 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
   if (existingPaymentTxForRef) {
     // Scenario A: webhook retry for a reference already fully processed.
     console.log(`[charge-success] Paystack ref ${reference} already in payment_transactions — skipping (idempotent retry).`);
+    await completeWalletGiftSyntheticPayments(supabase, metadata.booking_id);
     return;
   }
 
@@ -636,10 +633,21 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
   if (paymentTxInsertError) {
     if (paymentTxInsertError.code === "23505") {
       console.log(`[charge-success] Paystack ref ${reference} was settled concurrently — skipping duplicate ledger writes.`);
+      await completeWalletGiftSyntheticPayments(supabase, metadata.booking_id);
       return;
     }
     throw paymentTxInsertError;
   }
+
+  const splitWalletOrGift =
+    walletAmountFromMeta > 0 || (giftCardCaptured && giftCardAmountFromMeta > 0);
+  await ensureWalletGiftBookingPayments(supabase, {
+    bookingId: metadata.booking_id,
+    tenantId: bookingData.tenant_id ?? financeTenantId ?? null,
+    walletAmount: walletAmountFromMeta,
+    giftCardAmount: giftCardCaptured ? giftCardAmountFromMeta : 0,
+    initialStatus: splitWalletOrGift ? "pending" : "completed",
+  });
 
   await supabase
     .from("payments")
@@ -849,6 +857,8 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
       });
     }
   }
+
+  await completeWalletGiftSyntheticPayments(supabase, metadata.booking_id);
 
   // Promotions: record usage (idempotent) + dedicated discount ledger row
   try {

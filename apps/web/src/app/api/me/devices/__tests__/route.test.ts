@@ -45,6 +45,10 @@ describe("POST /api/me/devices", () => {
 
     expect(response.status).toBe(200);
     expect(body.data).toEqual({ registered: true });
+    expect(mockRequireRoleInApi).toHaveBeenCalledWith(
+      ["customer", "provider_owner", "provider_staff", "provider_onboarding", "superadmin"],
+      request,
+    );
     expect(mockRegisterDevice).toHaveBeenCalledWith(expect.anything(), "user-1", "sub-1", "ios", "customer");
   });
 

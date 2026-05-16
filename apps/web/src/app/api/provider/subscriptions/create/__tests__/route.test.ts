@@ -141,5 +141,99 @@ describe("POST /api/provider/subscriptions/create", () => {
       }),
     );
   });
+
+  it("does not block paid checkout when existing active subscription is free tier", async () => {
+    mockRequireRoleInApi.mockResolvedValue({
+      user: { id: "user-2", role: "provider_owner" },
+    });
+    mockResolveTenantIdWithZaFallback.mockResolvedValue("tenant-za");
+    mockGetSupabaseServer.mockResolvedValue({});
+
+    mockFetchScopedSingle
+      .mockResolvedValueOnce({
+        data: { id: "provider-2", user_id: "user-2", email: "owner2@example.com" },
+        source: "tenant",
+      })
+      .mockResolvedValueOnce({
+        data: {
+          id: "plan-2",
+          paystack_plan_code_monthly: "PLN_MONTHLY_ZA",
+          paystack_plan_code_yearly: "PLN_YEARLY_ZA",
+          subscription_plan_id: "subscription-plan-2",
+        },
+        source: "tenant",
+      });
+
+    const mockSupabaseAdmin = {
+      from: vi.fn((table: string) => {
+        if (table === "users") {
+          return {
+            select: () => ({
+              eq: () => ({
+                single: async () => ({
+                  data: { email: "owner2@example.com", full_name: "Owner 2" },
+                  error: null,
+                }),
+              }),
+            }),
+          };
+        }
+        if (table === "provider_subscriptions") {
+          return {
+            select: () => ({
+              eq: () => ({
+                in: () => ({
+                  maybeSingle: async () => ({
+                    data: {
+                      id: "sub-free",
+                      status: "active",
+                      plan_id: "free-plan",
+                      subscription_plans: { is_free: true },
+                    },
+                    error: null,
+                  }),
+                }),
+              }),
+            }),
+          };
+        }
+        if (table === "tenants") {
+          return {
+            select: () => ({
+              eq: () => ({
+                maybeSingle: async () => ({
+                  data: { default_currency: "ZAR" },
+                  error: null,
+                }),
+              }),
+            }),
+          };
+        }
+        throw new Error(`Unexpected table ${table}`);
+      }),
+    };
+    mockCreateClient.mockReturnValue(mockSupabaseAdmin);
+    mockInitializePaystackTransactionWithPlan.mockResolvedValue({
+      data: {
+        authorization_url: "https://paystack.test/auth-paid-upgrade",
+        access_code: "acc_paid",
+        reference: "ref_paid",
+      },
+    });
+
+    const { POST } = await import("../route");
+    const req = new NextRequest("http://localhost/api/provider/subscriptions/create", {
+      method: "POST",
+      body: JSON.stringify({
+        plan_id: "22222222-2222-4222-8222-222222222222",
+        billing_period: "monthly",
+      }),
+    });
+    const res = await POST(req);
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body?.data?.authorization_url).toBe("https://paystack.test/auth-paid-upgrade");
+  });
 });
 

@@ -59,7 +59,7 @@ export const ACCOUNT_HUB_CARDS: AccountHubCard[] = [
   { icon: Heart, title: "Wishlists & Recently Viewed", description: "Manage your saved wishlists and view recently viewed items", link: "/account-settings/wishlists" },
   { icon: MessageCircle, title: "Messages", description: "View and manage your messages with beauty partners", link: "/account-settings/messages" },
   { icon: Briefcase, title: "Custom Requests", description: "Request custom services and manage offers from providers", link: "/account-settings/custom-requests" },
-  { icon: ShieldCheck, title: "Identity Verification", description: "Verify your identity for a trusted experience", link: "/account-settings/verification/embed" },
+  { icon: ShieldCheck, title: "Identity Verification", description: "Verify your identity for a trusted experience", link: "/account-settings/identity-verification" },
   { icon: Info, title: "About Us", description: "Learn more about Beautonomi and our mission", link: "#about-us", isAction: true },
   { icon: Share2, title: "Share App", description: "Share Beautonomi with your friends and family", link: "#share-app", isAction: true },
 ];

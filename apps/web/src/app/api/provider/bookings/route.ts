@@ -816,7 +816,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
     invalidateProviderBookingsReadCache(providerId);
 
     // Check booking limits
-    const bookingAccess = await checkBookingLimitsFeatureAccess(providerId);
+    const bookingAccess = await checkBookingLimitsFeatureAccess(providerId, supabase);
     if (bookingAccess.enabled && bookingAccess.maxBookingsPerMonth) {
       const { data: tzRow } = await supabaseAdmin
         .from("providers")

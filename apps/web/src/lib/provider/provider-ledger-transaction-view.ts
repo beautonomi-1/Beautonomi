@@ -3,6 +3,9 @@
  * mobile / portal lists. Must stay aligned with GET /api/provider/finance
  * and GET /api/provider/transactions (visible types, gross `payment` rows excluded).
  * Finance JSON lists respect `transaction_feed=all` when `location_id` is set (see finance route).
+ *
+ * **Tax invariant (F7):** booking `tax` rows use `amount` = VAT collected and `net = 0` (pass-through /
+ * remittance — not provider take-home). Reports that need VAT liability should prefer `amount`.
  */
 
 /** Gross customer-charge rows — not provider take-home; hide from provider activity feed. */
@@ -24,6 +27,7 @@ export const PROVIDER_LEDGER_VISIBLE_TYPES = new Set<string>([
   "additional_charge",
   "additional_charge_payment",
   "cancellation_fee",
+  "promotion_discount",
   "provider_subscription_payment",
   "provider_ads_payment",
 ]);
@@ -35,6 +39,43 @@ export type ProviderTxnUiType =
   | "tip"
   | "refund"
   | "adjustment";
+
+/**
+ * Provider-facing sign for a raw `finance_transactions` row (matches
+ * `mapFinanceLedgerRowToProviderUi` debit/credit semantics).
+ * Used by mobile hub lists that receive API rows before UI mapping.
+ */
+export function ledgerRowDisplaySign(row: {
+  transaction_type: string;
+  net?: number | null;
+  amount?: number | null;
+}): 1 | -1 {
+  const tt = row.transaction_type;
+  const net = Number(row.net ?? row.amount ?? 0);
+  const gross = Number(row.amount ?? 0);
+
+  if (tt === "provider_earnings") return net < 0 ? -1 : 1;
+  if (tt === "refund" || tt === "payout") return -1;
+  if (tt === "tip") return 1;
+  if (tt === "service_fee" || tt === "platform_fee") return -1;
+  if (tt === "travel_fee") return 1;
+  if (tt === "tax") return -1;
+  if (tt === "promotion_discount") return net <= 0 ? -1 : 1;
+  if (tt === "membership_sale" || tt === "gift_card_sale") return net >= 0 ? 1 : -1;
+  if (
+    tt === "walk_in_additional_charge" ||
+    tt === "additional_charge" ||
+    tt === "additional_charge_payment"
+  ) {
+    return net >= 0 ? 1 : -1;
+  }
+  if (tt === "provider_subscription_payment" || tt === "provider_ads_payment") return -1;
+  if (tt === "cancellation_fee") return net < 0 ? -1 : 1;
+  // Unknown visible type: fall back to raw net sign
+  if (net < 0) return -1;
+  if (net > 0) return 1;
+  return gross >= 0 ? 1 : -1;
+}
 
 export interface ProviderLedgerUiRow {
   id: string;
@@ -221,6 +262,16 @@ export function mapFinanceLedgerRowToProviderUi(row: {
         tt === "provider_subscription_payment"
           ? "Provider subscription charge"
           : "Ads or boost spend",
+    };
+  }
+
+  if (tt === "promotion_discount") {
+    return {
+      ...base,
+      type: "adjustment",
+      amount: Math.abs(gross),
+      sign: net <= 0 ? -1 : 1,
+      description: typeof row.description === "string" ? row.description : "Promotion discount",
     };
   }
 

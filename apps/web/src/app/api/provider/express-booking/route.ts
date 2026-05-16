@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Check subscription allows express booking
-    const expressAccess = await checkExpressBookingFeatureAccess(providerId);
+    const expressAccess = await checkExpressBookingFeatureAccess(providerId, supabase);
     if (!expressAccess.enabled) {
       return errorResponse(SUBSCRIPTION_UPGRADE_SHORT, "SUBSCRIPTION_REQUIRED", 403);
     }
@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check subscription allows express booking
-    const expressAccess = await checkExpressBookingFeatureAccess(providerId);
+    const expressAccess = await checkExpressBookingFeatureAccess(providerId, supabase);
     if (!expressAccess.enabled) {
       return errorResponse(SUBSCRIPTION_UPGRADE_SHORT, "SUBSCRIPTION_REQUIRED", 403);
     }

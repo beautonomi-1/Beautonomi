@@ -99,7 +99,7 @@ export async function POST(
     }
 
     // Check subscription allows this marketing channel
-    const canUseChannel = await canUseMarketingChannel(providerId, campaign.type);
+    const canUseChannel = await canUseMarketingChannel(providerId, campaign.type, supabase);
     if (!canUseChannel) {
       return errorResponse(
         `${campaign.type === "email" ? "Email" : campaign.type === "sms" ? "SMS" : "WhatsApp"} campaigns require a subscription upgrade. Please upgrade your plan to send ${campaign.type} campaigns.`,
@@ -116,7 +116,7 @@ export async function POST(
     const providerTz = resolveTz((tzRow as { timezone?: string | null } | null)?.timezone);
 
     // Check campaign limits
-    const marketingAccess = await checkMarketingFeatureAccess(providerId);
+    const marketingAccess = await checkMarketingFeatureAccess(providerId, supabase);
     if (marketingAccess.maxCampaignsPerMonth) {
       const monthStartUtc = fromBusinessTime(startOfDay(startOfMonth(nowInTz(providerTz))), providerTz);
 

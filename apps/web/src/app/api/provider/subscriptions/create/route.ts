@@ -127,12 +127,18 @@ export async function POST(request: NextRequest) {
 
     const { data: existingSubscription } = await supabaseAdmin
       .from("provider_subscriptions")
-      .select("id, status")
+      .select("id, status, plan_id, subscription_plans:plan_id(is_free)")
       .eq("provider_id", providerId)
       .in("status", ["active", "past_due"])
       .maybeSingle();
 
-    if (existingSubscription) {
+    const existingIsFree =
+      (existingSubscription as { subscription_plans?: { is_free?: boolean | null } | null } | null)
+        ?.subscription_plans?.is_free === true;
+
+    // Allow paid checkout when the only current subscription is the free tier.
+    // Onboarding seeds a free subscription row so paid conversion must not 409.
+    if (existingSubscription && !existingIsFree) {
       return errorResponse(
         "Provider already has an active subscription",
         "CONFLICT",

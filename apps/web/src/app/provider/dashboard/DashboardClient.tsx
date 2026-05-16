@@ -382,7 +382,14 @@ export function DashboardClient({
         totalReviews={stats.total_reviews}
         badgeName={stats.gamification?.current_badge?.name ?? null}
         badgeColor={stats.gamification?.current_badge?.color ?? null}
-        profile={stats.provider_profile ?? { supports_house_calls: false, supports_salon: false, max_service_distance_km: null }}
+        profile={
+          stats.provider_profile ?? {
+            supports_house_calls: false,
+            supports_salon: false,
+            max_service_distance_km: null,
+            is_distance_filter_enabled: false,
+          }
+        }
       />
 
       {/* Business Type Info */}
@@ -572,9 +579,19 @@ export function DashboardClient({
           <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 text-orange-700">Your Expenses</h3>
           <div className="space-y-3">
             <div className="flex items-center justify-between p-2">
-              <span className="text-sm text-gray-600">Platform Commission</span>
-              <span className="text-lg font-semibold text-orange-600">{formatCurrency(stats.platform_fees_paid || 0, tenantCurrency)}</span>
+              <span className="text-sm text-gray-600">Platform commission (%)</span>
+              <span className="text-lg font-semibold text-orange-600">
+                {formatCurrency(stats.platform_commission_paid ?? stats.platform_fees_paid ?? 0, tenantCurrency)}
+              </span>
             </div>
+            {(stats.platform_fees_deducted ?? 0) > 0 && (
+              <div className="flex items-center justify-between p-2">
+                <span className="text-sm text-gray-600">Customer-paid platform fees (retained)</span>
+                <span className="text-lg font-semibold text-amber-700">
+                  {formatCurrency(stats.platform_fees_deducted ?? 0, tenantCurrency)}
+                </span>
+              </div>
+            )}
             <div className="flex items-center justify-between cursor-pointer hover:bg-gray-50 rounded p-2 transition-colors" role="button" tabIndex={0} onClick={() => navigateTo("/provider/subscription")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") navigateTo("/provider/subscription"); }}>
               <span className="text-sm text-gray-600">Subscriptions & Ads</span>
               <span className="text-lg font-semibold text-orange-600">{formatCurrency(stats.expenses_total || 0, tenantCurrency)}</span>

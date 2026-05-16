@@ -12,13 +12,13 @@ const DEPRECATION_HEADER =
  */
 export async function GET(request: Request) {
   try {
-    const auth = await requireRole(["provider_owner", "provider_staff"]);
+    const auth = await requireRole(["provider_owner", "provider_staff"], request);
     if (!auth) {
       return unauthorizedResponse("Authentication required");
     }
 
     const supabase = await getSupabaseServer(request);
-    const providerId = await getProviderIdForUser(auth.user.id);
+    const providerId = await getProviderIdForUser(auth.user.id, supabase, { request });
     if (!providerId) {
       return NextResponse.json(
         { data: [], error: null },

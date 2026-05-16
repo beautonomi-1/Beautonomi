@@ -352,6 +352,7 @@ function usePushRegistration() {
   const { user } = useAuth();
   const { gate } = useNativePermissionsOnboardingGate();
   const registeredRef = useRef(false);
+  const lastRegisteredPlayerIdRef = useRef<string | null>(null);
   const oneSignalInitKeyRef = useRef<string | null>(null);
   const lastUserIdRef = useRef<string | null>(null);
   const [appId, setAppId] = useState<string | null>(null);
@@ -360,6 +361,7 @@ function usePushRegistration() {
     const userId = user?.id ?? null;
     if (lastUserIdRef.current !== userId) {
       registeredRef.current = false;
+      lastRegisteredPlayerIdRef.current = null;
       oneSignalInitKeyRef.current = null;
       lastUserIdRef.current = userId;
     }
@@ -390,14 +392,16 @@ function usePushRegistration() {
     if (Platform.OS === "web" || !appId || !user) return;
     if (gate.phase === "loading") return;
 
-    const registerWithBackend = async (playerId: string) => {
-      if (registeredRef.current) return;
+    const registerWithBackend = async (playerId: string, source: string) => {
+      const normalizedPlayerId = playerId.trim();
+      if (!normalizedPlayerId) return;
+      if (registeredRef.current && lastRegisteredPlayerIdRef.current === normalizedPlayerId) return;
       try {
         const platform = Platform.OS === "ios" ? "ios" : "android";
         const res = await api.post<{ registered?: boolean }>(
           "/api/provider/devices",
           {
-            player_id: playerId,
+            player_id: normalizedPlayerId,
             platform,
           },
         );
@@ -412,13 +416,15 @@ function usePushRegistration() {
             captureError(new Error(`Device registration rejected: ${res.error.message}`), {
               scope: "push_notifications:device_register",
               code: res.error.code,
+              source,
             });
           }
         } else {
           registeredRef.current = true;
+          lastRegisteredPlayerIdRef.current = normalizedPlayerId;
         }
       } catch (err) {
-        captureError(err, { scope: "push_notifications:device_register" });
+        captureError(err, { scope: "push_notifications:device_register", source });
       }
     };
 
@@ -427,6 +433,7 @@ function usePushRegistration() {
     const init = async () => {
       try {
         const { OneSignal, LogLevel } = await import("react-native-onesignal");
+        const retryTimeoutIds: ReturnType<typeof setTimeout>[] = [];
 
         OneSignal.Debug.setLogLevel(LogLevel.None);
         OneSignal.initialize(appId);
@@ -490,6 +497,22 @@ function usePushRegistration() {
           );
         }
 
+        const onPushSubscriptionChange = async (event: unknown) => {
+          const evt = event as {
+            current?: { id?: string | null; token?: string | null };
+            subscription?: { id?: string | null; token?: string | null };
+          };
+          const nextId =
+            evt?.current?.id?.trim() ||
+            evt?.subscription?.id?.trim() ||
+            evt?.current?.token?.trim() ||
+            evt?.subscription?.token?.trim() ||
+            "";
+          if (!nextId) return;
+          await registerWithBackend(nextId, "subscription_change");
+        };
+        OneSignal.User.pushSubscription.addEventListener("change", onPushSubscriptionChange);
+
         if (gate.phase === "complete") {
           const earlySub = await OneSignal.User.pushSubscription.getIdAsync();
           if (gate.fromRestore || !earlySub) {
@@ -499,19 +522,25 @@ function usePushRegistration() {
 
         const subId = await OneSignal.User.pushSubscription.getIdAsync();
         if (subId) {
-          await registerWithBackend(subId);
+          await registerWithBackend(subId, "initial_subscription");
         } else {
-          const retryTimers = SUBSCRIPTION_RETRY_DELAYS_MS.map((delay) => setTimeout(async () => {
+          SUBSCRIPTION_RETRY_DELAYS_MS.forEach((delay) => {
+            const timeoutId = setTimeout(async () => {
             try {
               const retryId =
                 await OneSignal.User.pushSubscription.getIdAsync();
-              if (retryId) await registerWithBackend(retryId);
+                if (retryId) await registerWithBackend(retryId, `retry_${delay}`);
             } catch {
               // ignore
             }
-          }, delay));
-          unsubscribe = () => retryTimers.forEach(clearTimeout);
+            }, delay);
+            retryTimeoutIds.push(timeoutId);
+          });
         }
+        unsubscribe = () => {
+          retryTimeoutIds.forEach(clearTimeout);
+          OneSignal.User.pushSubscription.removeEventListener("change", onPushSubscriptionChange);
+        };
       } catch (e) {
         captureError(
           e instanceof Error ? e : new Error("OneSignal init failed"),
@@ -548,6 +577,7 @@ function usePushRegistration() {
         );
         if (!res.error) {
           registeredRef.current = true;
+          lastRegisteredPlayerIdRef.current = id.trim();
         }
       } catch (err) {
         captureError(err, { scope: "push_notifications:device_register_retry" });

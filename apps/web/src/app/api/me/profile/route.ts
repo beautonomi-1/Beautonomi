@@ -9,6 +9,7 @@ import {
   getProviderIdForUser,
 } from "@/lib/supabase/api-helpers";
 import { getMapboxService } from "@/lib/mapbox/mapbox";
+import { resolveIdentityVerificationDisplay } from "@/lib/verification/resolve-identity-verification-display";
 import type { User } from "@/types/beautonomi";
 
 /**
@@ -201,8 +202,7 @@ export async function GET(request: NextRequest) {
     const first_name = nameParts[0] || "";
     const last_name = nameParts.slice(1).join(" ") || "";
 
-    const verificationStatus = verification?.status || u.identity_verification_status || "none";
-    const identityVerified = verificationStatus === "approved";
+    const identityFields = resolveIdentityVerificationDisplay(u, verification);
 
     const formattedData = {
       ...userData,
@@ -221,13 +221,7 @@ export async function GET(request: NextRequest) {
         country_code: u.emergency_contact_country_code ?? "",
         phone: u.emergency_contact_phone || "",
       },
-      identity_verified: identityVerified,
-      identity_verification_status: verificationStatus,
-      identity_verification_submitted_at: verification?.submitted_at ?? null,
-      identity_verification_rejection_reason: verification?.rejection_reason ?? null,
-      identity_verification_document_url: verification?.document_url ?? null,
-      identity_verification_document_type: verification?.document_type ?? null,
-      identity_verification_id: verification?.id ?? null,
+      ...identityFields,
       about: profileData?.about ?? null,
       interests: profileData?.interests ?? null,
       beauty_preferences: profileData?.beauty_preferences || {},

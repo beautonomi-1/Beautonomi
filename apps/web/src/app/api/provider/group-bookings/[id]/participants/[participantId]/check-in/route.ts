@@ -1,7 +1,13 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import {
+  requireRoleInApi,
+  successResponse,
+  notFoundResponse,
+  handleApiError,
+  forbiddenResponse,
+  userHasProviderAccessAdmin,
+} from "@/lib/supabase/api-helpers";
 
 /**
  * POST /api/provider/group-bookings/[id]/participants/[participantId]/check-in
@@ -13,21 +19,14 @@ export async function POST(
   { params }: { params: Promise<{ id: string; participantId: string }> }
 ) {
   try {
-    const supabase = await getSupabaseServer(request);
     const admin = getSupabaseAdmin();
     const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
     const { id, participantId } = await params;
 
-    const providerId = await getProviderIdForUser(user.id, supabase);
-    if (!providerId) {
-      return notFoundResponse("Provider not found");
-    }
-
     const { data: group, error: groupError } = await admin
       .from("group_bookings")
-      .select("id")
+      .select("id, provider_id")
       .eq("id", id)
-      .eq("provider_id", providerId)
       .maybeSingle();
 
     if (groupError) {
@@ -35,6 +34,12 @@ export async function POST(
     }
     if (!group) {
       return notFoundResponse("Group booking not found");
+    }
+    if (
+      user.role !== "superadmin" &&
+      !(await userHasProviderAccessAdmin(admin, user.id, group.provider_id))
+    ) {
+      return forbiddenResponse("You do not have access to this group booking");
     }
 
     const now = new Date().toISOString();
@@ -63,7 +68,7 @@ export async function POST(
         })
         .eq("id", participant.booking_id)
         .eq("group_booking_id", id)
-        .eq("provider_id", providerId)
+        .eq("provider_id", group.provider_id)
         .not("status", "in", "(cancelled,no_show)");
       if (bookingError) {
         throw bookingError;
@@ -74,7 +79,7 @@ export async function POST(
       .from("group_bookings")
       .update({ status: "started", updated_at: now })
       .eq("id", id)
-      .eq("provider_id", providerId)
+      .eq("provider_id", group.provider_id)
       .not("status", "in", "(completed,cancelled)");
     if (statusError) {
       throw statusError;

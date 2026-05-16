@@ -6,7 +6,6 @@ import {
   TextInput,
   FlatList,
   Alert,
-  Switch,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -26,8 +25,6 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { formatCurrency, formatDuration } from "@/lib/format";
 import { Colors } from "@/constants/colors";
 import { tabScreenScrollBottomPadding } from "@/constants/layout";
-import { getTenantDefaultCurrency } from "@/lib/config-bundle";
-import { LAST_RESORT_CURRENCY } from "@beautonomi/utils";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 /* ------------------------------------------------------------------ */
@@ -48,6 +45,7 @@ interface ServiceItem {
   price: number;
   currency: string;
   is_active: boolean;
+  is_onboarding_auto_generated?: boolean;
   supports_at_home: boolean;
   supports_at_salon: boolean;
   provider_category_id?: string | null;
@@ -98,18 +96,6 @@ type ServiceSection = {
   items: ServiceItem[];
 };
 
-const EMPTY_FORM = {
-  title: "",
-  description: "",
-  duration_minutes: "60",
-  price: "",
-  currency: getTenantDefaultCurrency(),
-  category_id: "",
-  supports_at_home: false,
-  supports_at_salon: true,
-  is_active: true,
-};
-
 /* ------------------------------------------------------------------ */
 /*  Screen                                                             */
 /* ------------------------------------------------------------------ */
@@ -137,10 +123,6 @@ export default function CatalogueScreen() {
   const { execute: toggleService } = useApiMutation("patch");
   const { execute: reorderService } = useApiMutation("patch");
   const { execute: reorderCategory } = useApiMutation("patch");
-  const { execute: createService, loading: creating } = useApiPost<
-    Record<string, unknown>,
-    ServiceItem
-  >("/api/provider/services");
   const { execute: createCategory, loading: creatingCat } = useApiPost<
     Record<string, unknown>,
     CategoryOption
@@ -157,8 +139,6 @@ export default function CatalogueScreen() {
   );
   const [bulkMode, setBulkMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [addSheetOpen, setAddSheetOpen] = useState(false);
-  const [form, setForm] = useState({ ...EMPTY_FORM });
 
   // Category CRUD state
   const [catSheetOpen, setCatSheetOpen] = useState(false);
@@ -396,55 +376,9 @@ export default function CatalogueScreen() {
   }
 
   function openAddSheet() {
-    setForm({ ...EMPTY_FORM });
-    setAddSheetOpen(true);
-  }
-
-  async function handleSubmitService() {
-    if (!form.title.trim()) {
-      Alert.alert("Validation", "Service name is required.");
-      return;
-    }
-    const priceNum = parseFloat(form.price);
-    if (!form.price || isNaN(priceNum) || priceNum <= 0) {
-      Alert.alert("Validation", "Enter a valid price greater than 0.");
-      return;
-    }
-    // §Provider-audit 2026-04 (round 8): previously a provider could create
-    // a service with duration 0 or with both location types off, which
-    // passes server validation but produces a service that cannot be
-    // booked by any customer (no slots / no location). Block it up-front.
-    const durationNum = parseInt(form.duration_minutes, 10);
-    if (!Number.isFinite(durationNum) || durationNum <= 0) {
-      Alert.alert("Validation", "Duration must be greater than 0 minutes.");
-      return;
-    }
-    if (!form.supports_at_home && !form.supports_at_salon) {
-      Alert.alert(
-        "Validation",
-        "Select at least one location type — in salon or at the client's location.",
-      );
-      return;
-    }
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const payload = {
-      title: form.title.trim(),
-      description: form.description.trim() || null,
-      duration_minutes: parseInt(form.duration_minutes, 10) || 60,
-      price: parseFloat(form.price),
-      currency: form.currency,
-      category_id: form.category_id || null,
-      supports_at_home: form.supports_at_home,
-      supports_at_salon: form.supports_at_salon,
-      is_active: form.is_active,
-    };
-    const { error } = await createService(payload);
-    if (error) {
-      Alert.alert("Error", error);
-    } else {
-      setAddSheetOpen(false);
-      refresh();
-    }
+    // Keep add/edit parity on a single screen: the dedicated service form
+    // includes the full field set and the current create payload contract.
+    router.push("/(app)/(tabs)/more/service-form" as never);
   }
 
   // --- Render ---
@@ -733,7 +667,24 @@ export default function CatalogueScreen() {
                             />
                           )}
                           <View style={{ flex: 1 }}>
-                            <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }} numberOfLines={1}>{service.title}</Text>
+                            <View style={{ flexDirection: "row", alignItems: "center" }}>
+                              <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900], flexShrink: 1 }} numberOfLines={1}>
+                                {service.title}
+                              </Text>
+                              {service.is_onboarding_auto_generated ? (
+                                <View
+                                  style={{
+                                    marginLeft: 8,
+                                    borderRadius: 9999,
+                                    backgroundColor: "#e0f2fe",
+                                    paddingHorizontal: 8,
+                                    paddingVertical: 2,
+                                  }}
+                                >
+                                  <Text style={{ fontSize: 10, fontWeight: "700", color: "#0369a1" }}>Starter</Text>
+                                </View>
+                              ) : null}
+                            </View>
                             {service.description ? (
                               <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }} numberOfLines={2}>{service.description}</Text>
                             ) : null}
@@ -790,140 +741,6 @@ export default function CatalogueScreen() {
           }}
         />
       )}
-
-      {/* ════════════════════════════════════════════════════════════ */}
-      {/*  Add Service Bottom Sheet                                   */}
-      {/* ════════════════════════════════════════════════════════════ */}
-      <BottomSheet
-        visible={addSheetOpen}
-        onClose={() => setAddSheetOpen(false)}
-        title="Add Service"
-        snapHeight="full"
-      >
-        <FormField
-          label="Service Name *"
-          value={form.title}
-          onChangeText={(t) => setForm((p) => ({ ...p, title: t }))}
-          placeholder="e.g. Haircut & Blow Dry"
-        />
-        <FormField
-          label="Description"
-          value={form.description}
-          onChangeText={(t) => setForm((p) => ({ ...p, description: t }))}
-          placeholder="Brief description..."
-          multiline
-        />
-
-        <View style={{ marginBottom: 12, flexDirection: "row" }}>
-          <View style={{ flex: 1, marginRight: 12 }}>
-            <FormField
-              label="Duration (min)"
-              value={form.duration_minutes}
-              onChangeText={(t) =>
-                setForm((p) => ({ ...p, duration_minutes: t }))
-              }
-              placeholder="60"
-              keyboardType="numeric"
-            />
-          </View>
-          <View style={{ flex: 1 }}>
-            <FormField
-              label={`Price (${getTenantDefaultCurrency()}) *`}
-              value={form.price}
-              onChangeText={(t) => setForm((p) => ({ ...p, price: t }))}
-              placeholder="350.00"
-              keyboardType="numeric"
-            />
-          </View>
-        </View>
-
-        <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Currency</Text>
-        <View style={{ marginBottom: 12, flexDirection: "row" }}>
-          {[LAST_RESORT_CURRENCY, "USD", "GBP", "EUR"].map((c) => (
-            <TouchableOpacity
-              key={c}
-              style={{ borderRadius: 9999, paddingHorizontal: 16, paddingVertical: 8, marginRight: 8, backgroundColor: form.currency === c ? Colors.gray[900] : Colors.white, borderWidth: form.currency === c ? 0 : 1, borderColor: Colors.gray[200] }}
-              onPress={() => setForm((p) => ({ ...p, currency: c }))}
-              accessibilityLabel={`Select currency ${c}`}
-            >
-              <Text style={{ fontSize: 14, fontWeight: "500", color: form.currency === c ? Colors.white : Colors.gray[600] }}>{c}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {categories && categories.length > 0 && (
-          <>
-            <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Category</Text>
-            <View style={{ marginBottom: 12, flexDirection: "row", flexWrap: "wrap" }}>
-              {categories.map((cat) => (
-                <TouchableOpacity
-                  key={cat.id}
-                  style={{ borderRadius: 9999, paddingHorizontal: 16, paddingVertical: 8, marginRight: 8, marginBottom: 8, backgroundColor: form.category_id === cat.id ? Colors.gray[900] : Colors.white, borderWidth: form.category_id === cat.id ? 0 : 1, borderColor: Colors.gray[200] }}
-                  onPress={() => setForm((p) => ({ ...p, category_id: p.category_id === cat.id ? "" : cat.id }))}
-                  accessibilityLabel={`Select category ${cat.name}`}
-                >
-                  <Text style={{ fontSize: 14, fontWeight: "500", color: form.category_id === cat.id ? Colors.white : Colors.gray[600] }}>{cat.name}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </>
-        )}
-
-        <View style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], padding: 16 }}>
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-            <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <Ionicons name="home-outline" size={18} color="#6b7280" />
-              <Text style={{ marginLeft: 8, fontSize: 14, color: Colors.gray[900] }}>At Home</Text>
-            </View>
-            <Switch
-              value={form.supports_at_home}
-              onValueChange={(v) =>
-                setForm((p) => ({ ...p, supports_at_home: v }))
-              }
-              trackColor={{ false: "#d1d5db", true: "#6366f1" }}
-              thumbColor="#fff"
-              accessibilityLabel="Toggle at home"
-            />
-          </View>
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-            <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <Ionicons name="business-outline" size={18} color="#6b7280" />
-              <Text style={{ marginLeft: 8, fontSize: 14, color: Colors.gray[900] }}>At Salon</Text>
-            </View>
-            <Switch
-              value={form.supports_at_salon}
-              onValueChange={(v) =>
-                setForm((p) => ({ ...p, supports_at_salon: v }))
-              }
-              trackColor={{ false: "#d1d5db", true: "#6366f1" }}
-              thumbColor="#fff"
-              accessibilityLabel="Toggle at salon"
-            />
-          </View>
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-            <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <Ionicons name="checkmark-circle-outline" size={18} color="#6b7280" />
-              <Text style={{ marginLeft: 8, fontSize: 14, color: Colors.gray[900] }}>Active</Text>
-            </View>
-            <Switch
-              value={form.is_active}
-              onValueChange={(v) => setForm((p) => ({ ...p, is_active: v }))}
-              trackColor={{ false: "#d1d5db", true: "#22c55e" }}
-              thumbColor="#fff"
-              accessibilityLabel="Toggle active status"
-            />
-          </View>
-        </View>
-
-        <View style={{ marginTop: 8 }}>
-          <ActionButton
-            label="Add Service"
-            onPress={handleSubmitService}
-            loading={creating}
-            fullWidth
-          />
-        </View>
-      </BottomSheet>
 
       {/* ════════════════════════════════════════════════════════════ */}
       {/*  Category CRUD Bottom Sheet                                 */}

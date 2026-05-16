@@ -12,8 +12,14 @@ import { dateRangeBoundsUtc, formatDateYmd, fromBusinessTime, nowInTz } from "@/
 import { filterLedgerRowsForLocation, getProviderReportContext } from "@/lib/reports/provider-report-utils";
 import {
   mapFinanceLedgerRowToProviderUi,
+  PROVIDER_LEDGER_VISIBLE_TYPES,
   type ProviderLedgerUiRow,
 } from "@/lib/provider/provider-ledger-transaction-view";
+
+const LEDGER_PAGE_SIZE = 1000;
+const MAX_LEDGER_SCAN = 50_000;
+
+const VISIBLE_TYPES_LIST = Array.from(PROVIDER_LEDGER_VISIBLE_TYPES);
 
 export async function GET(request: NextRequest) {
   try {
@@ -63,26 +69,42 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const fetchLimit = Math.min(limit * 3, 600);
+    const mapped: ProviderLedgerUiRow[] = [];
+    let offset = 0;
 
-    const query = supabaseAdmin
-      .from("finance_transactions")
-      .select("id, transaction_type, amount, net, created_at, description, booking_id, product_order_id, metadata")
-      .eq("provider_id", providerId)
-      .gte("created_at", fromDate.toISOString())
-      .order("created_at", { ascending: false })
-      .limit(fetchLimit);
+    while (mapped.length < limit && offset < MAX_LEDGER_SCAN) {
+      const { data: pageRaw, error: pageError } = await supabaseAdmin
+        .from("finance_transactions")
+        .select("id, transaction_type, amount, net, created_at, description, booking_id, product_order_id, metadata")
+        .eq("provider_id", providerId)
+        .gte("created_at", fromDate.toISOString())
+        .in("transaction_type", VISIBLE_TYPES_LIST)
+        .order("created_at", { ascending: false })
+        .range(offset, offset + LEDGER_PAGE_SIZE - 1);
 
-    const { data: txnsRaw } = await query;
-    const txns = await filterLedgerRowsForLocation(supabaseAdmin, providerId, txnsRaw ?? [], locationId);
+      if (pageError) {
+        console.error("Error fetching transactions page:", pageError);
+        return handleApiError(pageError, "Failed to load transactions");
+      }
 
-    const mapped: ProviderLedgerUiRow[] = txns
-      .map((t: any) => mapFinanceLedgerRowToProviderUi(t))
-      .filter((x): x is ProviderLedgerUiRow => x != null);
+      const page = pageRaw ?? [];
+      if (page.length === 0) break;
 
-    const transactions = mapped.slice(0, limit);
+      const txns = await filterLedgerRowsForLocation(supabaseAdmin, providerId, page, locationId);
 
-    return successResponse(transactions);
+      for (const t of txns) {
+        const ui = mapFinanceLedgerRowToProviderUi(t);
+        if (ui) {
+          mapped.push(ui);
+          if (mapped.length >= limit) break;
+        }
+      }
+
+      if (page.length < LEDGER_PAGE_SIZE) break;
+      offset += LEDGER_PAGE_SIZE;
+    }
+
+    return successResponse(mapped);
   } catch (error) {
     console.error("Error fetching transactions:", error);
     return handleApiError(error, "Failed to load transactions");

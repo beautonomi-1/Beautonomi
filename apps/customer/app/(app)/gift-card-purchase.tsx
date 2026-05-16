@@ -9,9 +9,15 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  Linking,
 } from "react-native";
 import { Stack, useRouter, useLocalSearchParams } from "expo-router";
-import * as WebBrowser from "expo-web-browser";
+import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
+import {
+  extractPaystackReferenceFromUrl,
+  isCancelledPaystackUrl,
+  matchesExpoReturnUrl,
+} from "@/lib/paystack-webview-utils";
 import * as ExpoLinking from "expo-linking";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
@@ -54,6 +60,7 @@ export default function GiftCardPurchaseScreen() {
   const [loading, setLoading] = useState(false);
   const { cards: savedCards, defaultCard } = useSavedCards(!!user);
   const { payWithSavedCard } = usePaystackPayment();
+  const paystackHostedCheckout = useInAppPaystackCheckout();
   const [showConfirm, setShowConfirm] = useState(false);
   const [useNewCard, setUseNewCard] = useState(false);
   const [processingPayment, setProcessingPayment] = useState(false);
@@ -201,25 +208,20 @@ export default function GiftCardPurchaseScreen() {
         setProcessingMessage(gc("openingPaymentPage") || "Opening payment page…");
         if (Platform.OS !== "web") {
           const returnUrl = ExpoLinking.createURL("account-settings/payments");
-          const browserResult = await WebBrowser.openAuthSessionAsync(paymentUrl, returnUrl);
-          if (browserResult.type === "success" && browserResult.url) {
-            try {
-              const parsed = ExpoLinking.parse(browserResult.url);
-              const query = parsed.queryParams ?? {};
-              const returnedRef = query.reference ?? query.trxref;
-              reference = Array.isArray(returnedRef)
-                ? returnedRef[0] ?? reference
-                : typeof returnedRef === "string" && returnedRef.trim()
-                  ? returnedRef.trim()
-                  : reference;
-            } catch {
-              /* keep server reference */
-            }
+          const pr = await paystackHostedCheckout.waitForCheckout(paymentUrl, {
+            title: gc("securePaymentTitle") || "Secure payment",
+            matchSuccess: (u) => matchesExpoReturnUrl(u, returnUrl) && !isCancelledPaystackUrl(u),
+            matchCancel: (u) => isCancelledPaystackUrl(u),
+          });
+          if (pr.outcome === "cancel") {
+            return;
+          }
+          if (pr.outcome === "success" && pr.url && !isCancelledPaystackUrl(pr.url)) {
+            const extracted = extractPaystackReferenceFromUrl(pr.url);
+            if (extracted) reference = extracted;
           }
         } else {
-          await WebBrowser.openBrowserAsync(paymentUrl, {
-            presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN,
-          });
+          await Linking.openURL(paymentUrl);
         }
 
         setProcessingMessage(gc("confirmingPayment") || "Confirming your payment…");
@@ -248,6 +250,7 @@ export default function GiftCardPurchaseScreen() {
       defaultCard?.id,
       savedCards,
       total,
+      paystackHostedCheckout,
     ],
   );
 
@@ -388,6 +391,7 @@ export default function GiftCardPurchaseScreen() {
           <Text style={{ fontSize: 12, color: Colors.gray[500], textAlign: "center", marginTop: 16 }}>{gc("paymentRedirectHint")}</Text>
         </ScrollView>
       </KeyboardAvoidingView>
+      {paystackHostedCheckout.modal}
     </>
   );
 }

@@ -159,7 +159,9 @@ export async function GET(request: NextRequest) {
     // only on the rendered transaction list (below).
     const financeQuery = db
       .from("finance_transactions")
-      .select("id, transaction_type, amount, net, fees, commission, created_at, description, booking_id, product_order_id")
+      .select(
+        "id, transaction_type, amount, net, fees, commission, created_at, description, booking_id, product_order_id, currency",
+      )
       .eq("provider_id", providerId)
       .gte("created_at", startIso)
       .lte("created_at", nowIso)
@@ -398,11 +400,56 @@ export async function GET(request: NextRequest) {
     const minimumPayoutAmount = Number(payoutSettingsData.minimum_payout_amount ?? 100);
 
     // Available balance and pending payouts: use ledger + payouts table (aligned with payouts API validation).
-    const { availableBalance, pendingPayoutsSum } = await getAvailablePayoutBalance(db, providerId, {
-      holdDays,
-      tenantId: providerTenantId,
-    });
+    const { availableBalance, pendingPayoutsSum, rawBalance, hasNegativeBalance } = await getAvailablePayoutBalance(
+      db,
+      providerId,
+      {
+        holdDays,
+        tenantId: providerTenantId,
+      },
+    );
+
+    const ledgerCurrencies = [
+      ...new Set(rows.map((r: any) => (r.currency as string | null) || lastResortCurrency).filter(Boolean)),
+    ] as string[];
+    const ledger_currency_note =
+      ledgerCurrencies.length > 1
+        ? "Multiple currencies detected in finance_transactions; headline totals mix currencies until rows are fully stamped. Prefer per-currency reporting for reconciliation."
+        : null;
     const pendingPayouts = pendingPayoutsSum;
+
+    /** Booking-level discounts (already baked into totals the customer paid; informational). */
+    const sumBookingDiscounts = async (fromIsoIn?: string, toIsoIn?: string) => {
+      let membership = 0;
+      let loyalty = 0;
+      let promo = 0;
+      for (let off = 0; ; off += 1000) {
+        let bq = db
+          .from("bookings")
+          .select("membership_discount_amount, loyalty_discount_amount, promotion_discount_amount")
+          .eq("provider_id", providerId);
+        if (locationId) bq = bq.eq("location_id", locationId);
+        if (fromIsoIn && toIsoIn) {
+          bq = bq.gte("created_at", fromIsoIn).lte("created_at", toIsoIn);
+        }
+        const { data: dchunk, error: derr } = await bq.range(off, off + 999);
+        if (derr) {
+          console.warn("[finance] booking discount aggregate:", derr);
+          break;
+        }
+        const chunk = dchunk ?? [];
+        for (const r of chunk as any[]) {
+          membership += Number(r.membership_discount_amount ?? 0);
+          loyalty += Number(r.loyalty_discount_amount ?? 0);
+          promo += Number(r.promotion_discount_amount ?? 0);
+        }
+        if (chunk.length < 1000) break;
+      }
+      return { membership_discounts_applied: membership, loyalty_discounts_applied: loyalty, promo_discounts_applied: promo };
+    };
+
+    const discountsThisPeriod = await sumBookingDiscounts(startIso, nowIso);
+    const discountsAllTime = await sumBookingDiscounts();
 
     const rowsForTransactionList =
       locationId && transactionListAllLocations ? enrichedBeforeLocationFilter : rows;
@@ -428,7 +475,7 @@ export async function GET(request: NextRequest) {
         net: Number(r.net ?? r.amount ?? 0),
         fees: Number(r.fees || 0),
         commission: Number(r.commission || 0),
-        currency: lastResortCurrency,
+        currency: (r.currency as string | null) || lastResortCurrency,
         status: "completed" as const,
         description:
           r.transaction_type === "service_fee"
@@ -440,9 +487,18 @@ export async function GET(request: NextRequest) {
 
     return successResponse({
       earnings: {
+        /**
+         * Sum of `provider_earnings` net only. **Not additive** with `gift_card_sales_this_period` /
+         * `membership_sales_this_period` (those are separate liability / deferred-revenue flows — F19).
+         */
         total_earnings: providerEarningsTotal,
         pending_payouts: pendingPayouts,
         available_balance: availableBalance,
+        raw_payout_balance: rawBalance,
+        has_negative_payout_balance: hasNegativeBalance,
+        balance_owed_to_platform: hasNegativeBalance ? Math.abs(rawBalance) : 0,
+        ledger_currencies: ledgerCurrencies,
+        ledger_currency_note,
         payout_hold_days: holdDays,
         minimum_payout_amount: minimumPayoutAmount,
         this_month: thisMonthTotal,
@@ -468,6 +524,12 @@ export async function GET(request: NextRequest) {
         cancellation_fees_this_period: cancellationFeesThisPeriod,
         additional_charges_total: additionalChargesTotal,
         additional_charges_this_period: additionalChargesThisPeriod,
+        membership_discounts_this_period: discountsThisPeriod.membership_discounts_applied,
+        loyalty_discounts_this_period: discountsThisPeriod.loyalty_discounts_applied,
+        promo_discounts_this_period: discountsThisPeriod.promo_discounts_applied,
+        membership_discounts_total: discountsAllTime.membership_discounts_applied,
+        loyalty_discounts_total: discountsAllTime.loyalty_discounts_applied,
+        promo_discounts_total: discountsAllTime.promo_discounts_applied,
       },
       transactions: transactions,
       language_context: {
@@ -477,8 +539,10 @@ export async function GET(request: NextRequest) {
           total_earnings: "provider earnings",
           product_sales_earnings_total: "platform-held ecommerce provider earnings",
           walk_in_additional_charges_total: "cash register/end-of-day collection",
-          gift_card_sales_this_period: "liability movement",
-          membership_sales_this_period: "liability or deferred revenue movement",
+          gift_card_sales_this_period:
+            "liability movement — do not add to total_earnings (gift card cash is not provider service income)",
+          membership_sales_this_period:
+            "liability or deferred revenue movement — do not add to total_earnings (not the same as booked service earnings)",
           platform_fees_deducted: "platform revenue and fees",
         },
         glossary: {
