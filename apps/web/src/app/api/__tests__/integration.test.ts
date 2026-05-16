@@ -110,6 +110,7 @@ function createWebhookSupabase() {
         filters[column] = value;
         return chain;
       },
+      in: () => chain,
       lt: () => chain,
       gt: () => chain,
       maybeSingle: async () => ({ data: rowForMaybeSingle(table, filters), error: null }),

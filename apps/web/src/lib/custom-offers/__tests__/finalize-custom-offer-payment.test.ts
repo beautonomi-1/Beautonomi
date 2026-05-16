@@ -23,6 +23,7 @@ vi.mock("@/lib/bookings/conflict-check", () => ({
 
 vi.mock("@/lib/bookings/ensure-wallet-gift-booking-payments", () => ({
   ensureWalletGiftBookingPayments: vi.fn(async () => undefined),
+  completeWalletGiftSyntheticPayments: vi.fn(async () => undefined),
 }));
 
 vi.mock("@/lib/loyalty/record-redemption", () => ({
