@@ -540,6 +540,7 @@ async function runVerificationAlerts(
   now: Date,
   summary: SlackOperationalAlertSummary
 ) {
+  // ── User identity verifications (manual uploads + SumSub customer flow) ──
   type Verification = { id: string; user_id?: string | null; submitted_at?: string | null; created_at?: string | null; verification_type?: string | null };
   const { data: pending } = await supabase
     .from("user_verifications")
@@ -562,6 +563,46 @@ async function runVerificationAlerts(
       title: stuck ? "Verification stuck in review" : "Verification needs review",
       detailLines: [`Type: ${verification.verification_type || "identity"}`, `Age: ${ageLabel(submittedAt, now)}`, "Action: approve, reject, or request correction"],
       actionUrl: `/verifications/${verification.id}`,
+    });
+  }
+
+  // ── Provider KYC (`provider_verification_status`) stuck in progress ──
+  // Covers SumSub provider flows that produced an `in_progress` outcome and
+  // haven't resolved within 24 h, as well as manual in_progress records.
+  type KycRow = {
+    provider_id: string;
+    status: string | null;
+    updated_at: string | null;
+    providers: { business_name?: string | null; tenant_id?: string | null } | null;
+  };
+  const kycCutoff = isoBefore(now, 24 * HOUR);
+  const { data: stuckKyc } = await supabase
+    .from("provider_verification_status")
+    .select("provider_id, status, updated_at, providers!inner(business_name, tenant_id)")
+    .eq("providers.tenant_id", tenantId)
+    .in("status", ["pending", "in_progress"])
+    .lt("updated_at", kycCutoff)
+    .order("updated_at", { ascending: true })
+    .limit(10);
+
+  for (const row of (stuckKyc ?? []) as KycRow[]) {
+    const prov = Array.isArray(row.providers) ? row.providers[0] : row.providers;
+    const businessName = prov?.business_name ?? null;
+    await emit(summary, {
+      tenantId,
+      environment: eventEnv(),
+      eventKey: SLACK_EVENT_KEYS.VERIFICATION_STUCK,
+      dedupeKey: `provider-kyc:${row.provider_id}:stuck:${dayKey(now)}`,
+      entityType: "provider_verification",
+      entityId: row.provider_id,
+      title: "Provider KYC stuck in review",
+      detailLines: [
+        businessName ? `Provider: ${businessName}` : `Provider ID: ${row.provider_id.slice(0, 8)}…`,
+        `KYC status: ${row.status ?? "unknown"}`,
+        `Last update: ${ageLabel(row.updated_at, now)}`,
+        "Action: check SumSub or approve manually in Admin → Provider Lifecycle",
+      ],
+      actionUrl: `/provider-ops/providers/${row.provider_id}`,
     });
   }
 }

@@ -46,10 +46,41 @@ export async function GET(
 
     const { data: user, error: userErr } = await supabase
       .from("users")
-      .select("id, email, full_name, phone, role, created_at")
+      .select(
+        "id, email, full_name, phone, role, created_at, identity_verified, identity_verification_status"
+      )
       .eq("id", provider.user_id)
       .single();
     if (userErr) throw userErr;
+
+    // Layer 2 — KYC / provider verification snapshot for the lifecycle view.
+    // Best-effort: never fail the whole page if this lookup errors.
+    let kyc: {
+      status: string;
+      last_reviewed_at: string | null;
+      updated_at: string | null;
+    } | null = null;
+    try {
+      const { data: kycRow } = await supabase
+        .from("provider_verification_status")
+        .select("status, last_reviewed_at, updated_at")
+        .eq("provider_id", providerId)
+        .maybeSingle();
+      if (kycRow) {
+        const r = kycRow as {
+          status?: string | null;
+          last_reviewed_at?: string | null;
+          updated_at?: string | null;
+        };
+        kyc = {
+          status: r.status ?? "pending",
+          last_reviewed_at: r.last_reviewed_at ?? null,
+          updated_at: r.updated_at ?? null,
+        };
+      }
+    } catch (kycErr) {
+      console.error("[lifecycle] provider_verification_status lookup failed:", kycErr);
+    }
 
     const { data: tracking, error: trackErr } = await supabase
       .from("provider_onboarding_tracking")
@@ -180,6 +211,7 @@ export async function GET(
     return successResponse({
       provider,
       user,
+      kyc,
       tracking,
       lead,
       timeline,

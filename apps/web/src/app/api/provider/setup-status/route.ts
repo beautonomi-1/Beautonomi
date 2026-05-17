@@ -12,6 +12,7 @@ import { locationHasOperatingHours } from "@/lib/provider/location-operating-hou
 interface SetupStatus {
   isComplete: boolean;
   completionPercentage: number;
+  missing_steps: string[];
   steps: {
     id: string;
     title: string;
@@ -84,6 +85,7 @@ export async function GET(request: NextRequest) {
       return successResponse<SetupStatus>({
         isComplete: false,
         completionPercentage: 0,
+        missing_steps: [],
         steps: [],
       });
     }
@@ -100,6 +102,7 @@ export async function GET(request: NextRequest) {
       return successResponse<SetupStatus>({
         isComplete: false,
         completionPercentage: 0,
+        missing_steps: [],
         steps: [],
       });
     }
@@ -109,7 +112,7 @@ export async function GET(request: NextRequest) {
 
     const { data: accountUser } = await supabaseAdmin
       .from("users")
-      .select("email, phone")
+      .select("email, phone, identity_verified, identity_verification_status")
       .eq("id", user.id)
       .maybeSingle();
 
@@ -191,6 +194,11 @@ export async function GET(request: NextRequest) {
       acceptCard === true ||
       acceptOnline === true ||
       effectiveGiftCardsEnabled === true;
+
+    // Identity verification — optional step for marketplace trust badge.
+    // Reads from users.identity_verified (synced by the admin verification PATCH).
+    const isIdentityVerified =
+      (accountUser as { identity_verified?: boolean | null } | null)?.identity_verified === true;
 
     // Personal profile — required for freelancers only
     const { data: userProfile } = await supabaseAdmin
@@ -327,6 +335,15 @@ export async function GET(request: NextRequest) {
         required: false,
         link: "/provider/settings/gallery",
       },
+      {
+        id: "identity-verification",
+        title: "Identity Verification",
+        description:
+          "Verify your identity to earn the 'Verified' marketplace badge and increase customer trust",
+        completed: isIdentityVerified,
+        required: false,
+        link: "/provider/settings/verification",
+      },
     ];
 
     const requiredSteps = steps.filter((s) => s.required);
@@ -337,10 +354,12 @@ export async function GET(request: NextRequest) {
         : 0;
     const isComplete =
       completedRequired === requiredSteps.length && requiredSteps.length > 0;
+    const missingSteps = requiredSteps.filter((s) => !s.completed).map((s) => s.id);
 
     return successResponse<SetupStatus>({
       isComplete,
-      completionPercentage,
+      completionPercentage: isComplete ? 100 : completionPercentage,
+      missing_steps: missingSteps,
       steps,
     });
   } catch (error) {

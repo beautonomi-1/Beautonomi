@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { format } from "date-fns";
+import { addDays, format } from "date-fns";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { verifyCronRequest } from "@/lib/cron-auth";
@@ -9,8 +9,15 @@ import { createBookingFromRecurringSeries } from "@/lib/recurring/create-booking
 /**
  * GET /api/cron/process-recurring-bookings
  *
- * Daily cron: create the next due booking for each active series (does not charge cards).
+ * Daily cron: materializes due booking instances for every active series so
+ * both the provider calendar and the customer "upcoming" view always show the
+ * next recurring visit ahead of time. Does not charge cards.
+ *
+ * Look-ahead window — bookings are pre-created for any occurrence whose date
+ * falls within this many days from today. 14 days matches what most calendar
+ * apps surface ("see your next two weeks").
  */
+const LOOKAHEAD_DAYS = 14;
 export async function GET(request: NextRequest) {
   try {
     const auth = verifyCronRequest(request);
@@ -20,6 +27,7 @@ export async function GET(request: NextRequest) {
 
     const supabaseAdmin = getSupabaseAdmin();
     const todayStr = format(new Date(), "yyyy-MM-dd");
+    const horizonStr = format(addDays(new Date(), LOOKAHEAD_DAYS), "yyyy-MM-dd");
 
     const { data: recurring, error } = await supabaseAdmin
       .from("recurring_appointments")
@@ -69,46 +77,48 @@ export async function GET(request: NextRequest) {
         }
 
         const lastRaw = appointment.last_booking_date;
-        const lastBookingDate =
+        let lastBookingDate =
           typeof lastRaw === "string" && lastRaw
             ? lastRaw
             : lastRaw instanceof Date
               ? format(lastRaw, "yyyy-MM-dd")
               : null;
 
-        const nextDue = nextRecurringOccurrenceDate({
-          startDate: appointment.start_date,
-          lastBookingDate,
-          frequency: appointment.frequency,
-          recurrenceRule: appointment.recurrence_rule,
-        });
+        // Materialize every occurrence between now and the look-ahead horizon
+        // so the calendar always shows the next visit ahead of time. Bounded
+        // by `MAX_OCCURRENCES_PER_RUN` per series to keep cron runs cheap.
+        const MAX_OCCURRENCES_PER_RUN = 8;
+        let createdThisSeries = 0;
+        while (createdThisSeries < MAX_OCCURRENCES_PER_RUN) {
+          const nextDue = nextRecurringOccurrenceDate({
+            startDate: appointment.start_date,
+            lastBookingDate,
+            frequency: appointment.frequency,
+            recurrenceRule: appointment.recurrence_rule,
+          });
 
-        if (!nextDue || !isDateOnOrBeforeEnd(nextDue, appointment.end_date)) {
-          continue;
+          if (!nextDue || !isDateOnOrBeforeEnd(nextDue, appointment.end_date)) break;
+          if (nextDue > horizonStr) break;
+
+          const created = await createBookingFromRecurringSeries(supabaseAdmin, appointment, nextDue);
+          if ("error" in created) {
+            errors.push(`${appointment.id}: ${created.error}`);
+            break;
+          }
+
+          const { error: updErr } = await supabaseAdmin
+            .from("recurring_appointments")
+            .update({ last_booking_date: nextDue, updated_at: new Date().toISOString() })
+            .eq("id", appointment.id);
+          if (updErr) {
+            errors.push(`${appointment.id}: last_booking_date update failed: ${updErr.message}`);
+            break;
+          }
+
+          lastBookingDate = nextDue;
+          createdThisSeries++;
+          processed++;
         }
-
-        if (nextDue > todayStr) {
-          continue;
-        }
-
-        const created = await createBookingFromRecurringSeries(supabaseAdmin, appointment, nextDue);
-
-        if ("error" in created) {
-          errors.push(`${appointment.id}: ${created.error}`);
-          continue;
-        }
-
-        const { error: updErr } = await supabaseAdmin
-          .from("recurring_appointments")
-          .update({ last_booking_date: nextDue, updated_at: new Date().toISOString() })
-          .eq("id", appointment.id);
-
-        if (updErr) {
-          errors.push(`${appointment.id}: last_booking_date update failed: ${updErr.message}`);
-          continue;
-        }
-
-        processed++;
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         errors.push(`${appointment.id}: ${msg}`);

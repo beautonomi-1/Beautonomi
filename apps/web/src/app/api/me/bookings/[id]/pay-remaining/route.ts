@@ -33,6 +33,9 @@ export async function POST(
     const { user } = await requireRoleInApi(["customer"], request);
     const supabase = await getSupabaseServer(request);
     const { id: bookingId } = await params;
+    const body = await request.json().catch(() => ({} as { callback_url?: string }));
+    const callbackFromClient =
+      typeof body?.callback_url === "string" ? body.callback_url.trim() : "";
 
     const { data: booking, error: bookingError } = await supabase
       .from("bookings")
@@ -121,8 +124,14 @@ export async function POST(
     const reference = generateTransactionReference("remaining", bookingId);
 
     const remainingAppUrl = process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com";
-    const remainingCallbackUrl = `${remainingAppUrl}/account-settings/bookings/${bookingId}/payment-callback?pay_remaining=1`;
-    const remainingCancelAction = `${remainingAppUrl}/account-settings/bookings/${bookingId}?pay_remaining_cancelled=1`;
+    const remainingCallbackUrl =
+      callbackFromClient && (callbackFromClient.startsWith("customer://") || callbackFromClient.startsWith("exp://"))
+        ? `${callbackFromClient}${callbackFromClient.includes("?") ? "&" : "?"}pay_remaining=1`
+        : `${remainingAppUrl}/account-settings/bookings/${bookingId}/payment-callback?pay_remaining=1`;
+    const remainingCancelAction =
+      callbackFromClient && (callbackFromClient.startsWith("customer://") || callbackFromClient.startsWith("exp://"))
+        ? `${callbackFromClient}${callbackFromClient.includes("?") ? "&" : "?"}pay_remaining_cancelled=1`
+        : `${remainingAppUrl}/account-settings/bookings/${bookingId}?pay_remaining_cancelled=1`;
 
     const paystackResponse = await initializePaystackTransaction({
       email: customer.email,

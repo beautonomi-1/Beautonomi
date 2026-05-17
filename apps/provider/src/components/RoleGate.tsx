@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
-import { View, Text, TouchableOpacity } from "react-native";
+import { DeviceEventEmitter, View, Text, TouchableOpacity } from "react-native";
 import { usePathname, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/providers/AuthProvider";
@@ -60,6 +60,16 @@ export function RoleGate({ children }: RoleGateProps) {
     }
     lastResolved.current = next;
   }, [user?.id, loading, blocked, blockReason]);
+
+  // Auto-retry when the app comes to foreground / network recovers so the
+  // network-error block screen heals itself without any manual tap.
+  useEffect(() => {
+    if (!blocked || blockReason !== "network") return;
+    const handler = () => { if (!loading) void refresh(); };
+    const subFocus = DeviceEventEmitter.addListener("beautonomi:app:focus", handler);
+    const subRecover = DeviceEventEmitter.addListener("beautonomi:network:recover", handler);
+    return () => { subFocus.remove(); subRecover.remove(); };
+  }, [blocked, blockReason, loading, refresh]);
 
   if (!user) return null;
   if (loading) {

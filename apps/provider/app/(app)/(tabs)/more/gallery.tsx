@@ -149,23 +149,44 @@ export default function GalleryScreen() {
             return;
           }
 
+          // Multi-select is only enabled when adding to gallery; profile/listing
+          // overrides apply to exactly one image so they stay single-select.
+          const allowMulti = !applyAs;
           const result = await ImagePicker.launchImageLibraryAsync({
             mediaTypes: PICKER_MEDIA,
             quality: 0.85,
             base64: false,
-            allowsMultipleSelection: false,
+            allowsMultipleSelection: allowMulti,
+            selectionLimit: allowMulti ? 10 : 1,
           });
 
-          if (result.canceled || !result.assets?.[0]) return;
-          const asset = result.assets[0];
-          if (asset.fileSize != null && asset.fileSize > 8 * 1024 * 1024) {
-            Alert.alert("File too large", "Please choose an image under 8MB.");
-            return;
+          if (result.canceled || !result.assets?.length) return;
+
+          // Filter out files that are too large; warn once if any were skipped.
+          const MAX_BYTES = 8 * 1024 * 1024;
+          const tooLarge = result.assets.filter((a) => a.fileSize != null && a.fileSize > MAX_BYTES);
+          const eligible = result.assets.filter((a) => a.fileSize == null || a.fileSize <= MAX_BYTES);
+          if (tooLarge.length > 0) {
+            Alert.alert(
+              "Some files were too large",
+              `${tooLarge.length} image${tooLarge.length === 1 ? "" : "s"} exceeded 8MB and ${tooLarge.length === 1 ? "was" : "were"} skipped.`,
+            );
           }
+          if (eligible.length === 0) return;
 
           setUploading(true);
-          const ok = await uploadGalleryMultipart(asset, applyAs);
-          if (ok) await refresh();
+          // Upload in parallel (server accepts one file per request).
+          const results = await Promise.all(
+            eligible.map((asset) => uploadGalleryMultipart(asset, applyAs)),
+          );
+          const okCount = results.filter(Boolean).length;
+          if (okCount > 0) await refresh();
+          if (okCount < eligible.length) {
+            Alert.alert(
+              "Some uploads failed",
+              `${eligible.length - okCount} of ${eligible.length} photo${eligible.length === 1 ? "" : "s"} could not be uploaded. Please try again.`,
+            );
+          }
         } catch (e) {
           Alert.alert("Upload failed", e instanceof Error ? e.message : "Something went wrong.");
         } finally {

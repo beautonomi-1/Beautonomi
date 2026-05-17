@@ -264,6 +264,7 @@ export const adminQueryKeys = {
     reportsFunnel: () => [...adminQueryKeys.providerOps.all(), "reports", "funnel"] as const,
     reportsDropoff: () => [...adminQueryKeys.providerOps.all(), "reports", "dropoff"] as const,
     reportsLeadAssignees: () => [...adminQueryKeys.providerOps.all(), "reports", "lead-assignees"] as const,
+    reportsPreviousSoftware: () => [...adminQueryKeys.providerOps.all(), "reports", "previous-software"] as const,
     assignableUsers: (q: string) => [...adminQueryKeys.providerOps.all(), "assignable-users", q] as const,
     settings: () => [...adminQueryKeys.providerOps.all(), "settings"] as const,
     categories: () => [...adminQueryKeys.providerOps.all(), "categories"] as const,

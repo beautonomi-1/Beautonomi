@@ -352,6 +352,8 @@ async function sendOneSignalNotification(
     priority?: number;
     ios_sound?: string;
     android_channel_id?: string;
+    ios_badgeType?: "SetTo" | "Increase";
+    ios_badgeCount?: number;
     ios_interruption_level?: "passive" | "active" | "time_sensitive" | "critical";
   },
   options?: OneSignalSendOptions
@@ -447,6 +449,12 @@ async function sendOneSignalNotification(
   }
   if (payload.ios_sound) {
     notification.ios_sound = payload.ios_sound;
+  }
+  if (payload.ios_badgeType) {
+    notification.ios_badgeType = payload.ios_badgeType;
+  }
+  if (typeof payload.ios_badgeCount === "number") {
+    notification.ios_badgeCount = payload.ios_badgeCount;
   }
   if (payload.android_channel_id) {
     notification.android_channel_id = payload.android_channel_id;
@@ -625,10 +633,14 @@ export async function sendToUser(
   if (playerIds.length > 0 && normalizedChannels.includes("push")) {
     notificationPayload.include_player_ids = playerIds;
     notificationPayload.ios_interruption_level = "time_sensitive";
+    notificationPayload.ios_badgeType = "Increase";
+    notificationPayload.ios_badgeCount = 1;
   }
   const passthrough = payload as Record<string, unknown>;
   if (passthrough.priority !== undefined) notificationPayload.priority = passthrough.priority;
   if (passthrough.ios_sound) notificationPayload.ios_sound = passthrough.ios_sound;
+  if (passthrough.ios_badgeType) notificationPayload.ios_badgeType = passthrough.ios_badgeType;
+  if (typeof passthrough.ios_badgeCount === "number") notificationPayload.ios_badgeCount = passthrough.ios_badgeCount;
   if (passthrough.android_channel_id) notificationPayload.android_channel_id = passthrough.android_channel_id;
   if (passthrough.ios_interruption_level) notificationPayload.ios_interruption_level = passthrough.ios_interruption_level;
 
@@ -689,6 +701,8 @@ export async function sendToUsers(
   if (playerIds.length > 0 && normalizedChannels.includes("push")) {
     notificationPayload.include_player_ids = playerIds;
     notificationPayload.ios_interruption_level = "time_sensitive";
+    notificationPayload.ios_badgeType = "Increase";
+    notificationPayload.ios_badgeCount = 1;
   }
   if (typeof payload.subtitle === "string" && payload.subtitle.trim()) {
     notificationPayload.subtitle = { en: payload.subtitle.trim() };
@@ -702,6 +716,8 @@ export async function sendToUsers(
   const passthrough = payload as Record<string, unknown>;
   if (passthrough.priority !== undefined) notificationPayload.priority = passthrough.priority;
   if (passthrough.ios_sound) notificationPayload.ios_sound = passthrough.ios_sound;
+  if (passthrough.ios_badgeType) notificationPayload.ios_badgeType = passthrough.ios_badgeType;
+  if (typeof passthrough.ios_badgeCount === "number") notificationPayload.ios_badgeCount = passthrough.ios_badgeCount;
   if (passthrough.android_channel_id) notificationPayload.android_channel_id = passthrough.android_channel_id;
   if (passthrough.ios_interruption_level) notificationPayload.ios_interruption_level = passthrough.ios_interruption_level;
 
@@ -781,7 +797,7 @@ export async function getNotificationTemplate(
   supabaseClient?: SupabaseClient<Database>,
   tenantId?: string | null,
 ): Promise<NotificationTemplateRow | null> {
-  const supabase = supabaseClient ?? (await getSupabaseServer());
+  const supabase = supabaseClient ?? getSupabaseAdmin();
 
   // 1. If tenantId provided, try tenant-specific template first
   if (tenantId) {

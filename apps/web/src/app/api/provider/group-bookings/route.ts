@@ -458,6 +458,16 @@ export async function POST(request: NextRequest) {
     // unique violation on booking_id, etc.) so the operator can fix the
     // underlying input instead of being stranded with a half-created group.
     if (normalizedParticipants.length > 0) {
+      // §Group-booking-audit 2026-05 (primary normalize): guarantee exactly
+      // one participant is marked primary. The previous `?? idx === 0`
+      // fallback failed when every payload explicitly set `is_primary_contact:
+      // false`, leaving the group with no primary contact → downstream
+      // reschedule/cancel notify routes returned 400 "no primary contact yet".
+      const explicitPrimaryIdx = normalizedParticipants.findIndex(
+        (p: any) => p?.is_primary_contact === true,
+      );
+      const primaryIdxResolved = explicitPrimaryIdx >= 0 ? explicitPrimaryIdx : 0;
+
       const participantRows = normalizedParticipants.map((p: any, idx: number) => ({
         group_booking_id: groupBooking.id,
         booking_id: p.booking_id || null,
@@ -468,7 +478,7 @@ export async function POST(request: NextRequest) {
         participant_name: p.name || p.participant_name || p.client_name || '—',
         participant_email: p.email || p.participant_email || p.client_email || null,
         participant_phone: p.phone || p.participant_phone || p.client_phone || null,
-        is_primary_contact: p.is_primary_contact ?? idx === 0,
+        is_primary_contact: idx === primaryIdxResolved,
         service_id: p.service_id || service_id || null,
         service_name: p.service_name || null,
         price: typeof p.price === 'number' ? p.price : 0,
@@ -515,6 +525,40 @@ export async function POST(request: NextRequest) {
         if (linkError) {
           console.warn("Failed to link existing bookings to group:", linkError);
         }
+      }
+
+      // §Group-booking-audit 2026-05 (primary booking_id link): record the
+      // primary contact's booking on `group_bookings.primary_contact_booking_id`
+      // so notify-reschedule / notify-cancellation can route through the real
+      // bookings row that carries the customer.
+      const primaryParticipantInput = normalizedParticipants[primaryIdxResolved];
+      const primaryBookingId: string | null =
+        primaryParticipantInput?.booking_id ?? null;
+      if (primaryBookingId) {
+        const { error: linkPrimaryErr } = await admin
+          .from("group_bookings")
+          .update({
+            primary_contact_booking_id: primaryBookingId,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", groupBooking.id);
+        if (linkPrimaryErr) {
+          console.warn("Failed to set primary_contact_booking_id on group:", linkPrimaryErr);
+        }
+      }
+
+      // §Group-booking-audit 2026-05 (notify primary): when the caller opts
+      // in (default true to match single-booking parity), send a single
+      // confirmation to the primary contact — never to every participant, to
+      // avoid spamming guests who didn't book themselves.
+      const shouldNotifyPrimary = body?.send_notification !== false;
+      if (shouldNotifyPrimary && primaryBookingId) {
+        void import("@/lib/notifications/notification-service")
+          .then(({ notifyBookingConfirmed }) =>
+            notifyBookingConfirmed(primaryBookingId, ["email", "push"])
+              .catch((e) => console.warn("Group primary confirmation:", e)),
+          )
+          .catch((e) => console.warn("Group primary confirmation import:", e));
       }
     }
 

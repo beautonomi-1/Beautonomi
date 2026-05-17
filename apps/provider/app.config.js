@@ -37,7 +37,7 @@ const BASE_EXPO_CONFIG = {
   runtimeVersion: {
     policy: "appVersion",
   },
-  version: "1.0.39",
+  version: "1.0.40",
   orientation: "default",
   icon: "./assets/icon.png",
   userInterfaceStyle: "automatic",
@@ -140,7 +140,7 @@ const BASE_EXPO_CONFIG = {
     supportsTablet: true,
     bundleIdentifier: "com.beautonomi.partner",
     appleTeamId: "QW33CYPQX5",
-    buildNumber: "231",
+    buildNumber: "232",
     infoPlist: {
       UIBackgroundModes: ["remote-notification"],
       ITSAppUsesNonExemptEncryption: false,
@@ -171,7 +171,7 @@ const BASE_EXPO_CONFIG = {
       "android.permission.POST_NOTIFICATIONS",
       "com.google.android.gms.permission.AD_ID",
     ],
-    versionCode: 232,
+    versionCode: 233,
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     softwareKeyboardLayoutMode: "resize",

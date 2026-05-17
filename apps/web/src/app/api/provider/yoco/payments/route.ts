@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
@@ -387,6 +388,17 @@ export async function POST(request: Request) {
       }
     }
 
+    // §Yoco-audit 2026-05 (idempotency): forward an Idempotency-Key derived
+    // from `client_reference` so the Yoco Web POS API safely deduplicates
+    // when this route is retried (network blip / our caller re-invokes).
+    // Yoco accepts arbitrary UUID-ish keys per their API reference; we use a
+    // stable hash of provider+device+client_reference so the same logical
+    // sale produces the same key across retries from any client.
+    const idempotencyKey = crypto
+      .createHash("sha256")
+      .update(`${providerId}:${yocoDeviceId}:${clientReference}:${amountInCents}:${currency}`)
+      .digest("hex");
+
     // Auth: Bearer token (Yoco API uses JWT; we store secret_key from Yoco dashboard as the Bearer token for api.yoco.com)
     const yocoResponse = await fetch(
       YOCO_ENDPOINTS.createWebPosPayment(yocoDeviceId),
@@ -395,6 +407,7 @@ export async function POST(request: Request) {
         headers: {
           Authorization: `Bearer ${secretKey}`,
           "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKey,
         },
         body: JSON.stringify({
           amount: { amount: amountInCents, currency },

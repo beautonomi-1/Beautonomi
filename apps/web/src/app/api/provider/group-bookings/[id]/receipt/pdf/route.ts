@@ -7,8 +7,10 @@ import {
   drawPdfHeader,
   drawPdfInfoGrid,
   drawPdfLineItems,
+  drawPdfPayments,
   drawPdfSectionTitle,
   drawPdfTotals,
+  formatPaymentMethodLabel,
   formatPdfDate,
   moneyPdf,
 } from "@/lib/receipts/pdf-design";
@@ -37,6 +39,29 @@ type GroupReceiptData = {
     platform_fee_amount?: number | null;
     amount_paid?: number | null;
     refunded?: number | null;
+  }>;
+  // §Group-booking-audit 2026-05 (receipt completeness): flat list of every
+  // recorded `booking_payments` row across the group so the PDF renders a
+  // proper Payments section with method + when + amount per row.
+  payments?: Array<{
+    booking_number?: string | null;
+    participant_name?: string | null;
+    payment_method?: string | null;
+    payment_provider?: string | null;
+    amount?: number;
+    paid_at?: string | null;
+    status?: string | null;
+    notes?: string | null;
+  }>;
+  // §Group-booking-audit 2026-05 (receipt completeness): retail products
+  // attached to the group session (sold alongside services). Previously the
+  // PDF ignored these so receipts under-reported what the customer received.
+  products?: Array<{
+    product_name?: string | null;
+    product_variant_name?: string | null;
+    quantity?: number;
+    unit_price?: number;
+    total_price?: number;
   }>;
   subtotal: number;
   products_total?: number;
@@ -156,6 +181,47 @@ export async function GET(
       })),
       { title: "Participants" },
     );
+
+    // §Group-booking-audit 2026-05: render retail products attached to the
+    // group as their own line items section so receipts cover the full sale,
+    // not only participant services.
+    if (Array.isArray(r.products) && r.products.length > 0) {
+      drawPdfLineItems(
+        doc,
+        r.products.map((product) => {
+          const qty = Math.max(1, Number(product.quantity || 1));
+          const unit = Number(product.unit_price || 0);
+          const total = Number(product.total_price || unit * qty);
+          return {
+            description: `${product.product_name || "Product"}${product.product_variant_name ? ` · ${product.product_variant_name}` : ""}`,
+            detail: `Qty ${qty} × ${money(unit)}`,
+            amount: money(total),
+          };
+        }),
+        { title: "Products" },
+      );
+    }
+
+    // §Group-booking-audit 2026-05: render every recorded payment so the
+    // customer copy includes a clear "Payments" trail with method + when.
+    if (Array.isArray(r.payments) && r.payments.length > 0) {
+      drawPdfPayments(
+        doc,
+        r.payments.map((payment) => ({
+          label: formatPaymentMethodLabel(payment.payment_method, payment.payment_provider),
+          detail: [
+            payment.participant_name ? `For ${payment.participant_name}` : null,
+            payment.booking_number ? `Booking ${payment.booking_number}` : null,
+            payment.paid_at ? `Paid ${formatPdfDate(payment.paid_at)}` : null,
+          ]
+            .filter(Boolean)
+            .join(" · ") || null,
+          amount: money(Number(payment.amount || 0)),
+          tone: "success" as const,
+        })),
+        { title: "Payments" },
+      );
+    }
 
     if (r.settlement_basis === "group_session_estimate") {
       drawPdfSectionTitle(doc, "Settlement note");

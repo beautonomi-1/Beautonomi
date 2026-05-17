@@ -1530,6 +1530,7 @@ export default function PartnerProfileScreen() {
                 const returnUrl = ExpoLinking.createURL("membership-paystack");
                 const pr = await membershipPaystackCheckout.waitForCheckout(url, {
                   title: pp("membershipPaystackTitle") || "Membership payment",
+                  returnUrl,
                   matchSuccess: (u) => matchesExpoReturnUrl(u, returnUrl) && !isCancelledPaystackUrl(u),
                   matchCancel: (u) => isCancelledPaystackUrl(u),
                 });

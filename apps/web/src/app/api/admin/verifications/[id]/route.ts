@@ -5,6 +5,10 @@ import { requireAdminSection, successResponse, handleApiError, notFoundResponse 
 import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog } from "@/lib/audit/audit";
+import {
+  slackNotifyVerificationReviewed,
+  slackNotifyVerificationRejected,
+} from "@/lib/integrations/slack/ops-triggers";
 import { z } from "zod";
 
 // Schema for verification review
@@ -53,7 +57,75 @@ export async function GET(
       throw error;
     }
 
-    return successResponse(verification);
+    // Enrich with provider linkage so the SPA can cross-link to the lifecycle page.
+    // Mirrors the list endpoint shape: { id, business_name, slug, verification_status, relationship }.
+    let provider:
+      | {
+          id: string;
+          business_name: string | null;
+          slug: string | null;
+          verification_status: string | null;
+          relationship: "owner" | "staff";
+        }
+      | null = null;
+    const verifiedUserId = (verification as { user_id?: string } | null)?.user_id;
+    if (verifiedUserId) {
+      try {
+        const admin = getSupabaseAdmin();
+        const { data: ownerProvider } = await admin
+          .from("providers")
+          .select("id, business_name, slug, verification_status")
+          .eq("user_id", verifiedUserId)
+          .limit(1)
+          .maybeSingle();
+        if (ownerProvider) {
+          const p = ownerProvider as {
+            id: string;
+            business_name?: string | null;
+            slug?: string | null;
+            verification_status?: string | null;
+          };
+          provider = {
+            id: p.id,
+            business_name: p.business_name ?? null,
+            slug: p.slug ?? null,
+            verification_status: p.verification_status ?? null,
+            relationship: "owner",
+          };
+        } else {
+          const { data: staffRow } = await admin
+            .from("provider_staff")
+            .select(
+              "providers:providers!provider_staff_provider_id_fkey(id, business_name, slug, verification_status)"
+            )
+            .eq("user_id", verifiedUserId)
+            .eq("is_active", true)
+            .limit(1)
+            .maybeSingle();
+          const raw = (staffRow as { providers?: unknown } | null)?.providers;
+          const p = Array.isArray(raw) ? raw[0] : raw;
+          if (p && typeof p === "object" && "id" in p) {
+            const pp = p as {
+              id: string;
+              business_name?: string | null;
+              slug?: string | null;
+              verification_status?: string | null;
+            };
+            provider = {
+              id: pp.id,
+              business_name: pp.business_name ?? null,
+              slug: pp.slug ?? null,
+              verification_status: pp.verification_status ?? null,
+              relationship: "staff",
+            };
+          }
+        }
+      } catch (enrichErr) {
+        console.error("[verifications/:id] provider enrichment failed:", enrichErr);
+      }
+    }
+
+    return successResponse({ ...(verification as Record<string, unknown>), provider });
   } catch (error) {
     return handleApiError(error, "Failed to fetch verification");
   }
@@ -120,6 +192,31 @@ export async function PATCH(
       entity_id: id,
       metadata: { status, user_id: (verification as { user_id?: string } | null)?.user_id, rejection_reason: status === "rejected" ? rejection_reason : null },
     });
+
+    // Slack audit trail — always notify on review so the team can see activity.
+    const subjectUser = (verification as { user?: { full_name?: string | null } | null } | null)?.user;
+    const subjectName = subjectUser?.full_name ?? null;
+    const reviewerName = (user as { full_name?: string | null }).full_name ?? user.email ?? null;
+
+    slackNotifyVerificationReviewed({
+      tenantId,
+      verificationId: id,
+      outcome: status,
+      reviewerName,
+      subjectName,
+      rejectionReason: status === "rejected" ? rejection_reason ?? null : null,
+    });
+
+    // Extra alert on rejection so the team can proactively follow up.
+    if (status === "rejected") {
+      slackNotifyVerificationRejected({
+        tenantId,
+        verificationId: id,
+        source: "manual",
+        subject: subjectName,
+        detail: rejection_reason ? `Reason: ${rejection_reason}` : "No reason specified — consider notifying the user.",
+      });
+    }
 
     // If the verified user is a provider, sync the approval into provider_verification_status
     // so the provider's KYC screen reflects the manual review result.

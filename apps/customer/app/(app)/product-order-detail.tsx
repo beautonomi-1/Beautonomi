@@ -282,6 +282,7 @@ export default function ProductOrderDetailScreen() {
 
       const pr = await paystackHostedCheckout.waitForCheckout(url, {
         title: pod("securePaymentTitle") || "Secure payment",
+        returnUrl: paystackReturnPath ?? undefined,
         matchSuccess: (u) =>
           !!paystackReturnPath && matchesExpoReturnUrl(u, paystackReturnPath) && !isCancelledPaystackUrl(u),
         matchCancel: (u) => isCancelledPaystackUrl(u),

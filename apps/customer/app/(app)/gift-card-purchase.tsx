@@ -213,6 +213,7 @@ export default function GiftCardPurchaseScreen() {
           setProcessingPayment(false);
           const pr = await paystackHostedCheckout.waitForCheckout(paymentUrl, {
             title: gc("securePaymentTitle") || "Secure payment",
+            returnUrl,
             matchSuccess: (u) => matchesExpoReturnUrl(u, returnUrl) && !isCancelledPaystackUrl(u),
             matchCancel: (u) => isCancelledPaystackUrl(u),
           });

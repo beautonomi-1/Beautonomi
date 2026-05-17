@@ -548,6 +548,7 @@ export default function ProductCheckoutScreen() {
       setProcessingPayment(false);
       const pr = await paystackHostedCheckout.waitForCheckout(url, {
         title: (pc("securePaymentTitle") as string) || "Secure payment",
+        returnUrl: paystackReturnPath,
         matchSuccess: (u) => matchesExpoReturnUrl(u, paystackReturnPath) && !isCancelledPaystackUrl(u),
         matchCancel: (u) => isCancelledPaystackUrl(u),
       });

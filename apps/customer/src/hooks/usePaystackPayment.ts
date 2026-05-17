@@ -133,6 +133,7 @@ export function usePaystackPayment() {
 
         const pr = await checkout.waitForCheckout(data.authorization_url, {
           title: "Pay booking",
+          returnUrl,
           matchSuccess: (u) => matchesExpoReturnUrl(u, returnUrl) && !isCancelledPaystackUrl(u),
           matchCancel: (u) => isCancelledPaystackUrl(u),
         });

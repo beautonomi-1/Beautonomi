@@ -56,6 +56,10 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json().catch(() => ({}));
     const in_app = !!((body as { in_app?: boolean }).in_app);
+    const callbackFromClient =
+      typeof (body as { callback_url?: string }).callback_url === "string"
+        ? (body as { callback_url?: string }).callback_url!.trim()
+        : "";
 
     // Get current subscription
     const { data: subscription } = await supabase
@@ -134,11 +138,17 @@ export async function POST(request: NextRequest) {
 
     const reference = generateTransactionReference("provider_subscription", order.id);
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "";
-    const callbackUrl = in_app
-      ? `${baseUrl}/provider/subscription?payment_success=true&in_app=1`
-      : `${baseUrl}/provider/subscription?payment_success=true`;
+    const callbackUrl =
+      in_app && callbackFromClient
+        ? `${callbackFromClient}${callbackFromClient.includes("?") ? "&" : "?"}payment_success=true`
+        : in_app
+          ? `${baseUrl}/provider/subscription?payment_success=true&in_app=1`
+          : `${baseUrl}/provider/subscription?payment_success=true`;
 
-    const renewCancelAction = `${baseUrl}/provider/subscription?payment_cancelled=1`;
+    const renewCancelAction =
+      in_app && callbackFromClient
+        ? `${callbackFromClient}${callbackFromClient.includes("?") ? "&" : "?"}payment_cancelled=1`
+        : `${baseUrl}/provider/subscription?payment_cancelled=1`;
 
     const paystackData = await initializePaystackTransaction({
       email,

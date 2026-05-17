@@ -30,6 +30,23 @@ interface Location {
   name: string;
 }
 
+// §Yoco-synergy 2026-05: same relative-time format as YocoPaymentSheet so the
+// device's "Last used X ago" string reads identically on settings and picker.
+function formatLastUsedShort(iso: string): string {
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) return "recently";
+  const diff = Math.max(0, Date.now() - ms);
+  const mins = Math.round(diff / 60_000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  const months = Math.round(days / 30);
+  return `${months}mo ago`;
+}
+
 export default function YocoDevicesScreen() {
   const {
     devices,
@@ -301,14 +318,39 @@ export default function YocoDevicesScreen() {
                     <Ionicons name="phone-portrait-outline" size={20} color={device.is_active ? "#6366f1" : "#9ca3af"} />
                   </View>
                   <View style={twStyle("ml-3 flex-1")}>
-                    <Text style={twStyle("text-sm font-semibold text-gray-900")}>{device.name}</Text>
+                    <View style={twStyle("flex-row flex-wrap items-center")}>
+                      <Text style={twStyle("text-sm font-semibold text-gray-900")}>{device.name}</Text>
+                      {/* §Yoco-synergy 2026-05: surface portable / All-Locations
+                        status here too so providers running mobile bookings
+                        can confirm the device they take with them. */}
+                      {device.location_id == null ? (
+                        <View style={twStyle("ml-2 rounded-full bg-indigo-100 px-2 py-0.5")}>
+                          <Text style={twStyle("text-[10px] font-semibold text-indigo-700")}>
+                            portable
+                          </Text>
+                        </View>
+                      ) : null}
+                    </View>
                     <Text style={twStyle("text-xs text-gray-500")}>
                       Web POS
                       {device.serial_number ? ` · ${device.serial_number}` : ""}
                     </Text>
-                    {device.location_name && (
+                    {device.location_name ? (
                       <Text style={twStyle("text-xs text-gray-400")}>{device.location_name}</Text>
-                    )}
+                    ) : device.location_id == null ? (
+                      <Text style={twStyle("text-xs text-gray-400")}>All locations · travels with you</Text>
+                    ) : null}
+                    {/* §Yoco-synergy 2026-05: usage hint mirrors the picker
+                      so providers see the same "Last used / N txns" line
+                      everywhere a device appears. */}
+                    {(device.last_used_at || (device.total_transactions ?? 0) > 0) ? (
+                      <Text style={twStyle("text-[11px] text-gray-400 mt-0.5")}>
+                        {device.last_used_at ? `Last used ${formatLastUsedShort(device.last_used_at)}` : "Never used yet"}
+                        {(device.total_transactions ?? 0) > 0
+                          ? ` · ${device.total_transactions} txn${device.total_transactions === 1 ? "" : "s"}`
+                          : ""}
+                      </Text>
+                    ) : null}
                   </View>
                 </View>
 
@@ -385,6 +427,12 @@ export default function YocoDevicesScreen() {
         {Array.isArray(locations) && locations.length > 0 && (
           <View style={twStyle("mb-4")}>
             <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Location</Text>
+            {/* §Yoco-synergy 2026-05: explain what "All Locations" means so
+              providers know to pick it for the device they take to client
+              homes (at-home / mobile bookings). */}
+            <Text style={twStyle("mb-2 text-xs text-gray-500")}>
+              &quot;All Locations&quot; marks this device as portable — used by default for at-home bookings and anywhere a salon doesn&apos;t yet have its own device.
+            </Text>
             <View style={twStyle("flex-row flex-wrap")}>
               <TouchableOpacity
                 onPress={() => setFormLocationId(null)}

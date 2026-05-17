@@ -2167,7 +2167,7 @@ export default function BookCheckoutScreen() {
       const data = res.data;
       const bookingId = data?.booking_id;
 
-      /* Server creates the Paystack transaction in POST /api/public/bookings; must open this URL (same as web book/continue). */
+      /* Server creates the Paystack transaction on POST /api/public/booking-holds/:id/consume (same as web book/continue). */
       const paymentUrl = data?.payment_url;
 
       const recurringSub = data?.recurring_subscription;
@@ -2233,6 +2233,7 @@ export default function BookCheckoutScreen() {
           const paystackReturnUrl = ExpoLinking.createURL("book/paystack");
           const authResult = await paystackHostedCheckout.waitForCheckout(paymentUrl, {
             title: t("checkout.securePaymentTitle", "Secure payment") as string,
+            returnUrl: paystackReturnUrl,
             matchSuccess: (u) => matchesExpoReturnUrl(u, paystackReturnUrl) && !isCancelledPaystackUrl(u),
             matchCancel: (u) => isCancelledPaystackUrl(u),
           });

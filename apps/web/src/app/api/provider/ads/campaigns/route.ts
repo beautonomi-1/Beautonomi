@@ -211,11 +211,15 @@ export async function POST(request: NextRequest) {
 
     const reference = generateTransactionReference("ads_budget", order.id);
     const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin || "").replace(/\/$/, "");
-    const callbackUrl = `${baseUrl}/provider/settings/ads/payment-return?success=1&order_id=${encodeURIComponent(order.id)}&context=${
-      paymentRedirect === "provider_inapp" ? "app" : "web"
-    }`;
+    const callbackUrl =
+      paymentRedirect === "provider_inapp"
+        ? `provider://settings/ads-payment-return?success=1&order_id=${encodeURIComponent(order.id)}`
+        : `${baseUrl}/provider/settings/ads/payment-return?success=1&order_id=${encodeURIComponent(order.id)}&context=web`;
 
-    const adsCancelAction = `${baseUrl}/provider/settings/ads/payment-return?cancelled=1&order_id=${encodeURIComponent(order.id)}`;
+    const adsCancelAction =
+      paymentRedirect === "provider_inapp"
+        ? `provider://settings/ads-payment-return?cancelled=1&order_id=${encodeURIComponent(order.id)}`
+        : `${baseUrl}/provider/settings/ads/payment-return?cancelled=1&order_id=${encodeURIComponent(order.id)}`;
 
     const paystackData = await initializePaystackTransaction({
       email,

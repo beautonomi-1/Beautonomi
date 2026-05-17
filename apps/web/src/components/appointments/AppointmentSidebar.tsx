@@ -5011,11 +5011,16 @@ export function AppointmentSidebar({
                               const paymentAmountYoco = remainingBalanceYoco > 0 ? remainingBalanceYoco : totalAmountYoco;
                               const isPartiallyPaidYoco = effectivePaidYoco > 0 && remainingBalanceYoco > 0;
                               
+                              // §Yoco-audit 2026-05: pass payment_provider so
+                              // booking_payments lands with payment_provider = 'yoco'
+                              // and the yoco-reconciliation report + idempotency
+                              // index (migration 536) line up with the provider_yoco_payments row.
                               const markPaidResponse = await providerPortalFetch(`/api/provider/bookings/${activeBookingId}/mark-paid`, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
                                   payment_method: 'card',
+                                  payment_provider: 'yoco',
                                   amount: paymentAmountYoco,
                                   reference: paymentData.data?.yoco_payment_id,
                                   notes: isPartiallyPaidYoco 

@@ -534,6 +534,7 @@ export default function GroupBookingsScreen() {
     data?: { id?: string };
   }>("post");
   const { execute: cancelGroup } = useApiMutation("delete");
+  const { execute: postGroupAction, loading: groupActionLoading } = useApiMutation("post");
   const { execute: addParticipant, loading: addingParticipant } = useApiMutation("post");
   const { execute: removeParticipant } = useApiMutation("delete");
   // Wave 4.1 (audit 2026-04 final 100/100): provider mobile check-in / out
@@ -543,6 +544,16 @@ export default function GroupBookingsScreen() {
   //   POST /api/provider/group-bookings/:id/participants/:pid/check-out
   const { execute: checkInParticipant } = useApiMutation("post");
   const { execute: checkOutParticipant } = useApiMutation("post");
+
+  // §Group-booking-audit 2026-05 (review screen + payment): show a final
+  // confirmation step before posting, with payment method selection mirroring
+  // the single-booking flow. Defaults to "pay_later" so providers must
+  // explicitly opt into recording money received at create time.
+  const [showCreateReview, setShowCreateReview] = useState(false);
+  const [createPaymentMethod, setCreatePaymentMethod] = useState<
+    "pay_later" | "cash" | "card" | "yoco_pos" | "payment_link"
+  >("pay_later");
+  const [createSendNotification, setCreateSendNotification] = useState(true);
 
   useEffect(() => {
     setExtraGroups([]);
@@ -660,7 +671,7 @@ export default function GroupBookingsScreen() {
   useEffect(() => {
     if (!selectedGroup) return;
     const fresh = groups.find((g) => g.id === selectedGroup.id);
-    if (fresh && fresh !== selectedGroup) {
+    if (fresh && fresh.updated_at !== selectedGroup.updated_at) {
       setSelectedGroup(fresh);
     }
   }, [groups, selectedGroup]);
@@ -833,12 +844,38 @@ export default function GroupBookingsScreen() {
   }
 
   async function handleStatusChange(group: GroupBooking, newStatus: string) {
-    const { error } = await updateGroup(`/api/provider/group-bookings/${group.id}`, {
-      status: newStatus,
-    });
+    const action =
+      newStatus === "started"
+        ? "start_service"
+        : newStatus === "completed"
+          ? "complete_service"
+          : newStatus === "cancelled"
+            ? "cancel_service"
+            : "";
+    if (!action) {
+      Alert.alert("Error", "Unsupported status transition.");
+      return;
+    }
+    const { error } = await postGroupAction(`/api/provider/group-bookings/${group.id}?action=${action}`, {});
     if (error) { Alert.alert("Error", error); return; }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setSelectedGroup(null);
+    refresh();
+  }
+
+  async function handleRecordGroupPayment(
+    group: GroupBooking,
+    paymentMethod: "cash" | "card" | "bank_transfer" | "other" | "yoco",
+  ) {
+    const { error } = await postGroupAction(`/api/provider/group-bookings/${group.id}?action=mark_paid`, {
+      payment_method: paymentMethod,
+    });
+    if (error) {
+      Alert.alert("Payment not recorded", error);
+      return;
+    }
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    Alert.alert("Payment recorded", "Group participant bookings were marked paid.");
     refresh();
   }
 
@@ -1296,6 +1333,79 @@ export default function GroupBookingsScreen() {
     Haptics.selectionAsync().catch(() => {});
   }
 
+  // §Group-booking-audit 2026-05: run all client-side validation here so the
+  // review sheet only opens when the form is committable. Same checks as
+  // handleCreate, just without the actual POST.
+  async function handleOpenCreateReview() {
+    if (!YMD_RE.test(createForm.date)) {
+      Alert.alert("Invalid date", "Date must be in YYYY-MM-DD format.");
+      return;
+    }
+    if (!HHMM_RE.test(createForm.time)) {
+      Alert.alert("Invalid time", "Time must be in HH:MM format.");
+      return;
+    }
+    const duration = Number(createForm.duration);
+    if (!Number.isFinite(duration) || duration <= 0) {
+      Alert.alert("Invalid duration", "Duration must be greater than 0 minutes.");
+      return;
+    }
+    const maxParticipants = Number(createForm.maxParticipants);
+    if (!Number.isFinite(maxParticipants) || maxParticipants <= 0) {
+      Alert.alert("Invalid max participants", "Max participants must be greater than 0.");
+      return;
+    }
+    if (!createForm.serviceId) {
+      Alert.alert("Service required", "Select a service so participant bookings can be created for calendar + accounting.");
+      return;
+    }
+    if (!createForm.staffId) {
+      Alert.alert("Staff required", "Select a team member to schedule this group booking correctly.");
+      return;
+    }
+    if (createForm.locationType === "at_home") {
+      if (!createForm.addressLine1.trim()) {
+        Alert.alert("Address required", "Search and select the client address so the map pin and travel fee are accurate.");
+        return;
+      }
+      if (createForm.addressLatitude == null || createForm.addressLongitude == null) {
+        Alert.alert("Map pin required", "Choose a Mapbox address suggestion so the exact coordinates are saved.");
+        return;
+      }
+    }
+    const participantsToCreate = createParticipants
+      .map((p) => ({
+        id: p.id,
+        name: p.name.trim(),
+        phone: p.phone.trim(),
+        email: p.email.trim(),
+        serviceId: p.serviceId || createForm.serviceId,
+        addOnIds: p.addOnIds,
+      }))
+      .filter((p) => p.name.length > 0 || p.phone.length > 0 || p.email.length > 0);
+    if (participantsToCreate.length === 0) {
+      Alert.alert("Participant required", "Add at least one participant so the group creates booking records.");
+      return;
+    }
+    for (const [idx, p] of participantsToCreate.entries()) {
+      if (!p.name) {
+        Alert.alert("Participant name required", `Participant ${idx + 1} needs a name.`);
+        return;
+      }
+      const phoneErr = validateE164Phone(p.phone);
+      if (phoneErr) {
+        Alert.alert("Invalid phone", `Participant ${idx + 1}: ${phoneErr}`);
+        return;
+      }
+      if (!p.serviceId) {
+        Alert.alert("Participant service required", `Select what participant ${idx + 1} wants.`);
+        return;
+      }
+    }
+    // All client-side validation passed → open review sheet for final confirm.
+    setShowCreateReview(true);
+  }
+
   async function handleCreate() {
     if (!YMD_RE.test(createForm.date)) {
       Alert.alert("Invalid date", "Date must be in YYYY-MM-DD format.");
@@ -1405,6 +1515,9 @@ export default function GroupBookingsScreen() {
       location_type: createForm.locationType,
       travel_fee: createForm.locationType === "at_home" ? travelFee : 0,
       total_price: participantTotal + productsTotal + (createForm.locationType === "at_home" ? travelFee : 0),
+      // §Group-booking-audit 2026-05 (notify primary): tell the API whether
+      // to email/push the primary contact (default true from review sheet).
+      send_notification: createSendNotification,
       products: createProducts.map((p) => ({
         product_id: p.productId,
         product_name: p.productName,
@@ -1448,45 +1561,82 @@ export default function GroupBookingsScreen() {
 
     const groupRef = createdGroup?.ref_number || createdGroup?.data?.ref_number || null;
     try {
-      for (const [idx, participant] of participantsToCreate.entries()) {
-        const line = participantLines[idx];
-        const res = await createParticipantBookingAndLink({
-          groupId: createdGroupId,
-          groupRef,
-          scheduledDate: createForm.date,
-          scheduledTime: createForm.time,
-          serviceId: line.serviceId,
-          serviceName: line.service ? serviceLabel(line.service) : undefined,
-          addOns: line.addOns,
-          packageId: createForm.packageId || null,
-          staffId: createForm.staffId,
-          locationId: createForm.locationType === "at_home" ? null : createForm.locationId,
-          locationType: createForm.locationType,
-          address: createForm.locationType === "at_home"
-            ? {
-                address_line1: createForm.addressLine1.trim(),
-                address_city: createForm.addressCity.trim(),
-                address_state: createForm.addressState.trim(),
-                address_postal_code: createForm.addressPostalCode.trim(),
-                address_country: createForm.addressCountry.trim() || "South Africa",
-                address_latitude: createForm.addressLatitude,
-                address_longitude: createForm.addressLongitude,
-                travel_fee: idx === 0 ? travelFee : 0,
-              }
-            : undefined,
-          products: idx === 0 ? createProducts : [],
-          durationMinutes: line.durationMinutes,
-          unitPrice: line.price,
-          participant: { ...participant, customerId: participant.customerId },
-          isPrimary: idx === 0,
-        });
-        if (res.error) {
-          throw new Error(`${participant.name}: ${res.error}`);
+      const createdBookings = await Promise.all(
+        participantsToCreate.map(async (participant, idx) => {
+          const line = participantLines[idx];
+          const res = await createParticipantBookingAndLink({
+            groupId: createdGroupId,
+            groupRef,
+            scheduledDate: createForm.date,
+            scheduledTime: createForm.time,
+            serviceId: line.serviceId,
+            serviceName: line.service ? serviceLabel(line.service) : undefined,
+            addOns: line.addOns,
+            packageId: createForm.packageId || null,
+            staffId: createForm.staffId,
+            locationId: createForm.locationType === "at_home" ? null : createForm.locationId,
+            locationType: createForm.locationType,
+            address: createForm.locationType === "at_home"
+              ? {
+                  address_line1: createForm.addressLine1.trim(),
+                  address_city: createForm.addressCity.trim(),
+                  address_state: createForm.addressState.trim(),
+                  address_postal_code: createForm.addressPostalCode.trim(),
+                  address_country: createForm.addressCountry.trim() || "South Africa",
+                  address_latitude: createForm.addressLatitude,
+                  address_longitude: createForm.addressLongitude,
+                  travel_fee: idx === 0 ? travelFee : 0,
+                }
+              : undefined,
+            products: idx === 0 ? createProducts : [],
+            durationMinutes: line.durationMinutes,
+            unitPrice: line.price,
+            participant: { ...participant, customerId: participant.customerId },
+            isPrimary: idx === 0,
+          });
+          if (res.error) throw new Error(`${participant.name}: ${res.error}`);
+          return res;
+        }),
+      );
+      if (createdBookings.length === 0) {
+        throw new Error("Could not add participants to the group.");
+      }
+
+      // §Group-booking-audit 2026-05 (auto mark_paid): when the provider
+      // chose a money-received method in the review sheet (cash / card /
+      // yoco) immediately settle the participant bookings so the receipt
+      // is "paid" and the calendar dashboard accounts for the revenue.
+      // payment_link is intentionally not auto-marked — the provider sends
+      // it per participant from the participant detail action.
+      const methodToMark =
+        createPaymentMethod === "cash"
+          ? "cash"
+          : createPaymentMethod === "card"
+            ? "card"
+            : createPaymentMethod === "yoco_pos"
+              ? "yoco"
+              : null;
+      if (methodToMark) {
+        try {
+          await postGroupAction(
+            `/api/provider/group-bookings/${createdGroupId}?action=mark_paid`,
+            { payment_method: methodToMark },
+          );
+        } catch (e) {
+          // Group is created and visible; surface the payment problem so the
+          // provider can mark-paid manually from the detail sheet.
+          Alert.alert(
+            "Group created — payment not recorded",
+            `The group session was created, but recording the payment as ${methodToMark} failed: ${e instanceof Error ? e.message : "Unknown error"}. Open the group to mark it paid manually.`,
+          );
         }
       }
+
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setShowCreate(false);
-      refresh();
+      InteractionManager.runAfterInteractions(() => {
+        void refresh();
+      });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Could not add all participants.";
       const { error: deleteErr } = await cancelGroup(`/api/provider/group-bookings/${createdGroupId}`);
@@ -2314,6 +2464,23 @@ export default function GroupBookingsScreen() {
                 </TouchableOpacity>
               </View>
             )}
+            <View style={twStyle("mt-2")}>
+              <Text style={twStyle("mb-2 text-xs font-medium text-gray-500")}>Record payment</Text>
+              <View style={twStyle("flex-row flex-wrap")}>
+                {(["cash", "card", "yoco", "bank_transfer"] as const).map((method) => (
+                  <TouchableOpacity
+                    key={method}
+                    style={twStyle("mb-2 mr-2 rounded-full border border-gray-200 bg-white px-3 py-1.5")}
+                    disabled={groupActionLoading}
+                    onPress={() => handleRecordGroupPayment(selectedGroup, method)}
+                  >
+                    <Text style={twStyle("text-xs font-medium text-gray-700")}>
+                      {method === "bank_transfer" ? "Bank transfer" : method === "yoco" ? "Yoco" : method[0].toUpperCase() + method.slice(1)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
           </View>
         )}
       </BottomSheet>
@@ -2743,7 +2910,7 @@ export default function GroupBookingsScreen() {
 
       {/* B10: Create new group booking */}
       <BottomSheet
-        visible={showCreate}
+        visible={showCreate && !showProductPicker}
         onClose={() => setShowCreate(false)}
         title="New Group Booking"
       >
@@ -3427,11 +3594,210 @@ export default function GroupBookingsScreen() {
           </View>
 
           <ActionButton
-            label={validatingCreateAddress ? "Checking address..." : "Create Group"}
-            onPress={handleCreate}
-            loading={creatingGroup || creatingParticipantBooking || addingParticipant || validatingCreateAddress}
+            label={validatingCreateAddress ? "Checking address..." : "Review & Create"}
+            onPress={handleOpenCreateReview}
+            loading={validatingCreateAddress}
             fullWidth
           />
+        </ScrollView>
+      </BottomSheet>
+
+      {/* §Group-booking-audit 2026-05: review + payment method confirmation
+        sheet so providers see a single source-of-truth summary before paying
+        and avoid R 0 / wrong-method receipts. */}
+      <BottomSheet
+        visible={showCreateReview}
+        onClose={() => setShowCreateReview(false)}
+        title="Review group booking"
+      >
+        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 32 }}>
+          {(() => {
+            const svc = createForm.serviceId ? services.find((s) => s.id === createForm.serviceId) : undefined;
+            const staff = createForm.staffId ? teamMembers.find((s: any) => s.id === createForm.staffId) : null;
+            const loc = createForm.locationType === "at_salon" && createForm.locationId
+              ? locations.find((l) => l.id === createForm.locationId)
+              : null;
+            const travelFee = Math.max(0, Number(createForm.travelFee || 0) || 0);
+            const productsTotal = createProducts.reduce(
+              (sum, p) => sum + (Number(p.unitPrice) || 0) * Math.max(1, Number(p.quantity) || 1),
+              0,
+            );
+            const participantsList = createParticipants.filter(
+              (p) => p.name.trim() || p.phone.trim() || p.email.trim(),
+            );
+            const participantLines = participantsList.map((p) =>
+              getParticipantLine({ serviceId: p.serviceId, addOnIds: p.addOnIds }, createForm.serviceId, services),
+            );
+            const participantTotal = participantLines.reduce((sum, line) => sum + line.price, 0);
+            const sessionTotal = participantTotal + productsTotal + (createForm.locationType === "at_home" ? travelFee : 0);
+            return (
+              <View style={twStyle("rounded-2xl border border-gray-100 bg-white p-4")}>
+                <Text style={twStyle("mb-3 text-xs font-bold uppercase tracking-wider text-gray-500")}>
+                  Session
+                </Text>
+                <View style={twStyle("mb-1 flex-row items-center justify-between")}>
+                  <Text style={twStyle("text-sm text-gray-600")}>Date</Text>
+                  <Text style={twStyle("text-sm font-semibold text-gray-900")}>{createForm.date} · {createForm.time}</Text>
+                </View>
+                {svc ? (
+                  <View style={twStyle("mb-1 flex-row items-center justify-between")}>
+                    <Text style={twStyle("text-sm text-gray-600")}>Service</Text>
+                    <Text style={twStyle("text-sm font-semibold text-gray-900")}>{serviceLabel(svc)}</Text>
+                  </View>
+                ) : null}
+                {staff ? (
+                  <View style={twStyle("mb-1 flex-row items-center justify-between")}>
+                    <Text style={twStyle("text-sm text-gray-600")}>Staff</Text>
+                    <Text style={twStyle("text-sm font-semibold text-gray-900")}>{staff.full_name || staff.email || "Staff"}</Text>
+                  </View>
+                ) : null}
+                <View style={twStyle("mb-1 flex-row items-center justify-between")}>
+                  <Text style={twStyle("text-sm text-gray-600")}>Location</Text>
+                  <Text style={twStyle("text-sm font-semibold text-gray-900")}>
+                    {createForm.locationType === "at_home"
+                      ? (createForm.addressLine1 || "Client address")
+                      : (loc?.name || "Salon")}
+                  </Text>
+                </View>
+
+                <Text style={twStyle("mt-4 mb-2 text-xs font-bold uppercase tracking-wider text-gray-500")}>
+                  Participants ({participantsList.length})
+                </Text>
+                {participantsList.map((p, idx) => {
+                  const line = participantLines[idx];
+                  return (
+                    <View key={p.id} style={twStyle("mb-2 flex-row items-start justify-between")}>
+                      <View style={{ flex: 1, paddingRight: 8 }}>
+                        <Text style={twStyle("text-sm font-medium text-gray-900")}>
+                          {p.name || "—"}{idx === 0 ? "  · Primary" : ""}
+                        </Text>
+                        <Text style={twStyle("text-xs text-gray-500")}>
+                          {line.service ? serviceLabel(line.service) : "Service TBD"}
+                          {line.addOns.length > 0 ? ` + ${line.addOns.length} add-on${line.addOns.length === 1 ? "" : "s"}` : ""}
+                        </Text>
+                      </View>
+                      <Text style={twStyle("text-sm font-semibold text-gray-900")}>
+                        {formatCurrency(line.price)}
+                      </Text>
+                    </View>
+                  );
+                })}
+
+                {createProducts.length > 0 ? (
+                  <>
+                    <Text style={twStyle("mt-4 mb-2 text-xs font-bold uppercase tracking-wider text-gray-500")}>
+                      Products
+                    </Text>
+                    {createProducts.map((p, idx) => (
+                      <View key={`${p.productId}-${idx}`} style={twStyle("mb-1 flex-row items-center justify-between")}>
+                        <Text style={twStyle("flex-1 text-sm text-gray-700")} numberOfLines={1}>
+                          {p.productName}{p.productVariantName ? ` · ${p.productVariantName}` : ""}  ·  ×{p.quantity}
+                        </Text>
+                        <Text style={twStyle("text-sm font-semibold text-gray-900")}>
+                          {formatCurrency((Number(p.unitPrice) || 0) * Math.max(1, Number(p.quantity) || 1))}
+                        </Text>
+                      </View>
+                    ))}
+                  </>
+                ) : null}
+
+                {createForm.locationType === "at_home" && travelFee > 0 ? (
+                  <View style={twStyle("mt-3 flex-row items-center justify-between")}>
+                    <Text style={twStyle("text-sm text-gray-600")}>Travel fee</Text>
+                    <Text style={twStyle("text-sm font-semibold text-gray-900")}>{formatCurrency(travelFee)}</Text>
+                  </View>
+                ) : null}
+
+                <View style={twStyle("mt-4 border-t border-gray-100 pt-3 flex-row items-center justify-between")}>
+                  <Text style={twStyle("text-base font-bold text-gray-900")}>Total</Text>
+                  <Text style={twStyle("text-base font-extrabold text-gray-900")}>{formatCurrency(sessionTotal)}</Text>
+                </View>
+              </View>
+            );
+          })()}
+
+          {/* Payment method selection — mirrors single-booking options. */}
+          <View style={twStyle("mt-4 rounded-2xl border border-gray-100 bg-white p-4")}>
+            <Text style={twStyle("mb-3 text-xs font-bold uppercase tracking-wider text-gray-500")}>
+              Payment
+            </Text>
+            <View style={twStyle("flex-row flex-wrap")}>
+              {([
+                { value: "pay_later", label: "Pay later", icon: "time-outline" as const },
+                { value: "cash", label: "Cash", icon: "cash-outline" as const },
+                { value: "card", label: "Manual card", icon: "card-outline" as const },
+                { value: "yoco_pos", label: "Yoco terminal", icon: "phone-portrait-outline" as const },
+                { value: "payment_link", label: "Payment link", icon: "send-outline" as const },
+              ] as const).map((m) => {
+                const active = createPaymentMethod === m.value;
+                return (
+                  <TouchableOpacity
+                    key={m.value}
+                    onPress={() => setCreatePaymentMethod(m.value)}
+                    style={twStyle(
+                      `mb-2 mr-2 flex-row items-center rounded-full border px-3 py-2 ${active ? "border-pink-500 bg-pink-50" : "border-gray-200 bg-white"}`,
+                    )}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: active }}
+                  >
+                    <Ionicons name={m.icon} size={16} color={active ? "#db2777" : "#475569"} />
+                    <Text style={twStyle(`ml-2 text-sm font-medium ${active ? "text-pink-700" : "text-gray-700"}`)}>
+                      {m.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            {createPaymentMethod === "payment_link" ? (
+              <Text style={twStyle("mt-2 text-xs text-gray-500")}>
+                Payment links are sent to each participant individually after the group is created.
+              </Text>
+            ) : createPaymentMethod !== "pay_later" ? (
+              <Text style={twStyle("mt-2 text-xs text-gray-500")}>
+                The group will be marked paid immediately on every participant&apos;s booking.
+              </Text>
+            ) : null}
+          </View>
+
+          {/* Notification toggle for the primary contact. */}
+          <TouchableOpacity
+            onPress={() => setCreateSendNotification((v) => !v)}
+            style={twStyle("mt-4 flex-row items-start rounded-2xl border border-gray-100 bg-white p-4")}
+            activeOpacity={0.8}
+          >
+            <Ionicons
+              name={createSendNotification ? "checkbox" : "square-outline"}
+              size={22}
+              color={createSendNotification ? "#db2777" : "#94a3b8"}
+            />
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <Text style={twStyle("text-sm font-semibold text-gray-900")}>
+                Notify primary contact
+              </Text>
+              <Text style={twStyle("mt-1 text-xs text-gray-500")}>
+                Sends a single email + push confirmation to the first participant. Other guests are not contacted.
+              </Text>
+            </View>
+          </TouchableOpacity>
+
+          <View style={{ marginTop: 16, flexDirection: "row" }}>
+            <ActionButton
+              label="Back"
+              onPress={() => setShowCreateReview(false)}
+              variant="secondary"
+              style={{ flex: 1, marginRight: 8 }}
+            />
+            <ActionButton
+              label="Confirm & create"
+              onPress={() => {
+                setShowCreateReview(false);
+                void handleCreate();
+              }}
+              loading={creatingGroup || creatingParticipantBooking || addingParticipant}
+              variant="brand"
+              style={{ flex: 2 }}
+            />
+          </View>
         </ScrollView>
       </BottomSheet>
 

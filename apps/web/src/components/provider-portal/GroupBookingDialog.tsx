@@ -123,6 +123,26 @@ export function GroupBookingDialog({
   const [isLoading, setIsLoading] = useState(false);
   const [isValidatingAddress, setIsValidatingAddress] = useState(false);
 
+  // §Group-booking-audit 2026-05 (review + payment): two-step submit.
+  //   step "form" → user fills everything
+  //   step "review" → final summary + payment method + notify toggle
+  // Payment methods mirror the single-booking screen so providers see the
+  // same set everywhere (pay_later, cash, manual card, Yoco terminal, link).
+  const [createStep, setCreateStep] = useState<"form" | "review">("form");
+  type GroupCreatePaymentMethod = "pay_later" | "cash" | "card" | "yoco_pos" | "payment_link";
+  const [createPaymentMethod, setCreatePaymentMethod] = useState<GroupCreatePaymentMethod>("pay_later");
+  const [createSendNotification, setCreateSendNotification] = useState(true);
+
+  // Reset two-step state every time the dialog opens so we never strand the
+  // provider on the review screen from a previous open.
+  useEffect(() => {
+    if (open) {
+      setCreateStep("form");
+      setCreatePaymentMethod("pay_later");
+      setCreateSendNotification(true);
+    }
+  }, [open]);
+
   // ─── Core data ──────────────────────────────────────────────────────────
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [services, setServices] = useState<ServiceItem[]>([]);
@@ -735,6 +755,39 @@ export function GroupBookingDialog({
   // ─── Submit ────────────────────────────────────────────────────────────
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // §Group-booking-audit 2026-05: two-step submit — when on the form step,
+    // validate everything client-side then transition to the review step.
+    // Only the second submit (from the review block) actually posts.
+    if (createStep === "form" && !booking) {
+      for (let i = 0; i < participants.length; i++) {
+        const ph = participants[i].client_phone?.trim();
+        if (ph && !isCompleteE164(ph)) {
+          toast.error(`Participant ${i + 1}: enter a valid phone number or leave it blank.`);
+          return;
+        }
+      }
+      if (!formData.scheduled_date?.trim() || !formData.scheduled_time?.trim()) {
+        toast.error('Choose a date and time (use available slots or open "Manual date and time").');
+        return;
+      }
+      const parsedStart = parseSelectedDatetimeInProviderTz(
+        formData.scheduled_date,
+        formData.scheduled_time,
+        portalProvider?.timezone,
+      );
+      if (Number.isNaN(parsedStart.getTime())) {
+        toast.error("Invalid date or time.");
+        return;
+      }
+      if (participants.length === 0) {
+        toast.error("Add at least one participant before reviewing.");
+        return;
+      }
+      setCreateStep("review");
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -792,6 +845,9 @@ export function GroupBookingDialog({
         max_participants: formData.max_participants || participants.length + 5,
         duration_minutes: totalDuration,
         notes: formData.notes || undefined,
+        // §Group-booking-audit 2026-05: forward the review-screen toggle so
+        // the API can send a confirmation to the primary contact only.
+        send_notification: booking ? undefined : createSendNotification,
         participants: participantPayload,
         scheduled_date: formData.scheduled_date,
         scheduled_time: formData.scheduled_time,
@@ -831,8 +887,40 @@ export function GroupBookingDialog({
         await providerApi.updateGroupBooking(booking.id, apiPayload as Partial<GroupBooking>);
         toast.success("Group booking updated");
       } else {
-        await providerApi.createGroupBooking(apiPayload as Partial<GroupBooking>);
-        toast.success("Group booking created");
+        const created = await providerApi.createGroupBooking(apiPayload as Partial<GroupBooking>);
+        // §Group-booking-audit 2026-05 (auto mark_paid): when the provider
+        // chose cash/manual-card/yoco from the review step, immediately
+        // record the payment so the receipt is "paid" right out of the gate.
+        // payment_link is intentionally skipped — it must be sent to each
+        // participant individually after creation.
+        const methodToMark =
+          createPaymentMethod === "cash"
+            ? "cash"
+            : createPaymentMethod === "card"
+              ? "card"
+              : createPaymentMethod === "yoco_pos"
+                ? "yoco"
+                : null;
+        const createdId =
+          (created as { id?: string; data?: { id?: string } } | null)?.id ??
+          (created as { data?: { id?: string } } | null)?.data?.id ??
+          null;
+        if (methodToMark && createdId) {
+          try {
+            const { fetcher } = await import("@/lib/http/fetcher");
+            await fetcher.post(
+              `/api/provider/group-bookings/${createdId}?action=mark_paid`,
+              { payment_method: methodToMark },
+            );
+            toast.success("Group booking created and marked paid");
+          } catch (markErr) {
+            toast.error(
+              `Group created — payment not recorded (${markErr instanceof Error ? markErr.message : "Unknown error"}). Mark it paid from the detail page.`,
+            );
+          }
+        } else {
+          toast.success("Group booking created");
+        }
       }
       onSuccess?.();
       onOpenChange(false);
@@ -1594,14 +1682,113 @@ export function GroupBookingDialog({
           </form>
         </div>
 
+        {/* §Group-booking-audit 2026-05 (review block): final confirmation
+          step shown after the form passes validation. Lets the provider pick
+          a payment method, opt into notifying the primary contact, and see
+          the totals one last time before posting. */}
+        {createStep === "review" && !booking ? (
+          <div className="border-t bg-gray-50 px-4 sm:px-6 py-4 space-y-4 max-h-[55vh] overflow-y-auto">
+            <div className="rounded-xl border border-gray-200 bg-white p-4">
+              <div className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-500">
+                Session summary
+              </div>
+              <div className="space-y-1 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-600">When</span>
+                  <span className="font-semibold text-gray-900">
+                    {formData.scheduled_date} · {formData.scheduled_time}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-600">Participants</span>
+                  <span className="font-semibold text-gray-900">{participants.length}</span>
+                </div>
+                <div className="flex items-center justify-between border-t border-gray-100 pt-2 mt-2">
+                  <span className="text-base font-bold text-gray-900">Total</span>
+                  <span className="text-base font-extrabold text-gray-900">{formatMoney(pricing.totalAmount)}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-gray-200 bg-white p-4">
+              <div className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-500">Payment</div>
+              <div className="flex flex-wrap gap-2">
+                {([
+                  { value: "pay_later", label: "Pay later" },
+                  { value: "cash", label: "Cash" },
+                  { value: "card", label: "Manual card" },
+                  { value: "yoco_pos", label: "Yoco terminal" },
+                  { value: "payment_link", label: "Payment link" },
+                ] as const).map((m) => {
+                  const active = createPaymentMethod === m.value;
+                  return (
+                    <button
+                      key={m.value}
+                      type="button"
+                      onClick={() => setCreatePaymentMethod(m.value as GroupCreatePaymentMethod)}
+                      className={`rounded-full border px-3 py-1.5 text-sm transition ${active ? "border-primary bg-primary/10 text-primary font-semibold" : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"}`}
+                    >
+                      {m.label}
+                    </button>
+                  );
+                })}
+              </div>
+              {createPaymentMethod === "payment_link" ? (
+                <p className="mt-2 text-xs text-gray-500">
+                  Payment links are sent to each participant individually after the group is created.
+                </p>
+              ) : createPaymentMethod !== "pay_later" ? (
+                <p className="mt-2 text-xs text-gray-500">
+                  The group will be marked paid immediately on every participant&apos;s booking.
+                </p>
+              ) : null}
+            </div>
+
+            <label className="flex items-start gap-3 rounded-xl border border-gray-200 bg-white p-4 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={createSendNotification}
+                onChange={(e) => setCreateSendNotification(e.target.checked)}
+                className="mt-1 h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+              />
+              <span className="text-sm">
+                <span className="font-semibold text-gray-900">Notify primary contact</span>
+                <span className="mt-0.5 block text-xs text-gray-500">
+                  Sends one email + push to the first participant only. Other guests aren&apos;t contacted.
+                </span>
+              </span>
+            </label>
+          </div>
+        ) : null}
+
         {/* Footer */}
         <div className="flex flex-col-reverse sm:flex-row gap-2 px-4 sm:px-6 py-3 sm:py-4 border-t bg-white flex-shrink-0">
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isLoading} className="w-full sm:w-auto h-10">
-            Cancel
-          </Button>
+          {createStep === "review" && !booking ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setCreateStep("form")}
+              disabled={isLoading}
+              className="w-full sm:w-auto h-10"
+            >
+              Back
+            </Button>
+          ) : (
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isLoading} className="w-full sm:w-auto h-10">
+              Cancel
+            </Button>
+          )}
           <Button type="submit" form="group-booking-form" disabled={isLoading || isValidatingAddress || participants.length === 0}
             className="w-full sm:w-auto bg-primary hover:bg-primary/90 h-10">
-            {isLoading ? "Saving..." : isValidatingAddress ? "Checking address..." : booking ? "Update Group Booking" : "Create Group Booking"}
+            {isLoading
+              ? "Saving..."
+              : isValidatingAddress
+                ? "Checking address..."
+                : booking
+                  ? "Update Group Booking"
+                  : createStep === "review"
+                    ? "Confirm & create"
+                    : "Review & create"}
           </Button>
         </div>
       </DialogContent>

@@ -131,6 +131,40 @@ export async function syncAppointmentProductOrder(
 
   const products = ((booking as any).booking_products || []) as BookingProductRow[];
   const validProducts = products.filter((p) => p.product_id && Number(p.quantity || 0) > 0);
+  const providerId = String((booking as any).provider_id ?? "");
+
+  let tenantId = ((booking as any).tenant_id as string | null) ?? null;
+  if (!tenantId && providerId) {
+    const { data: providerRow } = await supabase
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", providerId)
+      .maybeSingle();
+    tenantId = ((providerRow as any)?.tenant_id as string | null) ?? null;
+  }
+  if (!tenantId) {
+    throw new Error("Appointment booking is missing tenant_id for product order sync");
+  }
+
+  let collectionLocationId = ((booking as any).location_id as string | null) ?? null;
+  if (!collectionLocationId && providerId) {
+    const { data: primaryLocation } = await supabase
+      .from("provider_locations")
+      .select("id")
+      .eq("provider_id", providerId)
+      .eq("is_primary", true)
+      .maybeSingle();
+    collectionLocationId = ((primaryLocation as any)?.id as string | null) ?? null;
+    if (!collectionLocationId) {
+      const { data: fallbackLocation } = await supabase
+        .from("provider_locations")
+        .select("id")
+        .eq("provider_id", providerId)
+        .limit(1)
+        .maybeSingle();
+      collectionLocationId = ((fallbackLocation as any)?.id as string | null) ?? null;
+    }
+  }
 
   await relinkMislinkedAppointmentProductOrder(supabase, {
     id: (booking as any).id,
@@ -169,13 +203,13 @@ export async function syncAppointmentProductOrder(
 
   const customer = one((booking as any).customers);
   const orderPayload: Record<string, unknown> = {
-    tenant_id: (booking as any).tenant_id ?? null,
+    tenant_id: tenantId,
     customer_id: (booking as any).customer_id ?? null,
-    provider_id: (booking as any).provider_id,
+    provider_id: providerId,
     booking_id: bookingId,
     status: orderStatusForBooking((booking as any).status),
     fulfillment_type: "collection",
-    collection_location_id: (booking as any).location_id ?? null,
+    collection_location_id: collectionLocationId,
     subtotal,
     tax_amount: 0,
     delivery_fee: 0,
@@ -205,15 +239,33 @@ export async function syncAppointmentProductOrder(
     const { data: seqData } = await supabase.rpc("nextval" as any, {
       seq_name: "product_order_number_seq",
     });
+    const firstOrderNumber = `BO-A${seqData ?? Date.now()}`;
     const { data: inserted, error: insertError } = await supabase
       .from("product_orders")
       .insert({
         ...orderPayload,
-        order_number: `BO-A${seqData ?? Date.now()}`,
+        order_number: firstOrderNumber,
       })
       .select("id")
       .single();
     if (insertError) {
+      if ((insertError as any)?.code === "23505") {
+        const retryOrderNumber = `BO-A${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+        const { data: retryInserted, error: retryInsertError } = await supabase
+          .from("product_orders")
+          .insert({
+            ...orderPayload,
+            order_number: retryOrderNumber,
+          })
+          .select("id")
+          .single();
+        if (!retryInsertError && retryInserted) {
+          orderId = String((retryInserted as any).id);
+        } else if (retryInsertError) {
+          throw retryInsertError;
+        }
+      }
+      if (!orderId) {
       const { data: raced } = await supabase
         .from("product_orders")
         .select("id")
@@ -228,6 +280,7 @@ export async function syncAppointmentProductOrder(
         if (updateAfterRace) throw updateAfterRace;
       } else {
         throw insertError;
+      }
       }
     } else {
       orderId = String((inserted as any).id);

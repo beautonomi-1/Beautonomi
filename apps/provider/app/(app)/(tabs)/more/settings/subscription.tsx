@@ -8,7 +8,8 @@ import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { View, Text, TouchableOpacity, Alert, AppState, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
+import * as ExpoLinking from "expo-linking";
 import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { api } from "@/lib/api-client";
@@ -167,6 +168,7 @@ function statusPillClasses(sub: Subscription): { bg: string; text: string } {
 }
 
 export default function SubscriptionScreen() {
+  const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const [upgradingId, setUpgradingId] = useState<string | null>(null);
   const appState = useRef(AppState.currentState);
@@ -180,6 +182,7 @@ export default function SubscriptionScreen() {
     staleTimeMs: 0,
   });
   const { execute: postAction } = useApiMutation("post");
+  const subscriptionReturnUrl = ExpoLinking.createURL("settings/subscription-payment-return");
 
   const paystackCheckout = useInAppPaystackCheckout();
 
@@ -187,20 +190,25 @@ export default function SubscriptionScreen() {
     async (url: string, title: string) => {
       await paystackCheckout.waitForCheckout(url, {
         title,
+        returnUrl: subscriptionReturnUrl,
         matchSuccess: (rawUrl) => {
           try {
-            if (!rawUrl.startsWith("http")) return false;
             const u = new URL(rawUrl);
-            return u.pathname.includes("/provider/subscription") && u.searchParams.get("payment_success") === "true";
+            return (
+              (u.pathname.includes("/provider/subscription") || u.pathname.includes("settings/subscription-payment-return")) &&
+              u.searchParams.get("payment_success") === "true"
+            );
           } catch {
             return false;
           }
         },
         matchCancel: (rawUrl) => {
           try {
-            if (!rawUrl.startsWith("http")) return false;
             const u = new URL(rawUrl);
-            return u.pathname.includes("/provider/subscription") && u.searchParams.get("payment_cancelled") === "1";
+            return (
+              (u.pathname.includes("/provider/subscription") || u.pathname.includes("settings/subscription-payment-return")) &&
+              u.searchParams.get("payment_cancelled") === "1"
+            );
           } catch {
             return false;
           }
@@ -208,7 +216,7 @@ export default function SubscriptionScreen() {
       });
       refresh();
     },
-    [paystackCheckout, refresh],
+    [paystackCheckout, refresh, subscriptionReturnUrl],
   );
 
   const [billingSegment, setBillingSegment] = useState<"monthly" | "yearly">("monthly");
@@ -295,7 +303,10 @@ export default function SubscriptionScreen() {
     });
     if (!confirmed) return;
 
-    const { error: err, data } = await postAction("/api/provider/subscription/renew", { in_app: true });
+    const { error: err, data } = await postAction("/api/provider/subscription/renew", {
+      in_app: true,
+      callback_url: subscriptionReturnUrl,
+    });
     if (err) {
       Alert.alert("Error", err);
       return;
@@ -429,6 +440,7 @@ export default function SubscriptionScreen() {
         plan_id: barePlanId,
         billing_period: billingPeriod,
         in_app: true,
+        callback_url: subscriptionReturnUrl,
       });
       if (err) {
         Alert.alert("Error", err);
@@ -592,6 +604,19 @@ export default function SubscriptionScreen() {
                 {subscription.billing_issue.message}
               </Text>
             </View>
+          ) : null}
+
+          {paidSubscriber ? (
+            <TouchableOpacity
+              style={twStyle("mt-4 flex-row items-center justify-center rounded-2xl border border-gray-200 bg-white py-3")}
+              onPress={() => router.push("/(app)/(tabs)/more/settings/billing" as never)}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="receipt-outline" size={18} color={Colors.gray[700]} style={{ marginRight: 8 }} />
+              <Text style={twStyle("text-center text-sm font-semibold text-gray-800")}>
+                View invoices & payment methods
+              </Text>
+            </TouchableOpacity>
           ) : null}
 
           {showCancel ? (

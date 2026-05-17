@@ -7,8 +7,7 @@ import {
   useRef,
   type ReactNode,
 } from "react";
-import { Platform } from "react-native";
-import { AppState, type AppStateStatus } from "react-native";
+import { AppState, DeviceEventEmitter, Platform, type AppStateStatus } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as WebBrowser from "expo-web-browser";
 import * as AuthSession from "expo-auth-session";
@@ -265,6 +264,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const sub = AppState.addEventListener("change", (state: AppStateStatus) => {
       if (state === "active") {
         supabase.auth.startAutoRefresh();
+        DeviceEventEmitter.emit("beautonomi:app:focus");
       } else {
         supabase.auth.stopAutoRefresh();
       }

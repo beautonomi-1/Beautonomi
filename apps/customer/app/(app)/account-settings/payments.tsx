@@ -164,6 +164,7 @@ export default function PaymentsScreen() {
       }
       const pr = await paystackHostedCheckout.waitForCheckout(url, {
         title: t("customer.paymentsScreen.addCardTitle", "Add card") as string,
+        returnUrl: callbackUrl,
         matchSuccess: (u) => matchesExpoReturnUrl(u, callbackUrl) && !isCancelledPaystackUrl(u),
         matchCancel: (u) => isCancelledPaystackUrl(u),
       });

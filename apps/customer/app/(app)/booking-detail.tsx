@@ -18,6 +18,7 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, Stack, router, useFocusEffect } from "expo-router";
+import * as ExpoLinking from "expo-linking";
 import { useAuth } from "@/providers/AuthProvider";
 import { useModuleConfig } from "@/providers/ConfigBundleProvider";
 import { APP_URL, getBackendUrl, withWebApiTenantHeaders } from "@/config/public-env";
@@ -643,7 +644,7 @@ export default function BookingDetailScreen() {
     try {
       const res = await api.post<{ authorization_url?: string }>(
         `/api/me/bookings/${id}/pay-remaining`,
-        {}
+        { callback_url: ExpoLinking.createURL("booking-detail") }
       );
       const url = res.data?.authorization_url;
       if (res.error || !url) {
@@ -663,8 +664,10 @@ export default function BookingDetailScreen() {
         }
       } else {
         const appBase = (APP_URL ?? "").replace(/\/$/, "");
+        const returnUrl = ExpoLinking.createURL("booking-detail");
         await payRemainingCheckout.waitForCheckout(url, {
           title: "Pay remaining balance",
+          returnUrl,
           matchSuccess: (rawUrl) => {
             try {
               if (!rawUrl.startsWith("http")) return false;

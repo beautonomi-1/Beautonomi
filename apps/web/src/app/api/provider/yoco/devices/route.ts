@@ -296,6 +296,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // §Yoco-synergy 2026-05: denormalize location_name onto the device row.
+    // The mobile picker + settings list both read `location_name` directly
+    // off the device (so they don't have to join). Without this, providers
+    // saw the name as null until a cron/edit refreshed it.
+    let locationNameForInsert: string | null = null;
+    if (validationResult.data.location_id) {
+      const { data: loc } = await supabase
+        .from("provider_locations")
+        .select("name")
+        .eq("id", validationResult.data.location_id)
+        .eq("provider_id", providerId)
+        .maybeSingle();
+      if (loc?.name && typeof loc.name === "string") locationNameForInsert = loc.name;
+    }
+
     // Store device in database (yoco_device_id = Yoco's returned id)
     const { data: device, error: insertError } = await (supabase
       .from("provider_yoco_devices") as any)
@@ -304,6 +319,7 @@ export async function POST(request: NextRequest) {
         name: yocoDevice?.name ?? validationResult.data.name,
         yoco_device_id: yocoDeviceId,
         location_id: validationResult.data.location_id,
+        location_name: locationNameForInsert,
         is_active: validationResult.data.is_active,
         created_at: new Date().toISOString(),
       })

@@ -58,7 +58,7 @@ export function ProviderDashboardExcellenceBanner() {
 
   const openRewards = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    router.push("/(app)/(tabs)/more/rewards-hub" as never);
+    router.push("/(app)/(tabs)/more/gamification" as never);
   }, [router]);
 
   if (!visible) return null;

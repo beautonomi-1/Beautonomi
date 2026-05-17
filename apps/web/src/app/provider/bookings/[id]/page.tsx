@@ -747,8 +747,15 @@ export default function ProviderBookingDetail() {
 
       const chargeForBooking = yocoPendingChargeAmountRef.current ?? outstandingCalc;
       try {
+        // §Yoco-audit 2026-05: pass `payment_provider: "yoco"` so the
+        // mark-paid route stores the row with `payment_provider = 'yoco'`
+        // and the partial unique index (migration 536) actually enforces
+        // idempotency on the Yoco reference. Without this the row landed as
+        // `payment_provider = 'other'` and the yoco-reconciliation report
+        // could not match the booking_payments row to provider_yoco_payments.
         await fetcher.post(`/api/provider/bookings/${bookingId}/mark-paid`, {
           payment_method: "card",
+          payment_provider: "yoco",
           reference,
           amount: Number(chargeForBooking.toFixed(2)),
         });
@@ -2633,6 +2640,7 @@ export default function ProviderBookingDetail() {
           amount={yocoDialogAmount}
           bookingId={bookingId}
           saleId={yocoBookingSaleId ?? undefined}
+          bookingLocationId={(booking as { location_id?: string | null } | null)?.location_id ?? null}
           onSuccess={finalizeYocoBookingPayment}
         />
       </div>

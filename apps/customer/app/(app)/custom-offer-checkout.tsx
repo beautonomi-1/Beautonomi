@@ -307,6 +307,7 @@ export default function CustomOfferCheckoutScreen() {
         setProcessingPayment(false);
         const pr = await paystackHostedCheckout.waitForCheckout(url, {
           title: "Pay custom offer",
+          returnUrl: paystackReturnPath ?? undefined,
           matchSuccess: (u) =>
             !!paystackReturnPath && matchesExpoReturnUrl(u, paystackReturnPath) && !isCancelledPaystackUrl(u),
           matchCancel: (u) => isCancelledPaystackUrl(u),
