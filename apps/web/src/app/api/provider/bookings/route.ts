@@ -1866,12 +1866,25 @@ async function handleCreateProviderBooking(request: NextRequest) {
         );
         await supabaseAdmin.from("product_orders").delete().eq("booking_id", booking.id);
         await supabaseAdmin.from("bookings").delete().eq("id", booking.id);
+        const dbCode =
+          typeof (orderSyncError as { code?: unknown } | null | undefined)?.code === "string"
+            ? (orderSyncError as { code: string }).code
+            : null;
+        const dbDetails =
+          typeof (orderSyncError as { details?: unknown } | null | undefined)?.details === "string"
+            ? (orderSyncError as { details: string }).details
+            : null;
         const msg =
           orderSyncError instanceof Error
             ? orderSyncError.message
             : "Failed to sync product order for this appointment";
-        return errorResponse(msg, "PRODUCT_SYNC_FAILED", 422, {
+        const formattedMessage = [msg, dbCode ? `(db:${dbCode})` : null, dbDetails ? `- ${dbDetails}` : null]
+          .filter(Boolean)
+          .join(" ");
+        return errorResponse(formattedMessage, "PRODUCT_SYNC_FAILED", 422, {
           cause: orderSyncError instanceof Error ? orderSyncError.stack : String(orderSyncError),
+          dbCode,
+          dbDetails,
         });
       }
 

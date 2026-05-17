@@ -9,6 +9,7 @@ import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { useAuth } from "@/providers/AuthProvider";
 import LoginModal from "@/components/global/login-modal";
 import { toast } from "sonner";
+import { formatProviderDescriptionForCard } from "@beautonomi/utils";
 
 interface ProviderCardProps {
   provider: PublicProviderCard;
@@ -48,19 +49,12 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
     return count.toString();
   };
 
-  const formatDescription = (description: string) => {
-    if (!description) return "";
-    // Convert to lowercase and capitalize first letter
-    const trimmed = description.trim();
-    if (trimmed.length === 0) return "";
-    return trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
-  };
-
   // Card hero = main listing image; circle = business "face" (avatar), fallback to thumbnail
   const thumbnailUrl = provider.thumbnail_url || "/images/placeholder-provider.jpg";
   const avatarUrl = provider.avatar_url || provider.thumbnail_url || "/images/placeholder-provider.jpg";
   const providerInitial = provider.business_name.charAt(0).toUpperCase();
   const businessName = provider.business_name.trim() || "Provider";
+  const cardDescription = formatProviderDescriptionForCard(provider.description);
   const ratingText = provider.rating > 0 ? `${provider.rating.toFixed(1)} out of 5` : "No reviews yet";
   const reviewCountText = provider.review_count ? `${formatReviewCount(provider.review_count)} reviews` : "No reviews";
 
@@ -330,7 +324,7 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
           </div>
 
           {/* Description */}
-          {provider.description && provider.description.trim() && (
+          {cardDescription && (
             <p 
               className="text-[10px] md:text-xs text-gray-600 font-light mb-2 md:mb-2.5 leading-relaxed normal-case line-clamp-2"
               style={{
@@ -341,7 +335,7 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
                 textOverflow: 'ellipsis',
               }}
             >
-              {formatDescription(provider.description)}
+              {cardDescription}
             </p>
           )}
 

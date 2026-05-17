@@ -1,8 +1,10 @@
 /**
  * Shown when provider profile/role bootstrap fails after login (network or API error).
- * Offers Retry via ProviderContext.refresh().
+ * Offers Retry via ProviderContext.refresh() and also auto-retries whenever the
+ * app returns to the foreground or network reconnects — no manual tap required.
  */
-import { View, Text, TouchableOpacity, ActivityIndicator } from "react-native";
+import { useEffect } from "react";
+import { DeviceEventEmitter, View, Text, TouchableOpacity, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useProvider } from "@/providers/ProviderContext";
 import { twStyle } from "@/lib/twStyle";
@@ -10,6 +12,21 @@ import { Colors } from "@/constants/colors";
 
 export function ProfileLoadErrorBanner() {
   const { profileLoadError, loading, refresh } = useProvider();
+
+  // Auto-retry when app comes back to foreground or network recovers so the
+  // user doesn't have to tap "Retry" after switching apps or reconnecting.
+  useEffect(() => {
+    if (!profileLoadError) return;
+    const handler = () => {
+      if (!loading) void refresh();
+    };
+    const subFocus = DeviceEventEmitter.addListener("beautonomi:app:focus", handler);
+    const subRecover = DeviceEventEmitter.addListener("beautonomi:network:recover", handler);
+    return () => {
+      subFocus.remove();
+      subRecover.remove();
+    };
+  }, [profileLoadError, loading, refresh]);
 
   if (!profileLoadError) return null;
 

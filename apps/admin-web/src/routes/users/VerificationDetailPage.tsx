@@ -24,6 +24,28 @@ type VerificationDetail = Record<string, unknown> & {
   rejection_reason?: string | null;
   submitted_at?: string | null;
   user?: { full_name?: string; email?: string; phone?: string | null };
+  provider?: {
+    id?: string;
+    business_name?: string | null;
+    slug?: string | null;
+    verification_status?: string | null;
+    relationship?: "owner" | "staff";
+  } | null;
+};
+
+const PROVIDER_STATUS_BADGE: Record<string, string> = {
+  approved: "bg-green-100 text-green-700",
+  active: "bg-green-100 text-green-700",
+  verified: "bg-blue-100 text-blue-700",
+  pending: "bg-zinc-100 text-zinc-700",
+  in_review: "bg-amber-100 text-amber-700",
+  rejected: "bg-red-100 text-red-700",
+  suspended: "bg-red-100 text-red-700",
+};
+
+const PROVIDER_RELATIONSHIP_BADGE: Record<string, string> = {
+  owner: "bg-indigo-100 text-indigo-700",
+  staff: "bg-zinc-100 text-zinc-700",
 };
 
 export function VerificationDetailPage() {
@@ -101,6 +123,15 @@ export function VerificationDetailPage() {
   const status = String(row?.status ?? "");
   const pending = status === "pending" || status === "submitted" || status === "under_review";
   const subjectUserId = typeof row?.user_id === "string" ? row.user_id : "";
+  const provider = row?.provider ?? null;
+  const providerStatus = provider?.verification_status ?? null;
+  const providerStatusCls = providerStatus
+    ? PROVIDER_STATUS_BADGE[providerStatus] ?? "bg-gray-100 text-gray-700"
+    : null;
+  const providerRelationship = provider?.relationship ?? null;
+  const providerRelCls = providerRelationship
+    ? PROVIDER_RELATIONSHIP_BADGE[providerRelationship] ?? "bg-gray-100 text-gray-700"
+    : null;
 
   return (
     <div className="space-y-6">
@@ -151,6 +182,33 @@ export function VerificationDetailPage() {
             </p>
           ) : null}
         </div>
+        {provider?.id ? (
+          <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Linked provider</p>
+            <div className="mt-1.5 flex flex-wrap items-center gap-2">
+              <Link
+                to={adminSpaTo(`/admin/provider-ops/providers/${encodeURIComponent(String(provider.id))}`)}
+                className="text-sm font-medium text-primary hover:underline"
+              >
+                {provider.business_name || "Unnamed business"}
+              </Link>
+              {providerRelationship && providerRelCls ? (
+                <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium capitalize ${providerRelCls}`}>
+                  {providerRelationship}
+                </span>
+              ) : null}
+              {providerStatus && providerStatusCls ? (
+                <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium capitalize ${providerStatusCls}`}>
+                  {providerStatus.replace(/_/g, " ")}
+                </span>
+              ) : null}
+            </div>
+            <p className="mt-1 text-xs text-gray-500">
+              Approving here also syncs the provider&apos;s KYC status. Open the lifecycle page to manage the marketplace
+              badge or onboarding state.
+            </p>
+          </div>
+        ) : null}
         {row?.document_url ? (
           <div>
             <button

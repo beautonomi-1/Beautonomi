@@ -47,7 +47,16 @@ type ChildBookingRow = {
   gift_card_amount?: number | null;
   payment_status?: string | null;
   customer?: { full_name?: string | null; email?: string | null; phone?: string | null } | null;
-  booking_payments?: Array<{ amount?: number | null; status?: string | null }> | null;
+  booking_payments?: Array<{
+    id?: string | null;
+    amount?: number | null;
+    status?: string | null;
+    payment_method?: string | null;
+    payment_provider?: string | null;
+    paid_at?: string | null;
+    created_at?: string | null;
+    notes?: string | null;
+  }> | null;
 };
 
 type ProviderReceiptRow = {
@@ -192,7 +201,7 @@ export async function GET(
             gift_card_amount,
             payment_status,
             customer:users!bookings_customer_id_fkey(full_name, email, phone),
-            booking_payments(id, amount, status)
+            booking_payments(id, amount, status, payment_method, payment_provider, paid_at, created_at, notes)
           `)
           .in("id", bookingIds)
       : { data: [] as ChildBookingRow[] };
@@ -253,6 +262,41 @@ export async function GET(
                 ? "partial"
                 : "pending";
 
+    // §Group-booking-audit 2026-05 (receipt completeness): flat list of
+    // booking_payments across all child bookings so the PDF can render a
+    // proper "Payments" section showing method / when / amount per row.
+    const paymentsAggregate: Array<{
+      booking_number: string | null;
+      participant_name: string | null;
+      payment_method: string | null;
+      payment_provider: string | null;
+      amount: number;
+      paid_at: string | null;
+      status: string | null;
+      notes: string | null;
+    }> = [];
+    for (const child of childRows) {
+      const participantForBooking = participants.find((p) => p.booking_id === child.id);
+      for (const payment of child.booking_payments || []) {
+        if (!isPaidBookingPaymentStatus(payment.status)) continue;
+        paymentsAggregate.push({
+          booking_number: child.booking_number ?? null,
+          participant_name: participantForBooking?.participant_name ?? null,
+          payment_method: payment.payment_method ?? null,
+          payment_provider: payment.payment_provider ?? null,
+          amount: num(payment.amount),
+          paid_at: payment.paid_at ?? payment.created_at ?? null,
+          status: payment.status ?? null,
+          notes: payment.notes ?? null,
+        });
+      }
+    }
+    paymentsAggregate.sort((a, b) => {
+      const ta = a.paid_at ? Date.parse(a.paid_at) : 0;
+      const tb = b.paid_at ? Date.parse(b.paid_at) : 0;
+      return ta - tb;
+    });
+
     const lineItems = participants.map((p, index) => {
       const child = p.booking_id ? childById.get(p.booking_id) : null;
       return {
@@ -308,6 +352,7 @@ export async function GET(
       settlement_basis: childRows.length > 0 ? "linked_participant_bookings" : "group_session_estimate",
       participant_count: participants.length,
       items: lineItems,
+      payments: paymentsAggregate,
       products,
       subtotal: participantTotal + productTotal,
       participant_services_total: participantTotal,

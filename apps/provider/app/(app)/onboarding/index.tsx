@@ -1,5 +1,6 @@
+import { useCallback } from "react";
 import { View, Text, TouchableOpacity } from "react-native";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
@@ -17,6 +18,7 @@ type SetupStep = {
   title: string;
   completed: boolean;
   required: boolean;
+  native_route?: string | null;
 };
 
 type SetupStatus = {
@@ -57,15 +59,29 @@ export default function OnboardingHubScreen() {
     router.replace("/(app)/(tabs)" as never);
   };
 
-  const goToSetupStatus = () => {
-    hapticLight();
-    router.push("/(app)/(tabs)/more/settings/setup-status" as never);
-  };
-
   const startNativeWizard = () => {
     hapticLight();
     router.push("/(app)/onboarding/wizard" as never);
   };
+
+  // §provider-setup-seamless-ux 2026-05: clicking a "Still needed" item now
+  // routes directly to the targeted screen (via server-returned native_route)
+  // so providers can fix a single field without restarting the 14-step wizard.
+  const openStep = (step: SetupStep) => {
+    hapticLight();
+    if (step.native_route && step.native_route.startsWith("/(app)/")) {
+      router.push(step.native_route as never);
+      return;
+    }
+    router.push("/(app)/onboarding/wizard" as never);
+  };
+
+  // Refresh on focus so completing a step elsewhere updates the hub immediately.
+  useFocusEffect(
+    useCallback(() => {
+      void refresh();
+    }, [refresh]),
+  );
 
   if (loading && !data) {
     return (
@@ -182,10 +198,18 @@ export default function OnboardingHubScreen() {
                 Still needed
               </Text>
               {pendingRequired.slice(0, 5).map((s) => (
-                <View key={s.id} style={twStyle("flex-row items-center gap-2.5 py-1.5")}>
+                <TouchableOpacity
+                  key={s.id}
+                  onPress={() => openStep(s)}
+                  activeOpacity={0.7}
+                  style={twStyle("flex-row items-center gap-2.5 py-1.5")}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open ${s.title}`}
+                >
                   <View style={twStyle("h-2 w-2 rounded-full bg-primary/50")} />
                   <Text style={twStyle("flex-1 text-[15px] text-gray-800")}>{s.title}</Text>
-                </View>
+                  <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+                </TouchableOpacity>
               ))}
               {pendingRequired.length > 5 && (
                 <Text style={twStyle("mt-1 text-xs text-gray-400")}>
@@ -213,39 +237,17 @@ export default function OnboardingHubScreen() {
             </TouchableOpacity>
           )}
 
-          {!isComplete && (
+          {isComplete ? (
             <TouchableOpacity
-              onPress={goToSetupStatus}
-              style={twStyle(
-                "mb-3 items-center rounded-2xl border border-gray-200 bg-gray-50 py-3.5",
-              )}
-              activeOpacity={0.85}
-              accessibilityLabel="Open setup checklist"
+              onPress={goToApp}
+              style={twStyle("items-center rounded-2xl bg-primary py-4")}
+              activeOpacity={0.88}
+              accessibilityLabel="Go to dashboard"
               accessibilityRole="button"
             >
-              <Text style={twStyle("text-sm font-semibold text-gray-800")}>View checklist</Text>
-              <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>Jump to any individual step</Text>
+              <Text style={twStyle("text-base font-semibold text-white")}>Go to dashboard</Text>
             </TouchableOpacity>
-          )}
-
-          <TouchableOpacity
-            onPress={goToApp}
-            style={twStyle(
-              `items-center rounded-2xl py-4 ${isComplete ? "bg-primary" : "bg-gray-900"}`,
-            )}
-            activeOpacity={0.88}
-            accessibilityLabel={isComplete ? "Go to dashboard" : "Continue to app"}
-            accessibilityRole="button"
-          >
-            <Text style={twStyle("text-base font-semibold text-white")}>
-              {isComplete ? "Go to dashboard" : "Continue to app"}
-            </Text>
-            {!isComplete ? (
-              <Text style={twStyle("mt-1 px-4 text-center text-xs text-white/75")}>
-                You can explore the app anytime; finish setup when you are ready.
-              </Text>
-            ) : null}
-          </TouchableOpacity>
+          ) : null}
         </View>
       </View>
     </ScreenContainer>

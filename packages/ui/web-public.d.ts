@@ -78,3 +78,15 @@ export declare function Badge(props: BadgeProps): any;
 export declare function EmptyState(props: EmptyStateProps): any;
 export declare function LoadingState(props: LoadingStateProps): any;
 export declare function CustomOfferCard(props: CustomOfferCardProps): any;
+
+export interface ProviderGalleryImageProps {
+  src: string;
+  alt: string;
+  className?: string;
+  frameClassName?: string;
+  priority?: boolean;
+  loading?: "eager" | "lazy";
+  sizes?: string;
+}
+
+export declare function ProviderGalleryImage(props: ProviderGalleryImageProps): any;

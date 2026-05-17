@@ -146,6 +146,10 @@ const SETTINGS_CATEGORIES: SettingsCategory[] = [
     description: "Account and notifications",
     items: [
       { title: "My profile", description: "Photo, personal info, address & plan", href: "/provider/account/profile", mobileRoute: "/(app)/(tabs)/more/profile" },
+      // §provider-setup-seamless-ux 2026-05: dedicated entry-point for the
+      // freelancer Personal Profile screen (the bio that gates the
+      // `personal-profile` setup step).
+      { title: "Personal profile", description: "Bio, headline & how customers see you", href: "/provider/account/personal-profile", mobileRoute: "/(app)/(tabs)/more/settings/personal-profile" },
       { title: "Rewards & badges", description: "Points, tiers, milestones & badge progress", href: "/provider/gamification", mobileRoute: "/(app)/(tabs)/more/rewards-hub" },
       { title: "Subscription & plan", description: "Upgrade, billing period, cancel or renew", href: "/provider/subscription", mobileRoute: "/(app)/(tabs)/more/settings/subscription" },
       { title: "Notification preferences", description: "How you receive notifications", href: "/provider/settings/notifications", mobileRoute: "/(app)/(tabs)/more/settings/notification-preferences" },
@@ -284,6 +288,31 @@ export default function SettingsAccountHubScreen() {
         contentContainerStyle={{ paddingBottom: 100 }}
         showsVerticalScrollIndicator={false}
       >
+        {/* §provider-setup-seamless-ux 2026-05: pinned Setup checklist row.
+           Lives at the top of the hub regardless of expanded category so a
+           provider mid-setup can always one-tap back to the full list. */}
+        <TouchableOpacity
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            router.push("/(app)/(tabs)/more/settings/setup-status" as never);
+          }}
+          style={twStyle("mb-3 flex-row items-center rounded-xl border border-emerald-100 bg-emerald-50/70 p-4")}
+          activeOpacity={0.7}
+          accessibilityLabel="Setup checklist. Track your business setup progress."
+          accessibilityRole="button"
+        >
+          <View style={twStyle("mr-3 h-10 w-10 items-center justify-center rounded-full bg-emerald-100")}>
+            <Ionicons name="checkbox-outline" size={22} color="#059669" />
+          </View>
+          <View style={twStyle("flex-1")}>
+            <Text style={twStyle("font-semibold text-emerald-900")}>Setup checklist</Text>
+            <Text style={twStyle("mt-0.5 text-sm text-emerald-800")}>
+              Track and finish your business setup
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color="#059669" />
+        </TouchableOpacity>
+
         {isFreelancer && (
           <TouchableOpacity
             onPress={() => router.push("/(app)/(tabs)/more/upgrade-info" as never)}

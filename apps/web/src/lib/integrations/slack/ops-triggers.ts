@@ -47,6 +47,78 @@ export function slackNotifyUserReportCreated(params: {
   });
 }
 
+/**
+ * SumSub or internal system rejected a verification — admin should follow up
+ * with the user/provider to explain next steps or request a resubmission.
+ */
+export function slackNotifyVerificationRejected(params: {
+  tenantId: string;
+  verificationId: string;
+  source: "sumsub_customer" | "sumsub_provider" | "manual";
+  subject?: string | null;
+  detail?: string | null;
+  actionUrl?: string;
+  entityType?: string;
+}) {
+  const src =
+    params.source === "sumsub_customer"
+      ? "SumSub (customer)"
+      : params.source === "sumsub_provider"
+        ? "SumSub (provider)"
+        : "Manual review";
+  void tryNotifySlackEvent({
+    tenantId: params.tenantId,
+    environment: eventEnv(),
+    eventKey: SLACK_EVENT_KEYS.VERIFICATION_REJECTED,
+    dedupeKey: `verification:${params.verificationId}:${params.source}:rejected`,
+    entityType: params.entityType ?? "user_verification",
+    entityId: params.verificationId,
+    title: "Verification rejected — follow-up required",
+    detailLines: [
+      src,
+      params.subject ? `User/provider: ${params.subject}` : null,
+      params.detail ?? null,
+      "Action: notify user/provider and guide resubmission",
+      params.source === "sumsub_provider"
+        ? "Admin → Provider Lifecycle → Verification card"
+        : "Admin → Verifications",
+    ].filter(Boolean) as string[],
+    actionUrl: params.actionUrl ?? `/verifications/${params.verificationId}`,
+  });
+}
+
+/**
+ * An admin has manually reviewed (approved or rejected) an identity verification.
+ * Fired for audit/accountability purposes so the team can see review activity in Slack.
+ */
+export function slackNotifyVerificationReviewed(params: {
+  tenantId: string;
+  verificationId: string;
+  outcome: "approved" | "rejected";
+  reviewerName?: string | null;
+  subjectName?: string | null;
+  rejectionReason?: string | null;
+}) {
+  const emoji = params.outcome === "approved" ? "✅" : "❌";
+  void tryNotifySlackEvent({
+    tenantId: params.tenantId,
+    environment: eventEnv(),
+    eventKey: SLACK_EVENT_KEYS.VERIFICATION_REVIEWED,
+    dedupeKey: `verification:${params.verificationId}:reviewed:${params.outcome}`,
+    entityType: "user_verification",
+    entityId: params.verificationId,
+    title: `${emoji} Verification ${params.outcome} by admin`,
+    detailLines: [
+      params.subjectName ? `User: ${params.subjectName}` : null,
+      params.reviewerName ? `Reviewed by: ${params.reviewerName}` : null,
+      params.outcome === "rejected" && params.rejectionReason
+        ? `Reason: ${params.rejectionReason}`
+        : null,
+    ].filter(Boolean) as string[],
+    actionUrl: `/verifications/${params.verificationId}`,
+  });
+}
+
 /** Manual upload or SumSub outcome that still needs admin review. */
 export function slackNotifyVerificationNeedsReview(params: {
   tenantId: string;

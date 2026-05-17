@@ -2,6 +2,7 @@
  * Generic data fetching hooks with loading, error, refresh support.
  */
 import { useState, useEffect, useCallback, useRef } from "react";
+import { DeviceEventEmitter } from "react-native";
 import type { ApiError } from "@beautonomi/types";
 import type { ApiClientRequestBody } from "@beautonomi/api";
 import { api } from "@/lib/api-client";
@@ -66,7 +67,10 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
   const runtimeMarketHost = getRuntimeMarketHost().trim().toLowerCase() || "default";
   const cacheKey = `${cacheScope}::${runtimeMarketHost}::${path}`;
 
-  const fetchData = useCallback(async () => {
+  // `silent=true` → background refresh: never show loading spinner if we
+  // already have data. The WhatsApp/Airbnb pattern — show what we know,
+  // swap it for fresh data when the network responds.
+  const fetchData = useCallback(async (silent = false) => {
     if (!enabled) {
       setLoading(false);
       setErrorCode(null);
@@ -74,9 +78,6 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
     }
     const id = ++requestIdRef.current;
     try {
-      setLoading(true);
-      setError(null);
-      setErrorCode(null);
       setTimedOut(false);
 
       const now = Date.now();
@@ -86,7 +87,18 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
         setData(cached.data);
         setError(cached.error);
         setErrorCode(cached.errorCode ?? null);
+        setLoading(false);
         return;
+      }
+
+      // Only show the loading spinner when we don't already have usable data.
+      const hasExistingData = cached?.data != null;
+      if (silent && hasExistingData) {
+        // Background refresh — keep showing existing data, no spinner.
+      } else {
+        setLoading(true);
+        setError(null);
+        setErrorCode(null);
       }
 
       const inflight = inflightRequests.get(cacheKey) as
@@ -171,11 +183,30 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
 
   useEffect(() => {
     mountedRef.current = true;
-    fetchData();
+    void fetchData();
     return () => {
       mountedRef.current = false;
     };
   }, [fetchData]);
+
+  // Silent background refresh on app focus or network reconnection.
+  // Skips the loading spinner if data is already present — mirrors how
+  // WhatsApp and Airbnb keep their feeds always up-to-date on resume.
+  useEffect(() => {
+    if (!enabled) return;
+    const onFocusOrRecover = () => {
+      if (!mountedRef.current) return;
+      const cached = responseCache.get(cacheKey) as CacheEntry<T> | undefined;
+      const isStale = !cached || cached.expiresAt <= Date.now();
+      if (isStale) void fetchData(true);
+    };
+    const subFocus = DeviceEventEmitter.addListener("beautonomi:app:focus", onFocusOrRecover);
+    const subRecover = DeviceEventEmitter.addListener("beautonomi:network:recover", onFocusOrRecover);
+    return () => {
+      subFocus.remove();
+      subRecover.remove();
+    };
+  }, [enabled, cacheKey, fetchData]);
 
   useEffect(() => {
     if (!loading || !timeoutMs) {

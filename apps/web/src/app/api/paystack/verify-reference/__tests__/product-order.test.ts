@@ -2,17 +2,20 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 const mockRequireRoleInApi = vi.fn();
+const mockOptionalAuthInApi = vi.fn();
 const mockGetSupabaseServer = vi.fn();
 const mockGetSupabaseAdmin = vi.fn();
 const mockResolveTenantIdWithZaFallback = vi.fn();
 const mockGetPaystackSecretKey = vi.fn();
 const mockRecordProductOrderPayment = vi.fn();
+let adminOrderRow: Record<string, unknown> | null = null;
 
 vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/supabase/api-helpers")>();
   return {
     ...actual,
     requireRoleInApi: (...args: unknown[]) => mockRequireRoleInApi(...args),
+    optionalAuthInApi: (...args: unknown[]) => mockOptionalAuthInApi(...args),
   };
 });
 
@@ -80,14 +83,20 @@ function mockSupabase(orderRow: Record<string, unknown> | null) {
   };
 }
 
+function adminSupabase() {
+  return mockSupabase(adminOrderRow);
+}
+
 describe("GET /api/paystack/verify-reference product orders", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
     mockRequireRoleInApi.mockResolvedValue({ user: { id: "customer-1", role: "customer" } });
+    mockOptionalAuthInApi.mockResolvedValue({ user: { id: "customer-1", role: "customer" } });
     mockResolveTenantIdWithZaFallback.mockResolvedValue("tenant-za");
     mockGetPaystackSecretKey.mockResolvedValue("sk_test");
     mockRecordProductOrderPayment.mockResolvedValue({ ok: true, duplicate: false });
+    adminOrderRow = null;
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => ({
@@ -120,7 +129,8 @@ describe("GET /api/paystack/verify-reference product orders", () => {
       order_number: "BO-1",
     };
     mockGetSupabaseServer.mockResolvedValue(mockSupabase(orderRow));
-    mockGetSupabaseAdmin.mockReturnValue(mockSupabase(orderRow));
+    adminOrderRow = orderRow;
+    mockGetSupabaseAdmin.mockReturnValue(adminSupabase());
 
     const { GET } = await import("../route");
     const res = await GET(new NextRequest("http://localhost/api/paystack/verify-reference?reference=ref-1"));
@@ -141,7 +151,7 @@ describe("GET /api/paystack/verify-reference product orders", () => {
   });
 
   it("does not fulfill a product order for another customer", async () => {
-    mockGetSupabaseServer.mockResolvedValue(mockSupabase({
+    const row = {
       id: "order-1",
       tenant_id: "tenant-za",
       provider_id: "provider-1",
@@ -150,7 +160,10 @@ describe("GET /api/paystack/verify-reference product orders", () => {
       wallet_amount: 0,
       payment_status: "pending",
       payment_reference: null,
-    }));
+    };
+    mockGetSupabaseServer.mockResolvedValue(mockSupabase(row));
+    adminOrderRow = row;
+    mockGetSupabaseAdmin.mockReturnValue(adminSupabase());
 
     const { GET } = await import("../route");
     const res = await GET(new NextRequest("http://localhost/api/paystack/verify-reference?reference=ref-1"));
@@ -159,5 +172,31 @@ describe("GET /api/paystack/verify-reference product orders", () => {
     expect(res.status).toBe(403);
     expect(body?.error?.code).toBe("FORBIDDEN");
     expect(mockRecordProductOrderPayment).not.toHaveBeenCalled();
+  });
+
+  it("fulfills product order verification without session", async () => {
+    mockOptionalAuthInApi.mockResolvedValue({ user: null });
+    const orderRow = {
+      id: "order-1",
+      tenant_id: "tenant-za",
+      provider_id: "provider-1",
+      customer_id: "customer-2",
+      total_amount: 100,
+      wallet_amount: 0,
+      payment_status: "pending",
+      payment_reference: null,
+      order_number: "BO-1",
+    };
+    mockGetSupabaseServer.mockResolvedValue(mockSupabase(orderRow));
+    adminOrderRow = orderRow;
+    mockGetSupabaseAdmin.mockReturnValue(adminSupabase());
+
+    const { GET } = await import("../route");
+    const res = await GET(new NextRequest("http://localhost/api/paystack/verify-reference?reference=ref-1"));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body?.data?.verified).toBe(true);
+    expect(mockRecordProductOrderPayment).toHaveBeenCalledTimes(1);
   });
 });

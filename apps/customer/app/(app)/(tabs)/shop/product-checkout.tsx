@@ -22,6 +22,7 @@ import * as ExpoLinking from "expo-linking";
 import { Colors, Shadows } from "@/constants/colors";
 import { useResponsive } from "@/hooks/useResponsive";
 import { api } from "@/lib/api-client";
+import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { useCart } from "@/features/shop/useCart";
 import { emitCartUpdated } from "@/lib/cart-events";
@@ -548,6 +549,7 @@ export default function ProductCheckoutScreen() {
       setProcessingPayment(false);
       const pr = await paystackHostedCheckout.waitForCheckout(url, {
         title: (pc("securePaymentTitle") as string) || "Secure payment",
+        returnUrl: paystackReturnPath,
         matchSuccess: (u) => matchesExpoReturnUrl(u, paystackReturnPath) && !isCancelledPaystackUrl(u),
         matchCancel: (u) => isCancelledPaystackUrl(u),
       });
@@ -572,7 +574,7 @@ export default function ProductCheckoutScreen() {
       }
       if (reference) {
         markReferenceProcessing(reference);
-        await api.get(`/api/paystack/verify?reference=${encodeURIComponent(reference)}`).catch(() => {});
+        await verifyPaystackWithRetry(reference);
       }
 
       let paid = false;

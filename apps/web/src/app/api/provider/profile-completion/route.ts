@@ -9,10 +9,22 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { locationHasOperatingHours } from "@/lib/provider/location-operating-hours";
 
+/**
+ * @deprecated Use `GET /api/provider/setup-status` — that endpoint is the
+ * canonical source of truth, exposes 11 items (vs 8 here), reports the same
+ * `% complete` shown on the dashboard hero card / onboarding hub / settings
+ * checklist, and returns `native_route` per step so the mobile checklist UI
+ * no longer needs a client-side WEB_PATH_TO_NATIVE map. This endpoint is
+ * retained only for any cached/older mobile clients still in the wild and
+ * will be removed once usage drops to zero.
+ */
 export async function GET(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(
-      ["provider_owner", "provider_staff", "superadmin"],
+      // §provider-setup-seamless-ux 2026-05: also allow `provider_onboarding`
+      // so new providers (whose role hasn't yet been promoted by completing
+      // the wizard) don't see a 403 on the legacy More-tab completion card.
+      ["provider_owner", "provider_staff", "superadmin", "provider_onboarding"],
       request,
     );
     const supabaseAdmin = createClient(

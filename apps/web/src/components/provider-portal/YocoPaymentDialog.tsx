@@ -23,6 +23,24 @@ import { toast } from "sonner";
 import { Money } from "./Money";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 
+// §Yoco-synergy 2026-05: compact relative-time string ("3m ago", "2h ago",
+// "Yesterday"-style "1d ago"). Keeps the dialog from depending on date-fns
+// just for one label and matches the mobile picker's formatter.
+function formatYocoLastUsed(iso: string): string {
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) return "recently";
+  const diff = Math.max(0, Date.now() - ms);
+  const mins = Math.round(diff / 60_000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  const months = Math.round(days / 30);
+  return `${months}mo ago`;
+}
+
 interface YocoPaymentDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -31,6 +49,13 @@ interface YocoPaymentDialogProps {
   /** Provider booking UUID — links terminal payment to the booking row */
   bookingId?: string;
   saleId?: string;
+  /**
+   * §Yoco-audit 2026-05: location of the booking / sale so we can default to
+   * the device assigned to that location. Without this the dialog defaulted
+   * to the globally-first active device, which routed payments to the wrong
+   * salon when providers operate multiple locations.
+   */
+  bookingLocationId?: string | null;
   onSuccess?: (payment: YocoPayment) => void;
 }
 
@@ -41,11 +66,13 @@ export function YocoPaymentDialog({
   appointmentId,
   bookingId,
   saleId,
+  bookingLocationId,
   onSuccess,
 }: YocoPaymentDialogProps) {
   const { bundle } = useConfigBundle();
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const [devices, setDevices] = useState<YocoDevice[]>([]);
+  const [allDevices, setAllDevices] = useState<YocoDevice[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>("");
   const [customAmount, setCustomAmount] = useState<string>(amount.toString());
   const [isProcessing, setIsProcessing] = useState(false);
@@ -63,10 +90,30 @@ export function YocoPaymentDialog({
   const loadDevices = async () => {
     try {
       const data = await providerApi.listYocoDevices();
+      setAllDevices(data);
       const activeDevices = data.filter((d) => d.is_active);
       setDevices(activeDevices);
       if (activeDevices.length > 0 && !selectedDeviceId) {
-        setSelectedDeviceId(activeDevices[0].id);
+        // §Yoco-synergy 2026-05: preselect order
+        //   1. exact device for the booking's salon location
+        //   2. portable device (location_id == null, set to "All Locations")
+        //   3. first active device
+        // For at-home / mobile bookings (no bookingLocationId), portable is
+        // preferred first since that's the device the provider physically
+        // carries to the client.
+        const isMobileBooking = !bookingLocationId;
+        const portable = activeDevices.find(
+          (d) => (d as { location_id?: string | null }).location_id == null,
+        );
+        const locationMatch = bookingLocationId
+          ? activeDevices.find(
+              (d) => (d as { location_id?: string | null }).location_id === bookingLocationId,
+            )
+          : undefined;
+        const preferred = isMobileBooking
+          ? (portable ?? activeDevices[0])
+          : (locationMatch ?? portable ?? activeDevices[0]);
+        setSelectedDeviceId(preferred.id);
       }
     } catch (error) {
       console.error("Failed to load devices:", error);
@@ -206,7 +253,7 @@ export function YocoPaymentDialog({
               <Label htmlFor="device">Payment Device</Label>
               {devices.length === 0 ? (
                 <p id="device" className="mt-1 text-sm text-gray-500 rounded-md border border-input bg-background px-3 py-2">
-                  No active devices available
+                  {allDevices.length > 0 ? "No active devices available" : "No devices available"}
                 </p>
               ) : (
                 <Select value={selectedDeviceId} onValueChange={setSelectedDeviceId}>
@@ -214,21 +261,80 @@ export function YocoPaymentDialog({
                     <SelectValue placeholder="Select a device" />
                   </SelectTrigger>
                   <SelectContent>
-                    {devices.map((device) => (
-                      <SelectItem key={device.id} value={device.id}>
-                        {device.name} {device.location_name && `(${device.location_name})`}
-                      </SelectItem>
-                    ))}
+                    {devices.map((device) => {
+                      const dLoc = (device as { location_id?: string | null }).location_id ?? null;
+                      const matchesBookingLocation = bookingLocationId && dLoc === bookingLocationId;
+                      const isPortable = dLoc == null;
+                      return (
+                        <SelectItem key={device.id} value={device.id}>
+                          {device.name}
+                          {device.location_name
+                            ? ` (${device.location_name})`
+                            : isPortable
+                              ? " (All locations)"
+                              : ""}
+                          {matchesBookingLocation
+                            ? "  •  matches booking location"
+                            : isPortable
+                              ? "  •  portable"
+                              : ""}
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
               )}
+              {/* §Yoco-synergy 2026-05: contextual messaging:
+                - at-home booking + portable device → green confirmation
+                - at-home booking + no portable → amber prompt to flag a
+                  device as "All Locations" for mobile work
+                - at-salon booking with no matching device AND no portable →
+                  amber warning
+                - at-salon booking with no exact match but portable available
+                  → neutral "using portable" hint */}
+              {(() => {
+                if (devices.length === 0) return null;
+                const portable = devices.find(
+                  (d) => (d as { location_id?: string | null }).location_id == null,
+                );
+                const hasExactMatch = !!bookingLocationId && devices.some(
+                  (d) => (d as { location_id?: string | null }).location_id === bookingLocationId,
+                );
+                if (!bookingLocationId) {
+                  return portable ? (
+                    <p className="mt-2 text-xs text-emerald-700">
+                      Mobile booking · using your portable Yoco terminal.
+                    </p>
+                  ) : (
+                    <p className="mt-2 text-xs text-amber-700">
+                      Mobile booking · no portable device set up. Mark a device as &quot;All Locations&quot; in Yoco settings so it follows you on-site.
+                    </p>
+                  );
+                }
+                if (!hasExactMatch && !portable) {
+                  return (
+                    <p className="mt-2 text-xs text-amber-700">
+                      None of your active devices are assigned to this booking&apos;s location. The selected device will still process the payment.
+                    </p>
+                  );
+                }
+                if (!hasExactMatch && portable) {
+                  return (
+                    <p className="mt-2 text-xs text-indigo-700">
+                      Using your portable device — no terminal is assigned to this salon yet.
+                    </p>
+                  );
+                }
+                return null;
+              })()}
               {devices.length === 0 && (
                 <p className="text-xs text-gray-500 mt-1">
+                  {allDevices.length > 0 ? "You have devices but they are inactive. " : ""}
                   <a
                     href="/provider/settings/sales/yoco-devices"
                     className="text-pink-600 hover:underline"
                   >
-                    Add a device
+                    {allDevices.length > 0 ? "Activate a device" : "Add a device"}
                   </a>{" "}
                   to process payments
                 </p>
@@ -264,6 +370,27 @@ export function YocoPaymentDialog({
                     <span>{selectedDevice.location_name}</span>
                   </div>
                 )}
+                {/* §Yoco-synergy 2026-05: surface the same Last used / total
+                  transactions hint the mobile picker shows so providers know
+                  whether the terminal is fresh or stale before charging. */}
+                {(() => {
+                  const lastUsed = (selectedDevice as { last_used?: string | null; last_used_at?: string | null }).last_used
+                    ?? (selectedDevice as { last_used_at?: string | null }).last_used_at
+                    ?? null;
+                  const txns =
+                    (selectedDevice as { total_transactions?: number }).total_transactions ?? 0;
+                  if (!lastUsed && !txns) return null;
+                  const lastUsedLabel = lastUsed ? `Last used ${formatYocoLastUsed(lastUsed)}` : "Never used yet";
+                  return (
+                    <div className="flex justify-between text-xs text-gray-500 mt-1">
+                      <span>Activity:</span>
+                      <span>
+                        {lastUsedLabel}
+                        {txns > 0 ? ` · ${txns} txn${txns === 1 ? "" : "s"}` : ""}
+                      </span>
+                    </div>
+                  );
+                })()}
               </div>
             )}
           </div>

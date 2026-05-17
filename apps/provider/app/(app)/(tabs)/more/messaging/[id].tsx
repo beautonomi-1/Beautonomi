@@ -273,6 +273,16 @@ export default function ChatScreen() {
             if (!m.id || !m.created_at) return;
             const rowId = m.id;
             const rowCreatedAt = m.created_at;
+            const incomingContent = (m.content ?? "").trim();
+            // Drop the pending optimistic message when the real DB row arrives
+            // for the same content, so the user never sees a duplicate flash.
+            setOptimisticMessage((prev) => {
+              if (!prev) return prev;
+              if (m.sender_role !== "customer" && (prev.content ?? "").trim() === incomingContent) {
+                return null;
+              }
+              return prev;
+            });
             setRealtimeMessages((prev) => {
               if (prev.some((p) => p.id === rowId)) return prev;
               const att = Array.isArray(m.attachments) ? m.attachments : [];

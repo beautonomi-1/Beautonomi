@@ -2,6 +2,7 @@
 import React from "react";
 import { MapPin, Clock } from "lucide-react";
 import Link from "next/link";
+import { formatProviderDescriptionDisplay } from "@beautonomi/utils";
 
 interface PartnerAboutProps {
   description?: string | null;
@@ -114,6 +115,7 @@ const PartnerAbout: React.FC<PartnerAboutProps> = ({
   };
 
   const formattedHours = formatOperatingHours();
+  const aboutDescription = formatProviderDescriptionDisplay(description);
   // Privacy-first: only explicitly salon locations can expose full public address.
   const salonLocations = locations.filter((loc) => loc.location_type === "salon");
   const publicLocation =
@@ -128,7 +130,7 @@ const PartnerAbout: React.FC<PartnerAboutProps> = ({
       
       <div className="prose max-w-none mb-8">
         <p className="text-gray-700 leading-relaxed">
-          {description || "This provider hasn't added a description yet."}
+          {aboutDescription || "This provider hasn't added a description yet."}
         </p>
       </div>
 

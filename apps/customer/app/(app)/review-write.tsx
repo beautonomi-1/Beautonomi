@@ -8,23 +8,18 @@ import {
   ActivityIndicator,
   ScrollView,
   Alert,
-  Pressable,
   KeyboardAvoidingView,
   Platform,
   Keyboard,
 } from "react-native";
-import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, Stack, router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api } from "@/lib/api-client";
 import { apiBookingReviewPath } from "@/lib/customer-api-paths";
-import { useImagePicker } from "@/hooks/useImagePicker";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
 import { Colors } from "@/constants/colors";
-import { appendFormDataFileNative } from "@beautonomi/utils";
-
 export default function ReviewWriteScreen() {
   useScreenTracking("Review Write");
   const { t } = useTranslation();
@@ -51,20 +46,16 @@ export default function ReviewWriteScreen() {
     }>();
   const [rating, setRating] = useState(initRating ? parseInt(initRating, 10) : 0);
   const [comment, setComment] = useState(initComment || "");
-  const [photos, setPhotos] = useState<string[]>([]);
   const [services, setServices] = useState<
     { offering_id: string; offering_name: string; staff_id?: string | null; staff_name?: string | null }[]
   >([]);
   const [serviceRatings, setServiceRatings] = useState<Record<string, number>>({});
   const [staffRatings, setStaffRatings] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(false);
-  const [uploading, setUploading] = useState(false);
   const [loadingContext, setLoadingContext] = useState(false);
   const [androidKb, setAndroidKb] = useState(0);
   /** Set when `/api/me/reviews?booking_id=` returns a review (navigate with bookingId only). */
   const [hasExistingReview, setHasExistingReview] = useState(false);
-  const { pickFromLibrary } = useImagePicker();
-
   const isEdit = !!reviewId || hasExistingReview;
 
   const uniqueStaff = useMemo(() => {
@@ -153,9 +144,6 @@ export default function ReviewWriteScreen() {
               setStaffRatings({ [existingStaff.staff_id]: value });
             }
           }
-          if (Array.isArray(existingReview.photos)) {
-            setPhotos((existingReview.photos as unknown[]).filter((p): p is string => typeof p === "string"));
-          }
         }
       } finally {
         if (!cancelled) setLoadingContext(false);
@@ -200,7 +188,6 @@ export default function ReviewWriteScreen() {
         const res = await api.patch(path, {
           rating,
           comment: comment.trim() || undefined,
-          photos: photos.length > 0 ? photos : undefined,
           service_ratings: normalizedServiceRatings,
           staff_rating: normalizedStaffRating,
         });
@@ -210,7 +197,6 @@ export default function ReviewWriteScreen() {
         const res = await api.post(path, {
           rating,
           comment: comment.trim() || undefined,
-          photos: photos.length > 0 ? photos : undefined,
           service_ratings: normalizedServiceRatings,
           staff_rating: normalizedStaffRating,
         });
@@ -221,37 +207,6 @@ export default function ReviewWriteScreen() {
       Alert.alert(errTitle, e instanceof Error ? e.message : rw("submitFailed"));
     } finally {
       setLoading(false);
-    }
-  };
-
-  const addPhoto = async () => {
-    if (photos.length >= 4) return;
-    setUploading(true);
-    try {
-      const result = await pickFromLibrary();
-      if (!result) {
-        setUploading(false);
-        return;
-      }
-      const formData = new FormData();
-      appendFormDataFileNative(formData, "files", {
-        uri: result.uri,
-        name: result.fileName || "image.jpg",
-        type: "image/jpeg",
-      });
-      const res = await api.post<{ urls?: string[] }>("/api/me/custom-requests/upload", formData);
-      if (res.error) {
-        Alert.alert(errTitle, rw("uploadPhotoError"));
-        return;
-      }
-      const urls = res.data?.urls ?? [];
-      if (urls.length > 0) {
-        setPhotos((p) => [...p, ...urls].slice(0, 4));
-      }
-    } catch {
-      Alert.alert(errTitle, rw("uploadPhotoError"));
-    } finally {
-      setUploading(false);
     }
   };
 
@@ -333,22 +288,6 @@ export default function ReviewWriteScreen() {
           numberOfLines={4}
           textAlignVertical="top"
         />
-        <Text style={{ fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>{rw("photosSectionLabel")}</Text>
-        <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 16 }}>
-          {photos.map((url, i) => (
-            <View key={i} style={{ position: "relative", marginRight: 8, marginBottom: 8 }}>
-              <Image source={{ uri: url }} style={{ width: 80, height: 80, borderRadius: 8 }} contentFit="cover" cachePolicy="memory-disk" transition={200} />
-              <Pressable onPress={() => setPhotos((p) => p.filter((_, j) => j !== i))} style={{ position: "absolute", top: -4, right: -4, width: 24, height: 24, backgroundColor: "#EF4444", borderRadius: 12, alignItems: "center", justifyContent: "center" }}>
-                <Text style={{ color: Colors.white, fontSize: 12 }}>×</Text>
-              </Pressable>
-            </View>
-          ))}
-          {photos.length < 4 && (
-            <TouchableOpacity onPress={addPhoto} disabled={uploading} style={{ width: 80, height: 80, borderRadius: 8, borderWidth: 2, borderStyle: "dashed", borderColor: Colors.gray[300], alignItems: "center", justifyContent: "center", marginRight: 8, marginBottom: 8 }}>
-              {uploading ? <ActivityIndicator size="small" /> : <Text style={{ color: Colors.gray[500], fontSize: 24 }}>+</Text>}
-            </TouchableOpacity>
-          )}
-        </View>
         {loadingContext ? <ActivityIndicator style={{ marginBottom: 12 }} /> : null}
         {services.length > 0 && (
           <View style={{ marginBottom: 16 }}>

@@ -16,7 +16,19 @@ export interface YocoDevice {
   location_id: string | null;
   location_name?: string;
   is_active: boolean;
+  /**
+   * §Yoco-synergy 2026-05: ISO timestamp of the last successful Yoco charge
+   * routed through this device. The backend stores it as `last_used`
+   * (provider_yoco_devices.last_used in migration 127) and the API echoes
+   * the same column — the hook previously only read `last_used_at`, so the
+   * field was silently null in every UI. Both spellings are now accepted so
+   * the settings list and payment picker can show "Last used Xm ago".
+   */
   last_used_at: string | null;
+  /** Lifetime count of successful Yoco charges via this device. */
+  total_transactions?: number;
+  /** Lifetime sum of successful Yoco charges via this device (cents). */
+  total_amount?: number;
   created_at: string;
 }
 
@@ -165,6 +177,17 @@ export function useYocoDevices() {
       typeof row.is_active === "boolean"
         ? row.is_active
         : row.active === true;
+    // §Yoco-synergy 2026-05: backend may surface the column as `last_used`
+    // (provider_yoco_devices.last_used in migration 127) OR the historical
+    // `last_used_at` alias. Accept both so the picker + settings list always
+    // see a real value.
+    const lastUsed =
+      (typeof row.last_used_at === "string" && row.last_used_at) ||
+      (typeof row.last_used === "string" && row.last_used) ||
+      null;
+    const totalTransactions =
+      typeof row.total_transactions === "number" ? row.total_transactions : 0;
+    const totalAmount = typeof row.total_amount === "number" ? row.total_amount : 0;
     return {
       id,
       name: typeof row.name === "string" && row.name.length > 0 ? row.name : "Yoco device",
@@ -173,7 +196,9 @@ export function useYocoDevices() {
       location_id: typeof row.location_id === "string" ? row.location_id : null,
       location_name: typeof row.location_name === "string" ? row.location_name : undefined,
       is_active: isActive,
-      last_used_at: typeof row.last_used_at === "string" ? row.last_used_at : null,
+      last_used_at: lastUsed,
+      total_transactions: totalTransactions,
+      total_amount: totalAmount,
       created_at:
         typeof row.created_at === "string" && row.created_at.length > 0
           ? row.created_at

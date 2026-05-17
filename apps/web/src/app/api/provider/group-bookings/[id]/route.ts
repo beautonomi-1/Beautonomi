@@ -556,8 +556,8 @@ export async function POST(
 
     if (action === "mark_paid") {
       const paymentMethod = body.payment_method === "mobile" ? "other" : body.payment_method;
-      if (!["cash", "card", "bank_transfer", "other"].includes(paymentMethod)) {
-        return errorResponse("Valid payment_method is required (cash, card, bank_transfer, other)", "VALIDATION_ERROR", 400);
+      if (!["cash", "card", "bank_transfer", "other", "yoco"].includes(paymentMethod)) {
+        return errorResponse("Valid payment_method is required (cash, card, bank_transfer, other, yoco)", "VALIDATION_ERROR", 400);
       }
 
       const { data: bookings, error: bookingsError } = await admin
@@ -568,7 +568,8 @@ export async function POST(
         .not("status", "in", "(cancelled,no_show)");
       if (bookingsError) throw bookingsError;
 
-      const paymentProvider = paymentMethod === "cash" ? "cash" : "other";
+      const paymentProvider =
+        paymentMethod === "cash" ? "cash" : paymentMethod === "yoco" ? "yoco" : "other";
       const rows = (bookings ?? [])
         .map((booking: any) => {
           const unpaidAdditionalCharges = Array.isArray(booking.additional_charges)

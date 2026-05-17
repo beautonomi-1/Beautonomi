@@ -6,6 +6,7 @@ import {
   handleApiError,
   getProviderIdForUser,
   isValidUUID,
+  errorResponse,
 } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
@@ -30,22 +31,17 @@ export async function GET(request: NextRequest) {
       }
     }
     if (!providerId) {
-      return handleApiError(
-        new Error("Provider not found"),
-        "Provider not found",
-        "NOT_FOUND",
-        404
-      );
+      return errorResponse("Provider profile is not created yet", "NEW_PROVIDER", 404);
     }
 
     const { data: provider, error } = await supabase
       .from("providers")
-      .select("id, business_name, description, business_type, phone, email, thumbnail_url, avatar_url, tenant_id, timezone, offers_mobile_services")
+      .select("id, business_name, description, business_type, phone, email, thumbnail_url, avatar_url, tenant_id, timezone, offers_mobile_services, is_verified")
       .eq("id", providerId)
       .single();
 
     if (error || !provider) {
-      throw error || new Error("Provider not found");
+      return errorResponse("Provider profile is not created yet", "NEW_PROVIDER", 404);
     }
 
     const tenantId = (provider as { tenant_id?: string | null }).tenant_id ?? null;
@@ -59,11 +55,21 @@ export async function GET(request: NextRequest) {
       .order("is_primary", { ascending: false })
       .order("created_at", { ascending: true });
 
+    const { data: latestVerification } = await supabase
+      .from("user_verifications")
+      .select("status")
+      .eq("user_id", user.id)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
     const response = {
       ...provider,
       avatar_url: (provider as any).avatar_url ?? (provider as any).thumbnail_url ?? null,
       currency,
       locale,
+      is_verified: Boolean((provider as any).is_verified),
+      verification_status: (latestVerification as { status?: string | null } | null)?.status ?? "none",
       locations: (locations || []).map((loc: any) => ({
         id: loc.id,
         name: loc.name,

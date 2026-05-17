@@ -20,6 +20,7 @@ import {
 } from "@/lib/paystack-webview-utils";
 import * as ExpoLinking from "expo-linking";
 import { api } from "@/lib/api-client";
+import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -192,7 +193,7 @@ export default function GiftCardPurchaseScreen() {
           const ref = typeof charge.reference === "string" ? charge.reference.trim() : "";
           if (ref) {
             setProcessingMessage(gc("confirmingPayment") || "Confirming your payment…");
-            await api.get(`/api/paystack/verify?reference=${encodeURIComponent(ref)}`).catch(() => {});
+            await verifyPaystackWithRetry(ref);
           }
           const pollResult = await pollNewGiftCards(existingGiftCardIds);
           setIssuedGiftCardCodes(pollResult.codes);
@@ -213,6 +214,7 @@ export default function GiftCardPurchaseScreen() {
           setProcessingPayment(false);
           const pr = await paystackHostedCheckout.waitForCheckout(paymentUrl, {
             title: gc("securePaymentTitle") || "Secure payment",
+            returnUrl,
             matchSuccess: (u) => matchesExpoReturnUrl(u, returnUrl) && !isCancelledPaystackUrl(u),
             matchCancel: (u) => isCancelledPaystackUrl(u),
           });
@@ -230,7 +232,7 @@ export default function GiftCardPurchaseScreen() {
         setProcessingPayment(true);
         setProcessingMessage(gc("confirmingPayment") || "Confirming your payment…");
         if (reference) {
-          await api.get(`/api/paystack/verify?reference=${encodeURIComponent(reference)}`).catch(() => {});
+          await verifyPaystackWithRetry(reference);
         }
         const pollResult = await pollNewGiftCards(existingGiftCardIds);
         setIssuedGiftCardCodes(pollResult.codes);

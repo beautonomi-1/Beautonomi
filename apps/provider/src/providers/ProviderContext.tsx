@@ -4,6 +4,7 @@
  * Loads when the Supabase user id is present; clears on sign-out / user change.
  */
 import { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo, type ReactNode } from "react";
+import { DeviceEventEmitter } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { api } from "@/lib/api-client";
 import {
@@ -58,6 +59,8 @@ interface ProviderProfile {
    * flow would reject.
    */
   offers_mobile_services?: boolean;
+  is_verified?: boolean;
+  verification_status?: string;
 }
 
 interface ProviderContextType {
@@ -118,6 +121,8 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const lastProfileFetchRef = useRef(0);
+
   const fetchProfile = useCallback(async () => {
     const myId = ++fetchIdRef.current;
     const timeoutId = setTimeout(() => {
@@ -177,7 +182,7 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
 
       const pe = profileRes.error as { status?: number; code?: string; message?: string } | undefined;
       const isNoProviderRowYet =
-        pe?.status === 404 || pe?.code === "NOT_FOUND";
+        pe?.status === 404 || pe?.code === "NOT_FOUND" || pe?.code === "NEW_PROVIDER";
 
       if (profileRes.error && isNoProviderRowYet) {
         // New provider completing onboarding: no providers row yet — expected; still need role for RoleGate.
@@ -244,7 +249,10 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
       setActiveProviderApiHint(null);
     } finally {
       clearTimeout(timeoutId);
-      if (fetchIdRef.current === myId) setLoading(false);
+      if (fetchIdRef.current === myId) {
+        setLoading(false);
+        lastProfileFetchRef.current = Date.now();
+      }
     }
   }, [applyRoleFromResponse, userId, setSelectedLocationId]);
 
@@ -270,6 +278,25 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
     restoredRef.current = false;
     void fetchProfile();
   }, [userId, fetchProfile]);
+
+  // Silently refresh the provider profile whenever the app returns to the
+  // foreground or network reconnects — same as WhatsApp's contact/status refresh.
+  // Guarded by a 5-minute cooldown so we don't hit the API every alt-tab.
+  useEffect(() => {
+    if (!userId) return;
+    const onFocusOrRecover = () => {
+      if (loading) return;
+      const msSinceLast = Date.now() - lastProfileFetchRef.current;
+      if (msSinceLast < 5 * 60 * 1000) return;
+      void fetchProfile();
+    };
+    const subFocus = DeviceEventEmitter.addListener("beautonomi:app:focus", onFocusOrRecover);
+    const subRecover = DeviceEventEmitter.addListener("beautonomi:network:recover", onFocusOrRecover);
+    return () => {
+      subFocus.remove();
+      subRecover.remove();
+    };
+  }, [userId, loading, fetchProfile]);
 
   const contextValue = useMemo<ProviderContextType>(
     () => ({

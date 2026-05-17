@@ -351,25 +351,17 @@ export async function POST(request: NextRequest) {
 
       // Create in-app notification record
       try {
-        const { data: notificationExists } = await supabase
+        await supabase
           .from("notifications")
-          .select("id")
-          .limit(1)
-          .maybeSingle();
-        
-        if (notificationExists !== null) {
-          await supabase
-            .from("notifications")
-            .insert({
-              user_id: body.customer_id,
-              type: "custom_offer",
-              title: "Custom Offer Received",
-              message: "A provider sent you a custom service offer. Review and accept to proceed.",
-              data: { request_id: (createdRequest as any).id, offer_id: (offer as any).id },
-              is_read: false,
-              created_at: new Date().toISOString(),
-            });
-        }
+          .insert({
+            user_id: body.customer_id,
+            type: "custom_offer",
+            title: "Custom Offer Received",
+            message: "A provider sent you a custom service offer. Review and accept to proceed.",
+            data: { request_id: (createdRequest as any).id, offer_id: (offer as any).id },
+            is_read: false,
+            created_at: new Date().toISOString(),
+          });
       } catch (notifError) {
         console.debug("Failed to create notification record:", notifError);
       }

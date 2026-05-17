@@ -23,6 +23,7 @@ import {
 } from "@/lib/paystack-webview-utils";
 import * as ExpoLinking from "expo-linking";
 import { api } from "@/lib/api-client";
+import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
 import { supabase } from "@/lib/supabase/client";
 import { getBackendUrl, webApiTenantHeaders } from "@/config/public-env";
 import { Colors } from "@/constants/colors";
@@ -282,6 +283,7 @@ export default function ProductOrderDetailScreen() {
 
       const pr = await paystackHostedCheckout.waitForCheckout(url, {
         title: pod("securePaymentTitle") || "Secure payment",
+        returnUrl: paystackReturnPath ?? undefined,
         matchSuccess: (u) =>
           !!paystackReturnPath && matchesExpoReturnUrl(u, paystackReturnPath) && !isCancelledPaystackUrl(u),
         matchCancel: (u) => isCancelledPaystackUrl(u),
@@ -298,7 +300,7 @@ export default function ProductOrderDetailScreen() {
         if (extracted) reference = extracted;
       }
       if (reference) {
-        await api.get(`/api/paystack/verify?reference=${encodeURIComponent(reference)}`).catch(() => {});
+        await verifyPaystackWithRetry(reference);
       }
 
       let paid = false;

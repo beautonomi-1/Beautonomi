@@ -27,6 +27,8 @@ export const SLACK_EVENT_KEYS = {
   SAFETY_ADVERSE_REPORT: "safety.user_report.adverse",
   VERIFICATION_PENDING: "verification.pending_review",
   VERIFICATION_STUCK: "verification.stuck_review",
+  VERIFICATION_REJECTED: "verification.rejected_outcome",
+  VERIFICATION_REVIEWED: "verification.admin_reviewed",
   REPORT_DAILY_OPERATIONS_DIGEST: "report.daily_operations_digest",
   REPORT_FINANCE_EXCEPTIONS_DIGEST: "report.finance_exceptions_digest",
 } as const;

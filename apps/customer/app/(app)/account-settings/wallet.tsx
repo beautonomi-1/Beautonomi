@@ -1,10 +1,13 @@
 import { useState, useCallback, useEffect } from "react";
 import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, Alert, ScrollView } from "react-native";
 import { useFocusEffect } from "expo-router";
+import * as ExpoLinking from "expo-linking";
 import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
 import { useTranslation } from "@beautonomi/i18n";
 import { formatMoney } from "@beautonomi/utils";
 import { api } from "@/lib/api-client";
+import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
+import { safeWarn } from "@/lib/payments/safeLog";
 import { ScreenFrame } from "@/components/ScreenFrame";
 import { Colors } from "@/constants/colors";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
@@ -123,11 +126,12 @@ export default function WalletScreen() {
 
     setToppingUp(true);
     try {
+      const returnUrl = ExpoLinking.createURL("account-settings/wallet");
       const res = await api.post<{
         payment_url?: string;
         topup_id?: string;
         paystack_reference?: string;
-      }>("/api/me/wallet/topup", { amount });
+      }>("/api/me/wallet/topup", { amount, callback_url: returnUrl });
       
       if (res.error) {
         Alert.alert(t("common.error"), res.error.message || t("customer.walletScreen.failedStartTopup"));
@@ -167,6 +171,7 @@ export default function WalletScreen() {
         const appBase = (APP_URL ?? "").replace(/\/$/, "");
         await paystackHostedCheckout.waitForCheckout(paymentUrl, {
           title: t("customer.walletScreen.topUpSecureTitle", "Wallet top-up") as string,
+          returnUrl,
           matchSuccess: (rawUrl) => {
             try {
               if (!rawUrl.startsWith("http") || !appBase) return false;
@@ -192,9 +197,9 @@ export default function WalletScreen() {
       setTopupAmount("");
 
       if (finalPaystackRef) {
-        const verifyRes = await api.get(`/api/paystack/verify?reference=${encodeURIComponent(finalPaystackRef)}`);
-        if (verifyRes.error) {
-          console.warn("[Wallet] Paystack verify after top-up:", verifyRes.error);
+        const verifyResult = await verifyPaystackWithRetry(finalPaystackRef);
+        if (verifyResult.status === "failed") {
+          safeWarn("Wallet top-up verify reported failed", { message: verifyResult.errorMessage });
         }
       }
       

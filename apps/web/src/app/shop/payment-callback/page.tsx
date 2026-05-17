@@ -3,11 +3,8 @@
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { CheckCircle, XCircle, Loader2, ShoppingBag, RotateCcw } from "lucide-react";
-import { fetcher } from "@/lib/http/fetcher";
+import { verifyWithRetry } from "@/lib/payments/verify-with-retry";
 import Link from "next/link";
-
-const MAX_RETRIES = 4;
-const RETRY_DELAY_MS = 2500;
 
 function ProductPaymentCallbackInner() {
   const searchParams = useSearchParams();
@@ -15,12 +12,11 @@ function ProductPaymentCallbackInner() {
   const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
   const [message, setMessage] = useState("");
   const [orderNumber, setOrderNumber] = useState("");
-  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
 
-    const verifyPayment = async (attempt: number) => {
+    const verifyPayment = async () => {
       const reference = searchParams.get("reference");
       if (!reference) {
         if (!cancelled) {
@@ -31,21 +27,19 @@ function ProductPaymentCallbackInner() {
       }
 
       try {
-        const response = await fetcher.get<{
-          data: {
-            status: string;
-            type?: string;
-            productOrderId?: string;
-            orderNumber?: string;
-            message?: string;
-          };
-        }>(`/api/paystack/verify?reference=${reference}`);
+        const result = await verifyWithRetry<{
+          status?: string;
+          type?: string;
+          productOrderId?: string;
+          orderNumber?: string;
+          message?: string;
+        }>(reference, { maxAttempts: 5, delayMs: 1500 });
 
         if (cancelled) return;
 
-        if (response.data.status === "success") {
+        if (result.status === "success") {
           setStatus("success");
-          setOrderNumber(response.data.orderNumber ?? "");
+          setOrderNumber(result.data?.orderNumber ?? "");
           setMessage("Payment successful! Your order has been confirmed.");
 
           // Notify customer app WebView so it can close and navigate to orders
@@ -66,37 +60,29 @@ function ProductPaymentCallbackInner() {
           setTimeout(() => {
             if (!cancelled) router.push("/account-settings/orders");
           }, 4000);
-        } else if (response.data.status === "pending" && attempt < MAX_RETRIES) {
-          // Paystack may briefly return pending before settling; retry.
-          setTimeout(() => {
-            if (!cancelled) {
-              setRetryCount(attempt + 1);
-              void verifyPayment(attempt + 1);
-            }
-          }, RETRY_DELAY_MS);
-        } else {
+        } else if (result.status === "failed") {
           setStatus("error");
-          setMessage(response.data.message || "Payment could not be confirmed.");
+          setMessage(result.errorMessage || "Payment could not be confirmed.");
+        } else {
+          // If verification remains pending/unknown after retries, show a soft
+          // success so customers are guided to orders while webhook settles.
+          setStatus("success");
+          setMessage(
+            "We received your payment. Your order will appear in your orders shortly.",
+          );
         }
       } catch (error: unknown) {
         if (cancelled) return;
-        if (attempt < MAX_RETRIES) {
-          setTimeout(() => {
-            if (!cancelled) {
-              setRetryCount(attempt + 1);
-              void verifyPayment(attempt + 1);
-            }
-          }, RETRY_DELAY_MS);
-        } else {
-          setStatus("error");
-          setMessage(
-            error instanceof Error ? error.message : "Payment verification failed. Please check your orders.",
-          );
-        }
+        setStatus("success");
+        setMessage(
+          error instanceof Error
+            ? `We received your payment. ${error.message}`
+            : "We received your payment. Please check your orders in a few minutes.",
+        );
       }
     };
 
-    void verifyPayment(0);
+    void verifyPayment();
     return () => {
       cancelled = true;
     };
@@ -111,7 +97,7 @@ function ProductPaymentCallbackInner() {
             <h2 className="text-xl font-bold text-gray-900 mb-2">Verifying Payment</h2>
             <p className="text-gray-500">
               Please wait while we confirm your payment
-              {retryCount > 0 ? ` (attempt ${retryCount + 1}/${MAX_RETRIES + 1})` : "…"}
+              …
             </p>
           </>
         )}

@@ -8,10 +8,13 @@ import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { View, Text, TouchableOpacity, Alert, AppState, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
+import * as ExpoLinking from "expo-linking";
 import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { api } from "@/lib/api-client";
+import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
+import { extractPaystackReferenceFromUrl } from "@/lib/payments/paystackRefFromUrl";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { SectionHeader } from "@/components/ui/SectionHeader";
@@ -21,6 +24,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 import { stripHtmlToPlainText } from "@/lib/htmlPlainText";
+import { Colors } from "@/constants/colors";
 
 const ACCENT = "#FF0077";
 
@@ -167,6 +171,7 @@ function statusPillClasses(sub: Subscription): { bg: string; text: string } {
 }
 
 export default function SubscriptionScreen() {
+  const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const [upgradingId, setUpgradingId] = useState<string | null>(null);
   const appState = useRef(AppState.currentState);
@@ -180,35 +185,63 @@ export default function SubscriptionScreen() {
     staleTimeMs: 0,
   });
   const { execute: postAction } = useApiMutation("post");
+  const subscriptionReturnUrl = ExpoLinking.createURL("settings/subscription-payment-return");
 
   const paystackCheckout = useInAppPaystackCheckout();
 
   const openSubscriptionPaystack = useCallback(
     async (url: string, title: string) => {
-      await paystackCheckout.waitForCheckout(url, {
+      const result = await paystackCheckout.waitForCheckout(url, {
         title,
+        returnUrl: subscriptionReturnUrl,
         matchSuccess: (rawUrl) => {
           try {
-            if (!rawUrl.startsWith("http")) return false;
             const u = new URL(rawUrl);
-            return u.pathname.includes("/provider/subscription") && u.searchParams.get("payment_success") === "true";
+            return (
+              (u.pathname.includes("/provider/subscription") || u.pathname.includes("settings/subscription-payment-return")) &&
+              u.searchParams.get("payment_success") === "true"
+            );
           } catch {
             return false;
           }
         },
         matchCancel: (rawUrl) => {
           try {
-            if (!rawUrl.startsWith("http")) return false;
             const u = new URL(rawUrl);
-            return u.pathname.includes("/provider/subscription") && u.searchParams.get("payment_cancelled") === "1";
+            return (
+              (u.pathname.includes("/provider/subscription") || u.pathname.includes("settings/subscription-payment-return")) &&
+              u.searchParams.get("payment_cancelled") === "1"
+            );
           } catch {
             return false;
           }
         },
       });
+
+      // Defensive verify-with-retry when Paystack appended a reference to our
+      // `provider://` deep link. Bridges the webhook race so the UI never
+      // shows a stale plan after a successful checkout. Skipped on cancel.
+      if (result.outcome === "success") {
+        const reference = extractPaystackReferenceFromUrl(result.url);
+        if (reference) {
+          const verifyResult = await verifyPaystackWithRetry(reference);
+          if (verifyResult.status === "failed") {
+            Alert.alert(
+              "Payment not completed",
+              verifyResult.errorMessage ??
+                "Paystack reported the payment failed. Please try again.",
+            );
+          } else if (verifyResult.status === "pending" || verifyResult.status === "unknown") {
+            Alert.alert(
+              "Your payment is being confirmed",
+              "We'll activate your plan within a few minutes once Paystack confirms with your bank.",
+            );
+          }
+        }
+      }
       refresh();
     },
-    [paystackCheckout, refresh],
+    [paystackCheckout, refresh, subscriptionReturnUrl],
   );
 
   const [billingSegment, setBillingSegment] = useState<"monthly" | "yearly">("monthly");
@@ -295,7 +328,10 @@ export default function SubscriptionScreen() {
     });
     if (!confirmed) return;
 
-    const { error: err, data } = await postAction("/api/provider/subscription/renew", { in_app: true });
+    const { error: err, data } = await postAction("/api/provider/subscription/renew", {
+      in_app: true,
+      callback_url: subscriptionReturnUrl,
+    });
     if (err) {
       Alert.alert("Error", err);
       return;
@@ -429,6 +465,7 @@ export default function SubscriptionScreen() {
         plan_id: barePlanId,
         billing_period: billingPeriod,
         in_app: true,
+        callback_url: subscriptionReturnUrl,
       });
       if (err) {
         Alert.alert("Error", err);
@@ -592,6 +629,19 @@ export default function SubscriptionScreen() {
                 {subscription.billing_issue.message}
               </Text>
             </View>
+          ) : null}
+
+          {paidSubscriber ? (
+            <TouchableOpacity
+              style={twStyle("mt-4 flex-row items-center justify-center rounded-2xl border border-gray-200 bg-white py-3")}
+              onPress={() => router.push("/(app)/(tabs)/more/settings/billing" as never)}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="receipt-outline" size={18} color={Colors.gray[700]} style={{ marginRight: 8 }} />
+              <Text style={twStyle("text-center text-sm font-semibold text-gray-800")}>
+                View invoices & payment methods
+              </Text>
+            </TouchableOpacity>
           ) : null}
 
           {showCancel ? (

@@ -60,6 +60,13 @@ interface LifecycleData {
     full_name: string;
     phone: string | null;
     created_at: string;
+    identity_verified: boolean | null;
+    identity_verification_status: string | null;
+  } | null;
+  kyc: {
+    status: string;
+    last_reviewed_at: string | null;
+    updated_at: string | null;
   } | null;
   tracking: Record<string, unknown> | null;
   lead: Record<string, unknown> | null;
@@ -71,6 +78,30 @@ interface LifecycleData {
     is_verified: boolean;
     status: string;
   };
+}
+
+const KYC_BADGE: Record<string, string> = {
+  approved: "bg-green-100 text-green-700",
+  in_progress: "bg-amber-100 text-amber-700",
+  pending: "bg-zinc-100 text-zinc-700",
+  rejected: "bg-red-100 text-red-700",
+  reset: "bg-zinc-100 text-zinc-600",
+};
+
+const IDENTITY_BADGE: Record<string, string> = {
+  approved: "bg-green-100 text-green-700",
+  pending: "bg-zinc-100 text-zinc-700",
+  in_review: "bg-amber-100 text-amber-700",
+  rejected: "bg-red-100 text-red-700",
+};
+
+function StatusBadge({ value, palette }: { value: string; palette: Record<string, string> }) {
+  const cls = palette[value] ?? "bg-gray-100 text-gray-700";
+  return (
+    <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium capitalize ${cls}`}>
+      {value.replace(/_/g, " ")}
+    </span>
+  );
 }
 
 type EventStyle = { icon: React.ElementType; color: string };
@@ -130,14 +161,26 @@ export function ProviderOpsLifecyclePage() {
     enabled: allowed && !!providerId,
   });
 
+  // Activate / suspend live under /status (PATCH) and take a status enum + optional reason.
   const statusMut = useMutation({
-    mutationFn: ({ action, reason }: { action: "activate" | "suspend" | "verify"; reason?: string }) =>
-      adminApi.postJson(`/api/admin/providers/${providerId}/${action}`, { reason }),
+    mutationFn: ({ status, reason }: { status: "active" | "suspended"; reason?: string }) =>
+      adminApi.patchJson(`/api/admin/providers/${providerId}/status`, { status, reason }),
     onSuccess: () => {
       adminToast.success("Provider status updated");
       void qc.invalidateQueries({ queryKey: ["admin", "provider-ops", "lifecycle", providerId] });
     },
     onError: (err: Error) => adminToast.error(err.message || "Failed to update status"),
+  });
+
+  // Marketplace verification toggle (Layer 1) — PATCH with explicit { verified } body.
+  const verifyMut = useMutation({
+    mutationFn: ({ verified }: { verified: boolean }) =>
+      adminApi.patchJson(`/api/admin/providers/${providerId}/verify`, { verified }),
+    onSuccess: (_data, vars) => {
+      adminToast.success(vars.verified ? "Provider marked verified" : "Verification removed");
+      void qc.invalidateQueries({ queryKey: ["admin", "provider-ops", "lifecycle", providerId] });
+    },
+    onError: (err: Error) => adminToast.error(err.message || "Failed to update verification"),
   });
 
   if (denied) return denied;
@@ -162,7 +205,9 @@ export function ProviderOpsLifecyclePage() {
     return <AdminRetryBlock message="Lifecycle data not found" onRetry={() => void q.refetch()} />;
   }
 
-  const { provider, user, lead, timeline, completeness, tracking } = data;
+  const { provider, user, kyc, lead, timeline, completeness, tracking } = data;
+  const verificationBusy = verifyMut.isPending;
+  const statusBusy = statusMut.isPending;
 
   const statusBadge = STATUS_BADGE[provider.status] ?? "bg-gray-100 text-gray-700";
 
@@ -206,8 +251,8 @@ export function ProviderOpsLifecyclePage() {
           {provider.status !== "active" && (
             <button
               type="button"
-              disabled={statusMut.isPending}
-              onClick={() => statusMut.mutate({ action: "activate" })}
+              disabled={statusBusy}
+              onClick={() => statusMut.mutate({ status: "active" })}
               className="flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-green-700 disabled:opacity-50"
             >
               <CheckCircle2 className="h-3.5 w-3.5" /> Activate
@@ -216,24 +261,40 @@ export function ProviderOpsLifecyclePage() {
           {provider.status === "active" && (
             <button
               type="button"
-              disabled={statusMut.isPending}
+              disabled={statusBusy}
               onClick={() => {
                 const reason = window.prompt("Reason for suspension (shown to provider):");
-                if (reason !== null) statusMut.mutate({ action: "suspend", reason });
+                if (reason !== null) statusMut.mutate({ status: "suspended", reason });
               }}
               className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-600 shadow-sm hover:bg-red-50 disabled:opacity-50"
             >
               <XCircle className="h-3.5 w-3.5" /> Suspend
             </button>
           )}
-          {!provider.is_verified && (
+          {!provider.is_verified ? (
             <button
               type="button"
-              disabled={statusMut.isPending}
-              onClick={() => statusMut.mutate({ action: "verify" })}
+              disabled={verificationBusy}
+              onClick={() => verifyMut.mutate({ verified: true })}
               className="flex items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-medium text-blue-600 shadow-sm hover:bg-blue-50 disabled:opacity-50"
             >
               <ShieldCheck className="h-3.5 w-3.5" /> Verify
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={verificationBusy}
+              onClick={() => {
+                if (
+                  typeof window === "undefined" ||
+                  window.confirm("Remove the marketplace verified badge for this provider?")
+                ) {
+                  verifyMut.mutate({ verified: false });
+                }
+              }}
+              className="flex items-center gap-1.5 rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm font-medium text-amber-700 shadow-sm hover:bg-amber-50 disabled:opacity-50"
+            >
+              <ShieldCheck className="h-3.5 w-3.5" /> Unverify
             </button>
           )}
           <Link
@@ -265,6 +326,108 @@ export function ProviderOpsLifecyclePage() {
               <DetailRow label="Business Type" value={provider.business_type ?? "—"} />
               <DetailRow label="Team Size" value={provider.team_size ?? "—"} />
               <DetailRow label="Created" value={new Date(provider.created_at).toLocaleDateString()} />
+            </div>
+          </div>
+
+          {/* Verification — all three layers in one card so admins can see and act in one place */}
+          <div className="rounded-xl border border-gray-200 bg-white p-5">
+            <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Verification</h2>
+            <div className="space-y-3">
+              {/* Layer 1 — Marketplace admin badge */}
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-gray-700">Admin badge</p>
+                  <p className="text-xs text-gray-500">
+                    Marketplace &ldquo;Verified&rdquo; badge on the public profile.
+                  </p>
+                </div>
+                <div className="flex shrink-0 flex-col items-end gap-1.5">
+                  {provider.is_verified ? (
+                    <span className="flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-700">
+                      <ShieldCheck className="h-3 w-3" /> Verified
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-700">
+                      Not verified
+                    </span>
+                  )}
+                  {provider.is_verified ? (
+                    <button
+                      type="button"
+                      disabled={verificationBusy}
+                      onClick={() => {
+                        if (
+                          typeof window === "undefined" ||
+                          window.confirm("Remove the marketplace verified badge for this provider?")
+                        ) {
+                          verifyMut.mutate({ verified: false });
+                        }
+                      }}
+                      className="text-xs font-medium text-amber-700 hover:underline disabled:opacity-50"
+                    >
+                      Unverify
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={verificationBusy}
+                      onClick={() => verifyMut.mutate({ verified: true })}
+                      className="text-xs font-medium text-blue-600 hover:underline disabled:opacity-50"
+                    >
+                      Verify
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Layer 2 — KYC (provider_verification_status) */}
+              <div className="flex items-start justify-between gap-2 border-t border-gray-100 pt-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-gray-700">KYC status</p>
+                  <p className="text-xs text-gray-500">
+                    Sumsub / manual review of the business owner&apos;s identity.
+                  </p>
+                  {kyc?.last_reviewed_at && (
+                    <p className="mt-0.5 text-[10px] text-gray-400">
+                      Reviewed {new Date(kyc.last_reviewed_at).toLocaleDateString()}
+                    </p>
+                  )}
+                </div>
+                <div className="flex shrink-0 flex-col items-end gap-1.5">
+                  <StatusBadge value={kyc?.status ?? "pending"} palette={KYC_BADGE} />
+                  <Link
+                    to={adminSpaTo("/admin/verifications?status=all")}
+                    className="text-xs font-medium text-primary hover:underline"
+                  >
+                    Verifications queue
+                  </Link>
+                </div>
+              </div>
+
+              {/* Layer 3 — Owner identity (users.identity_*) */}
+              <div className="flex items-start justify-between gap-2 border-t border-gray-100 pt-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-gray-700">Owner identity</p>
+                  <p className="text-xs text-gray-500">
+                    {user?.full_name ? user.full_name : "Owner account"} — synced from approved verification documents.
+                  </p>
+                </div>
+                <div className="flex shrink-0 flex-col items-end gap-1.5">
+                  {user ? (
+                    <>
+                      <StatusBadge
+                        value={user.identity_verification_status ?? (user.identity_verified ? "approved" : "pending")}
+                        palette={IDENTITY_BADGE}
+                      />
+                      <span className="text-[10px] text-gray-400">
+                        {user.identity_verified ? "Verified" : "Unverified"}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-[10px] text-gray-400">No linked user</span>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
 

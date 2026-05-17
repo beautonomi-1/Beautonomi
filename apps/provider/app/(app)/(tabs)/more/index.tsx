@@ -13,19 +13,27 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { openNativeStoreReview } from "@/lib/open-store-review";
 import { getAnalyticsClient } from "@/lib/analytics-rn";
 import { formatCurrency } from "@/lib/format";
-/** Profile completion API response (GET /api/provider/profile-completion) */
-type ProfileCompletionItem = {
+/**
+ * Setup status API response (GET /api/provider/setup-status) — single source
+ * of truth for the More-tab completion card, the Dashboard hero card, the
+ * Setup checklist screen, and the Onboarding hub. Identical % everywhere.
+ */
+type SetupStatusStep = {
   id: string;
-  label: string;
+  title: string;
+  description?: string;
   completed: boolean;
   required: boolean;
-  route: string;
+  /** Web route (informational on mobile). */
+  link?: string;
+  /** Canonical native route returned by the server. */
+  native_route: string | null;
 };
-type ProfileCompletionData = {
-  completed: number;
-  total: number;
-  percentage: number;
-  items: ProfileCompletionItem[];
+type SetupStatusData = {
+  isComplete: boolean;
+  completionPercentage: number;
+  missing_steps?: string[];
+  steps: SetupStatusStep[];
 };
 
 type FinanceSummaryData = {
@@ -74,34 +82,16 @@ function formatBadgeCount(count: number): string | null {
 }
 
 /**
- * Map API routes to app routes. Use dedicated screens when they exist so the card deep-links
- * straight to business, locations, or operating hours. Gallery maps to its hub; catalogue uses `/(app)/…/catalogue` directly from the API when present.
+ * §provider-setup-seamless-ux 2026-05: the More-tab completion card now reads
+ * from `/api/provider/setup-status` (canonical source of truth) and uses the
+ * server-returned `native_route` per step. The previous client-side
+ * `PROFILE_COMPLETION_ROUTE_MAP` was deleted; we keep only a defensive
+ * fallback for steps whose `native_route` came back null or is a web path.
  */
-const PROFILE_COMPLETION_ROUTE_MAP: Record<string, string> = {
-  "/(app)/(tabs)/more/settings/business": "/(app)/(tabs)/more/settings/business",
-  "/(app)/(tabs)/more/settings/locations": "/(app)/(tabs)/more/locations",
-  // §Provider-audit 2026-04: canonicalised on `settings/hours` (full
-  // break-editor). `settings-operating-hours` is kept as a redirect stub
-  // so no external surface breaks, but routing now points at the richer
-  // editor.
-  "/(app)/(tabs)/more/settings/hours": "/(app)/(tabs)/more/settings/hours",
-  "/(app)/(tabs)/more/gallery": "/(app)/(tabs)/more/gallery",
-};
-/**
- * §Provider-launch (audit 2026-04): profile-completion rows previously
- * fell back to `apiRoute` verbatim, which could push a web path (e.g.
- * `/provider/settings/foo`) into the native router and crash or dead-end.
- * If the API route isn't a known native route, send the provider to the
- * settings hub where they can drill in manually instead of pushing an
- * unknown string into `router.push`.
- */
-const NATIVE_ROUTE_PREFIX = "/(app)/";
 const SETTINGS_HUB_ROUTE = "/(app)/(tabs)/more/settings-account-hub";
-function getProfileCompletionRoute(apiRoute: string): string {
-  const mapped = PROFILE_COMPLETION_ROUTE_MAP[apiRoute];
-  if (mapped) return mapped;
-  if (typeof apiRoute === "string" && apiRoute.startsWith(NATIVE_ROUTE_PREFIX)) {
-    return apiRoute;
+function getStepNativeRoute(step: SetupStatusStep): string {
+  if (step.native_route && step.native_route.startsWith("/(app)/")) {
+    return step.native_route;
   }
   return SETTINGS_HUB_ROUTE;
 }
@@ -222,8 +212,8 @@ export default function MoreScreen() {
   });
   const [refreshing, setRefreshing] = useState(false);
 
-  const { data: completionData, loading: completionLoading, error: completionError, refresh: refreshCompletion } = useApi<ProfileCompletionData>(
-    "/api/provider/profile-completion"
+  const { data: completionData, loading: completionLoading, error: completionError, refresh: refreshCompletion } = useApi<SetupStatusData>(
+    "/api/provider/setup-status",
   );
   type MeProfileLite = {
     full_name?: string | null;
@@ -241,10 +231,10 @@ export default function MoreScreen() {
   const { data: teamAccess } = useApi<TeamAccessData>("/api/provider/team-access", { staleTimeMs: 60_000 });
   const { data: navCounts, refresh: refreshNavCounts } = useApi<ProviderNavCounts>("/api/provider/nav-counts", { staleTimeMs: 30_000 });
   const completion = completionData ?? null;
-  const completionItems = completion?.items ?? [];
-  const completionPct = completion?.percentage ?? 0;
-  const showCompletionCard = completionItems.length > 0 && completionPct < 100;
-  const firstIncompleteRoute = completionItems.find((i) => !i.completed)?.route;
+  const completionItems = completion?.steps ?? [];
+  const completionPct = completion?.completionPercentage ?? 0;
+  const showCompletionCard = completionItems.length > 0 && !completion?.isComplete;
+  const firstIncompleteStep = completionItems.find((s) => !s.completed) ?? null;
   const showCompletionError = !completionLoading && !!completionError && !completionData;
   const availablePayout = Number(financeSummary?.earnings?.available_balance ?? 0);
   const pendingPayouts = Number(financeSummary?.earnings?.pending_payouts ?? 0);
@@ -268,8 +258,15 @@ export default function MoreScreen() {
     ? new Date(payoutSchedule.next_payout_date)
     : null;
 
-  function completionItemLabel(item: ProfileCompletionItem) {
-    return t(`provider.profileCompletionItems.${item.id}` as never);
+  function completionItemLabel(step: SetupStatusStep) {
+    // Setup-status returns server-authored titles ("Business Details",
+    // "Service Address", etc.) which are already user-facing copy. We try a
+    // translation key first for back-compat with existing locale files;
+    // fall back to the server title otherwise.
+    const key = `provider.profileCompletionItems.${step.id}` as never;
+    const translated = t(key);
+    if (typeof translated === "string" && translated !== key) return translated;
+    return step.title;
   }
 
   useFocusEffect(
@@ -703,7 +700,9 @@ export default function MoreScreen() {
             <TouchableOpacity
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                const route = firstIncompleteRoute ? getProfileCompletionRoute(firstIncompleteRoute) : "/(app)/(tabs)/more/settings-account-hub";
+                const route = firstIncompleteStep
+                  ? getStepNativeRoute(firstIncompleteStep)
+                  : "/(app)/(tabs)/more/settings/setup-status";
                 router.push(route as never);
               }}
               activeOpacity={0.8}
@@ -736,19 +735,19 @@ export default function MoreScreen() {
                   </View>
                   {completionItems.length > 0 && (
                     <View style={{ marginTop: 12 }}>
-                      {completionItems.slice(0, 6).map((item, idx) => {
-                        const done = item.completed;
-                        const mandatoryMissing = !done && item.required;
+                      {completionItems.slice(0, 6).map((step, idx) => {
+                        const done = step.completed;
+                        const mandatoryMissing = !done && step.required;
                         const iconName = done
                           ? "checkmark-circle"
                           : mandatoryMissing
                             ? "close-circle"
                             : "ellipse-outline";
                         const iconColor = done ? "#16A34A" : mandatoryMissing ? "#ef4444" : "#9ca3af";
-                        const route = getProfileCompletionRoute(item.route);
+                        const route = getStepNativeRoute(step);
                         return (
                           <TouchableOpacity
-                            key={item.id}
+                            key={step.id}
                             onPress={(e) => {
                               e.stopPropagation();
                               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -756,7 +755,7 @@ export default function MoreScreen() {
                             }}
                             style={{ flexDirection: "row", alignItems: "center", marginTop: idx === 0 ? 0 : 8 }}
                             accessibilityRole="button"
-                            accessibilityLabel={`${completionItemLabel(item)}${item.required ? ", required" : ""}`}
+                            accessibilityLabel={`${completionItemLabel(step)}${step.required ? ", required" : ""}`}
                           >
                             <Ionicons
                               name={iconName as keyof typeof Ionicons.glyphMap}
@@ -767,7 +766,7 @@ export default function MoreScreen() {
                             <Text
                               style={{ flex: 1, fontSize: 14, color: done ? "#16A34A" : mandatoryMissing ? "#b91c1c" : "#6b7280" }}
                             >
-                              {completionItemLabel(item)}
+                              {completionItemLabel(step)}
                             </Text>
                           </TouchableOpacity>
                         );

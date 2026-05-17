@@ -160,19 +160,35 @@ export async function recordYocoPayment(
 /**
  * Create a real Yoco terminal payment, then mark booking paid with the Yoco reference.
  * If no devices or terminal API fails, falls back to recordYocoPayment (mark-paid only).
+ *
+ * §Yoco-audit 2026-05: accept an optional `locationId` so we route the charge
+ * to the device assigned to the booking's salon, not just the global first
+ * active device. Falls back to first active device when there's no match.
  */
 export async function createYocoTerminalPaymentAndMarkPaid(
   bookingId: string,
   amount: number,
-  _currency: string = LAST_RESORT_CURRENCY
+  _currency: string = LAST_RESORT_CURRENCY,
+  locationId?: string | null,
 ): Promise<boolean> {
   try {
-    const devicesRes = await fetcher.get<{ data?: { id: string; name: string; is_active?: boolean }[] }>(
+    const devicesRes = await fetcher.get<{ data?: { id: string; name: string; is_active?: boolean; location_id?: string | null }[] }>(
       "/api/provider/yoco/devices"
     );
     const devices = Array.isArray(devicesRes?.data) ? devicesRes.data : (devicesRes as any)?.data ?? [];
     const activeDevices = devices.filter((d) => d.is_active !== false);
-    const device = activeDevices[0];
+    // §Yoco-synergy 2026-05: same precedence as the dialog
+    //   1. exact device for the booking's location
+    //   2. portable device (location_id == null) — travels with the
+    //      provider, used for at-home bookings and as a safety net
+    //   3. first active device
+    const portable = activeDevices.find((d) => d.location_id == null);
+    const exact = locationId
+      ? activeDevices.find((d) => d.location_id === locationId)
+      : undefined;
+    const device = locationId
+      ? (exact ?? portable ?? activeDevices[0])
+      : (portable ?? activeDevices[0]);
 
     if (!device?.id) {
       toast.info("No Yoco device found. Recording as manual card payment.");

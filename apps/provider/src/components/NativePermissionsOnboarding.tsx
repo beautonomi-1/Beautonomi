@@ -73,8 +73,11 @@ export function NativePermissionsOnboarding() {
   const onEnablePhotos = useCallback(async () => {
     setBusy(true);
     try {
+      // Library only — camera permission is requested in-context the first
+      // time the user taps "Take photo" so Apple's review guideline (request
+      // permission only when needed) is satisfied and the user understands
+      // exactly which feature is asking.
       await ImagePicker.requestMediaLibraryPermissionsAsync();
-      await ImagePicker.requestCameraPermissionsAsync();
     } finally {
       setBusy(false);
       await finish();
@@ -131,7 +134,7 @@ export function NativePermissionsOnboarding() {
             </View>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
               <Ionicons name="checkmark-circle" size={22} color={Colors.primary} />
-              <Text style={{ flex: 1, fontSize: 15, color: Colors.gray[700] }}>Camera and library for catalogue &amp; proof</Text>
+              <Text style={{ flex: 1, fontSize: 15, color: Colors.gray[700] }}>Photo library for your gallery, services, and proof images</Text>
             </View>
           </View>
         )}

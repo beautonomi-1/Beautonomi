@@ -12,15 +12,43 @@ import { locationHasOperatingHours } from "@/lib/provider/location-operating-hou
 interface SetupStatus {
   isComplete: boolean;
   completionPercentage: number;
+  missing_steps: string[];
   steps: {
     id: string;
     title: string;
     description: string;
     completed: boolean;
     required: boolean;
+    /** Web route (Next.js App Router path) — used by `apps/web` get-started page. */
     link: string;
+    /**
+     * Canonical native (expo-router) route per step. Returned by the server so
+     * the mobile checklist UI never needs a client-side WEB_PATH_TO_NATIVE map.
+     * `null` when no dedicated mobile screen exists (the wizard is the fallback).
+     */
+    native_route: string | null;
   }[];
 }
+
+/**
+ * Server-canonical mapping: setup step `id` -> native expo-router path in the
+ * provider mobile app. Keep this in sync with `apps/provider/app/(app)/**`.
+ * When you add a new step, add its native route here.
+ * Exported so the mobile checklist UI and tests can reason about it.
+ */
+export const NATIVE_ROUTE_BY_ID: Record<string, string> = {
+  "profile-details": "/(app)/(tabs)/more/settings/business",
+  "personal-profile": "/(app)/(tabs)/more/settings/personal-profile",
+  "service-address": "/(app)/(tabs)/more/locations",
+  "profile-photo": "/(app)/(tabs)/more/gallery",
+  services: "/(app)/(tabs)/more/catalogue",
+  availability: "/(app)/(tabs)/more/settings/hours",
+  payment: "/(app)/(tabs)/more/settings/yoco-devices",
+  "payment-methods": "/(app)/(tabs)/more/settings/payments",
+  payout: "/(app)/(tabs)/more/settings/payout-accounts",
+  gallery: "/(app)/(tabs)/more/gallery",
+  "identity-verification": "/(app)/(tabs)/more/settings/verification",
+};
 
 /**
  * GET /api/provider/setup-status
@@ -84,6 +112,7 @@ export async function GET(request: NextRequest) {
       return successResponse<SetupStatus>({
         isComplete: false,
         completionPercentage: 0,
+        missing_steps: [],
         steps: [],
       });
     }
@@ -100,6 +129,7 @@ export async function GET(request: NextRequest) {
       return successResponse<SetupStatus>({
         isComplete: false,
         completionPercentage: 0,
+        missing_steps: [],
         steps: [],
       });
     }
@@ -109,7 +139,7 @@ export async function GET(request: NextRequest) {
 
     const { data: accountUser } = await supabaseAdmin
       .from("users")
-      .select("email, phone")
+      .select("email, phone, identity_verified, identity_verification_status")
       .eq("id", user.id)
       .maybeSingle();
 
@@ -191,6 +221,11 @@ export async function GET(request: NextRequest) {
       acceptCard === true ||
       acceptOnline === true ||
       effectiveGiftCardsEnabled === true;
+
+    // Identity verification — optional step for marketplace trust badge.
+    // Reads from users.identity_verified (synced by the admin verification PATCH).
+    const isIdentityVerified =
+      (accountUser as { identity_verified?: boolean | null } | null)?.identity_verified === true;
 
     // Personal profile — required for freelancers only
     const { data: userProfile } = await supabaseAdmin
@@ -327,6 +362,15 @@ export async function GET(request: NextRequest) {
         required: false,
         link: "/provider/settings/gallery",
       },
+      {
+        id: "identity-verification",
+        title: "Identity Verification",
+        description:
+          "Verify your identity to earn the 'Verified' marketplace badge and increase customer trust",
+        completed: isIdentityVerified,
+        required: false,
+        link: "/provider/settings/verification",
+      },
     ];
 
     const requiredSteps = steps.filter((s) => s.required);
@@ -337,11 +381,18 @@ export async function GET(request: NextRequest) {
         : 0;
     const isComplete =
       completedRequired === requiredSteps.length && requiredSteps.length > 0;
+    const missingSteps = requiredSteps.filter((s) => !s.completed).map((s) => s.id);
+
+    const stepsWithNativeRoute = steps.map((s) => ({
+      ...s,
+      native_route: NATIVE_ROUTE_BY_ID[s.id] ?? null,
+    }));
 
     return successResponse<SetupStatus>({
       isComplete,
-      completionPercentage,
-      steps,
+      completionPercentage: isComplete ? 100 : completionPercentage,
+      missing_steps: missingSteps,
+      steps: stepsWithNativeRoute,
     });
   } catch (error) {
     return handleApiError(error, "Failed to check setup status");

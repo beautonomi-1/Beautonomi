@@ -32,18 +32,42 @@ export async function POST(
       return errorResponse("old_date, old_time, new_date, new_time required", "VALIDATION_ERROR", 400);
     }
 
-    const { data: booking } = await supabase
-      .from("bookings")
-      .select("provider_id")
-      .eq("id", id)
-      .single();
-    const row = booking as { provider_id?: string } | null;
-    if (!row || row.provider_id !== providerId) {
-      return notFoundResponse("Booking not found");
+    // Calendar passes `group:<uuid>` for group bookings — resolve to the
+    // primary contact booking (which carries the customer record we notify).
+    let bookingIdForNotification = id;
+    if (id.startsWith("group:")) {
+      const groupId = id.slice("group:".length);
+      const { data: group } = await supabase
+        .from("group_bookings")
+        .select("provider_id, primary_contact_booking_id")
+        .eq("id", groupId)
+        .single();
+      const groupRow = group as { provider_id?: string; primary_contact_booking_id?: string | null } | null;
+      if (!groupRow || groupRow.provider_id !== providerId) {
+        return notFoundResponse("Group booking not found");
+      }
+      if (!groupRow.primary_contact_booking_id) {
+        return errorResponse(
+          "This group session has no primary contact yet — notify participants individually.",
+          "GROUP_PRIMARY_CONTACT_MISSING",
+          400,
+        );
+      }
+      bookingIdForNotification = groupRow.primary_contact_booking_id;
+    } else {
+      const { data: booking } = await supabase
+        .from("bookings")
+        .select("provider_id")
+        .eq("id", id)
+        .single();
+      const row = booking as { provider_id?: string } | null;
+      if (!row || row.provider_id !== providerId) {
+        return notFoundResponse("Booking not found");
+      }
     }
 
     const result = await sendRescheduleNotification(
-      id,
+      bookingIdForNotification,
       { date: old_date, time: old_time },
       { date: new_date, time: new_time },
       { shouldSend: true, channels: ["push", "email", "sms"] }

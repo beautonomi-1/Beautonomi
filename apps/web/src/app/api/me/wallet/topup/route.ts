@@ -10,6 +10,7 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 const schema = z.object({
   amount: z.coerce.number().min(1, "Minimum top up amount is 1"),
+  callback_url: z.string().optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -50,8 +51,15 @@ export async function POST(request: NextRequest) {
 
     const reference = `wallet_topup_${(topup as any).id}`;
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "";
-    const callbackUrl = `${appUrl}/checkout/success?payment_type=wallet_topup`;
-    const cancelAction = `${appUrl}/wallet?topup_cancelled=1`;
+    const callbackFromClient = body.callback_url?.trim();
+    const callbackUrl =
+      callbackFromClient && (callbackFromClient.startsWith("customer://") || callbackFromClient.startsWith("exp://"))
+        ? `${callbackFromClient}${callbackFromClient.includes("?") ? "&" : "?"}payment_type=wallet_topup`
+        : `${appUrl}/checkout/success?payment_type=wallet_topup`;
+    const cancelAction =
+      callbackFromClient && (callbackFromClient.startsWith("customer://") || callbackFromClient.startsWith("exp://"))
+        ? `${callbackFromClient}${callbackFromClient.includes("?") ? "&" : "?"}topup_cancelled=1`
+        : `${appUrl}/wallet?topup_cancelled=1`;
 
     const paystackData = await initializePaystackTransaction({
       email,

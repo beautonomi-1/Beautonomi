@@ -254,7 +254,9 @@ export function ProviderPortalProvider({ children }: { children: ReactNode }) {
     await requestPromise;
   };
 
-  loadProviderRef.current = loadProvider;
+  useEffect(() => {
+    loadProviderRef.current = loadProvider;
+  });
 
   // After dev-server restart / ECONNRESET, profile load can fail once; retry when tab is visible or network is back.
   useEffect(() => {

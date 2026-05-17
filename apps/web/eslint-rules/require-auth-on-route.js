@@ -31,7 +31,7 @@
  *   - /api/provider/yoco/webhook  Yoco webhook (HMAC signature)
  *
  * Accepted guard references (case sensitive):
- *   requireRoleInApi, requireAuthInApi, requireRole, requireAdminSection,
+ *   requireRoleInApi, requireAuthInApi, optionalAuthInApi, requireRole, requireAdminSection,
  *   requireAdminSectionAny, requireSuperadmin, requireSuperadminPlatform,
  *   requirePermission, requirePublicTenant, validatePortalToken, usePortalToken,
  *   checkPortalRateLimit, verifyEmbedRefreshToken, parseRetentionToken,
@@ -47,6 +47,7 @@ const HTTP_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"
 const GUARD_IDENTIFIERS = new Set([
   "requireRoleInApi",
   "requireAuthInApi",
+  "optionalAuthInApi",
   "requireRole",
   "requireAdminSection",
   "requireAdminSectionAny",
@@ -134,7 +135,7 @@ module.exports = {
     messages: {
       missingGuard:
         "Route handler {{method}} in {{route}} never references an auth guard " +
-        "(requireRoleInApi / requireAuthInApi / requireRole / requireAdminSection / " +
+        "(requireRoleInApi / requireAuthInApi / optionalAuthInApi / requireRole / requireAdminSection / " +
         "verifyCronSecret / verifyWebhookSignature). If this endpoint is intentionally " +
         "public, move it under /api/public/** or /api/webhooks/** or /api/cron/**, " +
         "whichever applies.",

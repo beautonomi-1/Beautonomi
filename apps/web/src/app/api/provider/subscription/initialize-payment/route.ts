@@ -21,6 +21,7 @@ const initializePaymentSchema = z.object({
   plan_id: z.string().min(1, 'Plan ID is required'),
   billing_period: z.enum(["monthly", "yearly"]).default("monthly"),
   in_app: z.boolean().optional(),
+  callback_url: z.string().optional(),
 });
 
 /**
@@ -64,6 +65,7 @@ export async function POST(request: NextRequest) {
     const plan_id = extractSubscriptionPlanUuid(parsed.plan_id);
     const billing_period = parsed.billing_period;
     const in_app = parsed.in_app;
+    const callbackFromClient = parsed.callback_url?.trim();
 
     // Get subscription plan
     const { data: plan, error: planError } = await supabase
@@ -143,10 +145,16 @@ export async function POST(request: NextRequest) {
     // Initialize Paystack transaction
     const reference = generateTransactionReference("provider_subscription_auth", order.id);
     const inAppParam = in_app ? "&in_app=1" : "";
-    const callbackUrl = `${process.env.NEXT_PUBLIC_APP_URL || ""}/provider/subscription?payment_success=true&order_id=${order.id}${inAppParam}`;
+    const callbackUrl =
+      in_app && callbackFromClient
+        ? `${callbackFromClient}${callbackFromClient.includes("?") ? "&" : "?"}payment_success=true&order_id=${order.id}`
+        : `${process.env.NEXT_PUBLIC_APP_URL || ""}/provider/subscription?payment_success=true&order_id=${order.id}${inAppParam}`;
 
     const subAppUrl = process.env.NEXT_PUBLIC_APP_URL || "";
-    const subCancelAction = `${subAppUrl}/provider/subscription?payment_cancelled=1`;
+    const subCancelAction =
+      in_app && callbackFromClient
+        ? `${callbackFromClient}${callbackFromClient.includes("?") ? "&" : "?"}payment_cancelled=1`
+        : `${subAppUrl}/provider/subscription?payment_cancelled=1`;
 
     const paystackData = await initializePaystackTransaction({
       email,

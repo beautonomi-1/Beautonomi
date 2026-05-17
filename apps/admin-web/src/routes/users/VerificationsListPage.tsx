@@ -25,6 +25,18 @@ type VerRow = Record<string, unknown> & {
   id?: string;
   status?: string;
   user?: { full_name?: string; email?: string };
+  provider?: {
+    id?: string;
+    business_name?: string | null;
+    slug?: string | null;
+    verification_status?: string | null;
+    relationship?: "owner" | "staff";
+  } | null;
+};
+
+const RELATIONSHIP_BADGE: Record<string, string> = {
+  owner: "bg-indigo-100 text-indigo-700",
+  staff: "bg-zinc-100 text-zinc-700",
 };
 
 export function VerificationsListPage() {
@@ -95,25 +107,50 @@ export function VerificationsListPage() {
               <AdminTh>User</AdminTh>
               <AdminTh>Email</AdminTh>
               <AdminTh>Status</AdminTh>
+              <AdminTh>Provider</AdminTh>
               <AdminTh>Action</AdminTh>
             </tr>
           </AdminTableHead>
           <AdminTableBody>
-            {rows.map((r) => (
-              <tr key={String(r.id)}>
-                <AdminTd>{String(r.user?.full_name ?? "")}</AdminTd>
-                <AdminTd>{String(r.user?.email ?? "")}</AdminTd>
-                <AdminTd>{String(r.status ?? "")}</AdminTd>
-                <AdminTd>
-                  <Link
-                    to={adminSpaTo(`/admin/verifications/${encodeURIComponent(String(r.id))}`)}
-                    className="text-sm font-medium text-primary hover:underline"
-                  >
-                    Review
-                  </Link>
-                </AdminTd>
-              </tr>
-            ))}
+            {rows.map((r) => {
+              const provider = r.provider;
+              const relationship = provider?.relationship ?? null;
+              const relCls = relationship ? RELATIONSHIP_BADGE[relationship] ?? "bg-gray-100 text-gray-700" : "";
+              return (
+                <tr key={String(r.id)}>
+                  <AdminTd>{String(r.user?.full_name ?? "")}</AdminTd>
+                  <AdminTd>{String(r.user?.email ?? "")}</AdminTd>
+                  <AdminTd>{String(r.status ?? "")}</AdminTd>
+                  <AdminTd>
+                    {provider?.id ? (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <Link
+                          to={adminSpaTo(`/admin/provider-ops/providers/${encodeURIComponent(String(provider.id))}`)}
+                          className="text-sm font-medium text-primary hover:underline"
+                        >
+                          {provider.business_name || "Unnamed business"}
+                        </Link>
+                        {relationship ? (
+                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium capitalize ${relCls}`}>
+                            {relationship}
+                          </span>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <span className="text-sm text-gray-400">—</span>
+                    )}
+                  </AdminTd>
+                  <AdminTd>
+                    <Link
+                      to={adminSpaTo(`/admin/verifications/${encodeURIComponent(String(r.id))}`)}
+                      className="text-sm font-medium text-primary hover:underline"
+                    >
+                      Review
+                    </Link>
+                  </AdminTd>
+                </tr>
+              );
+            })}
           </AdminTableBody>
         </AdminDataTable>
       )}

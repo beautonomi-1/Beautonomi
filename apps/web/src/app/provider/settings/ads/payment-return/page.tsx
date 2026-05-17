@@ -4,6 +4,7 @@ import { useEffect, Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
+import { verifyWithRetry } from "@/lib/payments/verify-with-retry";
 
 /**
  * Minimal return URL after Paystack for provider ads.
@@ -58,35 +59,20 @@ function AdsPaymentReturnInner() {
           );
         }
 
-        const res = await fetch(`/api/paystack/verify?reference=${encodeURIComponent(reference)}`, {
-          credentials: "include",
-        });
-        const payload = (await res.json().catch(() => null)) as {
-          data?: { status?: string; message?: string; type?: string };
-          error?: { message?: string; code?: string };
-        } | null;
-        if (!res.ok) {
-          throw new Error(
-            payload?.error?.message ||
-              (typeof payload?.data === "object" && payload?.data && "message" in payload.data
-                ? String((payload.data as { message?: string }).message)
-                : null) ||
-              "Could not verify payment immediately.",
+        const verifyResult = await verifyWithRetry<{ status?: string; message?: string; type?: string }>(
+          reference,
+          { maxAttempts: 5, delayMs: 1500 },
+        );
+        if (verifyResult.status === "failed") {
+          throw new Error(verifyResult.errorMessage || "Payment verification was not successful.");
+        }
+        if (verifyResult.status !== "success") {
+          finish(
+            "Your bank may still be finalizing the charge. Open Ads in a moment and pull to refresh.",
+            "pending",
+            "Almost there",
           );
-        }
-        if (payload?.error) {
-          throw new Error(payload.error.message || "Payment verification failed.");
-        }
-        const inner = payload?.data;
-        if (!inner || typeof inner !== "object") {
-          throw new Error("Invalid verification response from server.");
-        }
-        if (inner.status === "error") {
-          throw new Error(inner.message || "Payment could not be confirmed from Paystack metadata.");
-        }
-        // Verify returns { status: "failed" } when Paystack charge is not successful (not only "error").
-        if (inner.status !== "success") {
-          throw new Error(inner.message || "Payment verification was not successful.");
+          return;
         }
         finish("Your ad budget is being activated. You can fund more boosts anytime from Ads.", "success", "Payment confirmed");
         if (context === "app") {

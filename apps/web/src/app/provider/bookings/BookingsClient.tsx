@@ -1172,6 +1172,7 @@ export function BookingsClient({
             onOpenChange={setYocoDialogOpen}
             amount={yocoBooking.total_amount || 0}
             appointmentId={yocoBooking.id}
+            bookingLocationId={(yocoBooking as { location_id?: string | null }).location_id ?? null}
             onSuccess={handlePaymentSuccess}
           />
         )}

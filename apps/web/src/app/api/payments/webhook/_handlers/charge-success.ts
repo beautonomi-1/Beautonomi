@@ -931,22 +931,32 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
 
   // Send OneSignal notifications
   try {
-    const { sendToUser } = await import("@/lib/notifications/onesignal");
+    const { sendTemplateNotification } = await import("@/lib/notifications/onesignal");
+    const { insertNotification } = await import("@/lib/notifications/insert-notification");
 
-    await sendToUser(
-      bookingData.customer_id,
+    await sendTemplateNotification(
+      "payment_successful",
+      [bookingData.customer_id],
       {
-        title: "Payment Confirmed",
-        message: `Your payment for booking ${bookingData.booking_number} has been confirmed.`,
-        data: {
-          type: "payment_success",
-          booking_id: metadata.booking_id,
-        },
-        url: `/account-settings/bookings`,
+        amount: String(amountInCurrency),
+        booking_number: bookingData.booking_number || String(metadata.booking_id ?? ""),
+        booking_id: String(metadata.booking_id ?? ""),
+        payment_method: "card",
       },
       ["push"],
-      { appType: "customer" }
+      { appType: "customer", tenantId: bookingData.tenant_id ?? null },
     );
+    await insertNotification({
+      user_id: bookingData.customer_id,
+      type: "payment_received",
+      title: "Payment Confirmed",
+      message: `Your payment for booking ${bookingData.booking_number} has been confirmed.`,
+      data: {
+        type: "payment_success",
+        booking_id: metadata.booking_id,
+      },
+      action_url: "/account-settings/bookings",
+    });
 
     const { data: providerRow } = await supabase
       .from("providers")
@@ -956,20 +966,29 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
 
     const providerUserId = (providerRow as { user_id?: string } | null)?.user_id;
     if (providerUserId) {
-      await sendToUser(
-        providerUserId,
+      await sendTemplateNotification(
+        "payment_successful",
+        [providerUserId],
         {
-          title: "New Booking Payment",
-          message: `Payment received for booking ${bookingData.booking_number}.`,
-          data: {
-            type: "booking_payment",
-            booking_id: metadata.booking_id,
-          },
-          url: `/provider/bookings/${metadata.booking_id}`,
+          amount: String(amountInCurrency),
+          booking_number: bookingData.booking_number || String(metadata.booking_id ?? ""),
+          booking_id: String(metadata.booking_id ?? ""),
+          payment_method: "card",
         },
         ["push"],
-        { appType: "provider" }
+        { appType: "provider", tenantId: bookingData.tenant_id ?? null },
       );
+      await insertNotification({
+        user_id: providerUserId,
+        type: "payment_received",
+        title: "New Booking Payment",
+        message: `Payment received for booking ${bookingData.booking_number}.`,
+        data: {
+          type: "booking_payment",
+          booking_id: metadata.booking_id,
+        },
+        action_url: `/provider/bookings/${metadata.booking_id}`,
+      });
     }
   } catch (notifError) {
     console.error("Error sending notifications:", notifError);
@@ -1004,8 +1023,10 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
 // ─── charge.failed internals ─────────────────────────────────────────────────
 
 async function handleProductOrderChargeFailed(data: PaystackChargeData, supabase: SupabaseClient) {
-  const { reference, metadata } = data;
+  const { reference, metadata, amount } = data;
   if (!reference || !metadata?.product_order_id) return;
+
+  const amountInCurrency = convertFromSmallestUnit(amount || 0);
 
   const productOrderId = String(metadata.product_order_id);
 
@@ -1042,21 +1063,31 @@ async function handleProductOrderChargeFailed(data: PaystackChargeData, supabase
     .eq("id", o.id);
 
   try {
-    const { sendToUser } = await import("@/lib/notifications/onesignal");
-    await sendToUser(
-      o.customer_id,
+    const { sendTemplateNotification } = await import("@/lib/notifications/onesignal");
+    const { insertNotification } = await import("@/lib/notifications/insert-notification");
+    await sendTemplateNotification(
+      "payment_failed",
+      [o.customer_id],
       {
-        title: "Order Payment Failed",
-        message: "Your product order payment did not go through. Please try again.",
-        data: {
-          type: "product_order_update",
-          product_order_id: o.id,
-        },
-        url: "/product-orders",
+        amount: String(amountInCurrency),
+        booking_number: String(o.id),
+        booking_id: String(o.id),
+        failure_reason: "Card payment failed",
       },
       ["push"],
-      { appType: "customer" },
+      { appType: "customer", tenantId: o.tenant_id ?? null },
     );
+    await insertNotification({
+      user_id: o.customer_id,
+      type: "product_order_update",
+      title: "Order Payment Failed",
+      message: "Your product order payment did not go through. Please try again.",
+      data: {
+        type: "product_order_update",
+        product_order_id: o.id,
+      },
+      action_url: "/product-orders",
+    });
   } catch (notifError) {
     console.error("Error sending product-order payment failed notification:", notifError);
   }
@@ -2219,6 +2250,9 @@ async function handleAdsBudgetOrderSuccess(
     campaignUpdate.start_at = now.toISOString();
     campaignUpdate.end_at = new Date(now.getTime() + days * 86400000).toISOString();
   } else if ((campaignRow as any)?.billing_model === "impression_pack") {
+    campaignUpdate.status = "active";
+    campaignUpdate.start_at = new Date().toISOString();
+  } else if ((campaignRow as any)?.billing_model === "cpc_budget") {
     campaignUpdate.status = "active";
     campaignUpdate.start_at = new Date().toISOString();
   }

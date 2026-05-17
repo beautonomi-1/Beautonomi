@@ -29,8 +29,11 @@ const SETTINGS_SECTIONS: { title: string; items: SettingItem[] }[] = [
   {
     title: "Business",
     items: [
-      { icon: "checkmark-done-outline", label: "Setup Status", subtitle: "Onboarding & completion", route: "/(app)/(tabs)/more/settings/setup-status", color: "#22c55e" },
-      { icon: "business-outline", label: "Business Details", subtitle: "Name, logo, description", route: "/(app)/(tabs)/more/settings/business", color: "#6366f1" },
+      { icon: "checkmark-done-outline", label: "Setup checklist", subtitle: "Track and finish your business setup", route: "/(app)/(tabs)/more/settings/setup-status", color: "#22c55e" },
+      { icon: "business-outline", label: "Business details", subtitle: "Name, logo, description, contact", route: "/(app)/(tabs)/more/settings/business", color: "#6366f1" },
+      // §provider-setup-seamless-ux 2026-05: targeted screen for the
+      // freelancer Personal Profile setup step.
+      { icon: "person-circle-outline", label: "Personal profile", subtitle: "Bio, headline & how customers see you", route: "/(app)/(tabs)/more/settings/personal-profile", color: "#ec4899" },
       { icon: "time-outline", label: "Operating Hours", subtitle: "Opening & closing times", route: "/(app)/(tabs)/more/settings/hours", color: "#3b82f6" },
       { icon: "location-outline", label: "Locations", subtitle: "Manage your locations", route: "/(app)/(tabs)/more/settings/locations", color: "#22c55e" },
       { icon: "navigate-outline", label: "Distance & radius", subtitle: "How far you travel for house calls", route: "/(app)/(tabs)/more/settings/distance-settings", color: "#0891b2" },

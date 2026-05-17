@@ -5,7 +5,7 @@
  */
 import { useState, useCallback } from "react";
 import { View, Text, TouchableOpacity, Alert } from "react-native";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -15,40 +15,21 @@ import { twStyle } from "@/lib/twStyle";
 import { Colors } from "@/constants/colors";
 import * as Haptics from "expo-haptics";
 
-const WEB_PATH_TO_NATIVE: Record<string, string> = {
-  "/provider/settings/appointment-activity/business-details":
-    "/(app)/(tabs)/more/settings/business",
-  "/provider/settings/locations": "/(app)/(tabs)/more/locations",
-  "/provider/settings/gallery": "/(app)/(tabs)/more/gallery",
-  "/provider/settings/operating-hours":
-    "/(app)/(tabs)/more/settings/hours",
-  "/provider/settings/verification":
-    "/(app)/(tabs)/more/settings/verification",
-  "/provider/settings/sales/yoco-integration":
-    "/(app)/(tabs)/more/settings/yoco-devices",
-  "/provider/settings/payout-accounts":
-    "/(app)/(tabs)/more/settings/payout-accounts",
-  "/provider/catalogue/services": "/(app)/(tabs)/more/catalogue",
-  "/profile/create-profile": "/(app)/onboarding/wizard",
-  "/provider/subscription": "/(app)/(tabs)/more/settings/subscription",
-  "/provider/settings/subscription":
-    "/(app)/(tabs)/more/settings/subscription",
-  "/provider/settings/payments": "/(app)/(tabs)/more/settings/payments",
-  "/provider/settings/online-booking":
-    "/(app)/(tabs)/more/settings/online-booking",
-  "/provider/settings/booking-link":
-    "/(app)/(tabs)/more/settings/booking-link",
-  "/provider/team": "/(app)/(tabs)/more/team-list",
-  "/provider/staff": "/(app)/(tabs)/more/team-list",
-};
-
 interface SetupStep {
   id: string;
   title: string;
   description: string;
   completed: boolean;
   required: boolean;
+  /** Web (Next.js) route returned by the API — informational on mobile. */
   link: string;
+  /**
+   * Canonical native (expo-router) route. Returned by the server so the
+   * mobile checklist no longer needs a client-side route map.
+   * `null` only when the server has no dedicated mobile screen for the step;
+   * in that case we fall back to the wizard.
+   */
+  native_route: string | null;
 }
 
 interface SetupStatus {
@@ -72,13 +53,24 @@ export default function SetupStatusScreen() {
     }
   }, [refresh]);
 
+  // Refresh on tab return so completing a step (e.g. adding services in the
+  // catalogue) immediately re-flips the checklist row + percentage instead of
+  // requiring a manual pull-to-refresh.
+  useFocusEffect(
+    useCallback(() => {
+      void refresh();
+    }, [refresh]),
+  );
+
   function openStep(step: SetupStep) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const nativeRoute = WEB_PATH_TO_NATIVE[step.link];
-    if (nativeRoute) {
-      router.push(nativeRoute as never);
+    if (step.native_route) {
+      router.push(step.native_route as never);
       return;
     }
+    // Defensive fallback — server should always return a native_route for
+    // every step in NATIVE_ROUTE_BY_ID. Only fires if the API was unreachable
+    // or returned a step the client doesn't recognise.
     Alert.alert(
       "Open in setup wizard",
       "This step is available in the quick setup wizard.",
@@ -86,10 +78,9 @@ export default function SetupStatusScreen() {
         { text: "Cancel", style: "cancel" },
         {
           text: "Open wizard",
-          onPress: () =>
-            router.push("/(app)/onboarding/wizard" as never),
+          onPress: () => router.push("/(app)/onboarding/wizard" as never),
         },
-      ]
+      ],
     );
   }
 

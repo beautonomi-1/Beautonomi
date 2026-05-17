@@ -7,6 +7,7 @@ import { AnimatedPressable } from "@/components/AnimatedPressable";
 import type { PublicProviderCard } from "@/types/api";
 import { Colors, Shadows } from "@/constants/colors";
 import { api } from "@/lib/api-client";
+import { formatProviderDescriptionForCard } from "@beautonomi/utils";
 
 interface ProviderCardProps {
   provider: PublicProviderCard;
@@ -38,13 +39,8 @@ export const ProviderCard = React.memo(function ProviderCard({
   const thumbnailUrl = provider.thumbnail_url || PLACEHOLDER;
   const avatarUrl = provider.avatar_url || provider.thumbnail_url || PLACEHOLDER;
   const formatCount = (c: number) => (c >= 1000 ? `${(c / 1000).toFixed(1)}k` : String(c));
-  const formatDescription = (desc: string) => {
-    if (!desc) return "";
-    const trimmed = desc.trim();
-    if (trimmed.length === 0) return "";
-    return trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
-  };
   const providerInitial = provider.business_name.charAt(0).toUpperCase();
+  const cardDescription = formatProviderDescriptionForCard(provider.description);
 
   const handlePress = () => {
     if (provider.is_sponsored && provider.campaign_id && provider.id) {
@@ -156,8 +152,8 @@ export const ProviderCard = React.memo(function ProviderCard({
           <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[700], marginLeft: 4 }}>{provider.rating > 0 ? provider.rating.toFixed(1) : "0.0"}</Text>
           <Text style={{ fontSize: 12, color: Colors.gray[500], marginLeft: 4 }}>({formatCount(provider.review_count || 0)})</Text>
         </View>
-        {provider.description && provider.description.trim() ? (
-          <Text style={{ fontSize: 10, color: Colors.gray[600], marginTop: 6, lineHeight: 14, flexShrink: 1 }} numberOfLines={2}>{formatDescription(provider.description)}</Text>
+        {cardDescription ? (
+          <Text style={{ fontSize: 10, color: Colors.gray[600], marginTop: 6, lineHeight: 14, flexShrink: 1 }} numberOfLines={2}>{cardDescription}</Text>
         ) : null}
         {provider.distance_km != null ? (
           <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 4 }}>{provider.distance_km.toFixed(0)} KM Away</Text>

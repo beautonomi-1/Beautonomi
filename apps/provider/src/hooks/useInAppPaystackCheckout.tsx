@@ -1,20 +1,48 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { PaystackWebViewModal } from "@/components/payments/PaystackWebViewModal";
+import { useCallback, useEffect, useRef } from "react";
+import * as ExpoLinking from "expo-linking";
+import * as WebBrowser from "expo-web-browser";
 
 export type InAppPaystackResult =
   | { outcome: "success"; url: string }
   | { outcome: "cancel"; url?: string }
   | { outcome: "closed" };
 
-type Session = {
-  url: string;
-  title?: string;
-  matchSuccess: (u: string) => boolean;
-  matchCancel?: (u: string) => boolean;
-};
+/**
+ * PCI DSS SAQ A guard: Paystack hosted checkout must only ever be opened
+ * against a Paystack-controlled host. Defends against a server bug or
+ * supply-chain attack returning a non-Paystack `authorization_url`.
+ */
+const PAYSTACK_HOST_ALLOWLIST = new Set<string>([
+  "checkout.paystack.com",
+  "standard.paystack.co",
+  "paystack.shop",
+  "api.paystack.co",
+]);
+
+function assertPaystackUrl(url: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error("[paystack] checkout URL is not a valid URL");
+  }
+  if (parsed.protocol !== "https:") {
+    throw new Error("[paystack] checkout URL must use https");
+  }
+  const host = parsed.hostname.toLowerCase();
+  const allowed =
+    PAYSTACK_HOST_ALLOWLIST.has(host) ||
+    host.endsWith(".paystack.com") ||
+    host.endsWith(".paystack.co") ||
+    host.endsWith(".paystack.shop");
+  if (!allowed) {
+    throw new Error(
+      `[paystack] refusing to open non-Paystack host: ${host}`,
+    );
+  }
+}
 
 export function useInAppPaystackCheckout() {
-  const [session, setSession] = useState<Session | null>(null);
   const resolverRef = useRef<((r: InAppPaystackResult) => void) | null>(null);
 
   const waitForCheckout = useCallback(
@@ -24,21 +52,36 @@ export function useInAppPaystackCheckout() {
         matchSuccess: (u: string) => boolean;
         matchCancel?: (u: string) => boolean;
         title?: string;
+        returnUrl?: string;
       },
     ): Promise<InAppPaystackResult> => {
-      return new Promise((resolve) => {
-        // Defensive: if a previous checkout promise is still unresolved, close it
-        // before replacing the session so callers never hang indefinitely.
-        if (resolverRef.current) {
-          resolverRef.current({ outcome: "closed" });
-        }
+      return new Promise(async (resolve) => {
+        if (resolverRef.current) resolverRef.current({ outcome: "closed" });
         resolverRef.current = resolve;
-        setSession({
-          url,
-          title: options.title,
-          matchSuccess: options.matchSuccess,
-          matchCancel: options.matchCancel,
-        });
+        const returnUrl = options.returnUrl ?? ExpoLinking.createURL("paystack-callback");
+        try {
+          assertPaystackUrl(url);
+          const result = await WebBrowser.openAuthSessionAsync(url, returnUrl);
+          if (!resolverRef.current) return;
+          resolverRef.current = null;
+
+          if (result.type === "success" && result.url) {
+            if (options.matchCancel?.(result.url) || result.url.includes("cancelled=1")) {
+              resolve({ outcome: "cancel", url: result.url });
+              return;
+            }
+            if (options.matchSuccess(result.url)) {
+              resolve({ outcome: "success", url: result.url });
+              return;
+            }
+          }
+          resolve({ outcome: "closed" });
+        } catch {
+          if (resolverRef.current) {
+            resolverRef.current = null;
+            resolve({ outcome: "closed" });
+          }
+        }
       });
     },
     [],
@@ -54,32 +97,6 @@ export function useInAppPaystackCheckout() {
     [],
   );
 
-  const onModalComplete = useCallback((result: { outcome: "success" | "cancel" | "closed"; url?: string }) => {
-    const resolve = resolverRef.current;
-    resolverRef.current = null;
-    setSession(null);
-    if (!resolve) return;
-    if (result.outcome === "success" && result.url) {
-      resolve({ outcome: "success", url: result.url });
-      return;
-    }
-    if (result.outcome === "cancel") {
-      resolve({ outcome: "cancel", url: result.url });
-      return;
-    }
-    resolve({ outcome: "closed" });
-  }, []);
-
-  const modal = session ? (
-    <PaystackWebViewModal
-      visible
-      title={session.title}
-      authorizationUrl={session.url}
-      matchSuccess={session.matchSuccess}
-      matchCancel={session.matchCancel}
-      onComplete={onModalComplete}
-    />
-  ) : null;
-
+  const modal = null;
   return { waitForCheckout, modal };
 }

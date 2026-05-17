@@ -6,12 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Star, Send, ArrowLeft, Upload, X } from "lucide-react";
+import { Star, Send, ArrowLeft } from "lucide-react";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import Link from "next/link";
-import Image from "next/image";
 import { useAuth } from "@/providers/AuthProvider";
 
 export default function ReviewPage() {
@@ -23,8 +22,6 @@ export default function ReviewPage() {
   const [rating, setRating] = useState(0);
   const [hoveredRating, setHoveredRating] = useState(0);
   const [comment, setComment] = useState("");
-  const [photos, setPhotos] = useState<string[]>([]);
-  const [photoUploading, setPhotoUploading] = useState(false);
   const [services, setServices] = useState<Array<{ offering_id: string; offering_name: string; staff_id?: string | null; staff_name?: string | null }>>([]);
   const [serviceRatings, setServiceRatings] = useState<Record<string, number>>({});
   const [staffRatings, setStaffRatings] = useState<Record<string, number>>({});
@@ -59,65 +56,6 @@ export default function ReviewPage() {
     }
   };
 
-  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    // §Customer-launch (audit 2026-04): previously a "coming soon" toast.
-    // Wire the existing /api/upload route (already supports customer
-    // uploads up to 5MB) to persist review photos to Supabase storage
-    // and stash the returned public URLs for submit.
-    const MAX_BYTES = 5 * 1024 * 1024;
-    const MAX_PHOTOS = 6;
-    const remaining = Math.max(0, MAX_PHOTOS - photos.length);
-    if (remaining === 0) {
-      toast.error(`You can upload up to ${MAX_PHOTOS} photos.`);
-      e.target.value = "";
-      return;
-    }
-
-    const accepted = Array.from(files).slice(0, remaining).filter((f) => {
-      if (f.size > MAX_BYTES) {
-        toast.error(`${f.name} is larger than 5MB and was skipped.`);
-        return false;
-      }
-      return true;
-    });
-
-    if (accepted.length === 0) {
-      e.target.value = "";
-      return;
-    }
-
-    setPhotoUploading(true);
-    const uploadedUrls: string[] = [];
-    for (const file of accepted) {
-      try {
-        const formData = new FormData();
-        formData.append("file", file);
-        formData.append("folder", "review-photos");
-        const res = await fetch("/api/upload", {
-          method: "POST",
-          body: formData,
-          credentials: "include",
-        });
-        if (!res.ok) throw new Error(`upload failed: ${res.status}`);
-        const payload = (await res.json()) as { data?: { url?: string } };
-        const url = payload?.data?.url;
-        if (url) uploadedUrls.push(url);
-      } catch (err) {
-        console.error("Review photo upload failed", err);
-        toast.error(`Could not upload ${file.name}.`);
-      }
-    }
-    if (uploadedUrls.length > 0) {
-      setPhotos((prev) => [...prev, ...uploadedUrls]);
-      toast.success(`Added ${uploadedUrls.length} photo${uploadedUrls.length === 1 ? "" : "s"}`);
-    }
-    setPhotoUploading(false);
-    e.target.value = "";
-  };
-
   const handleSubmit = async () => {
     if (rating === 0) {
       toast.error("Please select a rating");
@@ -148,7 +86,6 @@ export default function ReviewPage() {
       await fetcher.post(`/api/bookings/${bookingId}/review`, {
         rating,
         comment: comment.trim() || null,
-        photos,
         service_ratings: normalizedServiceRatings,
         staff_rating: normalizedStaffRating,
       });
@@ -321,53 +258,6 @@ export default function ReviewPage() {
                 </div>
               </div>
             )}
-
-            <div>
-              <Label className="text-base font-medium mb-3 block">
-                Add Photos (Optional)
-              </Label>
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-                <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                <p className="text-sm text-gray-600 mb-2">
-                  Upload photos of your experience
-                </p>
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={handlePhotoUpload}
-                  className="hidden"
-                  id="photo-upload"
-                />
-                <label htmlFor="photo-upload">
-                  <Button variant="outline" type="button" asChild disabled={photoUploading}>
-                    <span>{photoUploading ? "Uploading..." : "Choose Photos"}</span>
-                  </Button>
-                </label>
-              </div>
-              {photos.length > 0 && (
-                <div className="mt-4 flex gap-2">
-                  {photos.map((photo, index) => (
-                    <div key={index} className="relative">
-                      <Image
-                        src={photo}
-                        alt={`Review photo ${index + 1}`}
-                        width={80}
-                        height={80}
-                        className="w-20 h-20 object-cover rounded"
-                        unoptimized
-                      />
-                      <button
-                        onClick={() => setPhotos(photos.filter((_, i) => i !== index))}
-                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
 
             <div className="flex gap-4 pt-4">
               <Button

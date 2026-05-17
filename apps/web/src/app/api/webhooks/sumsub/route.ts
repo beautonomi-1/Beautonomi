@@ -17,7 +17,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHmac, timingSafeEqual } from "crypto";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { slackNotifyVerificationNeedsReview } from "@/lib/integrations/slack/ops-triggers";
+import {
+  slackNotifyVerificationNeedsReview,
+  slackNotifyVerificationRejected,
+} from "@/lib/integrations/slack/ops-triggers";
 
 export async function POST(request: NextRequest) {
   try {
@@ -124,13 +127,22 @@ export async function POST(request: NextRequest) {
         .eq("document_type", "sumsub")
         .maybeSingle();
 
-      if (status === "in_progress" && tenantIdForVerification && uvRow?.id) {
-        slackNotifyVerificationNeedsReview({
-          tenantId: tenantIdForVerification,
-          verificationId: uvRow.id,
-          documentType: "sumsub",
-          source: "sumsub_customer",
-        });
+      if (tenantIdForVerification && uvRow?.id) {
+        if (status === "in_progress") {
+          slackNotifyVerificationNeedsReview({
+            tenantId: tenantIdForVerification,
+            verificationId: uvRow.id,
+            documentType: "sumsub",
+            source: "sumsub_customer",
+          });
+        } else if (status === "rejected") {
+          slackNotifyVerificationRejected({
+            tenantId: tenantIdForVerification,
+            verificationId: uvRow.id,
+            source: "sumsub_customer",
+            detail: "SumSub returned a rejection — user may need to resubmit with a clearer document.",
+          });
+        }
       }
     } else if (externalUserId) {
       // ── Provider ────────────────────────────────────────────────────────
@@ -155,16 +167,29 @@ export async function POST(request: NextRequest) {
         { onConflict: "provider_id" }
       );
 
-      if (status === "in_progress" && providerTenantId) {
-        slackNotifyVerificationNeedsReview({
-          tenantId: providerTenantId,
-          verificationId: providerId,
-          documentType: "sumsub",
-          source: "sumsub_provider",
-          detail: (provRow as { business_name?: string | null } | null)?.business_name ?? null,
-          actionUrl: `/providers/${providerId}`,
-          entityType: "provider_verification",
-        });
+      const provBusinessName = (provRow as { business_name?: string | null } | null)?.business_name ?? null;
+      if (providerTenantId) {
+        if (status === "in_progress") {
+          slackNotifyVerificationNeedsReview({
+            tenantId: providerTenantId,
+            verificationId: providerId,
+            documentType: "sumsub",
+            source: "sumsub_provider",
+            detail: provBusinessName,
+            actionUrl: `/provider-ops/providers/${providerId}`,
+            entityType: "provider_verification",
+          });
+        } else if (status === "rejected") {
+          slackNotifyVerificationRejected({
+            tenantId: providerTenantId,
+            verificationId: providerId,
+            source: "sumsub_provider",
+            subject: provBusinessName,
+            detail: "SumSub KYC rejected — provider cannot receive the verified badge until resubmitted.",
+            actionUrl: `/provider-ops/providers/${providerId}`,
+            entityType: "provider_verification",
+          });
+        }
       }
     } else {
       console.warn("Sumsub webhook: no externalUserId — ignoring");

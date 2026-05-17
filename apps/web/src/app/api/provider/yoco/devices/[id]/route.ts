@@ -44,14 +44,24 @@ export async function GET(
       .eq("provider_id", providerId)
       .single();
     if (!error && device) {
+      // §Yoco-synergy 2026-05: mirror the list endpoint's shape so a
+      // single-device fetch (e.g. for an edit drawer) returns the same
+      // location_name + usage stats the picker relies on.
+      const d = device as Record<string, unknown>;
       return NextResponse.json({
         data: {
-          id: device.id,
-          name: device.name,
-          device_id: (device as any).yoco_device_id,
-          location_id: device.location_id,
-          is_active: device.is_active,
-          created_date: device.created_at,
+          id: d.id,
+          name: d.name,
+          device_id: d.yoco_device_id,
+          serial_number: d.yoco_device_id,
+          location_id: d.location_id,
+          location_name: d.location_name ?? null,
+          is_active: d.is_active,
+          total_transactions: d.total_transactions ?? 0,
+          total_amount: d.total_amount ?? 0,
+          last_used: d.last_used ?? null,
+          created_date: d.created_at,
+          created_at: d.created_at,
         },
         error: null,
       });
@@ -159,22 +169,49 @@ export async function PUT(
       );
     }
 
+    // §Yoco-synergy 2026-05: when the caller moves the device to a new
+    // location, refresh the denormalised location_name on the same write so
+    // the mobile picker + settings list don't show stale labels. If
+    // location is cleared (null), wipe the name too.
+    const updatePayload: Record<string, unknown> = { ...validationResult.data };
+    if (Object.prototype.hasOwnProperty.call(validationResult.data, "location_id")) {
+      const newLocationId = validationResult.data.location_id;
+      if (newLocationId == null) {
+        updatePayload.location_name = null;
+      } else {
+        const { data: loc } = await supabase
+          .from("provider_locations")
+          .select("name")
+          .eq("id", newLocationId)
+          .eq("provider_id", providerId)
+          .maybeSingle();
+        updatePayload.location_name = typeof loc?.name === "string" ? loc.name : null;
+      }
+    }
+
     const { data: device, error } = await (supabase
       .from("provider_yoco_devices") as any)
-      .update(validationResult.data)
+      .update(updatePayload)
       .eq("id", id)
       .eq("provider_id", providerId)
       .select()
       .single();
     if (!error && device) {
+      const d = device as Record<string, unknown>;
       return NextResponse.json({
         data: {
-          id: device.id,
-          name: device.name,
-          device_id: device.yoco_device_id,
-          location_id: device.location_id,
-          is_active: device.is_active,
-          created_date: device.created_at,
+          id: d.id,
+          name: d.name,
+          device_id: d.yoco_device_id,
+          serial_number: d.yoco_device_id,
+          location_id: d.location_id,
+          location_name: d.location_name ?? null,
+          is_active: d.is_active,
+          total_transactions: d.total_transactions ?? 0,
+          total_amount: d.total_amount ?? 0,
+          last_used: d.last_used ?? null,
+          created_date: d.created_at,
+          created_at: d.created_at,
         },
         error: null,
       });

@@ -43,6 +43,13 @@ interface LeadAssigneesReport {
   }>;
 }
 
+interface PreviousSoftwareReport {
+  total_providers: number;
+  none_count: number;
+  by_software: Array<{ slug: string; display_name: string; count: number; pct: number }>;
+  generated_at: string;
+}
+
 function leadsInboxHrefForAssignee(userId: string | null) {
   const q = userId == null ? "assigned_to=unassigned" : `assigned_to=${encodeURIComponent(userId)}`;
   return adminSpaTo(`/admin/provider-ops/leads?${q}`);
@@ -65,6 +72,15 @@ export function ProviderOpsReportsPage() {
     queryKey: adminQueryKeys.providerOps.reportsLeadAssignees(),
     queryFn: () =>
       adminApi.getJson<LeadAssigneesReport>("/api/admin/provider-ops/reports/lead-assignees", { timeoutMs: 120_000 }),
+    enabled: allowed,
+  });
+
+  const softwareQ = useQuery({
+    queryKey: adminQueryKeys.providerOps.reportsPreviousSoftware(),
+    queryFn: () =>
+      adminApi.getJson<PreviousSoftwareReport>("/api/admin/provider-ops/reports/previous-software", {
+        timeoutMs: 60_000,
+      }),
     enabled: allowed,
   });
 
@@ -123,6 +139,84 @@ export function ProviderOpsReportsPage() {
             })}
           </div>
         </AdminPanel>
+      )}
+
+      {/* ── Previous software report ───────────────────────────────────────── */}
+      {softwareQ.isLoading && (
+        <AdminPanel>
+          <h2 className="mb-4 text-base font-semibold text-gray-900">Previous booking software</h2>
+          <AdminPageSkeleton rows={5} />
+        </AdminPanel>
+      )}
+      {!softwareQ.isLoading && softwareQ.data && (
+        <AdminPanel>
+          <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h2 className="text-base font-semibold text-gray-900">Previous booking software</h2>
+              <p className="text-xs text-gray-500">
+                Which platform providers migrated from at signup ·{" "}
+                {softwareQ.data.total_providers} answered · {softwareQ.data.none_count} are new to
+                software · Generated{" "}
+                {new Date(softwareQ.data.generated_at).toLocaleString()}
+              </p>
+            </div>
+          </div>
+
+          {softwareQ.data.by_software.length === 0 ? (
+            <p className="py-4 text-center text-sm text-gray-400">
+              No previous software data recorded yet.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {softwareQ.data.by_software.map((row) => {
+                const maxCount = Math.max(
+                  ...softwareQ.data!.by_software.map((r) => r.count),
+                  1,
+                );
+                const barPct = (row.count / maxCount) * 100;
+                return (
+                  <div key={row.slug} className="flex items-center gap-3">
+                    <div className="w-36 shrink-0 truncate text-sm font-medium text-gray-700">
+                      {row.display_name}
+                    </div>
+                    <div className="relative h-5 flex-1 overflow-hidden rounded-full bg-gray-100">
+                      <div
+                        className="h-full rounded-full bg-indigo-400 transition-all"
+                        style={{ width: `${barPct}%` }}
+                      />
+                      <span className="absolute right-2 top-0 flex h-full items-center text-[10px] font-bold text-indigo-900">
+                        {row.count}
+                      </span>
+                    </div>
+                    <div className="w-10 shrink-0 text-right text-xs font-medium text-gray-500">
+                      {row.pct}%
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {softwareQ.data.none_count > 0 && (
+            <div className="mt-4 flex items-center gap-2 border-t pt-4">
+              <span className="inline-block rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-700">
+                {softwareQ.data.none_count} new to software
+              </span>
+              <span className="text-xs text-gray-500">
+                ({softwareQ.data.total_providers > 0
+                  ? Math.round((softwareQ.data.none_count / softwareQ.data.total_providers) * 100)
+                  : 0}
+                % of respondents)
+              </span>
+            </div>
+          )}
+        </AdminPanel>
+      )}
+      {softwareQ.error && !isAdminApiAuthFailure(softwareQ.error) && (
+        <AdminRetryBlock
+          message={(softwareQ.error as Error).message}
+          onRetry={() => void softwareQ.refetch()}
+        />
       )}
 
       {assigneesQ.isLoading && (

@@ -325,7 +325,9 @@ async function sendMessageNotification(
         { appType }
       );
     }
-  } catch {}
+  } catch (notifError) {
+    console.error("Failed to send message notification:", notifError);
+  }
 
   try {
     const { insertNotifications } = await import("@/lib/notifications/insert-notification");

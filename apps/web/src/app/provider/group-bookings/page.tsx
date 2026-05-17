@@ -194,7 +194,7 @@ export default function GroupBookingsPage() {
     }
   };
 
-  const handleRecordPayment = async (bookingId: string, paymentMethod: "cash" | "card" | "bank_transfer" | "other") => {
+  const handleRecordPayment = async (bookingId: string, paymentMethod: "cash" | "card" | "bank_transfer" | "other" | "yoco") => {
     const normalizedBookingId = normalizeGroupBookingId(bookingId);
     try {
       await fetcher.post(`/api/provider/group-bookings/${normalizedBookingId}?action=mark_paid`, {
@@ -629,7 +629,7 @@ interface DetailPanelProps {
   onCheckOut: (bookingId: string, participantId: string) => void;
   onRecordPayment: (
     bookingId: string,
-    paymentMethod: "cash" | "card" | "bank_transfer" | "other",
+    paymentMethod: "cash" | "card" | "bank_transfer" | "other" | "yoco",
   ) => void;
   onOpenParticipantBooking: (bookingId?: string | null) => void;
   onEdit: () => void;
@@ -884,6 +884,9 @@ function GroupBookingDetailPanel({
               </Button>
               <Button variant="outline" size="sm" onClick={() => onRecordPayment(booking.id, "card")}>
                 Card
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => onRecordPayment(booking.id, "yoco")}>
+                Yoco
               </Button>
               <Button variant="outline" size="sm" onClick={() => onRecordPayment(booking.id, "bank_transfer")}>
                 Bank transfer

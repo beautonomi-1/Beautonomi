@@ -8,6 +8,7 @@
 import { useState, useCallback } from "react";
 import * as ExpoLinking from "expo-linking";
 import { api } from "@/lib/api-client";
+import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
 import { getAnalyticsClient } from "@/lib/analytics-rn";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
@@ -133,6 +134,7 @@ export function usePaystackPayment() {
 
         const pr = await checkout.waitForCheckout(data.authorization_url, {
           title: "Pay booking",
+          returnUrl,
           matchSuccess: (u) => matchesExpoReturnUrl(u, returnUrl) && !isCancelledPaystackUrl(u),
           matchCancel: (u) => isCancelledPaystackUrl(u),
         });
@@ -177,16 +179,8 @@ export function usePaystackPayment() {
 
         let paymentConfirmed = false;
         if (reference) {
-          const vr = await api.get<{ status?: string }>(
-            `/api/paystack/verify?reference=${encodeURIComponent(reference)}`,
-          );
-          if (!vr.error && vr.data) {
-            const raw = vr.data as Record<string, unknown>;
-            const inner = raw?.data && typeof raw.data === "object" ? (raw.data as Record<string, unknown>) : raw;
-            const st =
-              typeof inner?.status === "string" ? inner.status : typeof raw?.status === "string" ? raw.status : "";
-            if (st === "success") paymentConfirmed = true;
-          }
+          const verifyResult = await verifyPaystackWithRetry(reference);
+          if (verifyResult.status === "success") paymentConfirmed = true;
         }
 
         if (!paymentConfirmed && params.booking_id) {

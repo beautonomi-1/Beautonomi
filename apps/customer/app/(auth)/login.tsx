@@ -625,51 +625,9 @@ export default function LoginScreen() {
           {t("auth.login")} to book beauty and wellness, manage appointments, and shop with Beautonomi.
         </Text>
 
-        <View
-          style={{
-            borderWidth: 1,
-            borderColor: "#FBCFE8",
-            backgroundColor: "#FFF1F7",
-            borderRadius: 14,
-            padding: 12,
-            marginBottom: 18,
-          }}
-        >
-          <Text style={{ fontSize: 13, fontWeight: "700", color: "#9D174D", marginBottom: 8, textAlign: "center" }}>
-            New here or already have an account?
-          </Text>
-          <View style={{ flexDirection: "row", gap: 8 }}>
-            <TouchableOpacity
-              onPress={goToSignup}
-              style={{
-                flex: 1,
-                backgroundColor: Colors.white,
-                borderWidth: 1,
-                borderColor: "#F9A8D4",
-                borderRadius: 10,
-                paddingVertical: 10,
-                alignItems: "center",
-              }}
-              accessibilityRole="button"
-              accessibilityLabel="Create a new account"
-            >
-              <Text style={{ fontSize: 13, fontWeight: "700", color: "#9D174D" }}>I am new · Sign up</Text>
-            </TouchableOpacity>
-            <View
-              style={{
-                flex: 1,
-                backgroundColor: "#FCE7F3",
-                borderWidth: 1,
-                borderColor: "#FBCFE8",
-                borderRadius: 10,
-                paddingVertical: 10,
-                alignItems: "center",
-              }}
-            >
-              <Text style={{ fontSize: 13, fontWeight: "700", color: "#9D174D" }}>I have account · Log in</Text>
-            </View>
-          </View>
-        </View>
+        <Text style={{ textAlign: "center", fontSize: 12, color: "#6B7280", marginBottom: 18 }}>
+          Continue with phone, email, Google, or Apple.
+        </Text>
 
         {statusMessage ? (
           <View

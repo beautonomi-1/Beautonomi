@@ -19,6 +19,7 @@ import { useLocalSearchParams, Stack, router, useFocusEffect } from "expo-router
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
+import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
 import { getApiErrorMessage, getHttpErrorStatus } from "@/lib/api-error";
 import { trackCheckoutStarted, trackBookingConfirmed, trackPaymentSuccess } from "@/lib/analytics";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
@@ -2167,7 +2168,7 @@ export default function BookCheckoutScreen() {
       const data = res.data;
       const bookingId = data?.booking_id;
 
-      /* Server creates the Paystack transaction in POST /api/public/bookings; must open this URL (same as web book/continue). */
+      /* Server creates the Paystack transaction on POST /api/public/booking-holds/:id/consume (same as web book/continue). */
       const paymentUrl = data?.payment_url;
 
       const recurringSub = data?.recurring_subscription;
@@ -2233,6 +2234,7 @@ export default function BookCheckoutScreen() {
           const paystackReturnUrl = ExpoLinking.createURL("book/paystack");
           const authResult = await paystackHostedCheckout.waitForCheckout(paymentUrl, {
             title: t("checkout.securePaymentTitle", "Secure payment") as string,
+            returnUrl: paystackReturnUrl,
             matchSuccess: (u) => matchesExpoReturnUrl(u, paystackReturnUrl) && !isCancelledPaystackUrl(u),
             matchCancel: (u) => isCancelledPaystackUrl(u),
           });
@@ -2287,10 +2289,10 @@ export default function BookCheckoutScreen() {
 
         let paymentConfirmed = false;
         if (returnedPaymentReference) {
-          const verifyRes = await api
-            .get<unknown>(`/api/paystack/verify?reference=${encodeURIComponent(returnedPaymentReference)}`)
-            .catch(() => null);
-          if (verifyRes && !verifyRes.error && bookingPaidFromPaystackVerifyBody(verifyRes.data)) {
+          const verifyResult = await verifyPaystackWithRetry(returnedPaymentReference);
+          if (verifyResult.status === "success") {
+            paymentConfirmed = true;
+          } else if (verifyResult.data && bookingPaidFromPaystackVerifyBody(verifyResult.data)) {
             paymentConfirmed = true;
           }
         }

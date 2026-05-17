@@ -144,7 +144,8 @@ export async function getProviderDashboardResponse(request: NextRequest) {
     let bookingsQuery = supabaseAdmin
       .from('bookings')
       .select('id, status, created_at, scheduled_at, location_id, location_type')
-      .eq('provider_id', providerId);
+      .eq('provider_id', providerId)
+      .limit(5000);
     
     // If location filter is provided, show bookings for that location
     // When no location is selected, show all bookings (including those with NULL location_id)
@@ -160,7 +161,8 @@ export async function getProviderDashboardResponse(request: NextRequest) {
     const financeQuery = supabaseAdmin
       .from("finance_transactions")
       .select("transaction_type, amount, net, description, created_at, booking_id, product_order_id")
-      .eq("provider_id", providerId);
+      .eq("provider_id", providerId)
+      .limit(8000);
     
     // If location filter is provided, we'll need to filter finance transactions
     // by joining with bookings. For performance, we'll do this in memory after fetching
@@ -177,7 +179,7 @@ export async function getProviderDashboardResponse(request: NextRequest) {
     const totalBookings = allBookings.length;
     
     // Debug: Log booking statuses to help diagnose issues
-    if (process.env.NODE_ENV === 'development') {
+    if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_DEBUG_DASHBOARD === "1") {
       const statusCounts = allBookings.reduce((acc: Record<string, number>, booking: any) => {
         acc[booking.status] = (acc[booking.status] || 0) + 1;
         return acc;
@@ -575,7 +577,8 @@ export async function getProviderDashboardResponse(request: NextRequest) {
         `,
         )
         .eq("bookings.provider_id", providerId)
-        .not("bookings.status", "in", "(cancelled,no_show)");
+        .not("bookings.status", "in", "(cancelled,no_show)")
+        .limit(1200);
       if (locationId) {
         bookingServicesQuery = bookingServicesQuery.eq("bookings.location_id", locationId);
       }

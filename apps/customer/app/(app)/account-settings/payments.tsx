@@ -11,6 +11,7 @@ import * as ExpoLinking from "expo-linking";
 import { Ionicons } from "@expo/vector-icons";
 import { useTranslation } from "@beautonomi/i18n";
 import { api } from "@/lib/api-client";
+import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
 import { ScreenFrame } from "@/components/ScreenFrame";
 import { Colors } from "@/constants/colors";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
@@ -164,6 +165,7 @@ export default function PaymentsScreen() {
       }
       const pr = await paystackHostedCheckout.waitForCheckout(url, {
         title: t("customer.paymentsScreen.addCardTitle", "Add card") as string,
+        returnUrl: callbackUrl,
         matchSuccess: (u) => matchesExpoReturnUrl(u, callbackUrl) && !isCancelledPaystackUrl(u),
         matchCancel: (u) => isCancelledPaystackUrl(u),
       });
@@ -175,7 +177,7 @@ export default function PaymentsScreen() {
         if (extracted) reference = extracted;
       }
       if (reference) {
-        await api.get(`/api/paystack/verify?reference=${encodeURIComponent(reference)}`).catch(() => {});
+        await verifyPaystackWithRetry(reference);
       }
 
       const MAX_POLL = 12;

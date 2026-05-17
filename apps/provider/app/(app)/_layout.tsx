@@ -24,6 +24,7 @@ import { AccountStatusGuard } from "@/components/AccountStatusGuard";
 import MaintenanceGate from "@/components/MaintenanceGate";
 import { BiometricGate } from "@/components/BiometricGate";
 import { NativePermissionsOnboarding } from "@/components/NativePermissionsOnboarding";
+import { SetupCompleteCelebration } from "@/components/setup/SetupCompleteCelebration";
 import {
   authFlowBreadcrumb,
   isSentryEnabled,
@@ -118,6 +119,10 @@ export default function AppLayout() {
           <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
         </Stack>
         </View>
+        {/* §provider-setup-seamless-ux 2026-05: one-time celebration the
+            moment /api/provider/setup-status flips isComplete. Self-gates on
+            an AsyncStorage flag so it never fires twice. */}
+        <SetupCompleteCelebration />
         </Fragment>
         </NotificationsCountProvider>
       </RoleGate>

@@ -28,6 +28,7 @@ import { useAuth } from "@/providers/AuthProvider";
 import { useSelectedAddress } from "@/providers/SelectedAddressProvider";
 import { useLocation } from "@/hooks/useLocation";
 import { api } from "@/lib/api-client";
+import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
 import { APP_URL } from "@/config/public-env";
@@ -36,7 +37,14 @@ import { Colors, Shadows } from "@/constants/colors";
 import { TAB_BAR_MIN_BOTTOM_INSET } from "@/constants/layout";
 import { Skeleton } from "@/components/Skeleton";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
-import { formatMoney } from "@beautonomi/utils";
+import {
+  formatMoney,
+  formatProviderDescriptionDisplay,
+  formatProviderDescriptionForProfilePreview,
+  PROVIDER_GALLERY_CONTENT_POSITION,
+  providerGalleryFrameHeight,
+} from "@beautonomi/utils";
+import { ProviderGalleryImage } from "@beautonomi/ui/native";
 import { useTranslation } from "@beautonomi/i18n";
 import { haptic } from "@/lib/haptics";
 import { horizontalFlatListPerf } from "@/lib/flatListPerformance";
@@ -833,8 +841,13 @@ function GalleryViewer({ images, initialIndex, visible, onClose }: {
           onMomentumScrollEnd={onScroll}
           keyExtractor={(_, i) => String(i)}
           renderItem={({ item }) => (
-            <View style={{ width: sw, flex: 1, justifyContent: "center" }}>
-              <Image source={{ uri: item }} style={{ width: sw, height: sw }} contentFit="contain" />
+            <View style={{ width: sw, flex: 1, justifyContent: "center", alignItems: "center" }}>
+              <Image
+                source={{ uri: item }}
+                style={{ width: sw, height: providerGalleryFrameHeight(sw) }}
+                contentFit="cover"
+                contentPosition={PROVIDER_GALLERY_CONTENT_POSITION}
+              />
             </View>
           )}
         />
@@ -874,8 +887,8 @@ function ReviewCard({ review }: { review: Review }) {
     <View style={{ backgroundColor: "#FFFFFF", borderRadius: 16, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: "#E5E7EB" }}>
       <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 8 }}>
         <View style={{ flexDirection: "row", alignItems: "center", flex: 1, minWidth: 0 }}>
-          {review.author?.avatar_url ? (
-            <Image source={{ uri: review.author.avatar_url }} style={{ width: 40, height: 40, borderRadius: 20, marginRight: 10 }} contentFit="cover" />
+          {review.author?.avatar_url?.trim() ? (
+            <Image source={{ uri: review.author.avatar_url!.trim() }} style={{ width: 40, height: 40, borderRadius: 20, marginRight: 10 }} contentFit="cover" />
           ) : (
             <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.primaryLight, alignItems: "center", justifyContent: "center", marginRight: 10 }}>
               <Text style={{ color: Colors.primary, fontWeight: "700", fontSize: 15 }}>{initial}</Text>
@@ -1530,6 +1543,7 @@ export default function PartnerProfileScreen() {
                 const returnUrl = ExpoLinking.createURL("membership-paystack");
                 const pr = await membershipPaystackCheckout.waitForCheckout(url, {
                   title: pp("membershipPaystackTitle") || "Membership payment",
+                  returnUrl,
                   matchSuccess: (u) => matchesExpoReturnUrl(u, returnUrl) && !isCancelledPaystackUrl(u),
                   matchCancel: (u) => isCancelledPaystackUrl(u),
                 });
@@ -1550,7 +1564,7 @@ export default function PartnerProfileScreen() {
               }
 
               if (paystackRef) {
-                await api.get(`/api/paystack/verify?reference=${encodeURIComponent(paystackRef)}`).catch(() => {});
+                await verifyPaystackWithRetry(paystackRef);
               }
 
               const activated = await pollSalonMembership();
@@ -1569,6 +1583,15 @@ export default function PartnerProfileScreen() {
   }, [user, provider, paramCampaignId, pp, t]);
 
   /* ── Book (pass ad attribution when user came from sponsored result) ── */
+  const profileDescriptionPreview = useMemo(
+    () => formatProviderDescriptionForProfilePreview(provider?.description),
+    [provider?.description],
+  );
+  const aboutDescription = useMemo(
+    () => formatProviderDescriptionDisplay(provider?.description),
+    [provider?.description],
+  );
+
   const bookParams = useCallback(
     (overrides?: { service_id?: string; duration_minutes?: string }) => {
       const resolvedSlug = provider?.slug || slug || "";
@@ -1609,14 +1632,15 @@ export default function PartnerProfileScreen() {
     const gallery = Array.isArray(provider.gallery)
       ? provider.gallery.map((g) => (typeof g === "string" ? g : (g as { src?: string; url?: string }).src || (g as { src?: string; url?: string }).url || ""))
       : [];
-    return gallery.length > 0 ? gallery : provider.thumbnail_url ? [provider.thumbnail_url] : [];
+    const urls = gallery.length > 0 ? gallery : provider.thumbnail_url ? [provider.thumbnail_url] : [];
+    return urls.filter((u) => typeof u === "string" && u.trim().length > 0);
   })();
 
   const onGalleryScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
     setGalleryIndex(Math.round(e.nativeEvent.contentOffset.x / screenWidth));
   }, [screenWidth]);
 
-  const heroHeight = screenWidth * 1.25;
+  const heroHeight = providerGalleryFrameHeight(screenWidth);
 
   const productCategoryPills = useMemo(() => {
     const named = new Set<string>();
@@ -1772,7 +1796,14 @@ export default function PartnerProfileScreen() {
                 onMomentumScrollEnd={onGalleryScroll}
                 keyExtractor={(_, i) => String(i)}
                 renderItem={({ item }) => (
-                  <Image source={{ uri: item }} style={{ width: screenWidth, height: heroHeight }} contentFit="cover" transition={300} cachePolicy="memory-disk" />
+                  <Image
+                    source={{ uri: item }}
+                    style={{ width: screenWidth, height: heroHeight }}
+                    contentFit="cover"
+                    contentPosition={PROVIDER_GALLERY_CONTENT_POSITION}
+                    transition={300}
+                    cachePolicy="memory-disk"
+                  />
                 )}
               />
             ) : (
@@ -1980,10 +2011,12 @@ export default function PartnerProfileScreen() {
             ) : null}
 
             {/* Description */}
-            {provider.description?.trim() ? (
+            {profileDescriptionPreview ? (
               <View style={{ paddingHorizontal: contentPadding, paddingVertical: 14, borderBottomWidth: 1, borderColor: "#E5E7EB" }}>
                 <Text style={{ fontSize: 13, fontWeight: "600", color: "#111827", marginBottom: 6 }}>What this provider offers:</Text>
-                <Text style={{ fontSize: 13, color: "#374151", lineHeight: 20 }} numberOfLines={4}>{provider.description}</Text>
+                <Text style={{ fontSize: 13, color: "#374151", lineHeight: 20 }} numberOfLines={4}>
+                  {profileDescriptionPreview}
+                </Text>
               </View>
             ) : null}
 
@@ -2234,20 +2267,25 @@ export default function PartnerProfileScreen() {
                   {/* Feature image */}
                   {images[0] && (
                     <Pressable onPress={() => { setGalleryViewerIndex(0); setGalleryViewerVisible(true); }}>
-                      <Image
-                        source={{ uri: images[0] }}
-                        style={{ width: screenWidth - 32, height: (screenWidth - 32) * 0.6, borderRadius: 12, marginBottom: 4 }}
-                        contentFit="cover" cachePolicy="memory-disk"
+                      <ProviderGalleryImage
+                        uri={images[0]}
+                        width={screenWidth - 32}
+                        borderRadius={12}
+                        style={{ marginBottom: 4 }}
                       />
                     </Pressable>
                   )}
                   <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
                     {images.slice(1).map((uri, i) => (
-                      <Pressable key={i} onPress={() => { setGalleryViewerIndex(i + 1); setGalleryViewerVisible(true); }} style={{ marginRight: 4, marginBottom: 4 }}>
-                        <Image
-                          source={{ uri }}
-                          style={{ width: (screenWidth - 40) / 2, height: (screenWidth - 40) / 2, borderRadius: 8 }}
-                          contentFit="cover" cachePolicy="memory-disk"
+                      <Pressable
+                        key={i}
+                        onPress={() => { setGalleryViewerIndex(i + 1); setGalleryViewerVisible(true); }}
+                        style={{ marginRight: 4, marginBottom: 4 }}
+                      >
+                        <ProviderGalleryImage
+                          uri={uri}
+                          width={(screenWidth - 40) / 2}
+                          borderRadius={8}
                         />
                       </Pressable>
                     ))}
@@ -2587,13 +2625,15 @@ export default function PartnerProfileScreen() {
                   <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 16 }}>About</Text>
 
                   {/* Business description */}
-                  {provider.description?.trim() ? (
+                  {aboutDescription ? (
                     <View style={{ backgroundColor: "#F9FAFB", borderRadius: 14, padding: contentPadding, marginBottom: 16 }}>
                       <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
                         <Ionicons name="information-circle-outline" size={18} color={Colors.primary} style={{ marginRight: 6 }} />
                         <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>Overview</Text>
                       </View>
-                      <Text style={{ fontSize: 13, color: "#374151", lineHeight: 20 }}>{provider.description}</Text>
+                      <Text style={{ fontSize: 13, color: "#374151", lineHeight: 20 }}>
+                        {aboutDescription}
+                      </Text>
                     </View>
                   ) : null}
 

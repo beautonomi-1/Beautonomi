@@ -2,7 +2,7 @@
  * Ads – native ad campaigns and performance. Paystack checkout uses an in-app WebView modal.
  * Create and manage campaigns; view impressions, clicks, and spend.
  */
-import { useCallback, useState, useEffect, useRef } from "react";
+import { useCallback, useMemo, useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -16,7 +16,10 @@ import {
   Platform,
 } from "react-native";
 import { useRouter } from "expo-router";
+import * as ExpoLinking from "expo-linking";
 import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
+import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
+import { extractPaystackReferenceFromUrl } from "@/lib/payments/paystackRefFromUrl";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useModuleConfig, useFeatureFlag } from "@/providers/ConfigBundleProvider";
@@ -114,6 +117,35 @@ type CampaignPerformance = {
 
 const formatCompactNumber = (value: number | null | undefined) =>
   new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(Number(value ?? 0));
+
+// §Ads-mobile-audit 2026-05: surface CTR (clicks ÷ impressions) and a
+// bookings total alongside the existing reach + spend numbers. These metrics
+// come straight from the existing performance + by_campaign payload.
+const formatCtr = (impressions: number, clicks: number): string => {
+  const denom = Number(impressions || 0);
+  if (denom <= 0) return "—";
+  const ctr = (Number(clicks || 0) / denom) * 100;
+  if (!Number.isFinite(ctr)) return "—";
+  return `${ctr >= 10 ? ctr.toFixed(0) : ctr.toFixed(1)}%`;
+};
+
+type AdsDateRange = "today" | "7d" | "30d" | "all";
+const AD_RANGES: { value: AdsDateRange; label: string }[] = [
+  { value: "today", label: "Today" },
+  { value: "7d", label: "7 days" },
+  { value: "30d", label: "30 days" },
+  { value: "all", label: "All time" },
+];
+
+function rangeToParams(range: AdsDateRange): string {
+  const today = new Date();
+  const end = today.toISOString().slice(0, 10);
+  if (range === "all") return "";
+  if (range === "today") return `?start_date=${end}&end_date=${end}`;
+  const offsetDays = range === "7d" ? 6 : 29;
+  const start = new Date(today.getTime() - offsetDays * 86400000).toISOString().slice(0, 10);
+  return `?start_date=${start}&end_date=${end}`;
+}
 
 type ImpressionPack = {
   id: string;
@@ -262,6 +294,14 @@ export default function AdsSettingsScreen() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [performance, setPerformance] = useState<PerformanceSummary | null>(null);
   const [campaignPerformance, setCampaignPerformance] = useState<Record<string, CampaignPerformance>>({});
+  // §Ads-mobile-audit 2026-05: scope performance metrics with a date range
+  // chip row (Today / 7d / 30d / All) — backend already accepts start_date +
+  // end_date on /api/provider/ads/performance; we just expose it to the UI.
+  const [perfRange, setPerfRange] = useState<AdsDateRange>("30d");
+  // §Ads-mobile-audit 2026-05 (payment confirmation): briefly surface a
+  // "Payment confirmed" banner after the Paystack WebView closes successfully
+  // so providers see proof the money went through.
+  const [paymentJustSucceeded, setPaymentJustSucceeded] = useState(false);
   const [packs, setPacks] = useState<ImpressionPack[]>([]);
   const [timePacks, setTimePacks] = useState<TimePack[]>([]);
   const [availableModels, setAvailableModels] = useState<string[]>([]);
@@ -302,7 +342,9 @@ export default function AdsSettingsScreen() {
     try {
       const [campRes, perfRes, packsRes, catRes] = await Promise.all([
         api.get<Campaign[]>("/api/provider/ads/campaigns"),
-        api.get<{ summary: PerformanceSummary; by_campaign?: Record<string, CampaignPerformance> }>("/api/provider/ads/performance"),
+        api.get<{ summary: PerformanceSummary; by_campaign?: Record<string, CampaignPerformance> }>(
+          `/api/provider/ads/performance${rangeToParams(perfRange)}`,
+        ),
         api.get<{ impression_packs: ImpressionPack[]; time_packs: TimePack[]; available_models: string[]; default_model?: string }>("/api/provider/ads/packs"),
         api.get<GlobalCategory[]>("/api/public/categories/global?all=true"),
       ]);
@@ -335,22 +377,34 @@ export default function AdsSettingsScreen() {
       setRefreshing(false);
       setNowMs(Date.now());
     }
-  }, [enabled]);
+  }, [enabled, perfRange]);
+
+  // §Ads-mobile-audit 2026-05: total bookings + CTR aren't in the API summary
+  // — derive them from `by_campaign` so the dashboard can show the metric
+  // that actually proves ads are working (booking-driven revenue).
+  const totalBooks = useMemo(
+    () => Object.values(campaignPerformance).reduce((sum, m) => sum + Number(m.books || 0), 0),
+    [campaignPerformance],
+  );
+  const aggregateCtr = useMemo(
+    () => formatCtr(Number(performance?.impressions || 0), Number(performance?.clicks || 0)),
+    [performance],
+  );
 
   const adsPaystackCheckout = useInAppPaystackCheckout();
 
   const openAdsPaystack = useCallback(
     async (payUrl: string) => {
-      await adsPaystackCheckout.waitForCheckout(payUrl, {
+      const returnUrl = ExpoLinking.createURL("settings/ads-payment-return");
+      const result = await adsPaystackCheckout.waitForCheckout(payUrl, {
         title: "Ad payment",
+        returnUrl,
         matchSuccess: (rawUrl) => {
           try {
-            if (!rawUrl.startsWith("http")) return false;
             const u = new URL(rawUrl);
             return (
-              u.pathname.includes("/provider/settings/ads/payment-return") &&
-              u.searchParams.get("success") === "1" &&
-              u.searchParams.get("confirmed") === "1"
+              (u.pathname.includes("/provider/settings/ads/payment-return") || u.pathname.includes("settings/ads-payment-return")) &&
+              u.searchParams.get("success") === "1"
             );
           } catch {
             return false;
@@ -358,16 +412,46 @@ export default function AdsSettingsScreen() {
         },
         matchCancel: (rawUrl) => {
           try {
-            if (!rawUrl.startsWith("http")) return false;
             const u = new URL(rawUrl);
             return (
-              u.pathname.includes("/provider/settings/ads/payment-return") && u.searchParams.get("cancelled") === "1"
+              (u.pathname.includes("/provider/settings/ads/payment-return") || u.pathname.includes("settings/ads-payment-return")) &&
+              u.searchParams.get("cancelled") === "1"
             );
           } catch {
             return false;
           }
         },
       });
+      // §Ads-mobile-audit 2026-05: `useInAppPaystackCheckout.waitForCheckout`
+      // resolves with `{ outcome: "success" | "cancel" | "closed" }`. Only
+      // show the green confirmation banner when the redirect explicitly hit
+      // the success URL so we never falsely claim a payment went through.
+      if (result?.outcome === "success") {
+        setPaymentJustSucceeded(true);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setTimeout(() => setPaymentJustSucceeded(false), 6000);
+
+        // Defensive verify-with-retry — Paystack always appends ?reference=… to
+        // our `provider://settings/ads-payment-return` callback. Cross-confirms
+        // with Paystack instead of trusting the success-flag alone, so we never
+        // optimistically activate a campaign that the bank later declined.
+        const reference = extractPaystackReferenceFromUrl(result.url);
+        if (reference) {
+          const verifyResult = await verifyPaystackWithRetry(reference);
+          if (verifyResult.status === "failed") {
+            Alert.alert(
+              "Payment not completed",
+              verifyResult.errorMessage ??
+                "Paystack reported the payment failed. Please try again.",
+            );
+          } else if (verifyResult.status === "pending" || verifyResult.status === "unknown") {
+            Alert.alert(
+              "Your payment is being confirmed",
+              "Your ad will activate within a few minutes once Paystack confirms with your bank.",
+            );
+          }
+        }
+      }
       await loadAll();
       // Payment confirmation and campaign activation are server-side mutations.
       // A short follow-up refresh prevents transient stale cards right after checkout.
@@ -645,36 +729,130 @@ export default function AdsSettingsScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={[twStyle("px-4 pt-4"), { paddingHorizontal: screenPadding }]}>
+          {/* §Ads-mobile-audit 2026-05 (payment success banner): explicit
+            confirmation after the in-app Paystack checkout closes. Dismissible
+            and auto-clears after 6s so it never blocks the UI. */}
+          {paymentJustSucceeded ? (
+            <View style={twStyle("mb-4 flex-row items-center rounded-2xl border border-emerald-200 bg-emerald-50 p-3")}>
+              <View style={twStyle("mr-3 rounded-full bg-emerald-100 p-2")}>
+                <Ionicons name="checkmark-circle" size={18} color="#047857" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={twStyle("text-sm font-semibold text-emerald-900")}>Payment confirmed</Text>
+                <Text style={twStyle("text-xs text-emerald-800")}>
+                  Your campaign is being funded — it will activate shortly.
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setPaymentJustSucceeded(false)}
+                accessibilityLabel="Dismiss payment confirmation"
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="close" size={20} color="#047857" />
+              </TouchableOpacity>
+            </View>
+          ) : null}
+
           {/* Performance */}
           {performance && (
             <View style={twStyle("mb-6")}>
-              <Text style={twStyle("text-sm font-semibold text-gray-700 mb-1")}>Ad performance</Text>
-              <Text style={twStyle("text-xs text-gray-500 mb-3")}>
-                Impressions, unique reach, clicks, and spend.
-              </Text>
-              <View style={twStyle("flex-row flex-wrap")}>
-                <View style={[twStyle("rounded-2xl border border-gray-200 bg-white p-4 flex-1 min-w-[45%] mr-2 mb-2"), { minWidth: "45%" }]}>
-                  <Ionicons name="eye-outline" size={20} color="#6b7280" />
-                  <Text style={twStyle("text-2xl font-bold text-gray-900 mt-1")}>{formatCompactNumber(performance.impressions)}</Text>
-                  <Text style={twStyle("text-xs text-gray-500")}>Impressions</Text>
-                </View>
-                <View style={[twStyle("rounded-2xl border border-gray-200 bg-white p-4 flex-1 min-w-[45%] mb-2"), { minWidth: "45%" }]}>
-                  <Ionicons name="people-outline" size={20} color="#6b7280" />
-                  <Text style={twStyle("text-2xl font-bold text-gray-900 mt-1")}>{formatCompactNumber(performance.reach)}</Text>
-                  <Text style={twStyle("text-xs text-gray-500")}>Reach</Text>
-                </View>
-                <View style={[twStyle("rounded-2xl border border-gray-200 bg-white p-4 flex-1 min-w-[45%] mr-2 mb-2"), { minWidth: "45%" }]}>
-                  <Ionicons name="hand-left-outline" size={20} color="#6b7280" />
-                  <Text style={twStyle("text-2xl font-bold text-gray-900 mt-1")}>{formatCompactNumber(performance.clicks)}</Text>
-                  <Text style={twStyle("text-xs text-gray-500")}>Clicks</Text>
-                </View>
-                <View style={[twStyle("rounded-2xl border border-gray-200 bg-white p-4 flex-1 min-w-[45%] mb-2"), { minWidth: "45%" }]}>
-                  <Ionicons name="wallet-outline" size={20} color="#6b7280" />
-                  <Text style={twStyle("text-2xl font-bold text-gray-900 mt-1")}>
-                    {formatMoney(Number(performance.spend), tenantCurrency)}
+              <View style={twStyle("mb-2 flex-row items-end justify-between")}>
+                <View style={{ flex: 1, paddingRight: 8 }}>
+                  <Text style={twStyle("text-sm font-semibold text-gray-700")}>Ad performance</Text>
+                  <Text style={twStyle("text-xs text-gray-500")}>
+                    Reach, clicks, bookings, and spend for the selected window.
                   </Text>
-                  <Text style={twStyle("text-xs text-gray-500")}>Spend</Text>
                 </View>
+              </View>
+
+              {/* §Ads-mobile-audit 2026-05 (date range filter): the perf API
+                already accepts start_date / end_date — expose it as a chip
+                row so providers can pivot between Today / 7d / 30d / All. */}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ paddingVertical: 4, gap: 8 }}
+                style={twStyle("mb-3")}
+              >
+                {AD_RANGES.map((r) => {
+                  const active = perfRange === r.value;
+                  return (
+                    <TouchableOpacity
+                      key={r.value}
+                      onPress={() => {
+                        if (perfRange === r.value) return;
+                        Haptics.selectionAsync();
+                        setPerfRange(r.value);
+                      }}
+                      style={twStyle(
+                        `rounded-full border px-3 py-2 ${active ? "bg-gray-900 border-gray-900" : "bg-white border-gray-200"}`,
+                      )}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: active }}
+                    >
+                      <Text style={twStyle(`text-xs font-semibold ${active ? "text-white" : "text-gray-700"}`)}>
+                        {r.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+
+              {/* Six-tile grid: Impressions / Reach / Clicks / CTR / Bookings / Spend. */}
+              <View style={twStyle("flex-row flex-wrap")}>
+                {[
+                  {
+                    icon: "eye-outline" as const,
+                    label: "Impressions",
+                    value: formatCompactNumber(performance.impressions),
+                    accent: "#6b7280",
+                  },
+                  {
+                    icon: "people-outline" as const,
+                    label: "Reach",
+                    value: formatCompactNumber(performance.reach),
+                    accent: "#6b7280",
+                  },
+                  {
+                    icon: "hand-left-outline" as const,
+                    label: "Clicks",
+                    value: formatCompactNumber(performance.clicks),
+                    accent: "#6b7280",
+                  },
+                  {
+                    icon: "trending-up-outline" as const,
+                    label: "CTR",
+                    value: aggregateCtr,
+                    accent: "#4f46e5",
+                  },
+                  {
+                    icon: "calendar-outline" as const,
+                    label: "Bookings",
+                    value: formatCompactNumber(totalBooks),
+                    accent: "#059669",
+                  },
+                  {
+                    icon: "wallet-outline" as const,
+                    label: "Spend",
+                    value: formatMoney(Number(performance.spend), tenantCurrency),
+                    accent: "#6b7280",
+                  },
+                ].map((tile, idx) => (
+                  <View
+                    key={tile.label}
+                    style={[
+                      twStyle("rounded-2xl border border-gray-200 bg-white p-4 mb-2"),
+                      {
+                        flexBasis: "48%",
+                        marginRight: idx % 2 === 0 ? "4%" : 0,
+                      },
+                    ]}
+                  >
+                    <Ionicons name={tile.icon} size={20} color={tile.accent} />
+                    <Text style={twStyle("text-2xl font-bold text-gray-900 mt-1")}>{tile.value}</Text>
+                    <Text style={twStyle("text-xs text-gray-500")}>{tile.label}</Text>
+                  </View>
+                ))}
               </View>
             </View>
           )}
@@ -699,7 +877,17 @@ export default function AdsSettingsScreen() {
 
           {globalCategories.length > 0 && (timePacks.length > 0 || packs.length > 0) && (
             <View style={twStyle("mb-5")}>
-              <Text style={twStyle("text-sm font-semibold text-gray-700 mb-1")}>Target categories (optional)</Text>
+              <View style={twStyle("flex-row items-center justify-between mb-1")}>
+                <Text style={twStyle("text-sm font-semibold text-gray-700")}>Target categories (optional)</Text>
+                {createForm.global_category_ids.length > 0 ? (
+                  <TouchableOpacity
+                    onPress={() => setCreateForm((p) => ({ ...p, global_category_ids: [] }))}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Text style={twStyle("text-xs font-semibold text-indigo-600")}>Clear ({createForm.global_category_ids.length})</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
               <Text style={twStyle("text-xs text-gray-500 mb-2")}>
                 For packs and boosts below. None selected = all category searches.
               </Text>
@@ -718,12 +906,15 @@ export default function AdsSettingsScreen() {
                         }))
                       }
                       style={twStyle(
-                        `rounded-full px-3 py-1.5 border ${
+                        `rounded-full px-3.5 py-2.5 border ${
                           selected ? "bg-gray-900 border-gray-900" : "bg-white border-gray-200"
                         }`
                       )}
+                      hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: selected }}
                     >
-                      <Text style={twStyle(`text-sm ${selected ? "text-white font-medium" : "text-gray-600"}`)}>{cat.name}</Text>
+                      <Text style={twStyle(`text-sm ${selected ? "text-white font-medium" : "text-gray-700"}`)}>{cat.name}</Text>
                     </TouchableOpacity>
                   );
                 })}
@@ -964,13 +1155,41 @@ export default function AdsSettingsScreen() {
               </View>
             ) : null}
             {campaigns.length === 0 ? (
-              <View style={twStyle("rounded-2xl border border-gray-200 bg-gray-50 p-8 items-center")}>
-                <Ionicons name="megaphone-outline" size={32} color="#9ca3af" />
-                <Text style={twStyle("mt-2 text-sm text-gray-600 text-center")}>
-                  {cpcBudgetAvailable
-                    ? "No campaigns yet. Create a CPC campaign or buy a pack above."
-                    : "No campaigns yet. Buy a boost or impression pack above."}
+              // §Ads-mobile-audit 2026-05: empty state previously referenced
+              // "packs above" even when no packs were configured. Now the
+              // copy + CTA adapts to what's actually available so the
+              // provider always has a clear next action.
+              <View style={twStyle("rounded-3xl border border-gray-200 bg-gray-50 p-6 items-center")}>
+                <View style={twStyle("rounded-full bg-white p-3 mb-3")}>
+                  <Ionicons name="megaphone-outline" size={28} color="#4f46e5" />
+                </View>
+                <Text style={twStyle("text-base font-semibold text-gray-900 text-center")}>
+                  Get found by more clients
                 </Text>
+                <Text style={twStyle("mt-2 text-sm text-gray-600 text-center leading-5 px-2")}>
+                  {(() => {
+                    const hasPacks = timePacks.length > 0 || packs.length > 0;
+                    if (cpcBudgetAvailable && hasPacks) {
+                      return "Pick a time boost or impression pack above, or run a custom CPC campaign with full control over bids and spend.";
+                    }
+                    if (cpcBudgetAvailable) {
+                      return "Run a custom CPC campaign with full control over your total budget, daily cap, and bid per click.";
+                    }
+                    if (hasPacks) {
+                      return "Pick a time boost or impression pack above to start running sponsored placements.";
+                    }
+                    return "Sponsored placements are not yet open in your market. Check back soon.";
+                  })()}
+                </Text>
+                {cpcBudgetAvailable ? (
+                  <ActionButton
+                    label="New CPC campaign"
+                    onPress={() => setCreateOpen(true)}
+                    variant="primary"
+                    icon="add"
+                    style={twStyle("mt-4")}
+                  />
+                ) : null}
               </View>
             ) : (
               <View style={twStyle("gap-3")}>
@@ -1027,6 +1246,11 @@ export default function AdsSettingsScreen() {
                               ["Impr.", formatCompactNumber(metrics.impressions)],
                               ["Reach", formatCompactNumber(metrics.reach)],
                               ["Clicks", formatCompactNumber(metrics.clicks)],
+                              // §Ads-mobile-audit 2026-05: CTR and Bookings
+                              // chips bring the per-campaign card to parity
+                              // with the aggregate dashboard.
+                              ["CTR", formatCtr(metrics.impressions, metrics.clicks)],
+                              ["Bookings", formatCompactNumber(metrics.books)],
                               ["Spend", formatMoney(Number(metrics.spent ?? 0), tenantCurrency)],
                             ].map(([label, value]) => (
                               <View key={label} style={twStyle("rounded-xl bg-gray-50 px-3 py-2")}>
@@ -1148,19 +1372,19 @@ export default function AdsSettingsScreen() {
                             : [...p.global_category_ids, cat.id],
                         }))
                       }
-                      style={[
-                        twStyle(
-                          `rounded-full px-3 py-1.5 border ${
-                            selected
-                              ? "bg-gray-900 border-gray-900"
-                              : "bg-white border-gray-200"
-                          }`
-                        ),
-                      ]}
+                      style={twStyle(
+                        `rounded-full px-3.5 py-2.5 border ${
+                          selected
+                            ? "bg-gray-900 border-gray-900"
+                            : "bg-white border-gray-200"
+                        }`,
+                      )}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: selected }}
                     >
                       <Text
                         style={twStyle(
-                          `text-sm ${selected ? "text-white font-medium" : "text-gray-600"}`
+                          `text-sm ${selected ? "text-white font-medium" : "text-gray-700"}`,
                         )}
                       >
                         {cat.name}
@@ -1249,14 +1473,16 @@ export default function AdsSettingsScreen() {
                           }))
                         }
                         style={twStyle(
-                          `rounded-full px-3 py-1.5 border ${
+                          `rounded-full px-3.5 py-2.5 border ${
                             selected ? "bg-gray-900 border-gray-900" : "bg-white border-gray-200"
-                          }`
+                          }`,
                         )}
+                        accessibilityRole="checkbox"
+                        accessibilityState={{ checked: selected }}
                       >
                         <Text
                           style={twStyle(
-                            `text-sm ${selected ? "text-white font-medium" : "text-gray-600"}`
+                            `text-sm ${selected ? "text-white font-medium" : "text-gray-700"}`,
                           )}
                         >
                           {cat.name}

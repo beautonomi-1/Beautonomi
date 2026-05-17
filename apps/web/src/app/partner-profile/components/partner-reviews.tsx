@@ -152,13 +152,14 @@ const PartnerReviews: React.FC<PartnerReviewsProps> = ({
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="relative h-11 w-11 flex-shrink-0">
-                    {review.avatar_url ? (
+                    {review.avatar_url?.trim() ? (
                       <Image
-                        src={review.avatar_url}
+                        src={review.avatar_url.trim()}
                         alt={reviewerName}
                         width={44}
                         height={44}
                         className="rounded-full object-cover"
+                        unoptimized
                       />
                     ) : (
                       <div className="flex h-full w-full items-center justify-center rounded-full bg-gray-200 text-sm font-semibold text-gray-700">

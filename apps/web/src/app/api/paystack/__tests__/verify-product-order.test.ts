@@ -2,16 +2,19 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 const mockRequireRoleInApi = vi.fn();
+const mockOptionalAuthInApi = vi.fn();
 const mockGetSupabaseServer = vi.fn();
 const mockResolveTenantIdWithZaFallback = vi.fn();
 const mockGetPaystackSecretKey = vi.fn();
 const mockRecordProductOrderPayment = vi.fn();
+let adminProductOrderRow: Record<string, unknown> | null = null;
 
 vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/supabase/api-helpers")>();
   return {
     ...actual,
     requireRoleInApi: (...args: unknown[]) => mockRequireRoleInApi(...args),
+    optionalAuthInApi: (...args: unknown[]) => mockOptionalAuthInApi(...args),
   };
 });
 
@@ -32,6 +35,7 @@ function adsBudgetOrdersEmptyByReference() {
 vi.mock("@/lib/supabase/admin", () => ({
   getSupabaseAdmin: vi.fn(() => ({
     from: vi.fn((table: string) => {
+      if (table === "product_orders") return productOrdersQuery(adminProductOrderRow);
       if (table === "ads_budget_orders") return adsBudgetOrdersEmptyByReference();
       if (table === "provider_subscription_orders") {
         return {
@@ -104,9 +108,11 @@ describe("GET /api/paystack/verify product orders", () => {
     vi.resetModules();
     vi.clearAllMocks();
     mockRequireRoleInApi.mockResolvedValue({ user: { id: "customer-1", role: "customer" } });
+    mockOptionalAuthInApi.mockResolvedValue({ user: { id: "customer-1", role: "customer" } });
     mockResolveTenantIdWithZaFallback.mockResolvedValue("tenant-za");
     mockGetPaystackSecretKey.mockResolvedValue("sk_test");
     mockRecordProductOrderPayment.mockResolvedValue({ ok: true, duplicate: false });
+    adminProductOrderRow = null;
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => ({
@@ -125,6 +131,16 @@ describe("GET /api/paystack/verify product orders", () => {
   });
 
   it("rejects product-order verification for a different customer", async () => {
+    adminProductOrderRow = {
+      id: "order-1",
+      tenant_id: "tenant-za",
+      provider_id: "provider-1",
+      customer_id: "someone-else",
+      total_amount: 100,
+      wallet_amount: 0,
+      payment_status: "pending",
+      payment_reference: null,
+    };
     mockGetSupabaseServer.mockResolvedValue({
       from: vi.fn((table: string) => {
         if (table !== "product_orders") throw new Error(`Unexpected table ${table}`);
@@ -150,7 +166,56 @@ describe("GET /api/paystack/verify product orders", () => {
     expect(mockRecordProductOrderPayment).not.toHaveBeenCalled();
   });
 
+  it("verifies product-order payment without session when reference and metadata are valid", async () => {
+    mockOptionalAuthInApi.mockResolvedValue({ user: null });
+    adminProductOrderRow = {
+      id: "order-1",
+      tenant_id: "tenant-za",
+      provider_id: "provider-1",
+      customer_id: "customer-1",
+      total_amount: 100,
+      wallet_amount: 0,
+      payment_status: "pending",
+      payment_reference: null,
+      order_number: "PO-001",
+    };
+    mockGetSupabaseServer.mockResolvedValue({
+      from: vi.fn((table: string) => {
+        if (table !== "product_orders") throw new Error(`Unexpected table ${table}`);
+        return productOrdersQuery({
+          id: "order-1",
+          tenant_id: "tenant-za",
+          provider_id: "provider-1",
+          customer_id: "customer-1",
+          total_amount: 100,
+          wallet_amount: 0,
+          payment_status: "pending",
+          payment_reference: null,
+          order_number: "PO-001",
+        });
+      }),
+    });
+
+    const { GET } = await import("../verify/route");
+    const res = await GET(new NextRequest("http://localhost/api/paystack/verify?reference=ref-1"));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body?.data?.status).toBe("success");
+    expect(mockRecordProductOrderPayment).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects product-order verification when Paystack amount does not match amount due", async () => {
+    adminProductOrderRow = {
+      id: "order-1",
+      tenant_id: "tenant-za",
+      provider_id: "provider-1",
+      customer_id: "customer-1",
+      total_amount: 120,
+      wallet_amount: 0,
+      payment_status: "pending",
+      payment_reference: null,
+    };
     mockGetSupabaseServer.mockResolvedValue({
       from: vi.fn((table: string) => {
         if (table !== "product_orders") throw new Error(`Unexpected table ${table}`);

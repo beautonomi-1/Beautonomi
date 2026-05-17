@@ -132,9 +132,6 @@ export default function LoginModal({
   const [isLoading, setIsLoading] = useState(false);
   const [showEmailForm, setShowEmailForm] = useState(false);
   const [isSignup, setIsSignup] = useState(initialMode === "signup");
-  const [authIntent, setAuthIntent] = useState<"signin" | "signup">(
-    initialMode === "signup" ? "signup" : "signin",
-  );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
@@ -233,7 +230,6 @@ export default function LoginModal({
         authPolicy.email_provider_enabled && (initialMode === "login" || initialMode === "signup"),
       );
       setIsSignup(initialMode === "signup");
-      setAuthIntent(initialMode === "signup" ? "signup" : "signin");
       // Don't show password field separately for login mode - we'll show it inline
       setShowPasswordField(false);
       setError(null);
@@ -988,43 +984,9 @@ export default function LoginModal({
             <>
               <h2 className="text-2xl sm:text-[28px] font-bold text-gray-900 tracking-tight mb-1">Welcome to Beautonomi</h2>
               <p className="text-[13px] text-gray-500 mb-7 sm:mb-8">Log in or sign up to continue</p>
-              <div className="mb-5 rounded-xl border border-pink-200 bg-pink-50/70 p-3">
-                <p className="text-xs font-semibold text-pink-800 text-center mb-2">
-                  New here or already have an account?
-                </p>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAuthIntent("signup");
-                      setIsSignup(true);
-                      setError(null);
-                    }}
-                    className={`rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${
-                      authIntent === "signup"
-                        ? "border border-pink-300 bg-white text-pink-700"
-                        : "border border-pink-200 bg-pink-100 text-pink-700"
-                    }`}
-                  >
-                    I&apos;m new - Sign up
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAuthIntent("signin");
-                      setIsSignup(false);
-                      setError(null);
-                    }}
-                    className={`rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${
-                      authIntent === "signin"
-                        ? "border border-pink-300 bg-white text-pink-700"
-                        : "border border-pink-200 bg-pink-100 text-pink-700"
-                    }`}
-                  >
-                    I have account - Log in
-                  </button>
-                </div>
-              </div>
+              <p className="mb-5 text-center text-xs text-gray-500">
+                Continue with phone, email code, Google, Apple, or password.
+              </p>
             </>
           )}
           

@@ -144,7 +144,12 @@ type UserRow = {
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
+    const { user } = await requireRoleInApi(
+      // §provider-setup-seamless-ux 2026-05: include `provider_onboarding`
+      // so brand-new providers can read their profile before promotion.
+      ['customer', 'provider_owner', 'provider_staff', 'superadmin', 'provider_onboarding'],
+      request,
+    );
     const supabase = await getSupabaseServer(request);
 
     const { data: userData, error } = await supabase
@@ -267,7 +272,14 @@ export async function GET(request: NextRequest) {
  */
 export async function PATCH(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
+    const { user } = await requireRoleInApi(
+      // §provider-setup-seamless-ux 2026-05: include `provider_onboarding` so
+      // brand-new providers can complete their personal profile bio (which
+      // gates the freelancer `personal-profile` setup step) without waiting
+      // for role promotion.
+      ['customer', 'provider_owner', 'provider_staff', 'superadmin', 'provider_onboarding'],
+      request,
+    );
     const body = await request.json();
     const supabase = await getSupabaseServer(request);
 
@@ -508,6 +520,57 @@ export async function PATCH(request: NextRequest) {
 
         if (addressError) {
           throw new Error(`Failed to create address: ${addressError.message}`);
+        }
+      }
+    }
+
+    // §provider-setup-seamless-ux 2026-05: persist the freelancer personal
+    // profile bio. `user_profiles.about` is what the setup-status route reads
+    // for the `personal-profile` step (gates freelancer onboarding), so this
+    // PATCH is what flips that step to completed.
+    if (body.about !== undefined || body.biography_title !== undefined) {
+      const aboutValue =
+        body.about === undefined
+          ? undefined
+          : typeof body.about === "string"
+            ? body.about.trim() || null
+            : null;
+      const biographyTitleValue =
+        body.biography_title === undefined
+          ? undefined
+          : typeof body.biography_title === "string"
+            ? body.biography_title.trim() || null
+            : null;
+
+      const profileUpdates: Record<string, unknown> = {};
+      if (aboutValue !== undefined) profileUpdates.about = aboutValue;
+      if (biographyTitleValue !== undefined)
+        profileUpdates.biography_title = biographyTitleValue;
+
+      const { data: existingProfileRow } = await supabase
+        .from("user_profiles")
+        .select("user_id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (existingProfileRow) {
+        const { error: profileError } = await supabase
+          .from("user_profiles")
+          .update(profileUpdates)
+          .eq("user_id", user.id);
+        if (profileError) {
+          throw new Error(
+            `Failed to update personal profile: ${profileError.message}`,
+          );
+        }
+      } else {
+        const { error: profileError } = await supabase
+          .from("user_profiles")
+          .insert({ user_id: user.id, ...profileUpdates });
+        if (profileError) {
+          throw new Error(
+            `Failed to create personal profile: ${profileError.message}`,
+          );
         }
       }
     }

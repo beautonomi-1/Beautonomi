@@ -2,6 +2,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import EmptyState from "@/components/ui/empty-state";
+import { ProviderGalleryImage } from "@beautonomi/ui/web";
 
 import Image1 from "./../../../../public/images/pexels-steinportraits-1898555.jpg";
 import Image2 from "./../../../../public/images/pexels-rdne-7035446.jpg";
@@ -50,24 +51,27 @@ const PartnerPhotos: React.FC<PartnerPhotosProps> = ({ gallery = [], businessNam
           {/* Desktop Grid */}
           <div className="hidden md:grid grid-cols-2 gap-2">
             <div className="row-span-2">
-              <Link href={slug ? `/partner-profile/gallery?slug=${encodeURIComponent(slug)}` : "/partner-profile/gallery"}>
-                <img
+              <Link
+                href={slug ? `/partner-profile/gallery?slug=${encodeURIComponent(slug)}` : "/partner-profile/gallery"}
+                className="block cursor-pointer hover:opacity-90 transition-opacity overflow-hidden rounded-l-xl"
+              >
+                <ProviderGalleryImage
                   src={imgSrc(displayImages[0])}
                   alt={displayImages[0].alt}
-                  className="h-[500px] w-full rounded-l-xl object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                  priority
                 />
               </Link>
             </div>
             <div className="grid grid-cols-2 gap-2">
               {displayImages.slice(1, 5).map((image, index) => (
-                <Link key={index} href={slug ? `/partner-profile/gallery?slug=${encodeURIComponent(slug)}` : "/partner-profile/gallery"}>
-                  <img
-                    src={imgSrc(image)}
-                    alt={image.alt}
-                    className={`h-[245px] w-full object-cover cursor-pointer hover:opacity-90 transition-opacity ${
-                      index === 1 ? "rounded-tr-xl" : ""
-                    } ${index === 3 ? "rounded-br-xl" : ""}`}
-                  />
+                <Link
+                  key={index}
+                  href={slug ? `/partner-profile/gallery?slug=${encodeURIComponent(slug)}` : "/partner-profile/gallery"}
+                  className={`block cursor-pointer hover:opacity-90 transition-opacity overflow-hidden ${
+                    index === 1 ? "rounded-tr-xl" : ""
+                  } ${index === 3 ? "rounded-br-xl" : ""}`}
+                >
+                  <ProviderGalleryImage src={imgSrc(image)} alt={image.alt} />
                 </Link>
               ))}
             </div>
@@ -76,12 +80,12 @@ const PartnerPhotos: React.FC<PartnerPhotosProps> = ({ gallery = [], businessNam
           {/* Mobile Grid */}
           <div className="md:hidden grid grid-cols-2 gap-2">
             {displayImages.map((image, index) => (
-              <Link key={index} href={slug ? `/partner-profile/gallery?slug=${encodeURIComponent(slug)}` : "/partner-profile/gallery"}>
-                <img
-                  src={imgSrc(image)}
-                  alt={image.alt}
-                  className="h-[200px] w-full object-cover rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
-                />
+              <Link
+                key={index}
+                href={slug ? `/partner-profile/gallery?slug=${encodeURIComponent(slug)}` : "/partner-profile/gallery"}
+                className="block cursor-pointer hover:opacity-90 transition-opacity overflow-hidden rounded-lg"
+              >
+                <ProviderGalleryImage src={imgSrc(image)} alt={image.alt} />
               </Link>
             ))}
           </div>

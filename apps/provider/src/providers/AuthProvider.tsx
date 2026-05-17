@@ -8,8 +8,7 @@ import {
   useRef,
   type ReactNode,
 } from "react";
-import { Platform } from "react-native";
-import { AppState, type AppStateStatus } from "react-native";
+import { AppState, DeviceEventEmitter, Platform, type AppStateStatus } from "react-native";
 import * as WebBrowser from "expo-web-browser";
 import * as AuthSession from "expo-auth-session";
 import type { Session, User } from "@supabase/supabase-js";
@@ -213,6 +212,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const sub = AppState.addEventListener("change", (state: AppStateStatus) => {
       if (state === "active") {
         supabase.auth.startAutoRefresh();
+        // Signal all data hooks to silently refresh stale entries.
+        DeviceEventEmitter.emit("beautonomi:app:focus");
       } else {
         supabase.auth.stopAutoRefresh();
       }

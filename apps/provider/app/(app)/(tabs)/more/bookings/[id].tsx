@@ -3834,6 +3834,7 @@ export default function BookingDetailScreen() {
         currency={b.currency ?? getTenantDefaultCurrency()}
         bookingId={id}
         saleId={yocoBookingSaleId ?? undefined}
+        bookingLocationId={b.location_id ?? null}
         description={`Booking ${b.booking_number ?? id}`}
         onPaymentSuccess={(result) => void finalizeYocoBookingPayment(result)}
       />

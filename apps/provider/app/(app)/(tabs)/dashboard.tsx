@@ -18,6 +18,7 @@ import { FilterChipGroup } from "@/components/ui/FilterChip";
 import { Badge } from "@/components/ui/Badge";
 import { Avatar } from "@/components/ui/Avatar";
 import { ProviderDashboardExcellenceBanner } from "@/components/ProviderDashboardExcellenceBanner";
+import { DashboardSetupCard } from "@/components/setup/DashboardSetupCard";
 import { SkeletonDashboard } from "@/components/ui/Skeleton";
 import { ErrorState } from "@/components/ui/ErrorState";
 import {
@@ -61,6 +62,9 @@ interface DashboardMetrics {
   recognized_earnings_total?: number;
   tips_total?: number;
   travel_fees_total: number;
+  gift_card_sales_total?: number;
+  membership_sales_total?: number;
+  refunds_total?: number;
   gamification?: {
     total_points: number;
     lifetime_points: number;
@@ -627,6 +631,8 @@ export default function DashboardScreen() {
     <ScreenContainer refreshing={refreshing} onRefresh={handleRefresh}>
       <ScreenHeader title="Dashboard" subtitle={`${m?.appointments_today ?? 0} appointments today`} />
 
+      <DashboardSetupCard />
+
       {bookingEligibility &&
         !bookingEligibility.can_accept_online_bookings &&
         bookingEligibility.booking_limit_message?.trim() && (
@@ -855,11 +861,11 @@ export default function DashboardScreen() {
         </View>
         <View style={{ width: statColumns === 4 ? "24%" : "48.5%", marginBottom: 12 }}>
           <StatCard
-            title="Completion Rate"
-            value={formatPercentage(m?.completion_rate ?? 0)}
-            icon="checkmark-circle-outline"
-            iconColor="#06b6d4"
-            iconBg="bg-cyan-50"
+            title="Pending Payments"
+            value={formatCurrency(m?.pending_payments_amount ?? 0)}
+            icon="time-outline"
+            iconColor="#f97316"
+            iconBg="bg-orange-50"
             compact={!isTablet}
           />
         </View>
@@ -897,6 +903,30 @@ export default function DashboardScreen() {
             {formatCurrency(m?.travel_fees_total ?? 0)}
           </Text>
         </View>
+        {(m?.gift_card_sales_total ?? 0) > 0 ? (
+          <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
+            <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Gift card sales</Text>
+            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>
+              {formatCurrency(m?.gift_card_sales_total ?? 0)}
+            </Text>
+          </View>
+        ) : null}
+        {(m?.membership_sales_total ?? 0) > 0 ? (
+          <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
+            <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Membership sales</Text>
+            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>
+              {formatCurrency(m?.membership_sales_total ?? 0)}
+            </Text>
+          </View>
+        ) : null}
+        {(m?.refunds_total ?? 0) > 0 ? (
+          <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
+            <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Refunds</Text>
+            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>
+              -{formatCurrency(m?.refunds_total ?? 0)}
+            </Text>
+          </View>
+        ) : null}
         {(m?.other_earnings_total ?? 0) > 0 ? (
           <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
             <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Other earnings</Text>

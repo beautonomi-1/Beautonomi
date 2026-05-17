@@ -56,7 +56,10 @@ export async function checkResourceAvailability(
       .eq('resource_id', resourceId)
       .lt('scheduled_start_at', endAt.toISOString())
       .gt('scheduled_end_at', startAt.toISOString())
-      .not('bookings.status', 'in', '("cancelled","no_show")')
+      // Must mirror the status filter in `lock_booking_resources_for_update`
+      // (migration 454) so availability checks and the DB-level lock agree on
+      // which bookings count as still occupying the slot.
+      .not('bookings.status', 'in', '("cancelled","no_show","failed")')
       .neq('booking_id', excludeBookingId || '00000000-0000-0000-0000-000000000000');
 
     if (error) {
