@@ -223,6 +223,7 @@ path,class,note
 /api/admin/provider-ops/providers/[id]/lifecycle,T,"uses resolveAdminApiTenantId"
 /api/admin/provider-ops/reports/funnel,T,"uses resolveAdminApiTenantId"
 /api/admin/provider-ops/reports/lead-assignees,T,"uses resolveAdminApiTenantId"
+/api/admin/provider-ops/reports/previous-software,T,"uses resolveAdminApiTenantId"
 /api/admin/provider-ops/run-stall-check,T,"uses resolveAdminApiTenantId"
 /api/admin/provider-ops/reports/step-dropoff,T,"uses resolveAdminApiTenantId"
 /api/admin/provider-ops/settings,T,"uses resolveAdminApiTenantId"
