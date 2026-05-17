@@ -6,6 +6,8 @@ import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
 import { useTranslation } from "@beautonomi/i18n";
 import { formatMoney } from "@beautonomi/utils";
 import { api } from "@/lib/api-client";
+import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
+import { safeWarn } from "@/lib/payments/safeLog";
 import { ScreenFrame } from "@/components/ScreenFrame";
 import { Colors } from "@/constants/colors";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
@@ -195,9 +197,9 @@ export default function WalletScreen() {
       setTopupAmount("");
 
       if (finalPaystackRef) {
-        const verifyRes = await api.get(`/api/paystack/verify?reference=${encodeURIComponent(finalPaystackRef)}`);
-        if (verifyRes.error) {
-          console.warn("[Wallet] Paystack verify after top-up:", verifyRes.error);
+        const verifyResult = await verifyPaystackWithRetry(finalPaystackRef);
+        if (verifyResult.status === "failed") {
+          safeWarn("Wallet top-up verify reported failed", { message: verifyResult.errorMessage });
         }
       }
       

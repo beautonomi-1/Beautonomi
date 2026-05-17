@@ -23,6 +23,7 @@ import * as ExpoLinking from "expo-linking";
 import { Colors } from "@/constants/colors";
 import { useResponsive } from "@/hooks/useResponsive";
 import { api } from "@/lib/api-client";
+import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
 import { markReferenceProcessing } from "@/lib/paystack-verify-guard";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { useAuth } from "@/providers/AuthProvider";
@@ -330,7 +331,7 @@ export default function CustomOfferCheckoutScreen() {
         }
         if (reference) {
           markReferenceProcessing(reference);
-          await api.get(`/api/paystack/verify?reference=${encodeURIComponent(reference)}`).catch(() => {});
+          await verifyPaystackWithRetry(reference);
         }
 
         setProcessingPayment(true);

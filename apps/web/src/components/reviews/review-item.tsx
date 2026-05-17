@@ -120,15 +120,15 @@ export default function ReviewItem({
         <div className="flex justify-between items-start mb-4">
           <div className="flex gap-4 items-center flex-1">
             <div className="relative w-12 h-12 rounded-full overflow-hidden bg-gray-200">
-              {review.reviewer_image ? (
+              {review.reviewer_image?.trim() ? (
                 <Image
-                  src={review.reviewer_image}
+                  src={review.reviewer_image.trim()}
                   alt={review.reviewer_name}
                   fill
                   className="object-cover"
                 />
               ) : (
-                <div className="w-full h-full flex items-center justify-center text-gray-400">
+                <div className="w-full h-full flex items-center justify-center text-gray-400 font-semibold">
                   {review.reviewer_name.charAt(0).toUpperCase()}
                 </div>
               )}

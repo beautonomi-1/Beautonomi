@@ -213,6 +213,15 @@ export function ExploreFeed({
   const loadMoreRefFn = useRef(loadMore);
   loadMoreRefFn.current = loadMore;
 
+  const handleSaveProviderChange = useCallback((providerId: string, inWishlist: boolean) => {
+    setSavedProviderIds((prev) => {
+      const next = new Set(prev);
+      if (inWishlist) next.add(providerId);
+      else next.delete(providerId);
+      return next;
+    });
+  }, []);
+
   const onSortChip = useCallback(
     (mode: SortMode) => {
       if (mode === "nearby") {
@@ -306,15 +315,6 @@ export function ExploreFeed({
       </div>
     );
   }
-
-  const handleSaveProviderChange = useCallback((providerId: string, inWishlist: boolean) => {
-    setSavedProviderIds((prev) => {
-      const next = new Set(prev);
-      if (inWishlist) next.add(providerId);
-      else next.delete(providerId);
-      return next;
-    });
-  }, []);
 
   return (
     <div className="pb-8">

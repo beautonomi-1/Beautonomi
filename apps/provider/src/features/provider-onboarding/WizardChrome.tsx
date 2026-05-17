@@ -11,6 +11,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { twStyle } from "@/lib/twStyle";
 import { Colors, Shadows } from "@/constants/colors";
 import { STEPS } from "./state";
@@ -64,10 +65,8 @@ export function WizardChrome() {
   if (loadingDraft) {
     return (
       <ScreenContainer scrollable={false} edges={["top"]} reserveTabBarSpace={false}>
-        <View style={twStyle("flex-1 items-center justify-center gap-4 py-16")}>
-          <ActivityIndicator size="large" color={Colors.primary} />
-          <Text style={twStyle("text-base text-gray-500")}>Loading your progress…</Text>
-        </View>
+        <ScreenHeader title="Resuming setup" />
+        <LoadingState message="Resuming your setup…" />
       </ScreenContainer>
     );
   }

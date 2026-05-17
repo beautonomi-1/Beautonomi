@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef } from "react";
 import { DeviceEventEmitter, View, Text, TouchableOpacity } from "react-native";
 import { usePathname, useRouter } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/providers/AuthProvider";
 import { useProvider } from "@/providers/ProviderContext";
 import { Colors } from "@/constants/colors";
 import { GateLoadingScreen } from "@/components/GateLoadingScreen";
+import { ScreenContainer } from "@/components/ui/ScreenContainer";
+import { EmptyState } from "@/components/ui/EmptyState";
 import type { UserRole } from "@beautonomi/types";
 import { authFlowBreadcrumb, isSentryEnabled, setAuthFlowTags } from "@/lib/sentry";
 
@@ -80,58 +81,46 @@ export function RoleGate({ children }: RoleGateProps) {
   if (blocked) {
     const isNetwork = blockReason === "network";
     return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: Colors.white, padding: 24 }}>
-        <View
-          style={{
-            width: 64,
-            height: 64,
-            borderRadius: 32,
-            backgroundColor: isNetwork ? "#EFF6FF" : Colors.primaryLight,
-            alignItems: "center",
-            justifyContent: "center",
-            marginBottom: 16,
+      // §provider-setup-seamless-ux 2026-05: use shared ScreenContainer +
+      // EmptyState so the blocked screens match the rest of the app's chrome
+      // (safe-area handling, tablet content clamp, brand background).
+      <ScreenContainer scrollable={false} edges={["top"]} reserveTabBarSpace={false}>
+        <EmptyState
+          icon={isNetwork ? "cloud-offline-outline" : "lock-closed-outline"}
+          title={isNetwork ? "Can't reach server" : "Provider access only"}
+          description={
+            isNetwork
+              ? "Start the backend (e.g. pnpm dev in apps/web). Set EXPO_PUBLIC_APP_URL in .env.local (e.g. http://localhost:3000 for emulator, or your machine IP for a device). Then tap Retry."
+              : "Your account is not set up for the provider app. Please use the customer app or contact support."
+          }
+          actionLabel={isNetwork ? "Retry" : "Sign out"}
+          onAction={() => {
+            if (isNetwork) {
+              void refresh();
+            } else {
+              void handleSignOut();
+            }
           }}
-        >
-          <Ionicons
-            name={isNetwork ? "cloud-offline-outline" : "lock-closed-outline"}
-            size={28}
-            color={isNetwork ? "#2563eb" : Colors.primary}
-          />
-        </View>
-        <Text style={{ textAlign: "center", fontSize: 18, fontWeight: "600", color: Colors.gray[900] }}>
-          {isNetwork ? "Can't reach server" : "Provider access only"}
-        </Text>
-        <Text style={{ marginTop: 8, textAlign: "center", color: Colors.gray[500], maxWidth: 320 }}>
-          {isNetwork
-            ? "Start the backend (e.g. pnpm dev in apps/web). Set EXPO_PUBLIC_APP_URL in .env.local (e.g. http://localhost:3000 for emulator, or your machine IP for a device). Then tap Retry."
-            : "Your account is not set up for the provider app. Please use the customer app or contact support."}
-        </Text>
-        <View style={{ marginTop: 32, flexDirection: "row" }}>
-          {isNetwork && (
+        />
+        {isNetwork && (
+          <View style={{ alignItems: "center", paddingBottom: 32 }}>
             <TouchableOpacity
-              style={{ backgroundColor: "#2563eb", borderRadius: 12, paddingHorizontal: 24, paddingVertical: 14, marginRight: 12 }}
-              onPress={() => {
-                void refresh();
+              onPress={() => handleSignOut()}
+              accessibilityRole="button"
+              accessibilityLabel="Sign out"
+              style={{
+                paddingHorizontal: 24,
+                paddingVertical: 10,
+                borderRadius: 12,
               }}
             >
-              <Text style={{ fontWeight: "600", color: Colors.white, fontSize: 16 }}>Retry</Text>
+              <Text style={{ color: Colors.gray[600], fontSize: 14, fontWeight: "500" }}>
+                Sign out
+              </Text>
             </TouchableOpacity>
-          )}
-          <TouchableOpacity
-            style={{
-              backgroundColor: isNetwork ? Colors.gray[200] : Colors.primary,
-              borderRadius: 12,
-              paddingHorizontal: 32,
-              paddingVertical: 14,
-            }}
-            onPress={() => handleSignOut()}
-          >
-            <Text style={{ fontWeight: "600", fontSize: 16, color: isNetwork ? Colors.gray[700] : Colors.white }}>
-              Sign out
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+          </View>
+        )}
+      </ScreenContainer>
     );
   }
   return <>{children}</>;

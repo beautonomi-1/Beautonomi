@@ -19,9 +19,36 @@ interface SetupStatus {
     description: string;
     completed: boolean;
     required: boolean;
+    /** Web route (Next.js App Router path) — used by `apps/web` get-started page. */
     link: string;
+    /**
+     * Canonical native (expo-router) route per step. Returned by the server so
+     * the mobile checklist UI never needs a client-side WEB_PATH_TO_NATIVE map.
+     * `null` when no dedicated mobile screen exists (the wizard is the fallback).
+     */
+    native_route: string | null;
   }[];
 }
+
+/**
+ * Server-canonical mapping: setup step `id` -> native expo-router path in the
+ * provider mobile app. Keep this in sync with `apps/provider/app/(app)/**`.
+ * When you add a new step, add its native route here.
+ * Exported so the mobile checklist UI and tests can reason about it.
+ */
+export const NATIVE_ROUTE_BY_ID: Record<string, string> = {
+  "profile-details": "/(app)/(tabs)/more/settings/business",
+  "personal-profile": "/(app)/(tabs)/more/settings/personal-profile",
+  "service-address": "/(app)/(tabs)/more/locations",
+  "profile-photo": "/(app)/(tabs)/more/gallery",
+  services: "/(app)/(tabs)/more/catalogue",
+  availability: "/(app)/(tabs)/more/settings/hours",
+  payment: "/(app)/(tabs)/more/settings/yoco-devices",
+  "payment-methods": "/(app)/(tabs)/more/settings/payments",
+  payout: "/(app)/(tabs)/more/settings/payout-accounts",
+  gallery: "/(app)/(tabs)/more/gallery",
+  "identity-verification": "/(app)/(tabs)/more/settings/verification",
+};
 
 /**
  * GET /api/provider/setup-status
@@ -356,11 +383,16 @@ export async function GET(request: NextRequest) {
       completedRequired === requiredSteps.length && requiredSteps.length > 0;
     const missingSteps = requiredSteps.filter((s) => !s.completed).map((s) => s.id);
 
+    const stepsWithNativeRoute = steps.map((s) => ({
+      ...s,
+      native_route: NATIVE_ROUTE_BY_ID[s.id] ?? null,
+    }));
+
     return successResponse<SetupStatus>({
       isComplete,
       completionPercentage: isComplete ? 100 : completionPercentage,
       missing_steps: missingSteps,
-      steps,
+      steps: stepsWithNativeRoute,
     });
   } catch (error) {
     return handleApiError(error, "Failed to check setup status");

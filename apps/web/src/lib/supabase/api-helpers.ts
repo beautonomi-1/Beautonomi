@@ -343,6 +343,22 @@ export async function requireRoleInApi(
   return result;
 }
 
+/**
+ * Resolve auth/role when available, but do not throw when missing.
+ * Useful for return/callback verification flows where cross-site redirects
+ * may lose cookies even though the charge is valid.
+ */
+export async function optionalAuthInApi(
+  role: UserRole | UserRole[],
+  request?: NextRequest | Request,
+) {
+  try {
+    return await requireRoleInApi(role, request);
+  } catch {
+    return { user: null } as { user: null };
+  }
+}
+
 async function requireRoleInApiImpl(
   roles: UserRole[],
   request?: NextRequest | Request,

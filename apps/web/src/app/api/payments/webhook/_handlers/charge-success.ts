@@ -1023,8 +1023,10 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
 // ─── charge.failed internals ─────────────────────────────────────────────────
 
 async function handleProductOrderChargeFailed(data: PaystackChargeData, supabase: SupabaseClient) {
-  const { reference, metadata } = data;
+  const { reference, metadata, amount } = data;
   if (!reference || !metadata?.product_order_id) return;
+
+  const amountInCurrency = convertFromSmallestUnit(amount || 0);
 
   const productOrderId = String(metadata.product_order_id);
 

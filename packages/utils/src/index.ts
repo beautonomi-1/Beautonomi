@@ -26,6 +26,19 @@ export {
 } from "./money";
 export { LAST_RESORT_CURRENCY } from "./last-resort-currency";
 export {
+  formatProviderDescriptionDisplay,
+  formatProviderDescriptionForCard,
+  formatProviderDescriptionForProfilePreview,
+  PROVIDER_DESCRIPTION_CARD_MAX,
+  PROVIDER_DESCRIPTION_PROFILE_PREVIEW_MAX,
+} from "./provider/formatProviderDescription";
+export {
+  PROVIDER_GALLERY_ASPECT_RATIO,
+  PROVIDER_GALLERY_CONTENT_POSITION,
+  PROVIDER_GALLERY_OBJECT_POSITION,
+  providerGalleryFrameHeight,
+} from "./provider/providerGalleryDisplay";
+export {
   generateId,
   isPublicStaffIdForBooking,
   isUuidString,

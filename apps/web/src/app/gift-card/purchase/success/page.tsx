@@ -7,6 +7,7 @@ import Link from "next/link";
 import Navbar4 from "@/components/global/Navbar4";
 import { Button } from "@/components/ui/button";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
+import { verifyWithRetry } from "@/lib/payments/verify-with-retry";
 import { Copy, CheckCircle2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -112,13 +113,21 @@ function GiftCardPurchaseSuccessInner() {
     setPhase("verifying");
     setErrorMsg(null);
     try {
-      const verifyRaw = await fetcher.get<unknown>(
-        `/api/paystack/verify?reference=${encodeURIComponent(reference)}`,
-        { staleTimeMs: 0 },
-      );
-      const vp = extractVerifyPayload(verifyRaw);
+      const verifyResult = await verifyWithRetry<Record<string, unknown>>(reference, {
+        maxAttempts: 5,
+        delayMs: 1500,
+      });
+      const vp = extractVerifyPayload({ data: verifyResult.data });
       const oid = vp.giftCardOrderId ?? null;
-      if (vp.type !== "gift_card_order") {
+      if (verifyResult.status === "failed") {
+        setErrorMsg(
+          verifyResult.errorMessage ||
+            "We could not confirm this gift card payment. If your bank was debited, check Payments & gift cards in a minute.",
+        );
+        setPhase("error");
+        return;
+      }
+      if (vp.type !== "gift_card_order" && verifyResult.status !== "unknown") {
         setErrorMsg(
           "This receipt is not for a gift card purchase. If you paid for a gift card, check Payments & gift cards — your codes may already be there.",
         );

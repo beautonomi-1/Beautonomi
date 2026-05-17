@@ -16,7 +16,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { Colors } from "@/constants/colors";
 import { BeautonomiLogo } from "@/components/ui/BeautonomiLogo";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -450,10 +450,19 @@ export default function LoginScreen() {
   }
 
   return (
-    // §UX-audit 2026-04: auth stack hides the native header, so without
-    // a SafeAreaView on this screen the logo/title on notched devices
-    // tucks under the status bar. Mirror `forgot-password.tsx`.
-    <SafeAreaView edges={["top"]} style={{ flex: 1, backgroundColor: "#ffffff" }}>
+    // §provider-setup-seamless-ux 2026-05: wrap the auth form in the shared
+    // `ScreenContainer` so the brand background, safe-area handling, and
+    // tablet content-max-width clamp are identical to every other in-app
+    // screen. We keep the inner `KeyboardAvoidingView` + `ScrollView` (the
+    // existing offset and `scrollContentStyle` are tuned for this specific
+    // form) and disable the outer KAV/scroller on `ScreenContainer`.
+    <ScreenContainer
+      edges={["top"]}
+      scrollable={false}
+      keyboardAvoiding={false}
+      reserveTabBarSpace={false}
+      noPadding
+    >
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: "#ffffff" }}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -1259,6 +1268,6 @@ export default function LoginScreen() {
         </Pressable>
       </Modal>
     </KeyboardAvoidingView>
-    </SafeAreaView>
+    </ScreenContainer>
   );
 }

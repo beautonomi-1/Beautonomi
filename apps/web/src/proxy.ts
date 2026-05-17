@@ -117,10 +117,36 @@ export async function proxy(request: NextRequest) {
   try {
     const { pathname } = request.nextUrl;
     const origin = request.headers.get('origin');
+    const isProviderSubscriptionCallback =
+      pathname === '/provider/subscription' &&
+      (request.nextUrl.searchParams.get('payment_success') === 'true' ||
+        request.nextUrl.searchParams.get('payment_cancelled') === '1' ||
+        request.nextUrl.searchParams.has('reference') ||
+        request.nextUrl.searchParams.has('trxref'));
+    const isBookingPaymentCallback = /^\/account-settings\/bookings\/[^/]+\/payment-callback$/.test(pathname);
+    const isPublicPaystackCallback =
+      pathname === '/shop/payment-callback' ||
+      pathname === '/booking/callback' ||
+      pathname === '/checkout/success' ||
+      pathname === '/gift-card/purchase/success' ||
+      pathname === '/provider/settings/ads/payment-return' ||
+      isProviderSubscriptionCallback ||
+      isBookingPaymentCallback;
 
     // PWA manifest must always stay public. Some preview deployments still
     // routed this through auth despite the matcher exclusion, so bypass here too.
     if (pathname === '/manifest.webmanifest' || pathname === '/api/public/manifest.webmanifest') {
+      return NextResponse.next();
+    }
+
+    // Paystack callback pages + verify routes must stay public. Cross-site
+    // redirects (3DS / bank auth) can legitimately arrive without session
+    // cookies attached on first paint.
+    if (
+      isPublicPaystackCallback ||
+      pathname === '/api/paystack/verify' ||
+      pathname === '/api/paystack/verify-reference'
+    ) {
       return NextResponse.next();
     }
 

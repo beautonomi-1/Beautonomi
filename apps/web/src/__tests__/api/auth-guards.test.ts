@@ -34,6 +34,13 @@ vi.mock("@/lib/supabase/api-helpers", async () => {
   const { ALL_ADMIN_ROLES: ROLES } = await import("@/lib/admin-sections");
   return {
     requireRoleInApi: (...args: unknown[]) => mockRequireRoleInApi(...args),
+    optionalAuthInApi: async (...args: unknown[]) => {
+      try {
+        return await mockRequireRoleInApi(...args);
+      } catch {
+        return { user: null };
+      }
+    },
     requireAdminSection: async (_section: unknown, request?: unknown) => {
       const result = await mockRequireRoleInApi(ROLES, request);
       return result;
@@ -61,6 +68,12 @@ vi.mock("@/lib/supabase/api-helpers", async () => {
         { status, headers: { "content-type": "application/json" } }
       );
     },
+    notFoundResponse: (message = "Not found") =>
+      new Response(JSON.stringify({ data: null, error: { message, code: "NOT_FOUND" } }), {
+        status: 404,
+        headers: { "content-type": "application/json" },
+      }),
+    getProviderIdForUser: vi.fn(async () => "provider-1"),
     getPaginationParams: () => ({ page: 1, limit: 20, offset: 0 }),
     createPaginatedResponse: (data: unknown) =>
       new Response(JSON.stringify({ data, error: null }), {
@@ -177,7 +190,7 @@ describe("Paystack routes – authentication", () => {
     }
   });
 
-  it("GET /api/paystack/verify rejects unauthenticated requests", async () => {
+  it("GET /api/paystack/verify no longer hard-rejects unauthenticated callbacks", async () => {
     rejectAuth();
 
     const { GET } = await import("@/app/api/paystack/verify/route");
@@ -185,14 +198,19 @@ describe("Paystack routes – authentication", () => {
     const req = createMockNextRequest({
       method: "GET",
       url: "http://localhost:3000/api/paystack/verify",
-      searchParams: { reference: "ref_12345" },
+      searchParams: {},
     });
 
     const res = await GET(req as NextRequest);
-    await expectAuthError(res);
+    const body = await safeJson(res);
+    expect(res.status).not.toBe(401);
+    expect(res.status).not.toBe(403);
+    const error = body.error as { message?: string } | undefined;
+    const msg = typeof error?.message === "string" ? error.message : "";
+    expect(msg.toLowerCase()).not.toContain("authentication required");
   });
 
-  it("GET /api/paystack/verify-reference rejects unauthenticated requests", async () => {
+  it("GET /api/paystack/verify-reference validates reference even when unauthenticated", async () => {
     rejectAuth();
 
     const { GET } = await import("@/app/api/paystack/verify-reference/route");
@@ -200,11 +218,16 @@ describe("Paystack routes – authentication", () => {
     const req = createMockNextRequest({
       method: "GET",
       url: "http://localhost:3000/api/paystack/verify-reference",
-      searchParams: { reference: "ref_12345", booking_id: "00000000-0000-0000-0000-000000000001" },
+      searchParams: { booking_id: "00000000-0000-0000-0000-000000000001" },
     });
 
     const res = await GET(req as NextRequest);
-    await expectAuthError(res);
+    const body = await safeJson(res);
+    expect(res.status).not.toBe(401);
+    expect(res.status).not.toBe(403);
+    const error = body.error as { message?: string } | undefined;
+    const msg = typeof error?.message === "string" ? error.message : "";
+    expect(msg.toLowerCase()).not.toContain("authentication required");
   });
 });
 

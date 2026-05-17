@@ -1,9 +1,8 @@
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
 import {
-  requireRoleInApi,
+  optionalAuthInApi,
   successResponse,
   notFoundResponse,
   handleApiError,
@@ -74,7 +73,7 @@ type ProductOrdersReader<T> = {
 
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(
+    const { user } = await optionalAuthInApi(
       ["customer", "provider_owner", "provider_staff", "superadmin"],
       request
     );
@@ -112,7 +111,7 @@ export async function GET(request: NextRequest) {
     const amountKobo = Number(d.amount ?? 0);
     const amountInCurrency = convertFromSmallestUnit(amountKobo);
     const metadata = (d.metadata || {}) as Record<string, unknown>;
-    const supabase = await getSupabaseServer(request);
+    const admin = getSupabaseAdmin();
 
     if (txStatus !== "success") {
       return successResponse({
@@ -130,7 +129,7 @@ export async function GET(request: NextRequest) {
         ? metadata.product_order_id.trim()
         : null;
     if (productOrderId && !bookingIdParam) {
-      const productOrders = supabase as unknown as ProductOrdersReader<ProductOrderPaymentRow>;
+      const productOrders = admin as unknown as ProductOrdersReader<ProductOrderPaymentRow>;
       const { data: poBefore, error: poError } = await productOrders
         .from("product_orders")
         .select("id, tenant_id, provider_id, customer_id, total_amount, wallet_amount, payment_status, payment_reference")
@@ -151,7 +150,7 @@ export async function GET(request: NextRequest) {
         );
       }
 
-      if (order.customer_id !== user.id) {
+      if (user?.id && order.customer_id !== user.id) {
         return errorResponse(
           "You can only confirm payment for your own order.",
           "FORBIDDEN",
@@ -181,7 +180,6 @@ export async function GET(request: NextRequest) {
         });
       }
 
-      const admin = getSupabaseAdmin();
       await recordProductOrderPayment({
         supabase: admin,
         productOrderId,
@@ -269,7 +267,7 @@ export async function GET(request: NextRequest) {
     // fails and every mobile payment verification gets "Booking not
     // found"). The `user` id used in the ownership check below is
     // already resolved via `requireRoleInApi(request)` above.
-    const { data: booking, error: bookingError } = await supabase
+    const { data: booking, error: bookingError } = await admin
       .from("bookings")
       .select("id, tenant_id, customer_id, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status, additional_charges(amount,status)")
       .eq("id", bookingIdParam)
@@ -287,7 +285,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    if (booking.customer_id !== user.id) {
+    if (user?.id && booking.customer_id !== user.id) {
       return errorResponse("Forbidden", "FORBIDDEN", 403);
     }
 
@@ -321,7 +319,7 @@ export async function GET(request: NextRequest) {
         }
       }
     } else if (chargeId) {
-      const { data: charge, error: chargeErr } = await supabase
+      const { data: charge, error: chargeErr } = await admin
         .from("additional_charges")
         .select("id, amount, booking_id, status")
         .eq("id", chargeId)
@@ -354,7 +352,7 @@ export async function GET(request: NextRequest) {
         fees: d.fees,
         customer: d.customer,
       },
-      getSupabaseAdmin(),
+      admin,
     );
 
     return successResponse({

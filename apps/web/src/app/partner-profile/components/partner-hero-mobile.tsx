@@ -9,6 +9,10 @@ import { ReportProviderModal } from "@/components/report/ReportProviderModal";
 import { useAuth } from "@/providers/AuthProvider";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
+import {
+  formatProviderDescriptionForProfilePreview,
+  PROVIDER_GALLERY_OBJECT_POSITION,
+} from "@beautonomi/utils";
 
 interface PartnerHeroMobileProps {
   id?: string;
@@ -59,6 +63,7 @@ const PartnerHeroMobile: React.FC<PartnerHeroMobileProps> = ({
   const [isInWishlist, setIsInWishlist] = useState(false);
   const [isToggling, setIsToggling] = useState(false);
   const sliderRef = useRef<HTMLDivElement>(null);
+  const profileDescription = formatProviderDescriptionForProfilePreview(description);
 
   // Use gallery images if available
   const displayImages = React.useMemo(() => {
@@ -181,8 +186,8 @@ const PartnerHeroMobile: React.FC<PartnerHeroMobileProps> = ({
 
   return (
     <div className="md:hidden">
-      {/* Hero Image Section - 4:5 Aspect Ratio */}
-      <div className="relative w-full aspect-[4/5] overflow-hidden bg-gray-100">
+      {/* Hero Image Section — uniform 16:9 landscape crop */}
+      <div className="relative w-full aspect-video overflow-hidden bg-gray-100">
         {/* Back Button - Top Left */}
         <Link
           href="/"
@@ -205,6 +210,7 @@ const PartnerHeroMobile: React.FC<PartnerHeroMobileProps> = ({
                 fill
                 sizes="(max-width: 768px) 100vw, 50vw"
                 className="object-cover"
+                style={{ objectPosition: PROVIDER_GALLERY_OBJECT_POSITION }}
                 priority={index === 0}
                 loading={index === 0 ? "eager" : "lazy"}
               />
@@ -443,11 +449,11 @@ const PartnerHeroMobile: React.FC<PartnerHeroMobileProps> = ({
         </div>
 
         {/* What this provider offers - Bio/Description Section */}
-        {description && description.trim() && (
+        {profileDescription && (
           <div className="px-4 py-4 border-b border-gray-200">
             <h2 className="text-sm font-semibold text-gray-900 mb-2">What this provider offers:</h2>
             <p className="text-sm text-gray-700 leading-relaxed line-clamp-3">
-              {description}
+              {profileDescription}
             </p>
           </div>
         )}

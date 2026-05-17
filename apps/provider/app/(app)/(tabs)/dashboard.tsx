@@ -18,6 +18,7 @@ import { FilterChipGroup } from "@/components/ui/FilterChip";
 import { Badge } from "@/components/ui/Badge";
 import { Avatar } from "@/components/ui/Avatar";
 import { ProviderDashboardExcellenceBanner } from "@/components/ProviderDashboardExcellenceBanner";
+import { DashboardSetupCard } from "@/components/setup/DashboardSetupCard";
 import { SkeletonDashboard } from "@/components/ui/Skeleton";
 import { ErrorState } from "@/components/ui/ErrorState";
 import {
@@ -629,6 +630,8 @@ export default function DashboardScreen() {
   return (
     <ScreenContainer refreshing={refreshing} onRefresh={handleRefresh}>
       <ScreenHeader title="Dashboard" subtitle={`${m?.appointments_today ?? 0} appointments today`} />
+
+      <DashboardSetupCard />
 
       {bookingEligibility &&
         !bookingEligibility.can_accept_online_bookings &&

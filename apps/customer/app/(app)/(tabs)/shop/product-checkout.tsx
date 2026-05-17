@@ -22,6 +22,7 @@ import * as ExpoLinking from "expo-linking";
 import { Colors, Shadows } from "@/constants/colors";
 import { useResponsive } from "@/hooks/useResponsive";
 import { api } from "@/lib/api-client";
+import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { useCart } from "@/features/shop/useCart";
 import { emitCartUpdated } from "@/lib/cart-events";
@@ -573,7 +574,7 @@ export default function ProductCheckoutScreen() {
       }
       if (reference) {
         markReferenceProcessing(reference);
-        await api.get(`/api/paystack/verify?reference=${encodeURIComponent(reference)}`).catch(() => {});
+        await verifyPaystackWithRetry(reference);
       }
 
       let paid = false;

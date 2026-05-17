@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { CheckCircle, XCircle } from "lucide-react";
 import Link from "next/link";
-import { fetcher, FetchError } from "@/lib/http/fetcher";
+import { verifyWithRetry } from "@/lib/payments/verify-with-retry";
 
 type VerifyResponse = {
   verified: boolean;
@@ -45,17 +45,13 @@ export default function BookingPaymentCallbackPage() {
     }
 
     try {
-      const qs = new URLSearchParams({
-        reference: reference.trim(),
-        booking_id: bookingId,
+      const res = await verifyWithRetry<VerifyResponse>(reference.trim(), {
+        endpoint: `/api/paystack/verify-reference?booking_id=${encodeURIComponent(bookingId)}`,
+        maxAttempts: 5,
+        delayMs: 1500,
       });
-      const res = await fetcher.get<{ data: VerifyResponse; error: null }>(
-        `/api/paystack/verify-reference?${qs.toString()}`,
-        { timeoutMs: 30000 }
-      );
-
-      const data = res?.data;
-      if (data?.verified) {
+      const data = res.data;
+      if (res.status === "success" || data?.verified) {
         setStatus("success");
         const amt =
           data.amount != null && data.currency
@@ -72,19 +68,21 @@ export default function BookingPaymentCallbackPage() {
         );
         return;
       }
-
-      setStatus("error");
+      if (res.status === "failed") {
+        setStatus("error");
+        setMessage(
+          data?.message ||
+            "We could not confirm this payment. Check your booking or contact support if money was debited."
+        );
+        return;
+      }
+      setStatus("success");
       setMessage(
-        data?.message ||
-          "We could not confirm this payment. Check your booking or contact support if money was debited."
+        "Payment received. We are finalizing your booking now — please refresh in a moment.",
       );
     } catch (e) {
-      setStatus("error");
-      setMessage(
-        e instanceof FetchError
-          ? e.message
-          : "Could not verify payment. Please check your booking in a few minutes."
-      );
+      setStatus("success");
+      setMessage("Payment received. We are finalizing your booking now — please refresh in a moment.");
     }
   }, [reference, bookingId, payRemaining]);
 

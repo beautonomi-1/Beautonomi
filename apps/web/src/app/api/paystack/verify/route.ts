@@ -1,10 +1,9 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   successResponse,
   handleApiError,
-  requireRoleInApi,
+  optionalAuthInApi,
   errorResponse,
   notFoundResponse,
   getProviderIdForUser,
@@ -26,12 +25,16 @@ import { convertFromSmallestUnit } from "@/lib/payments/paystack";
 /**
  * GET /api/paystack/verify
  * 
- * Verify Paystack payment status
- * Requires authentication (any role)
+ * Verify Paystack payment status.
+ * Authentication is optional to support cross-site redirect callbacks where
+ * browser cookies may not be present after 3DS/bank handoff.
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["customer", "provider_owner", "provider_staff", "superadmin"], request);
+    const { user } = await optionalAuthInApi(
+      ["customer", "provider_owner", "provider_staff", "superadmin"],
+      request,
+    );
     const tenantId = await resolveTenantIdWithZaFallback(request);
     const { searchParams } = new URL(request.url);
     const reference =
@@ -119,10 +122,8 @@ export async function GET(request: NextRequest) {
         }
       }
       const verifiedChargeData = { ...data.data, metadata };
-      // §Customer-launch (audit 2026-04): forward the request so Bearer
-      // tokens from the mobile app are honoured during Paystack
-      // verification (RLS was rejecting all mobile verify calls).
-      const supabase = await getSupabaseServer(request);
+      // Keep server/client refs for role-aware lookups + service-role writes.
+      const admin = getSupabaseAdmin();
       const tenantRegion = await getTenantRegionConfig(tenantId);
       const fallbackCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
       const paidCurrency =
@@ -133,7 +134,7 @@ export async function GET(request: NextRequest) {
       // Handle product order payments
       const productOrderId = metadata.product_order_id ? String(metadata.product_order_id) : "";
       if (productOrderId) {
-        const { data: poBefore } = await (supabase.from("product_orders") as any)
+        const { data: poBefore } = await (admin.from("product_orders") as any)
           .select("tenant_id, provider_id, customer_id, total_amount, wallet_amount, payment_status, payment_reference")
           .eq("id", productOrderId)
           .maybeSingle();
@@ -165,7 +166,7 @@ export async function GET(request: NextRequest) {
           payment_reference?: string | null;
         };
 
-        if (poBeforeRow.customer_id !== user.id) {
+        if (user?.id && poBeforeRow.customer_id !== user.id) {
           return errorResponse(
             "You can only confirm payment for your own order.",
             "FORBIDDEN",
@@ -196,12 +197,12 @@ export async function GET(request: NextRequest) {
           );
         }
 
-        const productOrderTenantId = await resolveTenantIdForFinanceLedger(supabase, {
+        const productOrderTenantId = await resolveTenantIdForFinanceLedger(admin, {
           tenant_id: poBeforeRow.tenant_id,
           provider_id: poBeforeRow.provider_id,
         });
         await recordProductOrderPayment({
-          supabase: getSupabaseAdmin() as any,
+          supabase: admin as any,
           productOrderId,
           reference,
           amountMajor,
@@ -210,7 +211,7 @@ export async function GET(request: NextRequest) {
           provider: "paystack",
         });
 
-        const { data: po } = await (supabase.from("product_orders") as any)
+        const { data: po } = await (admin.from("product_orders") as any)
           .select("customer_id, provider_id, order_number, total_amount")
           .eq("id", productOrderId)
           .maybeSingle();
@@ -260,7 +261,6 @@ export async function GET(request: NextRequest) {
       // Wallet top-up (metadata has wallet_topup_id, not booking_id — must run before booking branch)
       const walletTopupId = metadata.wallet_topup_id;
       if (walletTopupId) {
-        const admin = getSupabaseAdmin();
         const { data: topupLookup } = await admin
           .from("wallet_topups")
           .select("user_id")
@@ -269,7 +269,7 @@ export async function GET(request: NextRequest) {
         if (!topupLookup) {
           return notFoundResponse("Wallet top-up not found");
         }
-        if ((topupLookup as { user_id?: string }).user_id !== user.id) {
+        if (user?.id && (topupLookup as { user_id?: string }).user_id !== user.id) {
           return errorResponse(
             "You can only confirm wallet top-ups from your own account.",
             "FORBIDDEN",
@@ -292,7 +292,6 @@ export async function GET(request: NextRequest) {
       }
 
       if (metadata?.gift_card_order_id) {
-        const admin = getSupabaseAdmin();
         const giftCardOrderId = String(metadata.gift_card_order_id);
         const { data: orderLookup } = await admin
           .from("gift_card_orders")
@@ -302,7 +301,7 @@ export async function GET(request: NextRequest) {
         if (!orderLookup) {
           return notFoundResponse("Gift card order not found");
         }
-        if ((orderLookup as { purchaser_user_id?: string | null }).purchaser_user_id !== user.id) {
+        if (user?.id && (orderLookup as { purchaser_user_id?: string | null }).purchaser_user_id !== user.id) {
           return errorResponse(
             "You can only confirm your own gift card purchases.",
             "FORBIDDEN",
@@ -319,7 +318,6 @@ export async function GET(request: NextRequest) {
       }
 
       if (metadata?.membership_order_id) {
-        const admin = getSupabaseAdmin();
         const membershipOrderId = String(metadata.membership_order_id);
         const { data: membershipOrderLookup } = await admin
           .from("membership_orders")
@@ -329,7 +327,7 @@ export async function GET(request: NextRequest) {
         if (!membershipOrderLookup) {
           return notFoundResponse("Membership order not found");
         }
-        if ((membershipOrderLookup as { user_id?: string | null }).user_id !== user.id) {
+        if (user?.id && (membershipOrderLookup as { user_id?: string | null }).user_id !== user.id) {
           return errorResponse(
             "You can only confirm your own membership purchases.",
             "FORBIDDEN",
@@ -346,7 +344,7 @@ export async function GET(request: NextRequest) {
       }
 
       if (metadata?.kind === "card_verification") {
-        await processSuccessfulPayment(verifiedChargeData, getSupabaseAdmin());
+        await processSuccessfulPayment(verifiedChargeData, admin);
         return successResponse({
           status: "success",
           type: "card_verification",
@@ -355,11 +353,9 @@ export async function GET(request: NextRequest) {
       }
 
       if (metadata?.ads_budget_order_id) {
-        const admin = getSupabaseAdmin();
-        const providerId = await getProviderIdForUser(user.id, admin as never, { request });
-        if (!providerId) {
-          return notFoundResponse("Provider not found");
-        }
+        const providerId = user?.id
+          ? await getProviderIdForUser(user.id, admin as never, { request })
+          : null;
         const adsBudgetOrderId = String(metadata.ads_budget_order_id);
         const { data: order } = await admin
           .from("ads_budget_orders")
@@ -375,7 +371,7 @@ export async function GET(request: NextRequest) {
           amount?: number | string | null;
           status?: string | null;
         };
-        if (orderRow.provider_id !== providerId) {
+        if (user?.id && orderRow.provider_id !== providerId) {
           return errorResponse(
             "You can only confirm ad payments for your own provider account.",
             "FORBIDDEN",
@@ -419,11 +415,9 @@ export async function GET(request: NextRequest) {
       }
 
       if (metadata?.provider_subscription_order_id) {
-        const admin = getSupabaseAdmin();
-        const providerId = await getProviderIdForUser(user.id, admin as never, { request });
-        if (!providerId) {
-          return notFoundResponse("Provider not found");
-        }
+        const providerId = user?.id
+          ? await getProviderIdForUser(user.id, admin as never, { request })
+          : null;
         const subscriptionOrderId = String(metadata.provider_subscription_order_id);
         const { data: order } = await admin
           .from("provider_subscription_orders")
@@ -440,7 +434,7 @@ export async function GET(request: NextRequest) {
           amount?: number | string | null;
           status?: string | null;
         };
-        if (orderRow.provider_id !== providerId) {
+        if (user?.id && orderRow.provider_id !== providerId) {
           return errorResponse(
             "You can only confirm subscription payments for your own provider account.",
             "FORBIDDEN",
@@ -487,14 +481,13 @@ export async function GET(request: NextRequest) {
       // Custom offer Paystack hosted checkout (metadata has custom_offer_id, not booking_id yet)
       if (metadata?.custom_offer_id) {
         const offerId = String(metadata.custom_offer_id);
-        const admin = getSupabaseAdmin();
-        const { data: coRow } = await supabase
+        const { data: coRow } = await admin
           .from("custom_offers")
           .select("id, request:custom_requests(customer_id)")
           .eq("id", offerId)
           .maybeSingle();
         const custId = (coRow as { request?: { customer_id?: string } | null } | null)?.request?.customer_id;
-        if (!coRow || custId !== user.id) {
+        if (!coRow || (user?.id && custId !== user.id)) {
           return errorResponse(
             "You can only verify payments for your own custom offers.",
             "FORBIDDEN",
@@ -521,7 +514,7 @@ export async function GET(request: NextRequest) {
         });
       }
 
-      const { data: booking, error: bookingLookupError } = await supabase
+      const { data: booking, error: bookingLookupError } = await admin
         .from("bookings")
         .select(
           "id, tenant_id, customer_id, provider_id, booking_number, ref_number, total_amount, scheduled_at, payment_status, status, cancelled_at",
@@ -533,7 +526,7 @@ export async function GET(request: NextRequest) {
         return notFoundResponse("Booking not found");
       }
 
-      if (booking.customer_id !== user.id) {
+      if (user?.id && booking.customer_id !== user.id) {
         return errorResponse(
           "You can only confirm payments for your own bookings.",
           "FORBIDDEN",
@@ -557,7 +550,6 @@ export async function GET(request: NextRequest) {
         );
       }
 
-      const admin = getSupabaseAdmin();
       await processSuccessfulPayment(verifiedChargeData, admin);
 
       const { data: afterPay } = await admin

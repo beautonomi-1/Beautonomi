@@ -13,6 +13,8 @@ import * as ExpoLinking from "expo-linking";
 import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { api } from "@/lib/api-client";
+import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
+import { extractPaystackReferenceFromUrl } from "@/lib/payments/paystackRefFromUrl";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { SectionHeader } from "@/components/ui/SectionHeader";
@@ -22,6 +24,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 import { stripHtmlToPlainText } from "@/lib/htmlPlainText";
+import { Colors } from "@/constants/colors";
 
 const ACCENT = "#FF0077";
 
@@ -188,7 +191,7 @@ export default function SubscriptionScreen() {
 
   const openSubscriptionPaystack = useCallback(
     async (url: string, title: string) => {
-      await paystackCheckout.waitForCheckout(url, {
+      const result = await paystackCheckout.waitForCheckout(url, {
         title,
         returnUrl: subscriptionReturnUrl,
         matchSuccess: (rawUrl) => {
@@ -214,6 +217,28 @@ export default function SubscriptionScreen() {
           }
         },
       });
+
+      // Defensive verify-with-retry when Paystack appended a reference to our
+      // `provider://` deep link. Bridges the webhook race so the UI never
+      // shows a stale plan after a successful checkout. Skipped on cancel.
+      if (result.outcome === "success") {
+        const reference = extractPaystackReferenceFromUrl(result.url);
+        if (reference) {
+          const verifyResult = await verifyPaystackWithRetry(reference);
+          if (verifyResult.status === "failed") {
+            Alert.alert(
+              "Payment not completed",
+              verifyResult.errorMessage ??
+                "Paystack reported the payment failed. Please try again.",
+            );
+          } else if (verifyResult.status === "pending" || verifyResult.status === "unknown") {
+            Alert.alert(
+              "Your payment is being confirmed",
+              "We'll activate your plan within a few minutes once Paystack confirms with your bank.",
+            );
+          }
+        }
+      }
       refresh();
     },
     [paystackCheckout, refresh, subscriptionReturnUrl],

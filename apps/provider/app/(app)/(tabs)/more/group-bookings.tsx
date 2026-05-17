@@ -11,6 +11,7 @@ import {
   useWindowDimensions,
   Linking,
   DeviceEventEmitter,
+  InteractionManager,
   Platform,
   Share as RNShare,
 } from "react-native";
@@ -123,6 +124,7 @@ interface GroupBooking {
   ref_number: string | null;
   participants?: Participant[];
   created_at: string;
+  updated_at?: string;
   // §Provider-audit 2026-04 (packages round 3 — mobile parity): the
   // group_bookings row already stores `package_id` (migration 520) and
   // `GET /api/provider/group-bookings` selects `*`, so we get it back from
@@ -3648,7 +3650,7 @@ export default function GroupBookingsScreen() {
                 {staff ? (
                   <View style={twStyle("mb-1 flex-row items-center justify-between")}>
                     <Text style={twStyle("text-sm text-gray-600")}>Staff</Text>
-                    <Text style={twStyle("text-sm font-semibold text-gray-900")}>{staff.full_name || staff.email || "Staff"}</Text>
+                    <Text style={twStyle("text-sm font-semibold text-gray-900")}>{staff.name || "Staff"}</Text>
                   </View>
                 ) : null}
                 <View style={twStyle("mb-1 flex-row items-center justify-between")}>

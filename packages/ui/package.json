@@ -19,14 +19,23 @@
     }
   },
   "dependencies": {
-    "@beautonomi/ui-tokens": "workspace:*"
+    "@beautonomi/ui-tokens": "workspace:*",
+    "@beautonomi/utils": "workspace:*"
   },
   "peerDependencies": {
+    "next": ">=14",
     "react": ">=18",
-    "react-native": ">=0.74"
+    "react-native": ">=0.74",
+    "expo-image": ">=2"
   },
   "peerDependenciesMeta": {
+    "next": {
+      "optional": true
+    },
     "react-native": {
+      "optional": true
+    },
+    "expo-image": {
       "optional": true
     }
   }

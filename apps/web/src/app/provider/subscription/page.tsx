@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Check, CreditCard, Calendar, Sparkles } from "lucide-react";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
+import { verifyWithRetry } from "@/lib/payments/verify-with-retry";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import { toast } from "sonner";
@@ -191,18 +192,14 @@ export default function SubscriptionPage() {
 
       if (isPaymentSuccess && reference) {
         try {
-          const verifyPayload = await fetcher.get<{
-            data?: { status?: string; message?: string };
-            error?: { message?: string };
-          }>(`/api/paystack/verify?reference=${encodeURIComponent(reference)}`, { staleTimeMs: 0 });
-          const inner = verifyPayload?.data;
-          if (
-            verifyPayload?.error ||
-            (inner && typeof inner === "object" && (inner.status === "error" || inner.status === "failed"))
-          ) {
+          const verifyPayload = await verifyWithRetry<{ status?: string; message?: string }>(
+            reference,
+            { maxAttempts: 5, delayMs: 1500 },
+          );
+          if (verifyPayload.status === "failed") {
             console.warn(
               "Subscription Paystack verify did not return success:",
-              inner?.message ?? verifyPayload?.error?.message,
+              verifyPayload.errorMessage,
             );
           }
         } catch {

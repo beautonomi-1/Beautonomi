@@ -7,6 +7,41 @@ export type InAppPaystackResult =
   | { outcome: "cancel"; url?: string }
   | { outcome: "closed" };
 
+/**
+ * PCI DSS SAQ A guard: Paystack hosted checkout must only ever be opened
+ * against a Paystack-controlled host. Defends against a server bug or
+ * supply-chain attack returning a non-Paystack `authorization_url`.
+ */
+const PAYSTACK_HOST_ALLOWLIST = new Set<string>([
+  "checkout.paystack.com",
+  "standard.paystack.co",
+  "paystack.shop",
+  "api.paystack.co",
+]);
+
+function assertPaystackUrl(url: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error("[paystack] checkout URL is not a valid URL");
+  }
+  if (parsed.protocol !== "https:") {
+    throw new Error("[paystack] checkout URL must use https");
+  }
+  const host = parsed.hostname.toLowerCase();
+  const allowed =
+    PAYSTACK_HOST_ALLOWLIST.has(host) ||
+    host.endsWith(".paystack.com") ||
+    host.endsWith(".paystack.co") ||
+    host.endsWith(".paystack.shop");
+  if (!allowed) {
+    throw new Error(
+      `[paystack] refusing to open non-Paystack host: ${host}`,
+    );
+  }
+}
+
 export function useInAppPaystackCheckout() {
   const resolverRef = useRef<((r: InAppPaystackResult) => void) | null>(null);
 
@@ -25,6 +60,7 @@ export function useInAppPaystackCheckout() {
         resolverRef.current = resolve;
         const returnUrl = options.returnUrl ?? ExpoLinking.createURL("paystack-callback");
         try {
+          assertPaystackUrl(url);
           const result = await WebBrowser.openAuthSessionAsync(url, returnUrl);
           if (!resolverRef.current) return;
           resolverRef.current = null;

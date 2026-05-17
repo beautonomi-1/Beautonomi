@@ -7,6 +7,7 @@ import { Calendar, Plus, MapPin, Clock, Download, ExternalLink, Smartphone } fro
 import { getGoogleCalendarUrl, getOutlookCalendarUrl } from "@/lib/calendar/ics";
 import { clearBeautonomiHoldClientMarkers } from "@/lib/booking/clear-hold-client-markers";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { verifyWithRetry } from "@/lib/payments/verify-with-retry";
 import { PaymentLoadingHero } from "@/components/ui/payment-loading-hero";
 
 /** Beautonomi primary (use CSS var in styles for single source) */
@@ -85,10 +86,7 @@ function CheckoutSuccessContent() {
       if (!ref) return;
       paystackVerifyStarted.current = true;
       try {
-        await fetch(
-          `/api/paystack/verify?reference=${encodeURIComponent(ref)}`,
-          { credentials: "include", headers: { Accept: "application/json" } },
-        );
+        await verifyWithRetry(ref, { maxAttempts: 5, delayMs: 1500 });
       } catch {
         paystackVerifyStarted.current = false;
       }
@@ -104,10 +102,7 @@ function CheckoutSuccessContent() {
     customOfferVerifyStarted.current = true;
     const run = async () => {
       try {
-        await fetch(`/api/paystack/verify?reference=${encodeURIComponent(ref)}`, {
-          credentials: "include",
-          headers: { Accept: "application/json" },
-        });
+        await verifyWithRetry(ref, { maxAttempts: 5, delayMs: 1500 });
         // Immediately probe offer after verify — the inline finalize means
         // booking_id may already be set by the time the fetch resolves.
         const offerRes = await fetch(`/api/me/custom-offers/${encodeURIComponent(offerId)}`, {

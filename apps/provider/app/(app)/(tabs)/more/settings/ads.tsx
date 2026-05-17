@@ -18,6 +18,8 @@ import {
 import { useRouter } from "expo-router";
 import * as ExpoLinking from "expo-linking";
 import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
+import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
+import { extractPaystackReferenceFromUrl } from "@/lib/payments/paystackRefFromUrl";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useModuleConfig, useFeatureFlag } from "@/providers/ConfigBundleProvider";
@@ -428,6 +430,27 @@ export default function AdsSettingsScreen() {
         setPaymentJustSucceeded(true);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setTimeout(() => setPaymentJustSucceeded(false), 6000);
+
+        // Defensive verify-with-retry — Paystack always appends ?reference=… to
+        // our `provider://settings/ads-payment-return` callback. Cross-confirms
+        // with Paystack instead of trusting the success-flag alone, so we never
+        // optimistically activate a campaign that the bank later declined.
+        const reference = extractPaystackReferenceFromUrl(result.url);
+        if (reference) {
+          const verifyResult = await verifyPaystackWithRetry(reference);
+          if (verifyResult.status === "failed") {
+            Alert.alert(
+              "Payment not completed",
+              verifyResult.errorMessage ??
+                "Paystack reported the payment failed. Please try again.",
+            );
+          } else if (verifyResult.status === "pending" || verifyResult.status === "unknown") {
+            Alert.alert(
+              "Your payment is being confirmed",
+              "Your ad will activate within a few minutes once Paystack confirms with your bank.",
+            );
+          }
+        }
       }
       await loadAll();
       // Payment confirmation and campaign activation are server-side mutations.

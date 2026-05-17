@@ -1,5 +1,6 @@
+import { useCallback } from "react";
 import { View, Text, TouchableOpacity } from "react-native";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
@@ -17,6 +18,7 @@ type SetupStep = {
   title: string;
   completed: boolean;
   required: boolean;
+  native_route?: string | null;
 };
 
 type SetupStatus = {
@@ -61,6 +63,25 @@ export default function OnboardingHubScreen() {
     hapticLight();
     router.push("/(app)/onboarding/wizard" as never);
   };
+
+  // §provider-setup-seamless-ux 2026-05: clicking a "Still needed" item now
+  // routes directly to the targeted screen (via server-returned native_route)
+  // so providers can fix a single field without restarting the 14-step wizard.
+  const openStep = (step: SetupStep) => {
+    hapticLight();
+    if (step.native_route && step.native_route.startsWith("/(app)/")) {
+      router.push(step.native_route as never);
+      return;
+    }
+    router.push("/(app)/onboarding/wizard" as never);
+  };
+
+  // Refresh on focus so completing a step elsewhere updates the hub immediately.
+  useFocusEffect(
+    useCallback(() => {
+      void refresh();
+    }, [refresh]),
+  );
 
   if (loading && !data) {
     return (
@@ -177,10 +198,18 @@ export default function OnboardingHubScreen() {
                 Still needed
               </Text>
               {pendingRequired.slice(0, 5).map((s) => (
-                <View key={s.id} style={twStyle("flex-row items-center gap-2.5 py-1.5")}>
+                <TouchableOpacity
+                  key={s.id}
+                  onPress={() => openStep(s)}
+                  activeOpacity={0.7}
+                  style={twStyle("flex-row items-center gap-2.5 py-1.5")}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open ${s.title}`}
+                >
                   <View style={twStyle("h-2 w-2 rounded-full bg-primary/50")} />
                   <Text style={twStyle("flex-1 text-[15px] text-gray-800")}>{s.title}</Text>
-                </View>
+                  <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+                </TouchableOpacity>
               ))}
               {pendingRequired.length > 5 && (
                 <Text style={twStyle("mt-1 text-xs text-gray-400")}>

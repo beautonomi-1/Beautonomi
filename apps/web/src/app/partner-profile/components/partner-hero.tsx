@@ -9,6 +9,8 @@ import { ReportProviderModal } from "@/components/report/ReportProviderModal";
 import { useAuth } from "@/providers/AuthProvider";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
+import { formatProviderDescriptionForProfilePreview } from "@beautonomi/utils";
+import { ProviderGalleryImage } from "@beautonomi/ui/web";
 
 import Image1 from "./../../../../public/images/pexels-steinportraits-1898555.jpg";
 import Image2 from "./../../../../public/images/pexels-rdne-7035446.jpg";
@@ -82,6 +84,10 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
   const [isToggling, setIsToggling] = useState(false);
   const [isMessageLoading, setIsMessageLoading] = useState(false);
   const sliderRef = useRef<HTMLDivElement>(null);
+  const profileDescription = formatProviderDescriptionForProfilePreview(description);
+
+  const resolveGallerySrc = (src: string | import("next/image").StaticImageData) =>
+    typeof src === "string" ? src : src.src;
 
   // Use gallery images if available, otherwise fallback to default images
   const displayImages = React.useMemo(() => {
@@ -302,16 +308,16 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
         {/* Desktop Gallery - Enhanced Grid with Squircle */}
         <div className="hidden md:grid grid-cols-2 gap-2 px-4 md:px-10">
           <div className="row-span-2">
-            <Link href={slug ? `/partner-profile/gallery?slug=${encodeURIComponent(slug)}` : "/partner-profile/gallery"} className="relative block group">
-              <Image
-                src={displayImages[0]?.src || images[0].src}
-                alt={displayImages[0]?.alt || images[0].alt}
-                width={800}
-                height={500}
-                className="h-[500px] w-full squircle object-cover cursor-pointer group-hover:opacity-90 transition-opacity"
-                style={{ width: "auto", height: "auto" }}
-                loading="eager"
+            <Link
+              href={slug ? `/partner-profile/gallery?slug=${encodeURIComponent(slug)}` : "/partner-profile/gallery"}
+              className="relative block group overflow-hidden squircle cursor-pointer group-hover:opacity-90 transition-opacity"
+            >
+              <ProviderGalleryImage
+                src={resolveGallerySrc(displayImages[0]?.src ?? images[0].src)}
+                alt={displayImages[0]?.alt ?? images[0].alt}
                 priority
+                loading="eager"
+                sizes="(min-width: 768px) 50vw, 100vw"
               />
               {/* Floating Tags on Main Image */}
               <div className="absolute top-4 left-4 flex flex-col gap-2 z-10">
@@ -372,14 +378,15 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
           </div>
           <div className="grid grid-cols-2 gap-2">
             {displayImages.slice(1, 5).map((image, index) => (
-              <Link key={index} href={slug ? `/partner-profile/gallery?slug=${encodeURIComponent(slug)}` : "/partner-profile/gallery"} className="relative block group">
-                <Image
-                  src={image.src}
+              <Link
+                key={index}
+                href={slug ? `/partner-profile/gallery?slug=${encodeURIComponent(slug)}` : "/partner-profile/gallery"}
+                className="relative block group overflow-hidden squircle cursor-pointer group-hover:opacity-90 transition-opacity"
+              >
+                <ProviderGalleryImage
+                  src={resolveGallerySrc(image.src)}
                   alt={image.alt}
-                  width={400}
-                  height={245}
-                  className="h-[245px] w-full squircle object-cover cursor-pointer group-hover:opacity-90 transition-opacity"
-                  style={{ width: "auto", height: "auto" }}
+                  sizes="(min-width: 768px) 25vw, 50vw"
                 />
               </Link>
             ))}
@@ -395,15 +402,12 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
           >
             {displayImages.map((image, index) => (
               <div key={index} className="min-w-full">
-                <Image
-                  src={image.src}
+                <ProviderGalleryImage
+                  src={resolveGallerySrc(image.src)}
                   alt={image.alt}
-                  width={400}
-                  height={300}
-                  className="h-[300px] w-full object-cover"
-                  style={{ width: "auto", height: "auto" }}
                   loading={index === 0 ? "eager" : "lazy"}
                   priority={index === 0}
+                  sizes="100vw"
                 />
               </div>
             ))}
@@ -515,11 +519,11 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
             </div>
 
             {/* What this provider offers - Bio/Description Section */}
-            {description && description.trim() && (
+            {profileDescription && (
               <div className="py-4 border-b border-gray-200">
                 <h2 className="text-sm md:text-base font-semibold text-gray-900 mb-2">What this provider offers:</h2>
                 <p className="text-sm md:text-base text-gray-700 leading-relaxed line-clamp-3">
-                  {description}
+                  {profileDescription}
                 </p>
               </div>
             )}

@@ -13,6 +13,8 @@ export { EmptyState } from "./EmptyState";
 export { LoadingState } from "./LoadingState";
 export { CustomOfferCard } from "./CustomOfferCard";
 export type { CustomOfferCardProps } from "./CustomOfferCard";
+export { ProviderGalleryImage } from "./ProviderGalleryImage";
+export type { ProviderGalleryImageProps } from "./ProviderGalleryImage";
 
 export type {
   ButtonProps,
