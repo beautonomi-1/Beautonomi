@@ -1,0 +1,216 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { NextRequest } from "next/server";
+
+const mockRequireAuthInApi = vi.fn();
+const mockResolveTenant = vi.fn();
+const mockGetPlatformSalesDefaults = vi.fn();
+const mockLocationHasOperatingHours = vi.fn();
+const mockCreateClient = vi.fn();
+
+vi.mock("@/lib/supabase/api-helpers", () => ({
+  requireAuthInApi: (...args: unknown[]) => mockRequireAuthInApi(...args),
+  successResponse: (data: unknown, status = 200) =>
+    Response.json({ data, error: null }, { status }),
+  handleApiError: (error: unknown, fallback: string) =>
+    Response.json(
+      { data: null, error: { message: error instanceof Error ? error.message : fallback } },
+      { status: 500 },
+    ),
+}));
+
+vi.mock("@/lib/tenant/resolve-tenant-from-db", () => ({
+  resolveTenantIdWithZaFallback: (...args: unknown[]) => mockResolveTenant(...args),
+}));
+
+vi.mock("@/lib/platform-sales-settings", () => ({
+  getPlatformSalesDefaults: (...args: unknown[]) => mockGetPlatformSalesDefaults(...args),
+}));
+
+vi.mock("@/lib/provider/location-operating-hours", () => ({
+  locationHasOperatingHours: (...args: unknown[]) => mockLocationHasOperatingHours(...args),
+}));
+
+vi.mock("@supabase/supabase-js", () => ({
+  createClient: (...args: unknown[]) => mockCreateClient(...args),
+}));
+
+type Fixture = {
+  provider: Record<string, unknown> | null;
+  accountUser: Record<string, unknown> | null;
+  providerKyc: Record<string, unknown> | null;
+  locations: Array<Record<string, unknown>>;
+  servicesCount: number;
+  yocoCount: number;
+  payoutCount: number;
+  userProfile: Record<string, unknown> | null;
+};
+
+function makeBuilder(result: { data?: unknown; count?: number | null; error?: unknown }) {
+  const b: any = {};
+  const chain = (..._args: unknown[]) => b;
+  b.select = chain;
+  b.eq = chain;
+  b.order = chain;
+  b.limit = chain;
+  b.single = vi.fn().mockResolvedValue({ data: result.data ?? null, error: result.error ?? null });
+  b.maybeSingle = vi.fn().mockResolvedValue({ data: result.data ?? null, error: result.error ?? null });
+  // For terminal awaits (e.g. when there's no `.single()` call) Postgrest builders are thenable.
+  b.then = (resolve: (v: unknown) => void) =>
+    resolve({
+      data: Array.isArray(result.data) ? result.data : result.data == null ? [] : [result.data],
+      count: result.count ?? null,
+      error: result.error ?? null,
+    });
+  return b;
+}
+
+function makeSupabase(fixture: Fixture) {
+  let providerCallIndex = 0;
+  return {
+    from(table: string) {
+      switch (table) {
+        case "providers": {
+          providerCallIndex += 1;
+          if (providerCallIndex === 1) {
+            // .order().eq().select(): list of providers by user_id
+            return makeBuilder({
+              data: fixture.provider ? [{ id: fixture.provider.id, tenant_id: "tenant-1", status: "active" }] : [],
+            });
+          }
+          // second call uses .single() with all selected fields
+          return makeBuilder({ data: fixture.provider });
+        }
+        case "provider_staff":
+          return makeBuilder({ data: [] });
+        case "users":
+          return makeBuilder({ data: fixture.accountUser });
+        case "provider_verification_status":
+          return makeBuilder({ data: fixture.providerKyc });
+        case "provider_locations":
+          return makeBuilder({ data: fixture.locations });
+        case "offerings":
+          return makeBuilder({ count: fixture.servicesCount, data: [] });
+        case "provider_yoco_integrations":
+          return makeBuilder({ count: fixture.yocoCount, data: [] });
+        case "provider_payout_accounts":
+          return makeBuilder({ count: fixture.payoutCount, data: [] });
+        case "user_profiles":
+          return makeBuilder({ data: fixture.userProfile });
+        default:
+          throw new Error(`Unexpected table ${table}`);
+      }
+    },
+  };
+}
+
+function emptyFixture(overrides: Partial<Fixture> = {}): Fixture {
+  return {
+    provider: {
+      id: "provider-1",
+      status: "active",
+      business_name: "Beauty Co",
+      description: "We do amazing work for clients",
+      business_type: "freelancer",
+      thumbnail_url: "https://example.com/logo.png",
+      avatar_url: null,
+      gallery: [],
+      accept_cash: false,
+      accept_card: false,
+      accept_online: false,
+      phone: "+27000000000",
+      email: "shop@example.com",
+      is_verified: false,
+    },
+    accountUser: { identity_verified: false, identity_verification_status: null, email: "u@example.com", phone: "+27" },
+    providerKyc: null,
+    locations: [
+      {
+        id: "loc-1",
+        is_active: true,
+        address_line1: "123 Main",
+        city: "Cape Town",
+        working_hours: [{ day: "mon" }],
+      },
+    ],
+    servicesCount: 1,
+    yocoCount: 0,
+    payoutCount: 1,
+    userProfile: {
+      about: "I am a freelancer offering bespoke services",
+      languages: ["en"],
+      interests: ["hair"],
+    },
+    ...overrides,
+  };
+}
+
+async function callRoute(fixture: Fixture) {
+  mockCreateClient.mockReturnValue(makeSupabase(fixture));
+  mockRequireAuthInApi.mockResolvedValue({ user: { id: "user-1", email: "u@example.com" } });
+  mockResolveTenant.mockResolvedValue("tenant-1");
+  mockGetPlatformSalesDefaults.mockResolvedValue({ gift_cards_enabled: false });
+  mockLocationHasOperatingHours.mockImplementation((hours: unknown) =>
+    Array.isArray(hours) ? hours.length > 0 : !!hours,
+  );
+  const { GET } = await import("../route");
+  const req = new NextRequest("https://app.example.com/api/provider/setup-status");
+  const res = await GET(req);
+  return res.json();
+}
+
+describe("GET /api/provider/setup-status", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.resetModules();
+  });
+
+  it("does not auto-complete payment-methods when no accept_* flag is true", async () => {
+    const res = await callRoute(emptyFixture());
+    const paymentMethods = res.data.steps.find((s: any) => s.id === "payment-methods");
+    expect(paymentMethods.completed).toBe(false);
+    expect(res.data.missing_steps).toContain("payment-methods");
+  });
+
+  it("marks payment-methods complete once a provider opts into a method", async () => {
+    const fixture = emptyFixture();
+    (fixture.provider as any).accept_cash = true;
+    const res = await callRoute(fixture);
+    const paymentMethods = res.data.steps.find((s: any) => s.id === "payment-methods");
+    expect(paymentMethods.completed).toBe(true);
+  });
+
+  it("treats Sumsub approved KYC as identity-verified", async () => {
+    const res = await callRoute(
+      emptyFixture({
+        accountUser: { identity_verified: false, identity_verification_status: "in_progress" },
+        providerKyc: { status: "approved" },
+      }),
+    );
+    const idStep = res.data.steps.find((s: any) => s.id === "identity-verification");
+    expect(idStep.completed).toBe(true);
+  });
+
+  it("treats provider verified badge as identity-verified fallback", async () => {
+    const fixture = emptyFixture();
+    (fixture.provider as any).is_verified = true;
+    const res = await callRoute(fixture);
+    const idStep = res.data.steps.find((s: any) => s.id === "identity-verification");
+    expect(idStep.completed).toBe(true);
+  });
+
+  it("returns native_route for every emitted step", async () => {
+    const res = await callRoute(emptyFixture());
+    for (const step of res.data.steps) {
+      expect(step.native_route).toBeTypeOf("string");
+      expect(step.native_route?.startsWith("/(app)/")).toBe(true);
+    }
+  });
+
+  it("excludes personal-profile for non-freelancer businesses", async () => {
+    const fixture = emptyFixture();
+    (fixture.provider as any).business_type = "salon";
+    const res = await callRoute(fixture);
+    const personal = res.data.steps.find((s: any) => s.id === "personal-profile");
+    expect(personal).toBeUndefined();
+  });
+});

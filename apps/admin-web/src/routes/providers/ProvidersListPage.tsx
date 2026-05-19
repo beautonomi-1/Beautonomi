@@ -1,12 +1,13 @@
 import { Link, useSearchParams } from "react-router-dom";
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@beautonomi/admin-access";
+import { ADMIN_SECTION_PROVIDER_OPS, ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { adminTabButtonClass } from "@/lib/adminUi";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
+import { useAdminSession } from "@/providers/AdminSessionProvider";
 import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
@@ -50,6 +51,8 @@ export function ProvidersListPage() {
     ADMIN_SECTION_PROVIDERS_OPERATIONS,
     "Providers & operations access is required."
   );
+  const { canAccess } = useAdminSession();
+  const canOpenLifecycle = canAccess(ADMIN_SECTION_PROVIDER_OPS);
   const [sp, setSp] = useSearchParams();
   const status = sp.get("status") || "all";
   const search = sp.get("search") || "";
@@ -109,6 +112,18 @@ export function ProvidersListPage() {
     onError: (e: Error) => adminToast.error(`Status change failed: ${e.message}`),
   });
 
+  const verifyProvider = useMutation({
+    mutationFn: ({ id, verified }: { id: string; verified: boolean }) =>
+      adminApi.patchJson(`/api/admin/providers/${id}/verify`, { verified }),
+    onSuccess: async (_data, vars) => {
+      await qc.invalidateQueries({ queryKey: adminQueryKeys.providers.all() });
+      await qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
+      await qc.invalidateQueries({ queryKey: adminQueryKeys.navCounts() });
+      adminToast.success(vars.verified ? "Provider verified" : "Verification removed");
+    },
+    onError: (e: Error) => adminToast.error(`Verification update failed: ${e.message}`),
+  });
+
   function setStatus(next: string) {
     const n = new URLSearchParams(sp);
     if (next === "all") n.delete("status");
@@ -155,7 +170,44 @@ export function ProvidersListPage() {
           return <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${cls}`}>{s}</span>;
         },
       },
-      { id: "verification", header: "Verification", cell: (p: ProviderRow) => p.verification_status ?? "—" },
+      {
+        id: "verification",
+        header: "Verification",
+        cell: (p: ProviderRow) => {
+          const verified = p.verification_status === "verified";
+          const canToggle = p.status === "active";
+          return (
+            <div className="flex flex-col gap-1">
+              <span className="text-xs text-gray-700">{verified ? "Verified" : "Unverified"}</span>
+              {canToggle ? (
+                verified ? (
+                  <button
+                    type="button"
+                    className="w-fit rounded border border-amber-200 bg-white px-2 py-0.5 text-[10px] font-medium text-amber-800 hover:bg-amber-50 disabled:opacity-50"
+                    disabled={verifyProvider.isPending}
+                    onClick={() => {
+                      if (confirm(`Remove verified badge for ${p.business_name ?? "this provider"}?`)) {
+                        verifyProvider.mutate({ id: p.id, verified: false });
+                      }
+                    }}
+                  >
+                    Unverify
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="w-fit rounded border border-blue-200 bg-white px-2 py-0.5 text-[10px] font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-50"
+                    disabled={verifyProvider.isPending}
+                    onClick={() => verifyProvider.mutate({ id: p.id, verified: true })}
+                  >
+                    Verify
+                  </button>
+                )
+              ) : null}
+            </div>
+          );
+        },
+      },
       {
         id: "location",
         header: "Location",
@@ -179,6 +231,14 @@ export function ProvidersListPage() {
               >
                 Details
               </Link>
+              {canOpenLifecycle ? (
+                <Link
+                  to={adminSpaTo(`/admin/provider-ops/providers/${encodeURIComponent(p.id)}`)}
+                  className="rounded border border-blue-200 bg-white px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50"
+                >
+                  Lifecycle
+                </Link>
+              ) : null}
               {(s === "pending" || s === "pending_approval") && (
                 <button
                   type="button"
@@ -223,7 +283,7 @@ export function ProvidersListPage() {
         },
       },
     ],
-    [changeStatus]
+    [canOpenLifecycle, changeStatus.isPending, verifyProvider.isPending]
   );
 
   if (denied) return denied;

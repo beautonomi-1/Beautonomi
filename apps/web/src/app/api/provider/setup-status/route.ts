@@ -9,25 +9,27 @@ import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-
 import { getPlatformSalesDefaults } from "@/lib/platform-sales-settings";
 import { locationHasOperatingHours } from "@/lib/provider/location-operating-hours";
 
-interface SetupStatus {
+export interface SetupStatusStep {
+  id: string;
+  title: string;
+  description: string;
+  completed: boolean;
+  required: boolean;
+  /** Web route (Next.js App Router path) — used by `apps/web` get-started page. */
+  link: string;
+  /**
+   * Canonical native (expo-router) route per step. Returned by the server so
+   * the mobile checklist UI never needs a client-side WEB_PATH_TO_NATIVE map.
+   * `null` when no dedicated mobile screen exists (the wizard is the fallback).
+   */
+  native_route: string | null;
+}
+
+export interface SetupStatus {
   isComplete: boolean;
   completionPercentage: number;
   missing_steps: string[];
-  steps: {
-    id: string;
-    title: string;
-    description: string;
-    completed: boolean;
-    required: boolean;
-    /** Web route (Next.js App Router path) — used by `apps/web` get-started page. */
-    link: string;
-    /**
-     * Canonical native (expo-router) route per step. Returned by the server so
-     * the mobile checklist UI never needs a client-side WEB_PATH_TO_NATIVE map.
-     * `null` when no dedicated mobile screen exists (the wizard is the fallback).
-     */
-    native_route: string | null;
-  }[];
+  steps: SetupStatusStep[];
 }
 
 /**
@@ -120,7 +122,7 @@ export async function GET(request: NextRequest) {
     const { data: provider } = await supabaseAdmin
       .from("providers")
       .select(
-        "id, status, business_name, description, gallery, thumbnail_url, avatar_url, business_type, accept_cash, accept_card, accept_online, phone, email"
+        "id, status, business_name, description, gallery, thumbnail_url, avatar_url, business_type, accept_cash, accept_card, accept_online, phone, email, is_verified"
       )
       .eq("id", providerId)
       .single();
@@ -141,6 +143,12 @@ export async function GET(request: NextRequest) {
       .from("users")
       .select("email, phone, identity_verified, identity_verification_status")
       .eq("id", user.id)
+      .maybeSingle();
+
+    const { data: providerKycRow } = await supabaseAdmin
+      .from("provider_verification_status")
+      .select("status")
+      .eq("provider_id", providerId)
       .maybeSingle();
 
     // ── Checks ───────────────────────────────────────────────────────────────
@@ -213,19 +221,27 @@ export async function GET(request: NextRequest) {
     const platformSalesDefaults = await getPlatformSalesDefaults();
     const effectiveGiftCardsEnabled = platformSalesDefaults.gift_cards_enabled ?? false;
 
-    const acceptCash = provider.accept_cash ?? true;
-    const acceptCard = provider.accept_card ?? true;
-    const acceptOnline = provider.accept_online ?? false;
+    // §provider-setup-2026-05: payment methods step requires a real
+    // configuration decision — at least one accept_* flag explicitly true.
+    // The earlier `?? true` defaults caused the step to auto-tick before the
+    // provider visited the settings screen, hiding the configuration from
+    // them and from the checklist progress signal.
+    const acceptCash = provider.accept_cash === true;
+    const acceptCard = provider.accept_card === true;
+    const acceptOnline = provider.accept_online === true;
     const hasPaymentMethods =
-      acceptCash === true ||
-      acceptCard === true ||
-      acceptOnline === true ||
-      effectiveGiftCardsEnabled === true;
+      acceptCash || acceptCard || acceptOnline || effectiveGiftCardsEnabled === true;
 
-    // Identity verification — optional step for marketplace trust badge.
-    // Reads from users.identity_verified (synced by the admin verification PATCH).
+    // Identity verification — completes the checklist step when:
+    // 1. Admin manual review approved (users.identity_verified === true), or
+    // 2. Sumsub auto-approved the provider KYC (provider_verification_status), or
+    // 3. The provider's marketplace verified badge is on (providers.is_verified).
+    // Any one of these signals means we have a confirmed identity for the provider.
+    const kycStatus = (providerKycRow as { status?: string | null } | null)?.status ?? null;
     const isIdentityVerified =
-      (accountUser as { identity_verified?: boolean | null } | null)?.identity_verified === true;
+      (accountUser as { identity_verified?: boolean | null } | null)?.identity_verified === true ||
+      kycStatus === "approved" ||
+      (provider as { is_verified?: boolean | null }).is_verified === true;
 
     // Personal profile — required for freelancers only
     const { data: userProfile } = await supabaseAdmin

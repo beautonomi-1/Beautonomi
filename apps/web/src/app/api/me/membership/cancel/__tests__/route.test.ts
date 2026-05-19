@@ -3,7 +3,9 @@ import { NextRequest } from "next/server";
 
 const mockRequireRoleInApi = vi.fn();
 const mockGetSupabaseServer = vi.fn();
+const mockGetSupabaseAdmin = vi.fn();
 const mockResolveTenantIdWithZaFallback = vi.fn();
+const mockNotifyProviderMembershipCancelled = vi.fn();
 
 vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/supabase/api-helpers")>();
@@ -17,8 +19,17 @@ vi.mock("@/lib/supabase/server", () => ({
   getSupabaseServer: (...args: unknown[]) => mockGetSupabaseServer(...args),
 }));
 
+vi.mock("@/lib/supabase/admin", () => ({
+  getSupabaseAdmin: (...args: unknown[]) => mockGetSupabaseAdmin(...args),
+}));
+
 vi.mock("@/lib/tenant/resolve-tenant-from-db", () => ({
   resolveTenantIdWithZaFallback: (...args: unknown[]) => mockResolveTenantIdWithZaFallback(...args),
+}));
+
+vi.mock("@/lib/notifications", () => ({
+  notifyProviderMembershipCancelled: (...args: unknown[]) =>
+    mockNotifyProviderMembershipCancelled(...args),
 }));
 
 describe("POST /api/me/membership/cancel", () => {
@@ -27,6 +38,19 @@ describe("POST /api/me/membership/cancel", () => {
     vi.clearAllMocks();
     mockRequireRoleInApi.mockResolvedValue({ user: { id: "customer-1", role: "customer" } });
     mockResolveTenantIdWithZaFallback.mockResolvedValue("tenant-za");
+    mockNotifyProviderMembershipCancelled.mockResolvedValue({ success: true });
+    mockGetSupabaseAdmin.mockReturnValue({
+      from: vi.fn(() => ({
+        select: vi.fn(() => ({
+          eq: vi.fn(() => ({
+            maybeSingle: vi.fn(async () => ({
+              data: { full_name: "Jane Customer" },
+              error: null,
+            })),
+          })),
+        })),
+      })),
+    });
   });
 
   it("cancels an active salon membership owned by the customer in the active tenant", async () => {
@@ -43,7 +67,13 @@ describe("POST /api/me/membership/cancel", () => {
                     data: {
                       id: "membership-1",
                       user_id: "customer-1",
-                      provider: { id: "provider-1", tenant_id: "tenant-za" },
+                      provider: {
+                        id: "provider-1",
+                        tenant_id: "tenant-za",
+                        user_id: "owner-1",
+                        business_name: "Acme Salon",
+                      },
+                      plan: { id: "plan-1", name: "Gold" },
                     },
                     error: null,
                   })),
@@ -74,5 +104,45 @@ describe("POST /api/me/membership/cancel", () => {
     expect(res.status).toBe(200);
     expect(body.data).toMatchObject({ cancelled: true, type: "salon" });
     expect(updates[0]).toMatchObject({ status: "cancelled" });
+    expect(mockNotifyProviderMembershipCancelled).toHaveBeenCalledTimes(1);
+    expect(mockNotifyProviderMembershipCancelled).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providerId: "provider-1",
+        providerOwnerUserId: "owner-1",
+        customerName: "Jane Customer",
+        planName: "Gold",
+        customerId: "customer-1",
+        subscriptionId: "membership-1",
+      }),
+    );
+  });
+
+  it("does not notify the provider when no active salon membership is found", async () => {
+    mockGetSupabaseServer.mockResolvedValue({
+      from: vi.fn(() => ({
+        select: vi.fn(() => ({
+          eq: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+              })),
+            })),
+          })),
+        })),
+        update: vi.fn(),
+      })),
+    });
+
+    const { POST } = await import("../route");
+    const req = new NextRequest("http://localhost/api/me/membership/cancel", {
+      method: "POST",
+      body: JSON.stringify({ provider_membership_id: "membership-1" }),
+    });
+    const res = await POST(req);
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.data).toMatchObject({ cancelled: false });
+    expect(mockNotifyProviderMembershipCancelled).not.toHaveBeenCalled();
   });
 });

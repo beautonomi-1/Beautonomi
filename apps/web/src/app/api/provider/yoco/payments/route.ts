@@ -5,7 +5,17 @@ import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
 import { getProviderIdForUser } from "@/lib/supabase/api-helpers";
 import { checkYocoFeatureAccess } from "@/lib/subscriptions/feature-access";
 import { z } from "zod";
-import { convertToCents, validateYocoAmount, YOCO_ENDPOINTS } from "@/lib/payments/yoco";
+import {
+  convertToCents,
+  validateYocoAmount,
+  getYocoEndpoints,
+} from "@/lib/payments/yoco";
+import {
+  getValidAccessToken,
+  getCheckoutBearer,
+  resolveProviderCredentialMode,
+  YocoOAuthRequired,
+} from "@/lib/payments/yoco-oauth";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
@@ -127,7 +137,7 @@ export async function POST(request: Request) {
     // Get Yoco device
     const { data: device } = await supabase
       .from("provider_yoco_devices")
-      .select("id, name, yoco_device_id, is_active")
+      .select("id, name, yoco_device_id, is_active, credential_mode")
       .eq("id", validationResult.data.device_id)
       .eq("provider_id", providerId)
       .single();
@@ -137,6 +147,7 @@ export async function POST(request: Request) {
       name?: string;
       yoco_device_id?: string;
       is_active?: boolean;
+      credential_mode?: "web_pos" | "virtual_checkout";
       total_transactions?: number;
       total_amount?: number;
     };
@@ -148,7 +159,6 @@ export async function POST(request: Request) {
       secret_key?: string | null;
       api_key?: string | null;
     };
-    type IntegrationRow = { secret_key?: string; public_key?: string; is_enabled?: boolean };
 
     const { data: legacyTerminal } = !device
       ? await supabase
@@ -175,12 +185,22 @@ export async function POST(request: Request) {
     const deviceRow = (device as DeviceRow | null) ?? null;
     const legacyRow = (legacyTerminal as LegacyTerminalRow | null) ?? null;
     const usingLegacyTerminal = !deviceRow && !!legacyRow;
+    const deviceCredentialMode: "web_pos" | "virtual_checkout" =
+      deviceRow?.credential_mode === "virtual_checkout"
+        ? "virtual_checkout"
+        : "web_pos";
     const deviceName = usingLegacyTerminal
       ? String(legacyRow?.device_name || "Yoco terminal")
       : String(deviceRow?.name || "Yoco device");
-    const yocoDeviceId = usingLegacyTerminal
+    const rawYocoDeviceId = usingLegacyTerminal
       ? String(legacyRow?.device_id || "")
       : String(deviceRow?.yoco_device_id || "");
+    // §Yoco-OAuth 2026-05: a virtual_checkout device stores a "virtual:UUID"
+    // sentinel in yoco_device_id; never forward that to Yoco.
+    const yocoDeviceId =
+      deviceCredentialMode === "virtual_checkout" || rawYocoDeviceId.startsWith("virtual:")
+        ? ""
+        : rawYocoDeviceId;
     const billingDeviceId = usingLegacyTerminal ? null : (deviceRow?.id ?? null);
     const isDeviceActive = usingLegacyTerminal ? legacyRow?.active !== false : deviceRow?.is_active === true;
 
@@ -196,31 +216,49 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
-    if (!yocoDeviceId) {
-      return NextResponse.json(
-        {
-          data: null,
-          error: {
-            message: "This device is missing a Yoco device id. Re-save the terminal in Yoco settings and try again.",
-            code: "DEVICE_NOT_CONFIGURED",
-          },
-        },
-        { status: 400 },
-      );
-    }
 
-    const { data: integration } = await supabase
-      .from("provider_yoco_integrations")
-      .select("secret_key, public_key, is_enabled")
-      .eq("provider_id", providerId)
-      .single();
+    const credentials = await resolveProviderCredentialMode(providerId);
+    const endpoints = getYocoEndpoints(credentials.environment);
 
-    const integrationRow = integration as IntegrationRow | null;
-    const canUseIntegrationSecret = Boolean(integrationRow?.is_enabled && integrationRow?.secret_key);
+    // Decide which Yoco API to call and which Bearer to use. Legacy terminals
+    // still ship with their own embedded secret_key — keep that path working.
     const legacySecretKey = usingLegacyTerminal
       ? String(legacyRow?.secret_key || legacyRow?.api_key || "").trim()
       : "";
-    if (!canUseIntegrationSecret && !legacySecretKey) {
+
+    if (deviceCredentialMode === "web_pos" && !usingLegacyTerminal) {
+      if (credentials.credentialMode !== "oauth") {
+        return NextResponse.json(
+          {
+            data: null,
+            error: {
+              message:
+                "This Web POS device needs an OAuth connection to Yoco. Open Payment Settings and tap Connect Yoco to enable card payments.",
+              code: "YOCO_OAUTH_REQUIRED",
+            },
+          },
+          { status: 400 },
+        );
+      }
+      if (!yocoDeviceId) {
+        return NextResponse.json(
+          {
+            data: null,
+            error: {
+              message:
+                "This device is missing a Yoco device id. Re-add it in Yoco settings so we can register it with Yoco.",
+              code: "DEVICE_NOT_CONFIGURED",
+            },
+          },
+          { status: 400 },
+        );
+      }
+    }
+    if (
+      deviceCredentialMode === "web_pos" &&
+      usingLegacyTerminal &&
+      !legacySecretKey
+    ) {
       return NextResponse.json(
         {
           data: null,
@@ -229,24 +267,63 @@ export async function POST(request: Request) {
             code: "INTEGRATION_DISABLED",
           },
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    const secretKey = canUseIntegrationSecret
-      ? String(integrationRow?.secret_key ?? "")
-      : legacySecretKey;
+    if (
+      deviceCredentialMode === "virtual_checkout" &&
+      credentials.credentialMode === "none"
+    ) {
+      return NextResponse.json(
+        {
+          data: null,
+          error: {
+            message:
+              "This device uses Yoco's hosted checkout. Add your Yoco dashboard secret key in Payment Settings to enable it.",
+            code: "INTEGRATION_DISABLED",
+          },
+        },
+        { status: 400 },
+      );
+    }
+
+    // Resolve the Bearer to use for the WEB POS path.
+    let webPosBearer: string | null = null;
+    if (deviceCredentialMode === "web_pos") {
+      if (usingLegacyTerminal) {
+        webPosBearer = legacySecretKey;
+      } else {
+        try {
+          webPosBearer = await getValidAccessToken(providerId, {
+            environment: credentials.environment,
+          });
+        } catch (err) {
+          if (err instanceof YocoOAuthRequired) {
+            return NextResponse.json(
+              {
+                data: null,
+                error: {
+                  message: err.message,
+                  code: err.code,
+                },
+              },
+              { status: 400 },
+            );
+          }
+          throw err;
+        }
+      }
+    }
 
     // §Provider-launch (audit 2026-04): preflight the physical / Web POS
     // device with Yoco before we create a payment. Without this, a
     // powered-off or disconnected terminal still received `POST …/payments`
     // and the provider only saw a generic API failure after a long poll.
-    // A fast `GET /v1/webpos/{deviceId}` surfaces "can't reach terminal"
-    // immediately with a dedicated error code for the mobile sheet.
-    if (yocoDeviceId && secretKey) {
-      const deviceProbe = await fetch(YOCO_ENDPOINTS.getWebPosDevice(yocoDeviceId), {
+    if (deviceCredentialMode === "web_pos" && yocoDeviceId && webPosBearer) {
+      const deviceProbe = await fetch(endpoints.getWebPosDevice(yocoDeviceId), {
         method: "GET",
-        headers: { Authorization: `Bearer ${secretKey}` },
+        headers: { Authorization: `Bearer ${webPosBearer}` },
       });
       if (!deviceProbe.ok) {
         const errJson = (await deviceProbe.json().catch(() => ({}))) as {
@@ -255,18 +332,25 @@ export async function POST(request: Request) {
         };
         const detail = errJson.detail ?? errJson.message;
         const isNotFound = deviceProbe.status === 404;
+        const isAuth = deviceProbe.status === 401 || deviceProbe.status === 403;
         return NextResponse.json(
           {
             data: null,
             error: {
-              message: isNotFound
-                ? "This terminal was not found in Yoco. Re-link or re-add the device in Payment Settings."
-                : detail?.trim() ||
-                  "Could not reach your Yoco terminal. Check that it is powered on, online, and paired, then try again.",
-              code: isNotFound ? "TERMINAL_NOT_FOUND" : "TERMINAL_UNAVAILABLE",
+              message: isAuth
+                ? "Your Yoco connection was rejected. Please reconnect Yoco in Payment Settings and try again."
+                : isNotFound
+                  ? "This terminal was not found in Yoco. Re-link or re-add the device in Payment Settings."
+                  : detail?.trim() ||
+                    "Could not reach your Yoco terminal. Check that it is powered on, online, and paired, then try again.",
+              code: isAuth
+                ? "YOCO_OAUTH_EXPIRED"
+                : isNotFound
+                  ? "TERMINAL_NOT_FOUND"
+                  : "TERMINAL_UNAVAILABLE",
             },
           },
-          { status: isNotFound ? 404 : 503 },
+          { status: isAuth ? 400 : isNotFound ? 404 : 503 },
         );
       }
     }
@@ -296,7 +380,7 @@ export async function POST(request: Request) {
     if (appointmentId || saleId) {
       let reuseQuery = supabase
         .from("provider_yoco_payments")
-        .select("id, yoco_payment_id, yoco_device_id, amount, currency, status, created_at, device_id")
+        .select("id, yoco_payment_id, yoco_device_id, amount, currency, status, created_at, device_id, metadata")
         .eq("provider_id", providerId)
         .eq("status", "pending")
         .gte("created_at", new Date(Date.now() - PENDING_WINDOW_MINUTES * 60 * 1000).toISOString())
@@ -316,55 +400,63 @@ export async function POST(request: Request) {
           status: string;
           created_at: string;
           device_id: string;
+          metadata?: Record<string, unknown> | null;
         };
-        try {
-          const statusRes = await fetch(
-            YOCO_ENDPOINTS.getWebPosPayment(existing.yoco_device_id, existing.yoco_payment_id),
-            {
-              headers: { Authorization: `Bearer ${secretKey}` },
+        // For Web POS, poll Yoco for the latest status before reusing the row.
+        // For virtual_checkout there's no poll endpoint that uses the dashboard
+        // secret in the same shape; just return what we have.
+        if (deviceCredentialMode === "web_pos" && webPosBearer && existing.yoco_device_id && existing.yoco_payment_id) {
+          try {
+            const statusRes = await fetch(
+              endpoints.getWebPosPayment(existing.yoco_device_id, existing.yoco_payment_id),
+              { headers: { Authorization: `Bearer ${webPosBearer}` } },
+            );
+            if (statusRes.ok) {
+              const yocoPayment = await statusRes.json();
+              const latestStatus = yocoPayment.status || existing.status;
+              if (latestStatus !== existing.status) {
+                await supabase
+                  .from("provider_yoco_payments")
+                  .update({
+                    status: latestStatus,
+                    updated_at: new Date().toISOString(),
+                  })
+                  .eq("id", existing.id);
+                existing.status = latestStatus;
+              }
             }
-          );
-          if (statusRes.ok) {
-            const yocoPayment = await statusRes.json();
-            const latestStatus = yocoPayment.status || existing.status;
-            if (latestStatus !== existing.status) {
-              await supabase
-                .from("provider_yoco_payments")
-                .update({
-                  status: latestStatus,
-                  updated_at: new Date().toISOString(),
-                })
-                .eq("id", existing.id);
-            }
-            const { data: dev } = await supabase
-              .from("provider_yoco_devices")
-              .select("name")
-              .eq("id", existing.device_id)
-              .single();
-            const deviceName = (dev as { name?: string } | null)?.name ?? deviceRow.name;
-            return NextResponse.json({
-              data: {
-                id: existing.id,
-                yoco_payment_id: existing.yoco_payment_id,
-                reference: existing.yoco_payment_id,
-                device_id: existing.device_id,
-                device_name: deviceName,
-                amount: existing.amount,
-                amount_cents: existing.amount,
-                currency: existing.currency,
-                status: latestStatus,
-                payment_date: existing.created_at,
-                appointment_id: appointmentId,
-                sale_id: validationResult.data.sale_id,
-                metadata: validationResult.data.metadata,
-              },
-              error: null,
-            });
+          } catch (reuseErr) {
+            console.warn("Reuse pending: failed to sync status from Yoco", reuseErr);
           }
-        } catch (reuseErr) {
-          console.warn("Reuse pending: failed to sync status from Yoco", reuseErr);
-          // Fall through to create new payment
         }
+        const { data: dev } = await supabase
+          .from("provider_yoco_devices")
+          .select("name")
+          .eq("id", existing.device_id)
+          .single();
+        const reusedName = (dev as { name?: string } | null)?.name ?? deviceName;
+        const reusedMeta = (existing.metadata ?? {}) as Record<string, unknown>;
+        return NextResponse.json({
+          data: {
+            id: existing.id,
+            yoco_payment_id: existing.yoco_payment_id,
+            reference: existing.yoco_payment_id,
+            device_id: existing.device_id,
+            device_name: reusedName,
+            amount: existing.amount,
+            amount_cents: existing.amount,
+            currency: existing.currency,
+            status: existing.status,
+            payment_date: existing.created_at,
+            appointment_id: appointmentId,
+            sale_id: validationResult.data.sale_id,
+            metadata: validationResult.data.metadata,
+            credential_mode: deviceCredentialMode,
+            checkout_url: (reusedMeta.checkout_url as string | undefined) ?? undefined,
+            qr_payload: (reusedMeta.qr_payload as string | undefined) ?? undefined,
+          },
+          error: null,
+        });
       }
     }
 
@@ -391,65 +483,160 @@ export async function POST(request: Request) {
     // §Yoco-audit 2026-05 (idempotency): forward an Idempotency-Key derived
     // from `client_reference` so the Yoco Web POS API safely deduplicates
     // when this route is retried (network blip / our caller re-invokes).
-    // Yoco accepts arbitrary UUID-ish keys per their API reference; we use a
-    // stable hash of provider+device+client_reference so the same logical
-    // sale produces the same key across retries from any client.
     const idempotencyKey = crypto
       .createHash("sha256")
       .update(`${providerId}:${yocoDeviceId}:${clientReference}:${amountInCents}:${currency}`)
       .digest("hex");
 
-    // Auth: Bearer token (Yoco API uses JWT; we store secret_key from Yoco dashboard as the Bearer token for api.yoco.com)
-    const yocoResponse = await fetch(
-      YOCO_ENDPOINTS.createWebPosPayment(yocoDeviceId),
-      {
+    let yocoPayment: Record<string, any>;
+    let receiptUrl: string | undefined;
+    let checkoutUrl: string | undefined;
+    let qrPayload: string | undefined;
+    let yocoId: string;
+    let yocoDeviceIdForRow: string = yocoDeviceId;
+    let initialStatus: string;
+
+    if (deviceCredentialMode === "web_pos") {
+      // Auth: OAuth-issued JWT Bearer on api.yoco.com (or legacy terminal key).
+      const yocoResponse = await fetch(
+        endpoints.createWebPosPayment(yocoDeviceId),
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${webPosBearer}`,
+            "Content-Type": "application/json",
+            "Idempotency-Key": idempotencyKey,
+          },
+          body: JSON.stringify({
+            amount: { amount: amountInCents, currency },
+            client_reference: String(clientReference),
+            metadata: metadataRecord,
+          }),
+        }
+      );
+
+      if (!yocoResponse.ok) {
+        const errorData = (await yocoResponse.json().catch(() => ({}))) as {
+          detail?: string;
+          code?: string;
+          message?: string;
+          errors?: Array<{ detail?: string }>;
+        };
+        console.error("Yoco payment error:", errorData);
+        const isAuth = yocoResponse.status === 401 || yocoResponse.status === 403;
+        const message = isAuth
+          ? "Your Yoco connection was rejected. Please reconnect Yoco in Payment Settings and try again."
+          : errorData.detail ??
+            errorData.errors?.[0]?.detail ??
+            errorData.message ??
+            "Failed to process payment";
+        const rawCode = errorData.code ?? "YOCO_API_ERROR";
+        const code = isAuth
+          ? "YOCO_OAUTH_EXPIRED"
+          : rawCode === "validation"
+            ? "VALIDATION_ERROR"
+            : rawCode;
+        return NextResponse.json(
+          { data: null, error: { message, code, details: errorData } },
+          { status: yocoResponse.status }
+        );
+      }
+
+      yocoPayment = await yocoResponse.json();
+      receiptUrl =
+        (yocoPayment as { receipt_url?: string; receiptUrl?: string }).receipt_url ??
+        (yocoPayment as { receipt_url?: string; receiptUrl?: string }).receiptUrl;
+      yocoId = yocoPayment.id || yocoPayment.paymentId;
+      initialStatus = yocoPayment.status || "pending";
+    } else {
+      // virtual_checkout: create a Yoco Checkout session. Customer pays on
+      // Yoco's hosted page (or by scanning the QR code we render). Webhook
+      // updates the row to 'successful' / 'failed' once the customer is done.
+      const checkoutBearer = await getCheckoutBearer(providerId);
+      if (!checkoutBearer) {
+        return NextResponse.json(
+          {
+            data: null,
+            error: {
+              message:
+                "Yoco Checkout is enabled but no secret key is saved. Add your Yoco dashboard secret key in Payment Settings.",
+              code: "INTEGRATION_DISABLED",
+            },
+          },
+          { status: 400 },
+        );
+      }
+      const checkoutBody: Record<string, unknown> = {
+        amount: amountInCents,
+        currency,
+        metadata: metadataRecord,
+        externalId: String(clientReference),
+      };
+      const checkoutRes = await fetch(endpoints.createCheckout, {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${secretKey}`,
+          Authorization: `Bearer ${checkoutBearer}`,
           "Content-Type": "application/json",
           "Idempotency-Key": idempotencyKey,
         },
-        body: JSON.stringify({
-          amount: { amount: amountInCents, currency },
-          client_reference: String(clientReference),
-          metadata: metadataRecord,
-        }),
-      }
-    );
+        body: JSON.stringify(checkoutBody),
+      });
 
-    if (!yocoResponse.ok) {
-      const errorData = (await yocoResponse.json().catch(() => ({}))) as {
-        detail?: string;
-        code?: string;
-        message?: string;
-        errors?: Array<{ detail?: string }>;
-      };
-      console.error("Yoco payment error:", errorData);
-      const message =
-        errorData.detail ??
-        errorData.errors?.[0]?.detail ??
-        errorData.message ??
-        "Failed to process payment";
-      const code = errorData.code ?? "YOCO_API_ERROR";
-      return NextResponse.json(
-        {
-          data: null,
-          error: {
-            message,
-            code: code === "validation" ? "VALIDATION_ERROR" : code,
-            details: errorData,
+      if (!checkoutRes.ok) {
+        const errorData = (await checkoutRes.json().catch(() => ({}))) as {
+          detail?: string;
+          message?: string;
+          errorCode?: string;
+          errorMessage?: string;
+          errors?: Array<{ detail?: string }>;
+        };
+        console.error("Yoco checkout error:", errorData);
+        const isAuth = checkoutRes.status === 401 || checkoutRes.status === 403;
+        const message = isAuth
+          ? "Yoco rejected your dashboard secret key. Double-check the key in Payment Settings."
+          : errorData.detail ??
+            errorData.errorMessage ??
+            errorData.errors?.[0]?.detail ??
+            errorData.message ??
+            "Failed to create Yoco checkout";
+        return NextResponse.json(
+          {
+            data: null,
+            error: {
+              message,
+              code: isAuth ? "YOCO_CHECKOUT_KEY_INVALID" : "YOCO_API_ERROR",
+              details: errorData,
+            },
           },
-        },
-        { status: yocoResponse.status }
-      );
+          { status: checkoutRes.status },
+        );
+      }
+
+      const checkout = (await checkoutRes.json()) as {
+        id?: string;
+        redirectUrl?: string;
+        status?: string;
+      };
+      if (!checkout.id || !checkout.redirectUrl) {
+        return NextResponse.json(
+          {
+            data: null,
+            error: {
+              message: "Invalid response from Yoco Checkout",
+              code: "YOCO_API_ERROR",
+            },
+          },
+          { status: 502 },
+        );
+      }
+
+      yocoPayment = checkout as Record<string, any>;
+      yocoId = checkout.id;
+      yocoDeviceIdForRow = String(deviceRow?.id ?? "");
+      checkoutUrl = checkout.redirectUrl;
+      qrPayload = checkout.redirectUrl;
+      initialStatus = checkout.status?.toLowerCase() === "completed" ? "successful" : "pending";
     }
-
-    const yocoPayment = await yocoResponse.json();
-    // Yoco Web POS API does not document receipt_url; we store/return it if present for future or other flows
-    const receiptUrl = (yocoPayment as { receipt_url?: string; receiptUrl?: string }).receipt_url
-      ?? (yocoPayment as { receipt_url?: string; receiptUrl?: string }).receiptUrl;
-
-    const yocoId = yocoPayment.id || yocoPayment.paymentId;
 
     const { data: payment, error: insertError } = await supabase
       .from("provider_yoco_payments")
@@ -457,16 +644,19 @@ export async function POST(request: Request) {
         provider_id: providerId,
         device_id: billingDeviceId,
         yoco_payment_id: yocoId,
-        yoco_device_id: yocoDeviceId,
+        yoco_device_id: yocoDeviceIdForRow,
         amount: amountInCents,
         currency,
-        status: yocoPayment.status || "pending",
+        status: initialStatus,
         appointment_id: appointmentId,
         sale_id: validationResult.data.sale_id,
         metadata: {
           client_reference: String(clientReference),
           yoco_response: yocoPayment,
+          credential_mode: deviceCredentialMode,
           ...(receiptUrl ? { receipt_url: receiptUrl } : {}),
+          ...(checkoutUrl ? { checkout_url: checkoutUrl } : {}),
+          ...(qrPayload ? { qr_payload: qrPayload } : {}),
           ...validationResult.data.metadata,
         },
         created_at: new Date().toISOString(),
@@ -496,6 +686,7 @@ export async function POST(request: Request) {
             sale_id?: string | null;
             metadata?: Record<string, unknown> | null;
           };
+          const existingMeta = (existing.metadata ?? {}) as Record<string, unknown>;
           return NextResponse.json({
             data: {
               id: existing.id,
@@ -511,7 +702,10 @@ export async function POST(request: Request) {
               appointment_id: existing.appointment_id,
               sale_id: existing.sale_id,
               metadata: existing.metadata,
-              receipt_url: (existing.metadata?.receipt_url as string | undefined) ?? undefined,
+              credential_mode: deviceCredentialMode,
+              receipt_url: (existingMeta.receipt_url as string | undefined) ?? undefined,
+              checkout_url: (existingMeta.checkout_url as string | undefined) ?? undefined,
+              qr_payload: (existingMeta.qr_payload as string | undefined) ?? undefined,
             },
             error: null,
           });
@@ -558,12 +752,15 @@ export async function POST(request: Request) {
         amount: amountInCents,
         amount_cents: amountInCents,
         currency,
-        status: yocoPayment.status || "pending",
+        status: initialStatus,
         payment_date: new Date().toISOString(),
         appointment_id: appointmentId,
         sale_id: validationResult.data.sale_id,
         metadata: validationResult.data.metadata,
+        credential_mode: deviceCredentialMode,
         receipt_url: receiptUrl ?? undefined,
+        checkout_url: checkoutUrl ?? undefined,
+        qr_payload: qrPayload ?? undefined,
       },
       error: null,
     });

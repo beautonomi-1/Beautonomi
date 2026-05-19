@@ -231,19 +231,48 @@ export async function getCurrentUser() {
 
 /**
  * Resend verification email for an unverified user
- * This can be called even when the user is not logged in
+ * This can be called even when the user is not logged in.
+ *
+ * Email contents (numeric **{{ .Token }}** vs **{{ .ConfirmationURL }}**) are driven by the
+ * Supabase dashboard "Confirm signup" template — see `supabase/email-templates/README.md`.
  */
 export async function resendVerificationEmail(email: string, emailRedirectTo?: string) {
   const supabase = getSupabaseClient();
   const { error } = await supabase.auth.resend({
     type: 'signup',
-    email: email,
+    email: email.trim(),
     ...(emailRedirectTo ? { options: { emailRedirectTo } } : {}),
   });
 
   if (error) {
     throw new Error(error.message);
   }
+}
+
+/**
+ * Verify a signup confirmation OTP (numeric code from the Supabase "Confirm signup" email
+ * template). On success Supabase returns a session, mirroring what `auth/callback?token_hash=...`
+ * does for the link variant.
+ *
+ * Notes:
+ *  - Requires the dashboard template to include `{{ .Token }}` so users actually receive a code.
+ *    See `supabase/email-templates/README.md`.
+ *  - Uses `type: "signup"` (not `"email"`) so it matches the password signup confirmation flow.
+ */
+export async function verifySignupEmailOtp(email: string, token: string) {
+  const supabase = getSupabaseClient();
+  const trimmedEmail = email.trim();
+  const otp = token.replace(/\D/g, "");
+  const { data, error } = await supabase.auth.verifyOtp({
+    email: trimmedEmail,
+    token: otp,
+    type: "signup",
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+  return data;
 }
 
 /**

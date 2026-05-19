@@ -15,7 +15,7 @@ import {
 } from "@/lib/provider-portal/user-default-address";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { hasProviderCustomerRelationship } from "@/lib/provider/client-access";
-import { isSalonMembershipEntitledForDiscount } from "@/lib/provider/salon-membership-entitlement";
+import { buildSalonMembershipMap } from "@/lib/provider/attach-salon-membership-to-clients";
 
 /**
  * GET /api/provider/clients
@@ -148,81 +148,11 @@ export async function GET(request: NextRequest) {
     }
 
     /** Salon `user_memberships` (one row per customer per provider). */
-    const membershipByUserId = new Map<
-      string,
-      {
-        subscription_id: string;
-        plan_id: string;
-        plan_name: string | null;
-        plan_is_active: boolean;
-        status: string;
-        expires_at: string | null;
-        started_at: string | null;
-        cancelled_at: string | null;
-        /** Matches booking discount eligibility (`validate-booking.ts`). */
-        is_entitled: boolean;
-      }
-    >();
-    if (customerIds.length > 0) {
-      const { data: umRows, error: umErr } = await (supabaseAdmin as any)
-        .from("user_memberships")
-        .select("id, user_id, plan_id, status, expires_at, started_at, cancelled_at")
-        .eq("provider_id", providerId)
-        .in("user_id", customerIds);
-      if (umErr) {
-        console.error("[provider/clients] user_memberships fetch failed:", umErr);
-      } else {
-        const pids = [
-          ...new Set(
-            (umRows ?? []).map((r: { plan_id: string }) => r.plan_id).filter(Boolean),
-          ),
-        ];
-        let planById = new Map<
-          string,
-          { name: string | null; is_active: boolean | null }
-        >();
-        if (pids.length > 0) {
-          const { data: plans } = await (supabaseAdmin as any)
-            .from("membership_plans")
-            .select("id, name, is_active")
-            .in("id", pids);
-          planById = new Map(
-            (plans ?? []).map((p: { id: string; name: string; is_active: boolean }) => [
-              p.id,
-              { name: p.name, is_active: p.is_active },
-            ]),
-          );
-        }
-        for (const r of umRows ?? []) {
-          const row = r as {
-            id: string;
-            user_id: string;
-            plan_id: string;
-            status: string;
-            expires_at: string | null;
-            started_at: string | null;
-            cancelled_at: string | null;
-          };
-          const pm = planById.get(row.plan_id);
-          const planIsActive = pm?.is_active;
-          membershipByUserId.set(row.user_id, {
-            subscription_id: row.id,
-            plan_id: row.plan_id,
-            plan_name: pm?.name ?? null,
-            plan_is_active: planIsActive !== false,
-            status: row.status,
-            expires_at: row.expires_at,
-            started_at: row.started_at,
-            cancelled_at: row.cancelled_at,
-            is_entitled: isSalonMembershipEntitledForDiscount({
-              status: row.status,
-              expires_at: row.expires_at,
-              planIsActive,
-            }),
-          });
-        }
-      }
-    }
+    const membershipByUserId = await buildSalonMembershipMap(
+      providerId,
+      customerIds,
+      supabaseAdmin,
+    );
 
     // Log missing customers for debugging
     if (customers && customers.length < customerIds.length) {

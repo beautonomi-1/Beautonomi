@@ -5,6 +5,10 @@ import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { getUserRowIfAccessibleToAdminTenant } from "@/lib/tenant/admin-user-tenant-access";
 import { writeAuditLog } from "@/lib/audit/audit";
+import {
+  resolveProviderIdForUser,
+  syncProviderVerificationState,
+} from "@/lib/verification/sync-provider-verification";
 
 /**
  * POST /api/admin/users/[id]/identity-verification/reset
@@ -62,6 +66,28 @@ export async function POST(
       .single();
 
     if (error) throw error;
+
+    // §provider-verification-sync 2026-05: reset must clear the public
+    // verified badge and the provider KYC row too, otherwise an old
+    // `approved` KYC entry would silently re-grant the badge on the next
+    // setup-status fetch.
+    try {
+      const providerId = await resolveProviderIdForUser(admin, id);
+      if (providerId) {
+        await syncProviderVerificationState(admin, {
+          providerId,
+          userId: id,
+          status: "reset",
+          source: "admin_reset",
+          metadata: {
+            reset_by_user_id: user.id,
+            reset_reason: supersedeReason,
+          },
+        });
+      }
+    } catch (syncErr) {
+      console.error("Failed to sync provider verification on reset:", syncErr);
+    }
 
     await writeAuditLog({
       actor_user_id: user.id,

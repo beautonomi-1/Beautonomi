@@ -8,13 +8,20 @@ import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { View, Text, TouchableOpacity, Alert, AppState, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useFocusEffect, useRouter } from "expo-router";
-import * as ExpoLinking from "expo-linking";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { api } from "@/lib/api-client";
 import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
 import { extractPaystackReferenceFromUrl } from "@/lib/payments/paystackRefFromUrl";
+import {
+  getSubscriptionPaystackReturnUrl,
+  matchesSubscriptionPaystackReturnUrl,
+  pollSubscriptionProvisioned,
+  subscriptionSuccessCopy,
+  subscriptionPendingCopy,
+  subscriptionFailedCopy,
+} from "@/lib/payments/providerPaystackReturn";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { SectionHeader } from "@/components/ui/SectionHeader";
@@ -170,8 +177,82 @@ function statusPillClasses(sub: Subscription): { bg: string; text: string } {
   return { bg: "bg-green-100", text: "text-green-800" };
 }
 
+/**
+ * §Provider-paystack-audit 2026-05: post-payment status card mirroring the
+ * Ads variant, with phases tied directly to `SubscriptionPaymentOutcome`.
+ */
+function SubscriptionPaymentOutcomeCard({
+  outcome,
+  onDismiss,
+}: {
+  outcome: SubscriptionPaymentOutcome;
+  onDismiss: () => void;
+}) {
+  if (outcome.phase === "idle") return null;
+  const tone = (() => {
+    if (outcome.phase === "provisioned") {
+      return {
+        wrap: "border-emerald-200 bg-emerald-50",
+        iconWrap: "bg-emerald-100",
+        iconColor: "#047857",
+        icon: "checkmark-circle" as const,
+        title: "text-emerald-900",
+        body: "text-emerald-800",
+      };
+    }
+    if (outcome.phase === "pending") {
+      return {
+        wrap: "border-blue-200 bg-blue-50",
+        iconWrap: "bg-blue-100",
+        iconColor: "#1d4ed8",
+        icon: "time" as const,
+        title: "text-blue-900",
+        body: "text-blue-800",
+      };
+    }
+    return {
+      wrap: "border-amber-200 bg-amber-50",
+      iconWrap: "bg-amber-100",
+      iconColor: "#b45309",
+      icon: "alert-circle" as const,
+      title: "text-amber-900",
+      body: "text-amber-800",
+    };
+  })();
+  return (
+    <View style={twStyle(`mb-4 flex-row items-start rounded-2xl border p-3 ${tone.wrap}`)}>
+      <View style={twStyle(`mr-3 rounded-full p-2 ${tone.iconWrap}`)}>
+        <Ionicons name={tone.icon} size={18} color={tone.iconColor} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={twStyle(`text-sm font-semibold ${tone.title}`)}>{outcome.title}</Text>
+        <Text style={twStyle(`text-xs ${tone.body}`)}>{outcome.body}</Text>
+      </View>
+      <TouchableOpacity
+        onPress={onDismiss}
+        accessibilityLabel="Dismiss subscription payment notification"
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      >
+        <Ionicons name="close" size={20} color={tone.iconColor} />
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+type SubscriptionPaymentOutcome =
+  | { phase: "idle" }
+  | { phase: "provisioned"; title: string; body: string }
+  | { phase: "pending"; title: string; body: string }
+  | { phase: "failed"; title: string; body: string };
+
 export default function SubscriptionScreen() {
   const router = useRouter();
+  const localParams = useLocalSearchParams<{
+    payment_success?: string;
+    payment_failed?: string;
+    payment_pending?: string;
+    order_id?: string;
+  }>();
   const [refreshing, setRefreshing] = useState(false);
   const [upgradingId, setUpgradingId] = useState<string | null>(null);
   const appState = useRef(AppState.currentState);
@@ -185,59 +266,62 @@ export default function SubscriptionScreen() {
     staleTimeMs: 0,
   });
   const { execute: postAction } = useApiMutation("post");
-  const subscriptionReturnUrl = ExpoLinking.createURL("settings/subscription-payment-return");
+  /**
+   * §Provider-paystack-audit 2026-05: Paystack only honors HTTPS callback URLs,
+   * and `WebBrowser.openAuthSessionAsync` only resolves with `success` when the
+   * `returnUrl` matches the actual redirect prefix. Use the shared HTTPS bridge
+   * for both. The server-side `initialize-payment` / `renew` routes ignore
+   * non-HTTPS `callback_url` overrides, so we no longer pass the deep-link.
+   */
+  const subscriptionReturnUrl = getSubscriptionPaystackReturnUrl();
+  const [paymentOutcome, setPaymentOutcome] = useState<SubscriptionPaymentOutcome>({ phase: "idle" });
 
   const paystackCheckout = useInAppPaystackCheckout();
 
   const openSubscriptionPaystack = useCallback(
-    async (url: string, title: string) => {
+    async (url: string, title: string, opts?: { orderId?: string }) => {
       const result = await paystackCheckout.waitForCheckout(url, {
         title,
         returnUrl: subscriptionReturnUrl,
-        matchSuccess: (rawUrl) => {
-          try {
-            const u = new URL(rawUrl);
-            return (
-              (u.pathname.includes("/provider/subscription") || u.pathname.includes("settings/subscription-payment-return")) &&
-              u.searchParams.get("payment_success") === "true"
-            );
-          } catch {
-            return false;
-          }
-        },
-        matchCancel: (rawUrl) => {
-          try {
-            const u = new URL(rawUrl);
-            return (
-              (u.pathname.includes("/provider/subscription") || u.pathname.includes("settings/subscription-payment-return")) &&
-              u.searchParams.get("payment_cancelled") === "1"
-            );
-          } catch {
-            return false;
-          }
-        },
+        matchSuccess: (rawUrl) => matchesSubscriptionPaystackReturnUrl(rawUrl, { success: true }),
+        matchCancel: (rawUrl) => matchesSubscriptionPaystackReturnUrl(rawUrl, { cancelled: true }),
       });
 
-      // Defensive verify-with-retry when Paystack appended a reference to our
-      // `provider://` deep link. Bridges the webhook race so the UI never
-      // shows a stale plan after a successful checkout. Skipped on cancel.
-      if (result.outcome === "success") {
-        const reference = extractPaystackReferenceFromUrl(result.url);
-        if (reference) {
-          const verifyResult = await verifyPaystackWithRetry(reference);
-          if (verifyResult.status === "failed") {
-            Alert.alert(
-              "Payment not completed",
-              verifyResult.errorMessage ??
-                "Paystack reported the payment failed. Please try again.",
-            );
-          } else if (verifyResult.status === "pending" || verifyResult.status === "unknown") {
-            Alert.alert(
-              "Your payment is being confirmed",
-              "We'll activate your plan within a few minutes once Paystack confirms with your bank.",
-            );
-          }
-        }
+      if (result?.outcome === "cancel" || result?.outcome === "closed") {
+        const failed = subscriptionFailedCopy("Payment wasn't completed.");
+        setPaymentOutcome({ phase: "failed", ...failed });
+        refresh();
+        return;
+      }
+
+      if (result.outcome !== "success") {
+        refresh();
+        return;
+      }
+
+      // Cross-confirm against Paystack so the screen never claims a plan is
+      // active before the webhook (and the bank) signs off.
+      const reference = extractPaystackReferenceFromUrl(result.url);
+      const verifyResult = reference ? await verifyPaystackWithRetry(reference) : null;
+
+      if (verifyResult?.status === "failed") {
+        const failed = subscriptionFailedCopy(verifyResult.errorMessage ?? null);
+        setPaymentOutcome({ phase: "failed", ...failed });
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        refresh();
+        return;
+      }
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      const provisioned = await pollSubscriptionProvisioned({
+        orderId: opts?.orderId ?? null,
+        maxAttempts: 6,
+        delayMs: 1500,
+      });
+      if (provisioned.state === "provisioned") {
+        setPaymentOutcome({ phase: "provisioned", ...subscriptionSuccessCopy(provisioned.subscription) });
+      } else {
+        setPaymentOutcome({ phase: "pending", ...subscriptionPendingCopy() });
       }
       refresh();
     },
@@ -287,6 +371,47 @@ export default function SubscriptionScreen() {
     }, [refresh]),
   );
 
+  /**
+   * §Provider-paystack-audit 2026-05: surface the same outcome card when the
+   * cold-start payment-return screen forwards the user here with payment_*
+   * params (e.g. after a 3DS challenge that suspended the auth session).
+   */
+  const subColdStartHandledRef = useRef(false);
+  useEffect(() => {
+    const successFlag = localParams.payment_success === "1" || localParams.payment_success === "true";
+    const failedFlag = localParams.payment_failed === "1" || localParams.payment_failed === "true";
+    const pendingFlag = localParams.payment_pending === "1" || localParams.payment_pending === "true";
+    const orderId = typeof localParams.order_id === "string" ? localParams.order_id : undefined;
+    if (!successFlag && !failedFlag && !pendingFlag) return;
+    if (subColdStartHandledRef.current) return;
+    subColdStartHandledRef.current = true;
+
+    const handle = async () => {
+      if (failedFlag) {
+        setPaymentOutcome({ phase: "failed", ...subscriptionFailedCopy() });
+        refresh();
+        return;
+      }
+      if (pendingFlag && !successFlag) {
+        setPaymentOutcome({ phase: "pending", ...subscriptionPendingCopy() });
+        refresh();
+        return;
+      }
+      const result = await pollSubscriptionProvisioned({
+        orderId: orderId ?? null,
+        maxAttempts: 6,
+        delayMs: 1500,
+      });
+      if (result.state === "provisioned") {
+        setPaymentOutcome({ phase: "provisioned", ...subscriptionSuccessCopy(result.subscription) });
+      } else {
+        setPaymentOutcome({ phase: "pending", ...subscriptionPendingCopy() });
+      }
+      refresh();
+    };
+    void handle();
+  }, [localParams.payment_success, localParams.payment_failed, localParams.payment_pending, localParams.order_id, refresh]);
+
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
@@ -330,7 +455,6 @@ export default function SubscriptionScreen() {
 
     const { error: err, data } = await postAction("/api/provider/subscription/renew", {
       in_app: true,
-      callback_url: subscriptionReturnUrl,
     });
     if (err) {
       Alert.alert("Error", err);
@@ -344,8 +468,12 @@ export default function SubscriptionScreen() {
       return;
     }
     const url = d?.payment_url;
+    const renewOrderId =
+      typeof (d as { order_id?: string })?.order_id === "string"
+        ? (d as { order_id?: string }).order_id
+        : undefined;
     if (url) {
-      await openSubscriptionPaystack(url, "Renew subscription");
+      await openSubscriptionPaystack(url, "Renew subscription", { orderId: renewOrderId });
     } else {
       Alert.alert("No payment link", "Unable to start renewal. Please try again or contact support.");
     }
@@ -465,21 +593,21 @@ export default function SubscriptionScreen() {
         plan_id: barePlanId,
         billing_period: billingPeriod,
         in_app: true,
-        callback_url: subscriptionReturnUrl,
       });
       if (err) {
         Alert.alert("Error", err);
         return;
       }
-      const d = data as { authorization_url?: string; payment_url?: string; requires_payment?: boolean };
+      const d = data as { authorization_url?: string; payment_url?: string; requires_payment?: boolean; order_id?: string };
       const url = d?.authorization_url ?? d?.payment_url;
+      const initOrderId = typeof d?.order_id === "string" ? d.order_id : undefined;
       if (d?.requires_payment && url) {
-        await openSubscriptionPaystack(url, "Subscription checkout");
+        await openSubscriptionPaystack(url, "Subscription checkout", { orderId: initOrderId });
         refresh();
         return;
       }
       if (url) {
-        await openSubscriptionPaystack(url, "Subscription checkout");
+        await openSubscriptionPaystack(url, "Subscription checkout", { orderId: initOrderId });
       } else {
         Alert.alert("No payment link", "Unable to start checkout. Please try again or contact support.");
       }
@@ -527,6 +655,14 @@ export default function SubscriptionScreen() {
         </Text>
       </View>
 
+      {/* §Provider-paystack-audit 2026-05: post-payment outcome card. Reads
+        from `paymentOutcome` so the same component handles both in-app and
+        cold-start returns and shows model-specific copy from the shared helper. */}
+      <SubscriptionPaymentOutcomeCard
+        outcome={paymentOutcome}
+        onDismiss={() => setPaymentOutcome({ phase: "idle" })}
+      />
+
       {paidSubscriber && subscription?.paystack_sync_pending ? (
         <View
           style={twStyle("mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4")}
@@ -563,7 +699,9 @@ export default function SubscriptionScreen() {
                 {subscription.plan?.name ?? "Plan"}
               </Text>
               {subscription.plan?.description ? (
-                <Text style={twStyle("mt-2 text-sm leading-5 text-gray-600")}>{subscription.plan.description}</Text>
+                <Text style={twStyle("mt-2 text-sm leading-5 text-gray-600")}>
+                  {stripHtmlToPlainText(subscription.plan.description)}
+                </Text>
               ) : null}
               {currentSubscriptionPriceLine(subscription) ? (
                 <Text style={twStyle("mt-3 text-2xl font-bold text-gray-900")}>
@@ -770,7 +908,9 @@ function PlanCard({
             {plan.is_free || plan.amount === 0 ? "Free" : formatOptionPrice(plan)}
           </Text>
           {plan.description ? (
-            <Text style={twStyle("mt-3 text-sm leading-5 text-gray-600")}>{plan.description}</Text>
+            <Text style={twStyle("mt-3 text-sm leading-5 text-gray-600")}>
+              {stripHtmlToPlainText(plan.description)}
+            </Text>
           ) : null}
         </View>
       </View>

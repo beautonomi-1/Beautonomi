@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Calendar, Plus, MapPin, Clock, Download, ExternalLink, Smartphone } from "lucide-react";
+import { AlertCircle, Calendar, Plus, MapPin, Clock, Download, ExternalLink, Smartphone, XCircle } from "lucide-react";
 import { getGoogleCalendarUrl, getOutlookCalendarUrl } from "@/lib/calendar/ics";
 import { clearBeautonomiHoldClientMarkers } from "@/lib/booking/clear-hold-client-markers";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -41,6 +41,43 @@ function appDeepLink(path: string, params?: Record<string, string>): string {
   return `${CUSTOMER_APP_SCHEME}://${path}${q ? `?${q}` : ""}`;
 }
 
+/**
+ * §Provider-paystack-audit 2026-05: defensive branches for the rare case where
+ * a provider Paystack payment falls through to the customer success page (e.g.
+ * a stale Paystack default callback). When the verify result reveals a
+ * provider order type, swap to provider copy + deep links so the screen never
+ * shows "View bookings" / `customer://` to a provider.
+ */
+type ProviderPaymentBranch =
+  | { kind: "ads_budget_order"; orderId?: string | null }
+  | { kind: "provider_subscription_order"; orderId?: string | null };
+
+function postProviderCheckoutMessage(branch: ProviderPaymentBranch | null) {
+  if (!branch || typeof window === "undefined") return;
+  const w = window as Window & { ReactNativeWebView?: { postMessage: (msg: string) => void } };
+  if (!w.ReactNativeWebView?.postMessage) return;
+  try {
+    if (branch.kind === "ads_budget_order") {
+      w.ReactNativeWebView.postMessage(
+        JSON.stringify({
+          type: "BEAUTONOMI_ADS_PAYMENT_DONE",
+          status: "success",
+          order_id: branch.orderId ?? null,
+        }),
+      );
+    } else {
+      w.ReactNativeWebView.postMessage(
+        JSON.stringify({
+          type: "subscription_success",
+          order_id: branch.orderId ?? null,
+        }),
+      );
+    }
+  } catch {
+    // ignore
+  }
+}
+
 function CheckoutSuccessContent() {
   const searchParams = useSearchParams();
   const bookingId = searchParams?.get("booking_id");
@@ -54,6 +91,22 @@ function CheckoutSuccessContent() {
 
   const [customOfferBookingId, setCustomOfferBookingId] = useState<string | null>(null);
   const [customOfferPollingComplete, setCustomOfferPollingComplete] = useState(false);
+  const [providerBranch, setProviderBranch] = useState<ProviderPaymentBranch | null>(null);
+
+  /**
+   * Paystack verify outcome for the booking/wallet/etc. branch.
+   * - `verifying`: request in flight (or pending/unknown response, will keep polling booking)
+   * - `success`: verify returned success; webhook will (or already has) finalized
+   * - `failed`: verify came back failed; we will surface a recovery card
+   * - `pending`: verify exhausted retries without a definitive answer; show
+   *   "still confirming" copy with CTAs rather than spinning forever
+   */
+  const [verifyStatus, setVerifyStatus] = useState<"idle" | "verifying" | "success" | "failed" | "pending">(
+    paystackReference ? "verifying" : "idle",
+  );
+  const [verifyMessage, setVerifyMessage] = useState<string | null>(null);
+  /** True once booking polling has resolved or exhausted attempts so we can stop showing the spinner. */
+  const [bookingPollComplete, setBookingPollComplete] = useState(false);
 
   /** Local dev / no webhook: finalize payment via Paystack verify (records booking_payments + confirms booking). */
   const paystackVerifyStarted = useRef(false);
@@ -85,14 +138,45 @@ function CheckoutSuccessContent() {
       }
       if (!ref) return;
       paystackVerifyStarted.current = true;
+      setVerifyStatus("verifying");
       try {
-        await verifyWithRetry(ref, { maxAttempts: 5, delayMs: 1500 });
+        const verifyResult = await verifyWithRetry<{ type?: string; ads_budget_order_id?: string; order_id?: string }>(
+          ref,
+          { maxAttempts: 5, delayMs: 1500 },
+        );
+        const verifyType = typeof verifyResult.data?.type === "string" ? verifyResult.data.type : null;
+        if (verifyType === "ads_budget_order") {
+          const orderId =
+            (verifyResult.data?.ads_budget_order_id as string | undefined) ??
+            (verifyResult.data?.order_id as string | undefined) ??
+            null;
+          setProviderBranch({ kind: "ads_budget_order", orderId });
+        } else if (verifyType === "provider_subscription_order") {
+          const orderId = (verifyResult.data?.order_id as string | undefined) ?? null;
+          setProviderBranch({ kind: "provider_subscription_order", orderId });
+        }
+        if (verifyResult.status === "success") {
+          setVerifyStatus("success");
+        } else if (verifyResult.status === "failed") {
+          setVerifyStatus("failed");
+          setVerifyMessage(verifyResult.errorMessage ?? null);
+        } else {
+          setVerifyStatus("pending");
+          setVerifyMessage(verifyResult.errorMessage ?? null);
+        }
       } catch {
         paystackVerifyStarted.current = false;
+        setVerifyStatus("pending");
       }
     };
     void run();
   }, [isWaitlist, isCustomOffer, paystackReference, bookingId]);
+
+  // §Provider-paystack-audit 2026-05: relay the provider success postMessage
+  // for the in-app WebView once we know which provider type we're handling.
+  useEffect(() => {
+    if (providerBranch) postProviderCheckoutMessage(providerBranch);
+  }, [providerBranch]);
 
   /** Custom-offer Paystack return: trigger verify so booking finalizes, then immediately probe for booking_id. */
   useEffect(() => {
@@ -229,7 +313,10 @@ function CheckoutSuccessContent() {
   const bookingForCalendar = bookingData;
 
   useEffect(() => {
-    if (!resolvedBookingId || isWaitlist) return;
+    if (!resolvedBookingId || isWaitlist) {
+      if (!paystackReference) setBookingPollComplete(true);
+      return;
+    }
     let cancelled = false;
     let attempts = 0;
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -248,16 +335,19 @@ function CheckoutSuccessContent() {
           setBookingData(data);
         }
         const paymentStatus = typeof data?.payment_status === "string" ? data.payment_status : "";
+        const settled = paymentStatus && paymentStatus !== "pending";
         const shouldKeepPolling =
-          !!paystackReference &&
-          attempts < POLL_MAX_ATTEMPTS &&
-          (!paymentStatus || paymentStatus === "pending");
+          !!paystackReference && attempts < POLL_MAX_ATTEMPTS && !settled;
         if (shouldKeepPolling) {
           timer = setTimeout(loadBooking, POLL_INTERVAL_MS);
+        } else {
+          setBookingPollComplete(true);
         }
       } catch {
         if (!cancelled && paystackReference && attempts < POLL_MAX_ATTEMPTS) {
           timer = setTimeout(loadBooking, POLL_INTERVAL_MS);
+        } else if (!cancelled) {
+          setBookingPollComplete(true);
         }
       }
     };
@@ -270,11 +360,35 @@ function CheckoutSuccessContent() {
   }, [resolvedBookingId, isWaitlist, paystackReference]);
 
   const isPendingApproval = bookingData?.status === "pending" && !isWaitlist;
+  /**
+   * Show the "Finalizing payment…" spinner only while either Paystack verify
+   * is still running or the booking record has not been observed as paid yet
+   * AND we have not exhausted the polling window. Once `bookingPollComplete`
+   * is true, we switch to either confirmed copy (if `payment_status` settled)
+   * or an explicit "still confirming" state with CTAs.
+   */
   const isFinalizingPayment =
     !isWaitlist &&
     !isCustomOffer &&
     !!paystackReference &&
-    (!bookingData || bookingData.payment_status === "pending");
+    verifyStatus !== "failed" &&
+    !bookingPollComplete &&
+    (!bookingData || bookingData.payment_status === "pending") &&
+    (verifyStatus === "idle" || verifyStatus === "verifying" || verifyStatus === "success" || verifyStatus === "pending");
+  /**
+   * True when we have stopped polling but the booking payment never settled.
+   * Surface a clear "Still confirming" message with the booking link so the
+   * user can leave the page knowing what to expect.
+   */
+  const isStillConfirming =
+    !isWaitlist &&
+    !isCustomOffer &&
+    !!paystackReference &&
+    bookingPollComplete &&
+    (!!bookingData ? bookingData.payment_status === "pending" : true) &&
+    verifyStatus !== "failed";
+  /** Verify came back hard-failed — show a recovery card. */
+  const verifyFailed = !isWaitlist && verifyStatus === "failed";
   const walletAmountUsed = Number(bookingData?.wallet_amount ?? 0);
   const giftCardAmountUsed = Number(bookingData?.gift_card_amount ?? 0);
   const isSplitPayment = (walletAmountUsed > 0 || giftCardAmountUsed > 0) && Number(bookingData?.total_paid ?? 0) > 0;
@@ -305,31 +419,169 @@ function CheckoutSuccessContent() {
         }
       : null;
 
+  const isWalletTopup = paymentType === "wallet_topup";
   const openInAppUrl =
     resolvedBookingId
       ? appDeepLink("booking-detail", { id: resolvedBookingId })
       : isCustomOffer
         ? appDeepLink("account-settings/custom-requests")
-        : paymentType === "wallet_topup"
-          ? appDeepLink("profile")
+        : isWalletTopup
+          ? appDeepLink("account-settings/wallet")
           : appDeepLink("bookings");
+  /**
+   * Web-side primary destination: lands the user where they actually wanted
+   * to go after their purchase resolves, instead of always bouncing to
+   * bookings. Wallet top-ups go to wallet; custom offers go to custom
+   * requests when the booking is not resolved; everything else uses bookings.
+   */
+  const webPrimaryHref =
+    resolvedBookingId
+      ? `/account-settings/bookings/${resolvedBookingId}`
+      : isCustomOffer
+        ? "/account-settings/custom-requests"
+        : isWalletTopup
+          ? "/account-settings/wallet"
+          : "/account-settings/bookings";
+  const webPrimaryLabel =
+    resolvedBookingId
+      ? "View my booking"
+      : isCustomOffer
+        ? "View custom requests"
+        : isWalletTopup
+          ? "Open my wallet"
+          : "View bookings";
 
-  // When loaded in customer app WebView: tell the app to close WebView and navigate (automatic return)
+  // When loaded in customer app WebView: tell the app to close WebView and
+  // navigate. Only fire once the flow has reached a definitive resolution
+  // (success, failed, pending-after-poll, or no Paystack reference at all) so
+  // the host app doesn't dismiss the WebView while verification is still in
+  // flight — which used to show "success" copy on the native side even after
+  // a failed verify.
   useEffect(() => {
     const win = typeof window !== "undefined" ? window as Window & { ReactNativeWebView?: { postMessage: (data: string) => void } } : null;
     if (!win?.ReactNativeWebView?.postMessage) return;
     if (isCustomOffer && !customOfferPollingComplete) return;
+    if (paystackReference) {
+      if (verifyStatus === "idle" || verifyStatus === "verifying") return;
+      if (verifyStatus === "success" && !bookingPollComplete && !isCustomOffer) return;
+    }
+    const status: "success" | "failed" | "pending" =
+      verifyStatus === "failed"
+        ? "failed"
+        : verifyStatus === "pending" || isStillConfirming
+          ? "pending"
+          : "success";
     const t = setTimeout(() => {
       win.ReactNativeWebView?.postMessage(
         JSON.stringify({
-          type: "checkout_success",
+          type:
+            status === "failed"
+              ? "checkout_failed"
+              : status === "pending"
+                ? "checkout_pending"
+                : "checkout_success",
+          status,
           payment_type: paymentType ?? "",
           booking_id: resolvedBookingId ?? undefined,
+          reference: paystackReference ?? undefined,
         })
       );
-    }, 1500);
+    }, 1200);
     return () => clearTimeout(t);
-  }, [customOfferPollingComplete, isCustomOffer, paymentType, resolvedBookingId]);
+  }, [
+    customOfferPollingComplete,
+    isCustomOffer,
+    paymentType,
+    resolvedBookingId,
+    paystackReference,
+    verifyStatus,
+    bookingPollComplete,
+    isStillConfirming,
+  ]);
+
+  if (providerBranch) {
+    /**
+     * §Provider-paystack-audit 2026-05: provider Paystack payment landed here
+     * by mistake — the new HTTPS callbacks should never route providers to
+     * `/checkout/success`, but we keep this branch as a defensive net so they
+     * never see customer-shaped CTAs (`View bookings`, `customer://` deep
+     * links, etc.) if the merchant default ever fires.
+     */
+    const isAds = providerBranch.kind === "ads_budget_order";
+    const providerHref = isAds ? "/provider/settings/ads" : "/provider/subscription";
+    const providerHomeLabel = isAds ? "Back to Ads" : "Back to Subscription";
+    const providerDeepLink = isAds ? "provider://settings/ads" : "provider://settings/subscription";
+    return (
+      <div
+        className="min-h-screen flex items-start justify-center px-4 py-10"
+        style={{ backgroundColor: BG }}
+      >
+        <div className="absolute inset-0 pointer-events-none overflow-hidden" aria-hidden>
+          <div
+            className="absolute -top-24 left-1/2 -translate-x-1/2 w-[600px] h-[400px] rounded-full opacity-30 blur-3xl"
+            style={{ background: `radial-gradient(ellipse, ${ACCENT}40 0%, transparent 70%)` }}
+          />
+        </div>
+        <div className="relative w-full max-w-[430px] space-y-4">
+          <div
+            className="rounded-3xl p-8 text-center border shadow-[0_20px_60px_rgba(0,0,0,0.09)]"
+            style={{
+              background: "rgba(255,255,255,0.95)",
+              backdropFilter: "blur(20px) saturate(180%)",
+              borderColor: "rgba(0,0,0,0.05)",
+            }}
+          >
+            <div className="relative mx-auto mb-6 w-24 h-24">
+              <div
+                className="absolute inset-0 rounded-full animate-ping opacity-20"
+                style={{ backgroundColor: ACCENT }}
+              />
+              <div
+                className="relative w-24 h-24 rounded-full flex items-center justify-center shadow-lg"
+                style={{
+                  background: `linear-gradient(135deg, ${ACCENT}25 0%, ${ACCENT}10 100%)`,
+                  border: `2px solid ${ACCENT}30`,
+                }}
+              >
+                <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke={ACCENT} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                  <polyline points="22 4 12 14.01 9 11.01" />
+                </svg>
+              </div>
+            </div>
+            <h1 className="text-2xl font-bold mb-2" style={{ color: TEXT_PRIMARY }}>
+              {isAds ? "Ad payment confirmed" : "Plan payment confirmed"}
+            </h1>
+            <p className="text-sm leading-relaxed" style={{ color: TEXT_SECONDARY }}>
+              {isAds
+                ? "Your campaign is being funded and will go live shortly."
+                : "Your plan is being activated. You'll see it active in your subscription settings momentarily."}
+            </p>
+          </div>
+          <div
+            className="rounded-3xl border p-5 space-y-3"
+            style={{ background: "#fff", borderColor: "rgba(0,0,0,0.06)", boxShadow: "0 4px 20px rgba(0,0,0,0.04)" }}
+          >
+            <Link
+              href={providerHref}
+              className="flex items-center justify-center gap-2 w-full min-h-[50px] rounded-2xl font-bold text-white transition-all active:scale-[0.98] text-sm"
+              style={{ backgroundColor: ACCENT, boxShadow: `0 8px 20px ${ACCENT}40` }}
+            >
+              {providerHomeLabel}
+            </Link>
+            <a
+              href={providerDeepLink}
+              className="flex items-center justify-center gap-2 w-full min-h-[44px] rounded-2xl font-medium border transition-all active:scale-[0.98] text-sm"
+              style={{ color: TEXT_SECONDARY, borderColor: "#E5E7EB" }}
+            >
+              <ExternalLink className="w-4 h-4" />
+              Open in Beautonomi provider app
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -355,21 +607,47 @@ function CheckoutSuccessContent() {
             borderColor: "rgba(0,0,0,0.05)",
           }}
         >
-          {/* Animated success icon */}
+          {/* Animated state icon — switches per outcome so users see whether
+              the page is still working, finished, soft-pending, or failed. */}
           <div className="relative mx-auto mb-6 w-24 h-24">
-            {/* Outer pulse ring */}
-            <div
-              className="absolute inset-0 rounded-full animate-ping opacity-20"
-              style={{ backgroundColor: ACCENT }}
-            />
-            {/* Inner circle */}
+            {!verifyFailed && !isStillConfirming ? (
+              <div
+                className="absolute inset-0 rounded-full animate-ping opacity-20"
+                style={{ backgroundColor: verifyFailed ? "#DC2626" : ACCENT }}
+              />
+            ) : null}
             <div
               className="relative w-24 h-24 rounded-full flex items-center justify-center shadow-lg"
-              style={{ background: `linear-gradient(135deg, ${ACCENT}25 0%, ${ACCENT}10 100%)`, border: `2px solid ${ACCENT}30` }}
+              style={
+                verifyFailed
+                  ? { background: "linear-gradient(135deg, #FEE2E2 0%, #FECACA 100%)", border: "2px solid #FCA5A5" }
+                  : isStillConfirming
+                    ? { background: "linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%)", border: "2px solid #FCD34D" }
+                    : { background: `linear-gradient(135deg, ${ACCENT}25 0%, ${ACCENT}10 100%)`, border: `2px solid ${ACCENT}30` }
+              }
             >
-              {isWaitlist ? (
+              {verifyFailed ? (
+                <XCircle className="w-11 h-11" style={{ color: "#DC2626" }} />
+              ) : isStillConfirming ? (
+                <Clock className="w-11 h-11" style={{ color: "#B45309" }} />
+              ) : isWaitlist ? (
                 <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke={ACCENT} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                </svg>
+              ) : isFinalizingPayment ? (
+                <svg
+                  width="44"
+                  height="44"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke={ACCENT}
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="animate-spin"
+                  style={{ animationDuration: "1.4s" }}
+                >
+                  <path d="M21 12a9 9 0 1 1-6.219-8.56" />
                 </svg>
               ) : (
                 <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke={ACCENT} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -401,22 +679,37 @@ function CheckoutSuccessContent() {
           ) : (
             <>
               <h1 className="text-2xl font-bold mb-2" style={{ color: TEXT_PRIMARY }}>
-                {isFinalizingPayment
-                  ? "Finalizing payment..."
-                  : isPendingApproval
-                  ? "Booking received!"
-                  : showBookingLink
-                    ? "Booking confirmed!"
-                    : "Payment received"}
+                {verifyFailed
+                  ? "Payment could not be confirmed"
+                  : isFinalizingPayment
+                    ? "Finalizing payment..."
+                    : isStillConfirming
+                      ? "Still confirming your payment"
+                      : isPendingApproval
+                        ? "Booking received!"
+                        : showBookingLink
+                          ? "Booking confirmed!"
+                          : "Payment received"}
               </h1>
               {bookingNumber && (
                 <p className="text-xs font-bold tracking-wider uppercase mb-2" style={{ color: ACCENT }}>
                   Booking #{bookingNumber}
                 </p>
               )}
-              {isFinalizingPayment ? (
+              {verifyFailed ? (
+                <p className="text-sm leading-relaxed" style={{ color: TEXT_SECONDARY }}>
+                  {verifyMessage ||
+                    "We could not confirm this payment with Paystack. If your bank was debited, the booking will still be confirmed once the payment lands — you can also check your bookings or try again."}
+                </p>
+              ) : isFinalizingPayment ? (
                 <p className="text-sm leading-relaxed" style={{ color: TEXT_SECONDARY }}>
                   We&apos;re confirming your payment with Paystack. This usually takes a few seconds.
+                </p>
+              ) : isStillConfirming ? (
+                <p className="text-sm leading-relaxed" style={{ color: TEXT_SECONDARY }}>
+                  Your bank is taking a little longer than usual. Your booking will appear in
+                  &ldquo;My bookings&rdquo; as soon as the payment is confirmed — you don&apos;t need
+                  to wait on this page.
                 </p>
               ) : isPendingApproval ? (
                 <>
@@ -716,7 +1009,42 @@ function CheckoutSuccessContent() {
           className="rounded-3xl border p-5 space-y-3 animate-in fade-in slide-in-from-bottom-4 duration-500 delay-200"
           style={{ background: "#fff", borderColor: "rgba(0,0,0,0.06)", boxShadow: "0 4px 20px rgba(0,0,0,0.04)" }}
         >
-          {customOfferTimedOut ? (
+          {verifyFailed ? (
+            <div
+              className="rounded-2xl border px-4 py-3 text-sm leading-relaxed flex items-start gap-2"
+              style={{
+                borderColor: "rgba(220, 38, 38, 0.35)",
+                background: "rgba(254, 226, 226, 0.7)",
+                color: "#7F1D1D",
+              }}
+              role="alert"
+            >
+              <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+              <span>
+                <strong>We could not confirm this payment.</strong>{" "}
+                {verifyMessage ||
+                  "If money was taken from your account it will either be refunded or your booking will be confirmed automatically once the charge lands."}{" "}
+                You can check status in My bookings or contact support.
+              </span>
+            </div>
+          ) : isStillConfirming ? (
+            <div
+              className="rounded-2xl border px-4 py-3 text-sm leading-relaxed flex items-start gap-2"
+              style={{
+                borderColor: "rgba(245, 158, 11, 0.45)",
+                background: "rgba(254, 243, 199, 0.65)",
+                color: "#92400e",
+              }}
+              role="status"
+            >
+              <Clock className="w-4 h-4 mt-0.5 flex-shrink-0" />
+              <span>
+                <strong>Still confirming.</strong> Payments occasionally take a minute. You can leave
+                this page — your booking will appear in <strong>My bookings</strong> as soon as your
+                bank confirms.
+              </span>
+            </div>
+          ) : customOfferTimedOut ? (
             <div
               className="rounded-2xl border px-4 py-3 text-sm leading-relaxed"
               style={{
@@ -730,33 +1058,22 @@ function CheckoutSuccessContent() {
               <strong>Custom requests</strong> from your account to check status, or pull to refresh in the app.
             </div>
           ) : null}
-          {showBookingLink && (
-            <Link
-              href="/account-settings/bookings"
-              className="flex items-center justify-center gap-2 w-full min-h-[50px] rounded-2xl font-bold text-white transition-all active:scale-[0.98] text-sm"
-              style={{ backgroundColor: ACCENT, boxShadow: `0 8px 20px ${ACCENT}40` }}
-            >
-              View my bookings
-            </Link>
-          )}
-          {isCustomOffer && (
+          <Link
+            href={webPrimaryHref}
+            className="flex items-center justify-center gap-2 w-full min-h-[50px] rounded-2xl font-bold text-white transition-all active:scale-[0.98] text-sm"
+            style={{ backgroundColor: ACCENT, boxShadow: `0 8px 20px ${ACCENT}40` }}
+          >
+            {webPrimaryLabel}
+          </Link>
+          {isCustomOffer && resolvedBookingId ? (
             <Link
               href="/account-settings/custom-requests"
-              className="flex items-center justify-center gap-2 w-full min-h-[50px] rounded-2xl font-semibold border transition-all active:scale-[0.98] text-sm"
+              className="flex items-center justify-center gap-2 w-full min-h-[44px] rounded-2xl font-semibold border transition-all active:scale-[0.98] text-sm"
               style={{ color: TEXT_PRIMARY, borderColor: "#E5E7EB" }}
             >
               View custom requests
             </Link>
-          )}
-          {!showBookingLink && (
-            <Link
-              href="/account-settings/bookings"
-              className="flex items-center justify-center gap-2 w-full min-h-[50px] rounded-2xl font-bold text-white transition-all active:scale-[0.98] text-sm"
-              style={{ backgroundColor: ACCENT, boxShadow: `0 8px 20px ${ACCENT}40` }}
-            >
-              View bookings
-            </Link>
-          )}
+          ) : null}
           <a
             href={openInAppUrl}
             className="flex items-center justify-center gap-2 w-full min-h-[44px] rounded-2xl font-medium border transition-all active:scale-[0.98] text-sm"

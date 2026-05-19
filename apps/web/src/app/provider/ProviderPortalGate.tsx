@@ -92,6 +92,9 @@ export function ProviderPortalGate({ children }: { children: React.ReactNode }) 
           const onboardingAllowedPrefixes = [
             "/provider/get-started",
             "/provider/onboarding",
+            "/provider/dashboard",
+            "/provider/subscription-checkout",
+            "/provider/subscription",
             "/provider/settings/appointment-activity/business-details",
             "/provider/settings/locations",
             "/provider/settings/gallery",
@@ -168,9 +171,12 @@ export function ProviderPortalGate({ children }: { children: React.ReactNode }) 
     run();
 
     return () => { cancelled = true; };
-  // pathname is intentionally excluded: once the gate passes, all sub-routes are allowed.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router, retryKey]);
+  // §Provider-launch (2026-05): re-run on `pathname` so a user who entered on
+  // an allowed onboarding path (e.g. /provider/onboarding) does not silently
+  // gain access to gated routes (e.g. /provider/bookings) on the next nav.
+  // The sessionStorage cache prevents redundant /api/me/portal calls for
+  // already-verified active providers.
+  }, [router, retryKey, pathname, isAllowedPath]);
 
   if (state.kind === "loading") {
     return (

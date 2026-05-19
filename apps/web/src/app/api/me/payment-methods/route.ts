@@ -1,6 +1,10 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import {
+  formatPaymentMethodExpiry,
+  isPaymentMethodExpired,
+} from "@/lib/payments/payment-method-expiry";
 import { z } from "zod";
 
 const addCardSchema = z.object({
@@ -15,18 +19,23 @@ const addCardSchema = z.object({
 
 /**
  * GET /api/me/payment-methods
- * 
+ *
  * Get user's payment methods
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
+    const { user } = await requireRoleInApi(
+      ["customer", "provider_owner", "provider_staff", "superadmin"],
+      request
+    );
 
     const supabase = await getSupabaseServer(request);
 
     const { data: methods, error } = await supabase
       .from("payment_methods")
-      .select("id, type, provider, last_four, expiry_month, expiry_year, card_brand, is_default, is_active, metadata, created_at")
+      .select(
+        "id, type, provider, last_four, expiry_month, expiry_year, card_brand, is_default, is_active, metadata, created_at"
+      )
       .eq("user_id", user.id)
       .eq("is_active", true)
       .order("is_default", { ascending: false })
@@ -37,9 +46,17 @@ export async function GET(request: NextRequest) {
     }
 
     type PaymentMethodRow = {
-      id: string; type?: string; provider?: string; card_brand?: string; last_four?: string;
-      expiry_month?: number; expiry_year?: number; metadata?: { cardholder_name?: string };
-      is_default?: boolean; is_active?: boolean; created_at?: string;
+      id: string;
+      type?: string;
+      provider?: string;
+      card_brand?: string;
+      last_four?: string;
+      expiry_month?: number;
+      expiry_year?: number;
+      metadata?: { cardholder_name?: string };
+      is_default?: boolean;
+      is_active?: boolean;
+      created_at?: string;
     };
     const shaped = (methods ?? []).map((m: PaymentMethodRow) => ({
       id: m.id,
@@ -49,6 +66,8 @@ export async function GET(request: NextRequest) {
       last4: m.last_four ?? undefined,
       expiry_month: m.expiry_month,
       expiry_year: m.expiry_year,
+      expiry_label: formatPaymentMethodExpiry(m.expiry_month, m.expiry_year) ?? undefined,
+      is_expired: isPaymentMethodExpired(m.expiry_month, m.expiry_year),
       cardholder_name: m.metadata?.cardholder_name ?? undefined,
       is_default: m.is_default,
       is_active: m.is_active,
@@ -63,13 +82,13 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/me/payment-methods
- * 
+ *
  * Add a new payment method
- * 
+ *
  * NOTE: Cards are saved automatically via Paystack when you make a payment.
  * This endpoint is kept for backward compatibility but cards should be saved
  * through the Paystack payment flow with the "save_card" option.
- * 
+ *
  * To save a card:
  * 1. Make a payment via Paystack
  * 2. Include "save_card: true" in the payment metadata
@@ -78,21 +97,28 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
+    await requireRoleInApi(["customer", "provider_owner", "provider_staff", "superadmin"], request);
 
     const _body = addCardSchema.parse(await request.json());
 
     // Cards should be saved via Paystack payment flow, not manually
     // This endpoint is deprecated for card saving
     return handleApiError(
-      new Error("Cards must be saved through Paystack payment flow. Make a payment with 'save_card: true' option."),
+      new Error(
+        "Cards must be saved through Paystack payment flow. Make a payment with 'save_card: true' option."
+      ),
       "Card saving via manual entry is not supported. Please save your card during checkout.",
       "DEPRECATED_METHOD",
       400
     );
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return handleApiError(new Error(error.issues.map((e: { message: string }) => e.message).join(", ")), "Validation failed", "VALIDATION_ERROR", 400);
+      return handleApiError(
+        new Error(error.issues.map((e: { message: string }) => e.message).join(", ")),
+        "Validation failed",
+        "VALIDATION_ERROR",
+        400
+      );
     }
     return handleApiError(error, "Failed to add payment method");
   }
@@ -100,14 +126,20 @@ export async function POST(request: NextRequest) {
 
 /**
  * DELETE /api/me/payment-methods
- * 
- * Remove a payment method (id should be in request body)
+ *
+ * Legacy collection-level remove that accepts `{ id }` in the request body.
+ * Kept as a compatibility shim for older deployed mobile builds that may
+ * still call this shape. New code should use the RESTful per-resource
+ * variant: `DELETE /api/me/payment-methods/[id]`.
+ *
+ * @deprecated Prefer DELETE /api/me/payment-methods/[id].
  */
-export async function DELETE(
-  request: NextRequest
-) {
+export async function DELETE(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
+    const { user } = await requireRoleInApi(
+      ["customer", "provider_owner", "provider_staff", "superadmin"],
+      request
+    );
 
     const supabase = await getSupabaseServer(request);
     const body = await request.json();

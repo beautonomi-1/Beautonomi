@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@beautonomi/admin-access";
+import { ADMIN_SECTION_PROVIDER_OPS, ADMIN_SECTION_PROVIDERS_OPERATIONS, ADMIN_SECTION_USERS_TRUST } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { adminToast } from "@/lib/adminToast";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
+import { useAdminSession } from "@/providers/AdminSessionProvider";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
@@ -39,6 +40,7 @@ type PayoutAccountRow = Record<string, unknown> & {
 };
 
 type ProviderDetail = Record<string, unknown> & {
+  is_verified?: boolean;
   slug?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
@@ -53,6 +55,10 @@ type ProviderDetail = Record<string, unknown> & {
       connected_at?: string | null;
       last_sync?: string | null;
       has_public_key?: boolean;
+      has_secret_key?: boolean;
+      credential_mode?: "none" | "checkout" | "oauth";
+      environment?: "sandbox" | "live";
+      oauth_token_present?: boolean;
     } | null;
     web_pos_devices?: Record<string, unknown>[];
     legacy_terminals?: Record<string, unknown>[];
@@ -137,6 +143,9 @@ export function ProviderDetailPage() {
     ADMIN_SECTION_PROVIDERS_OPERATIONS,
     "Providers & operations access is required."
   );
+  const { canAccess } = useAdminSession();
+  const canOpenLifecycle = canAccess(ADMIN_SECTION_PROVIDER_OPS);
+  const canOpenVerifications = canAccess(ADMIN_SECTION_USERS_TRUST);
 
   const [draft, setDraft] = useState<Draft>({
     business_name: "",
@@ -231,6 +240,21 @@ export function ProviderDetailPage() {
       adminToast.success(`Provider status updated to ${newStatus}`);
     },
     onError: (e: Error) => adminToast.error(`Failed to update status: ${e.message}`),
+  });
+
+  const verifyProvider = useMutation({
+    mutationFn: (verified: boolean) =>
+      adminApi.patchJson(`/api/admin/providers/${encodeURIComponent(providerCanonicalId || id)}/verify`, {
+        verified,
+      }),
+    onSuccess: async (_data, verified) => {
+      await qc.invalidateQueries({ queryKey: adminQueryKeys.providers.detail(id) });
+      await qc.invalidateQueries({ queryKey: adminQueryKeys.providers.all() });
+      await qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
+      await qc.invalidateQueries({ queryKey: adminQueryKeys.navCounts() });
+      adminToast.success(verified ? "Provider verified" : "Verification removed");
+    },
+    onError: (e: Error) => adminToast.error(`Failed to update verification: ${e.message}`),
   });
 
   if (denied) return denied;
@@ -343,6 +367,28 @@ export function ProviderDetailPage() {
                 Reactivate
               </button>
             )}
+            {str(row.status) === "active" && row.is_verified !== true ? (
+              <button
+                type="button"
+                className="rounded-xl border border-blue-200 bg-white px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-50"
+                disabled={verifyProvider.isPending}
+                onClick={() => verifyProvider.mutate(true)}
+              >
+                Verify
+              </button>
+            ) : null}
+            {row.is_verified === true ? (
+              <button
+                type="button"
+                className="rounded-xl border border-amber-200 bg-white px-4 py-2 text-sm font-medium text-amber-800 hover:bg-amber-50 disabled:opacity-50"
+                disabled={verifyProvider.isPending}
+                onClick={() => {
+                  if (confirm(`Remove verified badge for ${business}?`)) verifyProvider.mutate(false);
+                }}
+              >
+                Unverify
+              </button>
+            ) : null}
             <Link
               to={adminSpaTo("/admin/providers")}
               className="inline-flex min-h-11 items-center rounded-xl border border-gray-200 bg-white px-4 text-sm font-medium text-gray-900 shadow-sm ring-1 ring-gray-950/[0.04] hover:bg-gray-50"
@@ -359,6 +405,43 @@ export function ProviderDetailPage() {
           payoutAccountsQ.error instanceof Error ? payoutAccountsQ.error : null,
         ]}
       />
+
+      {(canOpenLifecycle || canOpenVerifications) && providerCanonicalId ? (
+        <AdminPanel className="space-y-3">
+          <h2 className="text-lg font-semibold text-gray-900">Verification</h2>
+          <p className="text-sm text-gray-600">
+            Identity review (KYC) and the marketplace verified badge are managed separately. Use the links below for
+            approve/reject and badge toggles.
+          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            {row.is_verified === true ? (
+              <span className="rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800">
+                Marketplace badge: verified
+              </span>
+            ) : (
+              <span className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs font-medium text-zinc-700">
+                Marketplace badge: not verified
+              </span>
+            )}
+            {canOpenLifecycle ? (
+              <Link
+                to={adminSpaTo(`/admin/provider-ops/providers/${encodeURIComponent(providerCanonicalId)}`)}
+                className="text-sm font-medium text-primary hover:underline"
+              >
+                Provider Ops lifecycle →
+              </Link>
+            ) : null}
+            {canOpenVerifications ? (
+              <Link
+                to={adminSpaTo("/admin/verifications?status=pending")}
+                className="text-sm font-medium text-primary hover:underline"
+              >
+                Verifications queue →
+              </Link>
+            ) : null}
+          </div>
+        </AdminPanel>
+      ) : null}
 
       <AdminPanel>
         <h2 className="text-lg font-semibold text-gray-900">Provider overview</h2>
@@ -613,10 +696,22 @@ export function ProviderDetailPage() {
       </AdminPanel>
 
       <AdminPanel>
-        <h2 className="text-lg font-semibold text-gray-900">Yoco terminals & integration</h2>
-        <p className="mt-1 text-sm text-gray-600">
-          Operational view from stored integration and device rows (not a live ping to Yoco).
-        </p>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">Yoco terminals & integration</h2>
+            <p className="mt-1 text-sm text-gray-600">
+              Operational view from stored integration and device rows (not a live ping to Yoco). Web POS on{" "}
+              <code className="rounded bg-gray-100 px-1 text-xs">api.yoco.com</code> requires OAuth; dashboard keys are
+              checkout-only.
+            </p>
+          </div>
+          <Link
+            to={adminSpaTo("/admin/integrations/yoco")}
+            className="shrink-0 text-sm font-medium text-primary underline"
+          >
+            Yoco setup (admin) →
+          </Link>
+        </div>
         <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
           <div>
             <dt className="text-gray-500">Integration record</dt>
@@ -629,6 +724,28 @@ export function ProviderDetailPage() {
           <div>
             <dt className="text-gray-500">Has public key configured</dt>
             <dd className="font-medium">{yoco?.integration?.has_public_key ? "Yes" : "No"}</dd>
+          </div>
+          <div>
+            <dt className="text-gray-500">Credential mode (stored)</dt>
+            <dd className="font-medium">
+              {yoco?.integration?.credential_mode === "oauth"
+                ? "oauth (Web POS JWT)"
+                : yoco?.integration?.credential_mode === "checkout"
+                  ? "checkout (hosted checkout keys only)"
+                  : "none / unknown"}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-gray-500">Yoco environment</dt>
+            <dd className="font-medium">{yoco?.integration?.environment === "sandbox" ? "sandbox" : "live"}</dd>
+          </div>
+          <div>
+            <dt className="text-gray-500">OAuth token row (this env)</dt>
+            <dd className="font-medium">{yoco?.integration?.oauth_token_present ? "Present" : "Not stored"}</dd>
+          </div>
+          <div>
+            <dt className="text-gray-500">Has secret key (Checkout API)</dt>
+            <dd className="font-medium">{yoco?.integration?.has_secret_key ? "Yes" : "No"}</dd>
           </div>
           <div>
             <dt className="text-gray-500">Connected at</dt>
@@ -659,6 +776,12 @@ export function ProviderDetailPage() {
           <div className="sm:col-span-2">
             <dt className="text-gray-500">Likely ready for terminal payments</dt>
             <dd className="font-medium">{yocoDerived.likely_ready_for_terminal_payments ? "Yes" : "No"}</dd>
+            {yocoDerived.has_virtual_checkout_devices_only ? (
+              <p className="mt-1 text-xs text-amber-700">
+                Active devices look like hosted-checkout placeholders only — provider needs{" "}
+                <strong>Connect Yoco (OAuth)</strong> for real Web POS terminals. See admin Yoco setup.
+              </p>
+            ) : null}
           </div>
         </dl>
         {Array.isArray(yoco?.web_pos_devices) && yoco!.web_pos_devices!.length > 0 ? (
@@ -668,6 +791,7 @@ export function ProviderDetailPage() {
                 <tr className="border-b border-gray-200 text-gray-500">
                   <th className="py-2 pr-3 font-medium">Name</th>
                   <th className="py-2 pr-3 font-medium">Yoco device ID</th>
+                  <th className="py-2 pr-3 font-medium">Charge mode</th>
                   <th className="py-2 pr-3 font-medium">Location</th>
                   <th className="py-2 pr-3 font-medium">Active</th>
                   <th className="py-2 pr-3 font-medium">Last used</th>
@@ -678,6 +802,13 @@ export function ProviderDetailPage() {
                   <tr key={str(d.id)} className="border-b border-gray-100">
                     <td className="py-2 pr-3">{str(d.name)}</td>
                     <td className="py-2 pr-3 font-mono text-xs">{str(d.yoco_device_id)}</td>
+                    <td className="py-2 pr-3 text-xs">
+                      {d.credential_mode === "virtual_checkout"
+                        ? "virtual_checkout"
+                        : d.credential_mode === "web_pos"
+                          ? "web_pos"
+                          : "—"}
+                    </td>
                     <td className="py-2 pr-3">{str(d.location_name) || "—"}</td>
                     <td className="py-2 pr-3">{d.is_active === false ? "No" : "Yes"}</td>
                     <td className="py-2 pr-3">

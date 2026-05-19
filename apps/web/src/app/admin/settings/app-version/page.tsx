@@ -40,7 +40,13 @@ const emptyAndroidDefaults = (): PlatformBlock => ({
 
 const defaultSettings = (): AppVersionSettings => ({
   customer: { ios: emptyPlatform(), android: emptyAndroidDefaults() },
-  provider: { ios: emptyPlatform(), android: emptyAndroidDefaults() },
+  provider: {
+    ios: emptyPlatform(),
+    android: {
+      ...emptyAndroidDefaults(),
+      update_url: "https://play.google.com/store/apps/details?id=com.beautonomi.partner",
+    },
+  },
 });
 
 export default function AppVersionSettingsPage() {

@@ -63,10 +63,10 @@ Each row should be exercised on iOS + Android. For each step:
 | `services` | at least one `provider_services` row | `/(app)/(tabs)/more/catalogue` | yes | |
 | `availability` | at least one operating-hours row | `/(app)/(tabs)/more/settings/hours` | yes | |
 | `payment` | Yoco connection state | `/(app)/(tabs)/more/settings/yoco-devices` | optional | |
-| `payment-methods` | accepts cash / card / online flags | `/(app)/(tabs)/more/settings/payments` | yes | |
+| `payment-methods` | at least one of `providers.accept_cash`, `accept_card`, `accept_online` explicitly **true** (or tenant-default gift cards) | `/(app)/(tabs)/more/settings/payments` | yes | §provider-setup-2026-05: no longer auto-completes from defaults — provider must explicitly opt in |
 | `payout` | at least one payout-account row | `/(app)/(tabs)/more/settings/payout-accounts` | yes | |
 | `gallery` | at least one gallery image | `/(app)/(tabs)/more/gallery` | optional | |
-| `identity-verification` | `users.identity_verified` | `/(app)/(tabs)/more/settings/verification` | optional | marketplace trust badge |
+| `identity-verification` | `users.identity_verified` **OR** `provider_verification_status.status = approved` **OR** `providers.is_verified` | `/(app)/(tabs)/more/settings/verification` | optional | §provider-verification-sync 2026-05: any of three signals satisfies the step. Sumsub `GREEN` now lifts identity + public verified badge automatically |
 
 ---
 
@@ -84,6 +84,11 @@ Each row should be exercised on iOS + Android. For each step:
 | 8 | RoleGate "no provider role" block | Wrapped in `ScreenContainer` with `EmptyState`. Single "Sign out" CTA. |
 | 9 | RoleGate "can't reach server" block | `ScreenContainer` + `EmptyState` with Retry primary and Sign out secondary. |
 | 10 | Login screen on a notched device | Brand-consistent chrome (`ScreenContainer`), logo not clipped by the status bar, keyboard avoids input fields. |
+| 11 | Sumsub `GREEN` webhook for a provider | `provider_verification_status.status=approved`, `users.identity_verified=true`, `providers.is_verified=true`. The setup checklist's `identity-verification` step ticks on next focus without an extra admin action. |
+| 12 | Sumsub `RED` webhook after a previously approved badge | `is_verified` flips to `false`, `identity_verified` flips to `false`, KYC row reflects `rejected`. Slack ops alert fires. |
+| 13 | Admin reset on a previously verified provider | `is_verified=false`, `identity_verified=false`, KYC row marked `reset`. Provider sees "Not started" on the verification screen and can resubmit. |
+| 14 | Provider opens More tab with `payment-methods` still on defaults | Step shows as incomplete in the More card and the setup checklist until they pick at least one method. |
+| 15 | Provider taps a checklist step whose `native_route` is null | Falls through to `/(app)/onboarding/wizard?focus=<id>` (matches dashboard / checklist screens). |
 
 ---
 
@@ -92,11 +97,17 @@ Each row should be exercised on iOS + Android. For each step:
 | Suite | Path | What it covers |
 |---|---|---|
 | `setup-status/__tests__/native-route-map.test.ts` | apps/web | Every documented step ID is in `NATIVE_ROUTE_BY_ID`; every value starts with `/(app)/(tabs)/more/`; no web `/provider/...` paths leak. |
+| `setup-status/__tests__/route.test.ts` | apps/web | Payment-methods does not auto-complete; Sumsub approved KYC and public verified badge each satisfy `identity-verification`; personal-profile is freelancer-only; every step has a `native_route`. |
+| `verification/__tests__/sync-provider-verification.test.ts` | apps/web | `syncProviderVerificationState` writes consistent state across `provider_verification_status`, `users`, and `providers` on approve / reject / reset, and reports a `badgeChanged` signal. |
+| `webhooks/sumsub/__tests__/route.test.ts` | apps/web | Sumsub `GREEN` / `RED` review answers are mapped to `approved` / `rejected` and fanned through `syncProviderVerificationState`; bad HMAC is refused. |
+| `public/express-link/[slug]/__tests__/route.test.ts` | apps/web | Active link resolves + increments `use_count`; expired / over-max / inactive / cross-tenant slugs return 404; junk prefill keys are dropped. |
+| `cron/expire-custom-requests/__tests__/route.test.ts` | apps/web | Expires stale `pending` / `offered` requests and cascades to attached pending offers; refuses unauthenticated callers. |
+| `provider/custom-requests/[id]/offers/__tests__/route.test.ts` | apps/web | Provider cannot send a new offer on a cancelled / expired request or with a past expiration; valid open requests accept the offer. |
 
 Run:
 
 ```bash
-pnpm --filter @beautonomi/web vitest run src/app/api/provider/setup-status
+pnpm --filter @beautonomi/web vitest run src/app/api/provider/setup-status src/lib/verification src/app/api/webhooks/sumsub src/app/api/public/express-link src/app/api/cron/expire-custom-requests src/app/api/provider/custom-requests
 ```
 
 ---
@@ -137,8 +148,14 @@ pnpm --filter @beautonomi/web vitest run src/app/api/provider/setup-status
 ## 7. References
 
 - Plan: [`provider-setup-seamless-ux.plan.md`](../.cursor/plans/provider-setup-seamless-ux.plan.md)
+- Follow-up tag: `§provider-verification-sync 2026-05` and `§custom-requests-lifecycle-2026-05` — search the codebase for the inline comments that pin the rationale.
 - Canonical API: `apps/web/src/app/api/provider/setup-status/route.ts`
 - Deprecated alias: `apps/web/src/app/api/provider/profile-completion/route.ts`
 - Dashboard card: `apps/provider/src/components/setup/DashboardSetupCard.tsx`
 - Celebration overlay: `apps/provider/src/components/setup/SetupCompleteCelebration.tsx`
 - Personal profile screen: `apps/provider/app/(app)/(tabs)/more/settings/personal-profile.tsx`
+- Provider verification sync helper: `apps/web/src/lib/verification/sync-provider-verification.ts`
+- Sumsub webhook entry: `apps/web/src/app/api/webhooks/sumsub/route.ts`
+- Admin manual review: `apps/web/src/app/api/admin/verifications/[id]/route.ts`
+- Custom-request expiry cron: `apps/web/src/app/api/cron/expire-custom-requests/route.ts`
+- Custom-offer finalize helper: `apps/web/src/lib/custom-offers/finalize-custom-offer-payment.ts`

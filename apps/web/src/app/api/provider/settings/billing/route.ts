@@ -7,6 +7,10 @@ import {
   getProviderIdForUser,
 } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import {
+  formatPaymentMethodExpiry,
+  isPaymentMethodExpired,
+} from "@/lib/payments/payment-method-expiry";
 
 /**
  * GET /api/provider/settings/billing
@@ -36,10 +40,55 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error;
 
+    const [{ data: paymentMethods }, { data: invoices }] = await Promise.all([
+      supabase
+        .from("provider_payment_methods")
+        .select("id, name, type, last4, expiry_month, expiry_year, is_default, is_active")
+        .eq("provider_id", providerId)
+        .eq("is_active", true)
+        .order("is_default", { ascending: false }),
+      supabase
+        .from("provider_invoices")
+        .select(
+          "id, invoice_number, status, invoice_type, total_amount, issue_date, due_date, paid_at"
+        )
+        .eq("provider_id", providerId)
+        .order("issue_date", { ascending: false })
+        .limit(25),
+    ]);
+
+    type ProviderPaymentMethodRow = {
+      id: string;
+      name: string | null;
+      type: string | null;
+      last4: string | null;
+      expiry_month?: number | null;
+      expiry_year?: number | null;
+      is_default: boolean | null;
+      is_active?: boolean | null;
+    };
+
+    const shapedPaymentMethods = (paymentMethods ?? []).map(
+      (pm: ProviderPaymentMethodRow) => ({
+        id: pm.id,
+        name: pm.name,
+        type: pm.type,
+        last4: pm.last4 ?? undefined,
+        expiry_month: pm.expiry_month ?? undefined,
+        expiry_year: pm.expiry_year ?? undefined,
+        expiry_label:
+          formatPaymentMethodExpiry(pm.expiry_month, pm.expiry_year) ?? undefined,
+        is_expired: isPaymentMethodExpired(pm.expiry_month, pm.expiry_year),
+        is_default: !!pm.is_default,
+      }),
+    );
+
     return successResponse({
       billingAddress: billingSettings?.billing_address ?? null,
       billingEmail: billingSettings?.billing_email ?? null,
       billingPhone: billingSettings?.billing_phone ?? null,
+      paymentMethods: shapedPaymentMethods,
+      invoices: invoices ?? [],
     });
   } catch (error) {
     return handleApiError(error, "Failed to load billing information");
@@ -53,7 +102,7 @@ export async function GET(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     // Check permission to edit settings
-    const permissionCheck = await requirePermission('edit_settings', request);
+    const permissionCheck = await requirePermission("edit_settings", request);
     if (!permissionCheck.authorized) {
       return permissionCheck.response!;
     }

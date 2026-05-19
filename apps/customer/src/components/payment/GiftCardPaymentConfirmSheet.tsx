@@ -1,4 +1,5 @@
 import { View, Text, Modal, TouchableOpacity, Pressable, StyleSheet } from "react-native";
+import { router } from "expo-router";
 import { Colors } from "@/constants/colors";
 import type { SavedPaymentMethod } from "@/types/api";
 
@@ -15,8 +16,16 @@ export interface GiftCardPaymentConfirmSheetProps {
 }
 
 function cardLabel(card: SavedPaymentMethod): string {
-  const brand = card.card_type ? card.card_type.charAt(0).toUpperCase() + card.card_type.slice(1) : "Card";
+  const brand = card.card_type
+    ? card.card_type.charAt(0).toUpperCase() + card.card_type.slice(1)
+    : "Card";
   return card.last4 ? `${brand} •••• ${card.last4}` : brand;
+}
+
+function cardExpiry(card: SavedPaymentMethod): string | null {
+  if (card.expiry_label) return card.expiry_label;
+  if (!card.expiry_month || !card.expiry_year) return null;
+  return `${String(card.expiry_month).padStart(2, "0")}/${String(card.expiry_year).slice(-2)}`;
 }
 
 /**
@@ -56,9 +65,14 @@ export function GiftCardPaymentConfirmSheet({
                 accessibilityState={{ selected: !useNewCard }}
               >
                 <View style={[styles.radio, !useNewCard && styles.radioOn]} />
-                <Text style={styles.optionText}>
-                  {defaultCard ? cardLabel(defaultCard) : "Saved card"}
-                </Text>
+                <View style={styles.optionTextWrap}>
+                  <Text style={styles.optionText}>
+                    {defaultCard ? cardLabel(defaultCard) : "Saved card"}
+                  </Text>
+                  {defaultCard && cardExpiry(defaultCard) ? (
+                    <Text style={styles.optionSubtext}>Expires {cardExpiry(defaultCard)}</Text>
+                  ) : null}
+                </View>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.option, useNewCard && styles.optionSelected]}
@@ -68,6 +82,18 @@ export function GiftCardPaymentConfirmSheet({
               >
                 <View style={[styles.radio, useNewCard && styles.radioOn]} />
                 <Text style={styles.optionText}>Pay with a new card (secure browser)</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => {
+                  onCancel();
+                  router.push("/account-settings/payments");
+                }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={styles.manageLink}
+                accessibilityRole="link"
+                accessibilityLabel="Manage saved cards"
+              >
+                <Text style={styles.manageLinkText}>Manage saved cards</Text>
               </TouchableOpacity>
             </View>
           ) : (
@@ -168,10 +194,27 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
   },
   optionText: {
-    flex: 1,
     fontSize: 15,
     fontWeight: "600",
     color: "#111827",
+  },
+  optionTextWrap: {
+    flex: 1,
+  },
+  optionSubtext: {
+    marginTop: 2,
+    fontSize: 12,
+    color: "#6B7280",
+  },
+  manageLink: {
+    marginTop: 4,
+    paddingVertical: 6,
+    alignSelf: "flex-start",
+  },
+  manageLinkText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: Colors.primary,
   },
   hint: {
     fontSize: 13,

@@ -9,6 +9,10 @@ import {
   slackNotifyVerificationReviewed,
   slackNotifyVerificationRejected,
 } from "@/lib/integrations/slack/ops-triggers";
+import {
+  resolveProviderIdForUser,
+  syncProviderVerificationState,
+} from "@/lib/verification/sync-provider-verification";
 import { z } from "zod";
 
 // Schema for verification review
@@ -218,58 +222,45 @@ export async function PATCH(
       });
     }
 
-    // If the verified user is a provider, sync the approval into provider_verification_status
-    // so the provider's KYC screen reflects the manual review result.
+    // If the verified user is a provider, fan the approve/reject outcome out
+    // to all three downstream tables so the public verified badge, setup
+    // checklist, and provider KYC screen agree without a follow-up admin
+    // action. §provider-verification-sync 2026-05.
     const verifiedUserId = (verification as { user_id?: string } | null)?.user_id;
     if (verifiedUserId && (status === "approved" || status === "rejected")) {
       try {
         const adminClient = getSupabaseAdmin();
-        await adminClient
-          .from("users")
-          .update({
-            identity_verified: status === "approved",
-            identity_verification_status: status,
-            identity_verification_reviewed_at: new Date().toISOString(),
-          })
-          .eq("id", verifiedUserId);
-
-        const { data: ownerProvider } = await adminClient
-          .from("providers")
-          .select("id")
-          .eq("user_id", verifiedUserId)
-          .limit(1)
-          .maybeSingle();
-        let providerId = ownerProvider?.id ?? null;
-        if (!providerId) {
-          const { data: staffProvider } = await adminClient
-            .from("provider_staff")
-            .select("provider_id")
-            .eq("user_id", verifiedUserId)
-            .eq("is_active", true)
-            .order("created_at", { ascending: true })
-            .limit(1)
-            .maybeSingle();
-          providerId = staffProvider?.provider_id ?? null;
-        }
+        const providerId = await resolveProviderIdForUser(adminClient, verifiedUserId);
 
         if (providerId) {
-          const kycStatus = status === "approved" ? "approved" : "rejected";
-          await adminClient
-            .from("provider_verification_status")
-            .upsert(
-              {
-                provider_id: providerId,
-                status: kycStatus,
-                last_reviewed_at: new Date().toISOString(),
-                metadata: {
-                  manual_verification_id: id,
-                  manual_reviewed_by_user_id: user.id,
-                  manual_rejection_reason: status === "rejected" ? rejection_reason ?? null : null,
-                },
-                updated_at: new Date().toISOString(),
-              },
-              { onConflict: "provider_id" }
+          const syncResult = await syncProviderVerificationState(adminClient, {
+            providerId,
+            userId: verifiedUserId,
+            status,
+            source: "manual_admin",
+            metadata: {
+              manual_verification_id: id,
+              manual_reviewed_by_user_id: user.id,
+              manual_rejection_reason: status === "rejected" ? rejection_reason ?? null : null,
+            },
+          });
+          if (!syncResult.ok) {
+            console.error(
+              "Manual review sync had errors:",
+              syncResult.errors,
             );
+          }
+        } else {
+          // No linked provider — still sync the customer-facing identity flag
+          // by writing to users directly (mirrors the previous behavior).
+          await adminClient
+            .from("users")
+            .update({
+              identity_verified: status === "approved",
+              identity_verification_status: status,
+              identity_verification_reviewed_at: new Date().toISOString(),
+            })
+            .eq("id", verifiedUserId);
         }
       } catch (syncErr) {
         console.error("Failed to sync provider_verification_status after manual review:", syncErr);

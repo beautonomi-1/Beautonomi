@@ -23,6 +23,7 @@ import { revalidateBookingSlotBeforePayment } from "@/lib/bookings/revalidate-bo
 import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
 import { z } from "zod";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { isPaymentMethodExpired } from "@/lib/payments/payment-method-expiry";
 
 const chargeSavedCardSchema = z
   .object({
@@ -42,10 +43,16 @@ const chargeSavedCardSchema = z
       (typeof m.bookingId === "string" && String(m.bookingId).trim().length > 0);
     const hasGiftCardOrder =
       typeof m.gift_card_order_id === "string" && String(m.gift_card_order_id).trim().length > 0;
-    if (!hasProductOrder && !hasBooking && !hasGiftCardOrder && (val.amount == null || val.amount <= 0)) {
+    if (
+      !hasProductOrder &&
+      !hasBooking &&
+      !hasGiftCardOrder &&
+      (val.amount == null || val.amount <= 0)
+    ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "amount is required unless charging for a product order, booking, or gift card order",
+        message:
+          "amount is required unless charging for a product order, booking, or gift card order",
         path: ["amount"],
       });
     }
@@ -53,7 +60,7 @@ const chargeSavedCardSchema = z
 
 /**
  * POST /api/payments/charge-saved-card
- * 
+ *
  * Charge a saved Paystack card using authorization code
  */
 export async function POST(request: NextRequest) {
@@ -64,8 +71,8 @@ export async function POST(request: NextRequest) {
     // card charge path reject authenticated mobile users with the
     // generic 401/403 auth error seen on the customer payment flow.
     const { user } = await requireRoleInApi(
-      ['customer', 'provider_owner', 'provider_staff', 'superadmin'],
-      request,
+      ["customer", "provider_owner", "provider_staff", "superadmin"],
+      request
     );
     const tenantId = await resolveTenantIdWithZaFallback(request);
     const tenantRegion = await getTenantRegionConfig(tenantId);
@@ -77,8 +84,7 @@ export async function POST(request: NextRequest) {
     const supabase = await getSupabaseServer(request);
 
     // Get the payment method
-    const { data: paymentMethod, error: pmError } = await (supabase
-      .from("payment_methods") as any)
+    const { data: paymentMethod, error: pmError } = await (supabase.from("payment_methods") as any)
       .select("*")
       .eq("id", body.payment_method_id)
       .eq("user_id", user.id)
@@ -117,6 +123,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (isPaymentMethodExpired(paymentMethod.expiry_month, paymentMethod.expiry_year)) {
+      return errorResponse(
+        "This saved card has expired. Please remove it and pay with a new card.",
+        "CARD_EXPIRED",
+        400
+      );
+    }
+
     const meta = body.metadata ?? {};
     const productOrderIdFromMeta =
       typeof meta.product_order_id === "string" && meta.product_order_id.trim()
@@ -139,15 +153,11 @@ export async function POST(request: NextRequest) {
         return errorResponse(
           "This order belongs to a different market. Open checkout from the correct site or app for this order.",
           "TENANT_MISMATCH",
-          403,
+          403
         );
       }
       if (poRow.customer_id !== user.id) {
-        return errorResponse(
-          "You do not have permission to charge this order",
-          "FORBIDDEN",
-          403,
-        );
+        return errorResponse("You do not have permission to charge this order", "FORBIDDEN", 403);
       }
     }
 
@@ -165,11 +175,16 @@ export async function POST(request: NextRequest) {
       if (gcoErr || !gcoRow) {
         return notFoundResponse("Gift card order not found");
       }
-      if (!resourceTenantMatchesHostTenant(tenantId, (gcoRow as { tenant_id?: string | null }).tenant_id)) {
+      if (
+        !resourceTenantMatchesHostTenant(
+          tenantId,
+          (gcoRow as { tenant_id?: string | null }).tenant_id
+        )
+      ) {
         return errorResponse(
           "This purchase belongs to a different market.",
           "TENANT_MISMATCH",
-          403,
+          403
         );
       }
       if ((gcoRow as { purchaser_user_id?: string }).purchaser_user_id !== user.id) {
@@ -194,22 +209,22 @@ export async function POST(request: NextRequest) {
         return errorResponse(
           "This booking belongs to a different market. Open checkout from the correct site or app for this booking.",
           "TENANT_MISMATCH",
-          403,
+          403
         );
       }
       if (bookingRow.customer_id !== user.id) {
-        return errorResponse(
-          "You do not have permission to charge this booking",
-          "FORBIDDEN",
-          403,
-        );
+        return errorResponse("You do not have permission to charge this booking", "FORBIDDEN", 403);
       }
       bookingTenantId = bookingRow.tenant_id ?? null;
     }
 
     let amountInSmallestUnit: number;
     if (productOrderIdFromMeta) {
-      const resolved = await resolveProductOrderPaystackAmount(supabase, productOrderIdFromMeta, user.id);
+      const resolved = await resolveProductOrderPaystackAmount(
+        supabase,
+        productOrderIdFromMeta,
+        user.id
+      );
       if (resolved.ok === false) {
         return errorResponse(resolved.message, resolved.code, resolved.status);
       }
@@ -240,8 +255,14 @@ export async function POST(request: NextRequest) {
     }
 
     const chargeReference = generateTransactionReference(
-      productOrderIdFromMeta ? "order" : bookingIdFromMeta ? "booking" : giftCardOrderIdFromMeta ? "giftcard" : "savedcard",
-      productOrderIdFromMeta ?? bookingIdFromMeta ?? giftCardOrderIdFromMeta ?? user.id,
+      productOrderIdFromMeta
+        ? "order"
+        : bookingIdFromMeta
+          ? "booking"
+          : giftCardOrderIdFromMeta
+            ? "giftcard"
+            : "savedcard",
+      productOrderIdFromMeta ?? bookingIdFromMeta ?? giftCardOrderIdFromMeta ?? user.id
     );
 
     const chargeResult = await chargeAuthorization(
@@ -287,7 +308,12 @@ export async function POST(request: NextRequest) {
     // Record the canonical booking_payments row first so DB triggers have
     // payment truth before lifecycle sync runs.
     if (bookingIdFromMeta) {
-      const chargeData = chargeResult.data as { id?: number; reference?: string; amount?: number; status?: string };
+      const chargeData = chargeResult.data as {
+        id?: number;
+        reference?: string;
+        amount?: number;
+        status?: string;
+      };
       const amountMajor =
         typeof chargeData.amount === "number"
           ? convertFromSmallestUnit(chargeData.amount)
@@ -306,7 +332,10 @@ export async function POST(request: NextRequest) {
         notes: `Saved card charge. Ref: ${chargeData.reference ?? chargeReference}`,
       });
       if (recordedPayment.ok === false) {
-        console.error("[charge-saved-card] Failed to record booking payment after successful charge:", recordedPayment);
+        console.error(
+          "[charge-saved-card] Failed to record booking payment after successful charge:",
+          recordedPayment
+        );
       }
       try {
         await syncBookingAfterPaystackSuccess(supabaseAdmin, bookingIdFromMeta, {

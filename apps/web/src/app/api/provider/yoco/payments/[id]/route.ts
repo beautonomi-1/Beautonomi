@@ -2,7 +2,12 @@ import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
 import { getProviderIdForUser } from "@/lib/supabase/api-helpers";
-import { YOCO_ENDPOINTS } from "@/lib/payments/yoco";
+import { getYocoEndpoints } from "@/lib/payments/yoco";
+import {
+  getValidAccessToken,
+  resolveProviderCredentialMode,
+  YocoOAuthRequired,
+} from "@/lib/payments/yoco-oauth";
 
 /**
  * GET /api/provider/yoco/payments/[id]
@@ -60,35 +65,44 @@ export async function GET(
       );
     }
 
-    type PaymentRow = { id: string; yoco_device_id?: string; yoco_payment_id?: string; status?: string; [key: string]: unknown };
-    type IntegrationRow = { secret_key?: string };
+    type PaymentRow = {
+      id: string;
+      yoco_device_id?: string;
+      yoco_payment_id?: string;
+      status?: string;
+      metadata?: Record<string, unknown> | null;
+      [key: string]: unknown;
+    };
     const paymentData = payment as PaymentRow;
 
-    if (paymentData.yoco_device_id && paymentData.yoco_payment_id) {
+    // §Yoco-OAuth 2026-05: only Web POS payments can be polled via
+    // GET /v1/webpos/{device_id}/payments/{payment_id} — and only with a fresh
+    // OAuth access token. Virtual checkout payments are kept in sync by the
+    // webhook so there is nothing useful to pull here.
+    const meta = (paymentData.metadata ?? {}) as Record<string, unknown>;
+    const isVirtualCheckout =
+      meta.credential_mode === "virtual_checkout" ||
+      (typeof paymentData.yoco_device_id === "string" &&
+        paymentData.yoco_device_id.startsWith("virtual:"));
+
+    if (!isVirtualCheckout && paymentData.yoco_device_id && paymentData.yoco_payment_id) {
       try {
-        const { data: integration } = await supabase
-          .from("provider_yoco_integrations")
-          .select("secret_key")
-          .eq("provider_id", providerId)
-          .single();
-
-        const integrationRow = integration as IntegrationRow | null;
-        if (integrationRow?.secret_key) {
+        const credentials = await resolveProviderCredentialMode(providerId);
+        if (credentials.credentialMode === "oauth") {
+          const endpoints = getYocoEndpoints(credentials.environment);
+          const accessToken = await getValidAccessToken(providerId, {
+            environment: credentials.environment,
+          });
           const yocoResponse = await fetch(
-            YOCO_ENDPOINTS.getWebPosPayment(
+            endpoints.getWebPosPayment(
               paymentData.yoco_device_id,
-              paymentData.yoco_payment_id
+              paymentData.yoco_payment_id,
             ),
-            {
-              headers: {
-                Authorization: `Bearer ${integrationRow.secret_key}`,
-              },
-            }
+            { headers: { Authorization: `Bearer ${accessToken}` } },
           );
-
           if (yocoResponse.ok) {
-            const yocoPayment = await yocoResponse.json() as { status?: string };
-            if (yocoPayment.status !== paymentData.status) {
+            const yocoPayment = (await yocoResponse.json()) as { status?: string };
+            if (yocoPayment.status && yocoPayment.status !== paymentData.status) {
               await supabase
                 .from("provider_yoco_payments")
                 .update({
@@ -101,8 +115,10 @@ export async function GET(
           }
         }
       } catch (syncError) {
-        console.error("Error syncing payment status from Yoco:", syncError);
-        // Continue with local data
+        if (!(syncError instanceof YocoOAuthRequired)) {
+          console.error("Error syncing payment status from Yoco:", syncError);
+        }
+        // Continue with local data; the polled value is best-effort.
       }
     }
 

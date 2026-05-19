@@ -5,6 +5,8 @@ export type PaymentMethodRow = {
   last4?: string;
   expiry_month?: number;
   expiry_year?: number;
+  expiry_label?: string;
+  is_expired?: boolean;
   cardholder_name?: string;
   is_default: boolean;
   is_active: boolean;

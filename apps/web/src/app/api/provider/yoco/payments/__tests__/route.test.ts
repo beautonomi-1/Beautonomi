@@ -6,6 +6,7 @@ const mockGetProviderIdForUser = vi.fn();
 const mockCheckYocoFeatureAccess = vi.fn();
 const mockResolveTenantIdWithZaFallback = vi.fn();
 const mockGetTenantRegionConfig = vi.fn();
+const mockResolveProviderCredentialMode = vi.fn();
 
 vi.mock("@/lib/auth/requireRole", () => ({
   requireRole: (...args: unknown[]) => mockRequireRole(...args),
@@ -36,6 +37,15 @@ vi.mock("@/lib/tenant/resolve-tenant-from-db", () => ({
 vi.mock("@/lib/regions/config", () => ({
   getTenantRegionConfig: (...args: unknown[]) => mockGetTenantRegionConfig(...args),
 }));
+
+vi.mock("@/lib/payments/yoco-oauth", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/payments/yoco-oauth")>();
+  return {
+    ...actual,
+    resolveProviderCredentialMode: (...args: unknown[]) =>
+      mockResolveProviderCredentialMode(...args),
+  };
+});
 
 function createSupabaseForLegacyTerminalFlow() {
   return {
@@ -123,6 +133,13 @@ describe("POST /api/provider/yoco/payments", () => {
     mockResolveTenantIdWithZaFallback.mockResolvedValue("tenant-1");
     mockGetTenantRegionConfig.mockResolvedValue({
       defaultCurrency: "ZAR",
+    });
+    mockResolveProviderCredentialMode.mockResolvedValue({
+      credentialMode: "none",
+      environment: "live",
+      isEnabled: false,
+      hasSecretKey: false,
+      hasOauthToken: false,
     });
     mockGetSupabaseServer.mockResolvedValue(createSupabaseForLegacyTerminalFlow());
   });

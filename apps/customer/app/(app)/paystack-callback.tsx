@@ -8,6 +8,10 @@ import {
   clearReferenceProcessing,
   markReferenceProcessing,
 } from "@/lib/paystack-verify-guard";
+import {
+  resolvePaystackVerifyRoute,
+  type RouteTarget,
+} from "@/lib/payments/resolvePaystackVerifyRoute";
 
 /**
  * Generic Paystack return target — default `returnUrl` for
@@ -17,8 +21,8 @@ import {
  *
  * Cold-start path: parse reference, verify-with-retry, route based on the
  * metadata in the verify payload (booking / order / wallet / gift card /
- * membership / custom offer / subscription / ad), with bookings tab as the
- * ultimate fallback.
+ * membership / custom offer / subscription / ad) via
+ * `resolvePaystackVerifyRoute`, with bookings tab as the ultimate fallback.
  */
 
 type ReturnMode = "verifying" | "success" | "pending" | "failed" | "cancelled" | "returning";
@@ -31,40 +35,6 @@ function pickStr(value: unknown): string {
 
 function pickRef(params: Record<string, string | string[] | undefined>): string {
   return pickStr(params.reference) || pickStr(params.trxref);
-}
-
-type RouteTarget = { pathname: string; params?: Record<string, string> };
-
-function unwrap(body: unknown, depth = 0): Record<string, unknown> | null {
-  if (!body || typeof body !== "object" || depth > 5) return null;
-  return body as Record<string, unknown>;
-}
-
-function resolveRouteFromVerifyPayload(body: unknown): RouteTarget | null {
-  let cur: Record<string, unknown> | null = unwrap(body);
-  for (let depth = 0; depth < 5 && cur; depth += 1) {
-    const bookingId = pickStr(cur.bookingId) || pickStr(cur.booking_id);
-    if (bookingId) {
-      return { pathname: "/(app)/booking-detail", params: { id: bookingId } };
-    }
-    const orderId = pickStr(cur.productOrderId) || pickStr(cur.product_order_id);
-    if (orderId) {
-      return { pathname: "/(app)/product-order-detail", params: { id: orderId } };
-    }
-    const giftCardId = pickStr(cur.giftCardId) || pickStr(cur.gift_card_id);
-    if (giftCardId) {
-      return { pathname: "/(app)/account-settings/payments" };
-    }
-    const type = pickStr(cur.type) || pickStr(cur.payment_type);
-    if (type === "wallet_topup") {
-      return { pathname: "/(app)/account-settings/wallet" };
-    }
-    if (type === "membership") {
-      return { pathname: "/(app)/(tabs)/explore" };
-    }
-    cur = unwrap(cur.data, depth + 1);
-  }
-  return null;
 }
 
 export default function PaystackCallbackScreen() {
@@ -123,7 +93,7 @@ export default function PaystackCallbackScreen() {
       markReferenceProcessing(reference);
       const verifyResult = await verifyPaystackWithRetry(reference);
       if (aborted) return;
-      const target = resolveRouteFromVerifyPayload(verifyResult.data);
+      const target = resolvePaystackVerifyRoute(verifyResult.data);
 
       if (verifyResult.status === "success") {
         setMode("success");

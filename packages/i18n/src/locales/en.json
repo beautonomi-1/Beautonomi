@@ -245,7 +245,16 @@
       "location": "Add at least one location",
       "services": "Add at least one active service",
       "hours": "Set operating hours",
-      "gallery": "Add portfolio photos"
+      "gallery": "Add portfolio photos",
+      "profile-details": "Business profile (name, description & contact)",
+      "personal-profile": "Personal profile (bio for clients)",
+      "service-address": "Service address or business location",
+      "profile-photo": "Profile photo or logo",
+      "payment": "Connect Yoco for card payments (optional)",
+      "payment-methods": "Choose accepted payment methods",
+      "payout": "Add a payout bank account",
+      "availability": "Set operating hours",
+      "identity-verification": "Verify your identity for the trust badge"
     },
     "waitlistScreen": {
       "title": "Waitlist",
@@ -1920,7 +1929,13 @@
           "cancelSalonTitle": "Cancel salon membership",
           "cancelSalonBody": "Cancel your {{planName}} membership with {{providerName}}? Your benefits will continue until the current expiry date.",
           "keepMembershipCta": "Keep membership",
-          "endMembershipCta": "Cancel"
+          "endMembershipCta": "Cancel",
+          "cancelSuccessTitle": "Membership cancelled",
+          "cancelSuccessBody": "Your membership has been cancelled. Benefits continue until your current period ends.",
+          "cancelSalonSuccessTitle": "Salon membership cancelled",
+          "cancelSalonSuccessBody": "Your {{planName}} membership with {{providerName}} has been cancelled.",
+          "cancelNothingTitle": "Nothing to cancel",
+          "cancelNothingBody": "We couldn't find an active membership to cancel."
         },
         "languageScreen": {
           "syncNoteTitle": "Note",

@@ -41,7 +41,7 @@ const validBody = {
     android: { ...validPair.android, force_update: true },
   },
   provider: {
-    ios: { ...validPair.ios, min_version: "3.0.0" },
+    ios: { ...validPair.ios, min_version: "3.0.0", latest_version: "3.0.0" },
     android: validPair.android,
   },
 };
@@ -210,6 +210,48 @@ describe("/api/admin/app-version", () => {
         customer: {
           ...validBody.customer,
           ios: { ...validBody.customer.ios, update_url: "not-a-url" },
+        },
+      };
+      const req = new NextRequest("http://localhost/api/admin/app-version", {
+        method: "PATCH",
+        body: JSON.stringify(bad),
+        headers: { "Content-Type": "application/json" },
+      });
+      const res = await PATCH(req);
+
+      expect(res.status).toBe(400);
+    });
+
+    it("returns 400 when latest version is older than minimum version", async () => {
+      mockGetSupabaseAdmin.mockReturnValue({ from: vi.fn() });
+
+      const { PATCH } = await import("../route");
+      const bad = {
+        ...validBody,
+        customer: {
+          ...validBody.customer,
+          ios: { ...validBody.customer.ios, min_version: "2.0.0", latest_version: "1.9.9" },
+        },
+      };
+      const req = new NextRequest("http://localhost/api/admin/app-version", {
+        method: "PATCH",
+        body: JSON.stringify(bad),
+        headers: { "Content-Type": "application/json" },
+      });
+      const res = await PATCH(req);
+
+      expect(res.status).toBe(400);
+    });
+
+    it("returns 400 when version is not semantic", async () => {
+      mockGetSupabaseAdmin.mockReturnValue({ from: vi.fn() });
+
+      const { PATCH } = await import("../route");
+      const bad = {
+        ...validBody,
+        provider: {
+          ...validBody.provider,
+          android: { ...validBody.provider.android, latest_version: "2026.05" },
         },
       };
       const req = new NextRequest("http://localhost/api/admin/app-version", {

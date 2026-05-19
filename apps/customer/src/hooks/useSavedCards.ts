@@ -1,6 +1,15 @@
 /**
  * Hook to fetch and manage saved payment methods (Paystack cards).
  * Cards are saved automatically via Paystack webhooks when save_card=true.
+ *
+ * Calls the canonical RESTful endpoints on apps/web:
+ *   - GET    /api/me/payment-methods         (list)
+ *   - DELETE /api/me/payment-methods/[id]    (soft-delete)
+ *
+ * Expired and inactive cards are filtered out of the returned list so
+ * checkout selectors never offer a card that would fail at charge time.
+ * Callers that need to surface expired cards (e.g. the manage screen) can
+ * fetch the raw list directly.
  */
 import { useState, useEffect, useCallback } from "react";
 import { api } from "@/lib/api-client";
@@ -26,7 +35,9 @@ export function useSavedCards(enabled = true): UseSavedCardsReturn {
     setLoading(true);
     setError(null);
     try {
-      const res = await api.get<SavedPaymentMethod[] | { data: SavedPaymentMethod[] }>("/api/me/payment-methods");
+      const res = await api.get<SavedPaymentMethod[] | { data: SavedPaymentMethod[] }>(
+        "/api/me/payment-methods"
+      );
       if (res.error) {
         setError(getApiErrorMessage(res.error, "Failed to load payment methods"));
         return;
@@ -35,7 +46,7 @@ export function useSavedCards(enabled = true): UseSavedCardsReturn {
       const list: SavedPaymentMethod[] = Array.isArray(raw)
         ? raw
         : (raw as { data: SavedPaymentMethod[] })?.data || [];
-      setCards(list.filter((c) => c.is_active));
+      setCards(list.filter((c) => c.is_active && !c.is_expired));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load cards");
     } finally {
@@ -43,7 +54,9 @@ export function useSavedCards(enabled = true): UseSavedCardsReturn {
     }
   }, [enabled]);
 
-  useEffect(() => { fetch(); }, [fetch]);
+  useEffect(() => {
+    fetch();
+  }, [fetch]);
 
   const remove = useCallback(async (id: string): Promise<boolean> => {
     try {

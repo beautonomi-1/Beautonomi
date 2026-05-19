@@ -11,9 +11,14 @@ import { formatDate, formatTime } from "@/lib/utils";
 import { getTravelBuffer } from "@/lib/config/house-call-config";
 import { useTranslation } from "@beautonomi/i18n";
 import AddToWaitlistButton from "@/components/booking/AddToWaitlistButton";
-import { coerceSelectedDate } from "@beautonomi/utils";
-import { formatLocalDateYYYYMMDD } from "@/lib/dates/format-local-date-yyyymmdd";
+import {
+  coerceSelectedDate,
+  formatBusinessDayYYYYMMDD,
+  startOfBusinessDayLocalDate,
+} from "@beautonomi/utils";
 import { parseSelectedDatetimeInProviderTz } from "@/lib/bookings/parse-selected-datetime-in-provider-tz";
+import { formatInTimeZone } from "date-fns-tz";
+import { normalizeProviderTimezone } from "@/lib/availability/time-utils";
 import {
   availabilityRouteDurationMinutes,
   slicesFromBookingCart,
@@ -41,6 +46,36 @@ function slotTimePeriod(timeStr: string): "morning" | "afternoon" | "evening" {
   if (hour < 12) return "morning";
   if (hour < 17) return "afternoon";
   return "evening";
+}
+
+/**
+ * Normalize "3:00" / "03:00" / "03:00:00" → "HH:mm".
+ * Used when matching legacy `slots[].time` (which is provider-local HH:mm) to
+ * the authoritative `public_slots[].start` ISO instants. Direct substring
+ * matching on `T(HH:mm)` of the ISO is wrong whenever the provider zone is
+ * not UTC (e.g. a 03:00 SAST slot is 01:00Z), which silently dropped the
+ * engine-emitted start/end/available_staff_ids for early-morning labels.
+ */
+function normalizeHHmmLabel(value: string): string {
+  const m = value.trim().match(/^(\d{1,2}):(\d{2})/);
+  if (!m) return value.trim();
+  return `${m[1].padStart(2, "0")}:${m[2]}`;
+}
+
+function publicSlotLabelInProviderTz(
+  iso: string,
+  providerTz?: string | null,
+): string {
+  const tz = normalizeProviderTimezone(providerTz ?? null);
+  if (tz) {
+    try {
+      return formatInTimeZone(new Date(iso), tz, "HH:mm");
+    } catch {
+      // Defence-in-depth: fall through to substring fallback.
+    }
+  }
+  const isoTimePart = iso.match(/T(\d{2}:\d{2})/)?.[1] ?? "";
+  return isoTimePart;
 }
 
 function slotTimeOnSelectedDay(timeStr: string, day: Date, providerTz?: string | null): Date {
@@ -169,7 +204,10 @@ export default function StepCalendar({
       ? Math.floor(onlineBookingSettings.max_advance_days)
       : FALLBACK_MAX_ADVANCE_DAYS;
 
-  const today = startOfLocalDay(new Date());
+  // §Booking-slot-audit 2026-05: anchor "today" to the provider business day
+  // when the salon timezone is known, so cross-TZ customers don't see/select
+  // the wrong salon date near midnight boundaries.
+  const today = startOfBusinessDayLocalDate(bookingState.providerTimezone ?? null);
   const lastSelectableDay = new Date(today);
   lastSelectableDay.setDate(today.getDate() + maxAdvanceDays - 1);
   const minViewMonth = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -291,7 +329,10 @@ export default function StepCalendar({
     if (!day) return;
     try {
       setIsLoading(true);
-      const dateStr = formatLocalDateYYYYMMDD(day);
+      // §Booking-slot-audit 2026-05: format the API `date=` param in the
+      // provider business timezone when known so the salon receives the
+      // calendar day the customer actually intends to book.
+      const dateStr = formatBusinessDayYYYYMMDD(day, bookingState.providerTimezone ?? null);
       const mode = bookingState.mode || "salon";
       const effectiveHoldId = bookingState.holdId || excludeHoldId;
       const holdParam = effectiveHoldId ? `&excludeHoldId=${encodeURIComponent(effectiveHoldId)}` : "";
@@ -356,13 +397,15 @@ export default function StepCalendar({
         // selection. The intersection only narrows availability — the
         // underlying wall-clock instant is identical across staff.
         const firstPublic = results[0]?.data?.public_slots ?? [];
-        const intersectedPublic: PublicSlot[] = firstPublic.map((p) => ({
-          ...p,
-          is_available: intersected.find((s) => {
-            const isoTimePart = p.start.match(/T(\d{2}:\d{2})/)?.[1] ?? "";
-            return s.time === isoTimePart;
-          })?.available ?? false,
-        }));
+        const providerTzForMatch = results[0]?.data?.provider_timezone ?? bookingState.providerTimezone ?? null;
+        const intersectedPublic: PublicSlot[] = firstPublic.map((p) => {
+          const label = publicSlotLabelInProviderTz(p.start, providerTzForMatch);
+          return {
+            ...p,
+            is_available:
+              intersected.find((s) => normalizeHHmmLabel(s.time) === label)?.available ?? false,
+          };
+        });
         setAvailability({
           date: dateStr,
           slots: intersected,
@@ -375,7 +418,7 @@ export default function StepCalendar({
     } finally {
       setIsLoading(false);
     }
-  }, [selectedDate, bookingState.selectedServices, bookingState.mode, travelBuffer, totalDuration, excludeHoldId, bookingState.holdId, bookingState.providerId, bookingState.selectedLocationId, minNoticeMinutes, maxAdvanceDays]);
+  }, [selectedDate, bookingState.selectedServices, bookingState.mode, travelBuffer, totalDuration, excludeHoldId, bookingState.holdId, bookingState.providerId, bookingState.selectedLocationId, minNoticeMinutes, maxAdvanceDays, bookingState.providerTimezone]);
 
   useEffect(() => {
     if (selectedDate) loadAvailability();
@@ -435,9 +478,17 @@ export default function StepCalendar({
     // string. Hold creation and booking POST prefer these over re-deriving
     // the instant from the label + provider TZ, which is the root cause of
     // the "invalid time / slot taken" regression in non-UTC deployments.
+    //
+    // §Booking-slot-audit 2026-05: matching by `T(HH:mm)` ISO substring was
+    // wrong whenever the provider zone is not UTC — a 03:00 SAST slot has
+    // ISO `01:00Z`, so the lookup missed and the calendar lost the
+    // authoritative `start`/`end`/`available_staff_ids` for early-morning
+    // labels. Match on provider-local HH:mm derived from the ISO instead.
+    const providerTzForMatch =
+      availability?.provider_timezone ?? bookingState.providerTimezone ?? null;
+    const wantLabel = normalizeHHmmLabel(time);
     const publicSlot = availability?.public_slots?.find((p) => {
-      const isoTimePart = p.start.match(/T(\d{2}:\d{2})/)?.[1] ?? "";
-      return isoTimePart === time;
+      return publicSlotLabelInProviderTz(p.start, providerTzForMatch) === wantLabel;
     }) ?? null;
     const updates: Partial<BookingState> = {
       selectedTimeSlot: time,

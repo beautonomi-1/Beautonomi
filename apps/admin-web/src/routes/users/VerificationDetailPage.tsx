@@ -13,6 +13,7 @@ import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminToast } from "@/lib/adminToast";
+import { isUserVerificationQueueStatus } from "@/lib/verificationQueueStatuses";
 
 type VerificationDetail = Record<string, unknown> & {
   id?: string;
@@ -68,6 +69,8 @@ export function VerificationDetailPage() {
     onSuccess: async (_data, vars) => {
       await qc.invalidateQueries({ queryKey: adminQueryKeys.verificationDetail(id) });
       await qc.invalidateQueries({ queryKey: ["admin", "verifications"] });
+      await qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
+      await qc.invalidateQueries({ queryKey: adminQueryKeys.providers.all() });
       adminToast.success(vars.status === "approved" ? "Verification approved" : "Verification rejected");
     },
     onError: (e: Error) => adminToast.error(`Review failed: ${e.message}`),
@@ -121,7 +124,7 @@ export function VerificationDetailPage() {
 
   const row = q.data;
   const status = String(row?.status ?? "");
-  const pending = status === "pending" || status === "submitted" || status === "under_review";
+  const pending = isUserVerificationQueueStatus(status);
   const subjectUserId = typeof row?.user_id === "string" ? row.user_id : "";
   const provider = row?.provider ?? null;
   const providerStatus = provider?.verification_status ?? null;

@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react";
 import { Alert, InteractionManager, Linking, Platform } from "react-native";
 import Constants from "expo-constants";
-import { APP_URL, IOS_APP_STORE_ID, withWebApiTenantHeaders } from "@/config/public-env";
+import {
+  ANDROID_PLAY_STORE_PACKAGE,
+  APP_URL,
+  IOS_APP_STORE_ID,
+  withWebApiTenantHeaders,
+} from "@/config/public-env";
 
 interface VersionInfo {
   minVersion: string | null;
@@ -11,8 +16,16 @@ interface VersionInfo {
 }
 
 function compareVersions(a: string, b: string): number {
-  const aParts = a.split(".").map(Number);
-  const bParts = b.split(".").map(Number);
+  const parse = (value: string) =>
+    value
+      .trim()
+      .replace(/^v/i, "")
+      .split(/[+-]/)[0]
+      .split(".")
+      .map((part) => Number.parseInt(part, 10))
+      .map((part) => (Number.isFinite(part) ? part : 0));
+  const aParts = parse(a);
+  const bParts = parse(b);
   for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
     const aVal = aParts[i] ?? 0;
     const bVal = bParts[i] ?? 0;
@@ -24,6 +37,16 @@ function compareVersions(a: string, b: string): number {
 
 export function useForceUpdate() {
   const [updateRequired, setUpdateRequired] = useState(false);
+  const [requiredUpdateUrl, setRequiredUpdateUrl] = useState<string | null>(null);
+
+  const openUpdate = () => {
+    const storeUrl =
+      requiredUpdateUrl ??
+      (Platform.OS === "ios"
+        ? `https://apps.apple.com/app/id${IOS_APP_STORE_ID}`
+        : `https://play.google.com/store/apps/details?id=${encodeURIComponent(ANDROID_PLAY_STORE_PACKAGE)}`);
+    void Linking.openURL(storeUrl);
+  };
 
   useEffect(() => {
     if (Platform.OS === "web") return;
@@ -48,22 +71,20 @@ export function useForceUpdate() {
           compareVersions(currentVersion, data.minVersion) < 0
         ) {
           setUpdateRequired(true);
+          setRequiredUpdateUrl(data.updateUrl ?? null);
           Alert.alert(
             "Update Required",
-            "A new version of Beautonomi is available. Please update to continue using the app.",
+            "A newer version of Beautonomi is required to keep bookings, checkout, and account features working correctly.",
             [
               {
                 text: "Update Now",
                 onPress: () => {
-                  if (data.updateUrl) {
-                    Linking.openURL(data.updateUrl);
-                  } else {
-                    const storeUrl =
-                      Platform.OS === "ios"
-                        ? `https://apps.apple.com/app/beautonomi/id${IOS_APP_STORE_ID}`
-                        : "https://play.google.com/store/apps/details?id=com.beautonomi";
-                    Linking.openURL(storeUrl);
-                  }
+                  const storeUrl =
+                    data.updateUrl ??
+                    (Platform.OS === "ios"
+                      ? `https://apps.apple.com/app/id${IOS_APP_STORE_ID}`
+                      : `https://play.google.com/store/apps/details?id=${encodeURIComponent(ANDROID_PLAY_STORE_PACKAGE)}`);
+                  void Linking.openURL(storeUrl);
                 },
               },
             ],
@@ -85,9 +106,9 @@ export function useForceUpdate() {
                   const storeUrl =
                     data.updateUrl ??
                     (Platform.OS === "ios"
-                      ? `https://apps.apple.com/app/beautonomi/id${IOS_APP_STORE_ID}`
-                      : "https://play.google.com/store/apps/details?id=com.beautonomi");
-                  Linking.openURL(storeUrl);
+                      ? `https://apps.apple.com/app/id${IOS_APP_STORE_ID}`
+                      : `https://play.google.com/store/apps/details?id=${encodeURIComponent(ANDROID_PLAY_STORE_PACKAGE)}`);
+                  void Linking.openURL(storeUrl);
                 },
               },
             ],
@@ -106,5 +127,5 @@ export function useForceUpdate() {
     };
   }, []);
 
-  return { updateRequired };
+  return { updateRequired, openUpdate };
 }

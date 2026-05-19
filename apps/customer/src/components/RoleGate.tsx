@@ -5,14 +5,14 @@ import { Colors } from "@/constants/colors";
 import { api } from "@/lib/api-client";
 import { GateLoadingScreen } from "@/components/GateLoadingScreen";
 import type { UserRole } from "@beautonomi/types";
-import {
-  authFlowBreadcrumb,
-  captureError,
-  isSentryEnabled,
-  setAuthFlowTags,
-} from "@/lib/sentry";
+import { authFlowBreadcrumb, captureError, isSentryEnabled, setAuthFlowTags } from "@/lib/sentry";
 
-const ALLOWED_ROLES: UserRole[] = ["customer"];
+const ALLOWED_ROLES: UserRole[] = [
+  "customer",
+  "provider_onboarding",
+  "provider_owner",
+  "provider_staff",
+];
 
 interface RoleGateProps {
   children: React.ReactNode;
@@ -125,8 +125,18 @@ export function RoleGate({ children }: RoleGateProps) {
   if (errorType) {
     const isNetwork = errorType === "network";
     return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: Colors.white, padding: 24 }}>
-        <Text style={{ textAlign: "center", fontSize: 18, fontWeight: "600", color: Colors.gray[900] }}>
+      <View
+        style={{
+          flex: 1,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: Colors.white,
+          padding: 24,
+        }}
+      >
+        <Text
+          style={{ textAlign: "center", fontSize: 18, fontWeight: "600", color: Colors.gray[900] }}
+        >
           {isNetwork ? "Can't reach server" : "Something went wrong"}
         </Text>
         <Text style={{ marginTop: 8, textAlign: "center", color: Colors.gray[500], maxWidth: 320 }}>
@@ -136,13 +146,23 @@ export function RoleGate({ children }: RoleGateProps) {
         </Text>
         <View style={{ marginTop: 32, flexDirection: "row", gap: 12 }}>
           <TouchableOpacity
-            style={{ borderRadius: 8, backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 12 }}
+            style={{
+              borderRadius: 8,
+              backgroundColor: Colors.primary,
+              paddingHorizontal: 24,
+              paddingVertical: 12,
+            }}
             onPress={() => void runFetch()}
           >
             <Text style={{ fontWeight: "600", color: Colors.white }}>Retry</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={{ borderRadius: 8, backgroundColor: Colors.gray[200], paddingHorizontal: 24, paddingVertical: 12 }}
+            style={{
+              borderRadius: 8,
+              backgroundColor: Colors.gray[200],
+              paddingHorizontal: 24,
+              paddingVertical: 12,
+            }}
             onPress={() => void signOut()}
           >
             <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>Sign out</Text>
@@ -153,10 +173,33 @@ export function RoleGate({ children }: RoleGateProps) {
   }
   if (blocked) {
     return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: Colors.white, padding: 24 }}>
-        <Text style={{ textAlign: "center", fontSize: 18, fontWeight: "600", color: Colors.gray[900] }}>This app is for customers only</Text>
-        <Text style={{ marginTop: 8, textAlign: "center", color: Colors.gray[500] }}>Your account is not set up for the customer app. Please use the provider app or contact support.</Text>
-        <TouchableOpacity style={{ marginTop: 32, borderRadius: 8, backgroundColor: Colors.gray[900], paddingHorizontal: 24, paddingVertical: 12 }} onPress={() => void signOut()}>
+      <View
+        style={{
+          flex: 1,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: Colors.white,
+          padding: 24,
+        }}
+      >
+        <Text
+          style={{ textAlign: "center", fontSize: 18, fontWeight: "600", color: Colors.gray[900] }}
+        >
+          This app is not available for this account
+        </Text>
+        <Text style={{ marginTop: 8, textAlign: "center", color: Colors.gray[500] }}>
+          Please use the right Beautonomi portal for your account or contact support.
+        </Text>
+        <TouchableOpacity
+          style={{
+            marginTop: 32,
+            borderRadius: 8,
+            backgroundColor: Colors.gray[900],
+            paddingHorizontal: 24,
+            paddingVertical: 12,
+          }}
+          onPress={() => void signOut()}
+        >
           <Text style={{ fontWeight: "500", color: Colors.white }}>Sign out</Text>
         </TouchableOpacity>
       </View>

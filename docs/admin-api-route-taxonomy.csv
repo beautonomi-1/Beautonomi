@@ -142,6 +142,7 @@ path,class,note
 /api/admin/integrations/slack/test,T,"uses resolveAdminTenantContext"
 /api/admin/integrations/slack,T,"uses resolveAdminTenantContext"
 /api/admin/integrations/wasender,G,"WASender WhatsApp integration config"
+/api/admin/integrations/yoco,T,"uses resolveAdminTenantContext; superadmin; Yoco OAuth v2 ops snapshot (non-secret)"
 /api/admin/invoices/[id],T,"needs explicit tenant filter"
 /api/admin/invoices,T,"uses resolveAdminApiTenantId"
 /api/admin/iso-codes/countries/[code],T,"review: likely tenant-scoped ops"

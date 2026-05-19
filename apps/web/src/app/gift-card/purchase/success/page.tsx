@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState, useCallback } from "react";
 import Image from "next/image";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Navbar4 from "@/components/global/Navbar4";
 import { Button } from "@/components/ui/button";
@@ -76,6 +76,7 @@ function extractVerifyPayload(res: unknown): { type?: string; giftCardOrderId?: 
 }
 
 function GiftCardPurchaseSuccessInner() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const reference =
     searchParams.get("reference")?.trim() ||
@@ -88,6 +89,17 @@ function GiftCardPurchaseSuccessInner() {
   const [orderId, setOrderId] = useState<string | null>(null);
   const [cards, setCards] = useState<GiftCardRow[]>([]);
   const [templates, setTemplates] = useState<GiftCardTemplate[]>([]);
+
+  // If verification ends in a hard error we keep the recovery message but
+  // auto-route to Payments after a short delay so the user always lands on a
+  // page where their codes (or refund) will appear.
+  useEffect(() => {
+    if (phase !== "error") return;
+    const t = setTimeout(() => {
+      router.replace("/account-settings/payments");
+    }, 6000);
+    return () => clearTimeout(t);
+  }, [phase, router]);
 
   useEffect(() => {
     let cancelled = false;

@@ -12,16 +12,7 @@ import { useModuleConfig, useFeatureFlag } from "@/providers/ConfigBundleProvide
 import { fetcher } from "@/lib/http/fetcher";
 import { formatApiErrorMessage } from "@/lib/http/api-error";
 import { toast } from "sonner";
-import {
-  Plus,
-  Loader2,
-  Pause,
-  Play,
-  MousePointer,
-  Eye,
-  Users,
-  Banknote,
-} from "lucide-react";
+import { Plus, Loader2, Pause, Play, MousePointer, Eye, Users, Banknote } from "lucide-react";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
@@ -34,6 +25,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
+
+type CampaignPaymentState = "none" | "unpaid" | "pending" | "failed" | "paid";
 
 type Campaign = {
   id: string;
@@ -49,6 +42,14 @@ type Campaign = {
   end_at: string | null;
   targeting?: { global_category_ids?: string[] };
   created_at: string;
+  /** §Provider-paystack-audit 2026-05: server-derived payment recovery state. */
+  payment_state?: CampaignPaymentState;
+  latest_budget_order?: {
+    id: string;
+    status: string;
+    amount: number;
+    currency: string | null;
+  } | null;
 };
 
 type GlobalCategory = { id: string; name: string; slug: string };
@@ -58,7 +59,9 @@ function isTimeBasedCampaign(campaign: Campaign | null): boolean {
 }
 
 function isImpressionPackCampaign(campaign: Campaign | null): boolean {
-  return Boolean(campaign && campaign.billing_model !== "time_based" && campaign.pack_impressions != null);
+  return Boolean(
+    campaign && campaign.billing_model !== "time_based" && campaign.pack_impressions != null
+  );
 }
 
 function canEditBudgetFields(campaign: Campaign | null): boolean {
@@ -72,14 +75,22 @@ function normalizeCategories(raw: unknown): GlobalCategory[] {
   if (Array.isArray(root.data)) return root.data as GlobalCategory[];
   if (Array.isArray(root.categories)) return root.categories as GlobalCategory[];
   if (Array.isArray(root.global_categories)) return root.global_categories as GlobalCategory[];
-  if (root.data && typeof root.data === "object" && Array.isArray((root.data as { categories?: unknown }).categories)) {
+  if (
+    root.data &&
+    typeof root.data === "object" &&
+    Array.isArray((root.data as { categories?: unknown }).categories)
+  ) {
     return (root.data as { categories: GlobalCategory[] }).categories;
   }
   return [];
 }
 
 /** Display status: treat exhausted windows/budgets as ended before cron/DB catch up. */
-function effectiveCampaignStatus(campaign: Campaign, nowMs: number, metrics?: CampaignPerformance): string {
+function effectiveCampaignStatus(
+  campaign: Campaign,
+  nowMs: number,
+  metrics?: CampaignPerformance
+): string {
   const base = campaign.status;
   if (base !== "active") return base;
 
@@ -111,7 +122,11 @@ function effectiveCampaignStatus(campaign: Campaign, nowMs: number, metrics?: Ca
   return base;
 }
 
-function campaignProgress(campaign: Campaign, nowMs: number, metrics?: CampaignPerformance): number {
+function campaignProgress(
+  campaign: Campaign,
+  nowMs: number,
+  metrics?: CampaignPerformance
+): number {
   if (isImpressionPackCampaign(campaign) && campaign.pack_impressions != null && metrics) {
     const cap = Number(campaign.pack_impressions);
     if (cap <= 0) return 0;
@@ -154,7 +169,13 @@ const formatCompactNumber = (value: number | null | undefined) =>
   new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(Number(value ?? 0));
 
 type ImpressionPack = { id: string; impressions: number; price_zar: number; display_order: number };
-type TimePack = { id: string; duration_days: number; label: string; price_zar: number; display_order: number };
+type TimePack = {
+  id: string;
+  duration_days: number;
+  label: string;
+  price_zar: number;
+  display_order: number;
+};
 
 export default function ProviderAdsPage() {
   const { currencyCode, format: fmt } = useReportCurrency();
@@ -163,7 +184,9 @@ export default function ProviderAdsPage() {
   const adsEnabled = useFeatureFlag("ads.enabled");
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [performance, setPerformance] = useState<PerformanceSummary | null>(null);
-  const [campaignPerformance, setCampaignPerformance] = useState<Record<string, CampaignPerformance>>({});
+  const [campaignPerformance, setCampaignPerformance] = useState<
+    Record<string, CampaignPerformance>
+  >({});
   const [packs, setPacks] = useState<ImpressionPack[]>([]);
   const [timePacks, setTimePacks] = useState<TimePack[]>([]);
   const [availableModels, setAvailableModels] = useState<string[]>([]);
@@ -227,15 +250,26 @@ export default function ProviderAdsPage() {
       try {
         const [catRes, packsRes] = await Promise.all([
           fetcher.get<{ data: GlobalCategory[] }>("/api/public/categories/global?all=true"),
-          fetcher.get<{ data: { impression_packs: ImpressionPack[]; time_packs: TimePack[]; available_models: string[]; default_model?: string } }>("/api/provider/ads/packs"),
+          fetcher.get<{
+            data: {
+              impression_packs: ImpressionPack[];
+              time_packs: TimePack[];
+              available_models: string[];
+              default_model?: string;
+            };
+          }>("/api/provider/ads/packs"),
         ]);
         setGlobalCategories(normalizeCategories(catRes.data));
         const packsData = packsRes.data;
         if (packsData && typeof packsData === "object" && !Array.isArray(packsData)) {
           setPacks(Array.isArray(packsData.impression_packs) ? packsData.impression_packs : []);
           setTimePacks(Array.isArray(packsData.time_packs) ? packsData.time_packs : []);
-          setAvailableModels(Array.isArray(packsData.available_models) ? packsData.available_models : []);
-          setDefaultModel(typeof packsData.default_model === "string" ? packsData.default_model : "time_based");
+          setAvailableModels(
+            Array.isArray(packsData.available_models) ? packsData.available_models : []
+          );
+          setDefaultModel(
+            typeof packsData.default_model === "string" ? packsData.default_model : "time_based"
+          );
         } else {
           setPacks(Array.isArray(packsData) ? (packsData as any) : []);
         }
@@ -269,9 +303,10 @@ export default function ProviderAdsPage() {
   useEffect(() => {
     if (searchParams.get("payment_success") === "1") {
       setPaymentConfirmedBanner(true);
-      toast.success(
-        "Payment confirmed. Your budget should appear on the campaign below; use Activate for CPC when you are ready to go live.",
-      );
+      // §Provider-paystack-audit 2026-05: campaigns auto-activate as soon as
+      // `handleAdsBudgetOrderSuccess` lands (CPC included), so the banner copy
+      // no longer instructs providers to "tap Activate" — that was misleading.
+      toast.success("Payment confirmed. Your campaign is being funded and will go live shortly.");
       void loadCampaigns();
       void loadPerformance();
       // Defensive refresh retries to avoid transient stale status immediately post-verify.
@@ -300,7 +335,14 @@ export default function ProviderAdsPage() {
     setCreating(true);
     try {
       const res = await fetcher.post<{
-        data: Campaign | { campaign: Campaign; requires_payment: boolean; payment_url: string | null; order_id: string };
+        data:
+          | Campaign
+          | {
+              campaign: Campaign;
+              requires_payment: boolean;
+              payment_url: string | null;
+              order_id: string;
+            };
       }>("/api/provider/ads/campaigns", {
         budget: num,
         daily_budget: createForm.daily_budget ? parseFloat(createForm.daily_budget) : null,
@@ -331,7 +373,14 @@ export default function ProviderAdsPage() {
     setCreatingPackId(pack.id);
     try {
       const res = await fetcher.post<{
-        data: Campaign | { campaign: Campaign; requires_payment: boolean; payment_url: string | null; order_id: string };
+        data:
+          | Campaign
+          | {
+              campaign: Campaign;
+              requires_payment: boolean;
+              payment_url: string | null;
+              order_id: string;
+            };
       }>("/api/provider/ads/campaigns", {
         impression_pack_id: pack.id,
         targeting: {
@@ -361,7 +410,9 @@ export default function ProviderAdsPage() {
     if (canEditBudget && form.budget) {
       const nextBudget = parseFloat(form.budget);
       if (Number.isFinite(nextBudget) && nextBudget > Number(editCampaign.budget ?? 0)) {
-        toast.error("Budget increases require a new paid campaign or pack. Reduce the budget, or buy a new boost.");
+        toast.error(
+          "Budget increases require a new paid campaign or pack. Reduce the budget, or buy a new boost."
+        );
         return;
       }
     }
@@ -373,7 +424,11 @@ export default function ProviderAdsPage() {
       if (canEditBudget) {
         payload.budget = form.budget ? parseFloat(form.budget) : undefined;
         payload.daily_budget =
-          form.daily_budget === "" ? null : form.daily_budget ? parseFloat(form.daily_budget) : undefined;
+          form.daily_budget === ""
+            ? null
+            : form.daily_budget
+              ? parseFloat(form.daily_budget)
+              : undefined;
         payload.bid_cpc = form.bid_cpc ? parseFloat(form.bid_cpc) : undefined;
       }
       await fetcher.patch(`/api/provider/ads/campaigns/${editCampaign.id}`, payload);
@@ -392,12 +447,53 @@ export default function ProviderAdsPage() {
     try {
       await fetcher.patch(`/api/provider/ads/campaigns/${campaignId}`, { status });
       await loadCampaigns();
-      toast.success(status === "active" ? "Campaign activated" : status === "paused" ? "Campaign paused" : "Campaign ended");
+      toast.success(
+        status === "active"
+          ? "Campaign activated"
+          : status === "paused"
+            ? "Campaign paused"
+            : "Campaign ended"
+      );
     } catch (err) {
       toast.error(formatApiErrorMessage(err, "Failed to update status"));
     } finally {
       setUpdating(null);
     }
+  };
+
+  /**
+   * §Provider-paystack-audit 2026-05: re-open Paystack for an unpaid or failed
+   * draft campaign without creating a duplicate. Mirrors the mobile flow so
+   * recovery actions stay in sync between platforms.
+   */
+  const retryCampaignPayment = async (campaign: Campaign) => {
+    setUpdating(campaign.id);
+    try {
+      const res = await fetcher.post<{ data?: { payment_url?: string | null } }>(
+        `/api/provider/ads/campaigns/${campaign.id}/checkout`,
+        {}
+      );
+      const url = res.data?.payment_url ?? null;
+      if (!url) {
+        toast.error("Couldn't reopen Paystack. Please try again.");
+        return;
+      }
+      window.location.assign(url);
+    } catch (err) {
+      toast.error(formatApiErrorMessage(err, "Couldn't reopen Paystack"));
+    } finally {
+      setUpdating(null);
+    }
+  };
+
+  const cancelDraftCampaign = async (campaign: Campaign) => {
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm("Cancel this draft? No charge was made.")
+    ) {
+      return;
+    }
+    await setStatus(campaign.id, "ended");
   };
 
   const openEdit = (c: Campaign) => {
@@ -426,8 +522,9 @@ export default function ProviderAdsPage() {
       {!enabled && (
         <Alert className="mb-6">
           <AlertDescription>
-            Sponsored listings are not available in your market yet. When ads are available, you will be able to boost your
-            profile and track visibility, reach, clicks, and bookings here.
+            Sponsored listings are not available in your market yet. When ads are available, you
+            will be able to boost your profile and track visibility, reach, clicks, and bookings
+            here.
           </AlertDescription>
         </Alert>
       )}
@@ -435,11 +532,21 @@ export default function ProviderAdsPage() {
       {paymentConfirmedBanner && enabled && (
         <Alert className="mb-6 border-emerald-200 bg-emerald-50 text-emerald-950">
           <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            {/* §Provider-paystack-audit 2026-05: server-side webhook activates
+              the campaign as soon as the order is paid, so the banner now
+              reflects that automatically rather than asking providers to tap
+              Activate (CPC campaigns are flipped to active by the webhook). */}
             <span>
-              <strong>Payment confirmed.</strong> Your paid budget should appear on each campaign below. For CPC campaigns, tap{" "}
-              <strong>Activate</strong> when you are ready to go live (packs and time boosts may activate automatically).
+              <strong>Payment confirmed.</strong> Your campaign is now funded and will go live
+              shortly. Refresh in a moment if it isn&apos;t showing as active yet.
             </span>
-            <Button type="button" variant="outline" size="sm" className="shrink-0 border-emerald-300" onClick={() => setPaymentConfirmedBanner(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="shrink-0 border-emerald-300"
+              onClick={() => setPaymentConfirmedBanner(false)}
+            >
               Dismiss
             </Button>
           </AlertDescription>
@@ -450,13 +557,16 @@ export default function ProviderAdsPage() {
       {enabled && performance && (
         <SectionCard title="Ad performance" className="mb-6">
           <p className="text-sm text-muted-foreground mb-4">
-            See how many people your ads reached, how often they were shown, and how many customers took action.
+            See how many people your ads reached, how often they were shown, and how many customers
+            took action.
           </p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="rounded-lg border p-4 flex items-center gap-3">
               <Eye className="h-8 w-8 text-muted-foreground" />
               <div>
-                <p className="text-2xl font-semibold">{formatCompactNumber(performance.impressions)}</p>
+                <p className="text-2xl font-semibold">
+                  {formatCompactNumber(performance.impressions)}
+                </p>
                 <p className="text-xs text-muted-foreground">Impressions</p>
               </div>
             </div>
@@ -507,9 +617,7 @@ export default function ProviderAdsPage() {
                       <p className="truncate font-medium capitalize">
                         {campaignModelLabel(campaign)}
                       </p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {campaign.id}
-                      </p>
+                      <p className="truncate text-xs text-muted-foreground">{campaign.id}</p>
                     </div>
                     <span>{formatCompactNumber(metrics.impressions)}</span>
                     <span>{formatCompactNumber(metrics.clicks)}</span>
@@ -527,7 +635,9 @@ export default function ProviderAdsPage() {
           {enabled && (
             <>
               <div className="rounded-xl border border-indigo-100 bg-indigo-50 p-4">
-                <p className="font-medium text-indigo-950">Choose the ad product that matches your goal</p>
+                <p className="font-medium text-indigo-950">
+                  Choose the ad product that matches your goal
+                </p>
                 <p className="mt-1 text-sm text-indigo-900/75">
                   {defaultModel === "time_based"
                     ? "Recommended: boost for a fixed number of days for predictable visibility."
@@ -540,7 +650,9 @@ export default function ProviderAdsPage() {
                 <div className="mb-6">
                   <div className="flex items-center gap-2">
                     <Label className="text-base font-medium">Boost for a set number of days</Label>
-                    {defaultModel === "time_based" ? <Badge variant="secondary">Recommended</Badge> : null}
+                    {defaultModel === "time_based" ? (
+                      <Badge variant="secondary">Recommended</Badge>
+                    ) : null}
                   </div>
                   <p className="text-sm text-muted-foreground mb-4">
                     Pay a flat rate — your listing stays in sponsored slots for the full duration.
@@ -556,13 +668,18 @@ export default function ProviderAdsPage() {
                           onClick={async () => {
                             setCreatingPackId(tp.id);
                             try {
-                              const targeting = createForm.global_category_ids.length > 0
-                                ? { global_category_ids: createForm.global_category_ids }
-                                : {};
+                              const targeting =
+                                createForm.global_category_ids.length > 0
+                                  ? { global_category_ids: createForm.global_category_ids }
+                                  : {};
                               const res = await fetcher.post<{
                                 data:
                                   | Campaign
-                                  | { campaign: Campaign; requires_payment?: boolean; payment_url?: string | null };
+                                  | {
+                                      campaign: Campaign;
+                                      requires_payment?: boolean;
+                                      payment_url?: string | null;
+                                    };
                               }>("/api/provider/ads/campaigns", {
                                 time_pack_id: tp.id,
                                 targeting,
@@ -590,7 +707,9 @@ export default function ProviderAdsPage() {
                           <span className="text-[11px] font-semibold uppercase tracking-wider text-emerald-700">
                             Time boost
                           </span>
-                          <span className="mt-1 text-3xl font-bold tabular-nums text-foreground">{tp.duration_days}</span>
+                          <span className="mt-1 text-3xl font-bold tabular-nums text-foreground">
+                            {tp.duration_days}
+                          </span>
                           <span className="text-sm text-muted-foreground line-clamp-2 mt-0.5">
                             {tp.label?.trim()
                               ? tp.label
@@ -598,11 +717,15 @@ export default function ProviderAdsPage() {
                                 ? "day in sponsored slots"
                                 : "days in sponsored slots"}
                           </span>
-                          <span className="mt-auto pt-3 border-t border-border text-lg font-semibold">{fmt(Number(tp.price_zar))}</span>
+                          <span className="mt-auto pt-3 border-t border-border text-lg font-semibold">
+                            {fmt(Number(tp.price_zar))}
+                          </span>
                           {creatingPackId === tp.id ? (
                             <Loader2 className="h-4 w-4 animate-spin mt-2 text-emerald-600" />
                           ) : (
-                            <span className="text-xs font-semibold text-emerald-600 mt-2">Tap to purchase →</span>
+                            <span className="text-xs font-semibold text-emerald-600 mt-2">
+                              Tap to purchase →
+                            </span>
                           )}
                         </button>
                       </div>
@@ -615,113 +738,53 @@ export default function ProviderAdsPage() {
                 <div>
                   <div className="flex items-center gap-2">
                     <Label className="text-base font-medium">Buy impressions</Label>
-                    {defaultModel === "impression_pack" ? <Badge variant="secondary">Recommended</Badge> : null}
+                    {defaultModel === "impression_pack" ? (
+                      <Badge variant="secondary">Recommended</Badge>
+                    ) : null}
                   </div>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Prepaid reach — delivery runs until every impression in the pack is shown.
-                </p>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-                  {packs.map((pack) => (
-                    <div
-                      key={pack.id}
-                      className="rounded-2xl p-[2px] bg-gradient-to-br from-violet-600 via-indigo-500 to-indigo-700 shadow-lg shadow-indigo-500/15"
-                    >
-                      <button
-                        type="button"
-                        onClick={() => buyPack(pack)}
-                        disabled={creatingPackId !== null}
-                        className="w-full rounded-[14px] bg-background p-4 text-left transition hover:bg-muted/40 disabled:opacity-50 min-h-[148px] flex flex-col"
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Prepaid reach — delivery runs until every impression in the pack is shown.
+                  </p>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                    {packs.map((pack) => (
+                      <div
+                        key={pack.id}
+                        className="rounded-2xl p-[2px] bg-gradient-to-br from-violet-600 via-indigo-500 to-indigo-700 shadow-lg shadow-indigo-500/15"
                       >
-                        <span className="text-[11px] font-semibold uppercase tracking-wider text-violet-700">
-                          Impression pack
-                        </span>
-                        <span className="mt-1 text-3xl font-bold tabular-nums text-foreground">
-                          {formatCompactNumber(pack.impressions)}
-                        </span>
-                        <span className="text-sm text-muted-foreground mt-0.5">sponsored impressions</span>
-                        <span className="mt-auto pt-3 border-t border-border text-lg font-semibold">
-                          {fmt(Number(pack.price_zar))}
-                        </span>
-                        {creatingPackId === pack.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin mt-2 text-violet-600" />
-                        ) : (
-                          <span className="text-xs font-semibold text-violet-600 mt-2">Tap to purchase →</span>
-                        )}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-                <p className="text-xs text-muted-foreground mb-4">Optional: select target categories below to show your ad only for those searches. Leave unchecked for all searches.</p>
-                <div className="flex flex-wrap gap-2 max-h-20 overflow-y-auto border rounded p-2 mb-4">
-                  {globalCategories.map((cat) => (
-                    <label key={cat.id} className="flex items-center gap-2 text-sm">
-                      <Checkbox
-                        checked={createForm.global_category_ids.includes(cat.id)}
-                        onCheckedChange={(checked) =>
-                          setCreateForm((p) => ({
-                            ...p,
-                            global_category_ids: checked
-                              ? [...p.global_category_ids, cat.id]
-                              : p.global_category_ids.filter((id) => id !== cat.id),
-                          }))
-                        }
-                      />
-                      {cat.name}
-                    </label>
-                  ))}
-                </div>
-                </div>
-              )}
-              {cpcBudgetAvailable && packs.length > 0 && (
-                <div className="border-t pt-4">
-                  <div className="flex items-center gap-2">
-                    <Label className="text-base font-medium">Or set a custom budget</Label>
-                    {defaultModel === "cpc_budget" ? <Badge variant="secondary">Recommended</Badge> : null}
+                        <button
+                          type="button"
+                          onClick={() => buyPack(pack)}
+                          disabled={creatingPackId !== null}
+                          className="w-full rounded-[14px] bg-background p-4 text-left transition hover:bg-muted/40 disabled:opacity-50 min-h-[148px] flex flex-col"
+                        >
+                          <span className="text-[11px] font-semibold uppercase tracking-wider text-violet-700">
+                            Impression pack
+                          </span>
+                          <span className="mt-1 text-3xl font-bold tabular-nums text-foreground">
+                            {formatCompactNumber(pack.impressions)}
+                          </span>
+                          <span className="text-sm text-muted-foreground mt-0.5">
+                            sponsored impressions
+                          </span>
+                          <span className="mt-auto pt-3 border-t border-border text-lg font-semibold">
+                            {fmt(Number(pack.price_zar))}
+                          </span>
+                          {creatingPackId === pack.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin mt-2 text-violet-600" />
+                          ) : (
+                            <span className="text-xs font-semibold text-violet-600 mt-2">
+                              Tap to purchase →
+                            </span>
+                          )}
+                        </button>
+                      </div>
+                    ))}
                   </div>
-                  <p className="text-sm text-muted-foreground mb-3">Open-ended budget and bid per click (for advanced use).</p>
-                </div>
-              )}
-              {cpcBudgetAvailable && (
-              <div className="flex flex-wrap items-end gap-3 p-4 border rounded-lg bg-muted/30">
-                <div>
-                  <Label>Total budget ({currencyCode})</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    step={10}
-                    value={createForm.budget}
-                    onChange={(e) => setCreateForm((p) => ({ ...p, budget: e.target.value }))}
-                    placeholder="500"
-                    className="w-32"
-                  />
-                </div>
-                <div>
-                  <Label>Daily budget ({currencyCode}, optional)</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    step={10}
-                    value={createForm.daily_budget}
-                    onChange={(e) => setCreateForm((p) => ({ ...p, daily_budget: e.target.value }))}
-                    placeholder="No cap"
-                    className="w-32"
-                  />
-                </div>
-                <div>
-                  <Label>Bid per click ({currencyCode})</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    step={0.5}
-                    value={createForm.bid_cpc}
-                    onChange={(e) => setCreateForm((p) => ({ ...p, bid_cpc: e.target.value }))}
-                    placeholder="2.00"
-                    className="w-28"
-                  />
-                </div>
-                <div className="w-full">
-                  <Label>Target categories (optional)</Label>
-                  <div className="flex flex-wrap gap-2 mt-2 max-h-24 overflow-y-auto border rounded p-2">
+                  <p className="text-xs text-muted-foreground mb-4">
+                    Optional: select target categories below to show your ad only for those
+                    searches. Leave unchecked for all searches.
+                  </p>
+                  <div className="flex flex-wrap gap-2 max-h-20 overflow-y-auto border rounded p-2 mb-4">
                     {globalCategories.map((cat) => (
                       <label key={cat.id} className="flex items-center gap-2 text-sm">
                         <Checkbox
@@ -739,24 +802,106 @@ export default function ProviderAdsPage() {
                       </label>
                     ))}
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Your ad shows for selected category searches. Leave all unchecked for all searches.
+                </div>
+              )}
+              {cpcBudgetAvailable && packs.length > 0 && (
+                <div className="border-t pt-4">
+                  <div className="flex items-center gap-2">
+                    <Label className="text-base font-medium">Or set a custom budget</Label>
+                    {defaultModel === "cpc_budget" ? (
+                      <Badge variant="secondary">Recommended</Badge>
+                    ) : null}
+                  </div>
+                  <p className="text-sm text-muted-foreground mb-3">
+                    Open-ended budget and bid per click (for advanced use).
                   </p>
                 </div>
-                <Button onClick={createDraft} disabled={creating}>
-                  {creating ? (
-                    <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Creating…</>
-                  ) : (
-                    <><Plus className="h-4 w-4 mr-2" /> New campaign (draft)</>
-                  )}
-                </Button>
-              </div>
+              )}
+              {cpcBudgetAvailable && (
+                <div className="flex flex-wrap items-end gap-3 p-4 border rounded-lg bg-muted/30">
+                  <div>
+                    <Label>Total budget ({currencyCode})</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      step={10}
+                      value={createForm.budget}
+                      onChange={(e) => setCreateForm((p) => ({ ...p, budget: e.target.value }))}
+                      placeholder="500"
+                      className="w-32"
+                    />
+                  </div>
+                  <div>
+                    <Label>Daily budget ({currencyCode}, optional)</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      step={10}
+                      value={createForm.daily_budget}
+                      onChange={(e) =>
+                        setCreateForm((p) => ({ ...p, daily_budget: e.target.value }))
+                      }
+                      placeholder="No cap"
+                      className="w-32"
+                    />
+                  </div>
+                  <div>
+                    <Label>Bid per click ({currencyCode})</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      step={0.5}
+                      value={createForm.bid_cpc}
+                      onChange={(e) => setCreateForm((p) => ({ ...p, bid_cpc: e.target.value }))}
+                      placeholder="2.00"
+                      className="w-28"
+                    />
+                  </div>
+                  <div className="w-full">
+                    <Label>Target categories (optional)</Label>
+                    <div className="flex flex-wrap gap-2 mt-2 max-h-24 overflow-y-auto border rounded p-2">
+                      {globalCategories.map((cat) => (
+                        <label key={cat.id} className="flex items-center gap-2 text-sm">
+                          <Checkbox
+                            checked={createForm.global_category_ids.includes(cat.id)}
+                            onCheckedChange={(checked) =>
+                              setCreateForm((p) => ({
+                                ...p,
+                                global_category_ids: checked
+                                  ? [...p.global_category_ids, cat.id]
+                                  : p.global_category_ids.filter((id) => id !== cat.id),
+                              }))
+                            }
+                          />
+                          {cat.name}
+                        </label>
+                      ))}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Your ad shows for selected category searches. Leave all unchecked for all
+                      searches.
+                    </p>
+                  </div>
+                  <Button onClick={createDraft} disabled={creating}>
+                    {creating ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" /> Creating…
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="h-4 w-4 mr-2" /> New campaign (draft)
+                      </>
+                    )}
+                  </Button>
+                </div>
               )}
             </>
           )}
 
           {campaigns.length === 0 ? (
-            <p className="text-muted-foreground">No campaigns yet. Create a draft to get started.</p>
+            <p className="text-muted-foreground">
+              No campaigns yet. Create a draft to get started.
+            </p>
           ) : (
             <ul className="space-y-3">
               {campaigns.map((c) => {
@@ -780,86 +925,141 @@ export default function ProviderAdsPage() {
                       ? Number(metrics.impressions ?? 0) >= Number(c.pack_impressions)
                         ? "All impressions delivered"
                         : `${formatCompactNumber(Math.max(0, Number(c.pack_impressions) - Number(metrics.impressions || 0)))} impressions remaining`
-                      : Number(c.budget || 0) > 0 &&
-                          Number(c.spent ?? 0) >= Number(c.budget || 0)
+                      : Number(c.budget || 0) > 0 && Number(c.spent ?? 0) >= Number(c.budget || 0)
                         ? "Budget fully used"
                         : `${fmt(Math.max(0, Number(c.budget || 0) - Number(c.spent || 0)))} budget remaining`;
                 return (
-                <li
-                  key={c.id}
-                  className="flex flex-wrap items-center justify-between gap-3 p-4 border rounded-lg"
-                >
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-medium">Campaign</span>
-                      <Badge variant={displayStatus === "active" ? "default" : "secondary"}>
-                        {displayStatus}
-                      </Badge>
-                      <Badge variant="outline">{campaignModelLabel(c)}</Badge>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      {c.billing_model === "time_based"
-                        ? `${c.duration_days ?? "?"} day boost · ${fmt(Number(c.budget))} paid${c.end_at ? ` · Ends ${new Date(c.end_at).toLocaleDateString()}` : ""}`
-                        : c.pack_impressions != null
-                        ? `${c.pack_impressions} impressions · ${fmt(Number(c.budget))} paid · ${fmt(Number(c.spent))} spent`
-                        : `Total budget ${fmt(Number(c.budget))} · Spent ${fmt(Number(c.spent))}${c.daily_budget != null ? ` · Daily cap ${fmt(Number(c.daily_budget))}` : ""}${c.bid_cpc != null && c.bid_cpc > 0 ? ` · Bid ${fmt(Number(c.bid_cpc))}/click` : ""}`}
-                    </p>
-                    {c.targeting?.global_category_ids?.length ? (
-                      <p className="text-xs text-muted-foreground">
-                        Targeting: {c.targeting.global_category_ids.length} categor
-                        {c.targeting.global_category_ids.length === 1 ? "y" : "ies"}
-                      </p>
-                    ) : null}
-                    <div className="max-w-sm pt-2">
-                      <div className="h-2 overflow-hidden rounded-full bg-muted">
-                        <div className="h-2 rounded-full bg-primary" style={{ width: `${Math.round(progress * 100)}%` }} />
+                  <li
+                    key={c.id}
+                    className="flex flex-wrap items-center justify-between gap-3 p-4 border rounded-lg"
+                  >
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium">Campaign</span>
+                        <Badge variant={displayStatus === "active" ? "default" : "secondary"}>
+                          {displayStatus}
+                        </Badge>
+                        <Badge variant="outline">{campaignModelLabel(c)}</Badge>
                       </div>
-                      <p className="mt-1 text-xs font-medium text-muted-foreground">{remaining}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {c.billing_model === "time_based"
+                          ? `${c.duration_days ?? "?"} day boost · ${fmt(Number(c.budget))} paid${c.end_at ? ` · Ends ${new Date(c.end_at).toLocaleDateString()}` : ""}`
+                          : c.pack_impressions != null
+                            ? `${c.pack_impressions} impressions · ${fmt(Number(c.budget))} paid · ${fmt(Number(c.spent))} spent`
+                            : `Total budget ${fmt(Number(c.budget))} · Spent ${fmt(Number(c.spent))}${c.daily_budget != null ? ` · Daily cap ${fmt(Number(c.daily_budget))}` : ""}${c.bid_cpc != null && c.bid_cpc > 0 ? ` · Bid ${fmt(Number(c.bid_cpc))}/click` : ""}`}
+                      </p>
+                      {c.targeting?.global_category_ids?.length ? (
+                        <p className="text-xs text-muted-foreground">
+                          Targeting: {c.targeting.global_category_ids.length} categor
+                          {c.targeting.global_category_ids.length === 1 ? "y" : "ies"}
+                        </p>
+                      ) : null}
+                      <div className="max-w-sm pt-2">
+                        <div className="h-2 overflow-hidden rounded-full bg-muted">
+                          <div
+                            className="h-2 rounded-full bg-primary"
+                            style={{ width: `${Math.round(progress * 100)}%` }}
+                          />
+                        </div>
+                        <p className="mt-1 text-xs font-medium text-muted-foreground">
+                          {remaining}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => openEdit(c)}
-                      disabled={updating === c.id}
-                    >
-                      {canEditBudgetFields(c) ? "Edit" : "Edit targeting"}
-                    </Button>
-                    {(c.status === "draft" || c.status === "paused") && Number(c.budget) > Number(c.spent ?? 0) ? (
-                      <Button
-                        size="sm"
-                        onClick={() => setStatus(c.id, "active")}
-                        disabled={updating === c.id}
-                      >
-                        {updating === c.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4 mr-1" />}
-                        Activate
-                      </Button>
-                    ) : c.status === "draft" || c.status === "paused" ? (
-                      <Badge variant="outline">awaiting payment</Badge>
-                    ) : displayStatus === "active" ? (
+                    <div className="flex flex-wrap items-center gap-2">
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => setStatus(c.id, "paused")}
+                        onClick={() => openEdit(c)}
                         disabled={updating === c.id}
                       >
-                        {updating === c.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pause className="h-4 w-4 mr-1" />}
-                        Pause
+                        {canEditBudgetFields(c) ? "Edit" : "Edit targeting"}
                       </Button>
-                    ) : null}
-                    {displayStatus !== "ended" && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setStatus(c.id, "ended")}
-                        disabled={updating === c.id}
-                      >
-                        End
-                      </Button>
-                    )}
-                  </div>
-                </li>
+                      {/* §Provider-paystack-audit 2026-05: surface payment_state
+                      so unpaid / failed drafts get explicit Try-again /
+                      Cancel actions instead of the passive awaiting badge. */}
+                      {c.payment_state === "unpaid" || c.payment_state === "failed" ? (
+                        <>
+                          <Badge
+                            variant="outline"
+                            className={
+                              c.payment_state === "failed"
+                                ? "border-red-300 text-red-700"
+                                : "border-amber-300 text-amber-700"
+                            }
+                          >
+                            {c.payment_state === "failed" ? "payment failed" : "awaiting payment"}
+                          </Badge>
+                          <Button
+                            size="sm"
+                            onClick={() => void retryCampaignPayment(c)}
+                            disabled={updating === c.id}
+                          >
+                            {updating === c.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Banknote className="h-4 w-4 mr-1" />
+                            )}
+                            {c.payment_state === "failed"
+                              ? "Try payment again"
+                              : "Complete payment"}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => void cancelDraftCampaign(c)}
+                            disabled={updating === c.id}
+                          >
+                            Cancel campaign
+                          </Button>
+                        </>
+                      ) : c.payment_state === "pending" ? (
+                        <Badge variant="outline" className="border-blue-300 text-blue-700">
+                          confirming payment…
+                        </Badge>
+                      ) : (c.status === "draft" || c.status === "paused") &&
+                        Number(c.budget) > Number(c.spent ?? 0) ? (
+                        <Button
+                          size="sm"
+                          onClick={() => setStatus(c.id, "active")}
+                          disabled={updating === c.id}
+                        >
+                          {updating === c.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Play className="h-4 w-4 mr-1" />
+                          )}
+                          Activate
+                        </Button>
+                      ) : displayStatus === "active" ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setStatus(c.id, "paused")}
+                          disabled={updating === c.id}
+                        >
+                          {updating === c.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Pause className="h-4 w-4 mr-1" />
+                          )}
+                          Pause
+                        </Button>
+                      ) : null}
+                      {displayStatus !== "ended" &&
+                      c.payment_state !== "unpaid" &&
+                      c.payment_state !== "failed" ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setStatus(c.id, "ended")}
+                          disabled={updating === c.id}
+                        >
+                          End
+                        </Button>
+                      ) : null}
+                    </div>
+                  </li>
                 );
               })}
             </ul>
@@ -891,7 +1091,8 @@ export default function ProviderAdsPage() {
                     onChange={(e) => setForm((p) => ({ ...p, budget: e.target.value }))}
                   />
                   <p className="mt-1 text-xs text-muted-foreground">
-                    You can lower or re-balance this budget. To add more money, buy a new boost or pack.
+                    You can lower or re-balance this budget. To add more money, buy a new boost or
+                    pack.
                   </p>
                 </div>
                 <div>
@@ -954,7 +1155,9 @@ export default function ProviderAdsPage() {
               Cancel
             </Button>
             <Button onClick={updateCampaign} disabled={updating === editCampaign?.id}>
-              {updating === editCampaign?.id ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              {updating === editCampaign?.id ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : null}
               Save
             </Button>
           </DialogFooter>

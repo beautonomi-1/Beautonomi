@@ -37,6 +37,14 @@ export function validateStep(
       if (!formData.address?.city?.trim()) errors.push("City is required");
       if (!formData.address?.country?.trim()) errors.push("Country is required");
       break;
+    case 8:
+      if (!formData.thumbnail_url?.trim()) {
+        errors.push("Please upload a main thumbnail photo for your provider card");
+      }
+      if (!formData.avatar_url?.trim()) {
+        errors.push("Please upload a profile image/avatar for your provider card");
+      }
+      break;
     case 10:
       if (!formData.global_category_ids?.length) {
         errors.push("Please select at least one service category");

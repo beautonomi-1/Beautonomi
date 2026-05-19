@@ -1,12 +1,9 @@
 /**
  * §Ads-mobile-audit 2026-05: aesthetic polish on the Paystack return screen.
- * §Provider-paystack-audit 2026-05: cold-start verify-with-retry.
- *
- * Foreground path: ads.tsx -> openAdsPaystack already verifies. This screen
- * handles cold-start (app killed during 3DS) by parsing the reference from
- * the deep link, calling verifyPaystackWithRetry, and upgrading the initial
- * `?success=1` chrome based on the verified outcome instead of trusting the
- * flag alone.
+ * §Provider-paystack-audit 2026-05: cold-start verify-with-retry, then forward
+ * `payment_success` / `payment_failed` flags + the campaign id back to the
+ * Ads screen so the same outcome card surfaces whether the auth-session
+ * resolved in-foreground or the app was killed mid-3DS.
  */
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Text, View } from "react-native";
@@ -31,22 +28,38 @@ export default function AdsPaymentReturnScreen() {
     cancelled?: string;
     reference?: string;
     trxref?: string;
+    order_id?: string;
+    campaign_id?: string;
   }>();
   const reference = useMemo(() => pickStr(params.reference) || pickStr(params.trxref), [params]);
   const successFlag = pickStr(params.success);
   const cancelFlag = pickStr(params.cancelled);
+  const campaignId = pickStr(params.campaign_id);
 
-  // Initial chrome: cancel wins, otherwise verifying when we have a ref to
-  // check, otherwise pending while we settle.
   const initialStatus: ReturnStatus =
-    cancelFlag === "1" ? "cancel" : reference ? "verifying" : successFlag === "1" ? "success" : "pending";
+    cancelFlag === "1" ? "cancel" : reference ? "verifying" : "pending";
   const [status, setStatus] = useState<ReturnStatus>(initialStatus);
 
   useEffect(() => {
     let aborted = false;
+
+    const navigateBack = (
+      flag: "payment_success" | "payment_failed" | "payment_pending" | "payment_cancelled" | null
+    ) => {
+      const query: Record<string, string> = {};
+      if (flag === "payment_success") query.payment_success = "1";
+      if (flag === "payment_failed") query.payment_failed = "1";
+      if (flag === "payment_pending") query.payment_pending = "1";
+      if (campaignId) query.campaign_id = campaignId;
+      router.replace({
+        pathname: "/(app)/(tabs)/more/settings/ads",
+        params: query,
+      });
+    };
+
     if (cancelFlag === "1") {
       const t = setTimeout(() => {
-        if (!aborted) router.replace("/(app)/(tabs)/more/settings/ads");
+        if (!aborted) navigateBack("payment_failed");
       }, 700);
       return () => {
         aborted = true;
@@ -56,7 +69,7 @@ export default function AdsPaymentReturnScreen() {
     if (!reference) {
       const delay = successFlag === "1" ? 700 : 200;
       const t = setTimeout(() => {
-        if (!aborted) router.replace("/(app)/(tabs)/more/settings/ads");
+        if (!aborted) navigateBack(successFlag === "1" ? "payment_pending" : null);
       }, delay);
       return () => {
         aborted = true;
@@ -71,13 +84,16 @@ export default function AdsPaymentReturnScreen() {
       else setStatus("pending");
       const delay = verifyResult.status === "success" ? 700 : 1500;
       setTimeout(() => {
-        if (!aborted) router.replace("/(app)/(tabs)/more/settings/ads");
+        if (aborted) return;
+        if (verifyResult.status === "success") navigateBack("payment_success");
+        else if (verifyResult.status === "failed") navigateBack("payment_failed");
+        else navigateBack("payment_pending");
       }, delay);
     })();
     return () => {
       aborted = true;
     };
-  }, [reference, cancelFlag, successFlag, router]);
+  }, [reference, cancelFlag, successFlag, campaignId, router]);
 
   const isSuccess = status === "success";
   const isCancel = status === "cancel";
@@ -98,7 +114,7 @@ export default function AdsPaymentReturnScreen() {
                   : isCancel
                     ? "border-amber-200 bg-amber-50"
                     : "border-gray-200 bg-white"
-            }`,
+            }`
           )}
         >
           {isSuccess ? (

@@ -152,6 +152,7 @@ export default function App() {
           <Route path="integrations/amplitude" element={<P.AmplitudeConfigPage />} />
           <Route path="integrations/slack" element={<P.SlackIntegrationPage />} />
           <Route path="integrations/paystack" element={<P.PaystackConfigPage />} />
+          <Route path="integrations/yoco" element={<P.YocoIntegrationPage />} />
           <Route path="mapbox" element={<P.MapboxConfigPage />} />
           <Route path="iso-codes" element={<P.IsoCodesPage />} />
           <Route path="ads/:id" element={<P.AdsCampaignDetailPage />} />

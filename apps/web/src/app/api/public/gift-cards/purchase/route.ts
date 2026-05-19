@@ -110,8 +110,15 @@ export async function POST(request: NextRequest) {
     if (!email) {
       return NextResponse.json({ data: null, error: { message: "Email is required", code: "VALIDATION_ERROR" } }, { status: 400 });
     }
+    // Pin the buyer-specified source (single vs bulk) on the order so finance
+    // reporting and the webhook handler can tell apart `gift_card_purchase` from
+    // `gift_card_bulk_purchase`. Quantity > 1 with no caller-provided source
+    // is treated as bulk so older clients are categorised correctly.
+    const resolvedSource =
+      parsed.data.source ||
+      (quantity > 1 ? "gift_card_bulk_purchase" : "gift_card_purchase");
     const attribution = {
-      source: parsed.data.source || "gift_card_purchase",
+      source: resolvedSource,
       campaign_id: parsed.data.campaign_id || undefined,
       utm_source: parsed.data.utm_source || undefined,
       utm_medium: parsed.data.utm_medium || undefined,
@@ -135,7 +142,7 @@ export async function POST(request: NextRequest) {
         currency,
         status: "pending",
         metadata: {
-          source: "gift_card_purchase",
+          source: resolvedSource,
           attribution,
           ...templateMetadata,
         },

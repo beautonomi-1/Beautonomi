@@ -31,6 +31,7 @@ import {
   signInWithOAuth,
   resendVerificationEmail,
   buildEmailConfirmationRedirectUrl,
+  verifySignupEmailOtp,
 } from "@/lib/supabase/auth";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
@@ -39,12 +40,18 @@ import { OtpDigitInput } from "@/components/ui/otp-digit-input";
 import { normalizeFullPhoneToE164 } from "@/lib/phone";
 import { fetcher } from "@/lib/http/fetcher";
 import { supportedLanguages, SIGNUP_SOURCE_OPTIONS } from "@beautonomi/i18n";
-import { EVENT_SIGNUP_START, EVENT_SIGNUP_COMPLETE, EVENT_LOGIN_SUCCESS } from "@/lib/analytics/amplitude/types";
+import {
+  EVENT_SIGNUP_START,
+  EVENT_SIGNUP_COMPLETE,
+  EVENT_LOGIN_SUCCESS,
+} from "@/lib/analytics/amplitude/types";
 import { RADIX_SELECT_NONE } from "@/lib/ui/select-radix-sentinels";
 import {
   normalizeSupabaseAuthPhone,
   normalizeSupabaseSmsOtpToken,
   isCompleteOtpForLength,
+  isCompleteSupabaseSmsOtp,
+  SUPABASE_AUTH_OTP_LENGTH,
   SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS,
   SUPABASE_SMS_OTP_RESEND_COOLDOWN_SECONDS,
 } from "@/lib/supabase/auth-sms-otp";
@@ -66,7 +73,6 @@ const LOGIN_MODAL_I18N_LABELS: Record<string, string> = {
   "auth.signupSource.advertisement": "Advertisement",
   "auth.signupSource.other": "Other",
 };
-
 
 interface LoginModalProps {
   open: boolean;
@@ -101,7 +107,7 @@ export default function LoginModal({
   const emailOtpExpiryMin = Math.max(1, Math.round(authPolicy.email_otp_expiration_seconds / 60));
   const smsOtpLen = authPolicy.sms_otp_length;
   const smsOtpExpiryMin = Math.max(1, Math.round(authPolicy.sms_otp_expiration_seconds / 60));
-  
+
   // Close modal and call onAuthSuccess when user becomes authenticated
   useEffect(() => {
     if (user && open && onAuthSuccess) {
@@ -114,19 +120,38 @@ export default function LoginModal({
     }
   }, [user, open, onAuthSuccess, setOpen]);
 
-  const resolveRoleFast = useCallback(async (providerContext: boolean): Promise<UserRole | null> => {
+  const resolveRoleFast = useCallback(
+    async (providerContext: boolean): Promise<UserRole | null> => {
+      try {
+        const qs = providerContext ? "?portal=provider" : "";
+        const res = await fetch(`/api/me/role${qs}`, {
+          credentials: "include",
+          cache: "no-store",
+        });
+        if (!res.ok) return null;
+        const json = (await res.json()) as { data?: { role?: UserRole } };
+        return json?.data?.role ?? null;
+      } catch {
+        return null;
+      }
+    },
+    []
+  );
+
+  const getCustomerPostAuthRoute = useCallback(async (): Promise<string> => {
     try {
-      const qs = providerContext ? "?portal=provider" : "";
-      const res = await fetch(`/api/me/role${qs}`, {
+      const res = await fetch("/api/me/onboarding/complete", {
         credentials: "include",
         cache: "no-store",
       });
-      if (!res.ok) return null;
-      const json = (await res.json()) as { data?: { role?: UserRole } };
-      return json?.data?.role ?? null;
+      if (res.ok) {
+        const json = (await res.json()) as { data?: { completed?: boolean } };
+        if (json?.data?.completed === false) return "/onboarding";
+      }
     } catch {
-      return null;
+      // Fall back to the stable customer landing route.
     }
+    return "/bookings";
   }, []);
 
   const [isLoading, setIsLoading] = useState(false);
@@ -142,6 +167,11 @@ export default function LoginModal({
   /** After email/password signup when Supabase requires confirmation — replaces the form with a clear next step. */
   const [awaitingEmailVerification, setAwaitingEmailVerification] = useState(false);
   const [isResendingVerification, setIsResendingVerification] = useState(false);
+  /** Numeric OTP entered on the signup confirmation step (email/password flow). */
+  const [passwordSignupOtpCode, setPasswordSignupOtpCode] = useState("");
+  const [isVerifyingPasswordSignupOtp, setIsVerifyingPasswordSignupOtp] = useState(false);
+  /** Resend cooldown (seconds) for the signup OTP — distinct from the login email OTP cooldown. */
+  const [signupVerificationResendCooldown, setSignupVerificationResendCooldown] = useState(0);
   const [showPassword, setShowPassword] = useState(false);
   const [otpSent, setOtpSent] = useState(false);
   const [otpCode, setOtpCode] = useState("");
@@ -172,7 +202,8 @@ export default function LoginModal({
     apple: true,
   });
   const t = (key: string) => LOGIN_MODAL_I18N_LABELS[key] ?? key;
-  const fieldClass = "bg-gray-100 border-gray-200 text-[13px] text-gray-700 placeholder:text-gray-400";
+  const fieldClass =
+    "bg-gray-100 border-gray-200 text-[13px] text-gray-700 placeholder:text-gray-400";
   const labelClass = "text-xs font-medium text-gray-700 mb-2 block";
   const hasSocialAuth = socialAuth.google || socialAuth.apple;
   const showAltAfterPhone =
@@ -215,10 +246,13 @@ export default function LoginModal({
     const payload: { signup_source?: string; preferred_language?: string } = {};
     if (pendingSource) payload.signup_source = pendingSource;
     if (pendingLang) payload.preferred_language = pendingLang;
-    fetcher.patch("/api/me/profile", payload).then(() => {
-      sessionStorage.removeItem(PENDING_SIGNUP_SOURCE_KEY);
-      sessionStorage.removeItem(PENDING_PREFERRED_LANGUAGE_KEY);
-    }).catch(() => {});
+    fetcher
+      .patch("/api/me/profile", payload)
+      .then(() => {
+        sessionStorage.removeItem(PENDING_SIGNUP_SOURCE_KEY);
+        sessionStorage.removeItem(PENDING_PREFERRED_LANGUAGE_KEY);
+      })
+      .catch(() => {});
   }, [user?.id]);
 
   // Reset form when modal opens/closes
@@ -227,7 +261,7 @@ export default function LoginModal({
       // If initialMode is provided (login or signup), show email form directly
       // Otherwise, show phone input first (only when email provider is enabled in platform policy).
       setShowEmailForm(
-        authPolicy.email_provider_enabled && (initialMode === "login" || initialMode === "signup"),
+        authPolicy.email_provider_enabled && (initialMode === "login" || initialMode === "signup")
       );
       setIsSignup(initialMode === "signup");
       // Don't show password field separately for login mode - we'll show it inline
@@ -239,6 +273,9 @@ export default function LoginModal({
       setPhoneFull("");
       setShowResendVerification(false);
       setAwaitingEmailVerification(false);
+      setPasswordSignupOtpCode("");
+      setIsVerifyingPasswordSignupOtp(false);
+      setSignupVerificationResendCooldown(0);
       setShowPassword(false);
       setOtpSent(false);
       setOtpCode("");
@@ -254,18 +291,24 @@ export default function LoginModal({
       setEmailOtpResending(false);
       setEmailOtpResendCooldown(0);
       setEmailOtpExpiresAt(null);
-      const langCode = typeof navigator !== "undefined" && navigator.language
-        ? (() => { const c = navigator.language.split("-")[0]; return supportedLanguages.some((l) => l.code === c) ? c : "en"; })()
-        : "en";
+      const langCode =
+        typeof navigator !== "undefined" && navigator.language
+          ? (() => {
+              const c = navigator.language.split("-")[0];
+              return supportedLanguages.some((l) => l.code === c) ? c : "en";
+            })()
+          : "en";
       setPreferredLanguage(langCode);
       setSignupSource(null);
     }
   }, [open, initialMode, authPolicy.email_provider_enabled]);
 
   useEffect(() => {
-    getSocialAuthConfig().then(setSocialAuth).catch(() => {
-      setSocialAuth({ google: true, apple: true });
-    });
+    getSocialAuthConfig()
+      .then(setSocialAuth)
+      .catch(() => {
+        setSocialAuth({ google: true, apple: true });
+      });
   }, []);
 
   useEffect(() => {
@@ -298,10 +341,7 @@ export default function LoginModal({
 
   useEffect(() => {
     if (otpResendCooldown <= 0) return;
-    const id = window.setInterval(
-      () => setOtpResendCooldown((s) => (s > 0 ? s - 1 : 0)),
-      1000,
-    );
+    const id = window.setInterval(() => setOtpResendCooldown((s) => (s > 0 ? s - 1 : 0)), 1000);
     return () => window.clearInterval(id);
   }, [otpResendCooldown]);
 
@@ -309,10 +349,19 @@ export default function LoginModal({
     if (emailOtpResendCooldown <= 0) return;
     const id = window.setInterval(
       () => setEmailOtpResendCooldown((s) => (s > 0 ? s - 1 : 0)),
-      1000,
+      1000
     );
     return () => window.clearInterval(id);
   }, [emailOtpResendCooldown]);
+
+  useEffect(() => {
+    if (signupVerificationResendCooldown <= 0) return;
+    const id = window.setInterval(
+      () => setSignupVerificationResendCooldown((s) => (s > 0 ? s - 1 : 0)),
+      1000
+    );
+    return () => window.clearInterval(id);
+  }, [signupVerificationResendCooldown]);
 
   const formatOtpCountdown = (seconds: number) => {
     const mm = String(Math.floor(seconds / 60)).padStart(2, "0");
@@ -333,7 +382,7 @@ export default function LoginModal({
     // Clear any previous errors immediately
     setError(null);
     setShowResendVerification(false);
-    
+
     if (!email || !password) {
       setError("Email and password are required");
       return;
@@ -369,7 +418,9 @@ export default function LoginModal({
           email: trimmedEmail,
           password: trimmedPassword,
           fullName: fullName?.trim(),
-          phone: phoneFull ? (normalizeFullPhoneToE164(phoneFull) ?? phoneFull.replace(/\s/g, "").trim()) : undefined,
+          phone: phoneFull
+            ? (normalizeFullPhoneToE164(phoneFull) ?? phoneFull.replace(/\s/g, "").trim())
+            : undefined,
           role: userRole,
           emailRedirectTo: buildEmailConfirmationRedirectUrl({ redirectContext, redirectUrl }),
         });
@@ -380,10 +431,10 @@ export default function LoginModal({
         if (signupResult?.session) {
           if (isReady) track(EVENT_SIGNUP_COMPLETE, { method: "email" });
           toast.success("Account created successfully! Welcome to Beautonomi.");
-          
+
           // Wait for auth state to update
           await refreshUser();
-          
+
           try {
             await fetcher.patch("/api/me/profile", {
               signup_source: signupSource || undefined,
@@ -392,10 +443,10 @@ export default function LoginModal({
           } catch {
             // Non-blocking
           }
-          
+
           // Small delay to ensure auth context is updated
-          await new Promise(resolve => setTimeout(resolve, 300));
-          
+          await new Promise((resolve) => setTimeout(resolve, 300));
+
           setOpen(false);
 
           if (skipDefaultSignupRedirect && onAuthSuccess) {
@@ -415,19 +466,22 @@ export default function LoginModal({
           // User was created but no session - this means email verification is required
           // Try to sign in immediately as a fallback (in case verification is actually disabled)
           try {
-            const loginResult = await signInAuth({ email: trimmedEmail, password: trimmedPassword });
-            
+            const loginResult = await signInAuth({
+              email: trimmedEmail,
+              password: trimmedPassword,
+            });
+
             // Check if login actually created a session
             if (loginResult?.session) {
               if (isReady) track(EVENT_SIGNUP_COMPLETE, { method: "email" });
               toast.success("Account created successfully! Welcome to Beautonomi.");
-              
+
               // Wait for auth state to update
               await refreshUser();
-              
+
               // Small delay to ensure auth context is updated
-              await new Promise(resolve => setTimeout(resolve, 300));
-              
+              await new Promise((resolve) => setTimeout(resolve, 300));
+
               setOpen(false);
 
               if (skipDefaultSignupRedirect && onAuthSuccess) {
@@ -448,24 +502,26 @@ export default function LoginModal({
               throw new Error("Email verification required");
             }
           } catch (loginError: unknown) {
-            // If login fails, email verification is required
-            console.log("Auto-login after signup failed, email verification is required:", loginError);
+            // If login fails, email verification is required — collect the OTP inline instead of
+            // bouncing the user out to email + sign-in (old "Almost there" link UX).
+            console.log(
+              "Auto-login after signup failed, email verification is required:",
+              loginError
+            );
             if (typeof window !== "undefined") {
               if (signupSource) sessionStorage.setItem(PENDING_SIGNUP_SOURCE_KEY, signupSource);
               sessionStorage.setItem(PENDING_PREFERRED_LANGUAGE_KEY, preferredLanguage);
             }
-            // Dedicated UI — do not leave user on the signup/password step (feels broken).
             setPassword("");
-            setIsSignup(false);
             setShowPasswordField(false);
             setShowResendVerification(true);
             setError(null);
+            setPasswordSignupOtpCode("");
+            setSignupVerificationResendCooldown(SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS);
             setAwaitingEmailVerification(true);
             toast.success(
-              redirectContext === "provider"
-                ? "Check your email — verify your account, then sign in here to continue."
-                : "Check your email to verify your account, then sign in.",
-              { duration: 4500 },
+              "We sent a verification code to your email — enter it below to finish signing up.",
+              { duration: 4500 }
             );
           }
         } else {
@@ -475,7 +531,7 @@ export default function LoginModal({
       } else {
         // Sign in existing user
         const loginResult = await signInAuth({ email: trimmedEmail, password: trimmedPassword });
-        
+
         // Clear any errors on successful sign in
         setError(null);
         setShowResendVerification(false);
@@ -493,18 +549,24 @@ export default function LoginModal({
           let updatedUser = await refreshUser();
           let retries = 0;
           while (!updatedUser && retries < 2) {
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await new Promise((resolve) => setTimeout(resolve, 500));
             updatedUser = await refreshUser();
             retries++;
           }
           finalRole = updatedUser?.role || contextRole;
         }
-        
+
         // Only close modal and redirect if we have a role
         if (finalRole) {
           // Apply any pending signup_source / preferred_language (e.g. after email verification)
-          const pendingSource = typeof window !== "undefined" ? sessionStorage.getItem(PENDING_SIGNUP_SOURCE_KEY) : null;
-          const pendingLang = typeof window !== "undefined" ? sessionStorage.getItem(PENDING_PREFERRED_LANGUAGE_KEY) : null;
+          const pendingSource =
+            typeof window !== "undefined"
+              ? sessionStorage.getItem(PENDING_SIGNUP_SOURCE_KEY)
+              : null;
+          const pendingLang =
+            typeof window !== "undefined"
+              ? sessionStorage.getItem(PENDING_PREFERRED_LANGUAGE_KEY)
+              : null;
           if (pendingSource || pendingLang) {
             try {
               await fetcher.patch("/api/me/profile", {
@@ -524,7 +586,7 @@ export default function LoginModal({
           toast.success("Logged in successfully!");
           setOpen(false);
           void refreshUser().catch(() => {});
-          
+
           // Role-based redirect after login - immediate redirect
           // Use replace instead of push to avoid back button issues
           if (finalRole === "superadmin") {
@@ -546,7 +608,7 @@ export default function LoginModal({
             if (providerContext) {
               router.replace("/provider/onboarding");
             } else {
-              router.replace("/");
+              router.replace(await getCustomerPostAuthRoute());
             }
           }
         } else {
@@ -561,27 +623,34 @@ export default function LoginModal({
       }
     } catch (error: unknown) {
       console.error("Auth error:", error);
-      const errorMessage = error instanceof Error ? error.message : "Authentication failed. Please try again.";
-      
+      const errorMessage =
+        error instanceof Error ? error.message : "Authentication failed. Please try again.";
+
       // Check for specific error types
       const lowerErrorMessage = errorMessage.toLowerCase();
-      
+
       // Check if this is specifically an email verification issue
-      if (lowerErrorMessage.includes("email not confirmed") || 
-          lowerErrorMessage.includes("email_not_confirmed") ||
-          lowerErrorMessage.includes("verify your email")) {
-        setError("Please verify your email address before logging in. Check your inbox for the verification email.");
+      if (
+        lowerErrorMessage.includes("email not confirmed") ||
+        lowerErrorMessage.includes("email_not_confirmed") ||
+        lowerErrorMessage.includes("verify your email")
+      ) {
+        setError(
+          "Please verify your email address before logging in. Check your inbox for the verification email."
+        );
         setShowResendVerification(true);
-      } 
+      }
       // Check if this is invalid credentials (could be wrong password OR unverified email)
-      else if (lowerErrorMessage.includes("invalid login credentials") || 
-               lowerErrorMessage.includes("invalid credentials")) {
+      else if (
+        lowerErrorMessage.includes("invalid login credentials") ||
+        lowerErrorMessage.includes("invalid credentials")
+      ) {
         // Show clear error message
         setError("Invalid login credentials. Please check your email and password.");
         // Show resend verification as a secondary option (less prominent)
         // This helps users who might have unverified emails, but doesn't assume that's the issue
         setShowResendVerification(true);
-      } 
+      }
       // Other errors
       else {
         setError(errorMessage);
@@ -603,34 +672,97 @@ export default function LoginModal({
       toast.error("Please enter your email address first");
       return;
     }
+    if (signupVerificationResendCooldown > 0) return;
 
     setIsResendingVerification(true);
     try {
       await resendVerificationEmail(
         email.trim(),
-        buildEmailConfirmationRedirectUrl({ redirectContext, redirectUrl }),
+        buildEmailConfirmationRedirectUrl({ redirectContext, redirectUrl })
       );
-      toast.success("Verification email sent! Please check your inbox and spam folder.");
+      toast.success("Verification code sent! Please check your inbox and spam folder.");
+      setSignupVerificationResendCooldown(SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS);
       setShowResendVerification(false);
     } catch (error: unknown) {
       console.error("Error resending verification email:", error);
-      const errorMessage = error instanceof Error ? error.message : "Failed to send verification email.";
-      
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to send verification email.";
+
       // Check if the error indicates the email doesn't need verification or doesn't exist
       const lowerError = errorMessage.toLowerCase();
-      if (lowerError.includes("user not found") || 
-          lowerError.includes("email not found") ||
-          lowerError.includes("no user found")) {
-        toast.error("No account found with this email address. Please check your email or sign up.");
-      } else if (lowerError.includes("already verified") || 
-                 lowerError.includes("email already confirmed")) {
-        toast.error("This email is already verified. Please check your password or try signing in again.");
+      if (
+        lowerError.includes("user not found") ||
+        lowerError.includes("email not found") ||
+        lowerError.includes("no user found")
+      ) {
+        toast.error(
+          "No account found with this email address. Please check your email or sign up."
+        );
+      } else if (
+        lowerError.includes("already verified") ||
+        lowerError.includes("email already confirmed")
+      ) {
+        toast.error(
+          "This email is already verified. Please check your password or try signing in again."
+        );
         setShowResendVerification(false);
       } else {
         toast.error(errorMessage + " Please try again.");
       }
     } finally {
       setIsResendingVerification(false);
+    }
+  };
+
+  /**
+   * Verify the numeric OTP from the Supabase "Confirm signup" email and route the user onward —
+   * replaces the click-the-email-link-and-come-back step for email/password signup.
+   */
+  const handleVerifyPasswordSignupOtp = async (codeOverride?: string) => {
+    const token = normalizeSupabaseSmsOtpToken(codeOverride ?? passwordSignupOtpCode);
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail || !isCompleteSupabaseSmsOtp(token)) return;
+    setIsVerifyingPasswordSignupOtp(true);
+    setError(null);
+    try {
+      await verifySignupEmailOtp(trimmedEmail, token);
+      if (isReady) track(EVENT_SIGNUP_COMPLETE, { method: "email" });
+      toast.success("Email verified — welcome to Beautonomi!");
+
+      await refreshUser();
+      try {
+        await fetcher.patch("/api/me/profile", {
+          signup_source: signupSource || undefined,
+          preferred_language: preferredLanguage,
+        });
+      } catch {
+        // Non-blocking
+      }
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      setAwaitingEmailVerification(false);
+      setShowResendVerification(false);
+      setPasswordSignupOtpCode("");
+      setOpen(false);
+
+      if (skipDefaultSignupRedirect && onAuthSuccess) {
+        onAuthSuccess();
+        return;
+      }
+      if (redirectContext === "provider") {
+        router.push("/provider/onboarding");
+      } else if (redirectUrl) {
+        router.push(redirectUrl);
+      } else {
+        router.push("/onboarding");
+      }
+      onAuthSuccess?.();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Invalid or expired code";
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setIsVerifyingPasswordSignupOtp(false);
     }
   };
 
@@ -712,7 +844,11 @@ export default function LoginModal({
           router.replace("/admin/login?next=%2Fadmin%2Fdashboard");
           return;
         }
-        if (role === "provider_owner" || role === "provider_staff" || role === "provider_onboarding") {
+        if (
+          role === "provider_owner" ||
+          role === "provider_staff" ||
+          role === "provider_onboarding"
+        ) {
           router.replace("/provider/dashboard");
           return;
         }
@@ -745,7 +881,8 @@ export default function LoginModal({
     router.replace("/portal");
   };
 
-  const fullPhoneE164 = normalizeFullPhoneToE164(phoneFull) ?? (phoneFull || "").replace(/\s/g, "").trim();
+  const fullPhoneE164 =
+    normalizeFullPhoneToE164(phoneFull) ?? (phoneFull || "").replace(/\s/g, "").trim();
   const isValidE164 = fullPhoneE164.startsWith("+") && fullPhoneE164.length >= 11;
 
   const handlePhoneSendOtp = async () => {
@@ -863,7 +1000,7 @@ export default function LoginModal({
       setEmailOtpExpiresAt(Date.now() + authPolicy.email_otp_expiration_seconds * 1000);
       setEmailOtpResendCooldown(SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS);
       toast.success(
-        `Check your email for the ${emailOtpLen}-digit code (valid about ${emailOtpExpiryMin} minutes).`,
+        `Check your email for the ${emailOtpLen}-digit code (valid about ${emailOtpExpiryMin} minutes).`
       );
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to send code";
@@ -935,18 +1072,16 @@ export default function LoginModal({
     try {
       // Callback must be /auth/callback so the code can be exchanged. Add next= for post-login redirect.
       const origin = typeof window !== "undefined" ? window.location.origin : "";
-      const next = redirectUrl && redirectUrl.startsWith("/") && !redirectUrl.startsWith("//")
-        ? redirectUrl
-        : redirectContext === "provider"
-          ? "/provider/dashboard"
-          : "/";
-      const callbackUrl =
-        `${origin}/auth/callback?next=${encodeURIComponent(next)}`;
+      const next =
+        redirectUrl && redirectUrl.startsWith("/") && !redirectUrl.startsWith("//")
+          ? redirectUrl
+          : redirectContext === "provider"
+            ? "/provider/dashboard"
+            : "/";
+      const callbackUrl = `${origin}/auth/callback?next=${encodeURIComponent(next)}`;
       await signInWithOAuth(provider, callbackUrl);
       // OAuth will redirect, so we don't need to do anything else here
-      toast.info(
-        provider === "google" ? "Redirecting to Google..." : "Redirecting to Apple...",
-      );
+      toast.info(provider === "google" ? "Redirecting to Google..." : "Redirecting to Apple...");
     } catch (error: unknown) {
       console.error("OAuth error:", error);
       const label = provider === "google" ? "Google" : "Apple";
@@ -977,19 +1112,27 @@ export default function LoginModal({
         <div className="px-5 sm:px-6 pb-6 sm:pb-8 pt-0">
           {showEmailForm && awaitingEmailVerification ? (
             <>
-              <h2 className="text-2xl sm:text-[28px] font-bold text-gray-900 tracking-tight mb-1">Check your email</h2>
-              <p className="text-[13px] text-gray-500 mb-7 sm:mb-8">Confirm your address to continue</p>
+              <h2 className="text-2xl sm:text-[28px] font-bold text-gray-900 tracking-tight mb-1">
+                Check your email
+              </h2>
+              <p className="text-[13px] text-gray-500 mb-7 sm:mb-8">
+                Confirm your address to continue
+              </p>
             </>
           ) : (
             <>
-              <h2 className="text-2xl sm:text-[28px] font-bold text-gray-900 tracking-tight mb-1">Welcome to Beautonomi</h2>
-              <p className="text-[13px] text-gray-500 mb-7 sm:mb-8">Log in or sign up to continue</p>
+              <h2 className="text-2xl sm:text-[28px] font-bold text-gray-900 tracking-tight mb-1">
+                Welcome to Beautonomi
+              </h2>
+              <p className="text-[13px] text-gray-500 mb-7 sm:mb-8">
+                Log in or sign up to continue
+              </p>
               <p className="mb-5 text-center text-xs text-gray-500">
                 Continue with phone, email code, Google, Apple, or password.
               </p>
             </>
           )}
-          
+
           {/* Error Message */}
           {error && !awaitingEmailVerification && (
             <div className="mb-5 p-4 bg-red-50/90 border border-red-100 rounded-2xl">
@@ -1028,22 +1171,31 @@ export default function LoginModal({
                   placeholder="e.g. 82 123 4567"
                 />
               </div>
-              
+
               <p className="mb-6 text-[13px] leading-relaxed text-gray-500">
-                We&apos;ll text a {smsOtpLen}-digit code (about{" "}
-                {smsOtpExpiryMin}{" "}
-                {smsOtpExpiryMin === 1 ? "minute" : "minutes"}). Msg &amp; data rates may apply. By continuing you agree to our{" "}
-                <Link href="/terms-and-condition" className="font-medium text-gray-700 underline underline-offset-2 hover:text-gray-900" onClick={() => setOpen(false)}>
+                We&apos;ll text a {smsOtpLen}-digit code (about {smsOtpExpiryMin}{" "}
+                {smsOtpExpiryMin === 1 ? "minute" : "minutes"}). Msg &amp; data rates may apply. By
+                continuing you agree to our{" "}
+                <Link
+                  href="/terms-and-condition"
+                  className="font-medium text-gray-700 underline underline-offset-2 hover:text-gray-900"
+                  onClick={() => setOpen(false)}
+                >
                   Terms
-                </Link>
-                {" "}&amp;{" "}
-                <Link href="/privacy-policy" className="font-medium text-gray-700 underline underline-offset-2 hover:text-gray-900" onClick={() => setOpen(false)}>
+                </Link>{" "}
+                &amp;{" "}
+                <Link
+                  href="/privacy-policy"
+                  className="font-medium text-gray-700 underline underline-offset-2 hover:text-gray-900"
+                  onClick={() => setOpen(false)}
+                >
                   Privacy Policy
-                </Link>
-                {" "}(incl. communications &amp; analytics; optional session replay when signed in — adjust in account settings).
+                </Link>{" "}
+                (incl. communications &amp; analytics; optional session replay when signed in —
+                adjust in account settings).
               </p>
-              
-              <Button 
+
+              <Button
                 className="w-full rounded-2xl bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary-hover text-white min-h-[52px] h-12 text-base font-semibold mb-6 touch-manipulation shadow-lg shadow-pink-200/40 gap-2"
                 onClick={handlePhoneSendOtp}
                 disabled={isLoading || !isValidE164}
@@ -1064,12 +1216,13 @@ export default function LoginModal({
           {/* OTP verification step (after phone OTP sent) */}
           {!showEmailForm && otpSent && authPolicy.phone_provider_enabled && (
             <>
-              <p className="text-base sm:text-lg font-semibold text-gray-900 mb-1">Enter verification code</p>
+              <p className="text-base sm:text-lg font-semibold text-gray-900 mb-1">
+                Enter verification code
+              </p>
               <p className="mb-5 text-[13px] leading-relaxed text-gray-600 sm:text-sm">
                 We sent a {smsOtpLen}-digit code to{" "}
                 <span className="font-semibold text-gray-900">{sentPhoneE164}</span> (valid about{" "}
-                {smsOtpExpiryMin}{" "}
-                {smsOtpExpiryMin === 1 ? "minute" : "minutes"}).
+                {smsOtpExpiryMin} {smsOtpExpiryMin === 1 ? "minute" : "minutes"}).
               </p>
               <OtpDigitInput
                 value={otpCode}
@@ -1078,7 +1231,8 @@ export default function LoginModal({
                   if (error) setError(null);
                 }}
                 onComplete={(code) => {
-                  if (!isLoading && isCompleteOtpForLength(code, smsOtpLen)) void handleVerifyOtp(code);
+                  if (!isLoading && isCompleteOtpForLength(code, smsOtpLen))
+                    void handleVerifyOtp(code);
                 }}
                 disabled={isLoading}
                 autoFocus
@@ -1141,31 +1295,71 @@ export default function LoginModal({
               <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100">
                 <CheckCircle2 className="h-8 w-8 text-emerald-600" aria-hidden />
               </div>
-              <p className="text-center text-[15px] font-semibold text-gray-900 mb-2">Almost there</p>
+              <p className="text-center text-[15px] font-semibold text-gray-900 mb-2">
+                Verify your email
+              </p>
               <p className="text-center text-[13px] leading-relaxed text-gray-600 mb-4">
-                We sent a verification link to:
+                We sent a {SUPABASE_AUTH_OTP_LENGTH}-digit verification code to:
               </p>
-              <p className="text-center text-sm font-semibold text-gray-900 break-all mb-5 px-1">{email.trim()}</p>
-              <p className="text-[13px] leading-relaxed text-gray-600 mb-6">
-                {redirectContext === "provider" ? (
-                  <>
-                    Open the email and tap <strong className="font-semibold text-gray-800">Confirm</strong>. Then return here
-                    and <strong className="font-semibold text-gray-800">sign in</strong> with the same email and password to open your provider
-                    dashboard.
-                  </>
-                ) : (
-                  <>
-                    Open the email and confirm your address. Then sign in below with your email and password.
-                  </>
-                )}
+              <p className="text-center text-sm font-semibold text-gray-900 break-all mb-5 px-1">
+                {email.trim()}
               </p>
+              <p className="text-[13px] leading-relaxed text-gray-600 mb-5 text-center">
+                Enter the code below to finish creating your{" "}
+                {redirectContext === "provider" ? "provider " : ""}account.
+              </p>
+              <OtpDigitInput
+                value={passwordSignupOtpCode}
+                onChange={(v) => {
+                  setPasswordSignupOtpCode(v);
+                  if (error) setError(null);
+                }}
+                onComplete={(code) => {
+                  if (!isVerifyingPasswordSignupOtp && isCompleteSupabaseSmsOtp(code)) {
+                    void handleVerifyPasswordSignupOtp(code);
+                  }
+                }}
+                disabled={isVerifyingPasswordSignupOtp}
+                autoFocus
+                label="Signup verification code"
+                length={SUPABASE_AUTH_OTP_LENGTH}
+                className="mb-4"
+              />
+              {error && (
+                <p className="mb-4 text-center text-xs text-red-600" role="alert">
+                  {error}
+                </p>
+              )}
               <div className="flex flex-col gap-3">
+                <Button
+                  type="button"
+                  className="w-full rounded-2xl bg-gradient-to-r from-primary to-primary-hover text-white min-h-[48px] text-[15px] font-semibold touch-manipulation shadow-lg shadow-pink-200/40"
+                  onClick={() => void handleVerifyPasswordSignupOtp()}
+                  disabled={
+                    isVerifyingPasswordSignupOtp ||
+                    !isCompleteSupabaseSmsOtp(passwordSignupOtpCode)
+                  }
+                  aria-busy={isVerifyingPasswordSignupOtp}
+                >
+                  {isVerifyingPasswordSignupOtp ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin inline" aria-hidden />
+                      Verifying…
+                    </>
+                  ) : (
+                    "Verify & continue"
+                  )}
+                </Button>
                 <Button
                   type="button"
                   variant="outline"
                   className="w-full rounded-2xl border-emerald-200 bg-white min-h-[48px] text-[15px] font-semibold touch-manipulation"
                   onClick={() => void handleResendVerification()}
-                  disabled={isResendingVerification || !email.trim()}
+                  disabled={
+                    isResendingVerification ||
+                    !email.trim() ||
+                    signupVerificationResendCooldown > 0
+                  }
                   aria-busy={isResendingVerification}
                 >
                   {isResendingVerification ? (
@@ -1173,23 +1367,11 @@ export default function LoginModal({
                       <Loader2 className="mr-2 h-4 w-4 animate-spin inline" aria-hidden />
                       Sending…
                     </>
+                  ) : signupVerificationResendCooldown > 0 ? (
+                    `Resend code in ${signupVerificationResendCooldown}s`
                   ) : (
-                    "Resend verification email"
+                    "Resend verification code"
                   )}
-                </Button>
-                <Button
-                  type="button"
-                  className="w-full rounded-2xl bg-gradient-to-r from-primary to-primary-hover text-white min-h-[48px] text-[15px] font-semibold touch-manipulation shadow-lg shadow-pink-200/40"
-                  onClick={() => {
-                    setAwaitingEmailVerification(false);
-                    setIsSignup(false);
-                    setShowPasswordField(false);
-                    setPassword("");
-                    setError(null);
-                    setShowResendVerification(false);
-                  }}
-                >
-                  I&apos;ve verified — Sign in
                 </Button>
                 <button
                   type="button"
@@ -1199,12 +1381,17 @@ export default function LoginModal({
                     setIsSignup(true);
                     setShowPasswordField(false);
                     setPassword("");
+                    setPasswordSignupOtpCode("");
                     setError(null);
                     setShowResendVerification(false);
                   }}
                 >
                   Wrong email? Go back and edit
                 </button>
+                <p className="mt-1 text-center text-[11px] leading-relaxed text-gray-500">
+                  No code in your inbox? The Supabase &quot;Confirm signup&quot; email template
+                  must include <code className="text-[10px]">{"{{ .Token }}"}</code>.
+                </p>
               </div>
             </div>
           )}
@@ -1227,7 +1414,20 @@ export default function LoginModal({
                 }}
                 className="flex items-center gap-2 text-[15px] text-gray-500 hover:text-gray-900 font-medium mb-5 -mx-1 px-1 py-2 rounded-xl active:bg-gray-100 touch-manipulation"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M15 19l-7-7 7-7"
+                  />
+                </svg>
                 Back to {authPolicy.phone_provider_enabled ? "phone or social" : "social"}
               </button>
               {/* Step 1: Email Input (or both email and password for login mode) */}
@@ -1267,7 +1467,9 @@ export default function LoginModal({
                             return;
                           }
                           if (initialMode === "login") {
-                            const passwordInput = document.querySelector('input[type="password"], input[type="text"][placeholder="Password"]') as HTMLInputElement;
+                            const passwordInput = document.querySelector(
+                              'input[type="password"], input[type="text"][placeholder="Password"]'
+                            ) as HTMLInputElement;
                             if (passwordInput) {
                               passwordInput.focus();
                             } else {
@@ -1285,11 +1487,14 @@ export default function LoginModal({
                   </div>
                   {!isSignup && emailOtpSent && (
                     <>
-                      <p className="text-base sm:text-lg font-semibold text-gray-900 mb-1">Enter verification code</p>
+                      <p className="text-base sm:text-lg font-semibold text-gray-900 mb-1">
+                        Enter verification code
+                      </p>
                       <p className="mb-5 text-[13px] leading-relaxed text-gray-600 sm:text-sm">
                         Enter the {emailOtpLen}-digit code we sent to{" "}
-                        <span className="font-semibold text-gray-900">{pendingEmailOtp || email.trim()}</span>
-                        {" "}
+                        <span className="font-semibold text-gray-900">
+                          {pendingEmailOtp || email.trim()}
+                        </span>{" "}
                         (valid about {emailOtpExpiryMin} minutes)
                       </p>
                       <OtpDigitInput
@@ -1299,7 +1504,8 @@ export default function LoginModal({
                           if (error) setError(null);
                         }}
                         onComplete={(code) => {
-                          if (!isLoading && isCompleteOtpForLength(code, emailOtpLen)) void handleVerifyEmailOtp(code);
+                          if (!isLoading && isCompleteOtpForLength(code, emailOtpLen))
+                            void handleVerifyEmailOtp(code);
                         }}
                         disabled={isLoading}
                         autoFocus
@@ -1316,7 +1522,8 @@ export default function LoginModal({
                           (matches platform / Supabase email OTP expiry)
                         </span>
                         <span className="text-gray-400 sm:text-right">
-                          Link-only email? Add <code className="text-[11px]">{"{{ .Token }}"}</code> to the Supabase Magic Link template.
+                          Link-only email? Add <code className="text-[11px]">{"{{ .Token }}"}</code>{" "}
+                          to the Supabase Magic Link template.
                         </span>
                       </div>
                       <div className="mb-4 flex items-center justify-end text-xs">
@@ -1419,28 +1626,33 @@ export default function LoginModal({
                         onClick={() => setOpen(false)}
                         className="text-[15px] text-gray-500 hover:text-primary font-medium py-2 inline-block touch-manipulation"
                       >
-                        Forgot your password? <span className="text-primary font-semibold">Reset it</span>
+                        Forgot your password?{" "}
+                        <span className="text-primary font-semibold">Reset it</span>
                       </Link>
                     </div>
                   )}
-                  {!isSignup && !emailOtpMode && !emailOtpSent && authPolicy.email_provider_enabled && (
-                    <div className="mb-5 text-center">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEmailOtpMode(true);
-                          setPassword("");
-                          setEmailOtpSent(false);
-                          setEmailOtpCode("");
-                          setPendingEmailOtp("");
-                          setError(null);
-                        }}
-                        className="text-[15px] text-gray-600 hover:text-gray-900 font-medium py-2 touch-manipulation"
-                      >
-                        Sign in with <span className="text-primary font-semibold">email code</span> instead
-                      </button>
-                    </div>
-                  )}
+                  {!isSignup &&
+                    !emailOtpMode &&
+                    !emailOtpSent &&
+                    authPolicy.email_provider_enabled && (
+                      <div className="mb-5 text-center">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEmailOtpMode(true);
+                            setPassword("");
+                            setEmailOtpSent(false);
+                            setEmailOtpCode("");
+                            setPendingEmailOtp("");
+                            setError(null);
+                          }}
+                          className="text-[15px] text-gray-600 hover:text-gray-900 font-medium py-2 touch-manipulation"
+                        >
+                          Sign in with{" "}
+                          <span className="text-primary font-semibold">email code</span> instead
+                        </button>
+                      </div>
+                    )}
                   {!isSignup && emailOtpMode && !emailOtpSent && (
                     <div className="mb-5 text-center">
                       <button
@@ -1503,74 +1715,86 @@ export default function LoginModal({
                     </Button>
                   )}
 
-                  {!( !isSignup && emailOtpSent) && (
+                  {!(!isSignup && emailOtpSent) && (
                     <>
-                  {hasSocialAuth && (
-                    <>
-                      {/* Separator */}
-                      <div className="flex items-center my-6">
-                        <div className="flex-grow border-t border-gray-200 rounded-full"></div>
-                        <span className="flex-shrink mx-4 text-[13px] text-gray-400 font-medium">or</span>
-                        <div className="flex-grow border-t border-gray-200 rounded-full"></div>
+                      {hasSocialAuth && (
+                        <>
+                          {/* Separator */}
+                          <div className="flex items-center my-6">
+                            <div className="flex-grow border-t border-gray-200 rounded-full"></div>
+                            <span className="flex-shrink mx-4 text-[13px] text-gray-400 font-medium">
+                              or
+                            </span>
+                            <div className="flex-grow border-t border-gray-200 rounded-full"></div>
+                          </div>
+
+                          {/* Social Login Options */}
+                          {socialAuth.google && (
+                            <Button
+                              variant="outline"
+                              className="w-full mb-3 rounded-2xl flex items-center justify-start gap-3 px-4 min-h-[52px] h-12 hover:bg-gray-50 border-gray-200 text-[15px] font-medium touch-manipulation"
+                              onClick={() => void handleSocialOAuth("google")}
+                              disabled={isLoading}
+                            >
+                              <FaGoogle className="text-lg shrink-0" />
+                              <span>Continue with Google</span>
+                            </Button>
+                          )}
+
+                          {socialAuth.apple && (
+                            <Button
+                              variant="outline"
+                              className="w-full mb-3 rounded-2xl flex items-center justify-start gap-3 px-4 min-h-[52px] h-12 hover:bg-gray-50 border-gray-200 text-[15px] font-medium touch-manipulation"
+                              onClick={() => void handleSocialOAuth("apple")}
+                              disabled={isLoading}
+                            >
+                              <FaApple className="text-lg shrink-0" />
+                              <span>Continue with Apple</span>
+                            </Button>
+                          )}
+                        </>
+                      )}
+
+                      <Button
+                        variant="outline"
+                        className="w-full mb-3 rounded-2xl flex items-center justify-start gap-3 px-4 min-h-[52px] h-12 hover:bg-gray-50 border-gray-200 text-[15px] font-medium touch-manipulation"
+                        onClick={() => {
+                          setShowEmailForm(false);
+                          setError(null);
+                          setEmailOtpMode(false);
+                          setEmailOtpSent(false);
+                          setEmailOtpCode("");
+                          setPendingEmailOtp("");
+                        }}
+                        disabled={isLoading}
+                      >
+                        <svg
+                          className="w-5 h-5 shrink-0"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"
+                          />
+                        </svg>
+                        <span>Continue with Phone</span>
+                      </Button>
+
+                      {/* Need help link */}
+                      <div className="text-center mt-6">
+                        <button
+                          onClick={() => {
+                            window.open(PLATFORM_CONTACT_HREF, "_blank");
+                          }}
+                          className="text-[15px] text-gray-500 hover:text-gray-900 font-medium py-2 touch-manipulation"
+                        >
+                          Need help?
+                        </button>
                       </div>
-
-                      {/* Social Login Options */}
-                      {socialAuth.google && (
-                        <Button
-                          variant="outline"
-                          className="w-full mb-3 rounded-2xl flex items-center justify-start gap-3 px-4 min-h-[52px] h-12 hover:bg-gray-50 border-gray-200 text-[15px] font-medium touch-manipulation"
-                          onClick={() => void handleSocialOAuth("google")}
-                          disabled={isLoading}
-                        >
-                          <FaGoogle className="text-lg shrink-0" />
-                          <span>Continue with Google</span>
-                        </Button>
-                      )}
-
-                      {socialAuth.apple && (
-                        <Button
-                          variant="outline"
-                          className="w-full mb-3 rounded-2xl flex items-center justify-start gap-3 px-4 min-h-[52px] h-12 hover:bg-gray-50 border-gray-200 text-[15px] font-medium touch-manipulation"
-                          onClick={() => void handleSocialOAuth("apple")}
-                          disabled={isLoading}
-                        >
-                          <FaApple className="text-lg shrink-0" />
-                          <span>Continue with Apple</span>
-                        </Button>
-                      )}
-                    </>
-                  )}
-                  
-                  <Button
-                    variant="outline"
-                    className="w-full mb-3 rounded-2xl flex items-center justify-start gap-3 px-4 min-h-[52px] h-12 hover:bg-gray-50 border-gray-200 text-[15px] font-medium touch-manipulation"
-                    onClick={() => {
-                      setShowEmailForm(false);
-                      setError(null);
-                      setEmailOtpMode(false);
-                      setEmailOtpSent(false);
-                      setEmailOtpCode("");
-                      setPendingEmailOtp("");
-                    }}
-                    disabled={isLoading}
-                  >
-                    <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                    </svg>
-                    <span>Continue with Phone</span>
-                  </Button>
-
-                  {/* Need help link */}
-                  <div className="text-center mt-6">
-                    <button
-                      onClick={() => {
-                        window.open(PLATFORM_CONTACT_HREF, "_blank");
-                      }}
-                      className="text-[15px] text-gray-500 hover:text-gray-900 font-medium py-2 touch-manipulation"
-                    >
-                      Need help?
-                    </button>
-                  </div>
                     </>
                   )}
                 </>
@@ -1622,7 +1846,9 @@ export default function LoginModal({
                       <div className="mb-5">
                         <Label className={labelClass}>{t("auth.preferredLanguage")}</Label>
                         <Select value={preferredLanguage} onValueChange={setPreferredLanguage}>
-                          <SelectTrigger className={`w-full min-h-[48px] h-12 rounded-2xl ${fieldClass}`}>
+                          <SelectTrigger
+                            className={`w-full min-h-[48px] h-12 rounded-2xl ${fieldClass}`}
+                          >
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -1636,17 +1862,22 @@ export default function LoginModal({
                       </div>
                       <div className="mb-5">
                         <Label className={labelClass}>
-                          {t("auth.howHearAboutUs")} <span className="text-gray-500 font-normal">(optional)</span>
+                          {t("auth.howHearAboutUs")}{" "}
+                          <span className="text-gray-500 font-normal">(optional)</span>
                         </Label>
                         <Select
                           value={signupSource ?? RADIX_SELECT_NONE}
                           onValueChange={(v) => setSignupSource(v === RADIX_SELECT_NONE ? null : v)}
                         >
-                          <SelectTrigger className={`w-full min-h-[48px] h-12 rounded-2xl ${fieldClass}`}>
+                          <SelectTrigger
+                            className={`w-full min-h-[48px] h-12 rounded-2xl ${fieldClass}`}
+                          >
                             <SelectValue placeholder={t("auth.signupSourceSkip")} />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value={RADIX_SELECT_NONE}>{t("auth.signupSourceSkip")}</SelectItem>
+                            <SelectItem value={RADIX_SELECT_NONE}>
+                              {t("auth.signupSourceSkip")}
+                            </SelectItem>
                             {SIGNUP_SOURCE_OPTIONS.map((opt) => (
                               <SelectItem key={opt.value} value={opt.value}>
                                 {t(opt.labelKey)}
@@ -1657,7 +1888,7 @@ export default function LoginModal({
                       </div>
                     </>
                   )}
-                  <Button 
+                  <Button
                     className="w-full rounded-2xl bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary-hover text-white min-h-[52px] h-12 text-base font-semibold mb-5 touch-manipulation shadow-lg shadow-pink-200/40 gap-2"
                     onClick={handleEmailAuth}
                     disabled={isLoading || !password}
@@ -1704,7 +1935,9 @@ export default function LoginModal({
                       }}
                       className="block w-full py-3 text-[15px] text-gray-600 hover:text-gray-900 font-medium touch-manipulation rounded-xl active:bg-gray-100"
                     >
-                      {isSignup ? "Already have an account? Log in" : "Don't have an account? Sign up"}
+                      {isSignup
+                        ? "Already have an account? Log in"
+                        : "Don't have an account? Sign up"}
                     </button>
                   </div>
                 </>
@@ -1747,7 +1980,7 @@ export default function LoginModal({
                   <span>Continue with Apple</span>
                 </Button>
               )}
-              
+
               {authPolicy.email_provider_enabled && (
                 <Button
                   variant="outline"

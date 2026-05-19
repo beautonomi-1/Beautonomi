@@ -448,6 +448,24 @@ export interface YocoIntegration {
   webhook_secret?: string;
   connected_date?: string;
   last_sync?: string;
+  /** §Yoco-OAuth 2026-05 — see migration 610. */
+  credential_mode?: "none" | "checkout" | "oauth";
+  environment?: "sandbox" | "live";
+  oauth_connected?: boolean;
+  oauth_business_id?: string | null;
+  oauth_business_name?: string | null;
+  oauth_user_email?: string | null;
+  oauth_expires_at?: string | null;
+  oauth_refresh_expires_at?: string | null;
+  oauth_scopes?: string[];
+  oauth_last_refresh_error?: string | null;
+  /** §Yoco-OAuth 2026-05 — server reports whether the yoco_oauth_v2 flag is on for the tenant. */
+  oauth_v2_enabled?: boolean;
+  /** §Yoco-OAuth 2026-05 — ISO timestamp; when set, suppress the "reconnect Yoco for terminals" banner. */
+  reconnect_banner_dismissed_at?: string | null;
+  api_key_set?: boolean;
+  webhook_configured?: boolean;
+  subscription_required?: boolean;
 }
 
 export interface Shift {

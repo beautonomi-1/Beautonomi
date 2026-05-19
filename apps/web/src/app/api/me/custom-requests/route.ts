@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 
@@ -36,6 +37,23 @@ export async function GET(request: NextRequest) {
     const { user } = await requireRoleInApi(["customer", "superadmin"], request);
     const supabase = await getSupabaseServer(request);
     const tenantId = await resolveTenantIdWithZaFallback(request);
+
+    // §custom-requests-lifecycle-2026-05: lazy expiry mirrors the on-demand
+    // pattern. Without it, stale `pending`/`offered` rows linger between
+    // nightly cron runs and the customer sees "open" requests they cannot act
+    // on. Cheap to run on the customer's own rows.
+    try {
+      const admin = getSupabaseAdmin();
+      const nowIso = new Date().toISOString();
+      await admin
+        .from("custom_requests")
+        .update({ status: "expired", updated_at: nowIso })
+        .eq("customer_id", user.id)
+        .in("status", ["pending", "offered"])
+        .lt("expires_at", nowIso);
+    } catch (lazyErr) {
+      console.warn("[me/custom-requests] lazy expiry failed:", lazyErr);
+    }
 
     const { data, error } = await supabase
       .from("custom_requests")

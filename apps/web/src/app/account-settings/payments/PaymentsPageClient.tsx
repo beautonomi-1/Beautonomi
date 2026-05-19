@@ -26,7 +26,9 @@ const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
   const [couponCode, setCouponCode] = useState("");
   const [isRedeemingCoupon, setIsRedeemingCoupon] = useState(false);
   const [couponCount, setCouponCount] = useState(() => initial?.couponCount ?? 0);
-  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>(() => initial?.paymentMethods ?? []);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>(
+    () => initial?.paymentMethods ?? []
+  );
   const [isLoading, setIsLoading] = useState(() => !initial);
   const [error, setError] = useState<string | null>(null);
   const [addingCard, setAddingCard] = useState(false);
@@ -35,7 +37,7 @@ const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
     "We'll save your card securely when you pay. To verify your card, a small temporary charge (e.g. R1) may be placed and reversed—this confirms your card for future use.";
 
   // Only show payouts tab for providers
-  const isProvider = user?.role === 'provider_owner' || user?.role === 'provider_staff';
+  const isProvider = user?.role === "provider_owner" || user?.role === "provider_staff";
 
   const [paymentSafetyCopy, setPaymentSafetyCopy] = useState<{
     title: string;
@@ -58,7 +60,10 @@ const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
 
   const loadPaymentSafetyCopy = async () => {
     try {
-      const res = await fetcher.get<{ data: typeof paymentSafetyCopy }>("/api/public/payment-safety-copy", { staleTimeMs: 60_000 });
+      const res = await fetcher.get<{ data: typeof paymentSafetyCopy }>(
+        "/api/public/payment-safety-copy",
+        { staleTimeMs: 60_000 }
+      );
       if (res?.data) setPaymentSafetyCopy(res.data);
     } catch {
       // use fallback in render
@@ -67,7 +72,9 @@ const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
 
   const loadCouponCount = async () => {
     try {
-      const response = await fetcher.get<{ data: { count: number } }>("/api/me/coupons/count", { staleTimeMs: 30_000 });
+      const response = await fetcher.get<{ data: { count: number } }>("/api/me/coupons/count", {
+        staleTimeMs: 30_000,
+      });
       setCouponCount(response.data?.count || 0);
     } catch (error) {
       console.error("Failed to load coupon count:", error);
@@ -89,7 +96,11 @@ const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
       setShowCouponInput(false);
       loadCouponCount();
     } catch (error: unknown) {
-      toast.error(error instanceof Error ? error.message : "Failed to redeem coupon. Please check the code and try again.");
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to redeem coupon. Please check the code and try again."
+      );
     } finally {
       setIsRedeemingCoupon(false);
     }
@@ -99,15 +110,17 @@ const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
     try {
       setIsLoading(true);
       setError(null);
-      const response = await fetcher.get<{ data: PaymentMethod[] }>("/api/me/payment-methods", { staleTimeMs: 15_000 });
+      const response = await fetcher.get<{ data: PaymentMethod[] }>("/api/me/payment-methods", {
+        staleTimeMs: 15_000,
+      });
       setPaymentMethods(response.data || []);
     } catch (err) {
       const errorMessage =
         err instanceof FetchTimeoutError
           ? "Request timed out. Please try again."
           : err instanceof FetchError
-          ? err.message
-          : "Failed to load payment methods";
+            ? err.message
+            : "Failed to load payment methods";
       setError(errorMessage);
       console.error("Error loading payment methods:", err);
     } finally {
@@ -119,7 +132,7 @@ const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
     if (!confirm("Are you sure you want to remove this payment method?")) return;
 
     try {
-      await fetcher.delete("/api/me/payment-methods", { id });
+      await fetcher.delete(`/api/me/payment-methods/${id}`);
       toast.success("Payment method removed");
       loadPaymentMethods();
     } catch (err) {
@@ -130,7 +143,10 @@ const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
 
   const handleSetDefault = async (id: string) => {
     try {
-      const res = await fetcher.patch<{ data?: unknown; error?: { message?: string } }>(`/api/me/payment-methods/${id}`, { is_default: true });
+      const res = await fetcher.patch<{ data?: unknown; error?: { message?: string } }>(
+        `/api/me/payment-methods/${id}`,
+        { is_default: true }
+      );
       if (res?.error) {
         toast.error(res.error.message || "Failed to set default");
         return;
@@ -145,10 +161,12 @@ const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
   const handleAddCard = async () => {
     setAddingCard(true);
     try {
-      const res = await fetcher.post<{ data?: { authorization_url?: string }; error?: { message?: string } }>(
-        "/api/me/payment-methods/initialize-verification",
-        { set_as_default: paymentMethods.length === 0 }
-      );
+      const res = await fetcher.post<{
+        data?: { authorization_url?: string };
+        error?: { message?: string };
+      }>("/api/me/payment-methods/initialize-verification", {
+        set_as_default: paymentMethods.length === 0,
+      });
       const url = res?.data?.authorization_url;
       if (!url) {
         toast.error(res?.error?.message || "Could not start card verification");
@@ -172,7 +190,7 @@ const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
     setShowCouponInput(false);
     setCouponCode("");
   };
-  
+
   const [focusField, setFocusField] = useState({
     cardNumber: false,
     expiration: false,
@@ -191,214 +209,223 @@ const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
   };
   return (
     <div className="min-h-screen bg-zinc-50/50 py-6 md:py-8">
-        <div className="w-full max-w-7xl mx-auto px-4 md:px-6 lg:px-8">
-          <BackButton href="/account-settings" />
-          <Breadcrumb 
-            items={[
-              { label: "Account", href: "/account-settings" },
-              { label: "Payments & payouts" }
-            ]} 
-          />
-          
-          {/* Page Header - Glass Card Style */}
-          <div
-            className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6 md:p-8 mb-6"
-          >
-            <h1 className="text-2xl md:text-3xl font-semibold tracking-tighter mb-2 text-gray-900">Payments & payouts</h1>
-            <p className="text-sm md:text-base text-gray-600 font-light">
-              Manage your payment methods, coupons, and gift cards
-            </p>
-          </div>
+      <div className="w-full max-w-7xl mx-auto px-4 md:px-6 lg:px-8">
+        <BackButton href="/account-settings" />
+        <Breadcrumb
+          items={[{ label: "Account", href: "/account-settings" }, { label: "Payments & payouts" }]}
+        />
 
-          <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <div className="overflow-x-auto whitespace-nowrap mb-8">
-              <TabsList className="flex gap-5 border-b bg-transparent">
+        {/* Page Header - Glass Card Style */}
+        <div className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6 md:p-8 mb-6">
+          <h1 className="text-2xl md:text-3xl font-semibold tracking-tighter mb-2 text-gray-900">
+            Payments & payouts
+          </h1>
+          <p className="text-sm md:text-base text-gray-600 font-light">
+            Manage your payment methods, coupons, and gift cards
+          </p>
+        </div>
+
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <div className="overflow-x-auto whitespace-nowrap mb-8">
+            <TabsList className="flex gap-5 border-b bg-transparent">
+              <TabsTrigger
+                value="payments"
+                className={`py-2 font-light transition-colors ${
+                  activeTab === "payments"
+                    ? "border-b-2 border-[#FF0077] text-[#FF0077] text-sm font-semibold"
+                    : "border-b-2 border-transparent text-sm text-gray-500 hover:text-[#FF0077]"
+                }`}
+              >
+                Payments
+              </TabsTrigger>
+              {isProvider && (
                 <TabsTrigger
-                  value="payments"
+                  value="payouts"
                   className={`py-2 font-light transition-colors ${
-                    activeTab === "payments"
+                    activeTab === "payouts"
                       ? "border-b-2 border-[#FF0077] text-[#FF0077] text-sm font-semibold"
                       : "border-b-2 border-transparent text-sm text-gray-500 hover:text-[#FF0077]"
                   }`}
                 >
-                  Payments
+                  Payouts
                 </TabsTrigger>
-                {isProvider && (
-                  <TabsTrigger
-                    value="payouts"
-                    className={`py-2 font-light transition-colors ${
-                      activeTab === "payouts"
-                        ? "border-b-2 border-[#FF0077] text-[#FF0077] text-sm font-semibold"
-                        : "border-b-2 border-transparent text-sm text-gray-500 hover:text-[#FF0077]"
-                    }`}
-                  >
-                    Payouts
-                  </TabsTrigger>
-                )}
-              </TabsList>
-            </div>
+              )}
+            </TabsList>
+          </div>
 
-        <TabsContent value="payments">
-          <div className="flex flex-col md:flex-row justify-between gap-6">
-            <div className="w-full md:w-2/3">
-              {/* Payment History Section */}
-              <div
-                className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-6 mb-6"
-              >
-                <h2 className="text-xl font-semibold tracking-tighter mb-2 text-gray-900">Your payments</h2>
-                <p className="text-base font-light mb-6 text-gray-600">
-                  Keep track of all your payments and refunds.
-                </p>
-                <Link href="/account-settings/bookings">
-                  <button type="button"
-                    className="bg-gradient-to-r from-[#FF0077] to-[#E6006A] hover:from-[#E6006A] hover:to-[#FF0077] text-white px-4 md:px-6 py-2 md:py-3 rounded-xl mb-6 md:mb-8 font-semibold text-sm md:text-base transition-all shadow-lg hover:shadow-xl"
-                  >
-                    View booking payments
-                  </button>
-                </Link>
-              </div>
-
-              {/* Payment Methods Section */}
-              <div
-                className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-6 mb-6"
-              >
-                <div className="flex items-center gap-2 mb-2">
-                  <h2 className="text-xl font-semibold tracking-tighter text-gray-900">Payment methods</h2>
-                  <button
-                    type="button"
-                    onClick={() => toast.info(SAVE_CARD_INFO, { duration: 8000 })}
-                    className="p-1 rounded-full hover:bg-gray-100 text-[#FF0077]"
-                    aria-label="Info about saving card"
-                  >
-                    <Info className="w-5 h-5" />
-                  </button>
-                </div>
-                <p className="text-base mb-3 font-light text-gray-600">
-                  We'll save your card securely when you pay. To verify your card, a small temporary charge (e.g. R1) may be placed and reversed—this confirms your card for future use.
-                </p>
-                
-                {isLoading ? (
-                  <div className="mb-6">
-                    <LoadingTimeout loadingMessage="Loading payment methods..." />
-                  </div>
-                ) : error ? (
-                  <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
-                    <p className="text-red-800 text-sm">{error}</p>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={loadPaymentMethods}
-                      className="mt-2"
+          <TabsContent value="payments">
+            <div className="flex flex-col md:flex-row justify-between gap-6">
+              <div className="w-full md:w-2/3">
+                {/* Payment History Section */}
+                <div className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-6 mb-6">
+                  <h2 className="text-xl font-semibold tracking-tighter mb-2 text-gray-900">
+                    Your payments
+                  </h2>
+                  <p className="text-base font-light mb-6 text-gray-600">
+                    Keep track of all your payments and refunds.
+                  </p>
+                  <Link href="/account-settings/bookings">
+                    <button
+                      type="button"
+                      className="bg-gradient-to-r from-[#FF0077] to-[#E6006A] hover:from-[#E6006A] hover:to-[#FF0077] text-white px-4 md:px-6 py-2 md:py-3 rounded-xl mb-6 md:mb-8 font-semibold text-sm md:text-base transition-all shadow-lg hover:shadow-xl"
                     >
-                      Retry
-                    </Button>
+                      View booking payments
+                    </button>
+                  </Link>
+                </div>
+
+                {/* Payment Methods Section */}
+                <div className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-6 mb-6">
+                  <div className="flex items-center gap-2 mb-2">
+                    <h2 className="text-xl font-semibold tracking-tighter text-gray-900">
+                      Payment methods
+                    </h2>
+                    <button
+                      type="button"
+                      onClick={() => toast.info(SAVE_CARD_INFO, { duration: 8000 })}
+                      className="p-1 rounded-full hover:bg-gray-100 text-[#FF0077]"
+                      aria-label="Info about saving card"
+                    >
+                      <Info className="w-5 h-5" />
+                    </button>
                   </div>
-                ) : paymentMethods.length === 0 ? (
-                  <div className="mb-6 p-6 border border-gray-200 rounded-xl text-center backdrop-blur-sm bg-white/60">
-                    <CreditCard className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                    <p className="text-gray-600 mb-2 font-medium">No payment methods saved</p>
-                    <p className="text-sm text-gray-500 mb-4">
-                      Cards are saved automatically when you pay with a card
-                    </p>
-                    <Link href="/">
-                      <button type="button"
-                        className="bg-gradient-to-r from-[#FF0077] to-[#E6006A] hover:from-[#E6006A] hover:to-[#FF0077] text-white px-4 md:px-6 py-2 md:py-3 rounded-xl font-semibold text-sm md:text-base transition-all shadow-lg hover:shadow-xl"
+                  <p className="text-base mb-3 font-light text-gray-600">
+                    We'll save your card securely when you pay. To verify your card, a small
+                    temporary charge (e.g. R1) may be placed and reversed—this confirms your card
+                    for future use.
+                  </p>
+
+                  {isLoading ? (
+                    <div className="mb-6">
+                      <LoadingTimeout loadingMessage="Loading payment methods..." />
+                    </div>
+                  ) : error ? (
+                    <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
+                      <p className="text-red-800 text-sm">{error}</p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={loadPaymentMethods}
+                        className="mt-2"
                       >
-                        Book a service to save a card
-                      </button>
-                    </Link>
-                  </div>
-                ) : (
-                  <div className="mb-6 space-y-3">
-                    {paymentMethods.map((method) => (
-                      <div
-                        key={method.id}
-                        className="backdrop-blur-sm bg-white/60 border border-white/40 rounded-xl p-4 flex items-center justify-between hover:shadow-lg transition-all"
-                      >
-                        <div className="flex items-center gap-4">
-                          <CreditCard className="w-8 h-8 text-[#FF0077]" />
-                          <div>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-semibold text-gray-900">
-                                {method.card_type ? method.card_type.charAt(0).toUpperCase() + method.card_type.slice(1) : "Card"}
-                                {method.last4 && ` •••• ${method.last4}`}
-                              </span>
-                              {method.is_default ? (
-                                <span className="px-2 py-1 bg-gradient-to-r from-[#FF0077] to-[#E6006A] text-white text-xs rounded-full flex items-center gap-1">
-                                  <Star className="w-3 h-3 fill-white" />
-                                  Default
+                        Retry
+                      </Button>
+                    </div>
+                  ) : paymentMethods.length === 0 ? (
+                    <div className="mb-6 p-6 border border-gray-200 rounded-xl text-center backdrop-blur-sm bg-white/60">
+                      <CreditCard className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                      <p className="text-gray-600 mb-2 font-medium">No payment methods saved</p>
+                      <p className="text-sm text-gray-500 mb-4">
+                        Cards are saved automatically when you pay with a card
+                      </p>
+                      <Link href="/">
+                        <button
+                          type="button"
+                          className="bg-gradient-to-r from-[#FF0077] to-[#E6006A] hover:from-[#E6006A] hover:to-[#FF0077] text-white px-4 md:px-6 py-2 md:py-3 rounded-xl font-semibold text-sm md:text-base transition-all shadow-lg hover:shadow-xl"
+                        >
+                          Book a service to save a card
+                        </button>
+                      </Link>
+                    </div>
+                  ) : (
+                    <div className="mb-6 space-y-3">
+                      {paymentMethods.map((method) => (
+                        <div
+                          key={method.id}
+                          className="backdrop-blur-sm bg-white/60 border border-white/40 rounded-xl p-4 flex items-center justify-between hover:shadow-lg transition-all"
+                        >
+                          <div className="flex items-center gap-4">
+                            <CreditCard className="w-8 h-8 text-[#FF0077]" />
+                            <div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-semibold text-gray-900">
+                                  {method.card_type
+                                    ? method.card_type.charAt(0).toUpperCase() +
+                                      method.card_type.slice(1)
+                                    : "Card"}
+                                  {method.last4 && ` •••• ${method.last4}`}
                                 </span>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => handleSetDefault(method.id)}
-                                  className="text-xs font-medium text-[#FF0077] hover:text-[#E6006A] underline"
+                                {method.is_default ? (
+                                  <span className="px-2 py-1 bg-gradient-to-r from-[#FF0077] to-[#E6006A] text-white text-xs rounded-full flex items-center gap-1">
+                                    <Star className="w-3 h-3 fill-white" />
+                                    Default
+                                  </span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSetDefault(method.id)}
+                                    className="text-xs font-medium text-[#FF0077] hover:text-[#E6006A] underline"
+                                  >
+                                    Set default
+                                  </button>
+                                )}
+                              </div>
+                              {method.cardholder_name && (
+                                <p className="text-sm text-gray-600">{method.cardholder_name}</p>
+                              )}
+                              {method.expiry_month && method.expiry_year && (
+                                <p
+                                  className={`text-xs ${method.is_expired ? "font-semibold text-red-600" : "text-gray-500"}`}
                                 >
-                                  Set default
-                                </button>
+                                  {method.is_expired ? "Expired" : "Expires"}{" "}
+                                  {method.expiry_label ??
+                                    `${String(method.expiry_month).padStart(2, "0")}/${String(method.expiry_year).slice(-2)}`}
+                                </p>
                               )}
                             </div>
-                            {method.cardholder_name && (
-                              <p className="text-sm text-gray-600">{method.cardholder_name}</p>
-                            )}
-                            {method.expiry_month && method.expiry_year && (
-                              <p className="text-xs text-gray-500">
-                                Expires {String(method.expiry_month).padStart(2, '0')}/{String(method.expiry_year).slice(-2)}
-                              </p>
-                            )}
                           </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDeletePaymentMethod(method.id)}
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
                         </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDeletePaymentMethod(method.id)}
-                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <button
-                  type="button"
-                  onClick={handleAddCard}
-                  disabled={addingCard}
-                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-gray-300 hover:border-[#FF0077] text-gray-600 hover:text-[#FF0077] transition-all mt-3 disabled:opacity-60"
-                >
-                  {addingCard ? (
-                    <span className="text-sm font-medium">Opening...</span>
-                  ) : (
-                    <>
-                      <Plus className="w-4 h-4" />
-                      <span className="text-sm font-medium">Add card</span>
-                    </>
+                      ))}
+                    </div>
                   )}
-                </button>
-              </div>
-
-              <GiftCardsSection />
-
-              {/* Coupons Section */}
-              <div
-                className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-6 mb-6"
-              >
-                <h2 className="text-xl font-semibold tracking-tighter mb-2 text-gray-900">Coupons</h2>
-                <div className="flex justify-between items-center mb-4 font-medium text-gray-700">
-                  <span>Your coupons</span>
-                  <span className="text-[#FF0077] font-semibold">{couponCount}</span>
+                  <button
+                    type="button"
+                    onClick={handleAddCard}
+                    disabled={addingCard}
+                    className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-gray-300 hover:border-[#FF0077] text-gray-600 hover:text-[#FF0077] transition-all mt-3 disabled:opacity-60"
+                  >
+                    {addingCard ? (
+                      <span className="text-sm font-medium">Opening...</span>
+                    ) : (
+                      <>
+                        <Plus className="w-4 h-4" />
+                        <span className="text-sm font-medium">Add card</span>
+                      </>
+                    )}
+                  </button>
                 </div>
 
-                {!showCouponInput ? (
-                  <button type="button"
-                    onClick={handleAddCouponClick}
-                    className="bg-gradient-to-r from-[#FF0077] to-[#E6006A] hover:from-[#E6006A] hover:to-[#FF0077] text-white px-4 md:px-6 py-2 md:py-3 rounded-xl font-semibold text-sm md:text-base transition-all shadow-lg hover:shadow-xl"
-                  >
-                    Add coupon
-                  </button>
-                ) : (
-                  <div className="space-y-4">
-                    <div className="py-2 relative border border-white/40 rounded-lg backdrop-blur-sm bg-white/60">
+                <GiftCardsSection />
+
+                {/* Coupons Section */}
+                <div className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-6 mb-6">
+                  <h2 className="text-xl font-semibold tracking-tighter mb-2 text-gray-900">
+                    Coupons
+                  </h2>
+                  <div className="flex justify-between items-center mb-4 font-medium text-gray-700">
+                    <span>Your coupons</span>
+                    <span className="text-[#FF0077] font-semibold">{couponCount}</span>
+                  </div>
+
+                  {!showCouponInput ? (
+                    <button
+                      type="button"
+                      onClick={handleAddCouponClick}
+                      className="bg-gradient-to-r from-[#FF0077] to-[#E6006A] hover:from-[#E6006A] hover:to-[#FF0077] text-white px-4 md:px-6 py-2 md:py-3 rounded-xl font-semibold text-sm md:text-base transition-all shadow-lg hover:shadow-xl"
+                    >
+                      Add coupon
+                    </button>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="py-2 relative border border-white/40 rounded-lg backdrop-blur-sm bg-white/60">
                         {focusField.coupon && (
                           <Label
                             htmlFor="coupon"
@@ -418,117 +445,119 @@ const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
                           disabled={isRedeemingCoupon}
                         />
                       </div>
-                    <div className="flex space-x-4"> 
-                      <Button
-                        onClick={handleRedeemCoupon}
-                        disabled={isRedeemingCoupon || !couponCode.trim()}
-                        className="bg-gradient-to-r from-[#FF0077] to-[#E6006A] hover:from-[#E6006A] hover:to-[#FF0077] text-white"
-                      >
-                        {isRedeemingCoupon ? "Redeeming..." : "Redeem Coupon"}
-                      </Button>
-                      <Button
-                        onClick={handleCancelCoupon}
-                        variant="outline"
-                        disabled={isRedeemingCoupon}
-                      >
-                        Cancel
-                      </Button>
+                      <div className="flex space-x-4">
+                        <Button
+                          onClick={handleRedeemCoupon}
+                          disabled={isRedeemingCoupon || !couponCode.trim()}
+                          className="bg-gradient-to-r from-[#FF0077] to-[#E6006A] hover:from-[#E6006A] hover:to-[#FF0077] text-white"
+                        >
+                          {isRedeemingCoupon ? "Redeeming..." : "Redeem Coupon"}
+                        </Button>
+                        <Button
+                          onClick={handleCancelCoupon}
+                          variant="outline"
+                          disabled={isRedeemingCoupon}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                )}
-              </div>
-            </div>
-            
-            {/* Sidebar - Info Card (managed by superadmin) */}
-            <div className="w-full md:w-1/3">
-              <div
-                className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-6 sticky top-6"
-              >
-                <div className="flex items-center mb-4">
-                  <h2 className="text-lg font-semibold tracking-tighter text-gray-900">
-                    {paymentSafetyCopy?.title ?? "Make all payments through Beautonomi"}
-                  </h2>
+                  )}
                 </div>
-                <p className="mb-4 text-sm font-light text-gray-600 leading-relaxed">
-                  {paymentSafetyCopy?.body ?? "Always pay and communicate through Beautonomi to ensure you're protected under our Terms of Service, Payments Terms of Service, cancellation, and other safeguards."}
-                </p>
-                <Link 
-                  href={paymentSafetyCopy?.learn_more_url ?? "/terms-and-condition"} 
-                  className="text-[#FF0077] hover:text-[#E6006A] text-sm font-medium underline transition-colors inline-flex items-center gap-1.5 group"
-                >
-                  <span>{paymentSafetyCopy?.learn_more_label ?? "Learn more"}</span>
-                  <ExternalLink className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
-                </Link>
               </div>
-            </div>
-          </div>
-        </TabsContent>
 
-        {isProvider && (
-          <TabsContent value="payouts">
-            <div className="flex flex-col md:flex-row justify-between gap-6">
-              <div className="w-full md:w-2/3">
-                <div
-                  className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-6"
-                >
-                  <h2 className="text-xl font-semibold tracking-tighter mb-2 text-gray-900">
-                    How you&apos;ll get paid
-                  </h2>
-                  <p className="text-base mb-6 font-light text-gray-600">
-                    Add at least one payout method so we know where to send your
-                    money via Paystack.
-                  </p>
-                  <Link href="/provider/settings/payout-accounts">
-                    <button type="button"
-                      className="bg-gradient-to-r from-[#FF0077] to-[#E6006A] hover:from-[#E6006A] hover:to-[#FF0077] text-white px-6 py-3 rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl"
-                    >
-                      Set up payouts
-                    </button>
-                  </Link>
-                </div>
-              </div>
+              {/* Sidebar - Info Card (managed by superadmin) */}
               <div className="w-full md:w-1/3">
-                <div
-                  className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-6"
-                >
-                  <h2 className="text-lg font-semibold tracking-tighter mb-4 text-gray-900">Need help?</h2>
-                  <ul className="space-y-3">
-                    <li>
-                      <a
-                        href="/help"
-                        className="text-gray-700 hover:text-[#FF0077] flex items-center justify-between font-light text-sm underline transition-colors"
-                      >
-                        When you&apos;ll get your payout <span>&gt;</span>
-                      </a>
-                    </li>
-                    <li>
-                      <a
-                        href="/help"
-                        className="text-gray-700 hover:text-[#FF0077] flex items-center justify-between font-light text-sm underline transition-colors"
-                      >
-                        How payouts work <span>&gt;</span>
-                      </a>
-                    </li>
-                    <li>
-                      <Link
-                        href="/provider/finance"
-                        className="text-gray-700 hover:text-[#FF0077] flex items-center justify-between font-light text-sm underline transition-colors"
-                      >
-                        Go to your transaction history <span>&gt;</span>
-                      </Link>
-                    </li>
-                  </ul>
+                <div className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-6 sticky top-6">
+                  <div className="flex items-center mb-4">
+                    <h2 className="text-lg font-semibold tracking-tighter text-gray-900">
+                      {paymentSafetyCopy?.title ?? "Make all payments through Beautonomi"}
+                    </h2>
+                  </div>
+                  <p className="mb-4 text-sm font-light text-gray-600 leading-relaxed">
+                    {paymentSafetyCopy?.body ??
+                      "Always pay and communicate through Beautonomi to ensure you're protected under our Terms of Service, Payments Terms of Service, cancellation, and other safeguards."}
+                  </p>
+                  <Link
+                    href={paymentSafetyCopy?.learn_more_url ?? "/terms-and-condition"}
+                    className="text-[#FF0077] hover:text-[#E6006A] text-sm font-medium underline transition-colors inline-flex items-center gap-1.5 group"
+                  >
+                    <span>{paymentSafetyCopy?.learn_more_label ?? "Learn more"}</span>
+                    <ExternalLink className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                  </Link>
                 </div>
               </div>
             </div>
           </TabsContent>
-        )}
-      </Tabs>
 
-      {/* Add Payment Modal */}
-      <AddPaymentModal isOpen={isModalOpen} onClose={handleCloseModal} onCardAdded={loadPaymentMethods} />
-        </div>
+          {isProvider && (
+            <TabsContent value="payouts">
+              <div className="flex flex-col md:flex-row justify-between gap-6">
+                <div className="w-full md:w-2/3">
+                  <div className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-6">
+                    <h2 className="text-xl font-semibold tracking-tighter mb-2 text-gray-900">
+                      How you&apos;ll get paid
+                    </h2>
+                    <p className="text-base mb-6 font-light text-gray-600">
+                      Add at least one payout method so we know where to send your money via
+                      Paystack.
+                    </p>
+                    <Link href="/provider/settings/payout-accounts">
+                      <button
+                        type="button"
+                        className="bg-gradient-to-r from-[#FF0077] to-[#E6006A] hover:from-[#E6006A] hover:to-[#FF0077] text-white px-6 py-3 rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl"
+                      >
+                        Set up payouts
+                      </button>
+                    </Link>
+                  </div>
+                </div>
+                <div className="w-full md:w-1/3">
+                  <div className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-6">
+                    <h2 className="text-lg font-semibold tracking-tighter mb-4 text-gray-900">
+                      Need help?
+                    </h2>
+                    <ul className="space-y-3">
+                      <li>
+                        <a
+                          href="/help"
+                          className="text-gray-700 hover:text-[#FF0077] flex items-center justify-between font-light text-sm underline transition-colors"
+                        >
+                          When you&apos;ll get your payout <span>&gt;</span>
+                        </a>
+                      </li>
+                      <li>
+                        <a
+                          href="/help"
+                          className="text-gray-700 hover:text-[#FF0077] flex items-center justify-between font-light text-sm underline transition-colors"
+                        >
+                          How payouts work <span>&gt;</span>
+                        </a>
+                      </li>
+                      <li>
+                        <Link
+                          href="/provider/finance"
+                          className="text-gray-700 hover:text-[#FF0077] flex items-center justify-between font-light text-sm underline transition-colors"
+                        >
+                          Go to your transaction history <span>&gt;</span>
+                        </Link>
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </TabsContent>
+          )}
+        </Tabs>
+
+        {/* Add Payment Modal */}
+        <AddPaymentModal
+          isOpen={isModalOpen}
+          onClose={handleCloseModal}
+          onCardAdded={loadPaymentMethods}
+        />
       </div>
+    </div>
   );
 };
 

@@ -2606,6 +2606,46 @@ export async function notifyMembershipActivated(
   );
 }
 
+/**
+ * Notify the provider team that a customer cancelled a salon membership.
+ *
+ * Fans out to the whole provider team (owner + active linked staff) using
+ * `resolveProviderRecipients`, matching `notifyProviderNewBooking` behaviour
+ * so co-owners and front-desk users on the provider app see the cancel.
+ */
+export async function notifyProviderMembershipCancelled(params: {
+  providerId: string;
+  providerOwnerUserId: string | null | undefined;
+  customerName: string;
+  planName: string;
+  customerId: string;
+  subscriptionId: string;
+  channels?: NotificationChannel[];
+}) {
+  const recipients = await resolveProviderRecipients(
+    params.providerId,
+    params.providerOwnerUserId,
+  );
+  if (recipients.length === 0) {
+    return { success: false, error: "No provider recipients resolved" };
+  }
+
+  const variables = {
+    customer_name: params.customerName,
+    plan_name: params.planName,
+    customer_id: params.customerId,
+    subscription_id: params.subscriptionId,
+  };
+
+  return await sendTemplateNotification(
+    "provider_membership_cancelled",
+    recipients,
+    variables,
+    params.channels,
+    { appType: "provider" }
+  );
+}
+
 // ============================================================================
 // SUPPORT & MESSAGES
 // ============================================================================

@@ -10,6 +10,11 @@ import { useAuth } from "@/providers/AuthProvider";
 import LoginModal from "@/components/global/login-modal";
 import { toast } from "sonner";
 import { formatProviderDescriptionForCard } from "@beautonomi/utils";
+import {
+  WEB_PROVIDER_IMAGE_FALLBACK,
+  providerAvatarImage,
+  providerHeroImage,
+} from "@/lib/provider-images";
 
 interface ProviderCardProps {
   provider: PublicProviderCard;
@@ -49,9 +54,17 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
     return count.toString();
   };
 
-  // Card hero = main listing image; circle = business "face" (avatar), fallback to thumbnail
-  const thumbnailUrl = provider.thumbnail_url || "/images/placeholder-provider.jpg";
-  const avatarUrl = provider.avatar_url || provider.thumbnail_url || "/images/placeholder-provider.jpg";
+  // Card hero = main listing image (thumbnail → avatar → bundled SVG fallback).
+  // Avatar circle = business "face"; when nothing usable exists we render
+  // initials instead of hitting a missing placeholder image. The previous
+  // hardcoded `/images/placeholder-provider.jpg` did not exist in `public/`,
+  // which spammed Next/Image 404s for any provider missing a thumbnail.
+  const thumbnailUrl = providerHeroImage(provider);
+  const avatarUrl = providerAvatarImage(provider);
+  const [thumbnailSrc, setThumbnailSrc] = React.useState<string>(thumbnailUrl);
+  React.useEffect(() => {
+    setThumbnailSrc(thumbnailUrl);
+  }, [thumbnailUrl]);
   const providerInitial = provider.business_name.charAt(0).toUpperCase();
   const businessName = provider.business_name.trim() || "Provider";
   const cardDescription = formatProviderDescriptionForCard(provider.description);
@@ -170,15 +183,20 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
         {/* Image Container - card hero (main listing image) */}
         <div className="relative w-full h-40 md:h-64 squircle overflow-hidden mb-2 md:mb-3" role="img" aria-label={`${businessName} listing photo`}>
           <Image
-            src={thumbnailUrl}
+            src={thumbnailSrc}
             alt=""
             fill
             sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
             loading="eager"
             priority
             className="object-cover group-hover:scale-105 transition-transform duration-300"
-            onError={(e) => {
-              (e.target as HTMLImageElement).src = "/images/placeholder-provider.jpg";
+            onError={() => {
+              // Only swap to the bundled fallback once. Re-pointing the DOM
+              // node's `src` directly fights Next/Image's optimised loader
+              // and previously kept retrying the missing JPG.
+              if (thumbnailSrc !== WEB_PROVIDER_IMAGE_FALLBACK) {
+                setThumbnailSrc(WEB_PROVIDER_IMAGE_FALLBACK);
+              }
             }}
           />
           

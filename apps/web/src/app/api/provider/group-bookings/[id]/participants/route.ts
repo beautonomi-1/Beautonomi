@@ -20,28 +20,31 @@ function normalizeGroupBookingId(rawId: string): string {
   return rawId.startsWith("group:") ? rawId.slice("group:".length) : rawId;
 }
 
-async function recalculateGroupBookingTotal(admin: ReturnType<typeof getSupabaseAdmin>, groupId: string) {
+async function recalculateGroupBookingTotal(
+  admin: ReturnType<typeof getSupabaseAdmin>,
+  groupId: string
+) {
   const [{ data: group }, { data: participantRows }] = await Promise.all([
     admin
       .from("group_bookings")
-      .select("products, travel_fee, location_type, package_id, provider_id, location_id, service_id")
+      .select(
+        "products, travel_fee, location_type, package_id, provider_id, location_id, service_id"
+      )
       .eq("id", groupId)
       .maybeSingle(),
-    admin
-      .from("booking_participants")
-      .select("price, service_id")
-      .eq("group_booking_id", groupId),
+    admin.from("booking_participants").select("price, service_id").eq("group_booking_id", groupId),
   ]);
   const products = Array.isArray(group?.products) ? group.products : [];
   const participantTotal = (participantRows ?? []).reduce(
     (sum: number, p: { price?: unknown }) => sum + Math.max(0, Number(p.price || 0)),
-    0,
+    0
   );
   const productTotal = products.reduce(
     (sum: number, p: unknown) => sum + groupProductLineTotal(p as Record<string, unknown>),
-    0,
+    0
   );
-  const travelFee = group?.location_type === "at_home" ? Math.max(0, Number(group.travel_fee || 0)) : 0;
+  const travelFee =
+    group?.location_type === "at_home" ? Math.max(0, Number(group.travel_fee || 0)) : 0;
   let packageDiscount = 0;
   if (group?.package_id && group?.provider_id) {
     const pkgPricing = await validateAndPriceGroupPackage({
@@ -60,7 +63,12 @@ async function recalculateGroupBookingTotal(admin: ReturnType<typeof getSupabase
   await admin
     .from("group_bookings")
     .update({
-      total_price: groupPackageTotal({ participantTotal, productTotal, travelFee, packageDiscount }),
+      total_price: groupPackageTotal({
+        participantTotal,
+        productTotal,
+        travelFee,
+        packageDiscount,
+      }),
       updated_at: new Date().toISOString(),
     })
     .eq("id", groupId);
@@ -68,7 +76,7 @@ async function recalculateGroupBookingTotal(admin: ReturnType<typeof getSupabase
 
 async function tryRecalculateGroupBookingTotal(
   admin: ReturnType<typeof getSupabaseAdmin>,
-  groupId: string,
+  groupId: string
 ) {
   try {
     await recalculateGroupBookingTotal(admin, groupId);
@@ -115,9 +123,9 @@ const inlineParticipantSchema = z
     (d) =>
       Boolean(
         (d.participant_name && d.participant_name.trim()) ||
-          (d.customer_name && d.customer_name.trim()),
+        (d.customer_name && d.customer_name.trim())
       ),
-    { message: "participant_name or customer_name is required" },
+    { message: "participant_name or customer_name is required" }
   );
 
 /**
@@ -126,10 +134,7 @@ const inlineParticipantSchema = z
  * - **booking_id** — link an existing booking (RLS requires a real booking row).
  * - **Inline** — create `booking_participants` with `booking_id` null (portal flow); uses service role insert.
  */
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { user } = await requireRoleInApi(
       ["provider_owner", "provider_staff", "superadmin"],
@@ -163,7 +168,9 @@ export async function POST(
 
       const { data: booking, error: bErr } = await admin
         .from("bookings")
-        .select("id, customer_id, group_booking_id, customers:users!bookings_customer_id_fkey(full_name, email, phone)")
+        .select(
+          "id, customer_id, group_booking_id, customers:users!bookings_customer_id_fkey(full_name, email, phone)"
+        )
         .eq("id", body.booking_id)
         .eq("provider_id", providerId)
         .single();
@@ -199,11 +206,7 @@ export async function POST(
       }
 
       const cust = b.customers || {};
-      const name =
-        body.participant_name ||
-        cust.full_name ||
-        cust.email ||
-        "Guest";
+      const name = body.participant_name || cust.full_name || cust.email || "Guest";
 
       const { data: row, error: insErr } = await admin
         .from("booking_participants")
@@ -227,7 +230,8 @@ export async function POST(
 
       if (insErr) {
         if (insErr.code === "23505") {
-          const { data: racedExisting, error: racedExistingError } = await findExistingParticipant();
+          const { data: racedExisting, error: racedExistingError } =
+            await findExistingParticipant();
           if (racedExistingError) throw racedExistingError;
           if (racedExisting) {
             await tryRecalculateGroupBookingTotal(admin, groupId);
@@ -250,16 +254,45 @@ export async function POST(
         throw bookingUpdateError;
       }
 
+      if (body.is_primary_contact === true || !b.group_booking_id) {
+        if (body.is_primary_contact === true) {
+          await admin
+            .from("booking_participants")
+            .update({ is_primary_contact: false })
+            .eq("group_booking_id", groupId)
+            .neq("id", row.id);
+        }
+
+        const { data: currentGroup } = await admin
+          .from("group_bookings")
+          .select("primary_contact_booking_id")
+          .eq("id", groupId)
+          .maybeSingle();
+        const shouldSetPrimaryBooking =
+          body.is_primary_contact === true ||
+          !(currentGroup as { primary_contact_booking_id?: string | null } | null)
+            ?.primary_contact_booking_id;
+
+        if (shouldSetPrimaryBooking) {
+          const { error: primaryUpdateError } = await admin
+            .from("group_bookings")
+            .update({
+              primary_contact_booking_id: body.booking_id,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", groupId)
+            .eq("provider_id", providerId);
+          if (primaryUpdateError) throw primaryUpdateError;
+        }
+      }
+
       await tryRecalculateGroupBookingTotal(admin, groupId);
 
       return successResponse({ data: row });
     }
 
     const inline = inlineParticipantSchema.parse(rawBody);
-    const name =
-      inline.participant_name ||
-      inline.customer_name ||
-      "Guest";
+    const name = inline.participant_name || inline.customer_name || "Guest";
     const email = inline.participant_email ?? inline.customer_email ?? null;
     const phone = inline.participant_phone ?? inline.customer_phone ?? null;
 
@@ -270,8 +303,7 @@ export async function POST(
       .eq("is_primary_contact", true)
       .maybeSingle();
 
-    const isPrimary =
-      inline.is_primary_contact ?? !existingPrimary;
+    const isPrimary = inline.is_primary_contact ?? !existingPrimary;
 
     const { data: row, error: insErr } = await admin
       .from("booking_participants")

@@ -11,16 +11,37 @@ export async function GET(request: NextRequest) {
 
     const giftCardIds = new Set<string>();
 
-    // 1) Gift cards from orders purchased by this user
+    // 1) Gift cards from orders purchased by this user.
+    //
+    // `gift_card_orders.gift_card_id` is the singular FK to the FIRST card issued
+    // for a bulk order; cards 2..N are only linked via `gift_cards.metadata.order_id`.
+    // We fetch both so single AND bulk orders surface every code the buyer paid for.
     const { data: orders } = await supabase
       .from("gift_card_orders")
-      .select("gift_card_id")
+      .select("id, gift_card_id")
       .eq("purchaser_user_id", user.id)
-      .eq("status", "paid")
-      .not("gift_card_id", "is", null);
+      .eq("status", "paid");
 
+    const paidOrderIds: string[] = [];
     for (const o of orders || []) {
       if (o.gift_card_id) giftCardIds.add(o.gift_card_id);
+      if (typeof o.id === "string" && o.id.length > 0) paidOrderIds.push(o.id);
+    }
+
+    // 1b) Bulk-order siblings: every card issued for the buyer's paid orders.
+    if (paidOrderIds.length > 0) {
+      // Use the admin client because `gift_cards.metadata.order_id` is buyer-owned
+      // metadata that RLS does not currently expose to the purchaser.
+      const orFilter = paidOrderIds
+        .map((id) => `metadata->>order_id.eq.${id}`)
+        .join(",");
+      const { data: bulkCards } = await supabaseAdmin
+        .from("gift_cards")
+        .select("id")
+        .or(orFilter);
+      for (const c of bulkCards || []) {
+        if (c?.id) giftCardIds.add(c.id as string);
+      }
     }
 
     // 2) Gift cards from redemptions (used by this user at checkout)
@@ -55,7 +76,8 @@ export async function GET(request: NextRequest) {
     }
 
     const ids = Array.from(giftCardIds);
-    const { data: giftCards, error } = await supabase
+    // Admin client to keep visibility of buyer-issued bulk siblings consistent with 1b.
+    const { data: giftCards, error } = await supabaseAdmin
       .from("gift_cards")
       .select("*")
       .in("id", ids)

@@ -5,12 +5,21 @@ import { ADMIN_SECTION_PLATFORM_CONFIG } from "@/lib/admin-sections";
 import { z } from "zod";
 
 const APP_KEYS = ["customer", "provider"] as const;
+const SEMVER_PATTERN = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
 
 const platformSchema = z.object({
-  min_version: z.string(),
-  latest_version: z.string(),
+  min_version: z.string().trim().regex(SEMVER_PATTERN, "Use semantic version format, for example 1.2.3"),
+  latest_version: z.string().trim().regex(SEMVER_PATTERN, "Use semantic version format, for example 1.2.3"),
   force_update: z.boolean().optional(),
   update_url: z.string().url(),
+}).superRefine((value, ctx) => {
+  if (compareVersions(value.latest_version, value.min_version) < 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["latest_version"],
+      message: "Latest version must be the same as or newer than minimum version",
+    });
+  }
 });
 
 const appPairSchema = z.object({
@@ -50,6 +59,11 @@ const DEFAULT_ANDROID: PlatformVersion = {
   update_url: "https://play.google.com/store/apps/details?id=com.beautonomi",
 };
 
+const DEFAULT_PROVIDER_ANDROID: PlatformVersion = {
+  ...DEFAULT_ANDROID,
+  update_url: "https://play.google.com/store/apps/details?id=com.beautonomi.partner",
+};
+
 function defaultAppPair(): AppPair {
   return {
     ios: { ...DEFAULT_IOS },
@@ -58,10 +72,32 @@ function defaultAppPair(): AppPair {
 }
 
 function defaultFullPayload(): FullPayload {
-  return {
+  const out = {
     customer: defaultAppPair(),
     provider: defaultAppPair(),
   };
+  out.provider.android = { ...DEFAULT_PROVIDER_ANDROID };
+  return out;
+}
+
+function compareVersions(a: string, b: string): number {
+  const parse = (value: string) =>
+    value
+      .trim()
+      .split(/[+-]/)[0]
+      .split(".")
+      .map((part) => Number.parseInt(part, 10))
+      .map((part) => (Number.isFinite(part) ? part : 0));
+  const aParts = parse(a);
+  const bParts = parse(b);
+  const maxLength = Math.max(aParts.length, bParts.length);
+  for (let i = 0; i < maxLength; i += 1) {
+    const aVal = aParts[i] ?? 0;
+    const bVal = bParts[i] ?? 0;
+    if (aVal < bVal) return -1;
+    if (aVal > bVal) return 1;
+  }
+  return 0;
 }
 
 function rowToPlatformVersion(row: AppVersionSettingRow | undefined, fallback: PlatformVersion): PlatformVersion {

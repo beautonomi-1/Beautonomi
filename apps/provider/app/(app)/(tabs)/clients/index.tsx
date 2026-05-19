@@ -132,7 +132,13 @@ function membershipBadgeState(c: Client): MembershipBadgeState {
   const m = c.salon_membership;
   if (!m) return null;
   if (clientHasBookableSalonMembership(c)) return { kind: "active", label: "Member" };
-  if (m.cancelled_at) return { kind: "cancelled", label: "Cancelled" };
+  // §Membership-cancel 2026-05: a `status === "cancelled"` row is
+  // unambiguous — surface the Cancelled pill even if `cancelled_at` was
+  // never written (older rows / manual edits). This keeps the provider
+  // list in sync the moment the cancel API flips the status.
+  if (m.status === "cancelled" || m.cancelled_at) {
+    return { kind: "cancelled", label: "Cancelled" };
+  }
   if (m.expires_at) {
     const t = new Date(m.expires_at).getTime();
     if (Number.isFinite(t) && t < Date.now()) {
@@ -140,7 +146,7 @@ function membershipBadgeState(c: Client): MembershipBadgeState {
     }
   }
   if (m.status && m.status !== "active") {
-    return { kind: m.status === "cancelled" ? "cancelled" : "expired", label: m.status === "cancelled" ? "Cancelled" : "Expired" };
+    return { kind: "expired", label: "Expired" };
   }
   return null;
 }
@@ -425,13 +431,24 @@ export default function ClientsScreen() {
       return null;
     }
 
-    const seen = new Set<string>();
+    const indexByCustomerId = new Map<string, number>();
     const result: Client[] = [];
 
     const addClient = (c: any) => {
       const custId = c.customer_id;
-      if (seen.has(custId)) return;
-      seen.add(custId);
+      // §Membership-cancel 2026-05: when a customer was first surfaced by an
+      // earlier feed without `salon_membership` (e.g. the serviced feed
+      // landed first), backfill the membership from a later feed instead of
+      // silently dropping the duplicate. This keeps the Cancelled / Active
+      // pill correct regardless of which list the customer appeared in first.
+      const existingIndex = indexByCustomerId.get(custId);
+      if (existingIndex !== undefined) {
+        const existing = result[existingIndex];
+        if (!existing.salon_membership && c.salon_membership) {
+          result[existingIndex] = { ...existing, salon_membership: c.salon_membership };
+        }
+        return;
+      }
       const email: string = c.customer?.email || "";
       // Treat explicit `is_registered: false` as authoritative; otherwise fall
       // back to the placeholder-email heuristic so older server responses
@@ -442,6 +459,7 @@ export default function ClientsScreen() {
           : Boolean(email) &&
             !email.includes("beautonomi.invalid") &&
             !email.includes("beautonomi.local");
+      indexByCustomerId.set(custId, result.length);
       result.push({
         id: c.id || custId,
         customer_id: custId,

@@ -137,6 +137,37 @@ export function YocoPaymentSheet({
     });
 
     if (result) {
+      // §Yoco-OAuth 2026-05: virtual_checkout devices return a hosted-checkout
+      // URL the customer pays at. Hand them the link (open in-app browser
+      // so the staff member's phone can show the page) — the webhook will
+      // flip the status server-side; the staff member can either wait for a
+      // notification or open the booking again to confirm.
+      if (result.credential_mode === "virtual_checkout" && result.checkout_url) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Alert.alert(
+          "Hand the phone to the customer",
+          "Yoco hosted-checkout will open. Once they pay, the booking updates automatically.",
+          [
+            {
+              text: "Open checkout",
+              onPress: () => {
+                pushInAppBrowser(router, result.checkout_url!, "Pay with Yoco");
+                onPaymentSuccess(result);
+                onClose();
+              },
+            },
+            {
+              text: "Later",
+              style: "cancel",
+              onPress: () => {
+                onPaymentSuccess(result);
+                onClose();
+              },
+            },
+          ],
+        );
+        return;
+      }
       if (result.status === "successful") {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         if (result.receipt_url) {
@@ -308,7 +339,13 @@ export function YocoPaymentSheet({
                 }`), idx > 0 ? { marginTop: 8 } : undefined]}
                 accessibilityRole="radio"
                 accessibilityState={{ selected: isSelected }}
-                accessibilityLabel={`${device.name} ${device.device_type === "web_pos" ? "Web POS" : "Card Machine"}`}
+                accessibilityLabel={`${device.name} ${
+                  device.device_type === "virtual_checkout"
+                    ? "Hosted Checkout"
+                    : device.device_type === "web_pos"
+                      ? "Web POS"
+                      : "Card Machine"
+                }`}
               >
                 <View
                   style={twStyle(`h-10 w-10 items-center justify-center rounded-lg ${
@@ -316,7 +353,13 @@ export function YocoPaymentSheet({
                   }`)}
                 >
                   <Ionicons
-                    name={device.device_type === "web_pos" ? "phone-portrait-outline" : "card-outline"}
+                    name={
+                      device.device_type === "virtual_checkout"
+                        ? "qr-code-outline"
+                        : device.device_type === "web_pos"
+                          ? "phone-portrait-outline"
+                          : "card-outline"
+                    }
                     size={20}
                     color={isSelected ? "#6366f1" : "#6b7280"}
                   />
@@ -344,7 +387,11 @@ export function YocoPaymentSheet({
                     ) : null}
                   </View>
                   <Text style={twStyle("text-xs text-gray-500")}>
-                    {device.device_type === "web_pos" ? "Web POS" : "Card Machine"}
+                    {device.device_type === "virtual_checkout"
+                      ? "Hosted Checkout (QR / link)"
+                      : device.device_type === "web_pos"
+                        ? "Web POS"
+                        : "Card Machine"}
                     {device.location_name
                       ? ` · ${device.location_name}`
                       : isPortable

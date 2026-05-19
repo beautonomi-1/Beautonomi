@@ -11,7 +11,32 @@ type BookingProductRow = {
 };
 
 function one<T>(value: T | T[] | null | undefined): T | null {
-  return Array.isArray(value) ? value[0] ?? null : value ?? null;
+  return Array.isArray(value) ? (value[0] ?? null) : (value ?? null);
+}
+
+/**
+ * 42703 = undefined_column. Surfaces both for missing scalar columns and for
+ * `.select()` embed hints where the FK alias doesn't resolve. We treat any
+ * "column/relationship does not exist" error as a signal to retry with a
+ * leaner select rather than crash the whole booking create.
+ */
+function isMissingColumnOrRelationship(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const code = (error as { code?: unknown }).code;
+  if (
+    typeof code === "string" &&
+    (code === "42703" || code === "PGRST200" || code === "PGRST201")
+  ) {
+    return true;
+  }
+  const message = (error as { message?: unknown }).message;
+  if (typeof message === "string") {
+    const lower = message.toLowerCase();
+    if (lower.includes("does not exist")) return true;
+    if (lower.includes("could not find a relationship")) return true;
+    if (lower.includes("schema cache")) return true;
+  }
+  return false;
 }
 
 function orderStatusForBooking(status?: string | null): string {
@@ -25,7 +50,7 @@ function paymentStatusForBooking(status?: string | null): string {
 
 function recurringSeriesAligned(
   a: string | null | undefined,
-  b: string | null | undefined,
+  b: string | null | undefined
 ): boolean {
   if (a == null && b == null) return true;
   if (a != null && b != null) return a === b;
@@ -48,7 +73,7 @@ type BookingRowForRelink = {
  */
 async function relinkMislinkedAppointmentProductOrder(
   supabase: SupabaseClient,
-  booking: BookingRowForRelink,
+  booking: BookingRowForRelink
 ): Promise<void> {
   const bookingId = booking.id;
   if (!booking.customer_id || !booking.scheduled_at) return;
@@ -79,14 +104,25 @@ async function relinkMislinkedAppointmentProductOrder(
 
   for (const c of candidates) {
     const otherBookingId = c.booking_id as string;
-    const { data: ob } = await supabase
+    let row: { scheduled_at?: string | null; recurring_series_id?: string | null } | null = null;
+    const { data: ob, error: obErr } = await supabase
       .from("bookings")
       .select("scheduled_at, recurring_series_id")
       .eq("id", otherBookingId)
       .maybeSingle();
-    if (!ob) continue;
+    if (obErr && isMissingColumnOrRelationship(obErr)) {
+      // Old schema without `recurring_series_id` — try scalar-only select.
+      const { data: scalar } = await supabase
+        .from("bookings")
+        .select("scheduled_at")
+        .eq("id", otherBookingId)
+        .maybeSingle();
+      row = scalar as { scheduled_at?: string | null } | null;
+    } else if (!obErr) {
+      row = ob as { scheduled_at?: string | null; recurring_series_id?: string | null } | null;
+    }
+    if (!row) continue;
 
-    const row = ob as { scheduled_at?: string | null; recurring_series_id?: string | null };
     const otherMs = row.scheduled_at ? new Date(row.scheduled_at).getTime() : NaN;
     if (!Number.isFinite(otherMs) || otherMs !== targetMs) continue;
     if (!recurringSeriesAligned(seriesSelf, row.recurring_series_id ?? null)) continue;
@@ -100,6 +136,132 @@ async function relinkMislinkedAppointmentProductOrder(
 }
 
 /**
+ * Load the booking + nested rows we need for the order sync, with progressive
+ * fallbacks when a database is missing optional columns or FK hints. This
+ * keeps the booking create path working on environments that haven't yet
+ * applied every commerce/recurring migration (e.g. missing
+ * `bookings.recurring_series_id` or the explicit `products` FK alias).
+ */
+async function loadBookingForSync(
+  supabase: SupabaseClient,
+  bookingId: string
+): Promise<{ booking: Record<string, unknown> | null; productsSelectFailed: boolean }> {
+  const selectVariants = [
+    // Full select with explicit FK aliases (best path when migrations are current).
+    `
+      id, booking_number, provider_id, customer_id, tenant_id, location_id,
+      status, payment_status, currency, scheduled_at, customer_name, customer_phone,
+      recurring_series_id,
+      customers:users!bookings_customer_id_fkey(id, full_name, phone),
+      booking_products(
+        id, product_id, product_variant_id, quantity, unit_price, total_price,
+        products:products!booking_products_product_id_fkey(id, name)
+      )
+    `,
+    // Drop the explicit FK alias on `customers` / `products` (PostgREST can usually
+    // infer the relationship by table name alone).
+    `
+      id, booking_number, provider_id, customer_id, tenant_id, location_id,
+      status, payment_status, currency, scheduled_at, customer_name, customer_phone,
+      recurring_series_id,
+      customers:users(id, full_name, phone),
+      booking_products(
+        id, product_id, product_variant_id, quantity, unit_price, total_price,
+        products(id, name)
+      )
+    `,
+    // Drop `recurring_series_id` (added by migration 531) and the embedded `products`.
+    `
+      id, booking_number, provider_id, customer_id, tenant_id, location_id,
+      status, payment_status, currency, scheduled_at, customer_name, customer_phone,
+      customers:users(id, full_name, phone),
+      booking_products(
+        id, product_id, product_variant_id, quantity, unit_price, total_price
+      )
+    `,
+    // Drop `product_variant_id` (added by migration 285) — last resort so the
+    // booking still reads on very old databases.
+    `
+      id, booking_number, provider_id, customer_id, tenant_id, location_id,
+      status, payment_status, currency, scheduled_at, customer_name, customer_phone,
+      customers:users(id, full_name, phone),
+      booking_products(
+        id, product_id, quantity, unit_price, total_price
+      )
+    `,
+  ];
+
+  let lastError: unknown = null;
+  for (let i = 0; i < selectVariants.length; i++) {
+    const { data, error } = await supabase
+      .from("bookings")
+      .select(selectVariants[i])
+      .eq("id", bookingId)
+      .maybeSingle();
+    if (!error) {
+      return {
+        booking: data as unknown as Record<string, unknown> | null,
+        productsSelectFailed: false,
+      };
+    }
+    lastError = error;
+    if (!isMissingColumnOrRelationship(error)) {
+      throw error;
+    }
+  }
+
+  // Every embed variant failed — fall back to a scalar-only read and load the
+  // line items separately so we never block a booking create on a stale schema.
+  const { data: scalar, error: scalarError } = await supabase
+    .from("bookings")
+    .select(
+      `
+      id, booking_number, provider_id, customer_id, tenant_id, location_id,
+      status, payment_status, currency, scheduled_at, customer_name, customer_phone
+    `
+    )
+    .eq("id", bookingId)
+    .maybeSingle();
+  if (scalarError) throw scalarError ?? lastError;
+  if (!scalar) return { booking: null, productsSelectFailed: true };
+  return { booking: scalar as Record<string, unknown>, productsSelectFailed: true };
+}
+
+async function loadBookingProductsFallback(
+  supabase: SupabaseClient,
+  bookingId: string
+): Promise<BookingProductRow[]> {
+  const variants = [
+    "id, product_id, product_variant_id, quantity, unit_price, total_price",
+    "id, product_id, quantity, unit_price, total_price",
+  ];
+  for (const select of variants) {
+    const { data, error } = await supabase
+      .from("booking_products")
+      .select(select)
+      .eq("booking_id", bookingId);
+    if (!error) return (data || []) as unknown as BookingProductRow[];
+    if (!isMissingColumnOrRelationship(error)) throw error;
+  }
+  return [];
+}
+
+async function loadProductNameMap(
+  supabase: SupabaseClient,
+  productIds: string[]
+): Promise<Map<string, string>> {
+  const unique = Array.from(new Set(productIds.filter(Boolean)));
+  const map = new Map<string, string>();
+  if (unique.length === 0) return map;
+  const { data, error } = await supabase.from("products").select("id, name").in("id", unique);
+  if (error) return map;
+  for (const row of (data || []) as Array<{ id: string; name?: string | null }>) {
+    if (row.id) map.set(row.id, row.name ?? "");
+  }
+  return map;
+}
+
+/**
  * Mirror appointment retail lines into product_orders as a fulfillment task.
  *
  * `booking_products` remain the accounting source of truth; appointment product
@@ -109,27 +271,13 @@ export async function syncAppointmentProductOrder(
   supabase: SupabaseClient,
   bookingId: string
 ): Promise<{ orderId: string | null; skipped?: string }> {
-  const { data: booking, error: bookingError } = await supabase
-    .from("bookings")
-    .select(
-      `
-      id, booking_number, provider_id, customer_id, tenant_id, location_id,
-      status, payment_status, currency, scheduled_at, customer_name, customer_phone,
-      recurring_series_id,
-      customers:users!bookings_customer_id_fkey(id, full_name, phone),
-      booking_products(
-        id, product_id, product_variant_id, quantity, unit_price, total_price,
-        products:products!booking_products_product_id_fkey(id, name)
-      )
-    `
-    )
-    .eq("id", bookingId)
-    .maybeSingle();
-
-  if (bookingError) throw bookingError;
+  const { booking, productsSelectFailed } = await loadBookingForSync(supabase, bookingId);
   if (!booking) return { orderId: null, skipped: "booking_not_found" };
 
-  const products = ((booking as any).booking_products || []) as BookingProductRow[];
+  let products = ((booking as any).booking_products || []) as BookingProductRow[];
+  if (productsSelectFailed) {
+    products = await loadBookingProductsFallback(supabase, bookingId);
+  }
   const validProducts = products.filter((p) => p.product_id && Number(p.quantity || 0) > 0);
   const providerId = String((booking as any).provider_id ?? "");
 
@@ -171,7 +319,12 @@ export async function syncAppointmentProductOrder(
     provider_id: (booking as any).provider_id,
     customer_id: (booking as any).customer_id ?? null,
     scheduled_at: (booking as any).scheduled_at ?? null,
-    recurring_series_id: (booking as any).recurring_series_id ?? null,
+    // When the booking select fell back to a schema without `recurring_series_id`
+    // we treat the value as null; relink still matches on slot + customer.
+    recurring_series_id:
+      "recurring_series_id" in (booking as Record<string, unknown>)
+        ? ((booking as any).recurring_series_id ?? null)
+        : null,
   });
 
   const { data: existing } = await supabase
@@ -181,7 +334,10 @@ export async function syncAppointmentProductOrder(
     .maybeSingle();
 
   if (validProducts.length === 0) {
-    if (existing && !["delivered", "cancelled", "refunded"].includes(String((existing as any).status))) {
+    if (
+      existing &&
+      !["delivered", "cancelled", "refunded"].includes(String((existing as any).status))
+    ) {
       await supabase
         .from("product_orders")
         .update({
@@ -228,19 +384,37 @@ export async function syncAppointmentProductOrder(
       : {}),
   };
 
+  // Remove known-optional columns when a 42703 surfaces — keeps the sync
+  // working on older databases that don't yet have migrations 550/240/525
+  // (booking_id, order_source, customer_id nullable, etc.).
+  const stripOptional = (payload: Record<string, unknown>): Record<string, unknown> => {
+    const next = { ...payload };
+    delete next.booking_id;
+    delete next.order_source;
+    delete next.platform_fee;
+    return next;
+  };
+
   let orderId = existing ? String((existing as any).id) : "";
   if (orderId) {
-    const { error: updateError } = await supabase
+    let { error: updateError } = await supabase
       .from("product_orders")
       .update(orderPayload)
       .eq("id", orderId);
+    if (updateError && isMissingColumnOrRelationship(updateError)) {
+      const retry = await supabase
+        .from("product_orders")
+        .update(stripOptional(orderPayload))
+        .eq("id", orderId);
+      updateError = retry.error;
+    }
     if (updateError) throw updateError;
   } else {
     const { data: seqData } = await supabase.rpc("nextval" as any, {
       seq_name: "product_order_number_seq",
     });
     const firstOrderNumber = `BO-A${seqData ?? Date.now()}`;
-    const { data: inserted, error: insertError } = await supabase
+    let { data: inserted, error: insertError } = await supabase
       .from("product_orders")
       .insert({
         ...orderPayload,
@@ -248,6 +422,18 @@ export async function syncAppointmentProductOrder(
       })
       .select("id")
       .single();
+    if (insertError && isMissingColumnOrRelationship(insertError)) {
+      const retry = await supabase
+        .from("product_orders")
+        .insert({
+          ...stripOptional(orderPayload),
+          order_number: firstOrderNumber,
+        })
+        .select("id")
+        .single();
+      inserted = retry.data as typeof inserted;
+      insertError = retry.error;
+    }
     if (insertError) {
       if ((insertError as any)?.code === "23505") {
         const retryOrderNumber = `BO-A${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -266,21 +452,21 @@ export async function syncAppointmentProductOrder(
         }
       }
       if (!orderId) {
-      const { data: raced } = await supabase
-        .from("product_orders")
-        .select("id")
-        .eq("booking_id", bookingId)
-        .maybeSingle();
-      if (raced) {
-        orderId = String((raced as any).id);
-        const { error: updateAfterRace } = await supabase
+        const { data: raced } = await supabase
           .from("product_orders")
-          .update(orderPayload)
-          .eq("id", orderId);
-        if (updateAfterRace) throw updateAfterRace;
-      } else {
-        throw insertError;
-      }
+          .select("id")
+          .eq("booking_id", bookingId)
+          .maybeSingle();
+        if (raced) {
+          orderId = String((raced as any).id);
+          const { error: updateAfterRace } = await supabase
+            .from("product_orders")
+            .update(orderPayload)
+            .eq("id", orderId);
+          if (updateAfterRace) throw updateAfterRace;
+        } else {
+          throw insertError;
+        }
       }
     } else {
       orderId = String((inserted as any).id);
@@ -289,16 +475,30 @@ export async function syncAppointmentProductOrder(
 
   await supabase.from("product_order_items").delete().eq("order_id", orderId);
 
+  // When the booking embed fell back, `products` won't be nested on
+  // `booking_products` — fetch product names in a single follow-up query so
+  // the order items still carry a readable label.
+  const nameMap = productsSelectFailed
+    ? await loadProductNameMap(
+        supabase,
+        validProducts.map((p) => String(p.product_id)).filter(Boolean) as string[]
+      )
+    : null;
+
   const itemRows = validProducts.map((p) => {
     const product = one(p.products);
     const qty = Math.max(1, Math.floor(Number(p.quantity || 1)) || 1);
     const unit = Number(p.unit_price || 0);
     const total = Number(p.total_price || 0) || qty * unit;
+    const name =
+      product?.name ||
+      (nameMap && p.product_id ? nameMap.get(String(p.product_id)) : "") ||
+      "Product";
     return {
       order_id: orderId,
       product_id: p.product_id,
       product_variant_id: p.product_variant_id ?? null,
-      product_name: product?.name || "Product",
+      product_name: name,
       product_image_url: null,
       quantity: qty,
       unit_price: unit,
@@ -306,7 +506,19 @@ export async function syncAppointmentProductOrder(
     };
   });
 
-  const { error: itemsError } = await supabase.from("product_order_items").insert(itemRows);
+  const insertItems = async (rows: Array<Record<string, unknown>>): Promise<{ error: unknown }> => {
+    const { error } = await supabase.from("product_order_items").insert(rows);
+    return { error };
+  };
+
+  let { error: itemsError } = await insertItems(itemRows);
+  if (itemsError && isMissingColumnOrRelationship(itemsError)) {
+    // Old DB without `product_variant_id` on `product_order_items` — drop the
+    // column from the payload and retry once.
+    const lean = itemRows.map(({ product_variant_id: _ignored, ...rest }) => rest);
+    const retry = await insertItems(lean);
+    itemsError = retry.error;
+  }
   if (itemsError) throw itemsError;
 
   return { orderId };

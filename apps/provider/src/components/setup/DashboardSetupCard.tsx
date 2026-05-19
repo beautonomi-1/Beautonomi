@@ -29,11 +29,19 @@ export type DashboardSetupStatus = {
   steps: DashboardSetupStep[];
 };
 
+/**
+ * Prefer a dedicated native screen when the server returned one (so the
+ * provider lands directly on the form that fixes the missing field). Fall
+ * back to the onboarding hub which already knows how to deep-link by id.
+ */
 function pickRouteForStep(step: DashboardSetupStep): string {
   if (step.native_route && step.native_route.startsWith("/(app)/")) {
     return step.native_route;
   }
-  return "/(app)/onboarding";
+  // §provider-setup-seamless-ux 2026-05: when a setup-status step has no
+  // dedicated native screen, fall through to the wizard with a `focus`
+  // hint so we don't dump the provider back at step 1.
+  return `/(app)/onboarding/wizard?focus=${encodeURIComponent(step.id)}`;
 }
 
 export function DashboardSetupCard() {
@@ -71,49 +79,50 @@ export function DashboardSetupCard() {
     <View
       style={{
         marginBottom: 16,
-        borderRadius: 16,
+        borderRadius: 20,
         borderWidth: 1,
-        borderColor: "#fce7f3",
-        backgroundColor: "#fff5f9",
-        padding: 16,
+        borderColor: "#fbcfe8",
+        backgroundColor: "#ffffff",
+        padding: 18,
+        shadowColor: "#831843",
+        shadowOpacity: 0.06,
+        shadowRadius: 14,
+        shadowOffset: { width: 0, height: 4 },
+        elevation: 2,
       }}
       accessibilityLabel={`Setup ${pct} percent complete. ${requiredDone} of ${requiredTotal} required steps done.`}
     >
-      <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
+      <View style={{ flexDirection: "row", alignItems: "center" }}>
         <View
           style={{
-            width: 44,
-            height: 44,
-            borderRadius: 22,
-            backgroundColor: "#fff",
+            width: 48,
+            height: 48,
+            borderRadius: 16,
+            backgroundColor: "#fdf2f8",
             alignItems: "center",
             justifyContent: "center",
-            marginRight: 12,
-            borderWidth: 1,
-            borderColor: "#fbcfe8",
+            marginRight: 14,
           }}
         >
-          <Ionicons name="rocket-outline" size={22} color={Colors.primary} />
+          <Ionicons name="rocket" size={24} color={Colors.primary} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 15, fontWeight: "700", color: "#111827" }}>
-            Finish setup to start accepting bookings
+          <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", letterSpacing: -0.2 }}>
+            Finish setup to go live
           </Text>
-          <Text style={{ fontSize: 13, color: "#6b7280", marginTop: 3 }}>
-            {requiredDone} of {requiredTotal} required steps done
+          <Text style={{ fontSize: 13, color: "#6b7280", marginTop: 2 }}>
+            {requiredDone} of {requiredTotal} required tasks done
           </Text>
         </View>
         <View
           style={{
-            paddingHorizontal: 10,
-            paddingVertical: 5,
+            paddingHorizontal: 12,
+            paddingVertical: 6,
             borderRadius: 9999,
-            backgroundColor: "#fff",
-            borderWidth: 1,
-            borderColor: "#fbcfe8",
+            backgroundColor: "#fdf2f8",
           }}
         >
-          <Text style={{ fontSize: 12, fontWeight: "700", color: Colors.primary }}>
+          <Text style={{ fontSize: 13, fontWeight: "800", color: Colors.primary }}>
             {pct}%
           </Text>
         </View>
@@ -121,10 +130,10 @@ export function DashboardSetupCard() {
 
       <View
         style={{
-          marginTop: 14,
-          height: 6,
+          marginTop: 16,
+          height: 8,
           width: "100%",
-          backgroundColor: "#fde7f0",
+          backgroundColor: "#fce7f3",
           borderRadius: 9999,
           overflow: "hidden",
         }}
@@ -133,7 +142,7 @@ export function DashboardSetupCard() {
           style={{
             height: "100%",
             width: `${pct}%`,
-            minWidth: pct > 0 ? 6 : 0,
+            minWidth: pct > 0 ? 8 : 0,
             borderRadius: 9999,
             backgroundColor: Colors.primary,
           }}
@@ -141,7 +150,19 @@ export function DashboardSetupCard() {
       </View>
 
       {nextSteps.length > 0 && (
-        <View style={{ marginTop: 12 }}>
+        <View style={{ marginTop: 16 }}>
+          <Text
+            style={{
+              fontSize: 11,
+              fontWeight: "700",
+              letterSpacing: 0.8,
+              textTransform: "uppercase",
+              color: "#9ca3af",
+              marginBottom: 8,
+            }}
+          >
+            Next up
+          </Text>
           {nextSteps.map((step, idx) => (
             <TouchableOpacity
               key={step.id}
@@ -150,23 +171,32 @@ export function DashboardSetupCard() {
               style={{
                 flexDirection: "row",
                 alignItems: "center",
-                paddingVertical: 8,
+                paddingVertical: 10,
                 borderTopWidth: idx === 0 ? 0 : 1,
-                borderTopColor: "#fde7f0",
+                borderTopColor: "#f3f4f6",
               }}
               accessibilityRole="button"
               accessibilityLabel={`Open ${step.title}`}
             >
-              <Ionicons
-                name="ellipse-outline"
-                size={16}
-                color={Colors.primary}
-                style={{ marginRight: 10 }}
-              />
+              <View
+                style={{
+                  width: 24,
+                  height: 24,
+                  borderRadius: 12,
+                  backgroundColor: "#fdf2f8",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginRight: 12,
+                }}
+              >
+                <Text style={{ fontSize: 12, fontWeight: "700", color: Colors.primary }}>
+                  {idx + 1}
+                </Text>
+              </View>
               <Text style={{ flex: 1, fontSize: 14, color: "#111827", fontWeight: "500" }}>
                 {step.title}
               </Text>
-              <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+              <Ionicons name="chevron-forward" size={16} color="#cbd5f5" />
             </TouchableOpacity>
           ))}
         </View>
@@ -174,20 +204,23 @@ export function DashboardSetupCard() {
 
       <TouchableOpacity
         onPress={openHub}
-        activeOpacity={0.85}
+        activeOpacity={0.88}
         style={{
-          marginTop: 14,
+          marginTop: 16,
           backgroundColor: Colors.primary,
-          paddingVertical: 12,
-          borderRadius: 12,
+          paddingVertical: 14,
+          borderRadius: 14,
           alignItems: "center",
+          flexDirection: "row",
+          justifyContent: "center",
         }}
         accessibilityRole="button"
         accessibilityLabel="Open setup hub"
       >
-        <Text style={{ color: "#fff", fontSize: 14, fontWeight: "700" }}>
+        <Text style={{ color: "#fff", fontSize: 15, fontWeight: "700", letterSpacing: 0.2 }}>
           Continue setup
         </Text>
+        <Ionicons name="arrow-forward" size={16} color="#fff" style={{ marginLeft: 8 }} />
       </TouchableOpacity>
     </View>
   );

@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(
       ["provider_owner", "provider_staff", "provider_onboarding", "superadmin"],
-      request,
+      request
     );
     const supabase = await getSupabaseServer(request);
 
@@ -46,12 +46,44 @@ export async function POST(request: NextRequest) {
       return errorResponse(
         result.error || "Failed to register device",
         "DEVICE_REGISTRATION_FAILED",
-        500,
+        500
       );
     }
 
     return successResponse({ registered: true });
   } catch (error) {
     return handleApiError(error, "Failed to register device");
+  }
+}
+
+/**
+ * DELETE /api/provider/devices
+ *
+ * Unregister the current user's provider-app device by OneSignal subscription id.
+ */
+export async function DELETE(request: NextRequest) {
+  try {
+    const { user } = await requireRoleInApi(
+      ["provider_owner", "provider_staff", "provider_onboarding", "superadmin"],
+      request
+    );
+    const supabase = await getSupabaseServer(request);
+    const body = await request.json().catch(() => ({}));
+    const playerId = typeof body?.player_id === "string" ? body.player_id.trim() : "";
+    if (!playerId) {
+      return errorResponse("player_id is required", "VALIDATION_ERROR", 400);
+    }
+
+    const { error } = await supabase
+      .from("user_devices")
+      .delete()
+      .eq("user_id", user.id)
+      .eq("onesignal_player_id", playerId)
+      .eq("app_type", "provider");
+    if (error) throw error;
+
+    return successResponse({ deleted: true });
+  } catch (error) {
+    return handleApiError(error, "Failed to delete device");
   }
 }

@@ -4,7 +4,7 @@
  * Completion % is based on required steps only.
  */
 import { useState, useCallback } from "react";
-import { View, Text, TouchableOpacity, Alert } from "react-native";
+import { View, Text, TouchableOpacity } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
@@ -68,19 +68,12 @@ export default function SetupStatusScreen() {
       router.push(step.native_route as never);
       return;
     }
-    // Defensive fallback — server should always return a native_route for
-    // every step in NATIVE_ROUTE_BY_ID. Only fires if the API was unreachable
-    // or returned a step the client doesn't recognise.
-    Alert.alert(
-      "Open in setup wizard",
-      "This step is available in the quick setup wizard.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Open wizard",
-          onPress: () => router.push("/(app)/onboarding/wizard" as never),
-        },
-      ],
+    // §provider-setup-seamless-ux 2026-05: defer to the wizard with a `focus`
+    // hint so the provider lands on the right step instead of restarting from
+    // step 1. Server should always return a native_route for known step ids,
+    // but this guarantees the deep link still works for new/unknown ids.
+    router.push(
+      `/(app)/onboarding/wizard?focus=${encodeURIComponent(step.id)}` as never,
     );
   }
 

@@ -26,7 +26,7 @@
 
 | Theme | Finding | Target (see contract guidelines) |
 |-------|---------|-----------------------------------|
-| **Inventory** | **349** admin `route.ts` handlers; full list in `docs/admin-api-route-taxonomy.csv` | Regenerate CSV when adding routes; CI blocks orphan files. |
+| **Inventory** | **350** admin `route.ts` handlers; full list in `docs/admin-api-route-taxonomy.csv` | Regenerate CSV when adding routes; CI blocks orphan files. |
 | **Response envelope** | Mix of `{ data, error }` (`successResponse` / `errorResponse`) and **raw** `NextResponse.json` (`{ tickets }`, `{ error: string }`, `{ success: true }`, etc.) | New/changed handlers use standard envelope; migrate legacy when touching. |
 | **List shape** | Some lists nest `{ data: rows, meta }` **inside** envelope `data` (e.g. users); others return domain keys at root **without** envelope | Standard: `data: { items, meta }` + outer envelope. |
 | **Pagination** | `page`+`limit` (`getPaginationParams`) vs `offset`+`limit`; default limits vary (20–100) | Standard query params + `meta`; document per row until migrated. |
@@ -144,6 +144,7 @@ Use this table as the **index** for deep-dive sub-tables (§5). **AuthZ column**
 | 60 | `/admin/api-keys` | W4 | integrations_dev | Y | `GET/POST/DELETE /api/admin/api-keys` | |
 | 61 | `/admin/integrations/amplitude` | W4 | integrations_dev | Y | `GET/PUT /api/admin/integrations/amplitude` | |
 | 61a | `/admin/integrations/slack` | W4 | integrations_dev | Y | `GET/PUT /api/admin/integrations/slack`; `GET .../channels`; `GET .../logs`; `POST .../test`; browser `GET .../oauth/install` + Slack redirect `GET .../oauth/callback` | **SPA:** [`SlackIntegrationPage`](../../apps/admin-web/src/routes/integrations/SlackIntegrationPage.tsx). AuthZ `ADMIN_SECTION_INTEGRATIONS_DEV` (`requireAdminSection` on APIs). |
+| 61b | `/admin/integrations/yoco` | W4 | integrations_dev | Y (superadmin only) | `GET /api/admin/integrations/yoco` | **SPA:** [`YocoIntegrationPage`](../../apps/admin-web/src/routes/integrations/YocoIntegrationPage.tsx). Non-secret OAuth v2 / `tenant_yoco_oauth_apps` / feature-flag snapshot per tenant scope. |
 | 62 | `/admin/mapbox` | W4 | integrations_dev | Y | `GET/PUT /api/admin/mapbox/config`, legacy zones tab | |
 | 63 | `/admin/iso-codes` | W4 | integrations_dev | Y | `GET/PUT/POST/DELETE /api/admin/iso-codes/*` | |
 | 64 | `/admin/settings/integrations/analytics` | W4 | integrations_dev | R | — | Client redirect → amplitude page |
@@ -296,3 +297,4 @@ Record the test **id** in the **Client method** column. **Envelope:** fixtures M
 | 2026-05-05 | Taxonomy: `+1` route (`GET /api/admin/broadcast/[id]`); §4 row 54 broadcast note updated; §1.1 inventory **346**. |
 | 2026-05-06 | Taxonomy: `+2` routes (`GET /api/admin/provider-ops/assignable-users`, `GET /api/admin/provider-ops/reports/lead-assignees`); §4 rows 100–105 provider-ops notes; §1.1 inventory **348**. |
 | 2026-05-17 | Taxonomy: `+1` route (`GET /api/admin/provider-ops/reports/previous-software`); §4 row 105 provider-ops reports note; §1.1 inventory **349**. |
+| 2026-05-19 | Taxonomy: `+1` route (`GET /api/admin/integrations/yoco`); §4 row **61b**; SPA [`YocoIntegrationPage`](../../apps/admin-web/src/routes/integrations/YocoIntegrationPage.tsx) at `/admin/integrations/yoco`. §1.1 inventory **350**. |

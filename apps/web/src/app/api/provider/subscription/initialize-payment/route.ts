@@ -144,17 +144,29 @@ export async function POST(request: NextRequest) {
 
     // Initialize Paystack transaction
     const reference = generateTransactionReference("provider_subscription_auth", order.id);
+    /**
+     * §Provider-paystack-audit 2026-05: Paystack `callback_url` MUST be HTTPS.
+     * Provider mobile previously passed `provider://settings/subscription-payment-return`
+     * here, which Paystack does not honor — it falls back to the merchant default
+     * and providers landed on the customer `/checkout/success` page. We always
+     * route Paystack through the HTTPS subscription page; the WebView postMessage
+     * + native cold-start screen handle hand-off from there. `callbackFromClient`
+     * is preserved only for legacy non-`provider://` overrides.
+     */
+    const subAppUrl = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
+    const isHttpsClientCallback =
+      typeof callbackFromClient === "string" &&
+      /^https?:\/\//i.test(callbackFromClient);
     const inAppParam = in_app ? "&in_app=1" : "";
     const callbackUrl =
-      in_app && callbackFromClient
-        ? `${callbackFromClient}${callbackFromClient.includes("?") ? "&" : "?"}payment_success=true&order_id=${order.id}`
-        : `${process.env.NEXT_PUBLIC_APP_URL || ""}/provider/subscription?payment_success=true&order_id=${order.id}${inAppParam}`;
+      in_app && isHttpsClientCallback
+        ? `${callbackFromClient}${callbackFromClient!.includes("?") ? "&" : "?"}payment_success=true&order_id=${order.id}`
+        : `${subAppUrl}/provider/subscription?payment_success=true&order_id=${order.id}${inAppParam}`;
 
-    const subAppUrl = process.env.NEXT_PUBLIC_APP_URL || "";
     const subCancelAction =
-      in_app && callbackFromClient
-        ? `${callbackFromClient}${callbackFromClient.includes("?") ? "&" : "?"}payment_cancelled=1`
-        : `${subAppUrl}/provider/subscription?payment_cancelled=1`;
+      in_app && isHttpsClientCallback
+        ? `${callbackFromClient}${callbackFromClient!.includes("?") ? "&" : "?"}payment_cancelled=1`
+        : `${subAppUrl}/provider/subscription?payment_cancelled=1${inAppParam}`;
 
     const paystackData = await initializePaystackTransaction({
       email,

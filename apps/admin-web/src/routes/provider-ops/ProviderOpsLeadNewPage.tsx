@@ -238,18 +238,21 @@ export function ProviderOpsLeadNewPage() {
   return (
     <div className="space-y-6">
       <Link to={adminSpaTo("/admin/provider-ops/leads")} className="text-sm text-gray-500 hover:text-gray-700">← Back to Leads</Link>
-      <AdminPageHeader title="New Lead" />
+      <AdminPageHeader
+        title="New Lead"
+        description="Capture the minimum contact details first. New leads start in the New stage, then move through Contacted, Qualified, Proposal sent, Negotiating, Won, and Matched; use Lost or Nurture for branch outcomes."
+      />
 
       {error && <p className="text-sm text-red-600">{error}</p>}
 
       <AdminPanel>
         <div className="space-y-6 divide-y">
-          <FormSection title="Business Information">
+          <FormSection title="Business Information" description="Required: provide at least a business name or a contact person.">
             <FormField label="Business Name"><input type="text" value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="e.g. Glow Beauty Studio" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></FormField>
             <FormField label="Contact Person"><input type="text" value={contactPerson} onChange={(e) => setContactPerson(e.target.value)} placeholder="e.g. Jane Smith" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></FormField>
           </FormSection>
 
-          <FormSection title="Contact">
+          <FormSection title="Contact" description="Add email or phone so the lead can be contacted, invited, and converted later.">
             <FormField label="Email"><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="jane@example.com" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></FormField>
             <FormField label="Phone">
               <div className="flex gap-2">
@@ -262,7 +265,7 @@ export function ProviderOpsLeadNewPage() {
             </FormField>
           </FormSection>
 
-          <FormSection title="Location">
+          <FormSection title="Location" description="Location helps routing, duplicate checks, and assisted onboarding.">
             <FormField label="Business Location">
               <input type="text" value={locationText} onChange={(e) => setLocationText(e.target.value)} onBlur={handleGeocode} placeholder="e.g. Sandton, Johannesburg" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
               {geocoding && <p className="mt-1 text-xs text-gray-400">Resolving location...</p>}
@@ -274,7 +277,7 @@ export function ProviderOpsLeadNewPage() {
             </FormField>
           </FormSection>
 
-          <FormSection title="Categories">
+          <FormSection title="Categories" description="Choose service categories so Provider Ops can qualify and route the lead quickly.">
             <div className="flex flex-wrap gap-2">
               {categories.map((cat) => (
                 <button key={cat.id} type="button" onClick={() => setSelectedCategoryIds((prev) => prev.includes(cat.id) ? prev.filter((c) => c !== cat.id) : [...prev, cat.id])}
@@ -286,7 +289,7 @@ export function ProviderOpsLeadNewPage() {
             </div>
           </FormSection>
 
-          <FormSection title="Source & Details">
+          <FormSection title="Source & Details" description="Record where the lead came from and any context the next admin needs.">
             <FormField label="Source">
               <select value={source} onChange={(e) => setSource(e.target.value)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm">
                 {SOURCE_OPTIONS.map((s) => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
@@ -511,8 +514,16 @@ export function ProviderOpsLeadNewPage() {
   );
 }
 
-function FormSection({ title, children }: { title: string; children: React.ReactNode }) {
-  return <div className="space-y-4 pt-5 first:pt-0"><h2 className="text-xs font-semibold uppercase tracking-wider text-gray-500">{title}</h2>{children}</div>;
+function FormSection({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-4 pt-5 first:pt-0">
+      <div>
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-500">{title}</h2>
+        {description ? <p className="mt-1 text-xs leading-relaxed text-gray-400">{description}</p> : null}
+      </div>
+      {children}
+    </div>
+  );
 }
 function FormField({ label, children }: { label: string; children: React.ReactNode }) {
   return <div><label className="mb-1 block text-sm text-gray-600">{label}</label>{children}</div>;

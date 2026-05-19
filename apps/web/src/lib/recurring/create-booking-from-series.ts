@@ -64,7 +64,8 @@ function resolveProductLines(row: SeriesRow): ProductLine[] {
     .map((item) => {
       const quantity = Math.max(1, Math.floor(Number(item.quantity || 1)) || 1);
       const unitPrice = Number(item.unit_price ?? item.unitPrice ?? 0) || 0;
-      const totalPrice = Number(item.total ?? item.total_price ?? item.totalPrice ?? unitPrice * quantity) || 0;
+      const totalPrice =
+        Number(item.total ?? item.total_price ?? item.totalPrice ?? unitPrice * quantity) || 0;
       return {
         product_id: String(item.product_id),
         product_variant_id:
@@ -185,7 +186,10 @@ export async function createBookingFromRecurringSeries(
     subtotal += Number(o.price || 0);
   }
   subtotal += productLines.reduce((sum, p) => sum + Number(p.total_price || 0), 0);
-  subtotal += addonLines.reduce((sum, a) => sum + Number(a.price || 0) * Number(a.quantity || 1), 0);
+  subtotal += addonLines.reduce(
+    (sum, a) => sum + Number(a.price || 0) * Number(a.quantity || 1),
+    0
+  );
 
   // Pass provider's tax_rate_percent directly to avoid a second DB lookup.
   // getEffectiveTaxRate treats null as "unset" and falls back to platform default.
@@ -223,7 +227,9 @@ export async function createBookingFromRecurringSeries(
       .order("updated_at", { ascending: false })
       .limit(1)
       .maybeSingle();
-    const payoutSettings = ((psRow as any)?.settings as Record<string, any> | null)?.payouts as Record<string, any> | undefined;
+    const payoutSettings = ((psRow as any)?.settings as Record<string, any> | null)?.payouts as
+      | Record<string, any>
+      | undefined;
     if (payoutSettings) {
       const feeType = (payoutSettings.platform_service_fee_type as string) || "fixed";
       if (feeType === "percentage") {
@@ -281,17 +287,22 @@ export async function createBookingFromRecurringSeries(
     }
   }
 
-  const metaAddr = row.metadata as { address?: Record<string, unknown>; pricing?: Record<string, unknown>; booking_source?: string } | null;
+  const metaAddr = row.metadata as {
+    address?: Record<string, unknown>;
+    pricing?: Record<string, unknown>;
+    booking_source?: string;
+  } | null;
   const addr = metaAddr?.address;
   const locationType = (row.location_type || "at_salon") as string;
   const pricingMeta = metaAddr?.pricing ?? {};
-  const bookingSource = typeof metaAddr?.booking_source === "string" ? metaAddr.booking_source : "online";
+  const bookingSource =
+    typeof metaAddr?.booking_source === "string" ? metaAddr.booking_source : "online";
   const { data: previousBookingPricing } =
     Object.keys(pricingMeta).length === 0
       ? await admin
           .from("bookings")
           .select(
-            "subtotal, discount_amount, promotion_discount_amount, membership_discount_amount, tax_amount, tax_rate, service_fee_percentage, service_fee_amount, tip_amount, travel_fee, total_amount",
+            "subtotal, discount_amount, promotion_discount_amount, membership_discount_amount, tax_amount, tax_rate, service_fee_percentage, service_fee_amount, tip_amount, travel_fee, total_amount"
           )
           .eq("recurring_series_id", row.id)
           .order("scheduled_at", { ascending: false })
@@ -306,10 +317,22 @@ export async function createBookingFromRecurringSeries(
   const recurringTravelFee = Math.max(0, Number(pricingSource.travel_fee ?? 0) || 0);
   const recurringTipAmount = Math.max(0, Number(pricingSource.tip_amount ?? 0) || 0);
   const recurringDiscountAmount = Math.max(0, Number(pricingSource.discount_amount ?? 0) || 0);
-  const recurringPromotionDiscount = Math.max(0, Number(pricingSource.promotion_discount_amount ?? 0) || 0);
-  const recurringMembershipDiscount = Math.max(0, Number(pricingSource.membership_discount_amount ?? 0) || 0);
-  const recurringServiceFeeAmount = Math.max(0, Number(pricingSource.service_fee_amount ?? serviceFeeAmount) || 0);
-  const recurringServiceFeePercentage = Math.max(0, Number(pricingSource.service_fee_percentage ?? serviceFeePercentage) || 0);
+  const recurringPromotionDiscount = Math.max(
+    0,
+    Number(pricingSource.promotion_discount_amount ?? 0) || 0
+  );
+  const recurringMembershipDiscount = Math.max(
+    0,
+    Number(pricingSource.membership_discount_amount ?? 0) || 0
+  );
+  const recurringServiceFeeAmount = Math.max(
+    0,
+    Number(pricingSource.service_fee_amount ?? serviceFeeAmount) || 0
+  );
+  const recurringServiceFeePercentage = Math.max(
+    0,
+    Number(pricingSource.service_fee_percentage ?? serviceFeePercentage) || 0
+  );
   const recurringTaxAmount = Math.max(0, Number(pricingSource.tax_amount ?? taxAmount) || 0);
   const recurringTaxRate = Math.max(0, Number(pricingSource.tax_rate ?? taxRate) || 0);
   const effectiveRecurringTravelFee = locationType === "at_home" ? recurringTravelFee : 0;
@@ -323,7 +346,7 @@ export async function createBookingFromRecurringSeries(
         effectiveRecurringTravelFee +
         recurringTaxAmount +
         recurringServiceFeeAmount +
-        recurringTipAmount,
+        recurringTipAmount
   );
   const bookingData: Record<string, unknown> = {
     customer_id: row.customer_id,
@@ -336,15 +359,30 @@ export async function createBookingFromRecurringSeries(
     location_type: locationType,
     location_id: row.location_id,
     booking_source: bookingSource,
-    address_line1: typeof addr === "object" && addr && "line1" in addr ? String((addr as { line1?: string }).line1) : null,
-    address_city: typeof addr === "object" && addr && "city" in addr ? String((addr as { city?: string }).city) : null,
-    address_country: typeof addr === "object" && addr && "country" in addr ? String((addr as { country?: string }).country) : null,
+    address_line1:
+      typeof addr === "object" && addr && "line1" in addr
+        ? String((addr as { line1?: string }).line1)
+        : null,
+    address_city:
+      typeof addr === "object" && addr && "city" in addr
+        ? String((addr as { city?: string }).city)
+        : null,
+    address_country:
+      typeof addr === "object" && addr && "country" in addr
+        ? String((addr as { country?: string }).country)
+        : null,
     address_postal_code:
-      typeof addr === "object" && addr && "postal_code" in addr ? String((addr as { postal_code?: string }).postal_code) : null,
+      typeof addr === "object" && addr && "postal_code" in addr
+        ? String((addr as { postal_code?: string }).postal_code)
+        : null,
     address_latitude:
-      typeof addr === "object" && addr && "latitude" in addr ? Number((addr as { latitude?: number }).latitude) : null,
+      typeof addr === "object" && addr && "latitude" in addr
+        ? Number((addr as { latitude?: number }).latitude)
+        : null,
     address_longitude:
-      typeof addr === "object" && addr && "longitude" in addr ? Number((addr as { longitude?: number }).longitude) : null,
+      typeof addr === "object" && addr && "longitude" in addr
+        ? Number((addr as { longitude?: number }).longitude)
+        : null,
     subtotal: recurringSubtotal,
     discount_amount: recurringDiscountAmount,
     promotion_discount_amount: recurringPromotionDiscount,
@@ -418,21 +456,35 @@ export async function createBookingFromRecurringSeries(
       })
       .eq("id", bookingId as string);
 
-    await insertRecurringBookingProductsAndAudit(
-      admin,
-      bookingId as string,
-      productLines,
-      addonLines,
-      primaryStaffId,
-      row,
-      occurrenceDateYmd,
-      recurringTotalAmount
-    );
+    try {
+      await insertRecurringBookingProductsAndAudit(
+        admin,
+        bookingId as string,
+        productLines,
+        addonLines,
+        primaryStaffId,
+        row,
+        occurrenceDateYmd,
+        recurringTotalAmount
+      );
+    } catch (lineErr) {
+      await admin
+        .from("bookings")
+        .delete()
+        .eq("id", bookingId as string);
+      return {
+        error: lineErr instanceof Error ? lineErr.message : "recurring_products_failed",
+      };
+    }
 
     return { bookingId: bookingId as string };
   }
 
-  const { data: inserted, error: bErr } = await admin.from("bookings").insert(bookingData).select("id").single();
+  const { data: inserted, error: bErr } = await admin
+    .from("bookings")
+    .insert(bookingData)
+    .select("id")
+    .single();
 
   if (bErr || !inserted) {
     return { error: bErr?.message || "insert_failed" };
@@ -458,16 +510,23 @@ export async function createBookingFromRecurringSeries(
     return { error: `booking_services_failed: ${bsErr.message}` };
   }
 
-  await insertRecurringBookingProductsAndAudit(
-    admin,
-    bookingId,
-    productLines,
-    addonLines,
-    primaryStaffId,
-    row,
-    occurrenceDateYmd,
-    recurringTotalAmount
-  );
+  try {
+    await insertRecurringBookingProductsAndAudit(
+      admin,
+      bookingId,
+      productLines,
+      addonLines,
+      primaryStaffId,
+      row,
+      occurrenceDateYmd,
+      recurringTotalAmount
+    );
+  } catch (lineErr) {
+    await admin.from("bookings").delete().eq("id", bookingId);
+    return {
+      error: lineErr instanceof Error ? lineErr.message : "recurring_products_failed",
+    };
+  }
 
   return { bookingId };
 }
@@ -510,13 +569,9 @@ async function insertRecurringBookingProductsAndAudit(
       }))
     );
     if (error) {
-      console.warn(`Failed to insert recurring booking products for ${bookingId}:`, error);
+      throw new Error(`recurring_booking_products_failed: ${error.message}`);
     } else {
-      try {
-        await syncAppointmentProductOrder(admin, bookingId);
-      } catch (orderSyncError) {
-        console.warn(`Failed to sync recurring appointment product order for ${bookingId}:`, orderSyncError);
-      }
+      await syncAppointmentProductOrder(admin, bookingId);
     }
   }
 

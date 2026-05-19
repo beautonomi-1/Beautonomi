@@ -1,6 +1,11 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import {
+  requireRoleInApi,
+  successResponse,
+  handleApiError,
+  errorResponse,
+} from "@/lib/supabase/api-helpers";
 import { initializePaystackTransactionWithPlan } from "@/lib/payments/paystack-server";
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
@@ -12,6 +17,7 @@ const createSubscriptionSchema = z.object({
   plan_id: z.string().uuid("Invalid plan ID"),
   billing_period: z.enum(["monthly", "yearly"]),
   in_app: z.boolean().optional(),
+  return_to_dashboard: z.boolean().optional(),
 });
 
 /**
@@ -24,7 +30,7 @@ const createSubscriptionSchema = z.object({
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['provider_owner', 'superadmin'], request);
+    const { user } = await requireRoleInApi(["provider_owner", "superadmin"], request);
     const tenantId = await resolveTenantIdWithZaFallback(request);
     if (!user) {
       return errorResponse("Authentication required", "UNAUTHORIZED", 401);
@@ -44,7 +50,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { plan_id, billing_period, in_app } = validationResult.data;
+    const { plan_id, billing_period, in_app, return_to_dashboard } = validationResult.data;
 
     // Use admin client to bypass RLS
     const supabaseAdmin = createClient(
@@ -76,26 +82,26 @@ export async function POST(request: NextRequest) {
       supabase: supabaseAdmin,
       table: "pricing_plans",
       tenantId,
-      select: "id, name, price, paystack_plan_code_monthly, paystack_plan_code_yearly, subscription_plan_id",
+      select:
+        "id, name, price, paystack_plan_code_monthly, paystack_plan_code_yearly, subscription_plan_id",
       apply: (q) => q.eq("id", plan_id).eq("is_active", true),
       orderBy: { column: "updated_at", ascending: false },
     });
-    const pricingPlan = scopedPlan.data as
-      | {
-          id: string;
-          paystack_plan_code_monthly?: string | null;
-          paystack_plan_code_yearly?: string | null;
-          subscription_plan_id?: string | null;
-        }
-      | null;
+    const pricingPlan = scopedPlan.data as {
+      id: string;
+      paystack_plan_code_monthly?: string | null;
+      paystack_plan_code_yearly?: string | null;
+      subscription_plan_id?: string | null;
+    } | null;
     if (!pricingPlan) {
       return errorResponse("Pricing plan not found or inactive", "NOT_FOUND", 404);
     }
 
     // Get Paystack plan code based on billing period
-    const paystackPlanCode = billing_period === "monthly" 
-      ? (pricingPlan as any).paystack_plan_code_monthly
-      : (pricingPlan as any).paystack_plan_code_yearly;
+    const paystackPlanCode =
+      billing_period === "monthly"
+        ? (pricingPlan as any).paystack_plan_code_monthly
+        : (pricingPlan as any).paystack_plan_code_yearly;
 
     if (!paystackPlanCode) {
       return errorResponse(
@@ -139,24 +145,22 @@ export async function POST(request: NextRequest) {
     // Allow paid checkout when the only current subscription is the free tier.
     // Onboarding seeds a free subscription row so paid conversion must not 409.
     if (existingSubscription && !existingIsFree) {
-      return errorResponse(
-        "Provider already has an active subscription",
-        "CONFLICT",
-        409
-      );
+      return errorResponse("Provider already has an active subscription", "CONFLICT", 409);
     }
 
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "";
     const inAppParam = in_app ? "&in_app=1" : "";
-    const callbackUrl = `${baseUrl}/provider/subscription?payment_success=true&billing_period=${billing_period}${inAppParam}`;
-    const cancelAction = `${baseUrl}/provider/subscription?payment_cancelled=1${in_app ? "&in_app=1" : ""}`;
+    const dashboardReturnParam = return_to_dashboard ? "&return_to=dashboard" : "";
+    const callbackUrl = `${baseUrl}/provider/subscription?payment_success=true&billing_period=${billing_period}${inAppParam}${dashboardReturnParam}`;
+    const cancelAction = `${baseUrl}/provider/subscription?payment_cancelled=1${in_app ? "&in_app=1" : ""}${dashboardReturnParam}`;
     const { data: tenantRow } = await supabaseAdmin
       .from("tenants")
       .select("default_currency")
       .eq("id", tenantId)
       .maybeSingle();
     const tenantDefaultCurrency = String(
-      (tenantRow as { default_currency?: string | null } | null)?.default_currency ?? LAST_RESORT_CURRENCY,
+      (tenantRow as { default_currency?: string | null } | null)?.default_currency ??
+        LAST_RESORT_CURRENCY
     )
       .trim()
       .toUpperCase();
@@ -179,18 +183,15 @@ export async function POST(request: NextRequest) {
 
     const authorizationUrl = init?.data?.authorization_url || null;
     if (!authorizationUrl) {
-      return errorResponse(
-        "Paystack did not return a payment URL",
-        "PAYSTACK_ERROR",
-        500
-      );
+      return errorResponse("Paystack did not return a payment URL", "PAYSTACK_ERROR", 500);
     }
 
     return successResponse({
       authorization_url: authorizationUrl,
       access_code: init?.data?.access_code ?? null,
       reference: init?.data?.reference ?? null,
-      message: "Redirect the user to authorization_url to complete subscription payment. After payment, Paystack will create the subscription and we will sync it via webhook.",
+      message:
+        "Redirect the user to authorization_url to complete subscription payment. After payment, Paystack will create the subscription and we will sync it via webhook.",
     });
   } catch (error) {
     return handleApiError(error, "Failed to create subscription");

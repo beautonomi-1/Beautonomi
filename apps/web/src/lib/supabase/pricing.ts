@@ -15,7 +15,30 @@ type PricingPlan = {
   cta_text: string;
   is_popular: boolean;
   features: string[];
+  /**
+   * §Provider-launch (2026-05): clients use this to render free/paid badges
+   * and decide checkout copy without re-deriving the rule. A plan is free when
+   * price parses to 0/"free" *and* no Paystack plan codes are configured.
+   */
+  is_free: boolean;
 };
+
+function derivePlanIsFree(plan: {
+  price?: string | number | null;
+  paystack_plan_code_monthly?: string | null;
+  paystack_plan_code_yearly?: string | null;
+}): boolean {
+  const hasAnyPaystackCode = Boolean(
+    plan.paystack_plan_code_monthly || plan.paystack_plan_code_yearly,
+  );
+  if (hasAnyPaystackCode) return false;
+  const priceStr = String(plan.price ?? "").replace(/[^0-9.]/g, "");
+  if (!priceStr) return true;
+  const numeric = parseFloat(priceStr);
+  if (Number.isNaN(numeric)) return true;
+  if (numeric === 0) return true;
+  return /free/i.test(String(plan.price ?? ""));
+}
 
 type PricingFAQ = {
   id: string;
@@ -69,6 +92,7 @@ export async function getPricingPlans(): Promise<PricingPlan[]> {
           cta_text: plan.cta_text,
           is_popular: plan.is_popular,
           features: [],
+          is_free: derivePlanIsFree(plan),
         };
       }
 
@@ -81,6 +105,7 @@ export async function getPricingPlans(): Promise<PricingPlan[]> {
         cta_text: plan.cta_text,
         is_popular: plan.is_popular,
         features: features?.map((f) => f.feature_text) || [],
+        is_free: derivePlanIsFree(plan),
       };
     })
   );

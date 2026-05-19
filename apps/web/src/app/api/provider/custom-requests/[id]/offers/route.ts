@@ -60,15 +60,50 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // Ensure request belongs to this provider
     const { data: reqRow } = await supabase
       .from("custom_requests")
-      .select("id, customer_id, provider_id, status, providers!custom_requests_provider_id_fkey(business_name)")
+      .select("id, customer_id, provider_id, status, expires_at, providers!custom_requests_provider_id_fkey(business_name)")
       .eq("id", id)
       .eq("provider_id", providerId)
       .single();
     if (!reqRow) return notFoundResponse("Custom request not found");
 
-    type ReqRow = { customer_id?: string; providers?: { business_name?: string } };
+    type ReqRow = {
+      customer_id?: string;
+      status?: string;
+      expires_at?: string | null;
+      providers?: { business_name?: string };
+    };
     const req = reqRow as ReqRow;
     const customerId = req.customer_id ?? "";
+
+    // §custom-requests-lifecycle-2026-05: cannot send an offer once the
+    // request is closed. Cancelled / fulfilled / expired requests should not
+    // be re-opened by a late provider response — that confused customers and
+    // produced "ghost" offers attached to abandoned requests.
+    const closedStatuses = new Set(["cancelled", "fulfilled", "expired"]);
+    if (req.status && closedStatuses.has(req.status)) {
+      return errorResponse(
+        `This custom request is ${req.status} and can no longer receive offers.`,
+        "REQUEST_CLOSED",
+        409,
+      );
+    }
+    if (req.expires_at && new Date(req.expires_at).getTime() < Date.now()) {
+      // Lazy expire here too so subsequent fetches reflect the closed state.
+      try {
+        await supabase
+          .from("custom_requests")
+          .update({ status: "expired", updated_at: new Date().toISOString() })
+          .eq("id", id)
+          .in("status", ["pending", "offered"]);
+      } catch (lazyErr) {
+        console.warn("[provider/custom-requests/offers] lazy expire failed:", lazyErr);
+      }
+      return errorResponse(
+        "This custom request expired before you could send an offer.",
+        "REQUEST_EXPIRED",
+        410,
+      );
+    }
 
     // Validate staff_id and location_id belong to this provider
     if (body.staff_id) {
@@ -90,7 +125,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       if (!locRow) return handleApiError(new Error("Location not found"), "Invalid location", 400);
     }
 
-    const expIso = new Date(body.expiration_at).toISOString();
+    const expDate = new Date(body.expiration_at);
+    if (Number.isNaN(expDate.getTime()) || expDate.getTime() <= Date.now()) {
+      return errorResponse(
+        "Offer expiration must be in the future so the customer has time to accept.",
+        "INVALID_EXPIRATION",
+        400,
+      );
+    }
+    const expIso = expDate.toISOString();
     const scheduledIso = body.scheduled_at ? new Date(body.scheduled_at).toISOString() : null;
 
     const travelFeeAmount = body.travel_fee != null && body.travel_fee >= 0 ? Number(body.travel_fee) : 0;

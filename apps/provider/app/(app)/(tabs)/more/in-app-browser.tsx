@@ -32,71 +32,106 @@ export default function InAppBrowserScreen() {
     status: "success" | "pending" | "failed";
     title: string;
     message: string;
+    returnToDashboard?: boolean;
   } | null>(null);
 
-  const onWebMessage = useCallback(
-    (e: WebViewMessageEvent) => {
-      try {
-        const raw = JSON.parse(e.nativeEvent.data) as { type?: string; status?: string; message?: string };
-        // Ads budget: `/provider/settings/ads/payment-return` posts BEAUTONOMI_ADS_PAYMENT_DONE.
-        // Provider subscription / renew / initialize-payment: Paystack callback lands on
-        // `/provider/subscription?payment_success=true&in_app=1`, which posts subscription status
-        // (see apps/web `provider/subscription/page.tsx`) so the shell can pop back to native UI.
-        if (raw?.type === "BEAUTONOMI_ADS_PAYMENT_DONE") {
-          const status = raw.status === "pending" ? "pending" : raw.status === "failed" ? "failed" : "success";
-          Haptics.notificationAsync(
-            status === "failed"
-              ? Haptics.NotificationFeedbackType.Error
-              : Haptics.NotificationFeedbackType.Success,
-          );
-          setPaymentResult({
-            status,
-            title: status === "success" ? "Ad payment complete" : status === "pending" ? "Payment is syncing" : "Payment not completed",
-            message:
-              raw.message ||
-              (status === "success"
-                ? "Your campaign payment was confirmed. Return to Ads to see the campaign update."
-                : status === "pending"
-                  ? "Paystack received the payment, but confirmation is still syncing. Return to Ads and pull to refresh in a moment."
+  const onWebMessage = useCallback((e: WebViewMessageEvent) => {
+    try {
+      const raw = JSON.parse(e.nativeEvent.data) as {
+        type?: string;
+        status?: string;
+        message?: string;
+        return_to?: string;
+      };
+      // Ads budget: `/provider/settings/ads/payment-return` posts BEAUTONOMI_ADS_PAYMENT_DONE.
+      // Provider subscription / renew / initialize-payment: Paystack callback lands on
+      // `/provider/subscription?payment_success=true&in_app=1`, which posts subscription status
+      // (see apps/web `provider/subscription/page.tsx`) so the shell can pop back to native UI.
+      if (raw?.type === "BEAUTONOMI_ADS_PAYMENT_DONE") {
+        const isCancelled = raw.status === "cancelled";
+        const status: "success" | "pending" | "failed" =
+          raw.status === "pending"
+            ? "pending"
+            : raw.status === "failed" || isCancelled
+              ? "failed"
+              : "success";
+        Haptics.notificationAsync(
+          status === "failed"
+            ? Haptics.NotificationFeedbackType.Error
+            : status === "pending"
+              ? Haptics.NotificationFeedbackType.Warning
+              : Haptics.NotificationFeedbackType.Success
+        );
+        setPaymentResult({
+          status,
+          title:
+            status === "success"
+              ? "Ad payment complete"
+              : status === "pending"
+                ? "Payment is syncing"
+                : isCancelled
+                  ? "Payment cancelled"
+                  : "Payment not completed",
+          message:
+            raw.message ||
+            (status === "success"
+              ? "Your campaign payment was confirmed. Return to Ads to see the campaign update."
+              : status === "pending"
+                ? "Paystack received the payment, but confirmation is still syncing. Return to Ads and pull to refresh in a moment."
+                : isCancelled
+                  ? "You cancelled the payment. No charge was made. You can try again from your Ads dashboard."
                   : "The payment could not be confirmed. Return to Ads and try again."),
-          });
-          return;
-        }
-        if (raw?.type === "subscription_success") {
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          setPaymentResult({
-            status: "success",
-            title: "Subscription payment complete",
-            message: "Your plan payment was confirmed. Return to Subscription to see your active plan.",
-          });
-          return;
-        }
-        if (raw?.type === "subscription_failed") {
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-          setPaymentResult({
-            status: "failed",
-            title: "Payment not completed",
-            message: "The subscription payment did not go through. Check your card funds or try another payment method.",
-          });
-          return;
-        }
-        if (raw?.type === "subscription_cancelled") {
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-          setPaymentResult({
-            status: "failed",
-            title: "Payment cancelled",
-            message: "You cancelled the payment. No charge was made.",
-          });
-        }
-      } catch {
-        // ignore non-JSON messages
+        });
+        return;
       }
-    },
-    [],
-  );
+      if (raw?.type === "subscription_success") {
+        const returnToDashboard = raw.return_to === "dashboard";
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setPaymentResult({
+          status: "success",
+          title: returnToDashboard ? "You're ready to launch" : "Subscription payment complete",
+          message: returnToDashboard
+            ? "Your plan payment was confirmed. Continue to your provider dashboard."
+            : "Your plan payment was confirmed. Return to Subscription to see your active plan.",
+          returnToDashboard,
+        });
+        return;
+      }
+      if (raw?.type === "subscription_failed") {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        setPaymentResult({
+          status: "failed",
+          title: "Payment not completed",
+          message:
+            "The subscription payment did not go through. Check your card funds or try another payment method.",
+        });
+        return;
+      }
+      if (raw?.type === "subscription_pending") {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        setPaymentResult({
+          status: "pending",
+          title: "Payment is syncing",
+          message:
+            raw.message ||
+            "Paystack received the payment, but the confirmation is still syncing with your bank. Return to Subscription and pull to refresh in a moment.",
+        });
+        return;
+      }
+      if (raw?.type === "subscription_cancelled") {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        setPaymentResult({
+          status: "failed",
+          title: "Payment cancelled",
+          message: "You cancelled the payment. No charge was made.",
+        });
+      }
+    } catch {
+      // ignore non-JSON messages
+    }
+  }, []);
 
-  const isValid =
-    rawUrl.startsWith("https://") || rawUrl.startsWith("http://");
+  const isValid = rawUrl.startsWith("https://") || rawUrl.startsWith("http://");
 
   const openExternally = useCallback(() => {
     if (!rawUrl || !isValid) return;
@@ -264,18 +299,28 @@ export default function InAppBrowserScreen() {
             <View style={styles.resultDivider} />
             <View style={styles.resultStepRow}>
               <Ionicons name="shield-checkmark-outline" size={18} color={Colors.gray[500]} />
-              <Text style={styles.resultStepText}>Payments are verified server-side before campaigns or plans are activated.</Text>
+              <Text style={styles.resultStepText}>
+                Payments are verified server-side before campaigns or plans are activated.
+              </Text>
             </View>
             <TouchableOpacity
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                if (paymentResult.returnToDashboard && paymentResult.status === "success") {
+                  router.replace("/(app)/(tabs)/dashboard" as never);
+                  return;
+                }
                 router.back();
               }}
               style={styles.resultButton}
               accessibilityLabel="Return to app"
               accessibilityRole="button"
             >
-              <Text style={styles.resultButtonText}>Return to app</Text>
+              <Text style={styles.resultButtonText}>
+                {paymentResult.returnToDashboard && paymentResult.status === "success"
+                  ? "Go to dashboard"
+                  : "Return to app"}
+              </Text>
               <Ionicons name="arrow-forward" size={18} color={Colors.white} />
             </TouchableOpacity>
           </View>

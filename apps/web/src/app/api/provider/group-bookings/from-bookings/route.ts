@@ -15,6 +15,12 @@ const bodySchema = z.object({
   booking_ids: z.array(z.string().uuid()).min(2),
 });
 
+async function generateGroupBookingRef(admin: ReturnType<typeof getSupabaseAdmin>) {
+  const { data, error } = await admin.rpc("generate_group_booking_ref");
+  if (!error && typeof data === "string" && data.trim()) return data.trim();
+  return `GB-${Date.now().toString().slice(-10)}`;
+}
+
 /**
  * POST /api/provider/group-bookings/from-bookings
  * Link existing bookings into one group_booking (creates group + participant rows).
@@ -55,11 +61,13 @@ export async function POST(request: NextRequest) {
     const scheduledAt = bookings[0]?.scheduled_at || new Date().toISOString();
     const packageIds = [...new Set(bookings.map((b) => b.package_id).filter(Boolean))];
     const sharedPackageId = packageIds.length === 1 ? packageIds[0] : null;
+    const refNumber = await generateGroupBookingRef(admin);
 
     const { data: group, error: gErr } = await admin
       .from("group_bookings")
       .insert({
         provider_id: providerId,
+        ref_number: refNumber,
         primary_contact_booking_id: bookings[0]!.id,
         scheduled_at: scheduledAt,
         status: "confirmed",

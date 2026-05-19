@@ -197,7 +197,9 @@ export function SubscriptionContent() {
                 {plan?.name ?? "Plan"}
               </Text>
               {plan?.description ? (
-                <Text style={twStyle("mt-2 text-sm leading-5 text-gray-600")}>{plan.description}</Text>
+                <Text style={twStyle("mt-2 text-sm leading-5 text-gray-600")}>
+                  {stripHtmlToPlainText(plan.description)}
+                </Text>
               ) : null}
               {currentSubscriptionPriceLine(sub) ? (
                 <Text style={twStyle("mt-3 text-2xl font-bold text-gray-900")}>

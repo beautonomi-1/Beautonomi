@@ -194,7 +194,7 @@ export default function Index() {
     // cover the common case, but this is defence-in-depth for older deploys.
     const fetchRoleFallback = (reason: PortalErrorKind, roleAttempt = 0) => {
       api
-        .get<{ role?: string }>("/api/me/role")
+        .get<{ role?: string; portal?: string }>("/api/me/role")
         .then((res) => {
           if (cancelled || portalTimedOut) return;
           if (res.error || !res.data?.role) {
@@ -217,7 +217,10 @@ export default function Index() {
             enterError(reason);
             return;
           }
-          const derived = portalFromRole(res.data.role);
+          const derived =
+            typeof res.data?.portal === "string" && res.data.portal.trim()
+              ? res.data.portal.trim()
+              : portalFromRole(res.data.role);
           if (!derived) {
             enterError("no_portal");
             return;
@@ -226,6 +229,7 @@ export default function Index() {
             authFlowBreadcrumb("provider_index.portal_fallback_role_ok", {
               role: res.data.role,
               portal: derived,
+              from_role_endpoint: Boolean(res.data?.portal),
             });
           }
           applyPortalResult(derived);

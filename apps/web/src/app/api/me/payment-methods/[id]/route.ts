@@ -1,6 +1,11 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import {
+  requireRoleInApi,
+  successResponse,
+  handleApiError,
+  errorResponse,
+} from "@/lib/supabase/api-helpers";
 import { z } from "zod";
 
 const patchSchema = z.object({
@@ -13,12 +18,12 @@ const patchSchema = z.object({
  * Update a payment method (e.g. set as primary/default card).
  * Only the owner can update their payment methods.
  */
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { user } = await requireRoleInApi(["customer", "provider_owner", "provider_staff", "superadmin"], request);
+    const { user } = await requireRoleInApi(
+      ["customer", "provider_owner", "provider_staff", "superadmin"],
+      request
+    );
     const { id } = await params;
     const supabase = await getSupabaseServer(request);
 
@@ -73,5 +78,39 @@ export async function PATCH(
     return successResponse(existing);
   } catch (error) {
     return handleApiError(error, "Failed to update payment method");
+  }
+}
+
+/**
+ * DELETE /api/me/payment-methods/[id]
+ *
+ * Soft-delete a saved payment method. Paystack authorizations cannot be
+ * edited in place, so expired/unwanted cards are removed from the user's
+ * selectable card list.
+ */
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { user } = await requireRoleInApi(
+      ["customer", "provider_owner", "provider_staff", "superadmin"],
+      request
+    );
+    const { id } = await params;
+    if (!id) {
+      return errorResponse("Payment method id is required", "VALIDATION_ERROR", 400);
+    }
+
+    const supabase = await getSupabaseServer(request);
+    const { error } = await (supabase.from("payment_methods") as any)
+      .update({ is_active: false, updated_at: new Date().toISOString() })
+      .eq("id", id)
+      .eq("user_id", user.id);
+
+    if (error) throw error;
+    return successResponse({ success: true });
+  } catch (error) {
+    return handleApiError(error, "Failed to remove payment method");
   }
 }

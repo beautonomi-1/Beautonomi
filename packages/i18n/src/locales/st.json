@@ -1917,7 +1917,13 @@
           "cancelSalonTitle": "Cancel salon membership",
           "cancelSalonBody": "Cancel your {{planName}} membership with {{providerName}}? Your benefits will continue until the current expiry date.",
           "keepMembershipCta": "Keep membership",
-          "endMembershipCta": "Cancel"
+          "endMembershipCta": "Cancel",
+          "cancelSuccessTitle": "Membership cancelled",
+          "cancelSuccessBody": "Your membership has been cancelled. Benefits continue until your current period ends.",
+          "cancelSalonSuccessTitle": "Salon membership cancelled",
+          "cancelSalonSuccessBody": "Your {{planName}} membership with {{providerName}} has been cancelled.",
+          "cancelNothingTitle": "Nothing to cancel",
+          "cancelNothingBody": "We couldn't find an active membership to cancel."
         },
         "languageScreen": {
           "syncNoteTitle": "Note",

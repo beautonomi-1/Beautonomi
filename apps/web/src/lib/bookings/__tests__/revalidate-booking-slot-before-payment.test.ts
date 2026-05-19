@@ -251,4 +251,48 @@ describe("revalidateBookingSlotBeforePayment", () => {
       message: "This time slot is no longer available. Please choose another time.",
     });
   });
+
+  /**
+   * §Booking-slot-audit 2026-05: a 03:00 SAST early-morning slot has ISO
+   * `01:00Z` and must not be falsely flagged as in the past or as a
+   * calendar-day mismatch by the pre-payment gate. This locks in that the
+   * revalidation passes the early-morning instants through to the
+   * downstream conflict/calendar checks (rather than rejecting them
+   * outright on TZ math).
+   */
+  it("passes through 03:00 SAST instants to conflict + calendar checks", async () => {
+    const holdSpy = vi.spyOn(conflictCheck, "checkActiveHoldOverlap").mockResolvedValue(false);
+    const segmentSpy = vi
+      .spyOn(conflictCheck, "checkBookingConflict")
+      .mockResolvedValue({ hasConflict: false });
+    const calendarSpy = vi
+      .spyOn(calendarOverlap, "isProviderCalendarWindowBlocked")
+      .mockResolvedValue({ blocked: false, reason: "" });
+
+    const supabase = createSupabaseForRevalidate({
+      // 03:00 SAST → 01:00Z; 04:00 SAST → 02:00Z.
+      serviceRows: [
+        {
+          staff_id: "staff-1",
+          scheduled_start_at: "2026-06-11T01:00:00.000Z",
+          scheduled_end_at: "2026-06-11T02:00:00.000Z",
+        },
+      ],
+    });
+
+    const r = await revalidateBookingSlotBeforePayment(supabase, "booking-1");
+    expect(r).toEqual({ ok: true });
+
+    expect(holdSpy.mock.calls[0]?.[2].toISOString()).toBe("2026-06-11T01:00:00.000Z");
+    expect(holdSpy.mock.calls[0]?.[3].toISOString()).toBe("2026-06-11T02:00:00.000Z");
+    expect(segmentSpy).toHaveBeenCalledWith(
+      supabase,
+      "staff-1",
+      new Date("2026-06-11T01:00:00.000Z"),
+      new Date("2026-06-11T02:00:00.000Z"),
+      0,
+      "booking-1",
+    );
+    expect(calendarSpy).toHaveBeenCalled();
+  });
 });

@@ -63,6 +63,27 @@ function getBucket(featureKey: string, bucketId: string): number {
 }
 
 /** Returns true if the flag row passes all advanced targeting for the given context. */
+function compareAppVersions(a: string, b: string): number {
+  const parse = (value: string) =>
+    value
+      .trim()
+      .replace(/^v/i, "")
+      .split(/[+-]/)[0]
+      .split(".")
+      .map((part) => Number.parseInt(part, 10))
+      .map((part) => (Number.isFinite(part) ? part : 0));
+  const caller = parse(a);
+  const required = parse(b);
+  const maxLen = Math.max(caller.length, required.length);
+  for (let i = 0; i < maxLen; i++) {
+    const c = caller[i] ?? 0;
+    const r = required[i] ?? 0;
+    if (c < r) return -1;
+    if (c > r) return 1;
+  }
+  return 0;
+}
+
 function passesContext(row: FlagRowDb, ctx: FeatureFlagCheckContext | undefined): boolean {
   if (!row.enabled) return false;
   if (!ctx) return true;
@@ -77,18 +98,9 @@ function passesContext(row: FlagRowDb, ctx: FeatureFlagCheckContext | undefined)
     if (!row.roles_allowed.includes(ctx.role)) return false;
   }
 
-  // Semver min_app_version: simple dot-separated numeric comparison
+  // Semver min_app_version: tolerate v-prefixes and build metadata from native runtimes.
   if (ctx.appVersion && row.min_app_version) {
-    const parse = (v: string) => v.split(".").map(Number);
-    const caller = parse(ctx.appVersion);
-    const required = parse(row.min_app_version);
-    const maxLen = Math.max(caller.length, required.length);
-    for (let i = 0; i < maxLen; i++) {
-      const c = caller[i] ?? 0;
-      const r = required[i] ?? 0;
-      if (c < r) return false;
-      if (c > r) break;
-    }
+    if (compareAppVersions(ctx.appVersion, row.min_app_version) < 0) return false;
   }
 
   // Rollout percent

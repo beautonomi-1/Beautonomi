@@ -120,7 +120,7 @@ export async function GET(request: NextRequest) {
           role: string;
           created_at: string;
         }>(row, "users");
-        if (!u || !["provider_owner", "provider_staff"].includes(u.role ?? "")) return null;
+        if (!u || u.role !== "provider_owner") return null;
         return {
           id: String(row.id),
           user_id: String(row.user_id),

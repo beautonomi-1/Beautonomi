@@ -1,11 +1,11 @@
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireAdminSection,
+import { requireAdminSectionAny,
   handleApiError,
   successResponse,
   notFoundResponse,
   errorResponse,
  } from "@/lib/supabase/api-helpers";
-import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
+import { ADMIN_SECTION_PROVIDERS_OPERATIONS, ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit/audit";
@@ -24,7 +24,10 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
+    const { user } = await requireAdminSectionAny(
+      [ADMIN_SECTION_PROVIDERS_OPERATIONS, ADMIN_SECTION_PROVIDER_OPS],
+      request,
+    );
     if (!user) throw new Error("Authentication required");
     const supabase = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);

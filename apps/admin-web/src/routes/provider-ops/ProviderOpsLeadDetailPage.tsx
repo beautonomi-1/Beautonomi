@@ -18,6 +18,15 @@ import { adminToast } from "@/lib/adminToast";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
 import { useAdminSession } from "@/providers/AdminSessionProvider";
 import {
+  LEAD_STAGE_BADGE as STAGE_BADGE,
+  LEAD_STAGE_DOT as STAGE_DOT,
+  LEAD_STAGE_KEYS as STAGES,
+  LEAD_STAGE_LABELS as STAGE_LABELS,
+  getLeadStageDescription,
+  getLeadStageLabel,
+  getLeadStageNextAction,
+} from "@/lib/providerOpsLeadStages";
+import {
   ArrowLeft, Phone, Mail, MapPin, Calendar, Tag, User,
   Trash2, UserPlus, ExternalLink, StickyNote, TrendingUp,
   MessageSquare, Globe, Building2, FileText, Clock,
@@ -38,29 +47,6 @@ function detailAssigneeName(lead: Record<string, unknown>): string {
   }
   return `${aid.slice(0, 8)}…`;
 }
-
-const STAGES = ["new", "contacted", "qualified", "proposal_sent", "negotiating", "won", "lost", "nurture", "matched"] as const;
-const STAGE_LABELS: Record<string, string> = {
-  new: "New", contacted: "Contacted", qualified: "Qualified",
-  proposal_sent: "Proposal Sent", negotiating: "Negotiating", won: "Won",
-  lost: "Lost", nurture: "Nurture", matched: "Matched",
-};
-const STAGE_BADGE: Record<string, string> = {
-  new: "bg-blue-100 text-blue-700 ring-blue-600/20",
-  contacted: "bg-cyan-100 text-cyan-700 ring-cyan-600/20",
-  qualified: "bg-emerald-100 text-emerald-700 ring-emerald-600/20",
-  proposal_sent: "bg-violet-100 text-violet-700 ring-violet-600/20",
-  negotiating: "bg-purple-100 text-purple-700 ring-purple-600/20",
-  won: "bg-green-100 text-green-700 ring-green-600/20",
-  lost: "bg-red-100 text-red-700 ring-red-600/20",
-  nurture: "bg-amber-100 text-amber-700 ring-amber-600/20",
-  matched: "bg-teal-100 text-teal-700 ring-teal-600/20",
-};
-const STAGE_DOT: Record<string, string> = {
-  new: "bg-blue-500", contacted: "bg-cyan-500", qualified: "bg-emerald-500",
-  proposal_sent: "bg-violet-500", negotiating: "bg-purple-500", won: "bg-green-500",
-  lost: "bg-red-500", nurture: "bg-amber-500", matched: "bg-teal-500",
-};
 
 const ACTIVITY_ICON_MAP: Record<string, typeof MessageSquare> = {
   note: StickyNote,
@@ -149,7 +135,7 @@ export function ProviderOpsLeadDetailPage() {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.leadDetail(id!) });
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.leadActivities(id!) });
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
-      adminToast.success(`Stage updated to "${stage.replace(/_/g, " ")}"`);
+      adminToast.success(`Stage updated to "${getLeadStageLabel(stage)}"`);
     },
     onError: (e: Error) => {
       if (handleLeadConcurrent409(e)) {
@@ -443,7 +429,7 @@ export function ProviderOpsLeadDetailPage() {
             <h1 className="text-2xl font-semibold tracking-tight text-gray-900">{name}</h1>
             <div className="mt-1.5 flex flex-wrap items-center gap-2">
               <span className={cn("inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset", STAGE_BADGE[stage] || "bg-gray-100 text-gray-600")}>
-                {stage.replace(/_/g, " ")}
+                {getLeadStageLabel(stage)}
               </span>
               <span className="inline-block rounded-md border border-gray-200 px-2 py-0.5 text-xs text-gray-500">{String(lead.source ?? "—")}</span>
               <span className="text-xs text-gray-400">{lead.created_at ? new Date(String(lead.created_at)).toLocaleDateString() : ""}</span>
@@ -546,6 +532,14 @@ export function ProviderOpsLeadDetailPage() {
             );
           })}
           </div>
+        </div>
+        <div className="mt-3 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+          <p className="text-xs font-medium text-gray-800">
+            Current step: {getLeadStageLabel(stage)}
+          </p>
+          <p className="mt-0.5 text-xs leading-relaxed text-gray-500">
+            {getLeadStageDescription(stage)} Next action: {getLeadStageNextAction(stage)}
+          </p>
         </div>
       </AdminPanel>
 

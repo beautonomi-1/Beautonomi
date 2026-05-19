@@ -32,6 +32,26 @@ function normalizeYocoStatus(status: unknown): "successful" | "failed" | "pendin
   if (["failed", "declined", "cancelled", "canceled", "voided"].includes(value)) return "failed";
   return "pending";
 }
+
+/**
+ * §Yoco-OAuth 2026-05: Yoco API webhook events (payment.succeeded, etc.)
+ * deliver the payment object directly without a `status` field — the status
+ * is encoded in the event type. Normalize to the same shape the legacy
+ * Checkout-API handler expects so we don't have to fork the code.
+ */
+function normalizePaymentEvent(
+  body: Record<string, unknown>,
+  type: string,
+): Record<string, unknown> {
+  const lowered = String(type).toLowerCase();
+  if (lowered === "payment.succeeded" || lowered === "payment.created") {
+    return { ...body, status: body.status ?? "successful" };
+  }
+  if (lowered === "payment.failed") {
+    return { ...body, status: body.status ?? "failed" };
+  }
+  return body;
+}
 /**
  * POST /api/provider/yoco/webhook
  *
@@ -129,21 +149,33 @@ export async function POST(request: Request) {
 
     // Handle different event types
     try {
-      const { type, data } = event;
+      const { type, data, payload } = event;
+      // §Yoco-OAuth 2026-05: Yoco's API-style webhooks
+      // (https://yoco.docs.buildwithfern.com/api-reference/yoco-api/webhook-events)
+      // nest the payment under `payload`, while the Checkout API uses `data`.
+      // Accept both shapes so the same handler works for any subscription.
+      const eventBody = (payload ?? data ?? {}) as Record<string, unknown>;
 
       switch (type) {
         case YOCO_WEBHOOK_EVENTS.PAYMENT_NOTIFICATION:
-          await handlePaymentNotification(data, supabase);
+        case YOCO_WEBHOOK_EVENTS.PAYMENT_CREATED:
+        case YOCO_WEBHOOK_EVENTS.PAYMENT_SUCCEEDED:
+        case YOCO_WEBHOOK_EVENTS.PAYMENT_FAILED:
+          await handlePaymentNotification(
+            normalizePaymentEvent(eventBody, type),
+            supabase,
+          );
           break;
 
         case YOCO_WEBHOOK_EVENTS.REFUND_NOTIFICATION_SUCCESS_FULL:
         case YOCO_WEBHOOK_EVENTS.REFUND_NOTIFICATION_SUCCESS_PARTIAL:
-          await handleRefundSuccess(data, supabase);
+        case YOCO_WEBHOOK_EVENTS.PAYMENT_REFUNDED:
+          await handleRefundSuccess(eventBody, supabase);
           break;
 
         case YOCO_WEBHOOK_EVENTS.REFUND_NOTIFICATION_FAILURE_FULL:
         case YOCO_WEBHOOK_EVENTS.REFUND_NOTIFICATION_FAILURE_PARTIAL:
-          await handleRefundFailure(data, supabase);
+          await handleRefundFailure(eventBody, supabase);
           break;
 
         default:

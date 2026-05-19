@@ -64,7 +64,10 @@ export async function GET(request: NextRequest) {
       const owner = usersMap.get(p.user_id as string);
 
       const gates = {
-        has_location: locations.length > 0 && !!locations[0]?.latitude,
+        has_location:
+          locations.length > 0 &&
+          locations[0]?.latitude != null &&
+          locations[0]?.longitude != null,
         has_business_name: !!p.business_name,
         is_verified: !!p.is_verified,
       };

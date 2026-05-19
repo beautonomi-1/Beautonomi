@@ -104,7 +104,7 @@ export async function getUserRoleServer(
   let provider_id: string | null = null;
   let provider_status: ProviderStatus = null;
 
-  if (role === "provider_owner" || role === "provider_staff") {
+  if (role === "provider_owner" || role === "provider_staff" || role === "provider_onboarding") {
     provider_id = await getProviderIdForUser(authUser.id, supabase);
     if (provider_id) {
       const { data: prov } = await supabase

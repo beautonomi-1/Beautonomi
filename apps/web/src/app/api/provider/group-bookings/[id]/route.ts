@@ -2,10 +2,21 @@ import { NextRequest } from "next/server";
 import { addMinutes } from "date-fns";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import {
+  requireRoleInApi,
+  getProviderIdForUser,
+  successResponse,
+  notFoundResponse,
+  handleApiError,
+  errorResponse,
+} from "@/lib/supabase/api-helpers";
 import { evaluateProviderSlotAgainstGrid } from "@/lib/provider-booking/compute-provider-slot-grid";
 import { checkActiveHoldOverlap } from "@/lib/bookings/conflict-check";
 import { rescheduleBookingServicesSequential } from "@/lib/bookings/reschedule-booking-services";
+import { requirePermission } from "@/lib/auth/requirePermission";
+import { assertProviderUserCanAccessBookingBranch } from "@/lib/provider-booking/booking-branch-access";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { bookingTenantMismatchResponse } from "@/lib/tenant/provider-matches-host";
 import {
   groupPackageTotal,
   groupProductLineTotal,
@@ -20,12 +31,12 @@ function normalizeGroupBookingId(rawId: string): string {
 /**
  * GET /api/provider/group-bookings/[id]
  */
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
+    const { user } = await requireRoleInApi(
+      ["provider_owner", "provider_staff", "superadmin"],
+      request
+    );
     const { id: rawId } = await params;
     const id = normalizeGroupBookingId(rawId);
     const supabase = await getSupabaseServer(request);
@@ -38,7 +49,8 @@ export async function GET(
 
     const { data: groupBooking, error } = await admin
       .from("group_bookings")
-      .select(`
+      .select(
+        `
         *,
         bookings:bookings(
           id, booking_number, ref_number, status, scheduled_at, total_amount,
@@ -52,7 +64,8 @@ export async function GET(
           is_primary_contact, service_id, service_name, price, duration_minutes, addons,
           checked_in_at, checked_out_at
         )
-      `)
+      `
+      )
       .eq("id", id)
       .eq("provider_id", providerId)
       .single();
@@ -68,7 +81,7 @@ export async function GET(
       (((groupBooking as any).bookings ?? []) as any[]).map((booking: any) => {
         const paidAfterRefunds = Math.max(
           0,
-          Number(booking.total_paid ?? 0) - Number(booking.total_refunded ?? 0),
+          Number(booking.total_paid ?? 0) - Number(booking.total_refunded ?? 0)
         );
         const walletGiftCoverage =
           Number(booking.wallet_amount ?? 0) + Number(booking.gift_card_amount ?? 0);
@@ -90,7 +103,12 @@ export async function GET(
           booking.id,
           {
             payment_status:
-              booking.payment_status || (balanceDue <= 0 && Number(booking.total_amount ?? 0) > 0 ? "paid" : coverage > 0 ? "partially_paid" : "pending"),
+              booking.payment_status ||
+              (balanceDue <= 0 && Number(booking.total_amount ?? 0) > 0
+                ? "paid"
+                : coverage > 0
+                  ? "partially_paid"
+                  : "pending"),
             paid: Number(booking.total_amount ?? 0) > 0 && balanceDue <= 0,
             balance_due: balanceDue,
             total_paid: Number(booking.total_paid ?? 0),
@@ -99,7 +117,7 @@ export async function GET(
             tip_amount: Number(booking.tip_amount ?? 0),
           },
         ];
-      }),
+      })
     );
     const participants = (((groupBooking as any).booking_participants ?? []) as any[]).map(
       (participant) => {
@@ -131,24 +149,25 @@ export async function GET(
           wallet_gift_coverage: payment?.wallet_gift_coverage ?? 0,
           tip_amount: payment?.tip_amount ?? 0,
         };
-      },
+      }
     );
     const linkedParticipantInvoiceTotal = (((groupBooking as any).bookings ?? []) as any[])
       .filter((booking: any) => booking?.status !== "cancelled" && booking?.status !== "no_show")
       .reduce((sum: number, booking: any) => sum + (Number(booking?.total_amount ?? 0) || 0), 0);
     const participantServiceTotal = participants.reduce(
       (sum: number, participant: any) => sum + (Number(participant?.price ?? 0) || 0),
-      0,
+      0
     );
     const productTotal = Array.isArray((groupBooking as any).products)
       ? ((groupBooking as any).products as any[]).reduce(
           (sum: number, product: any) => sum + groupProductLineTotal(product),
-          0,
+          0
         )
       : 0;
-    const travelFee = (groupBooking as any).location_type === "at_home"
-      ? Math.max(0, Number((groupBooking as any).travel_fee ?? 0))
-      : 0;
+    const travelFee =
+      (groupBooking as any).location_type === "at_home"
+        ? Math.max(0, Number((groupBooking as any).travel_fee ?? 0))
+        : 0;
     const sessionEstimateTotal = groupPackageTotal({
       participantTotal: participantServiceTotal,
       productTotal,
@@ -162,7 +181,7 @@ export async function GET(
         linkedParticipantInvoiceTotal > 0
           ? Math.max(
               linkedParticipantInvoiceTotal,
-              Number((groupBooking as any).total_price ?? 0) || sessionEstimateTotal,
+              Number((groupBooking as any).total_price ?? 0) || sessionEstimateTotal
             )
           : Number((groupBooking as any).total_price ?? 0) || sessionEstimateTotal,
       booking_participants: participants,
@@ -177,12 +196,12 @@ export async function GET(
 /**
  * PATCH /api/provider/group-bookings/[id]
  */
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
+    const { user } = await requireRoleInApi(
+      ["provider_owner", "provider_staff", "superadmin"],
+      request
+    );
     const { id: rawId } = await params;
     const id = normalizeGroupBookingId(rawId);
     const body = await request.json();
@@ -195,11 +214,26 @@ export async function PATCH(
     }
 
     const allowedFields = [
-      "title", "scheduled_at", "service_id", "staff_id", "location_id",
-      "max_participants", "duration_minutes", "notes", "status",
-      "location_type", "address_line1", "address_city", "address_state",
-      "address_country", "address_postal_code", "address_latitude",
-      "address_longitude", "address_place_name", "travel_fee", "products",
+      "title",
+      "scheduled_at",
+      "service_id",
+      "staff_id",
+      "location_id",
+      "max_participants",
+      "duration_minutes",
+      "notes",
+      "status",
+      "location_type",
+      "address_line1",
+      "address_city",
+      "address_state",
+      "address_country",
+      "address_postal_code",
+      "address_latitude",
+      "address_longitude",
+      "address_place_name",
+      "travel_fee",
+      "products",
       "total_price",
       // §Provider-audit 2026-04 (packages round 2): allow updating the
       // service_package link so providers can attach/detach a package after
@@ -226,10 +260,8 @@ export async function PATCH(
     }
 
     // Mobile / portal sometimes send split date+time instead of ISO `scheduled_at`.
-    const scheduledDate =
-      typeof body.scheduled_date === "string" ? body.scheduled_date.trim() : "";
-    const scheduledTime =
-      typeof body.scheduled_time === "string" ? body.scheduled_time.trim() : "";
+    const scheduledDate = typeof body.scheduled_date === "string" ? body.scheduled_date.trim() : "";
+    const scheduledTime = typeof body.scheduled_time === "string" ? body.scheduled_time.trim() : "";
     if (scheduledDate && scheduledTime && /^\d{4}-\d{2}-\d{2}$/.test(scheduledDate)) {
       const hm = scheduledTime.match(/^(\d{1,2}):(\d{2})/);
       if (hm) {
@@ -263,7 +295,7 @@ export async function PATCH(
       const nextScheduledAt =
         (sanitized.scheduled_at as string | undefined) ?? existing?.scheduled_at ?? null;
       const nextDuration = Number(
-        (sanitized.duration_minutes as number | undefined) ?? existing?.duration_minutes ?? 60,
+        (sanitized.duration_minutes as number | undefined) ?? existing?.duration_minutes ?? 60
       );
       const nextStaff =
         (sanitized.staff_id as string | null | undefined) ??
@@ -286,7 +318,8 @@ export async function PATCH(
         if (!Number.isNaN(d.getTime())) {
           const holdEnd = addMinutes(
             d,
-            (Number.isFinite(nextDuration) ? nextDuration : 60) + (nextLocationType === "at_home" ? 30 : 0),
+            (Number.isFinite(nextDuration) ? nextDuration : 60) +
+              (nextLocationType === "at_home" ? 30 : 0)
           );
           const holdOverlap = await checkActiveHoldOverlap(admin, providerId, d, holdEnd, {
             dbStaffId: nextStaff ? String(nextStaff) : null,
@@ -295,7 +328,7 @@ export async function PATCH(
             return errorResponse(
               "This time slot is no longer available. Please select another time.",
               "CONFLICT",
-              409,
+              409
             );
           }
 
@@ -304,7 +337,8 @@ export async function PATCH(
             scheduledAt: d,
             durationMinutes: Number.isFinite(nextDuration) ? nextDuration : 60,
             staffIdsCsv: nextStaff ? String(nextStaff) : null,
-            locationId: nextLocationType === "at_home" ? null : (nextLocation ? String(nextLocation) : null),
+            locationId:
+              nextLocationType === "at_home" ? null : nextLocation ? String(nextLocation) : null,
             excludeBookingId: undefined,
             excludeGroupBookingId: id,
             mode: nextLocationType === "at_home" ? "mobile" : "salon",
@@ -317,7 +351,7 @@ export async function PATCH(
             return errorResponse(
               check.conflicts.join("; ") || "Slot is not available",
               "SLOT_NOT_AVAILABLE",
-              409,
+              409
             );
           }
         }
@@ -339,10 +373,7 @@ export async function PATCH(
           .eq("id", id)
           .eq("provider_id", providerId)
           .maybeSingle(),
-        admin
-          .from("booking_participants")
-          .select("price, service_id")
-          .eq("group_booking_id", id),
+        admin.from("booking_participants").select("price, service_id").eq("group_booking_id", id),
       ]);
       const nextProducts = Array.isArray(sanitized.products)
         ? sanitized.products
@@ -350,18 +381,19 @@ export async function PATCH(
           ? existingTotals.products
           : [];
       const nextLocationType = String(
-        sanitized.location_type ?? existingTotals?.location_type ?? "at_salon",
+        sanitized.location_type ?? existingTotals?.location_type ?? "at_salon"
       );
-      const nextTravelFee = nextLocationType === "at_home"
-        ? Math.max(0, Number(sanitized.travel_fee ?? existingTotals?.travel_fee ?? 0))
-        : 0;
+      const nextTravelFee =
+        nextLocationType === "at_home"
+          ? Math.max(0, Number(sanitized.travel_fee ?? existingTotals?.travel_fee ?? 0))
+          : 0;
       const participantTotal = (participantRows ?? []).reduce(
         (sum: number, p: any) => sum + Math.max(0, Number(p.price || 0)),
-        0,
+        0
       );
       const productTotal = nextProducts.reduce(
         (sum: number, p: any) => sum + groupProductLineTotal(p),
-        0,
+        0
       );
       const nextPackageId =
         "package_id" in sanitized
@@ -376,7 +408,12 @@ export async function PATCH(
         providerId,
         packageId: nextPackageId,
         locationType: nextLocationType,
-        locationId: nextLocationType === "at_home" ? null : ((sanitized.location_id as string | null | undefined) ?? existingTotals?.location_id ?? null),
+        locationId:
+          nextLocationType === "at_home"
+            ? null
+            : ((sanitized.location_id as string | null | undefined) ??
+              existingTotals?.location_id ??
+              null),
         participantRows: (participantRows ?? []) as Array<Record<string, unknown>>,
         fallbackServiceId: nextServiceId,
         productRows: nextProducts,
@@ -456,10 +493,17 @@ export async function PATCH(
         if ("scheduled_at" in sanitized && typeof sanitized.scheduled_at === "string") {
           await Promise.all(
             childIds.map((bookingId: string) =>
-              rescheduleBookingServicesSequential(admin, bookingId, sanitized.scheduled_at as string, {
-                ...(typeof sanitized.staff_id === "string" ? { staffId: sanitized.staff_id } : {}),
-              }),
-            ),
+              rescheduleBookingServicesSequential(
+                admin,
+                bookingId,
+                sanitized.scheduled_at as string,
+                {
+                  ...(typeof sanitized.staff_id === "string"
+                    ? { staffId: sanitized.staff_id }
+                    : {}),
+                }
+              )
+            )
           );
         }
       }
@@ -478,12 +522,12 @@ export async function PATCH(
  * endpoints. This keeps provider app/web group rows actionable instead of
  * redirecting POST requests to a route with no POST handler.
  */
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
+    const { user } = await requireRoleInApi(
+      ["provider_owner", "provider_staff", "superadmin"],
+      request
+    );
     const { id: rawId } = await params;
     const id = normalizeGroupBookingId(rawId);
     const action = new URL(request.url).searchParams.get("action") ?? "";
@@ -555,18 +599,49 @@ export async function POST(
     }
 
     if (action === "mark_paid") {
-      const paymentMethod = body.payment_method === "mobile" ? "other" : body.payment_method;
-      if (!["cash", "card", "bank_transfer", "other", "yoco"].includes(paymentMethod)) {
-        return errorResponse("Valid payment_method is required (cash, card, bank_transfer, other, yoco)", "VALIDATION_ERROR", 400);
+      const permissionCheck = await requirePermission("process_payments", request);
+      if (!permissionCheck.authorized) {
+        return permissionCheck.response!;
       }
 
+      const paymentMethod = body.payment_method === "mobile" ? "other" : body.payment_method;
+      if (!["cash", "card", "bank_transfer", "other", "yoco"].includes(paymentMethod)) {
+        return errorResponse(
+          "Valid payment_method is required (cash, card, bank_transfer, other, yoco)",
+          "VALIDATION_ERROR",
+          400
+        );
+      }
+
+      const tenantId = await resolveTenantIdWithZaFallback(request);
       const { data: bookings, error: bookingsError } = await admin
         .from("bookings")
-        .select("id, tenant_id, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, status, additional_charges(amount,status)")
+        .select(
+          "id, tenant_id, location_id, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, status, additional_charges(amount,status)"
+        )
         .eq("group_booking_id", id)
         .eq("provider_id", providerId)
         .not("status", "in", "(cancelled,no_show)");
       if (bookingsError) throw bookingsError;
+
+      for (const booking of bookings ?? []) {
+        const bookingMarketMismatch = bookingTenantMismatchResponse(
+          tenantId,
+          (booking as { tenant_id?: string | null }).tenant_id
+        );
+        if (bookingMarketMismatch) return bookingMarketMismatch;
+
+        const branchAccess = await assertProviderUserCanAccessBookingBranch(
+          admin,
+          permissionCheck.user.id,
+          permissionCheck.user.role,
+          providerId,
+          (booking as { location_id?: string | null }).location_id ?? null
+        );
+        if (branchAccess.allowed === false) {
+          return errorResponse(branchAccess.message, "FORBIDDEN", 403);
+        }
+      }
 
       const paymentProvider =
         paymentMethod === "cash" ? "cash" : paymentMethod === "yoco" ? "yoco" : "other";
@@ -615,7 +690,7 @@ export async function POST(
       return errorResponse(
         "Group booking refunds must be issued from the individual participant bookings so wallet credits and audit trails stay accurate.",
         "GROUP_REFUND_UNSUPPORTED",
-        400,
+        400
       );
     }
 
@@ -633,10 +708,13 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
+    const { user } = await requireRoleInApi(
+      ["provider_owner", "provider_staff", "superadmin"],
+      request
+    );
     const { id: rawId } = await params;
     const id = normalizeGroupBookingId(rawId);
-    const body = await request.json().catch(() => ({} as Record<string, unknown>));
+    const body = await request.json().catch(() => ({}) as Record<string, unknown>);
     const cancellationReasonFromClient =
       typeof body?.cancellation_reason === "string" && body.cancellation_reason.trim().length > 0
         ? body.cancellation_reason.trim()
