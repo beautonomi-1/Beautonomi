@@ -112,6 +112,9 @@ export const SlackIntegrationPage = lazy(() =>
 export const PaystackConfigPage = lazy(() =>
   import("@/routes/integrations/PaystackConfigPage").then((m) => ({ default: m.PaystackConfigPage }))
 );
+export const YocoIntegrationPage = lazy(() =>
+  import("@/routes/integrations/YocoIntegrationPage").then((m) => ({ default: m.YocoIntegrationPage }))
+);
 export const PromotionsListPage = lazy(() =>
   import("@/routes/marketing/PromotionsListPage").then((m) => ({ default: m.PromotionsListPage }))
 );

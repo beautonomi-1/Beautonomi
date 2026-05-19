@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react";
 import { Alert, InteractionManager, Linking, Platform } from "react-native";
 import Constants from "expo-constants";
-import { APP_URL, IOS_APP_STORE_ID, withWebApiTenantHeaders } from "@/config/public-env";
+import {
+  ANDROID_PLAY_STORE_PACKAGE,
+  APP_URL,
+  IOS_APP_STORE_ID,
+  withWebApiTenantHeaders,
+} from "@/config/public-env";
 
 interface VersionInfo {
   minVersion: string | null;
@@ -11,8 +16,16 @@ interface VersionInfo {
 }
 
 function compareVersions(a: string, b: string): number {
-  const aParts = a.split(".").map(Number);
-  const bParts = b.split(".").map(Number);
+  const parse = (value: string) =>
+    value
+      .trim()
+      .replace(/^v/i, "")
+      .split(/[+-]/)[0]
+      .split(".")
+      .map((part) => Number.parseInt(part, 10))
+      .map((part) => (Number.isFinite(part) ? part : 0));
+  const aParts = parse(a);
+  const bParts = parse(b);
   for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
     const aVal = aParts[i] ?? 0;
     const bVal = bParts[i] ?? 0;
@@ -31,8 +44,8 @@ export function useForceUpdate() {
       requiredUpdateUrl ??
       (Platform.OS === "ios"
         ? `https://apps.apple.com/app/id${IOS_APP_STORE_ID}`
-        : "https://play.google.com/store/apps/details?id=com.beautonomi.partner");
-    Linking.openURL(storeUrl);
+        : `https://play.google.com/store/apps/details?id=${encodeURIComponent(ANDROID_PLAY_STORE_PACKAGE)}`);
+    void Linking.openURL(storeUrl);
   };
 
   useEffect(() => {
@@ -61,7 +74,7 @@ export function useForceUpdate() {
           setRequiredUpdateUrl(data.updateUrl ?? null);
           Alert.alert(
             "Update Required",
-            "A new version of Beautonomi is available. Please update to continue using the app.",
+            "A newer version of Beautonomi Partner is required to keep bookings, payments, and provider tools working correctly.",
             [
               {
                 text: "Update Now",
@@ -70,8 +83,8 @@ export function useForceUpdate() {
                     data.updateUrl ??
                     (Platform.OS === "ios"
                       ? `https://apps.apple.com/app/id${IOS_APP_STORE_ID}`
-                      : "https://play.google.com/store/apps/details?id=com.beautonomi.partner");
-                  Linking.openURL(storeUrl);
+                      : `https://play.google.com/store/apps/details?id=${encodeURIComponent(ANDROID_PLAY_STORE_PACKAGE)}`);
+                  void Linking.openURL(storeUrl);
                 },
               },
             ],
@@ -95,8 +108,8 @@ export function useForceUpdate() {
                     data.updateUrl ??
                     (Platform.OS === "ios"
                       ? `https://apps.apple.com/app/id${IOS_APP_STORE_ID}`
-                      : "https://play.google.com/store/apps/details?id=com.beautonomi.partner");
-                  Linking.openURL(storeUrl);
+                      : `https://play.google.com/store/apps/details?id=${encodeURIComponent(ANDROID_PLAY_STORE_PACKAGE)}`);
+                  void Linking.openURL(storeUrl);
                 },
               },
             ],

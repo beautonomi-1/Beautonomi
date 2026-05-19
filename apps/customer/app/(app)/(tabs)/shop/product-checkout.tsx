@@ -37,7 +37,10 @@ import { useTranslation } from "@beautonomi/i18n";
 import { useSavedCards } from "@/hooks/useSavedCards";
 import { usePaystackPayment } from "@/hooks/usePaystackPayment";
 import { PaymentProcessingOverlay } from "@/components/payment/PaymentProcessingOverlay";
-import { PaymentSuccessOverlay, type PaymentSuccessSummaryRow } from "@/components/payment/PaymentSuccessOverlay";
+import {
+  PaymentSuccessOverlay,
+  type PaymentSuccessSummaryRow,
+} from "@/components/payment/PaymentSuccessOverlay";
 
 const PRIMARY = Colors.primary;
 
@@ -73,7 +76,13 @@ interface ShippingConfig {
 }
 
 const contentConstraintStyle = (contentMaxWidth: number, isTablet: boolean) =>
-  (isTablet || Platform.OS === "web") ? { maxWidth: Math.min(600, contentMaxWidth), alignSelf: "center" as const, width: "100%" as const } : {};
+  isTablet || Platform.OS === "web"
+    ? {
+        maxWidth: Math.min(600, contentMaxWidth),
+        alignSelf: "center" as const,
+        width: "100%" as const,
+      }
+    : {};
 
 function normalizeSavedAddressList(raw: unknown): Address[] {
   if (Array.isArray(raw)) return raw as Address[];
@@ -89,7 +98,9 @@ function normalizeSavedAddressList(raw: unknown): Address[] {
 async function fetchSavedAddressesWithRetry(): Promise<{ list: Address[]; error: string | null }> {
   let lastError: string | null = null;
   for (let attempt = 0; attempt < 2; attempt++) {
-    const res = await api.get<Address[] | { data?: Address[] } | { addresses?: Address[] }>("/api/me/addresses");
+    const res = await api.get<Address[] | { data?: Address[] } | { addresses?: Address[] }>(
+      "/api/me/addresses"
+    );
     if (!res.error) {
       const list = normalizeSavedAddressList(res.data);
       return { list, error: null };
@@ -123,7 +134,7 @@ export default function ProductCheckoutScreen() {
       const fullKey = `customer.mobile.tabs.productCheckout.${key}`;
       return (options != null ? t(fullKey, options as never) : t(fullKey)) as string;
     },
-    [t],
+    [t]
   );
 
   const [fulfillment, setFulfillment] = useState<"collection" | "delivery">("collection");
@@ -247,23 +258,28 @@ export default function ProductCheckoutScreen() {
 
       // Fetch provider locations (public API by provider_id)
       const locRes = await api.get<{ data?: { locations?: Location[] }; locations?: Location[] }>(
-        `/api/public/provider-locations?provider_id=${provider_id}`,
+        `/api/public/provider-locations?provider_id=${provider_id}`
       );
       const locData = locRes.data;
       const locList = Array.isArray(locData)
         ? locData
-        : (locData as any)?.locations ?? (locData as any)?.data?.locations ?? [];
+        : ((locData as any)?.locations ?? (locData as any)?.data?.locations ?? []);
       setLocations(locList);
       if (locList.length > 0) setSelectedLocation(locList[0].id);
 
       // Fetch shipping config (API returns { data: { shipping: config } })
-      const shipRes = await api.get<{ data?: { shipping?: ShippingConfig }; shipping?: ShippingConfig }>(
-        `/api/public/products/shipping-config?provider_id=${provider_id}`,
-      );
+      const shipRes = await api.get<{
+        data?: { shipping?: ShippingConfig };
+        shipping?: ShippingConfig;
+      }>(`/api/public/products/shipping-config?provider_id=${provider_id}`);
       if (shipRes.data) {
         const raw = shipRes.data as any;
         const sc = raw?.shipping ?? raw?.data?.shipping ?? raw?.config ?? raw;
-        if (sc && typeof sc === "object" && ("offers_delivery" in sc || "offers_collection" in sc)) {
+        if (
+          sc &&
+          typeof sc === "object" &&
+          ("offers_delivery" in sc || "offers_collection" in sc)
+        ) {
           setShippingConfig(sc as ShippingConfig);
           if (!sc.offers_collection && sc.offers_delivery) setFulfillment("delivery");
         }
@@ -272,11 +288,7 @@ export default function ProductCheckoutScreen() {
       // Track checkout started
       if (provider_id) {
         const snap = providerCartForTrackingRef.current;
-        trackProductCheckoutStarted(
-          provider_id,
-          snap?.items.length ?? 0,
-          snap?.subtotal ?? 0,
-        );
+        trackProductCheckoutStarted(provider_id, snap?.items.length ?? 0, snap?.subtotal ?? 0);
       }
 
       // Fetch platform fee config — pass provider_id so provider-specific overrides are respected
@@ -323,7 +335,7 @@ export default function ProductCheckoutScreen() {
   const taxAmount = providerItems.reduce((s, i) => {
     const rate = parseFloat(String(i.product?.tax_rate || "0")) || 0;
     const linePrice = (i.effective_price ?? i.product?.retail_price ?? 0) * i.quantity;
-    return s + Math.round((linePrice * rate) / 100 * 100) / 100;
+    return s + Math.round(((linePrice * rate) / 100) * 100) / 100;
   }, 0);
   const deliveryFee =
     fulfillment === "delivery" && shippingConfig
@@ -438,7 +450,9 @@ export default function ProductCheckoutScreen() {
         currency: fb,
         items: itemsSummary,
         status: "success",
-        subtitle: pc("orderPlacedCardOnDeliveryBody", { orderNumber: String(order?.order_number ?? "") }),
+        subtitle: pc("orderPlacedCardOnDeliveryBody", {
+          orderNumber: String(order?.order_number ?? ""),
+        }),
       });
       return;
     }
@@ -501,7 +515,11 @@ export default function ProductCheckoutScreen() {
       }
       setPlacing(false);
       setProcessingPayment(false);
-      Alert.alert(errTitle, pc("savedCardChargeFailed") || "We could not charge your saved card. Try paying with a new card or another method.");
+      Alert.alert(
+        errTitle,
+        pc("savedCardChargeFailed") ||
+          "We could not charge your saved card. Try paying with a new card or another method."
+      );
       return;
     }
 
@@ -520,16 +538,23 @@ export default function ProductCheckoutScreen() {
           type: "product_order",
           mobile_app: "customer",
         },
-      },
+      }
     );
 
     setPlacing(false);
 
     if (paystackRes.error || !paystackRes.data?.authorization_url) {
       setProcessingPayment(false);
-      Alert.alert(pc("orderCreatedPayFailedTitle"), pc("orderCreatedPayFailedBody", { orderNumber: String(order.order_number) }), [
-        { text: pc("viewOrdersCta"), onPress: () => router.replace("/(app)/product-orders" as any) },
-      ]);
+      Alert.alert(
+        pc("orderCreatedPayFailedTitle"),
+        pc("orderCreatedPayFailedBody", { orderNumber: String(order.order_number) }),
+        [
+          {
+            text: pc("viewOrdersCta"),
+            onPress: () => router.replace("/(app)/product-orders" as any),
+          },
+        ]
+      );
       return;
     }
 
@@ -550,7 +575,8 @@ export default function ProductCheckoutScreen() {
       const pr = await paystackHostedCheckout.waitForCheckout(url, {
         title: (pc("securePaymentTitle") as string) || "Secure payment",
         returnUrl: paystackReturnPath,
-        matchSuccess: (u) => matchesExpoReturnUrl(u, paystackReturnPath) && !isCancelledPaystackUrl(u),
+        matchSuccess: (u) =>
+          matchesExpoReturnUrl(u, paystackReturnPath) && !isCancelledPaystackUrl(u),
         matchCancel: (u) => isCancelledPaystackUrl(u),
       });
 
@@ -617,12 +643,39 @@ export default function ProductCheckoutScreen() {
         });
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- orders/paymentMethod from context
-  }, [provider_id, fulfillment, selectedAddress, selectedLocation, providerItems, orders.createOrder, orders.fetchOrderDetail, router, user, total, useWallet, useNewCard, selectedCardId, savedCards, payWithSavedCard, refreshSavedCards, refreshSession, fetchCart, pc, errTitle, t, paymentMethod, fb, paystackHostedCheckout]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- orders/paymentMethod from context
+  }, [
+    provider_id,
+    fulfillment,
+    selectedAddress,
+    selectedLocation,
+    providerItems,
+    orders.createOrder,
+    orders.fetchOrderDetail,
+    router,
+    user,
+    total,
+    useWallet,
+    useNewCard,
+    selectedCardId,
+    savedCards,
+    payWithSavedCard,
+    refreshSavedCards,
+    refreshSession,
+    fetchCart,
+    pc,
+    errTitle,
+    t,
+    paymentMethod,
+    fb,
+    paystackHostedCheckout,
+  ]);
 
   if (loading) {
     return (
-      <SafeAreaView style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#fff" }}>
+      <SafeAreaView
+        style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#fff" }}
+      >
         <ActivityIndicator size="large" color={PRIMARY} />
       </SafeAreaView>
     );
@@ -645,13 +698,30 @@ export default function ProductCheckoutScreen() {
           <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 12 }}>
             <Ionicons name="arrow-back" size={24} color="#111827" />
           </TouchableOpacity>
-          <Text style={{ flex: 1, fontSize: 20, fontWeight: "700", color: "#111827" }}>Checkout</Text>
+          <Text style={{ flex: 1, fontSize: 20, fontWeight: "700", color: "#111827" }}>
+            Checkout
+          </Text>
         </View>
-        <View style={{ flex: 1, padding: contentPadding, justifyContent: "center", alignItems: "center" }}>
-          <Text style={{ fontSize: 16, color: "#6B7280", textAlign: "center" }}>Missing seller information. Open checkout from your cart.</Text>
+        <View
+          style={{
+            flex: 1,
+            padding: contentPadding,
+            justifyContent: "center",
+            alignItems: "center",
+          }}
+        >
+          <Text style={{ fontSize: 16, color: "#6B7280", textAlign: "center" }}>
+            Missing seller information. Open checkout from your cart.
+          </Text>
           <TouchableOpacity
             onPress={() => router.replace("/(app)/(tabs)/cart" as any)}
-            style={{ marginTop: 20, paddingVertical: 12, paddingHorizontal: 24, backgroundColor: PRIMARY, borderRadius: 12 }}
+            style={{
+              marginTop: 20,
+              paddingVertical: 12,
+              paddingHorizontal: 24,
+              backgroundColor: PRIMARY,
+              borderRadius: 12,
+            }}
           >
             <Text style={{ color: "#fff", fontWeight: "700" }}>Go to cart</Text>
           </TouchableOpacity>
@@ -677,17 +747,34 @@ export default function ProductCheckoutScreen() {
           <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 12 }}>
             <Ionicons name="arrow-back" size={24} color="#111827" />
           </TouchableOpacity>
-          <Text style={{ flex: 1, fontSize: 20, fontWeight: "700", color: "#111827" }}>Checkout</Text>
+          <Text style={{ flex: 1, fontSize: 20, fontWeight: "700", color: "#111827" }}>
+            Checkout
+          </Text>
         </View>
-        <View style={{ flex: 1, padding: contentPadding, justifyContent: "center", alignItems: "center" }}>
+        <View
+          style={{
+            flex: 1,
+            padding: contentPadding,
+            justifyContent: "center",
+            alignItems: "center",
+          }}
+        >
           <Ionicons name="cart-outline" size={56} color="#D1D5DB" />
-          <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginTop: 16 }}>No items for this seller</Text>
+          <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginTop: 16 }}>
+            No items for this seller
+          </Text>
           <Text style={{ fontSize: 14, color: "#6B7280", marginTop: 8, textAlign: "center" }}>
             Add products from this provider to your cart first.
           </Text>
           <TouchableOpacity
             onPress={() => router.replace("/(app)/(tabs)/cart" as any)}
-            style={{ marginTop: 24, paddingVertical: 14, paddingHorizontal: 28, backgroundColor: PRIMARY, borderRadius: 12 }}
+            style={{
+              marginTop: 24,
+              paddingVertical: 14,
+              paddingHorizontal: 28,
+              backgroundColor: PRIMARY,
+              borderRadius: 12,
+            }}
           >
             <Text style={{ color: "#fff", fontWeight: "700" }}>View cart</Text>
           </TouchableOpacity>
@@ -698,356 +785,378 @@ export default function ProductCheckoutScreen() {
 
   return (
     <>
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#F9FAFB" }} edges={["top"]}>
-      <PaymentProcessingOverlay visible={processingPayment} message={processingMessage} />
-      <PaymentSuccessOverlay
-        visible={orderSuccessData !== null}
-        title={orderSuccessData?.status === "pending" ? pc("paymentPendingTitle") : pc("orderPlacedTitle")}
-        subtitle={orderSuccessData?.subtitle}
-        status={orderSuccessData?.status === "pending" ? "pending" : "success"}
-        summaryRows={(() => {
-          if (!orderSuccessData) return undefined;
-          const rows: PaymentSuccessSummaryRow[] = [
-            { icon: "receipt-outline", label: pc("orderNumberLabel") || "Order", value: orderSuccessData.orderNumber ?? "—" },
-          ];
-          if (orderSuccessData.items) {
-            rows.push({ icon: "bag-outline", label: pc("itemsLabel") || "Items", value: orderSuccessData.items });
+      <SafeAreaView style={{ flex: 1, backgroundColor: "#F9FAFB" }} edges={["top"]}>
+        <PaymentProcessingOverlay visible={processingPayment} message={processingMessage} />
+        <PaymentSuccessOverlay
+          visible={orderSuccessData !== null}
+          title={
+            orderSuccessData?.status === "pending"
+              ? pc("paymentPendingTitle")
+              : pc("orderPlacedTitle")
           }
-          return rows;
-        })()}
-        amountPaid={orderSuccessData?.total}
-        currency={orderSuccessData?.currency}
-        footerHint={pc("orderSuccessFooterHint") || "Tap continue to view your orders."}
-        onDismiss={() => {
-          setOrderSuccessData(null);
-          router.replace("/(app)/product-orders" as any);
-        }}
-      />
-      {/* Header */}
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          paddingHorizontal: contentPadding,
-          paddingVertical: 14,
-          backgroundColor: "#fff",
-          borderBottomWidth: 1,
-          borderBottomColor: "#F3F4F6",
-        }}
-      >
-        <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 12 }}>
-          <Ionicons name="arrow-back" size={24} color="#111827" />
-        </TouchableOpacity>
-        <Text style={{ flex: 1, fontSize: 20, fontWeight: "700", color: "#111827" }}>Checkout</Text>
-      </View>
+          subtitle={orderSuccessData?.subtitle}
+          status={orderSuccessData?.status === "pending" ? "pending" : "success"}
+          summaryRows={(() => {
+            if (!orderSuccessData) return undefined;
+            const rows: PaymentSuccessSummaryRow[] = [
+              {
+                icon: "receipt-outline",
+                label: pc("orderNumberLabel") || "Order",
+                value: orderSuccessData.orderNumber ?? "—",
+              },
+            ];
+            if (orderSuccessData.items) {
+              rows.push({
+                icon: "bag-outline",
+                label: pc("itemsLabel") || "Items",
+                value: orderSuccessData.items,
+              });
+            }
+            return rows;
+          })()}
+          amountPaid={orderSuccessData?.total}
+          currency={orderSuccessData?.currency}
+          footerHint={pc("orderSuccessFooterHint") || "Tap continue to view your orders."}
+          onDismiss={() => {
+            setOrderSuccessData(null);
+            router.replace("/(app)/product-orders" as any);
+          }}
+        />
+        {/* Header */}
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            paddingHorizontal: contentPadding,
+            paddingVertical: 14,
+            backgroundColor: "#fff",
+            borderBottomWidth: 1,
+            borderBottomColor: "#F3F4F6",
+          }}
+        >
+          <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 12 }}>
+            <Ionicons name="arrow-back" size={24} color="#111827" />
+          </TouchableOpacity>
+          <Text style={{ flex: 1, fontSize: 20, fontWeight: "700", color: "#111827" }}>
+            Checkout
+          </Text>
+        </View>
 
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{
-          paddingHorizontal: contentPadding,
-          paddingBottom: 120,
-          ...constraintStyle,
-        }}
-      >
-        {!user ? (
-          <View
-            style={{
-              backgroundColor: "#EFF6FF",
-              borderRadius: 14,
-              padding: contentPadding,
-              marginBottom: 12,
-              borderWidth: 1,
-              borderColor: "#BFDBFE",
-            }}
-          >
-            <Text style={{ fontSize: 15, fontWeight: "700", color: "#1E40AF" }}>Sign in to place your order</Text>
-            <Text style={{ fontSize: 13, color: "#1E3A8A", marginTop: 6, lineHeight: 18 }}>
-              You can review delivery options below. When you are ready, sign in to pay and confirm.
-            </Text>
-            <TouchableOpacity
-              onPress={() =>
-                router.push({
-                  pathname: "/(auth)/login",
-                  params: {
-                    return_to: `/(app)/(tabs)/shop/product-checkout?provider_id=${encodeURIComponent(provider_id)}`,
-                  },
-                } as any)
-              }
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{
+            paddingHorizontal: contentPadding,
+            paddingBottom: 120,
+            ...constraintStyle,
+          }}
+        >
+          {!user ? (
+            <View
               style={{
-                alignSelf: "flex-start",
-                marginTop: 12,
-                paddingVertical: 10,
-                paddingHorizontal: 18,
-                backgroundColor: PRIMARY,
-                borderRadius: 10,
+                backgroundColor: "#EFF6FF",
+                borderRadius: 14,
+                padding: contentPadding,
+                marginBottom: 12,
+                borderWidth: 1,
+                borderColor: "#BFDBFE",
               }}
             >
-              <Text style={{ color: "#fff", fontWeight: "700" }}>Sign in</Text>
-            </TouchableOpacity>
-          </View>
-        ) : null}
-        {/* Fulfillment type */}
-        {(() => {
-          const sc = shippingConfig;
-          const pickupOnly = sc ? (sc.offers_collection && !sc.offers_delivery) : false;
-          const deliveryOnly = sc ? (!sc.offers_collection && sc.offers_delivery) : false;
-          const bothAvailable = sc ? (sc.offers_collection && sc.offers_delivery) : !sc;
-
-          if (pickupOnly) {
-            return (
-              <View style={{ backgroundColor: "#FFF7ED", marginBottom: 12, borderWidth: 1, borderColor: "#FED7AA", borderRadius: 14, padding: contentPadding }}>
-                <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
-                  <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "#FFEDD5", alignItems: "center", justifyContent: "center", marginRight: 12 }}>
-                    <Ionicons name="storefront" size={22} color="#C2410C" />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 16, fontWeight: "700", color: "#C2410C" }}>In-store pickup only</Text>
-                    <Text style={{ fontSize: 13, color: "#92400E", marginTop: 2 }}>
-                      This provider does not offer delivery. You must collect your order in person.
-                    </Text>
-                  </View>
-                </View>
-                {sc?.collection_notes ? (
-                  <View style={{ backgroundColor: "#FFEDD5", borderRadius: 10, padding: 10, marginTop: 4 }}>
-                    <Text style={{ fontSize: 13, color: "#7C2D12", lineHeight: 18 }}>{sc.collection_notes}</Text>
-                  </View>
-                ) : null}
-              </View>
-            );
-          }
-
-          if (deliveryOnly) {
-            return (
-              <View style={{ backgroundColor: "#EFF6FF", marginBottom: 12, borderWidth: 1, borderColor: "#BFDBFE", borderRadius: 14, padding: contentPadding }}>
-                <View style={{ flexDirection: "row", alignItems: "center" }}>
-                  <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "#DBEAFE", alignItems: "center", justifyContent: "center", marginRight: 12 }}>
-                    <Ionicons name="bicycle" size={22} color="#1D4ED8" />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 16, fontWeight: "700", color: "#1D4ED8" }}>Delivery only</Text>
-                    <Text style={{ fontSize: 13, color: "#1E40AF", marginTop: 2 }}>
-                      {deliveryFee === 0 ? "Free delivery to your address." : `Delivery fee: ${fmt(deliveryFee)}`}
-                    </Text>
-                  </View>
-                </View>
-                {sc?.delivery_notes ? (
-                  <View style={{ backgroundColor: "#DBEAFE", borderRadius: 10, padding: 10, marginTop: 8 }}>
-                    <Text style={{ fontSize: 13, color: "#1E3A8A", lineHeight: 18 }}>{sc.delivery_notes}</Text>
-                  </View>
-                ) : null}
-                {sc && sc.estimated_delivery_days != null && sc.estimated_delivery_days > 0 && (
-                  <View style={{ flexDirection: "row", alignItems: "center", marginTop: 8 }}>
-                    <Ionicons name="time-outline" size={14} color="#6B7280" style={{ marginRight: 6 }} />
-                    <Text style={{ fontSize: 13, color: "#6B7280" }}>
-                      Estimated delivery: {sc.estimated_delivery_days} {sc.estimated_delivery_days === 1 ? "day" : "days"}
-                    </Text>
-                  </View>
-                )}
-              </View>
-            );
-          }
-
-          return (
-            <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
-              <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 }}>
-                How would you like to receive your order?
+              <Text style={{ fontSize: 15, fontWeight: "700", color: "#1E40AF" }}>
+                Sign in to place your order
               </Text>
-              <View style={{ flexDirection: "row" }}>
-                {(bothAvailable || sc?.offers_collection !== false) && (
-                  <TouchableOpacity
-                    onPress={() => setFulfillment("collection")}
-                    style={{
-                      flex: 1,
-                      padding: contentPadding,
-                      borderRadius: 14,
-                      borderWidth: 2,
-                      borderColor: fulfillment === "collection" ? PRIMARY : "#E5E7EB",
-                      backgroundColor: fulfillment === "collection" ? "rgba(255,0,119,0.04)" : "#fff",
-                      alignItems: "center",
-                      marginRight: sc?.offers_delivery ? 12 : 0,
-                    }}
-                  >
-                    <Ionicons name="storefront-outline" size={28} color={fulfillment === "collection" ? PRIMARY : "#9CA3AF"} />
-                    <Text style={{ fontSize: 14, fontWeight: "600", color: fulfillment === "collection" ? PRIMARY : "#374151", marginTop: 8 }}>
-                      Collection
-                    </Text>
-                    <Text style={{ fontSize: 11, color: "#9CA3AF", marginTop: 4 }}>Free · In-store</Text>
-                  </TouchableOpacity>
-                )}
-                {sc?.offers_delivery && (
-                  <TouchableOpacity
-                    onPress={() => setFulfillment("delivery")}
-                    style={{
-                      flex: 1,
-                      padding: contentPadding,
-                      borderRadius: 14,
-                      borderWidth: 2,
-                      borderColor: fulfillment === "delivery" ? PRIMARY : "#E5E7EB",
-                      backgroundColor: fulfillment === "delivery" ? "rgba(255,0,119,0.04)" : "#fff",
-                      alignItems: "center",
-                    }}
-                  >
-                    <Ionicons name="bicycle-outline" size={28} color={fulfillment === "delivery" ? PRIMARY : "#9CA3AF"} />
-                    <Text style={{ fontSize: 14, fontWeight: "600", color: fulfillment === "delivery" ? PRIMARY : "#374151", marginTop: 8 }}>
-                      Delivery
-                    </Text>
-                    <Text style={{ fontSize: 11, color: "#9CA3AF", marginTop: 4 }}>
-                      {deliveryFee === 0 ? "Free" : fmt(deliveryFee)}
-                    </Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            </View>
-          );
-        })()}
-
-        {/* Collection location */}
-        {fulfillment === "collection" && locations.length === 0 && (
-          <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
-            <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 }}>
-              Collection Point
-            </Text>
-            <View style={{ backgroundColor: "#FEF3C7", borderRadius: 10, padding: 14 }}>
-              <Text style={{ fontSize: 13, color: "#92400E", lineHeight: 18 }}>
-                No collection locations are available for this provider. Please switch to delivery or contact the provider.
+              <Text style={{ fontSize: 13, color: "#1E3A8A", marginTop: 6, lineHeight: 18 }}>
+                You can review delivery options below. When you are ready, sign in to pay and
+                confirm.
               </Text>
-            </View>
-          </View>
-        )}
-        {fulfillment === "collection" && locations.length > 0 && (
-          <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
-            <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 }}>
-              Collection Point
-            </Text>
-            {shippingConfig?.collection_notes && !(shippingConfig.offers_collection && !shippingConfig.offers_delivery) ? (
-              <View style={{ backgroundColor: "#FFF7ED", borderRadius: 10, padding: 10, marginBottom: 12, flexDirection: "row", alignItems: "flex-start" }}>
-                <Ionicons name="information-circle-outline" size={16} color="#C2410C" style={{ marginRight: 6, marginTop: 1 }} />
-                <Text style={{ flex: 1, fontSize: 13, color: "#92400E", lineHeight: 18 }}>{shippingConfig.collection_notes}</Text>
-              </View>
-            ) : null}
-            {locations.map((loc) => (
               <TouchableOpacity
-                key={loc.id}
-                onPress={() => setSelectedLocation(loc.id)}
+                onPress={() =>
+                  router.push({
+                    pathname: "/(auth)/login",
+                    params: {
+                      return_to: `/(app)/(tabs)/shop/product-checkout?provider_id=${encodeURIComponent(provider_id)}`,
+                    },
+                  } as any)
+                }
                 style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  padding: 14,
-                  borderRadius: 12,
-                  borderWidth: 1.5,
-                  borderColor: selectedLocation === loc.id ? PRIMARY : "#E5E7EB",
-                  marginBottom: 8,
-                  backgroundColor: selectedLocation === loc.id ? "rgba(255,0,119,0.04)" : "#fff",
+                  alignSelf: "flex-start",
+                  marginTop: 12,
+                  paddingVertical: 10,
+                  paddingHorizontal: 18,
+                  backgroundColor: PRIMARY,
+                  borderRadius: 10,
                 }}
               >
+                <Text style={{ color: "#fff", fontWeight: "700" }}>Sign in</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
+          {/* Fulfillment type */}
+          {(() => {
+            const sc = shippingConfig;
+            const pickupOnly = sc ? sc.offers_collection && !sc.offers_delivery : false;
+            const deliveryOnly = sc ? !sc.offers_collection && sc.offers_delivery : false;
+            const bothAvailable = sc ? sc.offers_collection && sc.offers_delivery : !sc;
+
+            if (pickupOnly) {
+              return (
                 <View
                   style={{
-                    width: 22,
-                    height: 22,
-                    borderRadius: 11,
-                    borderWidth: 2,
-                    borderColor: selectedLocation === loc.id ? PRIMARY : "#D1D5DB",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    marginRight: 12,
+                    backgroundColor: "#FFF7ED",
+                    marginBottom: 12,
+                    borderWidth: 1,
+                    borderColor: "#FED7AA",
+                    borderRadius: 14,
+                    padding: contentPadding,
                   }}
                 >
-                  {selectedLocation === loc.id && (
+                  <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
                     <View
                       style={{
-                        width: 12,
-                        height: 12,
-                        borderRadius: 6,
-                        backgroundColor: PRIMARY,
+                        width: 40,
+                        height: 40,
+                        borderRadius: 20,
+                        backgroundColor: "#FFEDD5",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        marginRight: 12,
                       }}
-                    />
+                    >
+                      <Ionicons name="storefront" size={22} color="#C2410C" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 16, fontWeight: "700", color: "#C2410C" }}>
+                        In-store pickup only
+                      </Text>
+                      <Text style={{ fontSize: 13, color: "#92400E", marginTop: 2 }}>
+                        This provider does not offer delivery. You must collect your order in
+                        person.
+                      </Text>
+                    </View>
+                  </View>
+                  {sc?.collection_notes ? (
+                    <View
+                      style={{
+                        backgroundColor: "#FFEDD5",
+                        borderRadius: 10,
+                        padding: 10,
+                        marginTop: 4,
+                      }}
+                    >
+                      <Text style={{ fontSize: 13, color: "#7C2D12", lineHeight: 18 }}>
+                        {sc.collection_notes}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
+              );
+            }
+
+            if (deliveryOnly) {
+              return (
+                <View
+                  style={{
+                    backgroundColor: "#EFF6FF",
+                    marginBottom: 12,
+                    borderWidth: 1,
+                    borderColor: "#BFDBFE",
+                    borderRadius: 14,
+                    padding: contentPadding,
+                  }}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center" }}>
+                    <View
+                      style={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: 20,
+                        backgroundColor: "#DBEAFE",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        marginRight: 12,
+                      }}
+                    >
+                      <Ionicons name="bicycle" size={22} color="#1D4ED8" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 16, fontWeight: "700", color: "#1D4ED8" }}>
+                        Delivery only
+                      </Text>
+                      <Text style={{ fontSize: 13, color: "#1E40AF", marginTop: 2 }}>
+                        {deliveryFee === 0
+                          ? "Free delivery to your address."
+                          : `Delivery fee: ${fmt(deliveryFee)}`}
+                      </Text>
+                    </View>
+                  </View>
+                  {sc?.delivery_notes ? (
+                    <View
+                      style={{
+                        backgroundColor: "#DBEAFE",
+                        borderRadius: 10,
+                        padding: 10,
+                        marginTop: 8,
+                      }}
+                    >
+                      <Text style={{ fontSize: 13, color: "#1E3A8A", lineHeight: 18 }}>
+                        {sc.delivery_notes}
+                      </Text>
+                    </View>
+                  ) : null}
+                  {sc && sc.estimated_delivery_days != null && sc.estimated_delivery_days > 0 && (
+                    <View style={{ flexDirection: "row", alignItems: "center", marginTop: 8 }}>
+                      <Ionicons
+                        name="time-outline"
+                        size={14}
+                        color="#6B7280"
+                        style={{ marginRight: 6 }}
+                      />
+                      <Text style={{ fontSize: 13, color: "#6B7280" }}>
+                        Estimated delivery: {sc.estimated_delivery_days}{" "}
+                        {sc.estimated_delivery_days === 1 ? "day" : "days"}
+                      </Text>
+                    </View>
                   )}
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>{loc.name}</Text>
-                  <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>
-                    {loc.address_line1}, {loc.city}
+              );
+            }
+
+            return (
+              <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
+                <Text
+                  style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 }}
+                >
+                  How would you like to receive your order?
+                </Text>
+                <View style={{ flexDirection: "row" }}>
+                  {(bothAvailable || sc?.offers_collection !== false) && (
+                    <TouchableOpacity
+                      onPress={() => setFulfillment("collection")}
+                      style={{
+                        flex: 1,
+                        padding: contentPadding,
+                        borderRadius: 14,
+                        borderWidth: 2,
+                        borderColor: fulfillment === "collection" ? PRIMARY : "#E5E7EB",
+                        backgroundColor:
+                          fulfillment === "collection" ? "rgba(255,0,119,0.04)" : "#fff",
+                        alignItems: "center",
+                        marginRight: sc?.offers_delivery ? 12 : 0,
+                      }}
+                    >
+                      <Ionicons
+                        name="storefront-outline"
+                        size={28}
+                        color={fulfillment === "collection" ? PRIMARY : "#9CA3AF"}
+                      />
+                      <Text
+                        style={{
+                          fontSize: 14,
+                          fontWeight: "600",
+                          color: fulfillment === "collection" ? PRIMARY : "#374151",
+                          marginTop: 8,
+                        }}
+                      >
+                        Collection
+                      </Text>
+                      <Text style={{ fontSize: 11, color: "#9CA3AF", marginTop: 4 }}>
+                        Free · In-store
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                  {sc?.offers_delivery && (
+                    <TouchableOpacity
+                      onPress={() => setFulfillment("delivery")}
+                      style={{
+                        flex: 1,
+                        padding: contentPadding,
+                        borderRadius: 14,
+                        borderWidth: 2,
+                        borderColor: fulfillment === "delivery" ? PRIMARY : "#E5E7EB",
+                        backgroundColor:
+                          fulfillment === "delivery" ? "rgba(255,0,119,0.04)" : "#fff",
+                        alignItems: "center",
+                      }}
+                    >
+                      <Ionicons
+                        name="bicycle-outline"
+                        size={28}
+                        color={fulfillment === "delivery" ? PRIMARY : "#9CA3AF"}
+                      />
+                      <Text
+                        style={{
+                          fontSize: 14,
+                          fontWeight: "600",
+                          color: fulfillment === "delivery" ? PRIMARY : "#374151",
+                          marginTop: 8,
+                        }}
+                      >
+                        Delivery
+                      </Text>
+                      <Text style={{ fontSize: 11, color: "#9CA3AF", marginTop: 4 }}>
+                        {deliveryFee === 0 ? "Free" : fmt(deliveryFee)}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+            );
+          })()}
+
+          {/* Collection location */}
+          {fulfillment === "collection" && locations.length === 0 && (
+            <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
+              <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 }}>
+                Collection Point
+              </Text>
+              <View style={{ backgroundColor: "#FEF3C7", borderRadius: 10, padding: 14 }}>
+                <Text style={{ fontSize: 13, color: "#92400E", lineHeight: 18 }}>
+                  No collection locations are available for this provider. Please switch to delivery
+                  or contact the provider.
+                </Text>
+              </View>
+            </View>
+          )}
+          {fulfillment === "collection" && locations.length > 0 && (
+            <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
+              <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 }}>
+                Collection Point
+              </Text>
+              {shippingConfig?.collection_notes &&
+              !(shippingConfig.offers_collection && !shippingConfig.offers_delivery) ? (
+                <View
+                  style={{
+                    backgroundColor: "#FFF7ED",
+                    borderRadius: 10,
+                    padding: 10,
+                    marginBottom: 12,
+                    flexDirection: "row",
+                    alignItems: "flex-start",
+                  }}
+                >
+                  <Ionicons
+                    name="information-circle-outline"
+                    size={16}
+                    color="#C2410C"
+                    style={{ marginRight: 6, marginTop: 1 }}
+                  />
+                  <Text style={{ flex: 1, fontSize: 13, color: "#92400E", lineHeight: 18 }}>
+                    {shippingConfig.collection_notes}
                   </Text>
                 </View>
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
-
-        {/* Delivery address */}
-        {fulfillment === "delivery" && (
-          <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
-            <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 }}>
-              Delivery Address
-            </Text>
-            {user && addressesLoadError ? (
-              <View
-                style={{
-                  padding: 12,
-                  borderRadius: 12,
-                  backgroundColor: "#FEF2F2",
-                  borderWidth: 1,
-                  borderColor: "#FECACA",
-                  marginBottom: 8,
-                }}
-              >
-                <Text style={{ fontSize: 14, color: "#991B1B", marginBottom: 10 }}>{addressesLoadError}</Text>
+              ) : null}
+              {locations.map((loc) => (
                 <TouchableOpacity
-                  onPress={() => void reloadAddressesOnly()}
-                  disabled={refetchingAddresses}
-                  style={{ alignSelf: "flex-start", opacity: refetchingAddresses ? 0.6 : 1 }}
-                >
-                  {refetchingAddresses ? (
-                    <ActivityIndicator size="small" color={PRIMARY} />
-                  ) : (
-                    <Text style={{ fontSize: 14, fontWeight: "600", color: PRIMARY }}>Try again</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            ) : null}
-            {!addressesLoadError && addresses.length === 0 ? (
-              <View style={{ alignItems: "center", padding: contentPadding }}>
-                <Text style={{ fontSize: 14, color: "#6B7280", marginBottom: 12, textAlign: "center" }}>
-                  {user ? "No addresses saved" : "Sign in to add a delivery address"}
-                </Text>
-                {user ? (
-                  <TouchableOpacity
-                    onPress={() => router.push("/(app)/account-settings/addresses" as any)}
-                    style={{ paddingHorizontal: contentPadding, paddingVertical: 10, borderRadius: 10, backgroundColor: PRIMARY }}
-                  >
-                    <Text style={{ color: "#fff", fontWeight: "600" }}>Add Address</Text>
-                  </TouchableOpacity>
-                ) : (
-                  <TouchableOpacity
-                    onPress={() =>
-                      router.push({
-                        pathname: "/(auth)/login",
-                        params: {
-                          return_to: `/(app)/(tabs)/shop/product-checkout?provider_id=${encodeURIComponent(provider_id)}`,
-                        },
-                      } as any)
-                    }
-                    style={{ paddingHorizontal: contentPadding, paddingVertical: 10, borderRadius: 10, backgroundColor: PRIMARY }}
-                  >
-                    <Text style={{ color: "#fff", fontWeight: "600" }}>Sign in</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            ) : null}
-            {!addressesLoadError && addresses.length > 0
-              ? addresses.map((addr) => (
-                <TouchableOpacity
-                  key={addr.id}
-                  onPress={() => setSelectedAddress(addr.id)}
+                  key={loc.id}
+                  onPress={() => setSelectedLocation(loc.id)}
                   style={{
                     flexDirection: "row",
                     alignItems: "center",
                     padding: 14,
                     borderRadius: 12,
                     borderWidth: 1.5,
-                    borderColor: selectedAddress === addr.id ? PRIMARY : "#E5E7EB",
+                    borderColor: selectedLocation === loc.id ? PRIMARY : "#E5E7EB",
                     marginBottom: 8,
-                    backgroundColor: selectedAddress === addr.id ? "rgba(255,0,119,0.04)" : "#fff",
+                    backgroundColor: selectedLocation === loc.id ? "rgba(255,0,119,0.04)" : "#fff",
                   }}
                 >
                   <View
@@ -1056,336 +1165,624 @@ export default function ProductCheckoutScreen() {
                       height: 22,
                       borderRadius: 11,
                       borderWidth: 2,
-                      borderColor: selectedAddress === addr.id ? PRIMARY : "#D1D5DB",
+                      borderColor: selectedLocation === loc.id ? PRIMARY : "#D1D5DB",
                       alignItems: "center",
                       justifyContent: "center",
                       marginRight: 12,
                     }}
                   >
-                    {selectedAddress === addr.id && (
-                      <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: PRIMARY }} />
+                    {selectedLocation === loc.id && (
+                      <View
+                        style={{
+                          width: 12,
+                          height: 12,
+                          borderRadius: 6,
+                          backgroundColor: PRIMARY,
+                        }}
+                      />
                     )}
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>
-                      {addr.label ?? "Address"}
+                      {loc.name}
                     </Text>
                     <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>
-                      {addr.address_line1}, {addr.city}
-                      {addr.postal_code ? `, ${addr.postal_code}` : ""}
+                      {loc.address_line1}, {loc.city}
                     </Text>
                   </View>
                 </TouchableOpacity>
-              ))
-              : null}
-          </View>
-        )}
+              ))}
+            </View>
+          )}
 
-        {/* Payment method */}
-        <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
-          <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 }}>
-            Payment Method
-          </Text>
-          <View>
-            <TouchableOpacity
-              onPress={() => setPaymentMethod("paystack")}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                padding: 14,
-                borderRadius: 12,
-                borderWidth: 1.5,
-                borderColor: paymentMethod === "paystack" ? PRIMARY : "#E5E7EB",
-                backgroundColor: paymentMethod === "paystack" ? "rgba(255,0,119,0.04)" : "#fff",
-                marginBottom: 8,
-              }}
-            >
-              <Ionicons
-                name="card-outline"
-                size={22}
-                color={paymentMethod === "paystack" ? PRIMARY : "#9CA3AF"}
-              />
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={{ fontSize: 14, fontWeight: "600", color: paymentMethod === "paystack" ? PRIMARY : "#374151" }}>
-                  Pay Online
-                </Text>
-                <Text style={{ fontSize: 11, color: "#9CA3AF", marginTop: 2 }}>
-                  Secure payment with card (card, EFT, etc.)
-                </Text>
-              </View>
-              <View style={{ width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: paymentMethod === "paystack" ? PRIMARY : "#D1D5DB", alignItems: "center", justifyContent: "center" }}>
-                {paymentMethod === "paystack" && <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: PRIMARY }} />}
-              </View>
-            </TouchableOpacity>
+          {/* Delivery address */}
+          {fulfillment === "delivery" && (
+            <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
+              <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 }}>
+                Delivery Address
+              </Text>
+              {user && addressesLoadError ? (
+                <View
+                  style={{
+                    padding: 12,
+                    borderRadius: 12,
+                    backgroundColor: "#FEF2F2",
+                    borderWidth: 1,
+                    borderColor: "#FECACA",
+                    marginBottom: 8,
+                  }}
+                >
+                  <Text style={{ fontSize: 14, color: "#991B1B", marginBottom: 10 }}>
+                    {addressesLoadError}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => void reloadAddressesOnly()}
+                    disabled={refetchingAddresses}
+                    style={{ alignSelf: "flex-start", opacity: refetchingAddresses ? 0.6 : 1 }}
+                  >
+                    {refetchingAddresses ? (
+                      <ActivityIndicator size="small" color={PRIMARY} />
+                    ) : (
+                      <Text style={{ fontSize: 14, fontWeight: "600", color: PRIMARY }}>
+                        Try again
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+              {!addressesLoadError && addresses.length === 0 ? (
+                <View style={{ alignItems: "center", padding: contentPadding }}>
+                  <Text
+                    style={{
+                      fontSize: 14,
+                      color: "#6B7280",
+                      marginBottom: 12,
+                      textAlign: "center",
+                    }}
+                  >
+                    {user ? "No addresses saved" : "Sign in to add a delivery address"}
+                  </Text>
+                  {user ? (
+                    <TouchableOpacity
+                      onPress={() => router.push("/(app)/account-settings/addresses" as any)}
+                      style={{
+                        paddingHorizontal: contentPadding,
+                        paddingVertical: 10,
+                        borderRadius: 10,
+                        backgroundColor: PRIMARY,
+                      }}
+                    >
+                      <Text style={{ color: "#fff", fontWeight: "600" }}>Add Address</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      onPress={() =>
+                        router.push({
+                          pathname: "/(auth)/login",
+                          params: {
+                            return_to: `/(app)/(tabs)/shop/product-checkout?provider_id=${encodeURIComponent(provider_id)}`,
+                          },
+                        } as any)
+                      }
+                      style={{
+                        paddingHorizontal: contentPadding,
+                        paddingVertical: 10,
+                        borderRadius: 10,
+                        backgroundColor: PRIMARY,
+                      }}
+                    >
+                      <Text style={{ color: "#fff", fontWeight: "600" }}>Sign in</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ) : null}
+              {!addressesLoadError && addresses.length > 0
+                ? addresses.map((addr) => (
+                    <TouchableOpacity
+                      key={addr.id}
+                      onPress={() => setSelectedAddress(addr.id)}
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        padding: 14,
+                        borderRadius: 12,
+                        borderWidth: 1.5,
+                        borderColor: selectedAddress === addr.id ? PRIMARY : "#E5E7EB",
+                        marginBottom: 8,
+                        backgroundColor:
+                          selectedAddress === addr.id ? "rgba(255,0,119,0.04)" : "#fff",
+                      }}
+                    >
+                      <View
+                        style={{
+                          width: 22,
+                          height: 22,
+                          borderRadius: 11,
+                          borderWidth: 2,
+                          borderColor: selectedAddress === addr.id ? PRIMARY : "#D1D5DB",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          marginRight: 12,
+                        }}
+                      >
+                        {selectedAddress === addr.id && (
+                          <View
+                            style={{
+                              width: 12,
+                              height: 12,
+                              borderRadius: 6,
+                              backgroundColor: PRIMARY,
+                            }}
+                          />
+                        )}
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>
+                          {addr.label ?? "Address"}
+                        </Text>
+                        <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>
+                          {addr.address_line1}, {addr.city}
+                          {addr.postal_code ? `, ${addr.postal_code}` : ""}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))
+                : null}
+            </View>
+          )}
 
-            {cashEnabledOnPlatform && (
+          {/* Payment method */}
+          <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
+            <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 }}>
+              Payment Method
+            </Text>
+            <View>
               <TouchableOpacity
-                onPress={() => setPaymentMethod("card_on_delivery")}
+                onPress={() => setPaymentMethod("paystack")}
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
                   padding: 14,
                   borderRadius: 12,
                   borderWidth: 1.5,
-                  borderColor: paymentMethod === "card_on_delivery" ? PRIMARY : "#E5E7EB",
-                  backgroundColor: paymentMethod === "card_on_delivery" ? "rgba(255,0,119,0.04)" : "#fff",
+                  borderColor: paymentMethod === "paystack" ? PRIMARY : "#E5E7EB",
+                  backgroundColor: paymentMethod === "paystack" ? "rgba(255,0,119,0.04)" : "#fff",
+                  marginBottom: 8,
                 }}
               >
                 <Ionicons
-                  name="wallet-outline"
+                  name="card-outline"
                   size={22}
-                  color={paymentMethod === "card_on_delivery" ? PRIMARY : "#9CA3AF"}
+                  color={paymentMethod === "paystack" ? PRIMARY : "#9CA3AF"}
                 />
                 <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text style={{ fontSize: 14, fontWeight: "600", color: paymentMethod === "card_on_delivery" ? PRIMARY : "#374151" }}>
-                    Pay at {fulfillment === "delivery" ? "Delivery" : "Collection"}
+                  <Text
+                    style={{
+                      fontSize: 14,
+                      fontWeight: "600",
+                      color: paymentMethod === "paystack" ? PRIMARY : "#374151",
+                    }}
+                  >
+                    Pay Online
                   </Text>
                   <Text style={{ fontSize: 11, color: "#9CA3AF", marginTop: 2 }}>
-                    Cash or card when you receive your order
+                    Secure payment with card (card, EFT, etc.)
                   </Text>
                 </View>
-                <View style={{ width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: paymentMethod === "card_on_delivery" ? PRIMARY : "#D1D5DB", alignItems: "center", justifyContent: "center" }}>
-                  {paymentMethod === "card_on_delivery" && <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: PRIMARY }} />}
+                <View
+                  style={{
+                    width: 20,
+                    height: 20,
+                    borderRadius: 10,
+                    borderWidth: 2,
+                    borderColor: paymentMethod === "paystack" ? PRIMARY : "#D1D5DB",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  {paymentMethod === "paystack" && (
+                    <View
+                      style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: PRIMARY }}
+                    />
+                  )}
                 </View>
               </TouchableOpacity>
-            )}
 
-            {paymentMethod === "paystack" && user && savedCards.length > 0 && !useWallet && (
-              <View style={{ marginTop: 12 }}>
-                <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 8 }}>Card</Text>
+              {cashEnabledOnPlatform && (
                 <TouchableOpacity
-                  onPress={() => { setUseNewCard(false); }}
+                  onPress={() => setPaymentMethod("card_on_delivery")}
                   style={{
                     flexDirection: "row",
                     alignItems: "center",
-                    padding: 12,
-                    borderRadius: 10,
+                    padding: 14,
+                    borderRadius: 12,
                     borderWidth: 1.5,
-                    borderColor: !useNewCard ? PRIMARY : "#E5E7EB",
-                    marginBottom: 6,
+                    borderColor: paymentMethod === "card_on_delivery" ? PRIMARY : "#E5E7EB",
+                    backgroundColor:
+                      paymentMethod === "card_on_delivery" ? "rgba(255,0,119,0.04)" : "#fff",
                   }}
                 >
+                  <Ionicons
+                    name="wallet-outline"
+                    size={22}
+                    color={paymentMethod === "card_on_delivery" ? PRIMARY : "#9CA3AF"}
+                  />
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <Text
+                      style={{
+                        fontSize: 14,
+                        fontWeight: "600",
+                        color: paymentMethod === "card_on_delivery" ? PRIMARY : "#374151",
+                      }}
+                    >
+                      Pay at {fulfillment === "delivery" ? "Delivery" : "Collection"}
+                    </Text>
+                    <Text style={{ fontSize: 11, color: "#9CA3AF", marginTop: 2 }}>
+                      Cash or card when you receive your order
+                    </Text>
+                  </View>
                   <View
                     style={{
-                      width: 18,
-                      height: 18,
-                      borderRadius: 9,
+                      width: 20,
+                      height: 20,
+                      borderRadius: 10,
                       borderWidth: 2,
-                      borderColor: !useNewCard ? PRIMARY : "#D1D5DB",
-                      marginRight: 10,
+                      borderColor: paymentMethod === "card_on_delivery" ? PRIMARY : "#D1D5DB",
                       alignItems: "center",
                       justifyContent: "center",
                     }}
                   >
-                    {!useNewCard ? <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: PRIMARY }} /> : null}
+                    {paymentMethod === "card_on_delivery" && (
+                      <View
+                        style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: PRIMARY }}
+                      />
+                    )}
                   </View>
-                  <Text style={{ flex: 1, fontSize: 14, color: "#374151" }}>Use saved card</Text>
                 </TouchableOpacity>
-                {!useNewCard
-                  ? savedCards.map((c) => (
-                      <TouchableOpacity
-                        key={c.id}
-                        onPress={() => setSelectedCardId(c.id)}
-                        style={{ paddingVertical: 6, paddingLeft: 32 }}
-                      >
-                        <Text
-                          style={{
-                            fontSize: 13,
-                            color: selectedCardId === c.id ? PRIMARY : "#6B7280",
-                            fontWeight: selectedCardId === c.id ? "700" : "400",
-                          }}
-                        >
-                          •••• {c.last4 ?? "0000"}
-                          {c.is_default ? " · default" : ""}
-                        </Text>
-                      </TouchableOpacity>
-                    ))
-                  : null}
-                <TouchableOpacity
-                  onPress={() => setUseNewCard(true)}
+              )}
+
+              {paymentMethod === "paystack" && user && savedCards.length > 0 && !useWallet && (
+                <View style={{ marginTop: 12 }}>
+                  <Text
+                    style={{ fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 8 }}
+                  >
+                    Card
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setUseNewCard(false);
+                    }}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      padding: 12,
+                      borderRadius: 10,
+                      borderWidth: 1.5,
+                      borderColor: !useNewCard ? PRIMARY : "#E5E7EB",
+                      marginBottom: 6,
+                    }}
+                  >
+                    <View
+                      style={{
+                        width: 18,
+                        height: 18,
+                        borderRadius: 9,
+                        borderWidth: 2,
+                        borderColor: !useNewCard ? PRIMARY : "#D1D5DB",
+                        marginRight: 10,
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      {!useNewCard ? (
+                        <View
+                          style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: PRIMARY }}
+                        />
+                      ) : null}
+                    </View>
+                    <Text style={{ flex: 1, fontSize: 14, color: "#374151" }}>Use saved card</Text>
+                  </TouchableOpacity>
+                  {!useNewCard
+                    ? savedCards.map((c) => {
+                        const expiry =
+                          c.expiry_label ??
+                          (c.expiry_month && c.expiry_year
+                            ? `${String(c.expiry_month).padStart(2, "0")}/${String(c.expiry_year).slice(-2)}`
+                            : null);
+                        return (
+                          <TouchableOpacity
+                            key={c.id}
+                            onPress={() => setSelectedCardId(c.id)}
+                            style={{ paddingVertical: 6, paddingLeft: 32 }}
+                          >
+                            <Text
+                              style={{
+                                fontSize: 13,
+                                color: selectedCardId === c.id ? PRIMARY : "#6B7280",
+                                fontWeight: selectedCardId === c.id ? "700" : "400",
+                              }}
+                            >
+                              •••• {c.last4 ?? "0000"}
+                              {c.is_default ? " · default" : ""}
+                            </Text>
+                            {expiry ? (
+                              <Text style={{ fontSize: 11, color: "#9CA3AF", paddingTop: 2 }}>
+                                Expires {expiry}
+                              </Text>
+                            ) : null}
+                          </TouchableOpacity>
+                        );
+                      })
+                    : null}
+                  {!useNewCard ? (
+                    <TouchableOpacity
+                      onPress={() => router.push("/account-settings/payments")}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      style={{ paddingVertical: 6, paddingLeft: 32, marginBottom: 4 }}
+                      accessibilityRole="link"
+                      accessibilityLabel="Manage saved cards"
+                    >
+                      <Text style={{ fontSize: 12, color: PRIMARY, fontWeight: "600" }}>
+                        Manage saved cards
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
+                  <TouchableOpacity
+                    onPress={() => setUseNewCard(true)}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      padding: 12,
+                      borderRadius: 10,
+                      borderWidth: 1.5,
+                      borderColor: useNewCard ? PRIMARY : "#E5E7EB",
+                      marginTop: 4,
+                    }}
+                  >
+                    <View
+                      style={{
+                        width: 18,
+                        height: 18,
+                        borderRadius: 9,
+                        borderWidth: 2,
+                        borderColor: useNewCard ? PRIMARY : "#D1D5DB",
+                        marginRight: 10,
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      {useNewCard ? (
+                        <View
+                          style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: PRIMARY }}
+                        />
+                      ) : null}
+                    </View>
+                    <Text style={{ flex: 1, fontSize: 14, color: "#374151" }}>
+                      Use a different card (secure browser)
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {paymentMethod === "paystack" && user && walletBalance > 0 && (
+                <Pressable
+                  onPress={() => setUseWallet(!useWallet)}
                   style={{
                     flexDirection: "row",
                     alignItems: "center",
-                    padding: 12,
-                    borderRadius: 10,
+                    paddingVertical: 12,
+                    paddingHorizontal: 14,
+                    marginTop: 8,
+                    borderRadius: 12,
                     borderWidth: 1.5,
-                    borderColor: useNewCard ? PRIMARY : "#E5E7EB",
-                    marginTop: 4,
+                    borderColor: useWallet ? PRIMARY : "#E5E7EB",
+                    backgroundColor: useWallet ? "rgba(255,0,119,0.04)" : "#F9FAFB",
                   }}
                 >
                   <View
                     style={{
-                      width: 18,
-                      height: 18,
-                      borderRadius: 9,
+                      width: 22,
+                      height: 22,
+                      borderRadius: 6,
                       borderWidth: 2,
-                      borderColor: useNewCard ? PRIMARY : "#D1D5DB",
                       marginRight: 10,
+                      borderColor: useWallet ? PRIMARY : "#9CA3AF",
+                      backgroundColor: useWallet ? PRIMARY : "transparent",
                       alignItems: "center",
                       justifyContent: "center",
                     }}
                   >
-                    {useNewCard ? <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: PRIMARY }} /> : null}
+                    {useWallet && <Ionicons name="checkmark" size={14} color="#fff" />}
                   </View>
-                  <Text style={{ flex: 1, fontSize: 14, color: "#374151" }}>Use a different card (secure browser)</Text>
-                </TouchableOpacity>
-              </View>
-            )}
+                  <Ionicons
+                    name="wallet-outline"
+                    size={18}
+                    color={useWallet ? PRIMARY : "#6B7280"}
+                    style={{ marginRight: 10 }}
+                  />
+                  <Text
+                    style={{
+                      flex: 1,
+                      fontWeight: "500",
+                      color: useWallet ? PRIMARY : "#374151",
+                      fontSize: 14,
+                    }}
+                  >
+                    Use wallet balance — {fmt(walletBalance)} available
+                  </Text>
+                </Pressable>
+              )}
+            </View>
 
-            {paymentMethod === "paystack" && user && walletBalance > 0 && (
-              <Pressable
-                onPress={() => setUseWallet(!useWallet)}
+            {paymentMethod === "paystack" && platformFeeConfig.show && platformFee > 0 && (
+              <View
                 style={{
+                  marginTop: 12,
+                  padding: 12,
+                  backgroundColor: "#FFF7ED",
+                  borderRadius: 10,
                   flexDirection: "row",
                   alignItems: "center",
-                  paddingVertical: 12,
-                  paddingHorizontal: 14,
-                  marginTop: 8,
-                  borderRadius: 12,
-                  borderWidth: 1.5,
-                  borderColor: useWallet ? PRIMARY : "#E5E7EB",
-                  backgroundColor: useWallet ? "rgba(255,0,119,0.04)" : "#F9FAFB",
                 }}
               >
-                <View style={{
-                  width: 22, height: 22, borderRadius: 6, borderWidth: 2, marginRight: 10,
-                  borderColor: useWallet ? PRIMARY : "#9CA3AF",
-                  backgroundColor: useWallet ? PRIMARY : "transparent",
-                  alignItems: "center", justifyContent: "center",
-                }}>
-                  {useWallet && <Ionicons name="checkmark" size={14} color="#fff" />}
-                </View>
-                <Ionicons name="wallet-outline" size={18} color={useWallet ? PRIMARY : "#6B7280"} style={{ marginRight: 10 }} />
-                <Text style={{ flex: 1, fontWeight: "500", color: useWallet ? PRIMARY : "#374151", fontSize: 14 }}>
-                  Use wallet balance — {fmt(walletBalance)} available
+                <Ionicons name="information-circle-outline" size={16} color="#F59E0B" />
+                <Text style={{ fontSize: 12, color: "#92400E", marginLeft: 8, flex: 1 }}>
+                  A platform fee of {fmt(platformFee)} applies to online payments
                 </Text>
-              </Pressable>
+              </View>
+            )}
+            {!cashEnabledOnPlatform && (
+              <View
+                style={{
+                  marginTop: 12,
+                  padding: 12,
+                  backgroundColor: "#EFF6FF",
+                  borderRadius: 10,
+                  flexDirection: "row",
+                  alignItems: "center",
+                }}
+              >
+                <Ionicons name="information-circle-outline" size={16} color="#1D4ED8" />
+                <Text style={{ fontSize: 12, color: "#1E3A8A", marginLeft: 8, flex: 1 }}>
+                  Pay-at-collection/delivery is disabled by platform policy. Please pay online.
+                </Text>
+              </View>
             )}
           </View>
 
-          {paymentMethod === "paystack" && platformFeeConfig.show && platformFee > 0 && (
-            <View style={{ marginTop: 12, padding: 12, backgroundColor: "#FFF7ED", borderRadius: 10, flexDirection: "row", alignItems: "center" }}>
-              <Ionicons name="information-circle-outline" size={16} color="#F59E0B" />
-              <Text style={{ fontSize: 12, color: "#92400E", marginLeft: 8, flex: 1 }}>
-                A platform fee of {fmt(platformFee)} applies to online payments
-              </Text>
-            </View>
-          )}
-          {!cashEnabledOnPlatform && (
-            <View style={{ marginTop: 12, padding: 12, backgroundColor: "#EFF6FF", borderRadius: 10, flexDirection: "row", alignItems: "center" }}>
-              <Ionicons name="information-circle-outline" size={16} color="#1D4ED8" />
-              <Text style={{ fontSize: 12, color: "#1E3A8A", marginLeft: 8, flex: 1 }}>
-                Pay-at-collection/delivery is disabled by platform policy. Please pay online.
-              </Text>
-            </View>
-          )}
-        </View>
+          {/* Order summary */}
+          <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
+            <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 }}>
+              Order Summary
+            </Text>
+            {providerCart?.items.map((item) => (
+              <View
+                key={item.id}
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  paddingVertical: 8,
+                  borderBottomWidth: 1,
+                  borderBottomColor: "#F9FAFB",
+                }}
+              >
+                <View style={{ flex: 1, marginRight: 8 }}>
+                  <Text style={{ fontSize: 14, color: "#374151" }} numberOfLines={1}>
+                    {item.product?.name} x{item.quantity}
+                  </Text>
+                  {(item as any).product_variant?.option_values &&
+                    Object.keys((item as any).product_variant.option_values).length > 0 && (
+                      <Text style={{ fontSize: 12, color: "#9CA3AF" }} numberOfLines={1}>
+                        {Object.values((item as any).product_variant.option_values).join(", ")}
+                      </Text>
+                    )}
+                </View>
+                <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>
+                  {fmt(
+                    (typeof item.effective_price === "number"
+                      ? item.effective_price
+                      : (item.product?.retail_price ?? 0)) * item.quantity
+                  )}
+                </Text>
+              </View>
+            ))}
 
-        {/* Order summary */}
-        <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
-          <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 }}>
-            Order Summary
-          </Text>
-          {providerCart?.items.map((item) => (
             <View
-              key={item.id}
               style={{
-                flexDirection: "row",
-                justifyContent: "space-between",
-                paddingVertical: 8,
-                borderBottomWidth: 1,
-                borderBottomColor: "#F9FAFB",
+                marginTop: 12,
+                paddingTop: 12,
+                borderTopWidth: 1,
+                borderTopColor: "#E5E7EB",
               }}
             >
-              <View style={{ flex: 1, marginRight: 8 }}>
-                <Text style={{ fontSize: 14, color: "#374151" }} numberOfLines={1}>
-                  {item.product?.name} x{item.quantity}
-                </Text>
-                {(item as any).product_variant?.option_values && Object.keys((item as any).product_variant.option_values).length > 0 && (
-                  <Text style={{ fontSize: 12, color: "#9CA3AF" }} numberOfLines={1}>
-                    {Object.values((item as any).product_variant.option_values).join(", ")}
+              <View
+                style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}
+              >
+                <Text style={{ fontSize: 14, color: "#6B7280" }}>Subtotal</Text>
+                <Text style={{ fontSize: 14, color: "#111827" }}>{fmt(subtotal)}</Text>
+              </View>
+              {taxAmount > 0 && (
+                <View
+                  style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}
+                >
+                  <Text style={{ fontSize: 14, color: "#6B7280" }}>Tax</Text>
+                  <Text style={{ fontSize: 14, color: "#111827" }}>{fmt(taxAmount)}</Text>
+                </View>
+              )}
+              {fulfillment === "delivery" && (
+                <View
+                  style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}
+                >
+                  <Text style={{ fontSize: 14, color: "#6B7280" }}>Delivery</Text>
+                  <Text style={{ fontSize: 14, color: deliveryFee === 0 ? "#22C55E" : "#111827" }}>
+                    {deliveryFee === 0 ? "Free" : fmt(deliveryFee)}
                   </Text>
-                )}
-              </View>
-              <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>
-                {fmt(
-                  (typeof item.effective_price === "number" ? item.effective_price : item.product?.retail_price ?? 0) *
-                    item.quantity,
-                )}
-              </Text>
-            </View>
-          ))}
-
-          <View style={{ marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: "#E5E7EB" }}>
-            <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-              <Text style={{ fontSize: 14, color: "#6B7280" }}>Subtotal</Text>
-              <Text style={{ fontSize: 14, color: "#111827" }}>{fmt(subtotal)}</Text>
-            </View>
-            {taxAmount > 0 && (
-              <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-                <Text style={{ fontSize: 14, color: "#6B7280" }}>Tax</Text>
-                <Text style={{ fontSize: 14, color: "#111827" }}>{fmt(taxAmount)}</Text>
-              </View>
-            )}
-            {fulfillment === "delivery" && (
-              <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-                <Text style={{ fontSize: 14, color: "#6B7280" }}>Delivery</Text>
-                <Text style={{ fontSize: 14, color: deliveryFee === 0 ? "#22C55E" : "#111827" }}>
-                  {deliveryFee === 0 ? "Free" : fmt(deliveryFee)}
+                </View>
+              )}
+              {platformFee > 0 && platformFeeConfig.show && (
+                <View
+                  style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}
+                >
+                  <Text style={{ fontSize: 14, color: "#6B7280" }}>Platform Fee</Text>
+                  <Text style={{ fontSize: 14, color: "#111827" }}>{fmt(platformFee)}</Text>
+                </View>
+              )}
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  marginTop: 8,
+                  paddingTop: 8,
+                  borderTopWidth: 1,
+                  borderTopColor: "#E5E7EB",
+                }}
+              >
+                <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827" }}>Total</Text>
+                <Text style={{ fontSize: 18, fontWeight: "700", color: PRIMARY }}>
+                  {fmt(total)}
                 </Text>
               </View>
-            )}
-            {platformFee > 0 && platformFeeConfig.show && (
-              <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-                <Text style={{ fontSize: 14, color: "#6B7280" }}>Platform Fee</Text>
-                <Text style={{ fontSize: 14, color: "#111827" }}>{fmt(platformFee)}</Text>
-              </View>
-            )}
-            <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: "#E5E7EB" }}>
-              <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827" }}>Total</Text>
-              <Text style={{ fontSize: 18, fontWeight: "700", color: PRIMARY }}>{fmt(total)}</Text>
             </View>
           </View>
-        </View>
-      </ScrollView>
+        </ScrollView>
 
-      {/* Place Order button */}
-      <View
-        style={{
-          paddingHorizontal: contentPadding,
-          paddingVertical: 14,
-          backgroundColor: "#fff",
-          borderTopWidth: 1,
-          borderTopColor: "#F3F4F6",
-          ...Shadows.tabBar,
-        }}
-      >
-        <TouchableOpacity
-          onPress={handlePlaceOrder}
-          disabled={placing}
+        {/* Place Order button */}
+        <View
           style={{
-            backgroundColor: PRIMARY,
-            borderRadius: 14,
-            paddingVertical: 16,
-            alignItems: "center",
-            opacity: placing ? 0.7 : 1,
-            ...constraintStyle,
+            paddingHorizontal: contentPadding,
+            paddingVertical: 14,
+            backgroundColor: "#fff",
+            borderTopWidth: 1,
+            borderTopColor: "#F3F4F6",
+            ...Shadows.tabBar,
           }}
-          accessibilityRole="button"
-          accessibilityLabel="Place order"
-          accessibilityHint="Double tap to submit your order"
         >
-          {placing ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={{ color: "#fff", fontSize: 17, fontWeight: "700" }}>
-              {paymentMethod === "paystack" ? "Pay" : "Place"} Order — {fmt(total)}
-            </Text>
-          )}
-        </TouchableOpacity>
-      </View>
-    </SafeAreaView>
-    {paystackHostedCheckout.modal}
+          <TouchableOpacity
+            onPress={handlePlaceOrder}
+            disabled={placing}
+            style={{
+              backgroundColor: PRIMARY,
+              borderRadius: 14,
+              paddingVertical: 16,
+              alignItems: "center",
+              opacity: placing ? 0.7 : 1,
+              ...constraintStyle,
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Place order"
+            accessibilityHint="Double tap to submit your order"
+          >
+            {placing ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={{ color: "#fff", fontSize: 17, fontWeight: "700" }}>
+                {paymentMethod === "paystack" ? "Pay" : "Place"} Order — {fmt(total)}
+              </Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+      {paystackHostedCheckout.modal}
     </>
   );
 }

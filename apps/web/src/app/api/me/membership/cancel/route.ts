@@ -1,7 +1,9 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { notifyProviderMembershipCancelled } from "@/lib/notifications";
 
 /**
  * POST /api/me/membership/cancel
@@ -23,7 +25,9 @@ export async function POST(request: NextRequest) {
     if (providerMembershipId) {
       const { data: activeSalon, error: salonFindError } = await (supabase
         .from("user_memberships") as any)
-        .select("id, user_id, provider:providers(id, tenant_id)")
+        .select(
+          "id, user_id, provider:providers(id, tenant_id, user_id, business_name), plan:membership_plans(id, name)"
+        )
         .eq("id", providerMembershipId)
         .eq("user_id", user.id)
         .eq("status", "active")
@@ -32,6 +36,9 @@ export async function POST(request: NextRequest) {
       const provider = Array.isArray(activeSalon?.provider)
         ? activeSalon?.provider[0]
         : activeSalon?.provider;
+      const plan = Array.isArray(activeSalon?.plan)
+        ? activeSalon?.plan[0]
+        : activeSalon?.plan;
       if (salonFindError || !activeSalon || provider?.tenant_id !== tenantId) {
         return successResponse({ cancelled: false, message: "No active salon membership found" });
       }
@@ -47,6 +54,44 @@ export async function POST(request: NextRequest) {
 
       if (salonUpdateError) {
         return handleApiError(salonUpdateError, "Failed to cancel salon membership");
+      }
+
+      // §Membership-cancel 2026-05: notify the provider team so the salon
+      // sees the cancellation in real time (the customer-side reflects it
+      // via the cancelled_at flag on the next clients refresh, but a push
+      // makes it actionable immediately for membership-driven business).
+      // Failure to notify must not break the cancel response.
+      try {
+        let customerName = "A customer";
+        try {
+          const admin = getSupabaseAdmin();
+          const { data: customer } = await (admin.from("users") as any)
+            .select("full_name")
+            .eq("id", user.id)
+            .maybeSingle();
+          const fullName = (customer as { full_name?: string | null } | null)?.full_name;
+          if (typeof fullName === "string" && fullName.trim()) {
+            customerName = fullName.trim();
+          }
+        } catch {
+          // best-effort customer name lookup
+        }
+
+        if (provider?.id) {
+          await notifyProviderMembershipCancelled({
+            providerId: provider.id,
+            providerOwnerUserId: provider?.user_id ?? null,
+            customerName,
+            planName: plan?.name ?? "membership",
+            customerId: user.id,
+            subscriptionId: providerMembershipId,
+          });
+        }
+      } catch (notifyError) {
+        console.error(
+          "[membership/cancel] notifyProviderMembershipCancelled failed:",
+          notifyError,
+        );
       }
 
       return successResponse({ cancelled: true, type: "salon" });

@@ -147,8 +147,9 @@ export async function POST(request: NextRequest) {
       metadata: { category, order, is_active },
     });
 
+    const row = faq as { display_order?: number } & Record<string, unknown>;
     return NextResponse.json({
-      data: faq,
+      data: { ...row, order: row.display_order ?? 0 },
       error: null,
     });
   } catch (error) {

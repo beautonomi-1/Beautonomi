@@ -197,6 +197,7 @@ export const adminQueryKeys = {
   slack: (env: string) => [...adminQueryKeys.root, "integrations", "slack", env] as const,
 
   paystackConfig: () => [...adminQueryKeys.root, "integrations", "paystack"] as const,
+  yocoIntegrationStatus: () => [...adminQueryKeys.root, "integrations", "yoco"] as const,
 
   promotions: () => [...adminQueryKeys.root, "promotions"] as const,
 

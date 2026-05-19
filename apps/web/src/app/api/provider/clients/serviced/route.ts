@@ -8,6 +8,10 @@ import {
   getProviderIdForUser,
 } from "@/lib/supabase/api-helpers";
 import { fetchDefaultAddressesForUsers } from "@/lib/provider-portal/user-default-address";
+import {
+  attachSalonMembership,
+  buildSalonMembershipMap,
+} from "@/lib/provider/attach-salon-membership-to-clients";
 
 /**
  * GET /api/provider/clients/serviced
@@ -161,17 +165,31 @@ export async function GET(request: NextRequest) {
     
     const allServicedCustomers = [...servicedCustomers, ...missingCustomers];
 
+    // §Membership-cancel 2026-05: attach salon_membership so the mobile
+    // clients tab can render Active / Cancelled / Expired pills even when
+    // the client first surfaced via the serviced-only feed.
+    const membershipByUserId = await buildSalonMembershipMap(
+      providerId,
+      customerIds,
+      supabaseAdmin,
+    );
+    const enrichedServicedCustomers = attachSalonMembership(
+      allServicedCustomers,
+      (row) => row.customer_id,
+      membershipByUserId,
+    );
+
     // Sort by last service date (most recent first)
-    allServicedCustomers.sort(
+    enrichedServicedCustomers.sort(
       (a, b) =>
         new Date(b.last_service_date).getTime() - new Date(a.last_service_date).getTime()
     );
 
     // If search query is provided, filter by name, email, or phone
-    let filteredCustomers = allServicedCustomers;
+    let filteredCustomers = enrichedServicedCustomers;
     if (searchQuery && searchQuery.trim().length > 0) {
       const searchLower = searchQuery.toLowerCase().trim();
-      filteredCustomers = allServicedCustomers.filter((item) => {
+      filteredCustomers = enrichedServicedCustomers.filter((item) => {
         const customer = item.customer;
         if (!customer) return false;
         

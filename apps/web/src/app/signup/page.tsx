@@ -58,13 +58,13 @@ export default function SignupPage() {
     // Check referrer as fallback
     if (typeof window !== "undefined") {
       const referrer = document.referrer;
-      
+
       // Only check referrer if it exists and is from the same origin
       if (referrer) {
         try {
           const referrerUrl = new URL(referrer);
           const currentUrl = new URL(window.location.href);
-          
+
           // Only use referrer if it's from the same origin
           if (referrerUrl.origin === currentUrl.origin) {
             const referrerPath = referrerUrl.pathname;
@@ -90,17 +90,19 @@ export default function SignupPage() {
           // Invalid referrer URL, ignore
         }
       }
-      
+
       // Default: no specific highlight (provider card is already styled as highlighted by default)
       setHighlightedCard(null);
     }
-  }, [searchParams]);
+  }, [searchParams, selectedPersona]);
 
   // Fetch content from CMS
   useEffect(() => {
     const loadContent = async () => {
       try {
-        const response = await fetcher.get<{ data: SignupPageContent; error: null }>("/api/public/signup-content");
+        const response = await fetcher.get<{ data: SignupPageContent; error: null }>(
+          "/api/public/signup-content"
+        );
         setContent(response.data || {});
       } catch (error) {
         console.error("Error loading signup page content:", error);
@@ -155,7 +157,7 @@ export default function SignupPage() {
             <h1 className="font-black text-[#191C1F] text-4xl md:text-5xl lg:text-6xl tracking-tighter leading-[0.9] mb-4">
               {content.headline || "Elevate every encounter."}
             </h1>
-            
+
             {/* Sub-heading */}
             <p className="font-medium text-lg text-gray-500 tracking-tight mb-8">
               {content.sub_heading || "Choose how you want to join Beautonomi"}
@@ -191,7 +193,8 @@ export default function SignupPage() {
                             {content.customer_card_description || "Book beauty services with ease"}
                           </p>
                           <p className="text-xs text-gray-500">
-                            {content.customer_card_sub_description || "Discover and book beauty professionals"}
+                            {content.customer_card_sub_description ||
+                              "Discover and book beauty professionals"}
                           </p>
                         </div>
                         <motion.div
@@ -229,10 +232,12 @@ export default function SignupPage() {
                             </h3>
                           </div>
                           <p className="text-sm text-gray-600 mb-2">
-                            {content.provider_card_micro_copy || "Powering beauty freelancer revolution"}
+                            {content.provider_card_micro_copy ||
+                              "Powering beauty freelancer revolution"}
                           </p>
                           <p className="text-xs text-gray-500">
-                            {content.provider_card_description || "Salons, freelancers, and beauty professionals"}
+                            {content.provider_card_description ||
+                              "Salons, freelancers, and beauty professionals"}
                           </p>
                         </div>
                         <motion.div
@@ -272,10 +277,12 @@ export default function SignupPage() {
                             </h3>
                           </div>
                           <p className="text-sm text-gray-600 mb-2">
-                            {content.provider_card_micro_copy || "Powering beauty freelancer revolution"}
+                            {content.provider_card_micro_copy ||
+                              "Powering beauty freelancer revolution"}
                           </p>
                           <p className="text-xs text-gray-500">
-                            {content.provider_card_description || "Salons, freelancers, and beauty professionals"}
+                            {content.provider_card_description ||
+                              "Salons, freelancers, and beauty professionals"}
                           </p>
                         </div>
                         <motion.div
@@ -309,7 +316,8 @@ export default function SignupPage() {
                             {content.customer_card_description || "Book beauty services with ease"}
                           </p>
                           <p className="text-xs text-gray-500">
-                            {content.customer_card_sub_description || "Discover and book beauty professionals"}
+                            {content.customer_card_sub_description ||
+                              "Discover and book beauty professionals"}
                           </p>
                         </div>
                         <motion.div
@@ -347,7 +355,8 @@ export default function SignupPage() {
                     {searchParams.get("type") && (
                       <button
                         onClick={() => {
-                          const otherPersona = selectedPersona === "provider" ? "customer" : "provider";
+                          const otherPersona =
+                            selectedPersona === "provider" ? "customer" : "provider";
                           setSelectedPersona(otherPersona);
                           // Update URL to reflect switch
                           router.push(`/signup?type=${otherPersona}`);
@@ -359,11 +368,11 @@ export default function SignupPage() {
                     )}
                   </div>
                   <h2 className="text-2xl font-bold text-[#191C1F] mb-2">
-                    {selectedPersona === "provider" ? "Sign up as a Beauty Provider" : "Sign up as a Customer"}
+                    {selectedPersona === "provider"
+                      ? "Sign up as a Beauty Provider"
+                      : "Sign up as a Customer"}
                   </h2>
-                  <p className="text-sm text-gray-600">
-                    Create your account to get started
-                  </p>
+                  <p className="text-sm text-gray-600">Create your account to get started</p>
                 </div>
                 {/* Inline signup form — pass ref= for referral attribution */}
                 <InlineSignupForm
@@ -392,11 +401,19 @@ export default function SignupPage() {
         <div className="p-6 md:p-8 border-t border-gray-200">
           <p className="text-xs text-gray-500 text-center">
             {content.footer_text ? (
-              <span dangerouslySetInnerHTML={{ 
-                __html: content.footer_text
-                  .replace(/Terms of Service/g, '<a href="/terms-and-condition" class="underline hover:text-[#FF0077]">Terms of Service</a>')
-                  .replace(/Privacy Policy/g, '<a href="/privacy-policy" class="underline hover:text-[#FF0077]">Privacy Policy</a>')
-              }} />
+              <span
+                dangerouslySetInnerHTML={{
+                  __html: content.footer_text
+                    .replace(
+                      /Terms of Service/g,
+                      '<a href="/terms-and-condition" class="underline hover:text-[#FF0077]">Terms of Service</a>'
+                    )
+                    .replace(
+                      /Privacy Policy/g,
+                      '<a href="/privacy-policy" class="underline hover:text-[#FF0077]">Privacy Policy</a>'
+                    ),
+                }}
+              />
             ) : (
               <>
                 By continuing, you agree to Beautonomi's{" "}
@@ -444,7 +461,9 @@ export default function SignupPage() {
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-2">
                   <CreditCard className="w-5 h-5 text-white" />
-                  <span className="text-white font-semibold text-sm">{content.testimonial_pure_commerce}</span>
+                  <span className="text-white font-semibold text-sm">
+                    {content.testimonial_pure_commerce}
+                  </span>
                 </div>
               </div>
             )}
@@ -452,7 +471,9 @@ export default function SignupPage() {
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-2">
                   <Globe className="w-5 h-5 text-white" />
-                  <span className="text-white font-semibold text-sm">{content.testimonial_yoco_support}</span>
+                  <span className="text-white font-semibold text-sm">
+                    {content.testimonial_yoco_support}
+                  </span>
                 </div>
               </div>
             )}
@@ -473,7 +494,6 @@ export default function SignupPage() {
           </div>
         </motion.div>
       </div>
-
 
       {/* Login Modal */}
       <LoginModal

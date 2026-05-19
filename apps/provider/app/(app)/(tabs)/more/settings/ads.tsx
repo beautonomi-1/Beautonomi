@@ -15,11 +15,18 @@ import {
   ActivityIndicator,
   Platform,
 } from "react-native";
-import { useRouter } from "expo-router";
-import * as ExpoLinking from "expo-linking";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
 import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
 import { extractPaystackReferenceFromUrl } from "@/lib/payments/paystackRefFromUrl";
+import {
+  getAdsPaystackReturnUrl,
+  matchesAdsPaystackReturnUrl,
+  pollCampaignProvisioned,
+  adsSuccessCopy,
+  adsPendingCopy,
+  adsFailedCopy,
+} from "@/lib/payments/providerPaystackReturn";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useModuleConfig, useFeatureFlag } from "@/providers/ConfigBundleProvider";
@@ -36,6 +43,15 @@ import { twStyle } from "@/lib/twStyle";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { getApiErrorMessage } from "@/lib/api-error";
 
+type CampaignPaymentState = "none" | "unpaid" | "pending" | "failed" | "paid";
+
+type LatestBudgetOrder = {
+  id: string;
+  status: "pending" | "paid" | "failed" | "refunded" | string;
+  amount: number;
+  currency: string | null;
+};
+
 type Campaign = {
   id: string;
   status: string;
@@ -50,7 +66,16 @@ type Campaign = {
   end_at?: string | null;
   targeting?: { global_category_ids?: string[] };
   created_at: string;
+  /** §Provider-paystack-audit 2026-05: server-derived state for the action row. */
+  payment_state?: CampaignPaymentState;
+  latest_budget_order?: LatestBudgetOrder | null;
 };
+
+type AdsPaymentOutcome =
+  | { phase: "idle" }
+  | { phase: "provisioned"; campaignId: string; title: string; body: string }
+  | { phase: "pending"; campaignId?: string; title: string; body: string }
+  | { phase: "failed"; campaignId?: string; title: string; body: string };
 
 /** POST /api/provider/ads/campaigns success body (wrapped or bare campaign). */
 type AdsCampaignCreateData = Campaign | {
@@ -261,6 +286,71 @@ function campaignProgress(c: Campaign, nowMs: number, metrics?: CampaignPerforma
   return Math.max(0, Math.min(1, Number(c.spent || 0) / budget));
 }
 
+/**
+ * §Provider-paystack-audit 2026-05: shared post-payment status card. Phases
+ * map directly to `AdsPaymentOutcome.phase` so future provisioning states can
+ * extend it without touching the screen layout.
+ */
+function AdsPaymentOutcomeCard({
+  outcome,
+  onDismiss,
+}: {
+  outcome: AdsPaymentOutcome;
+  onDismiss: () => void;
+}) {
+  if (outcome.phase === "idle") return null;
+
+  const tone = (() => {
+    if (outcome.phase === "provisioned") {
+      return {
+        wrap: "border-emerald-200 bg-emerald-50",
+        iconWrap: "bg-emerald-100",
+        iconColor: "#047857",
+        icon: "checkmark-circle" as const,
+        title: "text-emerald-900",
+        body: "text-emerald-800",
+      };
+    }
+    if (outcome.phase === "pending") {
+      return {
+        wrap: "border-blue-200 bg-blue-50",
+        iconWrap: "bg-blue-100",
+        iconColor: "#1d4ed8",
+        icon: "time" as const,
+        title: "text-blue-900",
+        body: "text-blue-800",
+      };
+    }
+    return {
+      wrap: "border-amber-200 bg-amber-50",
+      iconWrap: "bg-amber-100",
+      iconColor: "#b45309",
+      icon: "alert-circle" as const,
+      title: "text-amber-900",
+      body: "text-amber-800",
+    };
+  })();
+
+  return (
+    <View style={twStyle(`mb-4 flex-row items-start rounded-2xl border p-3 ${tone.wrap}`)}>
+      <View style={twStyle(`mr-3 rounded-full p-2 ${tone.iconWrap}`)}>
+        <Ionicons name={tone.icon} size={18} color={tone.iconColor} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={twStyle(`text-sm font-semibold ${tone.title}`)}>{outcome.title}</Text>
+        <Text style={twStyle(`text-xs ${tone.body}`)}>{outcome.body}</Text>
+      </View>
+      <TouchableOpacity
+        onPress={onDismiss}
+        accessibilityLabel="Dismiss payment notification"
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      >
+        <Ionicons name="close" size={20} color={tone.iconColor} />
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 function remainingLine(c: Campaign, metrics: CampaignPerformance, currency: string, nowMs: number): string {
   if (c.billing_model === "time_based") {
     if (!c.end_at) return "Starts after payment";
@@ -284,6 +374,12 @@ function remainingLine(c: Campaign, metrics: CampaignPerformance, currency: stri
 
 export default function AdsSettingsScreen() {
   const router = useRouter();
+  const localParams = useLocalSearchParams<{
+    payment_success?: string;
+    payment_failed?: string;
+    payment_pending?: string;
+    campaign_id?: string;
+  }>();
   const insets = useSafeAreaInsets();
   const tenantCurrency = getTenantDefaultCurrency();
   const { screenPadding, width, contentMaxWidth } = useResponsive();
@@ -298,10 +394,12 @@ export default function AdsSettingsScreen() {
   // chip row (Today / 7d / 30d / All) — backend already accepts start_date +
   // end_date on /api/provider/ads/performance; we just expose it to the UI.
   const [perfRange, setPerfRange] = useState<AdsDateRange>("30d");
-  // §Ads-mobile-audit 2026-05 (payment confirmation): briefly surface a
-  // "Payment confirmed" banner after the Paystack WebView closes successfully
-  // so providers see proof the money went through.
-  const [paymentJustSucceeded, setPaymentJustSucceeded] = useState(false);
+  // §Provider-paystack-audit 2026-05: drive a richer post-payment state machine.
+  // `paymentOutcome` powers the success/pending/failed card surfaced at the top
+  // of the screen after Paystack closes — we replaced the old boolean banner so
+  // we can show model-specific copy and never falsely claim a campaign is live
+  // before the webhook has provisioned the budget on the server.
+  const [paymentOutcome, setPaymentOutcome] = useState<AdsPaymentOutcome>({ phase: "idle" });
   const [packs, setPacks] = useState<ImpressionPack[]>([]);
   const [timePacks, setTimePacks] = useState<TimePack[]>([]);
   const [availableModels, setAvailableModels] = useState<string[]>([]);
@@ -393,79 +491,129 @@ export default function AdsSettingsScreen() {
 
   const adsPaystackCheckout = useInAppPaystackCheckout();
 
+  /**
+   * §Provider-paystack-audit 2026-05: Open Paystack inside the in-app browser,
+   * wait for the HTTPS bridge return URL, then verify + poll until the campaign
+   * is provisioned on the server. The shared matchers / pollers keep this in
+   * lock-step with the subscription flow so the UX doesn't drift over time.
+   */
   const openAdsPaystack = useCallback(
-    async (payUrl: string) => {
-      const returnUrl = ExpoLinking.createURL("settings/ads-payment-return");
+    async (payUrl: string, opts?: { campaignId?: string }) => {
+      const returnUrl = getAdsPaystackReturnUrl();
       const result = await adsPaystackCheckout.waitForCheckout(payUrl, {
         title: "Ad payment",
         returnUrl,
-        matchSuccess: (rawUrl) => {
-          try {
-            const u = new URL(rawUrl);
-            return (
-              (u.pathname.includes("/provider/settings/ads/payment-return") || u.pathname.includes("settings/ads-payment-return")) &&
-              u.searchParams.get("success") === "1"
-            );
-          } catch {
-            return false;
-          }
-        },
-        matchCancel: (rawUrl) => {
-          try {
-            const u = new URL(rawUrl);
-            return (
-              (u.pathname.includes("/provider/settings/ads/payment-return") || u.pathname.includes("settings/ads-payment-return")) &&
-              u.searchParams.get("cancelled") === "1"
-            );
-          } catch {
-            return false;
-          }
-        },
+        matchSuccess: (rawUrl) => matchesAdsPaystackReturnUrl(rawUrl, { success: true }),
+        matchCancel: (rawUrl) => matchesAdsPaystackReturnUrl(rawUrl, { cancelled: true }),
       });
-      // §Ads-mobile-audit 2026-05: `useInAppPaystackCheckout.waitForCheckout`
-      // resolves with `{ outcome: "success" | "cancel" | "closed" }`. Only
-      // show the green confirmation banner when the redirect explicitly hit
-      // the success URL so we never falsely claim a payment went through.
-      if (result?.outcome === "success") {
-        setPaymentJustSucceeded(true);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        setTimeout(() => setPaymentJustSucceeded(false), 6000);
 
-        // Defensive verify-with-retry — Paystack always appends ?reference=… to
-        // our `provider://settings/ads-payment-return` callback. Cross-confirms
-        // with Paystack instead of trusting the success-flag alone, so we never
-        // optimistically activate a campaign that the bank later declined.
-        const reference = extractPaystackReferenceFromUrl(result.url);
-        if (reference) {
-          const verifyResult = await verifyPaystackWithRetry(reference);
-          if (verifyResult.status === "failed") {
-            Alert.alert(
-              "Payment not completed",
-              verifyResult.errorMessage ??
-                "Paystack reported the payment failed. Please try again.",
-            );
-          } else if (verifyResult.status === "pending" || verifyResult.status === "unknown") {
-            Alert.alert(
-              "Your payment is being confirmed",
-              "Your ad will activate within a few minutes once Paystack confirms with your bank.",
-            );
-          }
-        }
+      const campaignId = opts?.campaignId;
+
+      if (result?.outcome === "cancel" || result?.outcome === "closed") {
+        const failed = adsFailedCopy("Payment wasn't completed.");
+        setPaymentOutcome({ phase: "failed", campaignId, ...failed });
+        await loadAll();
+        return;
       }
+
+      if (result?.outcome !== "success") {
+        await loadAll();
+        return;
+      }
+
+      // Cross-confirm against Paystack so we never optimistically claim a
+      // campaign is live before the bank/webhook signs off.
+      const reference = extractPaystackReferenceFromUrl(result.url);
+      const verifyResult = reference ? await verifyPaystackWithRetry(reference) : null;
+
+      if (verifyResult?.status === "failed") {
+        const failed = adsFailedCopy(verifyResult.errorMessage ?? null);
+        setPaymentOutcome({ phase: "failed", campaignId, ...failed });
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        await loadAll();
+        return;
+      }
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+      if (campaignId) {
+        const provisioned = await pollCampaignProvisioned(campaignId, {
+          maxAttempts: 6,
+          delayMs: 1500,
+        });
+        if (provisioned.state === "provisioned") {
+          const copy = adsSuccessCopy(provisioned.campaign, tenantCurrency);
+          setPaymentOutcome({ phase: "provisioned", campaignId, ...copy });
+        } else {
+          const copy = adsPendingCopy();
+          setPaymentOutcome({ phase: "pending", campaignId, ...copy });
+        }
+      } else {
+        const copy = adsPendingCopy();
+        setPaymentOutcome({ phase: "pending", ...copy });
+      }
+
       await loadAll();
-      // Payment confirmation and campaign activation are server-side mutations.
-      // A short follow-up refresh prevents transient stale cards right after checkout.
+      // Server-side provisioning lands a beat after the webhook returns 200;
+      // a short follow-up refresh prevents transient stale cards.
       setTimeout(() => {
         void loadAll();
-      }, 1200);
+      }, 1500);
     },
-    [adsPaystackCheckout, loadAll],
+    [adsPaystackCheckout, loadAll, tenantCurrency],
   );
 
   useEffect(() => {
     setLoading(true);
     loadAll();
   }, [loadAll]);
+
+  /**
+   * §Provider-paystack-audit 2026-05: when the cold-start payment-return screen
+   * navigates here with `payment_success=1`, surface the same outcome card as
+   * the in-app flow. Polls a few times in case the campaign GET hasn't caught
+   * the webhook update yet.
+   */
+  const coldStartHandledRef = useRef(false);
+  useEffect(() => {
+    const successFlag = localParams.payment_success === "1" || localParams.payment_success === "true";
+    const failedFlag = localParams.payment_failed === "1" || localParams.payment_failed === "true";
+    const pendingFlag = localParams.payment_pending === "1" || localParams.payment_pending === "true";
+    const campaignId = typeof localParams.campaign_id === "string" ? localParams.campaign_id : undefined;
+    if (!successFlag && !failedFlag && !pendingFlag) return;
+    if (coldStartHandledRef.current) return;
+    coldStartHandledRef.current = true;
+
+    const handle = async () => {
+      if (failedFlag) {
+        const failed = adsFailedCopy();
+        setPaymentOutcome({ phase: "failed", campaignId, ...failed });
+        await loadAll();
+        return;
+      }
+      if (pendingFlag && !successFlag) {
+        const pending = adsPendingCopy();
+        setPaymentOutcome({ phase: "pending", campaignId, ...pending });
+        await loadAll();
+        return;
+      }
+      if (campaignId) {
+        const result = await pollCampaignProvisioned(campaignId, { maxAttempts: 6, delayMs: 1500 });
+        if (result.state === "provisioned") {
+          const copy = adsSuccessCopy(result.campaign, tenantCurrency);
+          setPaymentOutcome({ phase: "provisioned", campaignId, ...copy });
+        } else {
+          const copy = adsPendingCopy();
+          setPaymentOutcome({ phase: "pending", campaignId, ...copy });
+        }
+      } else {
+        const copy = adsPendingCopy();
+        setPaymentOutcome({ phase: "pending", ...copy });
+      }
+      await loadAll();
+    };
+    void handle();
+  }, [localParams.payment_success, localParams.payment_failed, localParams.payment_pending, localParams.campaign_id, loadAll, tenantCurrency]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -543,7 +691,7 @@ export default function AdsSettingsScreen() {
       const payUrl = adsCreatePaymentUrl(data);
       if (payUrl) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        await openAdsPaystack(payUrl);
+        await openAdsPaystack(payUrl, { campaignId: campaign?.id });
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -590,7 +738,7 @@ export default function AdsSettingsScreen() {
         const payUrl = adsCreatePaymentUrl(data);
         if (payUrl) {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          await openAdsPaystack(payUrl);
+          await openAdsPaystack(payUrl, { campaignId: campaign?.id });
           return;
         }
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -675,6 +823,65 @@ export default function AdsSettingsScreen() {
     [loadAll]
   );
 
+  /**
+   * §Provider-paystack-audit 2026-05: re-open Paystack for a draft campaign
+   * whose first payment didn't land (closed, declined, or otherwise stuck on
+   * "awaiting payment"). Posts to a dedicated retry-checkout endpoint that
+   * recomputes the amount, marks any stale `pending` order as `failed`, and
+   * issues a fresh HTTPS Paystack init so the same draft can be funded.
+   */
+  const handleRetryAdsPayment = useCallback(
+    async (campaign: Campaign) => {
+      setUpdating(campaign.id);
+      try {
+        const res = await api.post<{ payment_url?: string | null; order_id?: string; campaign_id?: string }>(
+          `/api/provider/ads/campaigns/${campaign.id}/checkout`,
+          ADS_NATIVE_PAYMENT,
+        );
+        if (res.error) {
+          Alert.alert("Error", getApiErrorMessage(res.error, "Couldn't reopen Paystack"));
+          return;
+        }
+        const payUrl = (res.data?.payment_url ?? "").trim();
+        if (!payUrl) {
+          Alert.alert("Error", "Paystack didn't return a payment URL. Please try again.");
+          return;
+        }
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        await openAdsPaystack(payUrl, { campaignId: campaign.id });
+      } catch (e: unknown) {
+        Alert.alert("Error", getApiErrorMessage(e, "Couldn't reopen Paystack"));
+      } finally {
+        setUpdating(null);
+      }
+    },
+    [openAdsPaystack],
+  );
+
+  /**
+   * §Provider-paystack-audit 2026-05: explicit "Cancel campaign" affordance
+   * for unpaid drafts. Maps to the existing `status: ended` PATCH but with
+   * cancel-style copy so providers don't have to interpret the generic "End"
+   * action when they simply want to drop a draft they never paid for.
+   */
+  const handleCancelDraft = useCallback(
+    (campaign: Campaign) => {
+      Alert.alert(
+        "Remove this campaign?",
+        "No charge was made. The draft will be cancelled and removed from your active list.",
+        [
+          { text: "Keep", style: "cancel" },
+          {
+            text: "Cancel campaign",
+            style: "destructive",
+            onPress: () => handleSetStatus(campaign.id, "ended"),
+          },
+        ],
+      );
+    },
+    [handleSetStatus],
+  );
+
   const openEdit = (c: Campaign) => {
     setEditCampaign(c);
     setEditForm({
@@ -729,29 +936,16 @@ export default function AdsSettingsScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={[twStyle("px-4 pt-4"), { paddingHorizontal: screenPadding }]}>
-          {/* §Ads-mobile-audit 2026-05 (payment success banner): explicit
-            confirmation after the in-app Paystack checkout closes. Dismissible
-            and auto-clears after 6s so it never blocks the UI. */}
-          {paymentJustSucceeded ? (
-            <View style={twStyle("mb-4 flex-row items-center rounded-2xl border border-emerald-200 bg-emerald-50 p-3")}>
-              <View style={twStyle("mr-3 rounded-full bg-emerald-100 p-2")}>
-                <Ionicons name="checkmark-circle" size={18} color="#047857" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={twStyle("text-sm font-semibold text-emerald-900")}>Payment confirmed</Text>
-                <Text style={twStyle("text-xs text-emerald-800")}>
-                  Your campaign is being funded — it will activate shortly.
-                </Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => setPaymentJustSucceeded(false)}
-                accessibilityLabel="Dismiss payment confirmation"
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <Ionicons name="close" size={20} color="#047857" />
-              </TouchableOpacity>
-            </View>
-          ) : null}
+          {/* §Provider-paystack-audit 2026-05 (payment outcome card): replaces
+            the old transient "Payment confirmed" banner with a richer state
+            machine. We surface model-specific success copy when the server
+            confirms provisioning, a softer "received — confirming" message
+            when we time out polling, and a clear failure state with retry /
+            cancel guidance so providers never see an ambiguous result. */}
+          <AdsPaymentOutcomeCard
+            outcome={paymentOutcome}
+            onDismiss={() => setPaymentOutcome({ phase: "idle" })}
+          />
 
           {/* Performance */}
           {performance && (
@@ -981,7 +1175,7 @@ export default function AdsSettingsScreen() {
                         if (campaign?.id) setCampaigns((prev) => [campaign, ...prev]);
                         const payUrl = adsCreatePaymentUrl(data);
                         if (payUrl) {
-                          await openAdsPaystack(payUrl);
+                          await openAdsPaystack(payUrl, { campaignId: campaign?.id });
                           return;
                         }
                         Alert.alert("Success", "Campaign created.");
@@ -1203,9 +1397,20 @@ export default function AdsSettingsScreen() {
                   };
                   const displayStatus = effectiveCampaignStatus(c, nowMs, metrics);
                   const hasBudgetLeft = Number(c.budget) > Number(c.spent ?? 0);
-                  const canActivate = (c.status === "draft" || c.status === "paused") && hasBudgetLeft;
-                  const showAwaitingPayment =
+                  const isUnfundedDraft =
                     (c.status === "draft" || c.status === "paused") && !hasBudgetLeft;
+                  /**
+                   * §Provider-paystack-audit 2026-05: prefer the server-derived
+                   * `payment_state` so unpaid / pending / failed drafts each get
+                   * their own badge + CTA. Fall back to the legacy "awaiting"
+                   * label only if the server didn't return the new field yet.
+                   */
+                  const paymentState: CampaignPaymentState =
+                    c.payment_state ?? (isUnfundedDraft ? "unpaid" : "none");
+                  const canActivate =
+                    (c.status === "draft" || c.status === "paused") &&
+                    hasBudgetLeft &&
+                    paymentState === "paid";
                   const progress = campaignProgress(c, nowMs, metrics);
                   return (
                     <View key={c.id} style={twStyle("rounded-2xl border border-gray-200 bg-white p-4")}>
@@ -1223,8 +1428,12 @@ export default function AdsSettingsScreen() {
                             <View style={twStyle("rounded-md border border-gray-200 px-2 py-0.5")}>
                               <Text style={twStyle("text-xs font-medium text-gray-600")}>{campaignModelLabel(c)}</Text>
                             </View>
-                            {showAwaitingPayment ? (
+                            {paymentState === "unpaid" ? (
                               <Text style={twStyle("text-xs font-medium text-amber-700")}>awaiting payment</Text>
+                            ) : paymentState === "pending" ? (
+                              <Text style={twStyle("text-xs font-medium text-blue-700")}>confirming payment…</Text>
+                            ) : paymentState === "failed" ? (
+                              <Text style={twStyle("text-xs font-medium text-red-700")}>payment failed</Text>
                             ) : null}
                           </View>
                           <Text style={twStyle("text-sm text-gray-600 leading-5")}>{campaignSummaryLine(c, tenantCurrency)}</Text>
@@ -1279,6 +1488,31 @@ export default function AdsSettingsScreen() {
                             {canEditBudgetFields(c) ? "Edit" : "Edit targeting"}
                           </Text>
                         </TouchableOpacity>
+                        {/* §Provider-paystack-audit 2026-05: explicit recovery
+                          actions for drafts that never funded — Complete payment
+                          (unpaid) or Try payment again (failed) reopen the same
+                          draft via /campaigns/[id]/checkout, and Cancel campaign
+                          ends the draft cleanly so providers aren't stuck. */}
+                        {paymentState === "unpaid" || paymentState === "failed" ? (
+                          <>
+                            <TouchableOpacity
+                              onPress={() => void handleRetryAdsPayment(c)}
+                              disabled={updating === c.id}
+                              style={twStyle("rounded-lg bg-indigo-600 px-3 py-2")}
+                            >
+                              <Text style={twStyle("text-white text-xs font-semibold")}>
+                                {paymentState === "failed" ? "Try payment again" : "Complete payment"}
+                              </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              onPress={() => handleCancelDraft(c)}
+                              disabled={updating === c.id}
+                              style={twStyle("rounded-lg border border-gray-300 bg-white px-3 py-2")}
+                            >
+                              <Text style={twStyle("text-gray-700 text-xs font-medium")}>Cancel campaign</Text>
+                            </TouchableOpacity>
+                          </>
+                        ) : null}
                         {canActivate ? (
                           <TouchableOpacity
                             onPress={() => handleSetStatus(c.id, "active")}
@@ -1297,7 +1531,7 @@ export default function AdsSettingsScreen() {
                             <Text style={twStyle("text-amber-900 text-xs font-semibold")}>Pause</Text>
                           </TouchableOpacity>
                         ) : null}
-                        {displayStatus !== "ended" ? (
+                        {displayStatus !== "ended" && paymentState !== "unpaid" && paymentState !== "failed" ? (
                           <TouchableOpacity
                             onPress={() => handleSetStatus(c.id, "ended")}
                             disabled={updating === c.id}

@@ -137,18 +137,27 @@ export async function POST(request: NextRequest) {
     if (!email) throw new Error("User email is required for payment");
 
     const reference = generateTransactionReference("provider_subscription", order.id);
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "";
+    /**
+     * §Provider-paystack-audit 2026-05: Paystack `callback_url` must be HTTPS.
+     * Provider mobile previously passed `provider://...` in `callback_url` —
+     * Paystack ignored it and customers (or providers) landed on the wrong page.
+     * Always use HTTPS for Paystack; leave `callbackFromClient` only as a legacy
+     * override when the caller already provided an HTTPS URL.
+     */
+    const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
+    const isHttpsClientCallback =
+      typeof callbackFromClient === "string" &&
+      /^https?:\/\//i.test(callbackFromClient);
+    const inAppParam = in_app ? "&in_app=1" : "";
     const callbackUrl =
-      in_app && callbackFromClient
-        ? `${callbackFromClient}${callbackFromClient.includes("?") ? "&" : "?"}payment_success=true`
-        : in_app
-          ? `${baseUrl}/provider/subscription?payment_success=true&in_app=1`
-          : `${baseUrl}/provider/subscription?payment_success=true`;
+      in_app && isHttpsClientCallback
+        ? `${callbackFromClient}${callbackFromClient.includes("?") ? "&" : "?"}payment_success=true&order_id=${order.id}`
+        : `${baseUrl}/provider/subscription?payment_success=true&order_id=${order.id}${inAppParam}`;
 
     const renewCancelAction =
-      in_app && callbackFromClient
+      in_app && isHttpsClientCallback
         ? `${callbackFromClient}${callbackFromClient.includes("?") ? "&" : "?"}payment_cancelled=1`
-        : `${baseUrl}/provider/subscription?payment_cancelled=1`;
+        : `${baseUrl}/provider/subscription?payment_cancelled=1${inAppParam}`;
 
     const paystackData = await initializePaystackTransaction({
       email,

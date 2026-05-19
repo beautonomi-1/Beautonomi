@@ -119,6 +119,41 @@ export function slackNotifyVerificationReviewed(params: {
   });
 }
 
+/**
+ * A custom-offer payment was captured but the follow-up booking creation
+ * failed. The customer has been charged — finance/support needs to either
+ * retry the finalize or issue a refund manually.
+ *
+ * §custom-requests-lifecycle-2026-05
+ */
+export function slackNotifyCustomOfferFinalizeFailed(params: {
+  tenantId?: string | null;
+  offerId: string;
+  reference?: string | null;
+  reason?: string | null;
+  bookingId?: string | null;
+}) {
+  void tryNotifySlackEvent({
+    tenantId: params.tenantId ?? "platform",
+    environment: eventEnv(),
+    eventKey: SLACK_EVENT_KEYS.CUSTOM_OFFER_FINALIZE_FAILED,
+    dedupeKey: `custom_offer:${params.offerId}:finalize_failed`,
+    entityType: "custom_offer",
+    entityId: params.offerId,
+    title: "Custom offer paid but booking creation failed",
+    detailLines: [
+      `Offer: ${params.offerId.slice(0, 8)}…`,
+      params.reference ? `Payment ref: ${params.reference}` : null,
+      params.reason ? `Reason: ${params.reason}` : null,
+      params.bookingId ? `Booking row: ${params.bookingId}` : null,
+      "Action: review in Admin → Custom offers and retry or refund.",
+    ].filter(Boolean) as string[],
+    actionUrl: `/custom-offers/${params.offerId}`,
+  }).catch((err) => {
+    console.error("[slack] custom_offer finalize_failed notify error", err);
+  });
+}
+
 /** Manual upload or SumSub outcome that still needs admin review. */
 export function slackNotifyVerificationNeedsReview(params: {
   tenantId: string;

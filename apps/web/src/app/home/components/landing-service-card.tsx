@@ -5,6 +5,7 @@ import { FaStar } from "react-icons/fa";
 import { Heart } from "lucide-react";
 import Link from "next/link";
 import { StaticImageData } from "next/image";
+import { WEB_PROVIDER_IMAGE_FALLBACK } from "@/lib/provider-images";
 
 interface ServiceCardProps {
   image: StaticImageData | string;
@@ -33,16 +34,33 @@ const LandingServiceCard: React.FC<ServiceCardProps> = ({
 }) => {
   const href = providerSlug ? `/partner-profile?slug=${encodeURIComponent(providerSlug)}` : "#";
 
+  // §Provider-image fallback: swap to the bundled placeholder once if the
+  // supplied URL 404s, so one bad provider image doesn't repeatedly retry
+  // a missing /_next/image optimisation.
+  const [heroSrc, setHeroSrc] = React.useState<StaticImageData | string>(image);
+  React.useEffect(() => {
+    setHeroSrc(image);
+  }, [image]);
+  const [avatarBroken, setAvatarBroken] = React.useState(false);
+  React.useEffect(() => {
+    setAvatarBroken(false);
+  }, [providerImage]);
+
   return (
     <Link href={href} className="block" aria-disabled={!providerSlug}>
       <div className="w-full cursor-pointer group">
         {/* Image Container */}
         <div className="relative w-full h-40 md:h-64 rounded-lg md:rounded-xl overflow-hidden mb-2 md:mb-3">
           <Image
-            src={image}
+            src={heroSrc}
             alt={providerName}
             fill
             className="object-cover group-hover:scale-105 transition-transform duration-300"
+            onError={() => {
+              if (heroSrc !== WEB_PROVIDER_IMAGE_FALLBACK) {
+                setHeroSrc(WEB_PROVIDER_IMAGE_FALLBACK);
+              }
+            }}
           />
           
           {/* Top Rated Badge */}
@@ -68,12 +86,13 @@ const LandingServiceCard: React.FC<ServiceCardProps> = ({
           {/* Provider Profile Picture - Bottom Left */}
           <div className="absolute bottom-2 left-2 md:bottom-3 md:left-3">
             <div className="relative w-10 h-10 md:w-12 md:h-12 rounded-full border-2 border-white overflow-hidden bg-gray-200">
-              {providerImage ? (
+              {providerImage && !avatarBroken ? (
                 <Image
                   src={providerImage}
                   alt={providerName}
                   fill
                   className="object-cover"
+                  onError={() => setAvatarBroken(true)}
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center bg-gray-300">

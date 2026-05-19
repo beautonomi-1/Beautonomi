@@ -30,6 +30,7 @@ import {
 } from "@/lib/bookings/ensure-wallet-gift-booking-payments";
 import { recordLoyaltyRedemption } from "@/lib/loyalty/record-redemption";
 import { patchCustomOfferMessageAttachments } from "@/lib/custom-offers/sync-offer-message-attachments";
+import { slackNotifyCustomOfferFinalizeFailed } from "@/lib/integrations/slack/ops-triggers";
 
 export interface FinalizeCustomOfferPaymentInput {
   offerId: string;
@@ -85,6 +86,50 @@ type OfferRow = {
   travel_fee?: number;
   request?: CustomRequestRow;
 };
+
+/**
+ * Mark a custom offer as `finalize_failed`, patch the chat attachment, and
+ * fan a single Slack alert so the team can reconcile the captured payment.
+ */
+async function markFinalizeFailed(
+  adminSupabase: SupabaseClient,
+  args: {
+    offerId: string;
+    reference: string;
+    reason: string;
+    bookingId?: string | null;
+    tenantId?: string | null;
+    providerId?: string | null;
+  },
+): Promise<void> {
+  await adminSupabase
+    .from("custom_offers")
+    .update({ status: "finalize_failed", updated_at: new Date().toISOString() })
+    .eq("id", args.offerId);
+  await patchCustomOfferMessageAttachments(adminSupabase, args.offerId, {
+    status: "finalize_failed",
+  });
+  let tenantId = args.tenantId ?? null;
+  if (!tenantId && args.providerId) {
+    try {
+      const { data: prov } = await adminSupabase
+        .from("providers")
+        .select("tenant_id")
+        .eq("id", args.providerId)
+        .maybeSingle();
+      tenantId = (prov as { tenant_id?: string | null } | null)?.tenant_id ?? null;
+    } catch {
+      /* best-effort */
+    }
+  }
+  slackNotifyCustomOfferFinalizeFailed({
+    tenantId,
+    offerId: args.offerId,
+    reference: args.reference,
+    reason: args.reason,
+    bookingId: args.bookingId ?? null,
+  });
+}
 type CustomRequestRow = {
   id?: string;
   provider_id?: string;
@@ -263,11 +308,12 @@ export async function finalizeCustomOfferPayment(
 
   if (offeringError || !createdOffering) {
     console.error("[finalizeCustomOfferPayment] Failed to create offering:", offeringError);
-    await adminSupabase
-      .from("custom_offers")
-      .update({ status: "finalize_failed", updated_at: new Date().toISOString() })
-      .eq("id", offerId);
-    await patchCustomOfferMessageAttachments(adminSupabase, offerId, { status: "finalize_failed" });
+    await markFinalizeFailed(adminSupabase, {
+      offerId,
+      reference: input.reference,
+      reason: "offering_insert_failed",
+      providerId: req.provider_id ?? null,
+    });
     return { ok: false, reason: "offering_insert_failed" };
   }
 
@@ -409,11 +455,12 @@ export async function finalizeCustomOfferPayment(
     } catch {
       /* best-effort */
     }
-    await adminSupabase
-      .from("custom_offers")
-      .update({ status: "finalize_failed", updated_at: new Date().toISOString() })
-      .eq("id", offerId);
-    await patchCustomOfferMessageAttachments(adminSupabase, offerId, { status: "finalize_failed" });
+    await markFinalizeFailed(adminSupabase, {
+      offerId,
+      reference: input.reference,
+      reason: "booking_insert_failed",
+      providerId: req.provider_id ?? null,
+    });
     return { ok: false, reason: "booking_insert_failed" };
   }
 
@@ -421,6 +468,7 @@ export async function finalizeCustomOfferPayment(
   const start = new Date(scheduledAt);
   const end = new Date(start.getTime() + Number(offer.duration_minutes || 60) * 60 * 1000);
   const assignedStaffId = offer.staff_id || null;
+  const bookingTenantId = (booking as { tenant_id?: string | null }).tenant_id ?? null;
   if (conflictResolved) {
     try {
       await adminSupabase.from("booking_events").insert({
@@ -462,11 +510,14 @@ export async function finalizeCustomOfferPayment(
         updated_at: new Date().toISOString(),
       })
       .eq("id", booking.id);
-    await adminSupabase
-      .from("custom_offers")
-      .update({ status: "finalize_failed", updated_at: new Date().toISOString() })
-      .eq("id", offerId);
-    await patchCustomOfferMessageAttachments(adminSupabase, offerId, { status: "finalize_failed" });
+    await markFinalizeFailed(adminSupabase, {
+      offerId,
+      reference: input.reference,
+      reason: "booking_service_insert_failed",
+      bookingId: booking.id as string,
+      providerId: req.provider_id ?? null,
+      tenantId: bookingTenantId,
+    });
     return { ok: false, reason: "booking_service_insert_failed" };
   }
 
@@ -488,7 +539,6 @@ export async function finalizeCustomOfferPayment(
 
   // ── 8. booking_payments rows for each tender ───────────────────────────────
   const paystackTxId = paystackAmountMajor > 0 ? input.reference : null;
-  const bookingTenantId = (booking as { tenant_id?: string | null }).tenant_id ?? null;
 
   if (paystackAmountMajor > 0) {
     try {

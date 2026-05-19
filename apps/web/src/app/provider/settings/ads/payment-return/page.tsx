@@ -23,6 +23,31 @@ function AdsPaymentReturnInner() {
   const [ready, setReady] = useState(false);
   const [headline, setHeadline] = useState("Thanks — confirming with Paystack");
 
+  // For non-success returns (cancelled / invalid / missing params) we still
+  // need to tell the native shell what happened so it can dismiss the WebView
+  // gracefully with a result card instead of leaving the provider stranded.
+  useEffect(() => {
+    if (success) return;
+    if (context !== "app" && context !== "provider_inapp") return;
+    if (typeof window === "undefined") return;
+    try {
+      const w = window as Window & { ReactNativeWebView?: { postMessage: (msg: string) => void } };
+      if (!w.ReactNativeWebView?.postMessage) return;
+      w.ReactNativeWebView.postMessage(
+        JSON.stringify({
+          type: "BEAUTONOMI_ADS_PAYMENT_DONE",
+          status: cancelled ? "cancelled" : "failed",
+          order_id: orderId || null,
+          message: cancelled
+            ? "You cancelled the payment. No charge was made. You can try again from your Ads dashboard."
+            : "This payment return link is invalid or incomplete. Open Ads and pull to refresh.",
+        }),
+      );
+    } catch {
+      // ignore
+    }
+  }, [success, cancelled, context, orderId]);
+
   useEffect(() => {
     if (!success) return;
     let cancelled = false;
@@ -74,7 +99,15 @@ function AdsPaymentReturnInner() {
           );
           return;
         }
-        finish("Your ad budget is being activated. You can fund more boosts anytime from Ads.", "success", "Payment confirmed");
+        // §Provider-paystack-audit 2026-05: copy now matches the post-payment
+        // outcome card on Ads — campaigns auto-activate as soon as the webhook
+        // applies the funded budget, so we no longer instruct providers to
+        // "fund more boosts" (or activate manually) on this confirmation page.
+        finish(
+          "Your campaign is being funded and will go live shortly. Returning to Ads…",
+          "success",
+          "Payment confirmed",
+        );
         if (context === "app") {
           const confirmedParams = new URLSearchParams();
           confirmedParams.set("success", "1");

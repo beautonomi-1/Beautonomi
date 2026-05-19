@@ -26,6 +26,7 @@ import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatCurrency } from "@/lib/format";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { twStyle } from "@/lib/twStyle";
+import { stripHtmlToPlainText } from "@/lib/htmlPlainText";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 interface MembershipPlan {
@@ -294,9 +295,11 @@ export default function MembershipPlansScreen() {
                     </View>
                     <View style={twStyle("flex-1")}>
                       <Text style={twStyle("text-sm font-semibold text-gray-900")}>{plan.name}</Text>
-                      {plan.description && (
-                        <Text style={twStyle("text-xs text-gray-500")} numberOfLines={1}>{plan.description}</Text>
-                      )}
+                      {plan.description ? (
+                        <Text style={twStyle("text-xs text-gray-500")} numberOfLines={1}>
+                          {stripHtmlToPlainText(plan.description)}
+                        </Text>
+                      ) : null}
                     </View>
                   </View>
                 </View>

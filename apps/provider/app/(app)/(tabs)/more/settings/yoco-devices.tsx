@@ -2,7 +2,7 @@
  * Yoco Device Management Screen
  * List, add, edit, and delete Yoco Web POS devices (created via Yoco's API).
  */
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   TouchableOpacity,
   Alert,
   Switch,
+  AppState,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -62,6 +63,10 @@ export default function YocoDevicesScreen() {
     loading: integrationLoading,
     connect,
     disconnect,
+    connectOauth,
+    disconnectOauth,
+    dismissReconnectBanner,
+    reload: reloadIntegration,
   } = useYocoIntegration();
   const { data: locations } = useApi<Location[]>("/api/provider/locations");
 
@@ -86,6 +91,19 @@ export default function YocoDevicesScreen() {
     setFormLocationId(null);
     setFormActive(true);
   }, []);
+
+  // §Yoco-OAuth 2026-05: when the provider returns to the app from the Yoco
+  // OAuth flow (web browser), refetch the integration so the UI flips to
+  // "Connected" without a manual pull-to-refresh.
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        void reloadIntegration();
+        void reloadDevices();
+      }
+    });
+    return () => sub.remove();
+  }, [reloadIntegration, reloadDevices]);
 
   function openAdd() {
     resetForm();
@@ -211,7 +229,36 @@ export default function YocoDevicesScreen() {
     );
   }
 
-  const isConnected = integration?.is_enabled && integration?.api_key_set;
+  // §Yoco-OAuth 2026-05: the "primary" connected state is OAuth — only that
+  // unlocks adding real Web POS terminals. credential_mode='checkout' lets the
+  // provider take *online* payments via hosted checkout but cannot add
+  // physical terminals.
+  const credentialMode = integration?.credential_mode ?? "none";
+  const oauthConnected = integration?.oauth_connected === true;
+  const isAnyConnected =
+    Boolean(integration?.is_enabled) &&
+    (credentialMode === "oauth" || credentialMode === "checkout");
+  const canAddRealDevices = oauthConnected && integration?.is_enabled === true;
+  // §Yoco-OAuth 2026-05: only surface the OAuth CTA when the rollout flag is
+  // on for this tenant — except for providers who are already connected, who
+  // keep the Reconnect/Disconnect controls regardless.
+  const oauthV2Enabled = integration?.oauth_v2_enabled === true;
+  const showOauthCta = oauthV2Enabled || oauthConnected;
+  const showReconnectBanner =
+    oauthV2Enabled &&
+    credentialMode === "checkout" &&
+    !oauthConnected &&
+    !integration?.reconnect_banner_dismissed_at;
+  const statusLabel = oauthConnected
+    ? "Web POS connected"
+    : credentialMode === "checkout"
+      ? "Checkout only"
+      : "Not connected";
+  const statusTone = oauthConnected
+    ? { dot: "bg-green-500", text: "text-green-700", bg: "bg-green-50" }
+    : credentialMode === "checkout"
+      ? { dot: "bg-amber-500", text: "text-amber-700", bg: "bg-amber-50" }
+      : { dot: "bg-gray-400", text: "text-gray-500", bg: "bg-gray-100" };
 
   return (
     <ScreenContainer>
@@ -224,72 +271,172 @@ export default function YocoDevicesScreen() {
         accessibilityLabel="Yoco integration status"
       >
         <View style={twStyle("flex-row items-center justify-between")}>
-          <View style={twStyle("flex-row items-center")}>
+          <View style={twStyle("flex-row items-center flex-1")}>
             <View style={twStyle("h-10 w-10 items-center justify-center rounded-lg bg-blue-50")}>
               <Ionicons name="card-outline" size={20} color="#3b82f6" />
             </View>
-            <View style={twStyle("ml-3")}>
+            <View style={twStyle("ml-3 flex-1")}>
               <Text style={twStyle("text-base font-semibold text-gray-900")}>Yoco</Text>
-              <Text style={twStyle("text-xs text-gray-500")}>Card & tap-to-pay</Text>
+              <Text style={twStyle("text-xs text-gray-500")}>
+                {oauthConnected
+                  ? `Connected as ${integration?.oauth_business_name || "Yoco account"}`
+                  : credentialMode === "checkout"
+                    ? "Hosted checkout keys saved"
+                    : "Card & tap-to-pay"}
+              </Text>
             </View>
           </View>
-          <View
-            style={twStyle(`rounded-full px-3 py-1 ${isConnected ? "bg-green-50" : "bg-gray-100"}`)}
-          >
+          <View style={twStyle(`rounded-full px-3 py-1 ${statusTone.bg}`)}>
             <View style={twStyle("flex-row items-center")}>
-              <View
-                style={twStyle(`mr-1.5 h-2 w-2 rounded-full ${isConnected ? "bg-green-500" : "bg-gray-400"}`)}
-              />
-              <Text
-                style={twStyle(`text-xs font-medium ${isConnected ? "text-green-700" : "text-gray-500"}`)}
-              >
-                {isConnected ? "Connected" : "Not connected"}
+              <View style={twStyle(`mr-1.5 h-2 w-2 rounded-full ${statusTone.dot}`)} />
+              <Text style={twStyle(`text-xs font-medium ${statusTone.text}`)}>
+                {statusLabel}
               </Text>
             </View>
           </View>
         </View>
 
-        <View style={twStyle("mt-3 flex-row")}>
-          {isConnected ? (
+        {/* §Yoco-OAuth 2026-05: surface "reconnect needed" when the provider
+            only has Checkout keys saved (legacy flow). Dismissible — the
+            server records reconnect_banner_dismissed_at so the banner stays
+            gone until they actively want it back. */}
+        {showReconnectBanner ? (
+          <View style={twStyle("mt-3 rounded-xl bg-amber-50 p-3")}>
+            <Text style={twStyle("text-xs text-amber-900")}>
+              You have Yoco hosted-checkout keys, but Web POS terminals require an OAuth connection. Tap{" "}
+              <Text style={twStyle("font-semibold")}>Connect Yoco</Text> below to fix.
+            </Text>
             <TouchableOpacity
-              onPress={handleDisconnect}
-              style={[twStyle("flex-1 items-center rounded-xl border border-red-200 bg-red-50 py-2.5"), { marginRight: 8 }]}
+              onPress={dismissReconnectBanner}
+              style={twStyle("mt-2 self-start")}
               accessibilityRole="button"
-              accessibilityLabel="Disconnect Yoco"
+              accessibilityLabel="Dismiss reconnect banner"
             >
-              <Text style={twStyle("text-sm font-medium text-red-600")}>Disconnect</Text>
+              <Text style={twStyle("text-xs font-semibold text-amber-700")}>Dismiss</Text>
             </TouchableOpacity>
-          ) : (
-            <TouchableOpacity
-              onPress={() => {
-                setShowSecretKey(false);
-                setShowConnectSheet(true);
-              }}
-              style={twStyle("flex-1 items-center rounded-xl bg-indigo-600 py-2.5")}
-              accessibilityRole="button"
-              accessibilityLabel="Connect Yoco"
-            >
-              <Text style={twStyle("text-sm font-medium text-white")}>Connect Yoco</Text>
-            </TouchableOpacity>
-          )}
-        </View>
+          </View>
+        ) : null}
+
+        {oauthConnected && integration?.oauth_last_refresh_error ? (
+          <View style={twStyle("mt-3 rounded-xl bg-red-50 p-3")}>
+            <Text style={twStyle("text-xs text-red-700")}>
+              Yoco refused our last token refresh ({integration.oauth_last_refresh_error}). Tap{" "}
+              <Text style={twStyle("font-semibold")}>Reconnect</Text> to restore Web POS.
+            </Text>
+          </View>
+        ) : null}
+
+        {showOauthCta ? (
+          <View style={twStyle("mt-3 flex-row")}>
+            {oauthConnected ? (
+              <>
+                <TouchableOpacity
+                  onPress={connectOauth}
+                  style={[twStyle("flex-1 items-center rounded-xl border border-gray-200 bg-white py-2.5"), { marginRight: 8 }]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Reconnect Yoco"
+                >
+                  <Text style={twStyle("text-sm font-medium text-gray-700")}>Reconnect</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={async () => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                    Alert.alert(
+                      "Disconnect Yoco",
+                      "You'll need to reconnect to add new card terminals.",
+                      [
+                        { text: "Cancel", style: "cancel" },
+                        {
+                          text: "Disconnect",
+                          style: "destructive",
+                          onPress: async () => {
+                            const ok = await disconnectOauth();
+                            if (ok) reloadDevices();
+                          },
+                        },
+                      ],
+                    );
+                  }}
+                  style={twStyle("flex-1 items-center rounded-xl border border-red-200 bg-red-50 py-2.5")}
+                  accessibilityRole="button"
+                  accessibilityLabel="Disconnect Yoco"
+                >
+                  <Text style={twStyle("text-sm font-medium text-red-600")}>Disconnect</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <TouchableOpacity
+                onPress={connectOauth}
+                style={twStyle("flex-1 items-center rounded-xl bg-indigo-600 py-2.5")}
+                accessibilityRole="button"
+                accessibilityLabel="Connect Yoco via OAuth"
+              >
+                <Text style={twStyle("text-sm font-medium text-white")}>
+                  {credentialMode === "checkout" ? "Connect Yoco for terminals" : "Connect Yoco"}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        ) : null}
+
+        {/* Advanced: paste-keys fallback (hosted checkout only, no terminals). */}
+        <TouchableOpacity
+          onPress={() => {
+            setShowSecretKey(false);
+            setShowConnectSheet(true);
+          }}
+          style={twStyle("mt-3 items-center py-2")}
+          accessibilityRole="button"
+          accessibilityLabel="Use Checkout API keys instead"
+        >
+          <Text style={twStyle("text-xs text-indigo-600")}>
+            {credentialMode === "checkout"
+              ? "Update Checkout API keys"
+              : "Use Checkout API keys instead (online payments only)"}
+          </Text>
+        </TouchableOpacity>
+
+        {isAnyConnected && credentialMode === "checkout" ? (
+          <TouchableOpacity
+            onPress={handleDisconnect}
+            style={twStyle("mt-1 items-center py-2")}
+            accessibilityRole="button"
+            accessibilityLabel="Remove Checkout API keys"
+          >
+            <Text style={twStyle("text-xs text-red-500")}>Remove Checkout API keys</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
 
       {/* ─── Devices ─── */}
       <SectionHeader
         title="Devices"
-        actionLabel={isConnected ? "Add" : undefined}
-        onAction={isConnected ? openAdd : undefined}
+        actionLabel={canAddRealDevices ? "Add" : undefined}
+        onAction={canAddRealDevices ? openAdd : undefined}
       />
 
-      {!isConnected ? (
+      {!isAnyConnected ? (
         <View style={twStyle("items-center rounded-2xl border border-dashed border-gray-200 bg-gray-50 py-12")}>
           <Ionicons name="link-outline" size={36} color="#9ca3af" />
           <Text style={twStyle("mt-3 text-sm font-medium text-gray-500")}>
             Connect Yoco first
           </Text>
           <Text style={twStyle("mt-1 text-xs text-gray-400")}>
-            Add your API keys to manage devices
+            Tap Connect Yoco above to add Web POS terminals.
+          </Text>
+        </View>
+      ) : !canAddRealDevices ? (
+        <View style={twStyle("items-center rounded-2xl border border-dashed border-amber-200 bg-amber-50 py-12")}>
+          <Ionicons name="warning-outline" size={36} color="#d97706" />
+          <Text style={twStyle("mt-3 text-sm font-medium text-amber-700")}>
+            {showOauthCta
+              ? "OAuth required to add card terminals"
+              : "Hosted checkout only"}
+          </Text>
+          <Text style={twStyle("mt-1 text-xs text-amber-600 text-center px-6")}>
+            {showOauthCta
+              ? "You can still take online payments via hosted checkout. Tap Connect Yoco above to unlock physical terminals."
+              : "Your account is configured for online hosted checkout only. Contact support to enable physical Web POS terminals."}
           </Text>
         </View>
       ) : devices.length === 0 ? (
@@ -332,8 +479,12 @@ export default function YocoDevicesScreen() {
                       ) : null}
                     </View>
                     <Text style={twStyle("text-xs text-gray-500")}>
-                      Web POS
-                      {device.serial_number ? ` · ${device.serial_number}` : ""}
+                      {device.credential_mode === "virtual_checkout"
+                        ? "Hosted checkout"
+                        : "Web POS"}
+                      {device.credential_mode !== "virtual_checkout" && device.serial_number
+                        ? ` · ${device.serial_number}`
+                        : ""}
                     </Text>
                     {device.location_name ? (
                       <Text style={twStyle("text-xs text-gray-400")}>{device.location_name}</Text>

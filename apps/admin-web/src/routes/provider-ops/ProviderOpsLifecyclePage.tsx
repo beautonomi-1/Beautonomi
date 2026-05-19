@@ -23,6 +23,7 @@ import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { adminSpaTo } from "@/lib/adminSpaPath";
+import { adminQueryKeys } from "@/lib/adminQueryKeys";
 
 interface TimelineEvent {
   type: string;
@@ -152,8 +153,10 @@ export function ProviderOpsLifecyclePage() {
   );
   const qc = useQueryClient();
 
+  const lifecycleKey = adminQueryKeys.providerOps.providerLifecycle(providerId);
+
   const q = useQuery({
-    queryKey: ["admin", "provider-ops", "lifecycle", providerId],
+    queryKey: lifecycleKey,
     queryFn: () =>
       adminApi.getJson<{ data: LifecycleData }>(`/api/admin/provider-ops/providers/${providerId}/lifecycle`, {
         timeoutMs: 30_000,
@@ -165,9 +168,11 @@ export function ProviderOpsLifecyclePage() {
   const statusMut = useMutation({
     mutationFn: ({ status, reason }: { status: "active" | "suspended"; reason?: string }) =>
       adminApi.patchJson(`/api/admin/providers/${providerId}/status`, { status, reason }),
-    onSuccess: () => {
+    onSuccess: async () => {
       adminToast.success("Provider status updated");
-      void qc.invalidateQueries({ queryKey: ["admin", "provider-ops", "lifecycle", providerId] });
+      await qc.invalidateQueries({ queryKey: lifecycleKey });
+      await qc.invalidateQueries({ queryKey: adminQueryKeys.providers.detail(providerId) });
+      await qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
     },
     onError: (err: Error) => adminToast.error(err.message || "Failed to update status"),
   });
@@ -176,9 +181,13 @@ export function ProviderOpsLifecyclePage() {
   const verifyMut = useMutation({
     mutationFn: ({ verified }: { verified: boolean }) =>
       adminApi.patchJson(`/api/admin/providers/${providerId}/verify`, { verified }),
-    onSuccess: (_data, vars) => {
+    onSuccess: async (_data, vars) => {
       adminToast.success(vars.verified ? "Provider marked verified" : "Verification removed");
-      void qc.invalidateQueries({ queryKey: ["admin", "provider-ops", "lifecycle", providerId] });
+      await qc.invalidateQueries({ queryKey: lifecycleKey });
+      await qc.invalidateQueries({ queryKey: adminQueryKeys.providers.detail(providerId) });
+      await qc.invalidateQueries({ queryKey: adminQueryKeys.providers.all() });
+      await qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
+      await qc.invalidateQueries({ queryKey: adminQueryKeys.navCounts() });
     },
     onError: (err: Error) => adminToast.error(err.message || "Failed to update verification"),
   });

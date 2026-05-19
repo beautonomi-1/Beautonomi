@@ -203,7 +203,10 @@ export async function GET(
     const completeness = {
       has_business_name: !!provider.business_name,
       has_description: !!provider.description,
-      has_location: locations.length > 0 && !!locations[0]?.latitude,
+      has_location:
+        locations.length > 0 &&
+        locations[0]?.latitude != null &&
+        locations[0]?.longitude != null,
       is_verified: !!provider.is_verified,
       status: provider.status,
     };

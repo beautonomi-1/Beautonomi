@@ -76,8 +76,18 @@ const HAIR_TYPES = [
 const SKIN_TYPES = ["Oily", "Dry", "Combination", "Normal", "Sensitive"] as const;
 
 const MONTHS = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
 ];
 
 const currentYear = new Date().getFullYear();
@@ -136,6 +146,7 @@ export default function CustomerOnboarding() {
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
   const { refreshSession, user } = useAuth();
+  const userId = user?.id ?? null;
   const { bundle: configBundle } = useConfigBundle();
   const tenantRegionName = configBundle?.meta?.tenant_region?.name?.trim();
   const authPolicy = configBundle?.auth ?? DEFAULT_AUTH;
@@ -148,7 +159,7 @@ export default function CustomerOnboarding() {
       const fullKey = `customer.mobile.screens.onboarding.${key}`;
       return (options != null ? t(fullKey, options as never) : t(fullKey)) as string;
     },
-    [t],
+    [t]
   );
 
   const [step, setStep] = useState(1);
@@ -218,13 +229,14 @@ export default function CustomerOnboarding() {
 
   /* ── Init: prefill from profile ── */
   useEffect(() => {
+    if (!userId) return;
     let cancelled = false;
     async function init() {
       try {
         const oc = await api.get<{ completed?: boolean }>("/api/me/onboarding/complete");
         if (cancelled) return;
         if (!oc.error && oc.data?.completed === true) {
-          await AsyncStorage.setItem(onboardingDoneKey(user?.id), "1");
+          await AsyncStorage.setItem(onboardingDoneKey(userId), "1");
           const pending = await consumePostOnboardingHref();
           router.replace(pending ? resolvePostLoginHref(pending) : "/(app)/(tabs)/home");
           return;
@@ -251,7 +263,10 @@ export default function CustomerOnboarding() {
             setDobDay(parsed.day);
           }
           if (p?.phone) {
-            const { countryCode, national } = parsePhoneToCountryAndNational(p.phone, getDeviceDefaultCountryDial());
+            const { countryCode, national } = parsePhoneToCountryAndNational(
+              p.phone,
+              getDeviceDefaultCountryDial()
+            );
             setPhoneCountryCode(countryCode);
             setPhoneNational(national);
           }
@@ -275,9 +290,11 @@ export default function CustomerOnboarding() {
       if (!cancelled) setInitializing(false);
     }
     init();
-    return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
 
   /* ── Step validation ── */
   const validateStep = useCallback((): string | null => {
@@ -314,7 +331,10 @@ export default function CustomerOnboarding() {
       // §UX-audit 2026-05: 30s resend cooldown, inline banner replaces Alert.
       setResendCooldown(RESEND_COOLDOWN_SECS);
     } catch (e: unknown) {
-      Alert.alert(ob("sendCodeFailedTitle"), (e as { message?: string })?.message ?? ob("sendCodeFailedBody"));
+      Alert.alert(
+        ob("sendCodeFailedTitle"),
+        (e as { message?: string })?.message ?? ob("sendCodeFailedBody")
+      );
     } finally {
       setOtpSending(false);
     }
@@ -343,7 +363,10 @@ export default function CustomerOnboarding() {
       }
       setPhoneVerified(true);
     } catch (e: unknown) {
-      Alert.alert(ob("verificationFailedTitle"), (e as { message?: string })?.message ?? ob("verificationFailedBody"));
+      Alert.alert(
+        ob("verificationFailedTitle"),
+        (e as { message?: string })?.message ?? ob("verificationFailedBody")
+      );
     } finally {
       setOtpVerifying(false);
     }
@@ -395,7 +418,8 @@ export default function CustomerOnboarding() {
             const url = res.data?.url;
             if (url) {
               const patchRes = await api.patch("/api/me/profile", { avatar_url: url });
-              if (patchRes.error) throw new Error(getApiErrorMessage(patchRes.error, "Could not save avatar"));
+              if (patchRes.error)
+                throw new Error(getApiErrorMessage(patchRes.error, "Could not save avatar"));
             }
           }
           break;
@@ -403,7 +427,8 @@ export default function CustomerOnboarding() {
           const dob = buildDob(dobYear, dobMonth, dobDay);
           if (dob) {
             const res = await api.patch("/api/me/profile", { date_of_birth: dob });
-            if (res.error) throw new Error(getApiErrorMessage(res.error, "Could not save date of birth"));
+            if (res.error)
+              throw new Error(getApiErrorMessage(res.error, "Could not save date of birth"));
           }
           break;
         }
@@ -437,7 +462,8 @@ export default function CustomerOnboarding() {
               hair_type: hairTypes.length > 0 ? hairTypes : null,
               skin_type: skinType || null,
             });
-            if (res.error) throw new Error(getApiErrorMessage(res.error, "Could not save preferences"));
+            if (res.error)
+              throw new Error(getApiErrorMessage(res.error, "Could not save preferences"));
           }
           break;
       }
@@ -450,7 +476,10 @@ export default function CustomerOnboarding() {
 
   const handleContinue = async () => {
     const err = validateStep();
-    if (err) { Alert.alert(ob("requiredTitle"), err); return; }
+    if (err) {
+      Alert.alert(ob("requiredTitle"), err);
+      return;
+    }
     setSaving(true);
     const ok = await saveStep();
     setSaving(false);
@@ -481,10 +510,13 @@ export default function CustomerOnboarding() {
     try {
       const res = await api.post("/api/me/onboarding/complete");
       if (res.error) {
-        Alert.alert(ob("completeSetupFailedTitle"), res.error.message || ob("completeSetupFailedBody"));
+        Alert.alert(
+          ob("completeSetupFailedTitle"),
+          res.error.message || ob("completeSetupFailedBody")
+        );
         return;
       }
-      await AsyncStorage.setItem(onboardingDoneKey(user?.id), "1");
+      await AsyncStorage.setItem(onboardingDoneKey(userId), "1");
       await refreshSession();
       api.post("/api/me/analytics/identify").catch(() => {});
     } catch {
@@ -506,7 +538,9 @@ export default function CustomerOnboarding() {
       <LinearGradient colors={["#FFF5F9", "#FFFFFF"]} style={{ flex: 1 }}>
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
           <ActivityIndicator color={PRIMARY} size="large" />
-          <Text style={{ marginTop: 14, fontSize: 14, color: "#64748B", fontWeight: "500" }}>Setting things up…</Text>
+          <Text style={{ marginTop: 14, fontSize: 14, color: "#64748B", fontWeight: "500" }}>
+            Setting things up…
+          </Text>
         </View>
       </LinearGradient>
     );
@@ -517,9 +551,21 @@ export default function CustomerOnboarding() {
   const canGoBack = step > 1;
 
   return (
-    <LinearGradient colors={["#FFF8FB", "#FFFFFF", "#FAFBFC"]} locations={[0, 0.35, 1]} style={{ flex: 1, paddingTop: insets.top }}>
+    <LinearGradient
+      colors={["#FFF8FB", "#FFFFFF", "#FAFBFC"]}
+      locations={[0, 0.35, 1]}
+      style={{ flex: 1, paddingTop: insets.top }}
+    >
       {/* Header */}
-      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: SCREEN_PADDING, paddingVertical: 12 }}>
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          paddingHorizontal: SCREEN_PADDING,
+          paddingVertical: 12,
+        }}
+      >
         {canGoBack ? (
           <TouchableOpacity
             onPress={handleBack}
@@ -533,8 +579,12 @@ export default function CustomerOnboarding() {
           </TouchableOpacity>
         ) : (
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 18, fontWeight: "800", color: PRIMARY, letterSpacing: -0.5 }}>Beautonomi</Text>
-            <Text style={{ fontSize: 12, color: "#94A3B8", marginTop: 2, fontWeight: "500" }}>Let&apos;s personalize your experience</Text>
+            <Text style={{ fontSize: 18, fontWeight: "800", color: PRIMARY, letterSpacing: -0.5 }}>
+              Beautonomi
+            </Text>
+            <Text style={{ fontSize: 12, color: "#94A3B8", marginTop: 2, fontWeight: "500" }}>
+              Let&apos;s personalize your experience
+            </Text>
           </View>
         )}
         {canSkip && (
@@ -547,17 +597,31 @@ export default function CustomerOnboarding() {
       {/* Progress */}
       <View style={{ paddingHorizontal: SCREEN_PADDING }}>
         <StepDots total={TOTAL_STEPS} current={step} />
-        <Text style={{ textAlign: "center", fontSize: 12, color: "#94A3B8", marginBottom: 4, fontWeight: "500" }}>
+        <Text
+          style={{
+            textAlign: "center",
+            fontSize: 12,
+            color: "#94A3B8",
+            marginBottom: 4,
+            fontWeight: "500",
+          }}
+        >
           Step {step} of {TOTAL_STEPS}
         </Text>
       </View>
 
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : Platform.OS === "android" ? "height" : undefined}
+        behavior={
+          Platform.OS === "ios" ? "padding" : Platform.OS === "android" ? "height" : undefined
+        }
         style={{ flex: 1 }}
       >
         <ScrollView
-          contentContainerStyle={{ flexGrow: 1, paddingHorizontal: SCREEN_PADDING, paddingBottom: insets.bottom + 24 }}
+          contentContainerStyle={{
+            flexGrow: 1,
+            paddingHorizontal: SCREEN_PADDING,
+            paddingBottom: insets.bottom + 24,
+          }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
@@ -565,7 +629,10 @@ export default function CustomerOnboarding() {
           {step === 1 && (
             <View style={{ marginTop: 24 }}>
               <StepIcon name="person" />
-              <StepTitle title="What should we call you?" subtitle="This is how you'll appear to beauty providers" />
+              <StepTitle
+                title="What should we call you?"
+                subtitle="This is how you'll appear to beauty providers"
+              />
               <View
                 style={{
                   alignSelf: "center",
@@ -576,7 +643,9 @@ export default function CustomerOnboarding() {
                   marginBottom: 18,
                 }}
               >
-                <Text style={{ fontSize: 12, fontWeight: "600", color: PRIMARY }}>About 2 minutes · You can skip optional steps</Text>
+                <Text style={{ fontSize: 12, fontWeight: "600", color: PRIMARY }}>
+                  About 2 minutes · You can skip optional steps
+                </Text>
               </View>
               <SectionLabel required>Preferred name</SectionLabel>
               <TextInput
@@ -595,7 +664,10 @@ export default function CustomerOnboarding() {
           {step === 2 && (
             <View style={{ marginTop: 24, alignItems: "center" }}>
               <StepIcon name="camera" />
-              <StepTitle title="Add a profile photo" subtitle="Help providers recognise you. You can always update later." />
+              <StepTitle
+                title="Add a profile photo"
+                subtitle="Help providers recognise you. You can always update later."
+              />
               <Pressable
                 onPress={() => void handlePickPhoto()}
                 disabled={pickLoading}
@@ -615,7 +687,11 @@ export default function CustomerOnboarding() {
                   }}
                 >
                   {avatarUri ? (
-                    <Image source={{ uri: avatarUri }} style={{ width: "100%", height: "100%" }} contentFit="cover" />
+                    <Image
+                      source={{ uri: avatarUri }}
+                      style={{ width: "100%", height: "100%" }}
+                      contentFit="cover"
+                    />
                   ) : (
                     <Ionicons name="camera-outline" size={40} color={PRIMARY + "80"} />
                   )}
@@ -623,7 +699,9 @@ export default function CustomerOnboarding() {
                 <Text style={{ marginTop: 14, fontSize: 15, fontWeight: "600", color: "#334155" }}>
                   {pickLoading ? "Opening…" : avatarUri ? "Change photo" : "Tap to add a photo"}
                 </Text>
-                <Text style={[hintStyle, { marginTop: 6, textAlign: "center", paddingHorizontal: 12 }]}>
+                <Text
+                  style={[hintStyle, { marginTop: 6, textAlign: "center", paddingHorizontal: 12 }]}
+                >
                   Camera or photo library · Optional · JPEG, PNG or WebP · max 5 MB
                 </Text>
               </Pressable>
@@ -634,29 +712,59 @@ export default function CustomerOnboarding() {
           {step === 3 && (
             <View style={{ marginTop: 24 }}>
               <StepIcon name="gift" />
-              <StepTitle title="When's your birthday?" subtitle="Used for birthday perks and age-appropriate recommendations" />
+              <StepTitle
+                title="When's your birthday?"
+                subtitle="Used for birthday perks and age-appropriate recommendations"
+              />
               <View style={{ flexDirection: "row", gap: 10 }}>
                 {/* Day */}
                 <View style={{ flex: 1 }}>
                   <SectionLabel>Day</SectionLabel>
-                  <TouchableOpacity onPress={() => { setShowDayPicker(true); setShowMonthPicker(false); setShowYearPicker(false); }} style={pickerTriggerStyle}>
-                    <Text style={{ color: dobDay ? "#1E293B" : "#94A3B8", fontSize: 15 }}>{dobDay || "--"}</Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setShowDayPicker(true);
+                      setShowMonthPicker(false);
+                      setShowYearPicker(false);
+                    }}
+                    style={pickerTriggerStyle}
+                  >
+                    <Text style={{ color: dobDay ? "#1E293B" : "#94A3B8", fontSize: 15 }}>
+                      {dobDay || "--"}
+                    </Text>
                     <Ionicons name="chevron-down" size={16} color="#94A3B8" />
                   </TouchableOpacity>
                 </View>
                 {/* Month */}
                 <View style={{ flex: 2 }}>
                   <SectionLabel>Month</SectionLabel>
-                  <TouchableOpacity onPress={() => { setShowMonthPicker(true); setShowDayPicker(false); setShowYearPicker(false); }} style={pickerTriggerStyle}>
-                    <Text style={{ color: dobMonth ? "#1E293B" : "#94A3B8", fontSize: 15 }}>{dobMonth || "Month"}</Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setShowMonthPicker(true);
+                      setShowDayPicker(false);
+                      setShowYearPicker(false);
+                    }}
+                    style={pickerTriggerStyle}
+                  >
+                    <Text style={{ color: dobMonth ? "#1E293B" : "#94A3B8", fontSize: 15 }}>
+                      {dobMonth || "Month"}
+                    </Text>
                     <Ionicons name="chevron-down" size={16} color="#94A3B8" />
                   </TouchableOpacity>
                 </View>
                 {/* Year */}
                 <View style={{ flex: 1.5 }}>
                   <SectionLabel>Year</SectionLabel>
-                  <TouchableOpacity onPress={() => { setShowYearPicker(true); setShowDayPicker(false); setShowMonthPicker(false); }} style={pickerTriggerStyle}>
-                    <Text style={{ color: dobYear ? "#1E293B" : "#94A3B8", fontSize: 15 }}>{dobYear || "Year"}</Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setShowYearPicker(true);
+                      setShowDayPicker(false);
+                      setShowMonthPicker(false);
+                    }}
+                    style={pickerTriggerStyle}
+                  >
+                    <Text style={{ color: dobYear ? "#1E293B" : "#94A3B8", fontSize: 15 }}>
+                      {dobYear || "Year"}
+                    </Text>
                     <Ionicons name="chevron-down" size={16} color="#94A3B8" />
                   </TouchableOpacity>
                 </View>
@@ -667,24 +775,35 @@ export default function CustomerOnboarding() {
                 <ScrollPickerList
                   items={Array.from({ length: 31 }, (_, i) => String(i + 1))}
                   selected={dobDay}
-                  onSelect={(v) => { setDobDay(v); setShowDayPicker(false); }}
+                  onSelect={(v) => {
+                    setDobDay(v);
+                    setShowDayPicker(false);
+                  }}
                 />
               )}
               {showMonthPicker && (
                 <ScrollPickerList
                   items={MONTHS}
                   selected={dobMonth}
-                  onSelect={(v) => { setDobMonth(v); setShowMonthPicker(false); }}
+                  onSelect={(v) => {
+                    setDobMonth(v);
+                    setShowMonthPicker(false);
+                  }}
                 />
               )}
               {showYearPicker && (
                 <ScrollPickerList
                   items={BIRTH_YEARS}
                   selected={dobYear}
-                  onSelect={(v) => { setDobYear(v); setShowYearPicker(false); }}
+                  onSelect={(v) => {
+                    setDobYear(v);
+                    setShowYearPicker(false);
+                  }}
                 />
               )}
-              <Text style={[hintStyle, { marginTop: 10 }]}>You must be at least 13 years old to use Beautonomi.</Text>
+              <Text style={[hintStyle, { marginTop: 10 }]}>
+                You must be at least 13 years old to use Beautonomi.
+              </Text>
             </View>
           )}
 
@@ -692,15 +811,32 @@ export default function CustomerOnboarding() {
           {step === 4 && (
             <View style={{ marginTop: 24 }}>
               <StepIcon name="phone-portrait" />
-              <StepTitle title="Add your phone number" subtitle="Required for booking confirmations and house-call services" />
+              <StepTitle
+                title="Add your phone number"
+                subtitle="Required for booking confirmations and house-call services"
+              />
 
               {phoneVerified ? (
                 <View style={{ alignItems: "center", paddingVertical: 24 }}>
-                  <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: "#D1FAE5", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
+                  <View
+                    style={{
+                      width: 56,
+                      height: 56,
+                      borderRadius: 28,
+                      backgroundColor: "#D1FAE5",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      marginBottom: 12,
+                    }}
+                  >
                     <Ionicons name="checkmark" size={28} color="#059669" />
                   </View>
-                  <Text style={{ fontSize: 16, fontWeight: "700", color: "#1E293B" }}>Phone verified</Text>
-                  <Text style={{ fontSize: 13, color: "#64748B", marginTop: 4 }}>{pendingPhoneE164 || `${phoneCountryCode}${phoneNational}`}</Text>
+                  <Text style={{ fontSize: 16, fontWeight: "700", color: "#1E293B" }}>
+                    Phone verified
+                  </Text>
+                  <Text style={{ fontSize: 13, color: "#64748B", marginTop: 4 }}>
+                    {pendingPhoneE164 || `${phoneCountryCode}${phoneNational}`}
+                  </Text>
                 </View>
               ) : (
                 <>
@@ -709,7 +845,11 @@ export default function CustomerOnboarding() {
                     countryCode={phoneCountryCode}
                     nationalValue={phoneNational}
                     onCountryCodeChange={setPhoneCountryCode}
-                    onNationalChange={(v) => { setPhoneNational(v); setOtpSent(false); setOtpCode(""); }}
+                    onNationalChange={(v) => {
+                      setPhoneNational(v);
+                      setOtpSent(false);
+                      setOtpCode("");
+                    }}
                     placeholder="082 123 4567"
                   />
                   <TouchableOpacity
@@ -718,23 +858,35 @@ export default function CustomerOnboarding() {
                     style={{
                       marginTop: 12,
                       backgroundColor: otpSending || resendCooldown > 0 ? "#E2E8F0" : PRIMARY,
-                      borderRadius: RADIUS_BUTTON, paddingVertical: 14, alignItems: "center",
+                      borderRadius: RADIUS_BUTTON,
+                      paddingVertical: 14,
+                      alignItems: "center",
                     }}
                     accessibilityRole="button"
                     accessibilityState={{ disabled: otpSending || resendCooldown > 0 }}
                     accessibilityLabel={
                       resendCooldown > 0
                         ? `Resend in ${resendCooldown} seconds`
-                        : otpSent ? "Resend code" : "Send verification code"
+                        : otpSent
+                          ? "Resend code"
+                          : "Send verification code"
                     }
                   >
                     {otpSending ? (
                       <ActivityIndicator color="#fff" size="small" />
                     ) : (
-                      <Text style={{ color: resendCooldown > 0 ? "#94A3B8" : "#fff", fontWeight: "600", fontSize: 15 }}>
+                      <Text
+                        style={{
+                          color: resendCooldown > 0 ? "#94A3B8" : "#fff",
+                          fontWeight: "600",
+                          fontSize: 15,
+                        }}
+                      >
                         {resendCooldown > 0
                           ? `Resend in ${resendCooldown}s`
-                          : otpSent ? "Resend code" : "Send verification code"}
+                          : otpSent
+                            ? "Resend code"
+                            : "Send verification code"}
                       </Text>
                     )}
                   </TouchableOpacity>
@@ -761,7 +913,8 @@ export default function CustomerOnboarding() {
                     >
                       <Ionicons name="checkmark-circle" size={18} color="#059669" />
                       <Text style={{ flex: 1, color: "#065F46", fontSize: 13, lineHeight: 18 }}>
-                        Code sent. Valid for about {Math.max(1, Math.round(smsOtpExpirySec / 60))} min.
+                        Code sent. Valid for about {Math.max(1, Math.round(smsOtpExpirySec / 60))}{" "}
+                        min.
                       </Text>
                     </View>
                   )}
@@ -774,31 +927,56 @@ export default function CustomerOnboarding() {
                         value={otpCode}
                         onChange={setOtpCode}
                         onComplete={(code) => {
-                          if (!otpVerifying && isCompleteOtpForLength(code, smsOtpLen)) void handleVerifyOtp(code);
+                          if (!otpVerifying && isCompleteOtpForLength(code, smsOtpLen))
+                            void handleVerifyOtp(code);
                         }}
                         disabled={otpVerifying || phoneVerified}
                       />
                       <TouchableOpacity
                         onPress={() => void handleVerifyOtp()}
-                        disabled={!isCompleteOtpForLength(otpCode, smsOtpLen) || otpVerifying || phoneVerified}
+                        disabled={
+                          !isCompleteOtpForLength(otpCode, smsOtpLen) ||
+                          otpVerifying ||
+                          phoneVerified
+                        }
                         style={{
-                          marginTop: 12, backgroundColor: PRIMARY, borderRadius: RADIUS_BUTTON,
-                          paddingVertical: 14, alignItems: "center",
-                          opacity: !isCompleteOtpForLength(otpCode, smsOtpLen) || otpVerifying ? 0.5 : 1,
+                          marginTop: 12,
+                          backgroundColor: PRIMARY,
+                          borderRadius: RADIUS_BUTTON,
+                          paddingVertical: 14,
+                          alignItems: "center",
+                          opacity:
+                            !isCompleteOtpForLength(otpCode, smsOtpLen) || otpVerifying ? 0.5 : 1,
                         }}
                       >
                         {otpVerifying ? (
                           <ActivityIndicator color="#fff" size="small" />
                         ) : (
-                          <Text style={{ color: "#fff", fontWeight: "600", fontSize: 15 }}>Verify</Text>
+                          <Text style={{ color: "#fff", fontWeight: "600", fontSize: 15 }}>
+                            Verify
+                          </Text>
                         )}
                       </TouchableOpacity>
                     </View>
                   )}
 
                   {/* Required notice */}
-                  <View style={{ flexDirection: "row", gap: 8, backgroundColor: "#FFFBEB", borderRadius: RADIUS_CARD, padding: 12, marginTop: 16 }}>
-                    <Ionicons name="alert-circle-outline" size={16} color="#D97706" style={{ marginTop: 1 }} />
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      gap: 8,
+                      backgroundColor: "#FFFBEB",
+                      borderRadius: RADIUS_CARD,
+                      padding: 12,
+                      marginTop: 16,
+                    }}
+                  >
+                    <Ionicons
+                      name="alert-circle-outline"
+                      size={16}
+                      color="#D97706"
+                      style={{ marginTop: 1 }}
+                    />
                     <Text style={{ flex: 1, fontSize: 12, color: "#92400E", lineHeight: 18 }}>
                       Phone verification is required to continue and to make bookings.
                     </Text>
@@ -812,7 +990,10 @@ export default function CustomerOnboarding() {
           {step === 5 && (
             <View style={{ marginTop: 24 }}>
               <StepIcon name="location" />
-              <StepTitle title="Where are you based?" subtitle="Used for house-call bookings and finding services near you" />
+              <StepTitle
+                title="Where are you based?"
+                subtitle="Used for house-call bookings and finding services near you"
+              />
 
               <AddressPicker
                 visible={addressPickerOpen}
@@ -823,8 +1004,22 @@ export default function CustomerOnboarding() {
               />
 
               {alreadyHasAddress && (
-                <View style={{ flexDirection: "row", gap: 8, backgroundColor: "#F0FDF4", borderRadius: RADIUS_CARD, padding: 12, marginBottom: 16 }}>
-                  <Ionicons name="checkmark-circle" size={16} color="#16A34A" style={{ marginTop: 1 }} />
+                <View
+                  style={{
+                    flexDirection: "row",
+                    gap: 8,
+                    backgroundColor: "#F0FDF4",
+                    borderRadius: RADIUS_CARD,
+                    padding: 12,
+                    marginBottom: 16,
+                  }}
+                >
+                  <Ionicons
+                    name="checkmark-circle"
+                    size={16}
+                    color="#16A34A"
+                    style={{ marginTop: 1 }}
+                  />
                   <Text style={{ flex: 1, fontSize: 13, color: "#166534", lineHeight: 18 }}>
                     You already have a saved address. You can add another below, or continue.
                   </Text>
@@ -854,7 +1049,9 @@ export default function CustomerOnboarding() {
                   >
                     <Ionicons name="map-outline" size={22} color={PRIMARY} />
                     <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 15, fontWeight: "700", color: "#0F172A" }}>Find on map</Text>
+                      <Text style={{ fontSize: 15, fontWeight: "700", color: "#0F172A" }}>
+                        Find on map
+                      </Text>
                       <Text style={{ fontSize: 12, color: "#64748B", marginTop: 2 }}>
                         Search, drop a pin, or use current location — same as when you book
                       </Text>
@@ -862,21 +1059,25 @@ export default function CustomerOnboarding() {
                     <Ionicons name="chevron-forward" size={20} color={PRIMARY} />
                   </TouchableOpacity>
 
-                  {addressLatitude != null && addressLongitude != null && Number.isFinite(addressLatitude) && Number.isFinite(addressLongitude) && (
-                    <View style={{ marginBottom: 14 }}>
-                      <SectionLabel>Map preview</SectionLabel>
-                      <StaticMapImage
-                        latitude={addressLatitude}
-                        longitude={addressLongitude}
-                        width={Math.max(280, windowWidth - SCREEN_PADDING * 2)}
-                        height={152}
-                        borderRadius={12}
-                      />
-                      <Text style={[hintStyle, { marginTop: 6 }]}>
-                        Pin shows the saved location for distances and directions. Edit the fields below if needed.
-                      </Text>
-                    </View>
-                  )}
+                  {addressLatitude != null &&
+                    addressLongitude != null &&
+                    Number.isFinite(addressLatitude) &&
+                    Number.isFinite(addressLongitude) && (
+                      <View style={{ marginBottom: 14 }}>
+                        <SectionLabel>Map preview</SectionLabel>
+                        <StaticMapImage
+                          latitude={addressLatitude}
+                          longitude={addressLongitude}
+                          width={Math.max(280, windowWidth - SCREEN_PADDING * 2)}
+                          height={152}
+                          borderRadius={12}
+                        />
+                        <Text style={[hintStyle, { marginTop: 6 }]}>
+                          Pin shows the saved location for distances and directions. Edit the fields
+                          below if needed.
+                        </Text>
+                      </View>
+                    )}
                 </>
               )}
 
@@ -916,11 +1117,24 @@ export default function CustomerOnboarding() {
               <View style={{ flexDirection: "row", gap: 10 }}>
                 <View style={{ flex: 1 }}>
                   <SectionLabel>Province</SectionLabel>
-                  <TextInput value={province} onChangeText={setProvince} placeholder="Gauteng" style={inputStyle} placeholderTextColor="#94A3B8" />
+                  <TextInput
+                    value={province}
+                    onChangeText={setProvince}
+                    placeholder="Gauteng"
+                    style={inputStyle}
+                    placeholderTextColor="#94A3B8"
+                  />
                 </View>
                 <View style={{ flex: 1 }}>
                   <SectionLabel>Postal code</SectionLabel>
-                  <TextInput value={postalCode} onChangeText={setPostalCode} placeholder="0001" keyboardType="numeric" style={inputStyle} placeholderTextColor="#94A3B8" />
+                  <TextInput
+                    value={postalCode}
+                    onChangeText={setPostalCode}
+                    placeholder="0001"
+                    keyboardType="numeric"
+                    style={inputStyle}
+                    placeholderTextColor="#94A3B8"
+                  />
                 </View>
               </View>
 
@@ -934,10 +1148,25 @@ export default function CustomerOnboarding() {
               />
 
               {!alreadyHasAddress && (
-                <View style={{ flexDirection: "row", gap: 8, backgroundColor: "#FFFBEB", borderRadius: RADIUS_CARD, padding: 12, marginTop: 8 }}>
-                  <Ionicons name="alert-circle-outline" size={16} color="#D97706" style={{ marginTop: 1 }} />
+                <View
+                  style={{
+                    flexDirection: "row",
+                    gap: 8,
+                    backgroundColor: "#FFFBEB",
+                    borderRadius: RADIUS_CARD,
+                    padding: 12,
+                    marginTop: 8,
+                  }}
+                >
+                  <Ionicons
+                    name="alert-circle-outline"
+                    size={16}
+                    color="#D97706"
+                    style={{ marginTop: 1 }}
+                  />
                   <Text style={{ flex: 1, fontSize: 12, color: "#92400E", lineHeight: 18 }}>
-                    An address is required for house-call bookings. Only shared with providers when you book a visit.
+                    An address is required for house-call bookings. Only shared with providers when
+                    you book a visit.
                   </Text>
                 </View>
               )}
@@ -948,7 +1177,10 @@ export default function CustomerOnboarding() {
           {step === 6 && (
             <View style={{ marginTop: 24 }}>
               <StepIcon name="sparkles" />
-              <StepTitle title="Your beauty profile" subtitle="We'll personalise service recommendations just for you" />
+              <StepTitle
+                title="Your beauty profile"
+                subtitle="We'll personalise service recommendations just for you"
+              />
 
               <SectionLabel>Hair type (select all that apply)</SectionLabel>
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 24 }}>
@@ -963,13 +1195,23 @@ export default function CustomerOnboarding() {
                         )
                       }
                       style={{
-                        paddingHorizontal: 14, paddingVertical: 8, borderRadius: 99,
+                        paddingHorizontal: 14,
+                        paddingVertical: 8,
+                        borderRadius: 99,
                         borderWidth: 1,
                         borderColor: active ? PRIMARY : "#E2E8F0",
                         backgroundColor: active ? PRIMARY : "#fff",
                       }}
                     >
-                      <Text style={{ fontSize: 13, fontWeight: "500", color: active ? "#fff" : "#475569" }}>{h}</Text>
+                      <Text
+                        style={{
+                          fontSize: 13,
+                          fontWeight: "500",
+                          color: active ? "#fff" : "#475569",
+                        }}
+                      >
+                        {h}
+                      </Text>
                     </Pressable>
                   );
                 })}
@@ -984,13 +1226,23 @@ export default function CustomerOnboarding() {
                       key={s}
                       onPress={() => setSkinType(active ? "" : s)}
                       style={{
-                        paddingHorizontal: 14, paddingVertical: 8, borderRadius: 99,
+                        paddingHorizontal: 14,
+                        paddingVertical: 8,
+                        borderRadius: 99,
                         borderWidth: 1,
                         borderColor: active ? PRIMARY : "#E2E8F0",
                         backgroundColor: active ? PRIMARY : "#fff",
                       }}
                     >
-                      <Text style={{ fontSize: 13, fontWeight: "500", color: active ? "#fff" : "#475569" }}>{s}</Text>
+                      <Text
+                        style={{
+                          fontSize: 13,
+                          fontWeight: "500",
+                          color: active ? "#fff" : "#475569",
+                        }}
+                      >
+                        {s}
+                      </Text>
                     </Pressable>
                   );
                 })}
@@ -1026,8 +1278,14 @@ export default function CustomerOnboarding() {
             </TouchableOpacity>
 
             {canSkip && (
-              <TouchableOpacity onPress={handleSkip} disabled={saving} style={{ alignItems: "center", paddingVertical: 8 }}>
-                <Text style={{ fontSize: 14, color: "#94A3B8" }}>{isLastStep ? "Skip and finish" : "Skip for now"}</Text>
+              <TouchableOpacity
+                onPress={handleSkip}
+                disabled={saving}
+                style={{ alignItems: "center", paddingVertical: 8 }}
+              >
+                <Text style={{ fontSize: 14, color: "#94A3B8" }}>
+                  {isLastStep ? "Skip and finish" : "Skip for now"}
+                </Text>
               </TouchableOpacity>
             )}
           </View>
@@ -1042,7 +1300,16 @@ export default function CustomerOnboarding() {
 function StepIcon({ name }: { name: string }) {
   return (
     <View style={{ alignItems: "center", marginBottom: 12 }}>
-      <View style={{ width: 56, height: 56, borderRadius: 16, backgroundColor: Colors.primary + "18", alignItems: "center", justifyContent: "center" }}>
+      <View
+        style={{
+          width: 56,
+          height: 56,
+          borderRadius: 16,
+          backgroundColor: Colors.primary + "18",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
         <Ionicons name={name as any} size={28} color={Colors.primary} />
       </View>
     </View>
@@ -1052,8 +1319,20 @@ function StepIcon({ name }: { name: string }) {
 function StepTitle({ title, subtitle }: { title: string; subtitle: string }) {
   return (
     <View style={{ alignItems: "center", marginBottom: 24 }}>
-      <Text style={{ fontSize: 22, fontWeight: "800", color: "#0F172A", textAlign: "center", marginBottom: 6 }}>{title}</Text>
-      <Text style={{ fontSize: 14, color: "#64748B", textAlign: "center", lineHeight: 20 }}>{subtitle}</Text>
+      <Text
+        style={{
+          fontSize: 22,
+          fontWeight: "800",
+          color: "#0F172A",
+          textAlign: "center",
+          marginBottom: 6,
+        }}
+      >
+        {title}
+      </Text>
+      <Text style={{ fontSize: 14, color: "#64748B", textAlign: "center", lineHeight: 20 }}>
+        {subtitle}
+      </Text>
     </View>
   );
 }
@@ -1068,19 +1347,36 @@ function ScrollPickerList({
   onSelect: (v: string) => void;
 }) {
   return (
-    <View style={{ maxHeight: 200, borderWidth: 1, borderColor: "#E2E8F0", borderRadius: RADIUS_CARD, marginTop: 8, overflow: "hidden" }}>
+    <View
+      style={{
+        maxHeight: 200,
+        borderWidth: 1,
+        borderColor: "#E2E8F0",
+        borderRadius: RADIUS_CARD,
+        marginTop: 8,
+        overflow: "hidden",
+      }}
+    >
       <ScrollView showsVerticalScrollIndicator={false}>
         {items.map((item) => (
           <TouchableOpacity
             key={item}
             onPress={() => onSelect(item)}
             style={{
-              paddingVertical: 12, paddingHorizontal: 16,
+              paddingVertical: 12,
+              paddingHorizontal: 16,
               backgroundColor: selected === item ? Colors.primary + "12" : "#fff",
-              borderBottomWidth: 1, borderBottomColor: "#F1F5F9",
+              borderBottomWidth: 1,
+              borderBottomColor: "#F1F5F9",
             }}
           >
-            <Text style={{ fontSize: 15, color: selected === item ? Colors.primary : "#334155", fontWeight: selected === item ? "600" : "400" }}>
+            <Text
+              style={{
+                fontSize: 15,
+                color: selected === item ? Colors.primary : "#334155",
+                fontWeight: selected === item ? "600" : "400",
+              }}
+            >
               {item}
             </Text>
           </TouchableOpacity>

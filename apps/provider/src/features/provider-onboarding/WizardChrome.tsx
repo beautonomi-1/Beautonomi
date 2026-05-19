@@ -91,37 +91,44 @@ export function WizardChrome() {
         keyboardVerticalOffset={Platform.OS === "ios" ? 8 : 0}
       >
         {/* ── Progress zone ─────────────────────────────────────────────── */}
-        <View style={twStyle("bg-white px-4 pb-3 pt-2")}>
-          {/* Step counter + milestone label */}
-          <View style={twStyle("mb-2 flex-row items-center justify-between")}>
-            <View style={twStyle("flex-row items-center gap-1.5")}>
+        <View style={twStyle("bg-white px-5 pb-4 pt-3")}>
+          {/* Step counter + saved/saving status */}
+          <View style={twStyle("mb-3 flex-row items-center justify-between")}>
+            <View style={twStyle("flex-row items-center gap-2")}>
               {milestoneLabel ? (
-                <View style={twStyle("flex-row items-center gap-1 rounded-full bg-rose-50 px-2.5 py-0.5")}>
-                  <Text style={twStyle("text-[10px] font-bold uppercase tracking-wider text-primary")}>
+                <View style={twStyle("rounded-full bg-slate-100 px-3 py-1")}>
+                  <Text style={twStyle("text-[12px] font-bold uppercase tracking-wider text-slate-700")}>
                     {milestoneLabel}
                   </Text>
                 </View>
               ) : null}
-              <Text style={twStyle("text-xs font-medium text-gray-400")}>
+              <Text style={twStyle("text-[13px] font-semibold text-slate-500")}>
                 Step {visibleIndex} of {visibleTotal}
               </Text>
             </View>
-            <View style={twStyle("flex-row items-center gap-1.5")}>
+            <View
+              style={twStyle(
+                `flex-row items-center gap-1.5 rounded-full px-3 py-1 ${
+                  savingDraft ? "bg-slate-50" : "bg-emerald-50"
+                }`,
+              )}
+            >
               {savingDraft ? (
                 <>
-                  <ActivityIndicator size="small" color="#9ca3af" />
-                  <Text style={twStyle("text-xs text-gray-400")}>Saving…</Text>
+                  <ActivityIndicator size="small" color="#64748b" />
+                  <Text style={twStyle("text-[12px] font-semibold text-slate-500")}>Saving</Text>
                 </>
               ) : (
-                <Text style={twStyle("text-xs font-semibold text-gray-500")}>
-                  {Math.round(progressPct)}%
-                </Text>
+                <>
+                  <Ionicons name="cloud-done-outline" size={14} color="#059669" />
+                  <Text style={twStyle("text-[12px] font-semibold text-emerald-700")}>Saved</Text>
+                </>
               )}
             </View>
           </View>
 
           {/* Segmented progress bar */}
-          <View style={twStyle("flex-row gap-1")}>
+          <View style={twStyle("flex-row gap-1.5")}>
             {MILESTONES.map((m, i) => {
               const done = milestoneProgress > i + 1;
               const active = milestoneProgress === i + 1;
@@ -130,17 +137,17 @@ export function WizardChrome() {
                   key={m.label}
                   style={[
                     twStyle(`h-2 flex-1 overflow-hidden rounded-full`),
-                    { backgroundColor: done || active ? "transparent" : "#e5e7eb" },
+                    { backgroundColor: done || active ? "transparent" : "#f1f5f9" },
                   ]}
                 >
                   {done ? (
-                    <View style={twStyle("h-full w-full rounded-full bg-primary")} />
+                    <View style={twStyle("h-full w-full rounded-full bg-slate-900")} />
                   ) : active ? (
-                    <View style={twStyle("h-full w-full overflow-hidden rounded-full bg-gray-200")}>
+                    <View style={twStyle("h-full w-full overflow-hidden rounded-full bg-slate-200")}>
                       {/* Proportional fill within the active milestone */}
                       <View
                         style={[
-                          twStyle("h-full rounded-full bg-primary"),
+                          twStyle("h-full rounded-full bg-slate-900"),
                           {
                             width: `${Math.min(100, progressPct * milestoneCount - i * 100)}%`,
                           },
@@ -148,7 +155,7 @@ export function WizardChrome() {
                       />
                     </View>
                   ) : (
-                    <View style={twStyle("h-full w-full rounded-full bg-gray-200")} />
+                    <View style={twStyle("h-full w-full rounded-full bg-slate-200")} />
                   )}
                 </View>
               );
@@ -156,7 +163,7 @@ export function WizardChrome() {
           </View>
 
           {/* Milestone name row */}
-          <View style={twStyle("mt-1 flex-row")}>
+          <View style={twStyle("mt-2 flex-row")}>
             {MILESTONES.map((m, i) => {
               const done = milestoneProgress > i + 1;
               const active = milestoneProgress === i + 1;
@@ -164,11 +171,12 @@ export function WizardChrome() {
                 <View key={m.label} style={twStyle("flex-1 items-center")}>
                   <Text
                     style={twStyle(
-                      `text-[9px] font-semibold ${active ? "text-primary" : done ? "text-emerald-600" : "text-gray-300"}`,
+                      `text-[12px] font-semibold ${active ? "text-slate-900" : done ? "text-emerald-700" : "text-slate-400"}`,
                     )}
                     numberOfLines={1}
                   >
-                    {done ? "✓" : ""} {m.label}
+                    {done ? "✓ " : ""}
+                    {m.label}
                   </Text>
                 </View>
               );
@@ -180,7 +188,7 @@ export function WizardChrome() {
         <ScrollView
           style={twStyle("flex-1")}
           contentContainerStyle={[
-            twStyle("px-4 pt-4"),
+            twStyle("px-5 pt-4"),
             { paddingBottom: 120 + Math.max(insets.bottom, 8) },
           ]}
           keyboardShouldPersistTaps="handled"
@@ -192,7 +200,7 @@ export function WizardChrome() {
         {/* ── Footer ───────────────────────────────────────────────────── */}
         <View
           style={[
-            twStyle("absolute bottom-0 left-0 right-0 border-t border-gray-100 bg-white px-4 pt-3"),
+            twStyle("absolute bottom-0 left-0 right-0 border-t border-slate-100 bg-white px-5 pt-4"),
             { paddingBottom: Math.max(insets.bottom, 12) + 12 },
           ]}
         >
@@ -201,12 +209,12 @@ export function WizardChrome() {
               <TouchableOpacity
                 onPress={skipForward}
                 style={twStyle(
-                  "flex-1 rounded-2xl border-2 border-gray-200 bg-white py-3.5 items-center justify-center",
+                  "flex-1 rounded-full border-2 border-slate-200 bg-white py-4 items-center justify-center transition-all duration-300",
                 )}
                 accessibilityRole="button"
                 accessibilityLabel="Skip this step"
               >
-                <Text style={twStyle("font-semibold text-gray-600")}>Skip for now</Text>
+                <Text style={twStyle("text-[16px] font-semibold text-slate-600")}>Skip for now</Text>
               </TouchableOpacity>
             ) : null}
             <TouchableOpacity
@@ -214,9 +222,9 @@ export function WizardChrome() {
               disabled={isSubmitting}
               style={[
                 twStyle(
-                  `flex-row items-center justify-center gap-2 rounded-2xl py-3.5 ${canSkipCurrent && !isLast ? "flex-1" : "flex-[2]"}`,
+                  `flex-row items-center justify-center gap-2 rounded-full py-4 transition-all duration-300 ${canSkipCurrent && !isLast ? "flex-1" : "flex-[2]"}`,
                 ),
-                { backgroundColor: Colors.primary, opacity: isSubmitting ? 0.7 : 1 },
+                { backgroundColor: "#0f172a", opacity: isSubmitting ? 0.7 : 1 },
                 !isSubmitting ? Shadows.cardSmall : undefined,
               ]}
               accessibilityRole="button"
@@ -225,15 +233,15 @@ export function WizardChrome() {
               {isSubmitting ? (
                 <>
                   <ActivityIndicator color="#fff" size="small" />
-                  <Text style={twStyle("font-semibold text-white")}>Submitting…</Text>
+                  <Text style={twStyle("text-[16px] font-semibold text-white")}>Submitting…</Text>
                 </>
               ) : (
                 <>
-                  <Text style={twStyle("font-bold text-white")}>
+                  <Text style={twStyle("text-[16px] font-bold text-white")}>
                     {isLast ? "Submit & launch" : "Continue"}
                   </Text>
-                  {!isLast ? <Ionicons name="arrow-forward" size={16} color="#fff" /> : null}
-                  {isLast ? <Ionicons name="rocket-outline" size={16} color="#fff" /> : null}
+                  {!isLast ? <Ionicons name="arrow-forward" size={20} color="#fff" /> : null}
+                  {isLast ? <Ionicons name="rocket-outline" size={20} color="#fff" /> : null}
                 </>
               )}
             </TouchableOpacity>

@@ -4,8 +4,11 @@ import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Calendar, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { coerceSelectedDate } from "@beautonomi/utils";
-import { formatLocalDateYYYYMMDD } from "@/lib/dates/format-local-date-yyyymmdd";
+import {
+  coerceSelectedDate,
+  formatBusinessDayYYYYMMDD,
+  startOfBusinessDayLocalDate,
+} from "@beautonomi/utils";
 import { cn } from "@/lib/utils";
 import { useTenantLocaleTag } from "@/hooks/useTenantLocaleTag";
 import { useTranslation } from "@beautonomi/i18n";
@@ -157,8 +160,12 @@ export function StepSchedule({
   const [waitlistForm, setWaitlistForm] = useState({ name: "", email: "", phone: "" });
   const [openPeriodKey, setOpenPeriodKey] = useState<"morning" | "afternoon" | "evening" | null>(null);
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  // §Booking-slot-audit 2026-05: anchor the date strip and date bounds to
+  // the provider business day when the salon timezone is known. The returned
+  // Date's Y/M/D matches the provider business day, so all downstream display
+  // logic (weekday, day number, `formatLocalDateYYYYMMDD`) keeps working
+  // unchanged. Cross-TZ customers no longer see/select the wrong salon date.
+  const today = startOfBusinessDayLocalDate(providerTimeZone);
   const safeAdvance = Math.max(1, maxAdvanceDays);
   const lastSelectableDay = new Date(today);
   lastSelectableDay.setDate(today.getDate() + safeAdvance - 1);
@@ -251,7 +258,7 @@ export function StepSchedule({
         customer_name: waitlistForm.name.trim(),
         customer_email: waitlistForm.email.trim() || undefined,
         customer_phone: phoneE164,
-        preferred_date: selectedDay ? formatLocalDateYYYYMMDD(selectedDay) : "",
+        preferred_date: selectedDay ? formatBusinessDayYYYYMMDD(selectedDay, providerTimeZone) : "",
         preferred_time_start: isoToHHMM(waitlistSlot.start, providerTimeZone),
         preferred_time_end: isoToHHMM(waitlistSlot.end, providerTimeZone),
       };

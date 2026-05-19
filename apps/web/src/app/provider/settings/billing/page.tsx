@@ -9,9 +9,27 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Plus, FileText, Loader2, CreditCard, Trash2, Download, Eye, CheckCircle2, Clock, AlertCircle } from "lucide-react";
+import {
+  Plus,
+  FileText,
+  Loader2,
+  CreditCard,
+  Trash2,
+  Download,
+  Eye,
+  CheckCircle2,
+  Clock,
+  AlertCircle,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
   Select,
   SelectContent,
@@ -42,6 +60,17 @@ interface BillingData {
   billingPhone: string | null;
   paymentMethods: any[];
   invoices: any[];
+  billingHistory: BillingHistoryItem[];
+}
+
+interface BillingHistoryItem {
+  id: string;
+  amount: number;
+  currency?: string | null;
+  status: string;
+  type?: "subscription" | "ads" | string;
+  description?: string | null;
+  created_at: string;
 }
 
 export default function BillingSettings() {
@@ -64,22 +93,30 @@ export default function BillingSettings() {
     try {
       setIsLoading(true);
       setError(null);
-      
-      // Load billing settings, payment methods, and invoices in parallel
-      const [billingResponse, paymentMethodsResponse, invoicesResponse] = await Promise.all([
-        fetcher.get<{ data: BillingData }>("/api/provider/settings/billing"),
-        fetcher.get<{ data: any[] }>("/api/provider/payment-methods").catch(() => ({ data: [] })),
-        fetcher.get<{ data: { invoices: any[] } }>("/api/provider/invoices?limit=100").catch(() => ({ data: { invoices: [] } })),
-      ]);
+
+      // Load billing settings, payment methods, invoices, and subscription/ads payments in parallel.
+      const [billingResponse, paymentMethodsResponse, invoicesResponse, billingHistoryResponse] =
+        await Promise.all([
+          fetcher.get<{ data: BillingData }>("/api/provider/settings/billing"),
+          fetcher.get<{ data: any[] }>("/api/provider/payment-methods").catch(() => ({ data: [] })),
+          fetcher
+            .get<{ data: { invoices: any[] } }>("/api/provider/invoices?limit=100")
+            .catch(() => ({ data: { invoices: [] } })),
+          fetcher
+            .get<{ data: BillingHistoryItem[] }>("/api/provider/billing-history")
+            .catch(() => ({ data: [] })),
+        ]);
 
       const billingInfo = billingResponse.data;
       const paymentMethods = paymentMethodsResponse.data || [];
       const invoices = invoicesResponse.data?.invoices || [];
+      const billingHistory = billingHistoryResponse.data || [];
 
       setBillingData({
         ...billingInfo,
         paymentMethods,
         invoices,
+        billingHistory,
       });
       setBillingForm({
         email: billingInfo.billingEmail || "",
@@ -88,9 +125,7 @@ export default function BillingSettings() {
       });
     } catch (err) {
       const errorMessage =
-        err instanceof FetchError
-          ? err.message
-          : "Failed to load billing information";
+        err instanceof FetchError ? err.message : "Failed to load billing information";
       setError(errorMessage);
       console.error("Error loading billing data:", err);
     } finally {
@@ -101,8 +136,13 @@ export default function BillingSettings() {
   const handleSaveBilling = async () => {
     // Validate address if provided (address is optional for billing, but if provided, must be complete)
     if (billingForm.address) {
-      if (billingForm.address.address_line1 && (!billingForm.address.city || !billingForm.address.country)) {
-        toast.error("Please complete the address (city and country are required if address is provided)");
+      if (
+        billingForm.address.address_line1 &&
+        (!billingForm.address.city || !billingForm.address.country)
+      ) {
+        toast.error(
+          "Please complete the address (city and country are required if address is provided)"
+        );
         return;
       }
     }
@@ -124,9 +164,7 @@ export default function BillingSettings() {
       loadBillingData();
     } catch (err) {
       const errorMessage =
-        err instanceof FetchError
-          ? err.message
-          : "Failed to update billing information";
+        err instanceof FetchError ? err.message : "Failed to update billing information";
       toast.error(errorMessage);
       console.error("Error saving billing data:", err);
     } finally {
@@ -238,12 +276,13 @@ export default function BillingSettings() {
         />
       </SectionCard>
 
+      <SectionCard title="Subscription & Ads Billing History" className="w-full">
+        <BillingHistorySection items={billingData?.billingHistory || []} />
+      </SectionCard>
+
       {/* Sales & Fees */}
       <SectionCard title="Sales & Fees" className="w-full">
-        <InvoicesSection
-          invoices={billingData?.invoices || []}
-          onRefresh={loadBillingData}
-        />
+        <InvoicesSection invoices={billingData?.invoices || []} onRefresh={loadBillingData} />
       </SectionCard>
 
       {/* Billing Details Dialog */}
@@ -319,7 +358,13 @@ export default function BillingSettings() {
 }
 
 // Payment Methods Section Component
-function PaymentMethodsSection({ paymentMethods, onRefresh }: { paymentMethods: any[]; onRefresh: () => void }) {
+function PaymentMethodsSection({
+  paymentMethods,
+  onRefresh,
+}: {
+  paymentMethods: any[];
+  onRefresh: () => void;
+}) {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [formData, setFormData] = useState({
@@ -402,11 +447,7 @@ function PaymentMethodsSection({ paymentMethods, onRefresh }: { paymentMethods: 
         <p className="text-sm text-gray-600">
           {paymentMethods.length} payment method{paymentMethods.length !== 1 ? "s" : ""}
         </p>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => setShowAddDialog(true)}
-        >
+        <Button size="sm" variant="outline" onClick={() => setShowAddDialog(true)}>
           <Plus className="w-4 h-4 mr-2" />
           Add payment method
         </Button>
@@ -424,12 +465,12 @@ function PaymentMethodsSection({ paymentMethods, onRefresh }: { paymentMethods: 
                 <div className="flex items-center gap-2">
                   <p className="font-medium text-sm">{method.name}</p>
                   {method.is_default && (
-                    <Badge variant="outline" className="text-xs">Default</Badge>
+                    <Badge variant="outline" className="text-xs">
+                      Default
+                    </Badge>
                   )}
                 </div>
-                {method.last4 && (
-                  <p className="text-xs text-gray-500">•••• {method.last4}</p>
-                )}
+                {method.last4 && <p className="text-xs text-gray-500">•••• {method.last4}</p>}
                 {method.expiry_month && method.expiry_year && (
                   <p className="text-xs text-gray-500">
                     Expires {method.expiry_month}/{method.expiry_year}
@@ -439,11 +480,7 @@ function PaymentMethodsSection({ paymentMethods, onRefresh }: { paymentMethods: 
             </div>
             <div className="flex items-center gap-2">
               {!method.is_default && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => handleSetDefault(method.id)}
-                >
+                <Button size="sm" variant="ghost" onClick={() => handleSetDefault(method.id)}>
                   Set as default
                 </Button>
               )}
@@ -465,9 +502,7 @@ function PaymentMethodsSection({ paymentMethods, onRefresh }: { paymentMethods: 
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Add Payment Method</DialogTitle>
-            <DialogDescription>
-              Add a payment method for paying platform fees
-            </DialogDescription>
+            <DialogDescription>Add a payment method for paying platform fees</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
@@ -574,10 +609,7 @@ function PaymentMethodsSection({ paymentMethods, onRefresh }: { paymentMethods: 
             <Button variant="outline" onClick={() => setShowAddDialog(false)}>
               Cancel
             </Button>
-            <Button
-              onClick={handleAddPaymentMethod}
-              className="bg-[#FF0077] hover:bg-[#D60565]"
-            >
+            <Button onClick={handleAddPaymentMethod} className="bg-[#FF0077] hover:bg-[#D60565]">
               Add Payment Method
             </Button>
           </DialogFooter>
@@ -587,15 +619,85 @@ function PaymentMethodsSection({ paymentMethods, onRefresh }: { paymentMethods: 
   );
 }
 
+function BillingHistorySection({ items }: { items: BillingHistoryItem[] }) {
+  const { bundle } = useConfigBundle();
+  const fallbackCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
+
+  const formatCurrency = (amount: number, currency?: string | null) => {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency: currency || fallbackCurrency,
+    }).format(Number(amount || 0));
+  };
+
+  if (items.length === 0) {
+    return (
+      <div className="py-8 sm:py-12 text-center">
+        <EmptyState
+          title="No subscription or ads payments yet"
+          description="Subscription renewals and paid ad campaign orders will appear here once payment is confirmed."
+          icon={CreditCard}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {items.map((item) => {
+        const isAds = item.type === "ads";
+        return (
+          <div
+            key={item.id}
+            className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between"
+          >
+            <div className="flex min-w-0 items-start gap-3">
+              <div
+                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
+                  isAds ? "bg-amber-50 text-amber-700" : "bg-indigo-50 text-indigo-700"
+                }`}
+              >
+                {isAds ? <CreditCard className="h-5 w-5" /> : <FileText className="h-5 w-5" />}
+              </div>
+              <div className="min-w-0">
+                <p className="font-medium text-slate-900">
+                  {item.description || (isAds ? "Ads campaign payment" : "Subscription payment")}
+                </p>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  {new Date(item.created_at).toLocaleDateString()} ·{" "}
+                  {isAds ? "Ads" : "Subscription"}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center justify-between gap-3 sm:justify-end">
+              <span className="font-semibold text-slate-900">
+                {formatCurrency(item.amount, item.currency)}
+              </span>
+              <Badge variant="secondary" className="capitalize">
+                {item.status}
+              </Badge>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // Invoices Section Component
-function InvoicesSection({ invoices, onRefresh: _onRefresh }: { invoices: any[]; onRefresh: () => void }) {
+function InvoicesSection({
+  invoices,
+  onRefresh: _onRefresh,
+}: {
+  invoices: any[];
+  onRefresh: () => void;
+}) {
   const { bundle } = useConfigBundle();
   const invoiceCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
 
-  const filteredInvoices = selectedStatus === "all"
-    ? invoices
-    : invoices.filter((inv) => inv.status === selectedStatus);
+  const filteredInvoices =
+    selectedStatus === "all" ? invoices : invoices.filter((inv) => inv.status === selectedStatus);
 
   const getStatusBadge = (status: string) => {
     const variants: Record<string, { variant: "default" | "secondary" | "outline"; icon: any }> = {
@@ -660,15 +762,13 @@ function InvoicesSection({ invoices, onRefresh: _onRefresh }: { invoices: any[];
       {/* Mobile card layout */}
       <div className="md:hidden space-y-3">
         {filteredInvoices.map((invoice) => (
-          <div
-            key={invoice.id}
-            className="rounded-lg border bg-white p-4 space-y-3"
-          >
+          <div key={invoice.id} className="rounded-lg border bg-white p-4 space-y-3">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <p className="font-medium text-sm">{invoice.invoice_number}</p>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  {new Date(invoice.period_start).toLocaleDateString()} – {new Date(invoice.period_end).toLocaleDateString()}
+                  {new Date(invoice.period_start).toLocaleDateString()} –{" "}
+                  {new Date(invoice.period_end).toLocaleDateString()}
                 </p>
               </div>
               {getStatusBadge(invoice.status)}
@@ -692,7 +792,9 @@ function InvoicesSection({ invoices, onRefresh: _onRefresh }: { invoices: any[];
                   size="sm"
                   variant="outline"
                   className="min-h-[44px] min-w-[44px]"
-                  onClick={() => window.open(`/api/provider/invoices/${invoice.id}/download`, "_blank")}
+                  onClick={() =>
+                    window.open(`/api/provider/invoices/${invoice.id}/download`, "_blank")
+                  }
                 >
                   <Download className="w-4 h-4" />
                 </Button>
@@ -700,7 +802,9 @@ function InvoicesSection({ invoices, onRefresh: _onRefresh }: { invoices: any[];
                   size="sm"
                   variant="outline"
                   className="min-h-[44px] min-w-[44px]"
-                  onClick={() => window.location.href = `/provider/settings/billing/invoices/${invoice.id}`}
+                  onClick={() =>
+                    (window.location.href = `/provider/settings/billing/invoices/${invoice.id}`)
+                  }
                 >
                   <Eye className="w-4 h-4" />
                 </Button>
@@ -729,25 +833,32 @@ function InvoicesSection({ invoices, onRefresh: _onRefresh }: { invoices: any[];
               <TableRow key={invoice.id}>
                 <TableCell className="font-medium">{invoice.invoice_number}</TableCell>
                 <TableCell className="text-sm text-gray-600">
-                  {new Date(invoice.period_start).toLocaleDateString()} - {new Date(invoice.period_end).toLocaleDateString()}
+                  {new Date(invoice.period_start).toLocaleDateString()} -{" "}
+                  {new Date(invoice.period_end).toLocaleDateString()}
                 </TableCell>
                 <TableCell>{new Date(invoice.issue_date).toLocaleDateString()}</TableCell>
                 <TableCell>{new Date(invoice.due_date).toLocaleDateString()}</TableCell>
-                <TableCell className="font-medium">{formatCurrency(invoice.total_amount)}</TableCell>
+                <TableCell className="font-medium">
+                  {formatCurrency(invoice.total_amount)}
+                </TableCell>
                 <TableCell>{getStatusBadge(invoice.status)}</TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-2">
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() => window.open(`/api/provider/invoices/${invoice.id}/download`, "_blank")}
+                      onClick={() =>
+                        window.open(`/api/provider/invoices/${invoice.id}/download`, "_blank")
+                      }
                     >
                       <Download className="w-4 h-4" />
                     </Button>
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() => window.location.href = `/provider/settings/billing/invoices/${invoice.id}`}
+                      onClick={() =>
+                        (window.location.href = `/provider/settings/billing/invoices/${invoice.id}`)
+                      }
                     >
                       <Eye className="w-4 h-4" />
                     </Button>

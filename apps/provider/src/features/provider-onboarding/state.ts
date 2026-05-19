@@ -46,7 +46,7 @@ export const STEPS: OnboardingStepMeta[] = [
     conditional: (d) => d.team_size !== "freelancer",
   },
   { id: 7, title: "Location", description: "Primary address" },
-  { id: 8, title: "Photos", description: "Optional profile & gallery images", canSkip: true },
+  { id: 8, title: "Photos", description: "Required thumbnail & profile images" },
   {
     id: 9,
     title: "Service zones",
@@ -93,9 +93,17 @@ export function countVisibleSteps(data: Partial<OnboardingFormData>): number {
 export function visibleStepIndex(current: number, data: Partial<OnboardingFormData>): number {
   let idx = 0;
   for (const s of STEPS) {
-    if (!stepIsVisible(s.id, data)) continue;
+    if (!stepIsVisible(s.id, data)) {
+      // When `current` is itself invisible (e.g. business_type toggled mid-flow
+      // and the previously selected step is now skipped), surface the index of
+      // the next visible step so progress bars stay sane instead of jumping to
+      // 100%. Match the behaviour the wizard auto-migration will produce.
+      if (s.id === current) return idx + 1;
+      continue;
+    }
     idx++;
     if (s.id === current) return idx;
   }
+  // current is past the last visible step — clamp to the total visible count.
   return idx;
 }

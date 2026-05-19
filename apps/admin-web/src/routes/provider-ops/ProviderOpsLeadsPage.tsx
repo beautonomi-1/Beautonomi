@@ -18,6 +18,17 @@ import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminToast } from "@/lib/adminToast";
 import {
+  LEAD_STAGE_BADGE as STAGE_BADGE,
+  LEAD_STAGE_BRANCHES,
+  LEAD_STAGE_DESCRIPTIONS,
+  LEAD_STAGE_DOT as STAGE_DOT,
+  LEAD_STAGE_FILTERS as STAGES,
+  LEAD_STAGE_LABELS as STAGE_LABELS,
+  LEAD_STAGE_PRIMARY_FLOW,
+  getLeadStageLabel,
+  getLeadStageNextAction,
+} from "@/lib/providerOpsLeadStages";
+import {
   Search, Upload, Download, Plus, LayoutGrid, LayoutList,
   Phone, Mail, MapPin, Calendar, Tag, User, ChevronDown,
   Clock, MessageSquare, MessageCircle, ArrowUpDown, CheckSquare, Square,
@@ -37,28 +48,6 @@ import {
 const PAGE_SIZE = 50;
 /** Keeps inbox + embedded detail panel aligned when multiple admins work the same queue. */
 const OPS_LEADS_REFETCH_MS = 45_000;
-const STAGES = ["all", "new", "contacted", "qualified", "proposal_sent", "negotiating", "won", "lost", "nurture", "matched"] as const;
-const STAGE_LABELS: Record<string, string> = {
-  all: "All", new: "New", contacted: "Contacted", qualified: "Qualified",
-  proposal_sent: "Proposal Sent", negotiating: "Negotiating", won: "Won",
-  lost: "Lost", nurture: "Nurture", matched: "Matched",
-};
-const STAGE_BADGE: Record<string, string> = {
-  new: "bg-blue-100 text-blue-700 ring-blue-600/20",
-  contacted: "bg-cyan-100 text-cyan-700 ring-cyan-600/20",
-  qualified: "bg-emerald-100 text-emerald-700 ring-emerald-600/20",
-  proposal_sent: "bg-violet-100 text-violet-700 ring-violet-600/20",
-  negotiating: "bg-purple-100 text-purple-700 ring-purple-600/20",
-  won: "bg-green-100 text-green-700 ring-green-600/20",
-  lost: "bg-red-100 text-red-700 ring-red-600/20",
-  nurture: "bg-amber-100 text-amber-700 ring-amber-600/20",
-  matched: "bg-teal-100 text-teal-700 ring-teal-600/20",
-};
-const STAGE_DOT: Record<string, string> = {
-  new: "bg-blue-500", contacted: "bg-cyan-500", qualified: "bg-emerald-500",
-  proposal_sent: "bg-violet-500", negotiating: "bg-purple-500", won: "bg-green-500",
-  lost: "bg-red-500", nurture: "bg-amber-500", matched: "bg-teal-500",
-};
 const ACTIVITY_ICONS: Record<string, typeof MessageSquare> = {
   note: StickyNote, stage_change: TrendingUp, call: Phone,
   email: Mail, meeting: Calendar, default: MessageSquare,
@@ -774,6 +763,8 @@ export function ProviderOpsLeadsPage() {
         </div>
       </div>
 
+      <LeadStageGuide />
+
       {/* Toolbar: search + filters + view toggle + bulk actions */}
       <div className="flex-shrink-0 px-2 pb-3 sm:px-1">
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
@@ -1258,6 +1249,48 @@ function stageMutateSafe(
   stageMut.mutate({ id, newStage, expected_updated_at: expectedUpdatedAt });
 }
 
+function LeadStageGuide() {
+  return (
+    <AdminPanel className="mx-2 mb-3 !border-blue-100 !bg-blue-50/40 px-4 py-3 sm:mx-1">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Lead stage flow</p>
+          <p className="mt-1 text-xs leading-relaxed text-blue-700/80">
+            Work the main path left to right. Use Lost or Nurture as branch outcomes; Matched means the lead is linked to a provider account.
+          </p>
+        </div>
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 lg:justify-end">
+          {LEAD_STAGE_PRIMARY_FLOW.map((stageKey, index) => (
+            <div key={stageKey} className="flex items-center gap-1.5">
+              <span
+                title={`${LEAD_STAGE_DESCRIPTIONS[stageKey]} Next: ${getLeadStageNextAction(stageKey)}`}
+                className="inline-flex items-center gap-1 rounded-full border border-white/80 bg-white px-2 py-1 text-[11px] font-medium text-gray-700 shadow-sm"
+              >
+                <span className={cn("h-1.5 w-1.5 rounded-full", STAGE_DOT[stageKey])} />
+                {STAGE_LABELS[stageKey]}
+              </span>
+              {index < LEAD_STAGE_PRIMARY_FLOW.length - 1 ? (
+                <ArrowRight className="h-3 w-3 text-blue-300" aria-hidden />
+              ) : null}
+            </div>
+          ))}
+          <span className="mx-1 hidden h-4 w-px bg-blue-200 sm:inline-block" />
+          {LEAD_STAGE_BRANCHES.map((stageKey) => (
+            <span
+              key={stageKey}
+              title={`${LEAD_STAGE_DESCRIPTIONS[stageKey]} Next: ${getLeadStageNextAction(stageKey)}`}
+              className="inline-flex items-center gap-1 rounded-full border border-blue-100 bg-white/70 px-2 py-1 text-[11px] font-medium text-gray-600"
+            >
+              <span className={cn("h-1.5 w-1.5 rounded-full", STAGE_DOT[stageKey])} />
+              Branch: {STAGE_LABELS[stageKey]}
+            </span>
+          ))}
+        </div>
+      </div>
+    </AdminPanel>
+  );
+}
+
 // ─── Table view ───────────────────────────────────────────────────────────────
 
 function SortHeader({ label, column, sortBy, sortDir, onSort }: { label: string; column: string; sortBy: string; sortDir: string; onSort: (c: string) => void }) {
@@ -1380,7 +1413,7 @@ function LeadTable({ rows, selectedLeadId, selectedIds, sortBy, sortDir, onSelec
                       </select>
                     ) : (
                       <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset", badge)}>
-                        {lead.commercial_stage.replace(/_/g, " ")}
+                        {getLeadStageLabel(lead.commercial_stage)}
                       </span>
                     )}
                   </div>
@@ -1496,7 +1529,7 @@ function LeadCardGrid({ rows, selectedLeadId, onSelectLead, assignLeadMut, densi
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-gray-900">{name}</p>
                     <span className={cn("mt-0.5 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ring-inset", badge)}>
-                      {lead.commercial_stage.replace(/_/g, " ")}
+                      {getLeadStageLabel(lead.commercial_stage)}
                     </span>
                   </div>
                 </div>
@@ -1636,7 +1669,7 @@ function DetailPanel({ lead, activities, isLoading, noteText, setNoteText, onAdd
               <h2 className="truncate text-base font-semibold text-gray-900">{name}</h2>
               <div className="mt-0.5 flex flex-wrap items-center gap-2">
                 <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ring-inset", STAGE_BADGE[lead.commercial_stage] || "bg-gray-100 text-gray-600")}>
-                  {lead.commercial_stage.replace(/_/g, " ")}
+                  {getLeadStageLabel(lead.commercial_stage)}
                 </span>
                 <span className="inline-block rounded-md border border-gray-200 px-1.5 py-0.5 text-[10px] text-gray-500">{lead.source}</span>
               </div>

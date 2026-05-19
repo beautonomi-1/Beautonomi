@@ -1,12 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,7 +13,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import type { Appointment, TeamMember, ServiceItem, ProductItem } from "@/lib/provider-portal/types";
+import type {
+  Appointment,
+  TeamMember,
+  ServiceItem,
+  ProductItem,
+} from "@/lib/provider-portal/types";
 import { providerApi } from "@/lib/provider-portal/api";
 import { providerPortalFetch } from "@/lib/http/fetcher";
 import { Calendar } from "@/components/ui/calendar";
@@ -45,11 +45,7 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 import { toast } from "sonner";
-import {
-  formatApiErrorMessage,
-  isLikelyUuid,
-  subscriptionUpgradeHint,
-} from "@/lib/http/api-error";
+import { formatApiErrorMessage, isLikelyUuid, subscriptionUpgradeHint } from "@/lib/http/api-error";
 import { FetchError } from "@/lib/http/fetcher";
 import { useRouter } from "next/navigation";
 import { AddClientDialog } from "@/components/provider-portal/AddClientDialog";
@@ -178,7 +174,7 @@ export function AppointmentDialog({
 
   /* ── Computed totals from cart ── */
   const totalDuration = cart.reduce(
-    (s, i) => s + (i.type === "service" ? (i.duration_minutes ?? 0) : 0),
+    (s, i) => s + (i.type === "service" ? (i.duration_minutes ?? 0) * i.quantity : 0),
     0
   );
   const totalPrice = cart.reduce((s, i) => s + i.total, 0);
@@ -336,21 +332,28 @@ export function AppointmentDialog({
           });
         });
 
-        if (items.length > 0) { setCart(items); return; }
+        if (items.length > 0) {
+          setCart(items);
+          return;
+        }
       }
-    } catch { /* fallthrough */ }
+    } catch {
+      /* fallthrough */
+    }
 
     // 3. Fallback: primary service only
-    setCart([{
-      id: `service-${appt.service_id}-fallback`,
-      type: "service",
-      name: appt.service_name || "Service",
-      quantity: 1,
-      unit_price: appt.price || 0,
-      total: appt.price || 0,
-      service_id: appt.service_id,
-      duration_minutes: appt.duration_minutes || 60,
-    }]);
+    setCart([
+      {
+        id: `service-${appt.service_id}-fallback`,
+        type: "service",
+        name: appt.service_name || "Service",
+        quantity: 1,
+        unit_price: appt.price || 0,
+        total: appt.price || 0,
+        service_id: appt.service_id,
+        duration_minutes: appt.duration_minutes || 60,
+      },
+    ]);
   };
 
   /* ───────────────────────────────────────────────────── */
@@ -358,15 +361,22 @@ export function AppointmentDialog({
   /* ───────────────────────────────────────────────────── */
 
   useEffect(() => {
-    if (clientQuery.length < 2) { setClientResults([]); return; }
+    if (clientQuery.length < 2) {
+      setClientResults([]);
+      return;
+    }
     const t = setTimeout(async () => {
       try {
-        const res = await providerPortalFetch(`/api/provider/clients?search=${encodeURIComponent(clientQuery)}`);
+        const res = await providerPortalFetch(
+          `/api/provider/clients?search=${encodeURIComponent(clientQuery)}`
+        );
         if (res.ok) {
           const d = await res.json();
           setClientResults(d.data || []);
         }
-      } catch { setClientResults([]); }
+      } catch {
+        setClientResults([]);
+      }
     }, 280);
     return () => clearTimeout(t);
   }, [clientQuery]);
@@ -389,14 +399,26 @@ export function AppointmentDialog({
     setSelectedClient(null);
     setIsWalkIn(false);
     setShowClientSearch(true);
-    setFormData((p) => ({ ...p, client_id: "", client_name: "", client_email: "", client_phone: "" }));
+    setFormData((p) => ({
+      ...p,
+      client_id: "",
+      client_name: "",
+      client_email: "",
+      client_phone: "",
+    }));
   };
 
   const activateWalkIn = () => {
     setIsWalkIn(true);
     setSelectedClient(null);
     setShowClientSearch(false);
-    setFormData((p) => ({ ...p, client_id: "", client_name: "", client_email: "", client_phone: "" }));
+    setFormData((p) => ({
+      ...p,
+      client_id: "",
+      client_name: "",
+      client_email: "",
+      client_phone: "",
+    }));
   };
 
   /* ───────────────────────────────────────────────────── */
@@ -434,7 +456,10 @@ export function AppointmentDialog({
     setServiceSearch("");
   };
 
-  const addProduct = (product: ProductItem, variant?: import("@/lib/provider-portal/types").ProductVariantItem) => {
+  const addProduct = (
+    product: ProductItem,
+    variant?: import("@/lib/provider-portal/types").ProductVariantItem
+  ) => {
     const variantLabel = variant ? Object.values(variant.option_values).join(" / ") : null;
     const displayName = variantLabel ? `${product.name} – ${variantLabel}` : product.name;
     const price = variant ? variant.retail_price : product.retail_price;
@@ -487,7 +512,10 @@ export function AppointmentDialog({
   /* ───────────────────────────────────────────────────── */
 
   useEffect(() => {
-    if (!open || !formData.team_member_id) { setAvailableSlots(null); return; }
+    if (!open || !formData.team_member_id) {
+      setAvailableSlots(null);
+      return;
+    }
     let cancelled = false;
     setIsLoadingSlots(true);
     const params = new URLSearchParams({
@@ -504,9 +532,15 @@ export function AppointmentDialog({
         const merged = slots.includes(cur) ? slots : [cur, ...slots].sort();
         setAvailableSlots(merged.length > 0 ? merged : null);
       })
-      .catch(() => { if (!cancelled) setAvailableSlots(null); })
-      .finally(() => { if (!cancelled) setIsLoadingSlots(false); });
-    return () => { cancelled = true; };
+      .catch(() => {
+        if (!cancelled) setAvailableSlots(null);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingSlots(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [open, formData.scheduled_date, formData.team_member_id, totalDuration]);
 
   const timeOptions = availableSlots ?? generateTimeOptions();
@@ -521,7 +555,8 @@ export function AppointmentDialog({
     if (!cart.some((i) => i.type === "service")) return "At least one service is required.";
     if (!formData.client_name && !isWalkIn) return "Please select or enter a client name.";
     const phone = formData.client_phone.replace(/\s/g, "");
-    if (phone && !isValidPhone(phone)) return "Phone number must be in E.164 format (e.g., +27821234567).";
+    if (phone && !isValidPhone(phone))
+      return "Phone number must be in E.164 format (e.g., +27821234567).";
     return null;
   };
 
@@ -537,13 +572,15 @@ export function AppointmentDialog({
     const primaryService = cartServices[0];
 
     // Convert cart items to API-expected arrays
-    const servicesArray = cartServices.map((i) => ({
-      serviceId: i.service_id,
-      serviceName: i.name,
-      duration: i.duration_minutes,
-      price: i.unit_price,
-      staffId: formData.team_member_id,
-    }));
+    const servicesArray = cartServices.flatMap((i) =>
+      Array.from({ length: Math.max(1, Math.floor(i.quantity || 1)) }, () => ({
+        serviceId: i.service_id,
+        serviceName: i.name,
+        duration: i.duration_minutes,
+        price: i.unit_price,
+        staffId: formData.team_member_id,
+      }))
+    );
 
     const productsArray = cartProducts.map((i) => ({
       productId: i.product_id,
@@ -595,7 +632,10 @@ export function AppointmentDialog({
   const handleSave = async (e?: React.FormEvent) => {
     e?.preventDefault();
     const err = validate();
-    if (err) { toast.error(err); return; }
+    if (err) {
+      toast.error(err);
+      return;
+    }
     setIsSaving(true);
     try {
       const payload = buildPayload();
@@ -604,7 +644,9 @@ export function AppointmentDialog({
         toast.success("Appointment updated");
       } else if (formData.is_recurring) {
         if (!formData.client_id?.trim() || !isLikelyUuid(formData.client_id)) {
-          toast.error("Repeating visits require a saved client profile. Select the client from search.");
+          toast.error(
+            "Repeating visits require a saved client profile. Select the client from search."
+          );
           return;
         }
         const rule = {
@@ -614,12 +656,19 @@ export function AppointmentDialog({
           occurrences: formData.recurrence_occurrences || undefined,
         };
         try {
-          await providerApi.createRecurringAppointment({ ...payload, client_id: formData.client_id, recurrence_rule: rule } as any);
+          await providerApi.createRecurringAppointment({
+            ...payload,
+            client_id: formData.client_id,
+            recurrence_rule: rule,
+          } as any);
           toast.success("Repeating visit series created");
         } catch (recErr) {
           if (recErr instanceof FetchError && recErr.code === "SUBSCRIPTION_REQUIRED") {
             setRecurringUpgradeRequired(true);
-            toast.error(formatApiErrorMessage(recErr, "Subscription required") + subscriptionUpgradeHint(recErr));
+            toast.error(
+              formatApiErrorMessage(recErr, "Subscription required") +
+                subscriptionUpgradeHint(recErr)
+            );
             return;
           }
           // Fall back to single booking
@@ -634,7 +683,8 @@ export function AppointmentDialog({
       onOpenChange(false);
       setTimeout(() => onSuccess?.(), 300);
     } catch (error) {
-      const msg = formatApiErrorMessage(error, "Failed to save appointment") + subscriptionUpgradeHint(error);
+      const msg =
+        formatApiErrorMessage(error, "Failed to save appointment") + subscriptionUpgradeHint(error);
       toast.error(msg);
     } finally {
       setIsSaving(false);
@@ -643,7 +693,10 @@ export function AppointmentDialog({
 
   const handleSaveAndCheckout = async () => {
     const err = validate();
-    if (err) { toast.error(err); return; }
+    if (err) {
+      toast.error(err);
+      return;
+    }
 
     // Recurring + checkout: warn the user that recurrence is ignored for checkout flow.
     // Recurring series cannot be checked out in one step — create the series via Save instead.
@@ -750,10 +803,14 @@ export function AppointmentDialog({
                   {svc.name}
                 </p>
                 {svc.service_type === "package" && (
-                  <span className="text-[10px] font-semibold bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full">PKG</span>
+                  <span className="text-[10px] font-semibold bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full">
+                    PKG
+                  </span>
                 )}
                 {svc.service_type === "addon" && (
-                  <span className="text-[10px] font-semibold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">ADD-ON</span>
+                  <span className="text-[10px] font-semibold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">
+                    ADD-ON
+                  </span>
                 )}
               </div>
               <p className="text-xs text-gray-400 mt-0.5">
@@ -780,7 +837,9 @@ export function AppointmentDialog({
               className="w-full text-left px-4 py-3.5 border border-gray-100 rounded-xl hover:bg-primary/5 hover:border-primary/30 transition-colors mb-2 flex items-center justify-between group"
             >
               <div>
-                <p className="text-sm font-medium text-gray-900 group-hover:text-primary transition-colors">{v.name}</p>
+                <p className="text-sm font-medium text-gray-900 group-hover:text-primary transition-colors">
+                  {v.name}
+                </p>
                 {v.variant_name && <p className="text-xs text-gray-400">{v.variant_name}</p>}
                 <p className="text-xs text-gray-400 mt-0.5">
                   {v.duration_minutes} min · {formatMoney(Number(v.price))}
@@ -823,7 +882,6 @@ export function AppointmentDialog({
 
           {/* ── Scrollable body ── */}
           <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
-
             {/* ══ 1. CLIENT ══ */}
             <section>
               <SectionLabel icon={<User className="w-3.5 h-3.5" />} label="Client" required />
@@ -831,11 +889,13 @@ export function AppointmentDialog({
               {/* Selected client chip */}
               {!showClientSearch && (
                 <div className="flex items-center gap-3 px-4 py-3 bg-gray-50 rounded-xl border border-gray-200">
-                  <div className={cn(
-                    "w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold",
-                    isWalkIn ? "bg-gray-200 text-gray-600" : "bg-primary/10 text-primary"
-                  )}>
-                    {isWalkIn ? "W" : (formData.client_name.charAt(0) || "?")}
+                  <div
+                    className={cn(
+                      "w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold",
+                      isWalkIn ? "bg-gray-200 text-gray-600" : "bg-primary/10 text-primary"
+                    )}
+                  >
+                    {isWalkIn ? "W" : formData.client_name.charAt(0) || "?"}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-sm text-gray-900 truncate">
@@ -883,11 +943,14 @@ export function AppointmentDialog({
                         >
                           <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
                             <span className="text-xs font-bold text-primary">
-                              {c.first_name.charAt(0)}{c.last_name.charAt(0)}
+                              {c.first_name.charAt(0)}
+                              {c.last_name.charAt(0)}
                             </span>
                           </div>
                           <div>
-                            <p className="text-sm font-medium text-gray-900">{c.first_name} {c.last_name}</p>
+                            <p className="text-sm font-medium text-gray-900">
+                              {c.first_name} {c.last_name}
+                            </p>
                             <p className="text-xs text-gray-500">{c.email || c.phone}</p>
                           </div>
                         </button>
@@ -944,7 +1007,11 @@ export function AppointmentDialog({
 
             {/* ══ 2. SERVICES & PRODUCTS ══ */}
             <section>
-              <SectionLabel icon={<Scissors className="w-3.5 h-3.5" />} label="Services & Products" required />
+              <SectionLabel
+                icon={<Scissors className="w-3.5 h-3.5" />}
+                label="Services & Products"
+                required
+              />
 
               {/* Add buttons */}
               <div className="grid grid-cols-2 gap-2 mb-3">
@@ -976,26 +1043,34 @@ export function AppointmentDialog({
                       key={item.id}
                       className="flex items-center gap-3 px-3 py-3 bg-gray-50 border border-gray-100 rounded-xl"
                     >
-                      <div className={cn(
-                        "w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0",
-                        item.type === "service" ? "bg-primary/10" : "bg-amber-100"
-                      )}>
-                        {item.type === "service"
-                          ? <Scissors className="w-3.5 h-3.5 text-primary" />
-                          : <Package className="w-3.5 h-3.5 text-amber-600" />
-                        }
+                      <div
+                        className={cn(
+                          "w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0",
+                          item.type === "service" ? "bg-primary/10" : "bg-amber-100"
+                        )}
+                      >
+                        {item.type === "service" ? (
+                          <Scissors className="w-3.5 h-3.5 text-primary" />
+                        ) : (
+                          <Package className="w-3.5 h-3.5 text-amber-600" />
+                        )}
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-gray-900 truncate">{item.name}</p>
                         <div className="flex items-center gap-2 mt-0.5">
                           {item.type === "service" && item.duration_minutes && (
                             <span className="text-xs text-gray-400 flex items-center gap-1">
-                              <Clock className="w-3 h-3" />{item.duration_minutes}m
+                              <Clock className="w-3 h-3" />
+                              {item.duration_minutes}m
                             </span>
                           )}
-                          <span className="text-xs text-gray-500">{formatMoney(item.unit_price)}</span>
+                          <span className="text-xs text-gray-500">
+                            {formatMoney(item.unit_price)}
+                          </span>
                           {item.quantity > 1 && (
-                            <span className="text-xs text-gray-400">× {item.quantity} = {formatMoney(item.total)}</span>
+                            <span className="text-xs text-gray-400">
+                              × {item.quantity} = {formatMoney(item.total)}
+                            </span>
                           )}
                         </div>
                       </div>
@@ -1007,7 +1082,9 @@ export function AppointmentDialog({
                         >
                           <Minus className="w-3 h-3 text-gray-600" />
                         </button>
-                        <span className="w-6 text-center text-sm font-medium text-gray-700">{item.quantity}</span>
+                        <span className="w-6 text-center text-sm font-medium text-gray-700">
+                          {item.quantity}
+                        </span>
                         <button
                           type="button"
                           onClick={() => changeQty(idx, 1)}
@@ -1036,7 +1113,9 @@ export function AppointmentDialog({
                         </span>
                       )}
                     </div>
-                    <span className="text-white font-semibold text-sm">{formatMoney(totalPrice)}</span>
+                    <span className="text-white font-semibold text-sm">
+                      {formatMoney(totalPrice)}
+                    </span>
                   </div>
                 </div>
               ) : (
@@ -1079,7 +1158,11 @@ export function AppointmentDialog({
 
             {/* ══ 4. DATE & TIME ══ */}
             <section>
-              <SectionLabel icon={<CalendarIcon className="w-3.5 h-3.5" />} label="Date & Time" required />
+              <SectionLabel
+                icon={<CalendarIcon className="w-3.5 h-3.5" />}
+                label="Date & Time"
+                required
+              />
               <div className="grid grid-cols-2 gap-3">
                 {/* Date picker */}
                 <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
@@ -1097,7 +1180,10 @@ export function AppointmentDialog({
                       mode="single"
                       selected={formData.scheduled_date}
                       onSelect={(d) => {
-                        if (d) { setFormData((p) => ({ ...p, scheduled_date: d })); setIsDatePickerOpen(false); }
+                        if (d) {
+                          setFormData((p) => ({ ...p, scheduled_date: d }));
+                          setIsDatePickerOpen(false);
+                        }
                       }}
                       initialFocus
                     />
@@ -1112,7 +1198,9 @@ export function AppointmentDialog({
                   >
                     <SelectTrigger className="w-full min-h-[44px] rounded-xl relative">
                       <SelectValue />
-                      {isLoadingSlots && <Loader2 className="w-3 h-3 animate-spin absolute right-8 text-gray-400" />}
+                      {isLoadingSlots && (
+                        <Loader2 className="w-3 h-3 animate-spin absolute right-8 text-gray-400" />
+                      )}
                     </SelectTrigger>
                     <SelectContent className="!z-[10000] max-h-64" position="popper" sideOffset={4}>
                       {availableSlots && (
@@ -1122,7 +1210,9 @@ export function AppointmentDialog({
                         </div>
                       )}
                       {timeOptions.map((t) => (
-                        <SelectItem key={t} value={t} className="min-h-[40px]">{t}</SelectItem>
+                        <SelectItem key={t} value={t} className="min-h-[40px]">
+                          {t}
+                        </SelectItem>
                       ))}
                       {availableSlots && (
                         <button
@@ -1173,16 +1263,23 @@ export function AppointmentDialog({
                   className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 border border-gray-100 rounded-xl transition-colors"
                 >
                   <div className="flex items-center gap-3">
-                    <Repeat className={cn("w-4 h-4", formData.is_recurring ? "text-primary" : "text-gray-400")} />
+                    <Repeat
+                      className={cn(
+                        "w-4 h-4",
+                        formData.is_recurring ? "text-primary" : "text-gray-400"
+                      )}
+                    />
                     <div className="text-left">
                       <p className="text-sm font-medium text-gray-900">Repeating visit</p>
                       <p className="text-xs text-gray-500">Schedule this appointment to repeat</p>
                     </div>
                   </div>
-                  <div className={cn(
-                    "w-9 h-5 rounded-full flex items-center transition-colors",
-                    formData.is_recurring ? "bg-primary justify-end" : "bg-gray-200 justify-start"
-                  )}>
+                  <div
+                    className={cn(
+                      "w-9 h-5 rounded-full flex items-center transition-colors",
+                      formData.is_recurring ? "bg-primary justify-end" : "bg-gray-200 justify-start"
+                    )}
+                  >
                     <div className="w-4 h-4 rounded-full bg-white mx-0.5 shadow-sm" />
                   </div>
                 </button>
@@ -1193,7 +1290,9 @@ export function AppointmentDialog({
                       <Label className="text-xs font-semibold text-blue-800">Repeat pattern</Label>
                       <Select
                         value={formData.recurrence_pattern}
-                        onValueChange={(v) => setFormData((p) => ({ ...p, recurrence_pattern: v as any }))}
+                        onValueChange={(v) =>
+                          setFormData((p) => ({ ...p, recurrence_pattern: v as any }))
+                        }
                       >
                         <SelectTrigger className="mt-1 min-h-[40px] bg-white rounded-lg">
                           <SelectValue />
@@ -1205,31 +1304,41 @@ export function AppointmentDialog({
                             ["biweekly", "Every 2 weeks"],
                             ["monthly", "Monthly"],
                           ].map(([v, l]) => (
-                            <SelectItem key={v} value={v} className="min-h-[40px]">{l}</SelectItem>
+                            <SelectItem key={v} value={v} className="min-h-[40px]">
+                              {l}
+                            </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <Label className="text-xs font-semibold text-blue-800">End date (optional)</Label>
+                        <Label className="text-xs font-semibold text-blue-800">
+                          End date (optional)
+                        </Label>
                         <Input
                           type="date"
                           value={formData.recurrence_end_date}
-                          onChange={(e) => setFormData((p) => ({ ...p, recurrence_end_date: e.target.value }))}
+                          onChange={(e) =>
+                            setFormData((p) => ({ ...p, recurrence_end_date: e.target.value }))
+                          }
                           className="mt-1 min-h-[40px] bg-white rounded-lg text-sm"
                         />
                       </div>
                       <div>
-                        <Label className="text-xs font-semibold text-blue-800">Max visits (optional)</Label>
+                        <Label className="text-xs font-semibold text-blue-800">
+                          Max visits (optional)
+                        </Label>
                         <Input
                           type="number"
                           min={1}
                           value={formData.recurrence_occurrences || ""}
-                          onChange={(e) => setFormData((p) => ({
-                            ...p,
-                            recurrence_occurrences: parseInt(e.target.value) || undefined,
-                          }))}
+                          onChange={(e) =>
+                            setFormData((p) => ({
+                              ...p,
+                              recurrence_occurrences: parseInt(e.target.value) || undefined,
+                            }))
+                          }
                           placeholder="e.g. 10"
                           className="mt-1 min-h-[40px] bg-white rounded-lg text-sm"
                         />
@@ -1260,13 +1369,22 @@ export function AppointmentDialog({
                 className="flex-1 min-h-[44px] rounded-xl bg-gray-900 hover:bg-gray-800 text-white"
               >
                 {isSaving ? (
-                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Saving…</>
-                ) : appointment ? "Update" : "Save"}
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Saving…
+                  </>
+                ) : appointment ? (
+                  "Update"
+                ) : (
+                  "Save"
+                )}
               </Button>
               {!appointment && (
                 <Button
                   type="button"
-                  disabled={isSaving || !cart.some((i) => i.type === "service") || !formData.team_member_id}
+                  disabled={
+                    isSaving || !cart.some((i) => i.type === "service") || !formData.team_member_id
+                  }
                   onClick={handleSaveAndCheckout}
                   className="flex-1 min-h-[44px] rounded-xl bg-primary hover:bg-primary/90 text-white"
                 >
@@ -1282,7 +1400,10 @@ export function AppointmentDialog({
       {/* ── Service picker sub-dialog ── */}
       <Dialog
         open={showServicePicker}
-        onOpenChange={(v) => { setShowServicePicker(v); if (!v) setServiceSearch(""); }}
+        onOpenChange={(v) => {
+          setShowServicePicker(v);
+          if (!v) setServiceSearch("");
+        }}
       >
         <DialogContent className="max-w-lg max-h-[85vh] flex flex-col overflow-hidden p-0 !z-[10001]">
           <div className="px-5 pt-5 pb-3 border-b border-gray-100 flex-shrink-0">
@@ -1298,9 +1419,7 @@ export function AppointmentDialog({
               />
             </div>
           </div>
-          <div className="flex-1 overflow-y-auto p-4">
-            {renderServiceList()}
-          </div>
+          <div className="flex-1 overflow-y-auto p-4">{renderServiceList()}</div>
         </DialogContent>
       </Dialog>
 
@@ -1309,7 +1428,11 @@ export function AppointmentDialog({
         open={showProductPicker}
         onOpenChange={(v) => {
           setShowProductPicker(v);
-          if (!v) { setVariantProduct(null); setSelectedVariantId(""); setProductSearch(""); }
+          if (!v) {
+            setVariantProduct(null);
+            setSelectedVariantId("");
+            setProductSearch("");
+          }
         }}
       >
         <DialogContent className="max-w-lg max-h-[85vh] flex flex-col overflow-hidden p-0 !z-[10001]">
@@ -1356,7 +1479,9 @@ export function AppointmentDialog({
                         {v.sku && ` · ${v.sku}`}
                       </p>
                     </div>
-                    {selectedVariantId === v.id && <Check className="w-4 h-4 text-primary flex-shrink-0" />}
+                    {selectedVariantId === v.id && (
+                      <Check className="w-4 h-4 text-primary flex-shrink-0" />
+                    )}
                   </button>
                 ))}
               </div>
@@ -1371,9 +1496,11 @@ export function AppointmentDialog({
                   products
                     .filter((p) => {
                       const q = productSearch.toLowerCase();
-                      return p.name.toLowerCase().includes(q)
-                        || (p.brand ?? "").toLowerCase().includes(q)
-                        || (p.sku ?? "").toLowerCase().includes(q);
+                      return (
+                        p.name.toLowerCase().includes(q) ||
+                        (p.brand ?? "").toLowerCase().includes(q) ||
+                        (p.sku ?? "").toLowerCase().includes(q)
+                      );
                     })
                     .map((p) => (
                       <button
@@ -1421,7 +1548,10 @@ export function AppointmentDialog({
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => { setVariantProduct(null); setSelectedVariantId(""); }}
+                onClick={() => {
+                  setVariantProduct(null);
+                  setSelectedVariantId("");
+                }}
                 className="flex-1 rounded-xl min-h-[44px]"
               >
                 Back
@@ -1430,7 +1560,9 @@ export function AppointmentDialog({
                 type="button"
                 disabled={!selectedVariantId}
                 onClick={() => {
-                  const v = (variantProduct.variants ?? []).find((vv) => vv.id === selectedVariantId);
+                  const v = (variantProduct.variants ?? []).find(
+                    (vv) => vv.id === selectedVariantId
+                  );
                   if (v) addProduct(variantProduct, v);
                 }}
                 className="flex-1 rounded-xl min-h-[44px] bg-primary hover:bg-primary/90"

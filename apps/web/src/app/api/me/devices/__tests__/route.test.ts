@@ -29,14 +29,14 @@ describe("POST /api/me/devices", () => {
     mockRegisterDevice.mockResolvedValue({ success: true });
   });
 
-  it("returns success only when device registration succeeds", async () => {
+  it("registers customer devices server-side even if the client sends app_type", async () => {
     const { POST } = await import("../route");
     const request = new NextRequest("http://localhost/api/me/devices", {
       method: "POST",
       body: JSON.stringify({
         player_id: "sub-1",
         platform: "ios",
-        app_type: "customer",
+        app_type: "provider",
       }),
     });
 
@@ -47,9 +47,15 @@ describe("POST /api/me/devices", () => {
     expect(body.data).toEqual({ registered: true });
     expect(mockRequireRoleInApi).toHaveBeenCalledWith(
       ["customer", "provider_owner", "provider_staff", "provider_onboarding", "superadmin"],
-      request,
+      request
     );
-    expect(mockRegisterDevice).toHaveBeenCalledWith(expect.anything(), "user-1", "sub-1", "ios", "customer");
+    expect(mockRegisterDevice).toHaveBeenCalledWith(
+      expect.anything(),
+      "user-1",
+      "sub-1",
+      "ios",
+      "customer"
+    );
   });
 
   it("returns an error when the device row cannot be saved", async () => {

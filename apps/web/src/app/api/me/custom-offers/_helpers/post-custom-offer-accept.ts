@@ -27,6 +27,7 @@ import {
   isGiftCardsEnabledForTenant,
 } from "@/lib/subscriptions/entitlements";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
+import { isPaymentMethodExpired } from "@/lib/payments/payment-method-expiry";
 
 interface OfferRow {
   id: string;
@@ -57,9 +58,8 @@ async function notifyCustomerCustomOfferExpiredBestEffort(args: {
 }): Promise<void> {
   try {
     const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
-    const { getNotificationTemplate, sendTemplateNotification, sendToUser } = await import(
-      "@/lib/notifications/onesignal"
-    );
+    const { getNotificationTemplate, sendTemplateNotification, sendToUser } =
+      await import("@/lib/notifications/onesignal");
     let providerName = "your provider";
     if (args.providerId) {
       const admin = getSupabaseAdmin();
@@ -82,7 +82,7 @@ async function notifyCustomerCustomOfferExpiredBestEffort(args: {
           request_id: args.requestId ?? "",
         },
         template.channels || ["push", "email"],
-        { appType: "customer" },
+        { appType: "customer" }
       );
     } else {
       await sendToUser(
@@ -98,7 +98,7 @@ async function notifyCustomerCustomOfferExpiredBestEffort(args: {
           url: `/account-settings/custom-requests`,
         },
         ["push", "email"],
-        { appType: "customer" },
+        { appType: "customer" }
       );
     }
   } catch (e) {
@@ -113,7 +113,7 @@ async function notifyCustomerCustomOfferExpiredBestEffort(args: {
 export async function postCustomOfferAccept(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
-  auth?: Awaited<ReturnType<typeof requireRoleInApi>>,
+  auth?: Awaited<ReturnType<typeof requireRoleInApi>>
 ) {
   try {
     const { user } = auth ?? (await requireRoleInApi(["customer", "superadmin"], request));
@@ -143,14 +143,14 @@ export async function postCustomOfferAccept(
     const { data: offerRow, error: offerError } = await supabase
       .from("custom_offers")
       .select(
-        "*, request:custom_requests(id, customer_id, provider_id, preferred_start_at, location_type, status)",
+        "*, request:custom_requests(id, customer_id, provider_id, preferred_start_at, location_type, status, expires_at)"
       )
       .eq("id", id)
       .single();
     if (offerError || !offerRow) return notFoundResponse("Offer not found");
 
     const offer = offerRow as OfferRow;
-    const req = offer.request as RequestRow | undefined;
+    const req = offer.request as (RequestRow & { expires_at?: string | null }) | undefined;
     if (req?.customer_id !== user.id) return notFoundResponse("Offer not found");
 
     const requestStatus = req?.status;
@@ -162,7 +162,29 @@ export async function postCustomOfferAccept(
       return errorResponse(
         "This request is closed. You can no longer pay for this offer.",
         "REQUEST_CLOSED",
-        400,
+        400
+      );
+    }
+
+    // §custom-requests-lifecycle-2026-05: lazy-expire the parent request if
+    // expires_at lapsed. Without this guard a customer could still pay an
+    // open offer whose request silently expired in the background, leaving
+    // an orphaned booking attached to a closed request.
+    if (req?.expires_at && new Date(req.expires_at).getTime() < Date.now()) {
+      try {
+        const adminEarly = getSupabaseAdmin();
+        await adminEarly
+          .from("custom_requests")
+          .update({ status: "expired", updated_at: new Date().toISOString() })
+          .eq("id", req.id)
+          .in("status", ["pending", "offered"]);
+      } catch (lazyErr) {
+        console.warn("[custom-offers/accept] lazy request expire failed:", lazyErr);
+      }
+      return errorResponse(
+        "This custom request expired before you could pay. Ask the provider for a fresh offer.",
+        "REQUEST_EXPIRED",
+        410
       );
     }
 
@@ -175,13 +197,13 @@ export async function postCustomOfferAccept(
       if (
         !resourceTenantMatchesHostTenant(
           tenantId,
-          (provRow as { tenant_id?: string | null } | null)?.tenant_id,
+          (provRow as { tenant_id?: string | null } | null)?.tenant_id
         )
       ) {
         return errorResponse(
           "This offer belongs to a different market. Switch to the correct site or app to pay.",
           "TENANT_MISMATCH",
-          403,
+          403
         );
       }
     }
@@ -202,14 +224,17 @@ export async function postCustomOfferAccept(
       return errorResponse(
         "Payment was received but we could not finish creating your booking. Please contact support with your payment reference.",
         "OFFER_FINALIZE_FAILED",
-        409,
+        409
       );
     }
 
     if (offer.status === "payment_pending" && offer.payment_url) {
       if (offer.expiration_at && new Date(offer.expiration_at).getTime() < Date.now()) {
         const adminEarly = getSupabaseAdmin();
-        await adminEarly.from("custom_offers").update({ status: "expired", updated_at: new Date().toISOString() }).eq("id", id);
+        await adminEarly
+          .from("custom_offers")
+          .update({ status: "expired", updated_at: new Date().toISOString() })
+          .eq("id", id);
         await patchCustomOfferMessageAttachments(adminEarly, id, { status: "expired" });
         void notifyCustomerCustomOfferExpiredBestEffort({
           customerId: user.id,
@@ -225,7 +250,10 @@ export async function postCustomOfferAccept(
     const adminSupabase = getSupabaseAdmin();
 
     if (offer.expiration_at && new Date(offer.expiration_at).getTime() < Date.now()) {
-      await adminSupabase.from("custom_offers").update({ status: "expired", updated_at: new Date().toISOString() }).eq("id", id);
+      await adminSupabase
+        .from("custom_offers")
+        .update({ status: "expired", updated_at: new Date().toISOString() })
+        .eq("id", id);
       await patchCustomOfferMessageAttachments(adminSupabase, id, { status: "expired" });
       void notifyCustomerCustomOfferExpiredBestEffort({
         customerId: user.id,
@@ -242,7 +270,7 @@ export async function postCustomOfferAccept(
 
     const fullCheckoutEnabled = await isFeatureEnabledServer(
       FEATURE_FLAG_KEYS.CUSTOM_OFFER_FULL_CHECKOUT,
-      tenantId,
+      tenantId
     );
 
     const travelFee = Number(offer.travel_fee ?? 0) >= 0 ? Number(offer.travel_fee ?? 0) : 0;
@@ -275,7 +303,8 @@ export async function postCustomOfferAccept(
 
     const providerRequiresDeposit = Boolean((providerRow as any)?.requires_deposit);
     const depositPct = Number((providerRow as any)?.deposit_percentage || 30);
-    const paymentOption = providerRequiresDeposit && body.payment_option === "deposit" ? "deposit" : "full";
+    const paymentOption =
+      providerRequiresDeposit && body.payment_option === "deposit" ? "deposit" : "full";
     const depositAmount = providerRequiresDeposit ? percentOf(result.totalAmount, depositPct) : 0;
     const chargeAmount = paymentOption === "deposit" ? depositAmount : result.totalAmount;
 
@@ -298,18 +327,10 @@ export async function postCustomOfferAccept(
       (body.use_wallet || body.gift_card_code || (body.loyalty_points_to_redeem ?? 0) > 0)
     ) {
       if (body.use_wallet && !(await isWalletEnabledForTenant(tenantId))) {
-        return errorResponse(
-          "Wallet payments are currently unavailable.",
-          "FEATURE_DISABLED",
-          400,
-        );
+        return errorResponse("Wallet payments are currently unavailable.", "FEATURE_DISABLED", 400);
       }
       if (body.gift_card_code && !(await isGiftCardsEnabledForTenant(tenantId))) {
-        return errorResponse(
-          "Gift cards are currently unavailable.",
-          "FEATURE_DISABLED",
-          400,
-        );
+        return errorResponse("Gift cards are currently unavailable.", "FEATURE_DISABLED", 400);
       }
 
       const splits = await computeCustomOfferSplits(supabase, {
@@ -423,11 +444,7 @@ export async function postCustomOfferAccept(
           }
         });
       } catch (walletErr: any) {
-        return errorResponse(
-          walletErr?.message || "Wallet debit failed.",
-          "WALLET_ERROR",
-          400,
-        );
+        return errorResponse(walletErr?.message || "Wallet debit failed.", "WALLET_ERROR", 400);
       }
     }
 
@@ -460,7 +477,7 @@ export async function postCustomOfferAccept(
         return errorResponse(
           "We could not finalize your booking. Your wallet/gift card has been refunded — please try again or contact support.",
           "FINALIZE_FAILED",
-          500,
+          500
         );
       }
       return successResponse({
@@ -484,8 +501,9 @@ export async function postCustomOfferAccept(
     const amountKobo = toCents(amountToCollect);
 
     if (body.payment_method_id) {
-      const { data: paymentMethod, error: pmError } = await (supabase
-        .from("payment_methods") as any)
+      const { data: paymentMethod, error: pmError } = await (
+        supabase.from("payment_methods") as any
+      )
         .select("*")
         .eq("id", body.payment_method_id)
         .eq("user_id", user.id)
@@ -501,7 +519,19 @@ export async function postCustomOfferAccept(
       const authorizationCode = paymentMethod.provider_payment_method_id as string | undefined;
       if (!authorizationCode || !authorizationCode.startsWith("AUTH_")) {
         for (const rb of reservedRollbacks) await rb();
-        return errorResponse("This payment method is not a valid Paystack authorization.", "INVALID_METHOD", 400);
+        return errorResponse(
+          "This payment method is not a valid Paystack authorization.",
+          "INVALID_METHOD",
+          400
+        );
+      }
+      if (isPaymentMethodExpired(paymentMethod.expiry_month, paymentMethod.expiry_year)) {
+        for (const rb of reservedRollbacks) await rb();
+        return errorResponse(
+          "This saved card has expired. Please remove it and pay with a new card.",
+          "CARD_EXPIRED",
+          400
+        );
       }
 
       const { error: pendingErr } = await adminSupabase
@@ -515,7 +545,12 @@ export async function postCustomOfferAccept(
         .eq("id", id);
       if (pendingErr) {
         for (const rb of reservedRollbacks) await rb();
-        return handleApiError(new Error("Failed to save payment state"), "Unable to process payment.", "DB_ERROR", 500);
+        return handleApiError(
+          new Error("Failed to save payment state"),
+          "Unable to process payment.",
+          "DB_ERROR",
+          500
+        );
       }
 
       await patchCustomOfferMessageAttachments(adminSupabase, id, { status: "payment_pending" });
@@ -525,7 +560,7 @@ export async function postCustomOfferAccept(
         email,
         amountKobo,
         pricingMetadata,
-        { tenantId },
+        { tenantId }
       );
 
       if (!chargeResult.status) {
@@ -549,7 +584,7 @@ export async function postCustomOfferAccept(
       // if the charge.success webhook fires later it will be a no-op.
       const chargeReference = chargeResult.data?.reference ?? reference;
       const chargeFeesMajor = convertFromSmallestUnit(
-        typeof chargeResult.data?.fees === "number" ? chargeResult.data.fees : 0,
+        typeof chargeResult.data?.fees === "number" ? chargeResult.data.fees : 0
       );
       const finalize = await finalizeCustomOfferPayment(adminSupabase, {
         offerId: id,
@@ -564,8 +599,7 @@ export async function postCustomOfferAccept(
         loyaltyDiscountAmount,
         pricingMetadata,
         customerEmail: email,
-        paymentProvider:
-          walletAmount > 0 || giftCardAmount > 0 ? "split" : "paystack",
+        paymentProvider: walletAmount > 0 || giftCardAmount > 0 ? "split" : "paystack",
       });
 
       if (!finalize.ok) {
@@ -577,12 +611,12 @@ export async function postCustomOfferAccept(
           .eq("id", id);
         await patchCustomOfferMessageAttachments(adminSupabase, id, { status: "finalize_failed" });
         console.error(
-          `[custom-offers/pay] inline finalize failed for offer ${id} ref ${chargeReference}: ${finalize.reason}`,
+          `[custom-offers/pay] inline finalize failed for offer ${id} ref ${chargeReference}: ${finalize.reason}`
         );
         return errorResponse(
           "Payment received but booking creation failed. Please contact support with your payment reference.",
           "FINALIZE_FAILED",
-          500,
+          500
         );
       }
 
@@ -621,23 +655,34 @@ export async function postCustomOfferAccept(
       return errorResponse(
         "Payment provider is temporarily unavailable. Please try again in a moment.",
         "PAYMENT_INIT_FAILED",
-        502,
+        502
       );
     }
 
     const paymentUrl = init.data.authorization_url;
 
-    const { error: updateError } = await adminSupabase.from("custom_offers").update({
-      status: "payment_pending",
-      payment_reference: reference,
-      payment_url: paymentUrl,
-      updated_at: new Date().toISOString(),
-    }).eq("id", id);
+    const { error: updateError } = await adminSupabase
+      .from("custom_offers")
+      .update({
+        status: "payment_pending",
+        payment_reference: reference,
+        payment_url: paymentUrl,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id);
 
     if (updateError) {
       for (const rb of reservedRollbacks) await rb();
-      console.error("[custom-offers/accept] failed to persist payment_pending:", updateError.message);
-      return handleApiError(new Error("Failed to save payment state"), "Unable to process payment. Please try again.", "DB_ERROR", 500);
+      console.error(
+        "[custom-offers/accept] failed to persist payment_pending:",
+        updateError.message
+      );
+      return handleApiError(
+        new Error("Failed to save payment state"),
+        "Unable to process payment. Please try again.",
+        "DB_ERROR",
+        500
+      );
     }
 
     await patchCustomOfferMessageAttachments(adminSupabase, id, { status: "payment_pending" });

@@ -48,12 +48,18 @@ export async function GET(
       // single-device fetch (e.g. for an edit drawer) returns the same
       // location_name + usage stats the picker relies on.
       const d = device as Record<string, unknown>;
+      const yocoId = String(d.yoco_device_id ?? "");
+      const isVirtual =
+        d.credential_mode === "virtual_checkout" || yocoId.startsWith("virtual:");
+      const displayId = isVirtual ? "" : yocoId;
       return NextResponse.json({
         data: {
           id: d.id,
           name: d.name,
-          device_id: d.yoco_device_id,
-          serial_number: d.yoco_device_id,
+          device_id: displayId,
+          serial_number: displayId,
+          device_type: isVirtual ? ("virtual_checkout" as const) : ("web_pos" as const),
+          credential_mode: isVirtual ? ("virtual_checkout" as const) : ("web_pos" as const),
           location_id: d.location_id,
           location_name: d.location_name ?? null,
           is_active: d.is_active,
@@ -198,12 +204,18 @@ export async function PUT(
       .single();
     if (!error && device) {
       const d = device as Record<string, unknown>;
+      const yocoId = String(d.yoco_device_id ?? "");
+      const isVirtual =
+        d.credential_mode === "virtual_checkout" || yocoId.startsWith("virtual:");
+      const displayId = isVirtual ? "" : yocoId;
       return NextResponse.json({
         data: {
           id: d.id,
           name: d.name,
-          device_id: d.yoco_device_id,
-          serial_number: d.yoco_device_id,
+          device_id: displayId,
+          serial_number: displayId,
+          device_type: isVirtual ? ("virtual_checkout" as const) : ("web_pos" as const),
+          credential_mode: isVirtual ? ("virtual_checkout" as const) : ("web_pos" as const),
           location_id: d.location_id,
           location_name: d.location_name ?? null,
           is_active: d.is_active,

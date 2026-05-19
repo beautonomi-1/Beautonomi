@@ -9,15 +9,40 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { ChevronLeft, ChevronRight, Check, Plus, Trash2, AlertCircle, Sparkles, Upload, Image as ImageIcon, X, Loader2, MapPin, CircleUser, Globe, Share2, Building2, MapPinned } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Check,
+  Plus,
+  Trash2,
+  AlertCircle,
+  Sparkles,
+  Upload,
+  Image as ImageIcon,
+  X,
+  Loader2,
+  MapPin,
+  CircleUser,
+  Globe,
+  Share2,
+  Building2,
+  MapPinned,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import AddressAutocomplete from "@/components/mapbox/AddressAutocomplete";
-import { LocationMapPickerDialog, type PickedMapLocation } from "@/components/mapbox/LocationMapPickerDialog";
+import {
+  LocationMapPickerDialog,
+  type PickedMapLocation,
+} from "@/components/mapbox/LocationMapPickerDialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import Breadcrumb from "@/components/ui/breadcrumb";
-import { validateFileType, validateFileSize, IMAGE_CONSTRAINTS } from "@/lib/supabase/storage-client";
+import {
+  validateFileType,
+  validateFileSize,
+  IMAGE_CONSTRAINTS,
+} from "@/lib/supabase/storage-client";
 import { getPricingPlans } from "@/lib/supabase/pricing";
 import { ChipCombobox } from "@/components/ui/chip-combobox";
 import { PhoneInput } from "@/components/ui/phone-input";
@@ -37,6 +62,7 @@ import { countryFilterIso2FromStorage } from "@beautonomi/utils";
 import { GlobalCategoryIcon } from "@/components/icons/GlobalCategoryIcon";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { currencySelectLabel } from "@/lib/locale/currency";
+import { PricingFeatureHtml } from "@/components/pricing/PricingFeatureHtml";
 
 interface GlobalCategory {
   id: string;
@@ -71,7 +97,7 @@ interface Service {
 interface OnboardingData {
   // Step 1: Team Size
   team_size: "freelancer" | "small" | "medium" | "large";
-  
+
   // Step 2: Identity (Owner Info)
   owner_name: string;
   owner_email: string;
@@ -79,7 +105,7 @@ interface OnboardingData {
   owner_phone: string;
   phone_verified: boolean;
   phone_verification_code?: string;
-  
+
   // Step 3: Business Details
   business_name: string;
   business_type: "salon" | "mobile" | "both";
@@ -93,22 +119,22 @@ interface OnboardingData {
     twitter?: string;
     linkedin?: string;
   };
-  
+
   // Step 4: Payment Setup
   yoco_machine: "yes" | "no" | "other";
   yoco_machine_other?: string;
   payout_setup_complete?: boolean; // Track if payout account is set up
   is_vat_registered?: boolean; // VAT registration status
   vat_number?: string; // SARS VAT number (if VAT registered)
-  
+
   // Step 5: Current Software
   previous_software?: string;
   previous_software_other?: string;
-  
+
   // Step 6: Payroll
   payroll_type: "commission" | "hourly" | "both" | "other";
   payroll_details?: string;
-  
+
   // Step 7: Location
   address: {
     line1: string;
@@ -120,10 +146,10 @@ interface OnboardingData {
     latitude?: number;
     longitude?: number;
   };
-  
+
   // Step 8: Photos
   thumbnail_url?: string;
-  avatar_url?: string; // optional profile circle (business face) for listing cards
+  avatar_url?: string; // required profile circle (business face) for listing cards
   gallery?: string[];
 
   // Business contact (used in Step3; aliased from owner_* for display)
@@ -142,21 +168,21 @@ interface OnboardingData {
   no_show_fee_enabled?: boolean;
   no_show_fee_amount?: number | null;
   include_in_search_engines?: boolean;
-  
+
   // Step 9: Service Zones
   selected_zone_ids?: string[];
-  
+
   // Step 10: Service Categories
   global_category_ids: string[];
-  
+
   // Step 11: Service Catalog
   services: Service[];
-  
+
   // Step 12: Operating Hours
   operating_hours: {
     [key: string]: { open: string; close: string; closed: boolean };
   };
-  
+
   // Step 14: Plan Selection (planName from URL for display only)
   selected_plan_id?: string;
   selected_plan_name?: string;
@@ -164,30 +190,35 @@ interface OnboardingData {
 
 /** Muted secondary actions (Edit / Cancel) — light grey, readable contrast, 14px body text (WCAG-friendly on white). */
 const ONBOARDING_SOFT_SECONDARY_BTN =
-  "h-9 min-h-9 shrink-0 border-slate-200 bg-slate-50 px-3.5 text-sm font-medium text-slate-700 shadow-none hover:border-slate-300 hover:bg-slate-100 hover:text-slate-900 focus-visible:ring-2 focus-visible:ring-slate-400/35";
+  "h-10 min-h-10 shrink-0 rounded-full border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-700 shadow-sm hover:border-slate-300 hover:bg-slate-100 hover:text-slate-900 focus-visible:ring-2 focus-visible:ring-slate-400/35 transition-all";
 
 /** Shared shell: rounded cards, depth, and text contrast across onboarding steps. */
 const ONBOARDING_PAGE_BG =
-  "min-h-screen bg-gradient-to-b from-slate-50 via-rose-50/35 to-violet-100/30";
-const ONBOARDING_CONTAINER = "w-full max-w-4xl mx-auto px-4 sm:px-6 md:px-8 py-5 sm:py-8 md:py-10";
+  "min-h-screen bg-[#F7F7F9] selection:bg-primary/20 pb-24 sm:pb-0 font-sans";
+const ONBOARDING_CONTAINER = "w-full max-w-3xl mx-auto px-4 sm:px-6 md:px-8 py-6 sm:py-10 md:py-12";
 const ONBOARDING_PROGRESS_CARD =
-  "mb-5 sm:mb-7 rounded-2xl sm:rounded-3xl border border-slate-200/90 bg-white/90 shadow-md shadow-slate-200/40 backdrop-blur-sm px-4 py-4 sm:px-6 sm:py-5 ring-1 ring-slate-100";
+  "mb-6 sm:mb-8 rounded-[2rem] bg-white/80 shadow-sm backdrop-blur-xl px-5 py-5 sm:px-8 sm:py-6 ring-1 ring-slate-900/5";
 const ONBOARDING_MAIN_CARD =
-  "rounded-2xl sm:rounded-3xl border border-slate-200 bg-white shadow-xl shadow-slate-300/25 ring-1 ring-slate-200/80 p-5 sm:p-8 md:p-10";
-const ONBOARDING_STEP_TITLE =
-  "text-2xl sm:text-3xl font-bold tracking-tight text-slate-900";
-const ONBOARDING_STEP_DESC = "mt-2 text-base text-slate-600 leading-relaxed max-w-2xl";
+  "rounded-[2rem] bg-white shadow-sm ring-1 ring-slate-900/5 p-6 sm:p-10 md:p-12";
+const ONBOARDING_STEP_TITLE = "text-3xl sm:text-4xl font-semibold tracking-tight text-slate-900";
+const ONBOARDING_STEP_DESC = "mt-3 text-lg text-slate-600 leading-relaxed max-w-xl";
+/**
+ * §Provider-launch (2026-05): nav row sticks to the bottom of the viewport on
+ * mobile so primary CTAs (Back / Skip / Next / Submit) are always reachable
+ * without scrolling past long step bodies (Mangomint/Fresha-style sticky footer).
+ * Desktop retains the inline card-bottom layout.
+ */
 const ONBOARDING_NAV_ROW =
-  "flex flex-col sm:flex-row justify-between gap-3 sm:gap-4 mt-8 sm:mt-10 pt-6 sm:pt-8 border-t border-slate-200";
+  "fixed inset-x-0 bottom-0 z-30 flex flex-row items-center justify-between gap-3 border-t border-slate-200/60 bg-white/90 px-4 py-4 shadow-[0_-8px_30px_-12px_rgba(0,0,0,0.08)] backdrop-blur-xl sm:static sm:mt-12 sm:justify-between sm:gap-4 sm:border-t-0 sm:bg-transparent sm:px-0 sm:py-0 sm:pt-8 sm:shadow-none sm:backdrop-blur-none";
 const ONBOARDING_BTN_BACK =
-  "w-full sm:w-auto h-12 sm:h-14 rounded-xl sm:rounded-2xl border-2 border-slate-300 bg-white text-slate-800 font-semibold hover:bg-slate-50 hover:text-slate-900 hover:border-slate-400";
+  "h-12 sm:h-14 rounded-full border border-slate-200 bg-white text-slate-800 font-semibold hover:bg-slate-50 hover:text-slate-900 hover:border-slate-300 px-5 sm:px-6 shadow-sm transition-all";
 const ONBOARDING_BTN_SKIP =
-  "flex-1 sm:flex-none h-12 sm:h-14 rounded-xl sm:rounded-2xl border-2 border-slate-300 bg-white text-slate-800 font-semibold hover:bg-slate-50 hover:border-slate-400";
+  "flex-1 sm:flex-none h-12 sm:h-14 rounded-full border border-transparent bg-transparent text-slate-600 font-semibold hover:bg-slate-100 hover:text-slate-900 px-5 sm:px-6 transition-all";
 const ONBOARDING_BTN_NEXT =
-  "flex-1 sm:flex-none h-12 sm:h-14 rounded-xl sm:rounded-2xl font-semibold shadow-lg shadow-primary/25";
-const ONBOARDING_REVIEW_HEADING = "font-semibold text-slate-900 mb-3 text-base sm:text-lg";
+  "flex-1 sm:flex-none h-12 sm:h-14 rounded-full font-semibold shadow-md px-6 sm:px-8 transition-all hover:scale-[1.02] active:scale-[0.98]";
+const ONBOARDING_REVIEW_HEADING = "font-semibold text-slate-900 mb-3 text-lg sm:text-xl";
 const ONBOARDING_REVIEW_CARD =
-  "rounded-2xl sm:rounded-3xl border border-slate-200 bg-slate-50/90 p-4 sm:p-5 text-sm text-slate-800 shadow-sm";
+  "rounded-[1.5rem] border border-slate-100 bg-slate-50/50 p-5 sm:p-6 text-base text-slate-800 shadow-sm";
 
 function digitsOnlyPhone(s: string | null | undefined): string {
   return (s ?? "").replace(/\D/g, "");
@@ -202,8 +233,7 @@ function coerceOwnerPhoneToE164ForForm(raw: string | undefined): string {
   const trimmed = raw.trim();
   const compact = normalizeSupabaseAuthPhone(trimmed);
 
-  const e164 =
-    normalizeFullPhoneToE164(trimmed) ?? normalizeFullPhoneToE164(compact);
+  const e164 = normalizeFullPhoneToE164(trimmed) ?? normalizeFullPhoneToE164(compact);
   if (e164) return normalizeSupabaseAuthPhone(e164);
 
   const digits = digitsOnlyPhone(trimmed);
@@ -280,7 +310,10 @@ async function fetchProfilePrefillForOnboarding(): Promise<ProfilePrefillResult 
   }
 }
 
-function mergeAccountIntoOnboardingForm(form: Partial<OnboardingData>, prefill: ProfilePrefillResult) {
+function mergeAccountIntoOnboardingForm(
+  form: Partial<OnboardingData>,
+  prefill: ProfilePrefillResult
+) {
   if (!form.owner_name?.trim() && prefill.ownerPatch.owner_name) {
     form.owner_name = prefill.ownerPatch.owner_name;
   }
@@ -341,10 +374,22 @@ const STEPS = [
   { id: 3, title: "Business Details", description: "Tell us about your business" },
   { id: 4, title: "Payment Setup", description: "Do you have a Yoco machine?" },
   { id: 5, title: "Current Software", description: "Are you moving from another system?" },
-  { id: 6, title: "Payroll", description: "How do you pay your staff?", conditional: (data: Partial<OnboardingData>) => data.team_size !== "freelancer" },
+  {
+    id: 6,
+    title: "Payroll",
+    description: "How do you pay your staff?",
+    conditional: (data: Partial<OnboardingData>) => data.team_size !== "freelancer",
+  },
   { id: 7, title: "Location", description: "Where are you located?" },
-  { id: 8, title: "Photos", description: "Add your photos" },
-  { id: 9, title: "Service Zones", description: "Select service areas", canSkip: true, conditional: (data: Partial<OnboardingData>) => data.business_type === "mobile" || data.business_type === "both" },
+  { id: 8, title: "Photos", description: "Required thumbnail and profile image" },
+  {
+    id: 9,
+    title: "Service Zones",
+    description: "Select service areas",
+    canSkip: true,
+    conditional: (data: Partial<OnboardingData>) =>
+      data.business_type === "mobile" || data.business_type === "both",
+  },
   { id: 10, title: "Service Categories", description: "Select categories" },
   { id: 11, title: "Service Catalog", description: "Add your services", canSkip: true },
   { id: 12, title: "Operating Hours", description: "When are you open?" },
@@ -419,9 +464,14 @@ export default function ProviderOnboarding() {
     if (!resumed) {
       try {
         const raw =
-          typeof window !== "undefined" ? window.sessionStorage.getItem(ONBOARDING_DRAFT_STORAGE_KEY) : null;
+          typeof window !== "undefined"
+            ? window.sessionStorage.getItem(ONBOARDING_DRAFT_STORAGE_KEY)
+            : null;
         if (raw) {
-          const parsed = JSON.parse(raw) as { draft_data?: Partial<OnboardingData>; current_step?: number };
+          const parsed = JSON.parse(raw) as {
+            draft_data?: Partial<OnboardingData>;
+            current_step?: number;
+          };
           if (parsed.draft_data) {
             Object.assign(merged, parsed.draft_data);
             if (typeof parsed.current_step === "number" && parsed.current_step >= 1) {
@@ -504,7 +554,7 @@ export default function ProviderOnboarding() {
             errors.push("VAT number is required when VAT registered");
           } else if (formData.vat_number.length !== 10) {
             errors.push("VAT number must be 10 digits");
-          } else if (!formData.vat_number.startsWith('4')) {
+          } else if (!formData.vat_number.startsWith("4")) {
             errors.push("South African VAT numbers must start with 4");
           }
         }
@@ -521,7 +571,12 @@ export default function ProviderOnboarding() {
         if (!formData.address?.country?.trim()) errors.push("Country is required");
         break;
       case 8: // Photos
-        // Optional - no validation
+        if (!formData.thumbnail_url?.trim()) {
+          errors.push("Please upload a main thumbnail photo for your provider card");
+        }
+        if (!formData.avatar_url?.trim()) {
+          errors.push("Please upload a profile image/avatar for your provider card");
+        }
         break;
       case 9: // Service Zones
         // Optional (can skip)
@@ -534,14 +589,13 @@ export default function ProviderOnboarding() {
       case 11: // Service Catalog
         // Optional - no validation
         break;
-      case 12: { // Hours
+      case 12: {
+        // Hours
         const hours = formData.operating_hours;
         if (!hours || Object.keys(hours).length === 0) {
           errors.push("Please set your operating hours");
         } else {
-          const hasOpenDay = Object.values(hours).some(
-            (h: any) => h && !h.closed
-          );
+          const hasOpenDay = Object.values(hours).some((h: any) => h && !h.closed);
           if (!hasOpenDay) {
             errors.push("At least one day must be open");
           }
@@ -563,7 +617,7 @@ export default function ProviderOnboarding() {
 
   const handleNext = () => {
     const validation = validateStep(currentStep);
-    
+
     if (!validation.valid) {
       validation.errors.forEach((error) => toast.error(error));
       return;
@@ -659,6 +713,16 @@ export default function ProviderOnboarding() {
         toast.error("Please select at least one service category");
         return;
       }
+      if (!formData.thumbnail_url?.trim()) {
+        toast.error("Please upload a main thumbnail photo before submitting");
+        setCurrentStep(8);
+        return;
+      }
+      if (!formData.avatar_url?.trim()) {
+        toast.error("Please upload a profile image/avatar before submitting");
+        setCurrentStep(8);
+        return;
+      }
 
       // Submit onboarding data
       const onboardingData = {
@@ -717,7 +781,11 @@ export default function ProviderOnboarding() {
       };
 
       // Validate required fields before sending
-      if (!onboardingData.address.line1 || !onboardingData.address.city || !onboardingData.address.country) {
+      if (
+        !onboardingData.address.line1 ||
+        !onboardingData.address.city ||
+        !onboardingData.address.country
+      ) {
         toast.error("Please complete all required address fields");
         return;
       }
@@ -746,28 +814,39 @@ export default function ProviderOnboarding() {
           auto_configured?: any;
           subscription_endpoint?: string | null;
           selected_plan_id?: string | null;
+          requires_checkout?: boolean;
+          checkout_path?: string | null;
         };
         error: null;
       }>("/api/provider/onboarding", onboardingData);
 
-      const successMessage = response.data?.message || "Onboarding submitted! We'll review your application.";
+      const successMessage =
+        response.data?.message || "Onboarding submitted! We'll review your application.";
       const autoConfig = response.data?.auto_configured;
       const subscriptionEndpoint = response.data?.subscription_endpoint;
       const selectedPlanId = response.data?.selected_plan_id;
+      const requiresCheckout = response.data?.requires_checkout ?? Boolean(subscriptionEndpoint);
 
-      // If a plan was selected, send user to subscription checkout (Cart + Order summary), then Paystack
-      if (subscriptionEndpoint && selectedPlanId) {
+      // If a paid plan was selected, send user through checkout, then back to dashboard.
+      if (requiresCheckout && selectedPlanId) {
         try {
           sessionStorage.removeItem(ONBOARDING_DRAFT_STORAGE_KEY);
         } catch {}
         toast.success("Onboarding complete. Complete your subscription below.", { duration: 3000 });
+        const checkoutPath =
+          response.data?.checkout_path ||
+          `/provider/subscription-checkout?planId=${encodeURIComponent(selectedPlanId)}`;
+        const separator = checkoutPath.includes("?") ? "&" : "?";
         const inAppParam = inAppFromUrl ? "&in_app=1" : "";
-        router.push(`/provider/subscription-checkout?planId=${selectedPlanId}${inAppParam}`);
+        router.push(`${checkoutPath}${separator}return_to=dashboard${inAppParam}`);
         return;
       }
 
       // Show detailed success message
-      if (autoConfig && (autoConfig.zones > 0 || autoConfig.services > 0 || autoConfig.mobile_ready)) {
+      if (
+        autoConfig &&
+        (autoConfig.zones > 0 || autoConfig.services > 0 || autoConfig.mobile_ready)
+      ) {
         toast.success(successMessage, {
           duration: 6000,
         });
@@ -786,26 +865,26 @@ export default function ProviderOnboarding() {
       }, 1500);
     } catch (error) {
       let errorMessage = "Failed to submit onboarding. Please try again.";
-      
+
       if (error instanceof FetchError) {
         console.error("FetchError details:", {
           message: error.message,
           status: error.status,
           code: error.code,
-          details: error.details
+          details: error.details,
         });
-        
+
         // Try to extract validation errors from the details
         if (error.details && Array.isArray(error.details)) {
           console.error("Validation errors:", JSON.stringify(error.details, null, 2));
           // Show all validation errors - format for toast (toast doesn't support newlines well)
           const validationErrors = error.details.map((err: any, index: number) => {
-            if (typeof err === 'string') return `${index + 1}. ${err}`;
-            const path = err.path || 'field';
-            const msg = err.message || 'Invalid value';
+            if (typeof err === "string") return `${index + 1}. ${err}`;
+            const path = err.path || "field";
+            const msg = err.message || "Invalid value";
             return `${index + 1}. ${path}: ${msg}`;
           });
-          
+
           // Show first error in toast, log all to console
           if (validationErrors.length > 0) {
             errorMessage = validationErrors[0];
@@ -823,7 +902,7 @@ export default function ProviderOnboarding() {
       } else {
         console.error("Unknown error:", error);
       }
-      
+
       toast.error(errorMessage);
     } finally {
       setIsSubmitting(false);
@@ -846,11 +925,13 @@ export default function ProviderOnboarding() {
 
   const currentStepData = STEPS[currentStep - 1];
   const canSkip = currentStepData?.canSkip || false;
-  const totalVisibleSteps = STEPS.filter(s => !s.conditional || (s.conditional && s.conditional(formData))).length;
+  const totalVisibleSteps = STEPS.filter(
+    (s) => !s.conditional || (s.conditional && s.conditional(formData))
+  ).length;
 
   return (
-    <RoleGuard 
-      allowedRoles={["customer", "provider_owner"]} 
+    <RoleGuard
+      allowedRoles={["customer", "provider_owner"]}
       redirectTo="/become-a-partner"
       showLoading={true}
     >
@@ -867,83 +948,45 @@ export default function ProviderOnboarding() {
           </div>
 
           <div className={ONBOARDING_PROGRESS_CARD}>
-            {/* Mobile: compact progress */}
-            <div className="sm:hidden">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-semibold text-slate-800">
+            <div className="flex items-center justify-between gap-4 mb-3">
+              <div>
+                <p className="text-sm font-semibold text-slate-900">
                   Step {getActualStepIndex()} of {totalVisibleSteps}
                 </p>
-                <p className="text-sm font-medium text-slate-600 tabular-nums">
-                  {Math.round((getActualStepIndex() / totalVisibleSteps) * 100)}% complete
-                </p>
+                <p className="text-xs font-medium text-slate-500 mt-0.5">{currentStepData.title}</p>
               </div>
-              <div className="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-slate-200">
-                <div
-                  className="h-full rounded-full bg-primary transition-all duration-300"
-                  style={{ width: `${(getActualStepIndex() / totalVisibleSteps) * 100}%` }}
-                  role="progressbar"
-                  aria-valuenow={getActualStepIndex()}
-                  aria-valuemin={1}
-                  aria-valuemax={totalVisibleSteps}
-                />
+              <div className="flex flex-col items-end">
+                <p className="text-sm font-medium text-slate-900 tabular-nums">
+                  {Math.round((getActualStepIndex() / totalVisibleSteps) * 100)}%
+                </p>
+                {isSavingDraft && (
+                  <p className="text-[10px] font-medium text-slate-500 mt-0.5 animate-pulse">
+                    Saving…
+                  </p>
+                )}
               </div>
             </div>
 
-            {/* Desktop: stepper */}
-            <div className="hidden sm:block">
-              <div className="mb-1 flex items-center justify-between">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Your progress
-                </p>
-                {isSavingDraft && (
-                  <p className="text-xs font-medium text-slate-600">Saving…</p>
-                )}
-              </div>
-              <div className="flex items-center justify-between">
-                {STEPS.filter((s) => !s.conditional || (s.conditional && s.conditional(formData))).map((step, index) => {
-                  const isCompleted = currentStep > step.id;
-                  const isCurrent = currentStep === step.id;
-                  return (
-                    <div key={step.id} className="flex flex-1 items-center">
-                      <div className="flex flex-1 flex-col items-center">
-                        <div
-                          className={`flex h-10 w-10 items-center justify-center rounded-full border-2 transition-all duration-200 sm:h-12 sm:w-12 ${
-                            isCompleted || isCurrent
-                              ? "scale-105 border-primary bg-primary text-white shadow-md"
-                              : "border-slate-300 bg-white text-slate-500"
-                          }`}
-                        >
-                          {isCompleted ? (
-                            <Check className="h-5 w-5 sm:h-6 sm:w-6" aria-hidden />
-                          ) : (
-                            <span className="text-sm font-semibold sm:text-base">{index + 1}</span>
-                          )}
-                        </div>
-                        <div className="mt-2 text-center px-0.5">
-                          <p
-                            className={`text-[10px] font-medium leading-tight sm:text-xs ${
-                              isCompleted || isCurrent ? "text-slate-900" : "text-slate-500"
-                            }`}
-                          >
-                            {step.title}
-                          </p>
-                        </div>
-                      </div>
-                      {index < totalVisibleSteps - 1 && (
-                        <div
-                          className={`mx-1 h-1 flex-1 rounded-full transition-all duration-300 sm:mx-2 ${
-                            isCompleted ? "bg-primary" : "bg-slate-200"
-                          }`}
-                        />
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+            <div className="flex gap-1 h-2 w-full">
+              {STEPS.filter(
+                (s) => !s.conditional || (s.conditional && s.conditional(formData))
+              ).map((step, index) => {
+                const isCompleted = currentStep > step.id;
+                const isCurrent = currentStep === step.id;
+                return (
+                  <div
+                    key={step.id}
+                    className={`h-full flex-1 rounded-full transition-all duration-500 ${
+                      isCompleted ? "bg-primary" : isCurrent ? "bg-primary/60" : "bg-slate-100"
+                    }`}
+                    role="progressbar"
+                    aria-valuenow={isCurrent ? 100 : 0}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                  />
+                );
+              })}
             </div>
-            {isSavingDraft && (
-              <p className="mt-3 text-center text-xs font-medium text-slate-600 sm:hidden">Saving progress…</p>
-            )}
           </div>
 
           <div className={ONBOARDING_MAIN_CARD}>
@@ -955,42 +998,26 @@ export default function ProviderOnboarding() {
               <p className={ONBOARDING_STEP_DESC}>{currentStepData.description}</p>
             </header>
 
-            {currentStep === 1 && (
-              <Step1TeamSize data={formData} updateData={updateFormData} />
-            )}
-            {currentStep === 2 && (
-              <Step2Identity data={formData} updateData={updateFormData} />
-            )}
+            {currentStep === 1 && <Step1TeamSize data={formData} updateData={updateFormData} />}
+            {currentStep === 2 && <Step2Identity data={formData} updateData={updateFormData} />}
             {currentStep === 3 && (
               <Step3BusinessDetails data={formData} updateData={updateFormData} />
             )}
-            {currentStep === 4 && (
-              <Step4PaymentSetup data={formData} updateData={updateFormData} />
-            )}
+            {currentStep === 4 && <Step4PaymentSetup data={formData} updateData={updateFormData} />}
             {currentStep === 5 && (
               <Step5CurrentSoftware data={formData} updateData={updateFormData} />
             )}
-            {currentStep === 6 && (
-              <Step6Payroll data={formData} updateData={updateFormData} />
-            )}
-            {currentStep === 7 && (
-              <Step7Location data={formData} updateData={updateFormData} />
-            )}
-            {currentStep === 8 && (
-              <Step8Photos data={formData} updateData={updateFormData} />
-            )}
-            {currentStep === 9 && (
-              <Step9ServiceZones data={formData} updateData={updateFormData} />
-            )}
+            {currentStep === 6 && <Step6Payroll data={formData} updateData={updateFormData} />}
+            {currentStep === 7 && <Step7Location data={formData} updateData={updateFormData} />}
+            {currentStep === 8 && <Step8Photos data={formData} updateData={updateFormData} />}
+            {currentStep === 9 && <Step9ServiceZones data={formData} updateData={updateFormData} />}
             {currentStep === 10 && (
               <Step10GlobalCategories data={formData} updateData={updateFormData} />
             )}
             {currentStep === 11 && (
               <Step11ServiceCatalog data={formData} updateData={updateFormData} />
             )}
-            {currentStep === 12 && (
-              <Step12Hours data={formData} updateData={updateFormData} />
-            )}
+            {currentStep === 12 && <Step12Hours data={formData} updateData={updateFormData} />}
             {currentStep === 13 && <Step13Review data={formData} />}
             {currentStep === 14 && (
               <Step14PlanSelection data={formData} updateData={updateFormData} />
@@ -1002,18 +1029,22 @@ export default function ProviderOnboarding() {
                 onClick={handleBack}
                 disabled={currentStep === 1}
                 className={ONBOARDING_BTN_BACK}
+                aria-label="Go to previous step"
               >
-                <ChevronLeft className="mr-2 h-5 w-5" aria-hidden />
-                Back
+                <ChevronLeft className="h-5 w-5 sm:mr-2" aria-hidden />
+                <span className="hidden sm:inline">Back</span>
               </Button>
-              <div className="flex w-full gap-3 sm:w-auto sm:gap-4">
+              <div className="flex flex-1 items-center justify-end gap-3 sm:flex-none sm:gap-4">
                 {canSkip && currentStep < STEPS.length && (
                   <Button variant="outline" onClick={handleSkip} className={ONBOARDING_BTN_SKIP}>
                     Skip for now
                   </Button>
                 )}
                 {currentStep < STEPS.length ? (
-                  <Button onClick={handleNext} className={`${ONBOARDING_BTN_NEXT} bg-primary text-white hover:bg-primary-hover`}>
+                  <Button
+                    onClick={handleNext}
+                    className={`${ONBOARDING_BTN_NEXT} bg-primary text-white hover:bg-primary-hover`}
+                  >
                     Next
                     <ChevronRight className="ml-2 h-5 w-5" aria-hidden />
                   </Button>
@@ -1023,7 +1054,7 @@ export default function ProviderOnboarding() {
                     disabled={isSubmitting}
                     className={`${ONBOARDING_BTN_NEXT} bg-primary text-white hover:bg-primary-hover disabled:opacity-50`}
                   >
-                    {isSubmitting ? "Submitting…" : "Submit"}
+                    {isSubmitting ? "Submitting…" : "Submit & launch"}
                   </Button>
                 )}
               </div>
@@ -1076,16 +1107,7 @@ function Step1TeamSize({
   ];
 
   return (
-    <div className="space-y-8">
-      <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-5 text-center shadow-sm sm:rounded-3xl sm:p-6">
-        <h3 className="text-lg font-semibold text-slate-900 sm:text-xl">Tell us about your team</h3>
-        <p className="mt-2 text-base text-slate-700">How many staff members are there?</p>
-        <p className="mt-3 text-sm leading-relaxed text-slate-600">
-          We use this to tailor setup (for example, payroll steps only when you have a team). You&apos;ll choose salon,
-          mobile, or both in the next step.
-        </p>
-      </div>
-
+    <div className="space-y-6">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5">
         {teamSizeOptions.map((option) => {
           const isSelected = data.team_size === option.id;
@@ -1097,39 +1119,42 @@ function Step1TeamSize({
                 updateData({ team_size: option.id as any });
                 updateData({ business_type: option.id === "freelancer" ? "mobile" : "salon" });
               }}
-              className={`relative rounded-2xl border-2 p-6 text-left shadow-sm transition-all duration-200 hover:shadow-md sm:rounded-3xl sm:p-7 ${
+              className={`relative rounded-[1.5rem] border-2 p-6 text-left transition-all duration-300 hover:-translate-y-1 sm:p-7 ${
                 isSelected
-                  ? "border-primary bg-primary/[0.06] shadow-md ring-2 ring-primary/20"
-                  : "border-slate-200 bg-white hover:border-slate-300"
+                  ? "border-slate-900 bg-slate-900/5 shadow-md"
+                  : "border-slate-100 bg-white hover:border-slate-200 hover:shadow-sm"
               }`}
             >
               {option.badge && (
-                <span className="absolute right-3 top-3 rounded-full bg-primary px-2.5 py-1 text-xs font-semibold text-white">
+                <span
+                  className={`absolute right-4 top-4 rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider ${
+                    isSelected ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"
+                  }`}
+                >
                   {option.badge}
                 </span>
               )}
-              <div className="flex items-start gap-4">
-                <div className="text-4xl" aria-hidden>
+              <div className="flex flex-col gap-4">
+                <div
+                  className="text-4xl bg-slate-50 w-16 h-16 rounded-2xl flex items-center justify-center shadow-sm"
+                  aria-hidden
+                >
                   {option.icon}
                 </div>
                 <div className="min-w-0 flex-1">
                   <h3 className="mb-1 text-lg font-semibold text-slate-900">{option.title}</h3>
                   <p className="mb-2 text-sm font-medium text-slate-700">{option.subtitle}</p>
-                  <p className="text-sm text-slate-600">{option.description}</p>
-                </div>
-                <div
-                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 transition-all ${
-                    isSelected ? "border-primary bg-primary" : "border-slate-300 bg-white"
-                  }`}
-                  aria-hidden
-                >
-                  {isSelected && <Check className="h-4 w-4 text-white" />}
+                  <p className="text-sm text-slate-500 leading-relaxed">{option.description}</p>
                 </div>
               </div>
             </button>
           );
         })}
       </div>
+      <p className="text-sm text-slate-500 text-center mt-6">
+        We use this to tailor your setup. You&apos;ll choose salon, mobile, or both in the next
+        step.
+      </p>
     </div>
   );
 }
@@ -1142,13 +1167,17 @@ function _Step1BusinessInfo({
   data: Partial<OnboardingData>;
   updateData: (updates: Partial<OnboardingData>) => void;
 }) {
-  const [previousSoftwareOptions, setPreviousSoftwareOptions] = useState<Array<{ id: string; name: string; slug: string }>>([]);
+  const [previousSoftwareOptions, setPreviousSoftwareOptions] = useState<
+    Array<{ id: string; name: string; slug: string }>
+  >([]);
   const [isLoadingSoftwareOptions, setIsLoadingSoftwareOptions] = useState(true);
 
   useEffect(() => {
     const loadPreviousSoftwareOptions = async () => {
       try {
-        const response = await fetcher.get<{ data: Array<{ id: string; name: string; slug: string }> }>("/api/public/previous-software-options");
+        const response = await fetcher.get<{
+          data: Array<{ id: string; name: string; slug: string }>;
+        }>("/api/public/previous-software-options");
         setPreviousSoftwareOptions(response.data || []);
       } catch (error) {
         console.error("Error loading previous software options:", error);
@@ -1165,15 +1194,21 @@ function _Step1BusinessInfo({
       <Alert className="bg-blue-50 border-blue-200">
         <Sparkles className="w-4 h-4 text-blue-600" />
         <AlertDescription className="text-blue-800 text-sm">
-          <strong>Quick Setup:</strong> We'll automatically configure most settings for you! 
-          {data.business_type === "mobile" && " As a freelancer, we'll mark you as mobile-ready and help you select service zones."}
-          {data.business_type === "both" && " We'll help you set up both salon and mobile services."}
-          {(!data.business_type || data.business_type === "salon") && " We'll help you get started quickly with smart defaults."}
+          <strong>Quick Setup:</strong> We'll automatically configure most settings for you!
+          {data.business_type === "mobile" &&
+            " As a freelancer, we'll mark you as mobile-ready and help you select service zones."}
+          {data.business_type === "both" &&
+            " We'll help you set up both salon and mobile services."}
+          {(!data.business_type || data.business_type === "salon") &&
+            " We'll help you get started quickly with smart defaults."}
         </AlertDescription>
       </Alert>
 
       <div>
-        <Label htmlFor="business_name" className="text-sm sm:text-base font-semibold text-gray-900 mb-2 block">
+        <Label
+          htmlFor="business_name"
+          className="text-sm sm:text-base font-semibold text-gray-900 mb-2 block"
+        >
           Business Name <span className="text-primary">*</span>
         </Label>
         <Input
@@ -1186,7 +1221,10 @@ function _Step1BusinessInfo({
         />
       </div>
       <div>
-        <Label htmlFor="business_type" className="text-sm sm:text-base font-semibold text-gray-900 mb-2 block">
+        <Label
+          htmlFor="business_type"
+          className="text-sm sm:text-base font-semibold text-gray-900 mb-2 block"
+        >
           Business Type <span className="text-primary">*</span>
         </Label>
         <select
@@ -1195,10 +1233,13 @@ function _Step1BusinessInfo({
           onChange={(e) => {
             const newType = e.target.value as any;
             updateData({ business_type: newType });
-            
+
             // Show helpful message about what will be auto-configured
             if (newType === "mobile") {
-              toast.info("We'll automatically mark you as mobile-ready and help you set up service zones!", { duration: 4000 });
+              toast.info(
+                "We'll automatically mark you as mobile-ready and help you set up service zones!",
+                { duration: 4000 }
+              );
             }
           }}
           className="w-full h-12 sm:h-14 px-4 text-base border border-gray-300 rounded-lg focus:border-primary focus:ring-primary bg-white"
@@ -1210,8 +1251,8 @@ function _Step1BusinessInfo({
         <p className="text-xs sm:text-sm text-gray-600 mt-2 leading-relaxed">
           {data.business_type === "mobile" && (
             <span>
-              <strong>Freelancer mode:</strong> You'll be automatically set up as mobile-ready staff. 
-              We'll help you select service zones where you can provide at-home services.
+              <strong>Freelancer mode:</strong> You'll be automatically set up as mobile-ready
+              staff. We'll help you select service zones where you can provide at-home services.
             </span>
           )}
           {data.business_type === "salon" && (
@@ -1219,8 +1260,8 @@ function _Step1BusinessInfo({
           )}
           {data.business_type === "both" && (
             <span>
-              <strong>Hybrid mode:</strong> You operate both a fixed location and provide mobile/at-home services. 
-              We'll help you configure both.
+              <strong>Hybrid mode:</strong> You operate both a fixed location and provide
+              mobile/at-home services. We'll help you configure both.
             </span>
           )}
           {!data.business_type && (
@@ -1229,9 +1270,14 @@ function _Step1BusinessInfo({
         </p>
       </div>
       <div>
-        <Label htmlFor="website" className="text-sm sm:text-base font-semibold text-gray-900 mb-2 block">
+        <Label
+          htmlFor="website"
+          className="text-sm sm:text-base font-semibold text-gray-900 mb-2 block"
+        >
           Website URL
-          <span className="text-gray-500 font-normal text-xs sm:text-sm ml-2">(Optional but recommended)</span>
+          <span className="text-gray-500 font-normal text-xs sm:text-sm ml-2">
+            (Optional but recommended)
+          </span>
         </Label>
         <Input
           id="website"
@@ -1253,7 +1299,10 @@ function _Step1BusinessInfo({
         </p>
       </div>
       <div>
-        <Label htmlFor="years_in_business" className="text-sm sm:text-base font-semibold text-gray-900 mb-2 block">
+        <Label
+          htmlFor="years_in_business"
+          className="text-sm sm:text-base font-semibold text-gray-900 mb-2 block"
+        >
           Years in Business
           <span className="text-gray-500 font-normal text-xs sm:text-sm ml-2">(Optional)</span>
         </Label>
@@ -1283,7 +1332,10 @@ function _Step1BusinessInfo({
         </p>
       </div>
       <div>
-        <Label htmlFor="description" className="text-sm sm:text-base font-semibold text-gray-900 mb-2 block">
+        <Label
+          htmlFor="description"
+          className="text-sm sm:text-base font-semibold text-gray-900 mb-2 block"
+        >
           Business Description
           <span className="text-gray-500 font-normal text-xs sm:text-sm ml-2">
             (Recommended: 50-500 characters)
@@ -1335,7 +1387,10 @@ function _Step1BusinessInfo({
         </div>
       </div>
       <div>
-        <Label htmlFor="previous_software" className="text-sm sm:text-base font-semibold text-gray-900 mb-2 block">
+        <Label
+          htmlFor="previous_software"
+          className="text-sm sm:text-base font-semibold text-gray-900 mb-2 block"
+        >
           Previous Salon Software <span className="text-gray-500 font-normal">(Optional)</span>
         </Label>
         {isLoadingSoftwareOptions ? (
@@ -1356,11 +1411,16 @@ function _Step1BusinessInfo({
                   updateData({ previous_software: undefined, previous_software_other: undefined });
                   return;
                 }
-                const known = new Set(["none", "other", ...previousSoftwareOptions.map((o) => o.slug)]);
+                const known = new Set([
+                  "none",
+                  "other",
+                  ...previousSoftwareOptions.map((o) => o.slug),
+                ]);
                 if (known.has(v)) {
                   updateData({
                     previous_software: v,
-                    previous_software_other: v === "other" ? data.previous_software_other : undefined,
+                    previous_software_other:
+                      v === "other" ? data.previous_software_other : undefined,
                   });
                 } else {
                   updateData({ previous_software: "other", previous_software_other: v });
@@ -1387,12 +1447,16 @@ function _Step1BusinessInfo({
           </>
         )}
         <p className="text-xs sm:text-sm text-gray-600 mt-2 leading-relaxed">
-          Help us understand where providers are coming from. This information is only visible to administrators.
+          Help us understand where providers are coming from. This information is only visible to
+          administrators.
         </p>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 md:gap-5">
         <div>
-          <Label htmlFor="phone" className="text-sm sm:text-base font-semibold text-gray-900 mb-2 block">
+          <Label
+            htmlFor="phone"
+            className="text-sm sm:text-base font-semibold text-gray-900 mb-2 block"
+          >
             Phone <span className="text-primary">*</span>
           </Label>
           <PhoneInput
@@ -1405,7 +1469,10 @@ function _Step1BusinessInfo({
           />
         </div>
         <div>
-          <Label htmlFor="email" className="text-sm sm:text-base font-semibold text-gray-900 mb-2 block">
+          <Label
+            htmlFor="email"
+            className="text-sm sm:text-base font-semibold text-gray-900 mb-2 block"
+          >
             Email <span className="text-primary">*</span>
           </Label>
           <Input
@@ -1420,19 +1487,34 @@ function _Step1BusinessInfo({
         </div>
       </div>
       <div>
-        <Label htmlFor="languages_spoken" className="text-sm sm:text-base font-semibold text-gray-900 mb-2 block">
+        <Label
+          htmlFor="languages_spoken"
+          className="text-sm sm:text-base font-semibold text-gray-900 mb-2 block"
+        >
           Languages You Speak
           <span className="text-gray-500 font-normal text-xs sm:text-sm ml-2">(Optional)</span>
         </Label>
         <p className="text-xs sm:text-sm text-gray-600 mb-2">
-          Select or type the languages you can communicate in with clients. At least one language is required.
+          Select or type the languages you can communicate in with clients. At least one language is
+          required.
         </p>
         <ChipCombobox
           singleSelect={false}
           value={data.languages_spoken?.length ? data.languages_spoken : ["English"]}
           onChange={(next) => updateData({ languages_spoken: next.length ? next : ["English"] })}
           staticSuggestions={[
-            "English", "Afrikaans", "Zulu", "Xhosa", "Sesotho", "Tswana", "Venda", "Tsonga", "Swati", "Ndebele", "Southern Sotho", "Northern Sotho",
+            "English",
+            "Afrikaans",
+            "Zulu",
+            "Xhosa",
+            "Sesotho",
+            "Tswana",
+            "Venda",
+            "Tsonga",
+            "Swati",
+            "Ndebele",
+            "Southern Sotho",
+            "Northern Sotho",
           ].map((l) => ({ value: l, label: l }))}
           allowFreeForm
           placeholder="Add language..."
@@ -1531,16 +1613,17 @@ function Step2Identity({
 
   return (
     <div className="space-y-8">
-      <div className="rounded-2xl border border-sky-200 bg-gradient-to-br from-sky-50 to-white p-5 shadow-sm sm:rounded-3xl sm:p-6">
-        <div className="flex items-start gap-4">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-sky-600 text-white shadow-sm">
-            <CircleUser className="h-5 w-5" aria-hidden />
+      <div className="rounded-[1.5rem] bg-slate-50 p-6 sm:p-8">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white text-slate-900 shadow-sm">
+            <CircleUser className="h-6 w-6" aria-hidden />
           </div>
           <div className="min-w-0">
-            <h4 className="mb-2 text-base font-semibold text-sky-950 sm:text-lg">Owner and contact details</h4>
-            <p className="text-sm leading-relaxed text-sky-950/90">
-              We use this for verification and to reach you about bookings and payouts. If you signed up with name,
-              email, or phone already, those values should appear below — you can change them anytime.
+            <h4 className="text-base font-semibold text-slate-900 sm:text-lg">
+              Owner and contact details
+            </h4>
+            <p className="mt-1 text-sm leading-relaxed text-slate-600">
+              We use this for verification and to reach you about bookings and payouts.
             </p>
           </div>
         </div>
@@ -1549,23 +1632,23 @@ function Step2Identity({
       <div className="space-y-6">
         {/* Name */}
         <div>
-          <Label htmlFor="owner_name" className="mb-2 block text-base font-semibold text-slate-900">
-            Your Name <span className="text-primary">*</span>
+          <Label htmlFor="owner_name" className="mb-2 block text-sm font-semibold text-slate-900">
+            Your Name <span className="text-slate-400">*</span>
           </Label>
           <Input
             id="owner_name"
             value={data.owner_name || ""}
             onChange={(e) => updateData({ owner_name: e.target.value })}
             placeholder="Enter your full name"
-            className="h-14 rounded-2xl border-slate-300 text-base focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20"
+            className="h-14 rounded-xl border-slate-200 text-base shadow-sm focus-visible:border-slate-900 focus-visible:ring-1 focus-visible:ring-slate-900 transition-all"
             required
           />
         </div>
 
         {/* Email */}
         <div>
-          <Label htmlFor="owner_email" className="mb-2 block text-base font-semibold text-slate-900">
-            Email Address <span className="text-primary">*</span>
+          <Label htmlFor="owner_email" className="mb-2 block text-sm font-semibold text-slate-900">
+            Email Address <span className="text-slate-400">*</span>
           </Label>
           <Input
             id="owner_email"
@@ -1573,15 +1656,15 @@ function Step2Identity({
             value={data.owner_email || ""}
             onChange={(e) => updateData({ owner_email: e.target.value })}
             placeholder="your.email@example.com"
-            className="h-14 rounded-2xl border-slate-300 text-base focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20"
+            className="h-14 rounded-xl border-slate-200 text-base shadow-sm focus-visible:border-slate-900 focus-visible:ring-1 focus-visible:ring-slate-900 transition-all"
             required
           />
         </div>
 
         {/* Phone with Verification */}
         <div>
-          <Label htmlFor="owner_phone" className="mb-2 block text-base font-semibold text-slate-900">
-            Mobile Number <span className="text-primary">*</span>
+          <Label htmlFor="owner_phone" className="mb-2 block text-sm font-semibold text-slate-900">
+            Mobile Number <span className="text-slate-400">*</span>
           </Label>
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
             <div className="min-w-0 w-full lg:flex-1">
@@ -1603,33 +1686,34 @@ function Step2Identity({
               type="button"
               onClick={handleSendCode}
               disabled={!isValidOwnerPhoneE164(data.owner_phone) || isSendingCode || countdown > 0}
-              className="h-14 w-full shrink-0 rounded-2xl bg-primary px-6 text-white hover:bg-primary-hover disabled:opacity-50 lg:w-auto"
+              className="h-14 w-full shrink-0 rounded-xl bg-slate-900 px-6 text-white hover:bg-slate-800 disabled:opacity-50 lg:w-auto shadow-sm transition-all"
             >
               {isSendingCode ? (
                 <Loader2 className="w-5 h-5 animate-spin" />
               ) : countdown > 0 ? (
-                `Resend (${Math.floor(countdown / 60)}:${String(countdown % 60).padStart(2, '0')})`
+                `Resend (${Math.floor(countdown / 60)}:${String(countdown % 60).padStart(2, "0")})`
               ) : (
                 "Send Code"
               )}
             </Button>
           </div>
-          <p className="mt-2 text-xs leading-relaxed text-slate-600">
+          <p className="mt-3 text-xs leading-relaxed text-slate-500">
             We’ll SMS a {SUPABASE_AUTH_OTP_LENGTH}-digit code (valid for about{" "}
             {Math.max(1, Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60))}{" "}
-            {Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60) === 1 ? "minute" : "minutes"}). For South Africa, enter the local number only
-            (omit +27)—for example <span className="whitespace-nowrap">82 123 4567</span> or{" "}
-            <span className="whitespace-nowrap">082 123 4567</span>—as shown under the field. Standard carrier rates may apply.
+            {Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60) === 1 ? "minute" : "minutes"}).
+            For South Africa, enter the local number only (omit +27)—for example{" "}
+            <span className="whitespace-nowrap font-medium text-slate-700">82 123 4567</span> or{" "}
+            <span className="whitespace-nowrap font-medium text-slate-700">082 123 4567</span>.
           </p>
 
           {/* Verification Code Input */}
           {codeSent && (
-            <div className="mt-4 space-y-3">
+            <div className="mt-6 space-y-3 rounded-[1.5rem] bg-slate-50 p-5 sm:p-6 border border-slate-100">
               <Label
                 htmlFor="provider-onboarding-verify-otp-0"
-                className="mb-2 block text-base font-semibold text-slate-900"
+                className="mb-2 block text-sm font-semibold text-slate-900"
               >
-                Enter Verification Code <span className="text-primary">*</span>
+                Enter Verification Code <span className="text-slate-400">*</span>
               </Label>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                 <OtpDigitInput
@@ -1648,8 +1732,12 @@ function Step2Identity({
                 <Button
                   type="button"
                   onClick={() => void handleVerifyCode()}
-                  disabled={!isCompleteSupabaseSmsOtp(verificationCode) || isVerifying || data.phone_verified}
-                  className="h-14 shrink-0 rounded-2xl bg-primary px-6 text-white hover:bg-primary-hover disabled:opacity-50 sm:h-14"
+                  disabled={
+                    !isCompleteSupabaseSmsOtp(verificationCode) ||
+                    isVerifying ||
+                    data.phone_verified
+                  }
+                  className="h-14 shrink-0 rounded-xl bg-slate-900 px-8 text-white hover:bg-slate-800 disabled:opacity-50 sm:h-14 shadow-sm transition-all"
                 >
                   {isVerifying ? (
                     <Loader2 className="w-5 h-5 animate-spin" />
@@ -1661,9 +1749,11 @@ function Step2Identity({
                 </Button>
               </div>
               {data.phone_verified && (
-                <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-900">
-                  <Check className="h-4 w-4 shrink-0 text-emerald-700" aria-hidden />
-                  Phone number verified
+                <div className="mt-4 flex items-center gap-2 rounded-xl border border-emerald-100 bg-emerald-50/50 px-4 py-3 text-sm font-medium text-emerald-800">
+                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-100">
+                    <Check className="h-4 w-4 shrink-0 text-emerald-600" aria-hidden />
+                  </div>
+                  Phone number verified successfully
                 </div>
               )}
             </div>
@@ -1674,7 +1764,7 @@ function Step2Identity({
   );
 }
 
-// Step 8: Photos - Thumbnail and Gallery
+// Step 8: Photos - required thumbnail/profile image plus optional gallery
 function Step8Photos({
   data,
   updateData,
@@ -1683,7 +1773,9 @@ function Step8Photos({
   updateData: (updates: Partial<OnboardingData>) => void;
 }) {
   const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
-  const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(data.thumbnail_url || null);
+  const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(
+    data.thumbnail_url || null
+  );
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(data.avatar_url || null);
   const [galleryFiles, setGalleryFiles] = useState<File[]>([]);
@@ -1709,7 +1801,9 @@ function Step8Photos({
     setThumbnailFile(file);
     const reader = new FileReader();
     reader.onloadend = () => {
-      setThumbnailPreview(reader.result as string);
+      const dataUrl = reader.result as string;
+      setThumbnailPreview(dataUrl);
+      updateData({ thumbnail_url: dataUrl });
     };
     reader.readAsDataURL(file);
   };
@@ -1780,33 +1874,35 @@ function Step8Photos({
 
   return (
     <div className="space-y-8">
-      <div className="rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 to-fuchsia-50/60 p-5 shadow-sm sm:rounded-3xl sm:p-6">
-        <div className="flex items-start gap-4">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-violet-600 text-white shadow-sm">
-            <ImageIcon className="h-5 w-5" aria-hidden />
+      <div className="rounded-[1.5rem] bg-slate-50 p-6 sm:p-8">
+        <div className="flex flex-col sm:flex-row sm:items-start gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white text-slate-900 shadow-sm">
+            <ImageIcon className="h-6 w-6" aria-hidden />
           </div>
-          <div className="min-w-0">
-            <h4 className="mb-2 text-base font-semibold text-violet-950 sm:text-lg">Why photos matter</h4>
+          <div className="min-w-0 space-y-2">
+            <h4 className="text-base font-semibold tracking-tight text-slate-900 sm:text-lg">
+              Why photos matter
+            </h4>
             {data.business_type === "mobile" ? (
-              <div className="space-y-2 text-sm leading-relaxed text-violet-950/90">
+              <div className="space-y-2 text-sm leading-relaxed text-slate-600">
                 <p>
-                  <strong className="text-violet-950">Your photo:</strong> A clear, professional photo of you helps
-                  clients trust you before they book.
+                  <strong className="text-slate-900">Your photo:</strong> A clear, professional
+                  photo of you helps clients trust you before they book.
                 </p>
                 <p>
-                  <strong className="text-violet-950">Gallery:</strong> Show finished work and before/after shots so
-                  customers see your quality.
+                  <strong className="text-slate-900">Gallery:</strong> Show finished work and
+                  before/after shots so customers see your quality.
                 </p>
               </div>
             ) : (
-              <div className="space-y-2 text-sm leading-relaxed text-violet-950/90">
+              <div className="space-y-2 text-sm leading-relaxed text-slate-600">
                 <p>
-                  <strong className="text-violet-950">Salon or owner photo:</strong> Real spaces and faces outperform
-                  generic logos in search and profile views.
+                  <strong className="text-slate-900">Salon or owner photo:</strong> Real spaces and
+                  faces outperform generic logos in search and profile views.
                 </p>
                 <p>
-                  <strong className="text-violet-950">Gallery:</strong> Portfolio images build confidence in your
-                  services.
+                  <strong className="text-slate-900">Gallery:</strong> Portfolio images build
+                  confidence in your services.
                 </p>
               </div>
             )}
@@ -1818,31 +1914,28 @@ function Step8Photos({
       <div>
         <Label className="mb-2 block text-sm font-semibold text-slate-900 sm:text-base">
           {data.business_type === "mobile" ? "Your Photo" : "Salon Photo or Owner Photo"}
-          <span className="ml-2 text-xs font-normal text-slate-600 sm:text-sm">(Recommended)</span>
+          <span className="ml-2 text-xs font-semibold text-rose-600 sm:text-sm">(Required)</span>
         </Label>
         <p className="mb-3 text-xs leading-relaxed text-slate-700 sm:text-sm">
           {data.business_type === "mobile" ? (
             <>
-              <strong>For freelancers:</strong> Upload a professional photo of yourself. People are more likely to click on a human face than a logo. 
-              This helps build trust and personal connection with clients. Use a square image (recommended: 800x800px or larger).
+              <strong>For freelancers:</strong> Upload a professional photo of yourself. People are
+              more likely to click on a human face than a logo. This helps build trust and personal
+              connection with clients. Use a square image (recommended: 800x800px or larger).
             </>
           ) : (
             <>
-              <strong>For salons:</strong> Upload a photo of your salon interior/exterior or a professional photo of yourself as the owner. 
-              People are more likely to click on real photos than logos. This helps build trust and shows your space or team. 
-              Use a square image (recommended: 800x800px or larger).
+              <strong>For salons:</strong> Upload a photo of your salon interior/exterior or a
+              professional photo of yourself as the owner. People are more likely to click on real
+              photos than logos. This helps build trust and shows your space or team. Use a square
+              image (recommended: 800x800px or larger).
             </>
           )}
         </p>
         <div className="flex flex-col sm:flex-row gap-4">
           {thumbnailPreview ? (
             <div className="relative h-48 w-full overflow-hidden rounded-2xl border-2 border-slate-200 sm:w-48">
-              <Image
-                src={thumbnailPreview}
-                alt="Thumbnail preview"
-                fill
-                className="object-cover"
-              />
+              <Image src={thumbnailPreview} alt="Thumbnail preview" fill className="object-cover" />
               <Button
                 type="button"
                 variant="destructive"
@@ -1864,7 +1957,7 @@ function Step8Photos({
             <div className="flex h-48 w-full items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 sm:w-48">
               <div className="p-4 text-center">
                 <ImageIcon className="mx-auto mb-2 h-12 w-12 text-slate-400" aria-hidden />
-                <p className="text-xs text-slate-600">No thumbnail</p>
+                <p className="text-xs text-slate-600">Thumbnail required</p>
               </div>
             </div>
           )}
@@ -1893,19 +1986,26 @@ function Step8Photos({
         </div>
       </div>
 
-      {/* Profile circle (optional) - business face on listing cards */}
+      {/* Profile circle (required) - business face on listing cards */}
       <div>
         <Label className="text-sm sm:text-base font-semibold text-gray-900 mb-2 block">
           Profile circle (business face)
-          <span className="text-gray-500 font-normal text-xs sm:text-sm ml-2">(Optional)</span>
+          <span className="text-rose-600 font-semibold text-xs sm:text-sm ml-2">(Required)</span>
         </Label>
         <p className="text-xs sm:text-sm text-gray-600 mb-3">
-          This image appears in the small circle on your listing card. A clear headshot or logo helps clients recognize you. You can skip and set it later in Settings → Gallery.
+          This image appears in the small circle on your listing card. A clear headshot or logo
+          helps clients recognize you and is required before your profile can go live.
         </p>
         <div className="flex flex-col sm:flex-row gap-4 items-start">
           {avatarPreview ? (
             <div className="relative w-24 h-24 rounded-full border-2 border-indigo-200 overflow-hidden flex-shrink-0">
-              <Image src={avatarPreview} alt="Profile circle" fill className="object-cover" unoptimized />
+              <Image
+                src={avatarPreview}
+                alt="Profile circle"
+                fill
+                className="object-cover"
+                unoptimized
+              />
               <Button
                 type="button"
                 variant="destructive"
@@ -1955,11 +2055,15 @@ function Step8Photos({
       <div>
         <Label className="text-sm sm:text-base font-semibold text-gray-900 mb-2 block">
           Portfolio / Work Gallery
-          <span className="text-gray-500 font-normal text-xs sm:text-sm ml-2">(Optional but recommended)</span>
+          <span className="text-gray-500 font-normal text-xs sm:text-sm ml-2">
+            (Optional but recommended)
+          </span>
         </Label>
         <p className="text-xs sm:text-sm text-gray-600 mb-3">
-          <strong>Showcase your work:</strong> Upload photos of your completed work, before/after transformations, or examples of your services. 
-          This is your portfolio that helps clients see the quality of your work. You can add up to 10 images. Minimum 3 recommended for best results.
+          <strong>Showcase your work:</strong> Upload photos of your completed work, before/after
+          transformations, or examples of your services. This is your portfolio that helps clients
+          see the quality of your work. You can add up to 10 images. Minimum 3 recommended for best
+          results.
         </p>
         <Input
           ref={galleryInputRef}
@@ -1974,14 +2078,17 @@ function Step8Photos({
           htmlFor="gallery-upload"
           className="cursor-pointer inline-flex items-center justify-center px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors mb-4"
         >
-              <Upload className="w-4 h-4 mr-2" />
+          <Upload className="w-4 h-4 mr-2" />
           Add Portfolio Images
         </Label>
 
         {galleryPreviews.length > 0 && (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mt-4">
             {galleryPreviews.map((preview, index) => (
-              <div key={index} className="relative aspect-square border-2 border-gray-200 rounded-lg overflow-hidden">
+              <div
+                key={index}
+                className="relative aspect-square border-2 border-gray-200 rounded-lg overflow-hidden"
+              >
                 <Image
                   src={preview}
                   alt={`Gallery image ${index + 1}`}
@@ -2005,18 +2112,19 @@ function Step8Photos({
         {galleryFiles.length > 0 && (
           <div className="mt-4 p-3 bg-gray-50 rounded-lg">
             <p className="text-xs text-gray-600">
-              {galleryFiles.length} image{galleryFiles.length !== 1 ? "s" : ""} ready to upload after onboarding
+              {galleryFiles.length} image{galleryFiles.length !== 1 ? "s" : ""} ready to upload
+              after onboarding
             </p>
           </div>
         )}
       </div>
 
-      {(!thumbnailPreview && galleryPreviews.length === 0) && (
+      {(!thumbnailPreview || !avatarPreview) && (
         <Alert className="bg-amber-50 border-amber-200">
           <AlertCircle className="w-4 h-4 text-amber-600" />
           <AlertDescription className="text-amber-800 text-sm">
-            <strong>Tip:</strong> Providers with photos get 3x more views! Your portfolio gallery helps clients see your work quality. 
-            You can skip this step and add photos later, but we recommend adding at least a thumbnail now to improve your visibility in search results.
+            <strong>Required:</strong> Upload both a main thumbnail and a profile image/avatar so
+            your provider card has a reliable listing image on web and app.
           </AlertDescription>
         </Alert>
       )}
@@ -2046,9 +2154,9 @@ function hasAnySocialLink(links: OnboardingData["social_media_links"] | undefine
   if (!links) return false;
   return Boolean(
     links.facebook?.trim() ||
-      links.instagram?.trim() ||
-      links.twitter?.trim() ||
-      links.linkedin?.trim(),
+    links.instagram?.trim() ||
+    links.twitter?.trim() ||
+    links.linkedin?.trim()
   );
 }
 
@@ -2090,40 +2198,35 @@ function Step3BusinessDetails({
   ]);
 
   const fieldShell =
-    "rounded-2xl border border-slate-200/90 bg-white shadow-sm transition-shadow focus-within:shadow-md focus-within:border-primary/35";
+    "rounded-[1.5rem] border border-slate-100 bg-slate-50/50 shadow-sm transition-shadow focus-within:shadow-md focus-within:border-slate-300";
   const inputClass =
-    "h-12 sm:h-14 text-base border-slate-200 bg-white rounded-xl focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15";
-  const helper = "text-sm text-slate-700 leading-relaxed";
-  const helperMuted = "text-sm text-slate-600 leading-relaxed";
+    "h-14 text-base border-slate-200 bg-white rounded-xl focus-visible:border-slate-900 focus-visible:ring-1 focus-visible:ring-slate-900 shadow-sm transition-all";
+  const helper = "text-sm text-slate-600 leading-relaxed";
+  const helperMuted = "text-sm text-slate-500 leading-relaxed";
 
   return (
     <div className="space-y-8">
-      <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-4 shadow-sm sm:rounded-3xl sm:p-6">
-        <div className="flex items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-            <Building2 className="h-5 w-5" aria-hidden />
+      <div className="rounded-[1.5rem] bg-slate-50 p-6 sm:p-8">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white text-slate-900 shadow-sm">
+            <Building2 className="h-6 w-6" aria-hidden />
           </div>
-          <div className="min-w-0 space-y-2">
-            <p className={`${helper} font-medium text-slate-800`}>
-              <span className="mr-1.5" aria-hidden>
-                💡
-              </span>
-              Complete profiles build trust: add a clear description, the languages you speak, and optionally turn on a
-              website or social links below.
+          <div className="min-w-0 space-y-1">
+            <p className="text-base font-semibold text-slate-900 sm:text-lg">
+              Complete profiles build trust
             </p>
-            {data.team_size === "freelancer" && (
-              <p className={helperMuted}>
-                <span className="font-semibold text-slate-800">Freelancer?</span> Mobile, studio, or both is set in a later
-                step—here, focus on how you want your brand to read on your public profile.
-              </p>
-            )}
+            <p className="text-sm leading-relaxed text-slate-600">
+              Add a clear description, the languages you speak, and optionally a website or social
+              links.
+              {data.team_size === "freelancer" && " (Mobile/studio preference is set later)."}
+            </p>
           </div>
         </div>
       </div>
 
-      <section className="space-y-2">
-        <Label htmlFor="business_name" className="text-base font-semibold text-slate-900">
-          Business Name <span className="text-primary">*</span>
+      <section className="space-y-3">
+        <Label htmlFor="business_name" className="text-sm font-semibold text-slate-900">
+          Business Name <span className="text-slate-400">*</span>
         </Label>
         <p className={helperMuted}>This is how customers will see your business on the platform.</p>
         <Input
@@ -2131,48 +2234,55 @@ function Step3BusinessDetails({
           value={data.business_name || ""}
           onChange={(e) => updateData({ business_name: e.target.value })}
           placeholder="e.g. Studio Huumphrey"
-          className={`${inputClass} mt-1`}
+          className={inputClass}
           required
         />
       </section>
 
-      <section className="space-y-2">
-        <Label htmlFor="description" className="text-base font-semibold text-slate-900">
-          Business Description <span className="text-slate-600 font-normal text-sm">(Recommended)</span>
+      <section className="space-y-3">
+        <Label htmlFor="description" className="text-sm font-semibold text-slate-900">
+          Business Description <span className="text-slate-400 font-normal">(Recommended)</span>
         </Label>
         <p className={helperMuted}>
-          Describe your services, style, and what makes you special—this appears on your public profile.
+          Describe your services, style, and what makes you special—this appears on your public
+          profile.
         </p>
         <Textarea
           id="description"
           value={data.description || ""}
           onChange={(e) => updateData({ description: e.target.value })}
           placeholder="Tell customers about your business, your expertise, and what makes you unique..."
-          className={`min-h-[132px] text-base border-slate-200 bg-white rounded-xl resize-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 mt-1`}
+          className={`min-h-[140px] text-base border-slate-200 bg-white rounded-xl resize-none focus-visible:border-slate-900 focus-visible:ring-1 focus-visible:ring-slate-900 shadow-sm transition-all`}
           maxLength={2000}
         />
         <div className="mt-2 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm tabular-nums text-slate-700">
-            {(data.description?.length || 0)}/2000 characters
+          <p className="text-sm tabular-nums text-slate-500">
+            {data.description?.length || 0}/2000 characters
           </p>
-          {data.description != null && data.description.length > 0 && data.description.length < 50 && (
-            <p className="text-sm font-medium text-amber-800">
-              Consider adding more detail—we recommend at least 50 characters for a stronger profile.
-            </p>
-          )}
+          {data.description != null &&
+            data.description.length > 0 &&
+            data.description.length < 50 && (
+              <p className="text-sm font-medium text-amber-600">
+                Consider adding more detail—we recommend at least 50 characters.
+              </p>
+            )}
         </div>
       </section>
 
-      <section className="space-y-2">
-        <Label htmlFor="years_in_business" className="text-base font-semibold text-slate-900">
-          Years in Business <span className="text-slate-600 font-normal text-sm">(Optional)</span>
+      <section className="space-y-3">
+        <Label htmlFor="years_in_business" className="text-sm font-semibold text-slate-900">
+          Years in Business <span className="text-slate-400 font-normal">(Optional)</span>
         </Label>
         <p className={helperMuted}>Your experience helps build trust with customers.</p>
         <select
           id="years_in_business"
           value={data.years_in_business ?? ""}
-          onChange={(e) => updateData({ years_in_business: e.target.value ? parseInt(e.target.value, 10) : undefined })}
-          className={`mt-1 w-full ${inputClass} px-4`}
+          onChange={(e) =>
+            updateData({
+              years_in_business: e.target.value ? parseInt(e.target.value, 10) : undefined,
+            })
+          }
+          className={`w-full ${inputClass} px-4`}
         >
           <option value="">Select years…</option>
           <option value="0">Just starting (0 years)</option>
@@ -2190,11 +2300,12 @@ function Step3BusinessDetails({
 
       <section className="space-y-2">
         <Label htmlFor="languages_spoken" className="text-base font-semibold text-slate-900">
-          Languages you speak <span className="text-slate-600 font-normal text-sm">(Optional but recommended)</span>
+          Languages you speak{" "}
+          <span className="text-slate-600 font-normal text-sm">(Optional but recommended)</span>
         </Label>
         <p className={helper}>
-          Select or type every language you&apos;re comfortable using with clients. At least one language is required—we
-          default to English until you add more.
+          Select or type every language you&apos;re comfortable using with clients. At least one
+          language is required—we default to English until you add more.
         </p>
         <div className="mt-2">
           <ChipCombobox
@@ -2216,11 +2327,16 @@ function Step3BusinessDetails({
             <Globe className="h-5 w-5 shrink-0 text-slate-600" aria-hidden />
             <div>
               <p className="text-base font-semibold text-slate-900">Website URL</p>
-              <p className={`${helperMuted} mt-0.5`}>Optional — helps customers learn more and can help discovery.</p>
+              <p className={`${helperMuted} mt-0.5`}>
+                Optional — helps customers learn more and can help discovery.
+              </p>
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <span id="onboarding-website-toggle-label" className="text-sm font-medium text-slate-800">
+            <span
+              id="onboarding-website-toggle-label"
+              className="text-sm font-medium text-slate-800"
+            >
               Add website
             </span>
             <Switch
@@ -2235,7 +2351,9 @@ function Step3BusinessDetails({
             <Label htmlFor="website" className="sr-only">
               Website URL
             </Label>
-            <p className={helperMuted}>Paste your full link; we&apos;ll add https:// if you omit it.</p>
+            <p className={helperMuted}>
+              Paste your full link; we&apos;ll add https:// if you omit it.
+            </p>
             <Input
               id="website"
               type="url"
@@ -2267,7 +2385,10 @@ function Step3BusinessDetails({
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <span id="onboarding-social-toggle-label" className="text-sm font-medium text-slate-800">
+            <span
+              id="onboarding-social-toggle-label"
+              className="text-sm font-medium text-slate-800"
+            >
               Add profiles
             </span>
             <Switch
@@ -2386,13 +2507,31 @@ function Step4PaymentSetup({
 
   return (
     <div className="space-y-8">
-      <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-5 text-center shadow-sm sm:rounded-3xl sm:p-6">
-        <h3 className="text-lg font-semibold text-slate-900 sm:text-xl">Payment setup</h3>
-        <p className="mt-2 text-base text-slate-700">Do you have a Yoco card machine?</p>
-        <p className="mt-2 text-sm leading-relaxed text-slate-600">
-          Yoco is widely used in South Africa. Whatever you choose here, you can connect payouts and terminals after
-          onboarding.
-        </p>
+      <div className="rounded-[1.5rem] bg-slate-50 p-6 sm:p-8">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white text-slate-900 shadow-sm">
+            <svg
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <rect x="2" y="5" width="20" height="14" rx="2" />
+              <line x1="2" y1="10" x2="22" y2="10" />
+            </svg>
+          </div>
+          <div className="min-w-0 space-y-1">
+            <p className="text-base font-semibold text-slate-900 sm:text-lg">Payment setup</p>
+            <p className="text-sm leading-relaxed text-slate-600">
+              Do you have a Yoco card machine? Yoco is widely used in South Africa. You can connect
+              payouts and terminals after onboarding.
+            </p>
+          </div>
+        </div>
       </div>
 
       <div className="space-y-4">
@@ -2403,24 +2542,24 @@ function Step4PaymentSetup({
               key={option.id}
               type="button"
               onClick={() => updateData({ yoco_machine: option.id as any })}
-              className={`w-full rounded-2xl border-2 p-5 text-left shadow-sm transition-all duration-200 sm:rounded-3xl sm:p-6 ${
+              className={`w-full rounded-[1.5rem] border p-5 text-left transition-all duration-300 sm:p-6 ${
                 isSelected
-                  ? "border-primary bg-primary/[0.06] shadow-md ring-2 ring-primary/15"
-                  : "border-slate-200 bg-white hover:border-slate-300"
+                  ? "border-slate-900 bg-slate-900/5 shadow-sm"
+                  : "border-slate-100 bg-white hover:border-slate-200 hover:shadow-sm"
               }`}
             >
               <div className="flex items-center justify-between gap-4">
                 <div className="min-w-0">
                   <h3 className="mb-1 text-lg font-semibold text-slate-900">{option.title}</h3>
-                  <p className="text-sm text-slate-600">{option.description}</p>
+                  <p className="text-sm text-slate-500">{option.description}</p>
                 </div>
                 <div
-                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 ${
-                    isSelected ? "border-primary bg-primary" : "border-slate-300 bg-white"
+                  className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition-all ${
+                    isSelected ? "border-slate-900 bg-slate-900" : "border-slate-300 bg-white"
                   }`}
                   aria-hidden
                 >
-                  {isSelected && <Check className="h-4 w-4 text-white" />}
+                  {isSelected && <Check className="h-3 w-3 text-white" />}
                 </div>
               </div>
             </button>
@@ -2430,7 +2569,10 @@ function Step4PaymentSetup({
 
       {data.yoco_machine === "other" && (
         <div className="mt-4">
-          <Label htmlFor="yoco_machine_other" className="text-base font-semibold text-gray-900 mb-2 block">
+          <Label
+            htmlFor="yoco_machine_other"
+            className="text-base font-semibold text-gray-900 mb-2 block"
+          >
             What card machine do you have?
           </Label>
           <Input
@@ -2446,22 +2588,21 @@ function Step4PaymentSetup({
       {/* VAT Registration */}
       <div className="mt-8 pt-6 border-t border-gray-200">
         <div className="mb-4">
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">
-            VAT Registration
-          </h3>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">VAT Registration</h3>
           <p className="text-sm text-gray-600 mb-4">
-            Are you VAT registered with SARS? VAT registration is mandatory if your annual turnover is R1 million or more.
-            If you make less than R1 million per year, you don't need to be VAT registered.
+            Are you VAT registered with SARS? VAT registration is mandatory if your annual turnover
+            is R1 million or more. If you make less than R1 million per year, you don't need to be
+            VAT registered.
           </p>
         </div>
-        
+
         <div className="space-y-3">
           <button
             type="button"
             onClick={() => {
-              updateData({ 
+              updateData({
                 is_vat_registered: true,
-                vat_number: data.vat_number || ""
+                vat_number: data.vat_number || "",
               });
             }}
             className={`w-full p-4 rounded-xl border-2 transition-all duration-200 text-left ${
@@ -2475,22 +2616,22 @@ function Step4PaymentSetup({
                 <h4 className="font-semibold text-gray-900 mb-1">Yes, I am VAT registered</h4>
                 <p className="text-sm text-gray-600">I have a SARS VAT number</p>
               </div>
-              <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                data.is_vat_registered === true
-                  ? "border-primary bg-primary"
-                  : "border-gray-300"
-              }`}>
+              <div
+                className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                  data.is_vat_registered === true ? "border-primary bg-primary" : "border-gray-300"
+                }`}
+              >
                 {data.is_vat_registered === true && <Check className="w-3 h-3 text-white" />}
               </div>
             </div>
           </button>
-          
+
           <button
             type="button"
             onClick={() => {
-              updateData({ 
+              updateData({
                 is_vat_registered: false,
-                vat_number: undefined
+                vat_number: undefined,
               });
             }}
             className={`w-full p-4 rounded-xl border-2 transition-all duration-200 text-left ${
@@ -2504,11 +2645,11 @@ function Step4PaymentSetup({
                 <h4 className="font-semibold text-gray-900 mb-1">No, I'm not VAT registered</h4>
                 <p className="text-sm text-gray-600">My annual turnover is less than R1 million</p>
               </div>
-              <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                data.is_vat_registered === false
-                  ? "border-primary bg-primary"
-                  : "border-gray-300"
-              }`}>
+              <div
+                className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                  data.is_vat_registered === false ? "border-primary bg-primary" : "border-gray-300"
+                }`}
+              >
                 {data.is_vat_registered === false && <Check className="w-3 h-3 text-white" />}
               </div>
             </div>
@@ -2517,7 +2658,10 @@ function Step4PaymentSetup({
 
         {data.is_vat_registered === true && (
           <div className="mt-4">
-            <Label htmlFor="vat_number" className="text-base font-semibold text-gray-900 mb-2 block">
+            <Label
+              htmlFor="vat_number"
+              className="text-base font-semibold text-gray-900 mb-2 block"
+            >
               VAT Number (SARS) <span className="text-primary">*</span>
             </Label>
             <Input
@@ -2527,7 +2671,7 @@ function Step4PaymentSetup({
               value={data.vat_number || ""}
               onChange={(e) => {
                 // Only allow digits
-                const value = e.target.value.replace(/\D/g, '');
+                const value = e.target.value.replace(/\D/g, "");
                 if (value.length <= 10) {
                   updateData({ vat_number: value });
                 }
@@ -2539,18 +2683,21 @@ function Step4PaymentSetup({
             <p className="text-xs text-gray-600 mt-2">
               Your 10-digit SARS VAT registration number (must start with 4)
             </p>
-            {data.vat_number && data.vat_number.length === 10 && !data.vat_number.startsWith('4') && (
-              <p className="text-xs text-red-600 mt-1">
-                South African VAT numbers must start with 4
-              </p>
-            )}
+            {data.vat_number &&
+              data.vat_number.length === 10 &&
+              !data.vat_number.startsWith("4") && (
+                <p className="text-xs text-red-600 mt-1">
+                  South African VAT numbers must start with 4
+                </p>
+              )}
           </div>
         )}
 
         {data.is_vat_registered === false && (
           <div className="mt-4 bg-green-50 border border-green-200 rounded-xl p-4">
             <p className="text-sm text-green-800">
-              <strong>Not VAT Registered:</strong> No tax will be collected from customers. This is suitable for small businesses making less than R1 million per year.
+              <strong>Not VAT Registered:</strong> No tax will be collected from customers. This is
+              suitable for small businesses making less than R1 million per year.
             </p>
           </div>
         )}
@@ -2560,18 +2707,14 @@ function Step4PaymentSetup({
       <div className="mt-8 pt-6 border-t border-gray-200">
         <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
           <p className="text-sm text-blue-800">
-            <strong>Payout Setup:</strong> To receive payments from bookings, you'll need to add your bank account details. 
-            You can complete this now or set it up later in Settings.
+            <strong>Payout Setup:</strong> To receive payments from bookings, you'll need to add
+            your bank account details. You can complete this now or set it up later in Settings.
           </p>
         </div>
         <div className="flex items-center justify-between p-4 bg-white border-2 border-gray-200 rounded-xl">
           <div>
-            <h3 className="text-base font-semibold text-gray-900 mb-1">
-              Bank Account for Payouts
-            </h3>
-            <p className="text-sm text-gray-600">
-              Add your bank details to receive payments
-            </p>
+            <h3 className="text-base font-semibold text-gray-900 mb-1">Bank Account for Payouts</h3>
+            <p className="text-sm text-gray-600">Add your bank details to receive payments</p>
           </div>
           <Button
             type="button"
@@ -2580,7 +2723,9 @@ function Step4PaymentSetup({
               // Open payout setup in a new tab or modal
               // For now, mark as "will set up later"
               updateData({ payout_setup_complete: false });
-              toast.info("You can set up your payout account after onboarding in Settings → Payout Accounts");
+              toast.info(
+                "You can set up your payout account after onboarding in Settings → Payout Accounts"
+              );
             }}
             className="border-primary text-primary hover:bg-primary/5"
           >
@@ -2588,7 +2733,8 @@ function Step4PaymentSetup({
           </Button>
         </div>
         <p className="text-xs text-gray-500 mt-2">
-          You can complete payout setup after onboarding. Payments will be held until your bank account is verified.
+          You can complete payout setup after onboarding. Payments will be held until your bank
+          account is verified.
         </p>
       </div>
     </div>
@@ -2603,13 +2749,17 @@ function Step5CurrentSoftware({
   data: Partial<OnboardingData>;
   updateData: (updates: Partial<OnboardingData>) => void;
 }) {
-  const [softwareOptions, setSoftwareOptions] = useState<Array<{ id: string; name: string; slug: string }>>([]);
+  const [softwareOptions, setSoftwareOptions] = useState<
+    Array<{ id: string; name: string; slug: string }>
+  >([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const loadOptions = async () => {
       try {
-        const response = await fetcher.get<{ data: Array<{ id: string; name: string; slug: string }> }>("/api/public/previous-software-options");
+        const response = await fetcher.get<{
+          data: Array<{ id: string; name: string; slug: string }>;
+        }>("/api/public/previous-software-options");
         setSoftwareOptions(response.data || []);
       } catch (error) {
         console.error("Error loading software options:", error);
@@ -2656,14 +2806,11 @@ function Step5CurrentSoftware({
   return (
     <div className="space-y-6">
       <div className="text-center mb-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-2">
-          Current Software
-        </h3>
-        <p className="text-base text-gray-600 mb-2">
-          Are you moving from another system?
-        </p>
+        <h3 className="text-lg font-semibold text-gray-900 mb-2">Current Software</h3>
+        <p className="text-base text-gray-600 mb-2">Are you moving from another system?</p>
         <p className="text-sm text-gray-500">
-          Select from the list or type your current software. This helps us provide better migration support.
+          Select from the list or type your current software. This helps us provide better migration
+          support.
         </p>
       </div>
 
@@ -2684,7 +2831,10 @@ function Step5CurrentSoftware({
           />
           {data.previous_software === "other" && !data.previous_software_other && (
             <div className="mt-2">
-              <Label htmlFor="previous_software_other" className="text-base font-semibold text-gray-900 mb-2 block">
+              <Label
+                htmlFor="previous_software_other"
+                className="text-base font-semibold text-gray-900 mb-2 block"
+              >
                 What software were you using?
               </Label>
               <Input
@@ -2719,16 +2869,31 @@ function Step6Payroll({
 
   return (
     <div className="space-y-6">
-      <div className="text-center mb-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-2">
-          Payroll Structure
-        </h3>
-        <p className="text-base text-gray-600 mb-2">
-          How do you pay your staff/yourself?
-        </p>
-        <p className="text-sm text-gray-500">
-          This information helps us understand your business model (for analytics only)
-        </p>
+      <div className="rounded-[1.5rem] bg-slate-50 p-6 sm:p-8 mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white text-slate-900 shadow-sm">
+            <svg
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
+              <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
+            </svg>
+          </div>
+          <div className="min-w-0 space-y-1">
+            <p className="text-base font-semibold text-slate-900 sm:text-lg">Payroll Structure</p>
+            <p className="text-sm leading-relaxed text-slate-600">
+              How do you pay your staff/yourself? This information helps us understand your business
+              model.
+            </p>
+          </div>
+        </div>
       </div>
 
       <div className="space-y-4">
@@ -2739,27 +2904,24 @@ function Step6Payroll({
               key={option.id}
               type="button"
               onClick={() => updateData({ payroll_type: option.id as any })}
-              className={`w-full p-5 rounded-xl border-2 transition-all duration-200 text-left ${
+              className={`w-full rounded-[1.5rem] border p-5 text-left transition-all duration-300 sm:p-6 ${
                 isSelected
-                  ? "border-primary bg-primary/5 shadow-md"
-                  : "border-gray-200 hover:border-gray-300 bg-white"
+                  ? "border-slate-900 bg-slate-900/5 shadow-sm"
+                  : "border-slate-100 bg-white hover:border-slate-200 hover:shadow-sm"
               }`}
             >
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-1">
-                    {option.title}
-                  </h3>
-                  <p className="text-sm text-gray-600">
-                    {option.description}
-                  </p>
+              <div className="flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <h3 className="mb-1 text-lg font-semibold text-slate-900">{option.title}</h3>
+                  <p className="text-sm text-slate-500">{option.description}</p>
                 </div>
-                <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
-                  isSelected
-                    ? "border-primary bg-primary"
-                    : "border-gray-300"
-                }`}>
-                  {isSelected && <Check className="w-4 h-4 text-white" />}
+                <div
+                  className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition-all ${
+                    isSelected ? "border-slate-900 bg-slate-900" : "border-slate-300 bg-white"
+                  }`}
+                  aria-hidden
+                >
+                  {isSelected && <Check className="h-3 w-3 text-white" />}
                 </div>
               </div>
             </button>
@@ -2769,7 +2931,10 @@ function Step6Payroll({
 
       {data.payroll_type === "other" && (
         <div className="mt-4">
-          <Label htmlFor="payroll_details" className="text-base font-semibold text-gray-900 mb-2 block">
+          <Label
+            htmlFor="payroll_details"
+            className="text-sm font-semibold text-slate-900 mb-2 block"
+          >
             Please describe your payroll structure
           </Label>
           <Textarea
@@ -2777,7 +2942,7 @@ function Step6Payroll({
             value={data.payroll_details || ""}
             onChange={(e) => updateData({ payroll_details: e.target.value })}
             placeholder="Describe how you pay your staff..."
-            className="min-h-[100px] text-base border-gray-300 focus:border-primary focus:ring-primary rounded-xl resize-none"
+            className="min-h-[100px] text-base border-slate-200 bg-white rounded-xl resize-none focus-visible:border-slate-900 focus-visible:ring-1 focus-visible:ring-slate-900 shadow-sm transition-all"
           />
         </div>
       )}
@@ -2795,8 +2960,7 @@ function Step7Location({
   const isMobileOnly = data.business_type === "mobile";
   const isSalon = data.business_type === "salon";
   const isBoth = data.business_type === "both";
-  const houseCallOrNoSalonNote =
-    isMobileOnly || isBoth || data.team_size === "freelancer";
+  const houseCallOrNoSalonNote = isMobileOnly || isBoth || data.team_size === "freelancer";
 
   const [countries, setCountries] = useState<Array<{ code: string; name: string }>>([]);
   const [isLoadingCountries, setIsLoadingCountries] = useState(true);
@@ -2832,7 +2996,9 @@ function Step7Location({
   useEffect(() => {
     const loadCountries = async () => {
       try {
-        const response = await fetcher.get<{ data: Array<{ code: string; name: string }> }>("/api/public/countries");
+        const response = await fetcher.get<{ data: Array<{ code: string; name: string }> }>(
+          "/api/public/countries"
+        );
         const countriesData = response.data || [];
 
         if (countriesData.length === 0) {
@@ -2908,7 +3074,7 @@ function Step7Location({
         },
       });
     },
-    [data.address, defaultCountryDisplay, updateData],
+    [data.address, defaultCountryDisplay, updateData]
   );
 
   const onAddressLineTyping = useCallback(
@@ -2927,7 +3093,7 @@ function Step7Location({
         } as OnboardingData["address"],
       });
     },
-    [data.address, defaultCountryDisplay, updateData],
+    [data.address, defaultCountryDisplay, updateData]
   );
 
   const onMapLocationPicked = useCallback(
@@ -2943,71 +3109,77 @@ function Step7Location({
         place_name: picked.place_name,
       });
     },
-    [defaultCountryDisplay, handleAddressSelect],
+    [defaultCountryDisplay, handleAddressSelect]
   );
 
   const fieldClass =
-    "h-12 sm:h-14 text-base rounded-xl border-slate-200 bg-white focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15";
-  const helper = "text-sm text-slate-700 leading-relaxed";
-  const helperMuted = "text-sm text-slate-600 leading-relaxed";
+    "h-14 text-base rounded-xl border-slate-200 bg-white focus-visible:border-slate-900 focus-visible:ring-1 focus-visible:ring-slate-900 shadow-sm transition-all";
+  const helper = "text-sm text-slate-600 leading-relaxed";
+  const helperMuted = "text-sm text-slate-500 leading-relaxed";
 
   return (
     <div className="space-y-8">
-      <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-emerald-50/40 shadow-sm sm:rounded-3xl">
-        <div className="border-b border-slate-100 bg-white/80 px-4 py-4 sm:rounded-t-3xl sm:px-6 sm:py-5">
-          <div className="flex items-start gap-3 sm:gap-4">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-              <MapPin className="h-5 w-5" aria-hidden />
-            </div>
-            <div className="min-w-0 space-y-2">
-              <h4 className="text-base font-semibold tracking-tight text-slate-900 sm:text-lg">Business location</h4>
-              {isMobileOnly ? (
-                <p className={helper}>
-                  Enter your <strong className="font-semibold text-slate-900">base address</strong> (often your home).
-                  We use it for travel distance and fees only. Clients won&apos;t get a &quot;Visit salon&quot; option here
-                  until you add a salon-style location in Settings.
+      <div className="rounded-[1.5rem] bg-slate-50 p-6 sm:p-8">
+        <div className="flex flex-col sm:flex-row sm:items-start gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white text-slate-900 shadow-sm">
+            <MapPin className="h-6 w-6" aria-hidden />
+          </div>
+          <div className="min-w-0 space-y-2">
+            <h4 className="text-base font-semibold tracking-tight text-slate-900 sm:text-lg">
+              Business location
+            </h4>
+            {isMobileOnly ? (
+              <p className={helper}>
+                Enter your <strong className="font-semibold text-slate-900">base address</strong>{" "}
+                (often your home). We use it for travel distance and fees only. Clients won&apos;t
+                get a &quot;Visit salon&quot; option here until you add a salon-style location in
+                Settings.
+              </p>
+            ) : isSalon ? (
+              <p className={helper}>
+                Enter your <strong className="font-semibold text-slate-900">salon or studio</strong>{" "}
+                where clients can visit. We also use it for travel math when you offer house calls.
+              </p>
+            ) : (
+              <p className={helper}>
+                Add the address that best represents where you operate from (studio or main base).
+                You can refine multiple locations later in Settings.
+              </p>
+            )}
+            {houseCallOrNoSalonNote ? (
+              <div className="mt-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <p className={`${helperMuted} text-sm`}>
+                  <span className="font-semibold text-slate-800">House calls or no shop yet?</span>{" "}
+                  Use the address you travel from (e.g. home). Pick a Mapbox suggestion or drop a
+                  pin so we capture coordinates for zones and fees—you can add a public salon
+                  listing later.
                 </p>
-              ) : isSalon ? (
-                <p className={helper}>
-                  Enter your <strong className="font-semibold text-slate-900">salon or studio</strong> where clients
-                  can visit. We also use it for travel math when you offer house calls.
-                </p>
-              ) : (
-                <p className={helper}>
-                  Add the address that best represents where you operate from (studio or main base). You can refine
-                  multiple locations later in Settings.
-                </p>
-              )}
-              {houseCallOrNoSalonNote ? (
-                <div className="rounded-xl border border-slate-200 bg-slate-50/90 px-3 py-2.5 sm:px-4">
-                  <p className={`${helperMuted} text-sm`}>
-                    <span className="font-semibold text-slate-800">House calls or no shop yet?</span> Use the address
-                    you travel from (e.g. home). Pick a Mapbox suggestion or drop a pin so we capture coordinates for
-                    zones and fees—you can add a public salon listing later.
-                  </p>
-                </div>
-              ) : null}
-            </div>
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
 
-      <section className="space-y-2 rounded-2xl border border-slate-200/90 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-6">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+      <section className="space-y-3 rounded-[1.5rem] border border-slate-100 bg-white p-5 shadow-sm sm:p-8">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <Label htmlFor="provider-onboarding-address" className="text-base font-semibold text-slate-900">
-              Street address <span className="text-primary">*</span>
+            <Label
+              htmlFor="provider-onboarding-address"
+              className="text-sm font-semibold text-slate-900"
+            >
+              Street address <span className="text-slate-400">*</span>
             </Label>
             <p className={`${helperMuted} mt-1 max-w-xl`}>
-              Search powered by Mapbox. <strong className="font-medium text-slate-800">Choose a suggestion</strong> so
-              city, area, postal code, and GPS coordinates stay in sync for service zones.
+              Search powered by Mapbox.{" "}
+              <strong className="font-medium text-slate-800">Choose a suggestion</strong> so city,
+              area, postal code, and GPS coordinates stay in sync for service zones.
             </p>
           </div>
           <Button
             type="button"
             variant="outline"
             size="sm"
-            className="shrink-0 gap-2 rounded-xl border-slate-200 bg-slate-50 text-slate-800 hover:bg-slate-100"
+            className="shrink-0 gap-2 rounded-full border-slate-200 bg-slate-50 text-slate-800 hover:bg-slate-100 shadow-sm"
             onClick={() => setMapPickerOpen(true)}
           >
             <MapPinned className="h-4 w-4" aria-hidden />
@@ -3015,7 +3187,7 @@ function Step7Location({
           </Button>
         </div>
 
-        <div className="mt-3">
+        <div className="mt-4">
           <AddressAutocomplete
             inputId="provider-onboarding-address"
             value={data.address?.line1 || ""}
@@ -3025,23 +3197,25 @@ function Step7Location({
             country={mapboxCountryIso}
             defaultCountryName={defaultCountryDisplay}
             proximity={proximity}
-            inputClassName={cn(fieldClass, "h-12 sm:h-14 pl-10")}
+            inputClassName={cn(fieldClass, "pl-10")}
             required
           />
         </div>
 
         {hasValidCoords ? (
-          <p className="mt-2 flex items-center gap-2 text-sm font-medium text-emerald-800">
-            <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
-              <Check className="h-3.5 w-3.5" aria-hidden />
-            </span>
-            Map coordinates saved — zones and distance can use this point (
-            {data.address!.latitude!.toFixed(5)}, {data.address!.longitude!.toFixed(5)}).
-          </p>
+          <div className="mt-3 flex items-center gap-2 rounded-xl border border-emerald-100 bg-emerald-50/50 px-4 py-3 text-sm font-medium text-emerald-800">
+            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-100">
+              <Check className="h-4 w-4 shrink-0 text-emerald-600" aria-hidden />
+            </div>
+            Map coordinates saved
+          </div>
         ) : (
-          <p className={`${helperMuted} mt-2 rounded-lg border border-amber-200/80 bg-amber-50/90 px-3 py-2 text-amber-950`}>
-            No GPS yet — select a suggestion or use <strong className="font-semibold">Drop pin on map</strong> so the
-            next step can suggest service zones.
+          <p
+            className={`${helperMuted} mt-3 rounded-xl border border-amber-200/80 bg-amber-50/90 px-4 py-3 text-amber-950`}
+          >
+            No GPS yet — select a suggestion or use{" "}
+            <strong className="font-semibold">Drop pin on map</strong> so the next step can suggest
+            service zones.
           </p>
         )}
       </section>
@@ -3055,9 +3229,9 @@ function Step7Location({
         onLocationPicked={onMapLocationPicked}
       />
 
-      <section className="space-y-2">
-        <Label htmlFor="address_line2" className="text-base font-semibold text-slate-900">
-          Apartment, suite, etc. <span className="text-slate-600 text-sm font-normal">(Optional)</span>
+      <section className="space-y-3">
+        <Label htmlFor="address_line2" className="text-sm font-semibold text-slate-900">
+          Apartment, suite, etc. <span className="text-slate-400 font-normal">(Optional)</span>
         </Label>
         <p className={helperMuted}>Unit or floor — helps couriers and clients find you.</p>
         <Input
@@ -3076,9 +3250,9 @@ function Step7Location({
         />
       </section>
 
-      <section className="space-y-2">
-        <Label htmlFor="city" className="text-base font-semibold text-slate-900">
-          City <span className="text-primary">*</span>
+      <section className="space-y-3">
+        <Label htmlFor="city" className="text-sm font-semibold text-slate-900">
+          City <span className="text-slate-400">*</span>
         </Label>
         <Input
           id="city"
@@ -3096,7 +3270,9 @@ function Step7Location({
           required
         />
         {data.address?.city ? (
-          <p className="text-sm font-medium text-emerald-800">Filled from Mapbox — you can edit if needed.</p>
+          <p className="text-sm font-medium text-emerald-800">
+            Filled from Mapbox — you can edit if needed.
+          </p>
         ) : null}
       </section>
 
@@ -3145,9 +3321,13 @@ function Step7Location({
         <Label htmlFor="country" className="text-base font-semibold text-slate-900">
           Country <span className="text-primary">*</span>
         </Label>
-        <p className={helperMuted}>Used to bias search results — change before typing if you operate outside South Africa.</p>
+        <p className={helperMuted}>
+          Used to bias search results — change before typing if you operate outside South Africa.
+        </p>
         {isLoadingCountries ? (
-          <div className={cn(fieldClass, "flex items-center justify-center border border-slate-200")}>
+          <div
+            className={cn(fieldClass, "flex items-center justify-center border border-slate-200")}
+          >
             <p className="text-sm text-slate-600">Loading countries…</p>
           </div>
         ) : (
@@ -3198,23 +3378,28 @@ function Step9ServiceZones({
       try {
         setIsLoading(true);
         // Call onboarding-specific suggest endpoint
-        const response = await fetcher.post<{ data: { suggested_zones: any[] } }>("/api/provider/onboarding/suggest-zones", {
-          address: data.address?.line1 || "",
-          latitude: data.address?.latitude,
-          longitude: data.address?.longitude,
-          city: data.address?.city || "",
-          postal_code: data.address?.postal_code || "",
-          country: data.address?.country || "",
-        });
+        const response = await fetcher.post<{ data: { suggested_zones: any[] } }>(
+          "/api/provider/onboarding/suggest-zones",
+          {
+            address: data.address?.line1 || "",
+            latitude: data.address?.latitude,
+            longitude: data.address?.longitude,
+            city: data.address?.city || "",
+            postal_code: data.address?.postal_code || "",
+            country: data.address?.country || "",
+          }
+        );
         const zones = response.data?.suggested_zones || [];
         setSuggestedZones(zones);
-        
+
         // Auto-select all suggested zones
         if (zones.length > 0) {
           const autoSelected = zones.map((z: any) => z.id);
           setSelectedZoneIds(autoSelected);
           updateData({ selected_zone_ids: autoSelected });
-          toast.success(`Auto-selected ${autoSelected.length} zone${autoSelected.length !== 1 ? 's' : ''} matching your location`);
+          toast.success(
+            `Auto-selected ${autoSelected.length} zone${autoSelected.length !== 1 ? "s" : ""} matching your location`
+          );
         }
       } catch (error) {
         console.error("Error loading suggested zones:", error);
@@ -3230,14 +3415,14 @@ function Step9ServiceZones({
 
   const toggleZone = (zoneId: string) => {
     const newSelection = selectedZoneIds.includes(zoneId)
-      ? selectedZoneIds.filter(id => id !== zoneId)
+      ? selectedZoneIds.filter((id) => id !== zoneId)
       : [...selectedZoneIds, zoneId];
     setSelectedZoneIds(newSelection);
     updateData({ selected_zone_ids: newSelection });
   };
 
   const selectAll = () => {
-    const allIds = suggestedZones.map(z => z.id);
+    const allIds = suggestedZones.map((z) => z.id);
     setSelectedZoneIds(allIds);
     updateData({ selected_zone_ids: allIds });
     toast.success(`Selected all ${allIds.length} zones`);
@@ -3251,9 +3436,11 @@ function Step9ServiceZones({
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-14">
-        <div className="rounded-2xl border border-slate-200 bg-slate-50/80 px-8 py-10 text-center shadow-sm sm:rounded-3xl">
-          <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-          <p className="text-sm font-medium text-slate-800">Finding service zones for your location…</p>
+        <div className="rounded-[1.5rem] border border-slate-100 bg-slate-50/50 px-8 py-10 text-center shadow-sm">
+          <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-2 border-slate-900 border-t-transparent" />
+          <p className="text-sm font-medium text-slate-800">
+            Finding service zones for your location…
+          </p>
         </div>
       </div>
     );
@@ -3261,43 +3448,57 @@ function Step9ServiceZones({
 
   if (!data.address?.latitude || !data.address?.longitude) {
     return (
-      <Alert>
-        <AlertCircle className="w-4 h-4" />
-        <AlertDescription>
-          Please complete the location step first. We need your address coordinates to find matching service zones.
+      <Alert className="rounded-[1.5rem] border-none bg-slate-50">
+        <AlertCircle className="w-5 h-5 text-slate-500" />
+        <AlertDescription className="text-sm leading-relaxed text-slate-600 ml-2">
+          Please complete the location step first. We need your address coordinates to find matching
+          service zones.
         </AlertDescription>
       </Alert>
     );
   }
 
   return (
-    <div className="space-y-5 sm:space-y-6">
-      <Alert className="rounded-2xl border-sky-200 bg-sky-50 sm:rounded-3xl">
-        <AlertCircle className="h-4 w-4 text-sky-700" />
-        <AlertDescription className="text-sm leading-relaxed text-sky-950">
-          <strong className="text-sky-950">Service zones</strong> define where you offer at-home services. We&apos;ve
-          suggested zones near your address. You can adjust this now or finish later in Settings.
+    <div className="space-y-6">
+      <Alert className="rounded-[1.5rem] border-none bg-slate-50">
+        <AlertCircle className="h-5 w-5 text-slate-500" />
+        <AlertDescription className="text-sm leading-relaxed text-slate-600 ml-2">
+          <strong className="text-slate-900">Service zones</strong> define where you offer at-home
+          services. We&apos;ve suggested zones near your address. You can adjust this now or finish
+          later in Settings.
         </AlertDescription>
       </Alert>
 
       {suggestedZones.length === 0 ? (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm sm:rounded-3xl sm:p-5">
-          <p className="text-sm font-medium text-amber-950">
-            No zones matched this address yet. You can add service zones later under Settings → Service Zones.
+        <div className="rounded-[1.5rem] border border-amber-100 bg-amber-50/50 p-5 shadow-sm">
+          <p className="text-sm font-medium text-amber-900">
+            No zones matched this address yet. You can add service zones later under Settings →
+            Service Zones.
           </p>
         </div>
       ) : (
         <>
-          <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 p-4 sm:flex-row sm:items-center sm:justify-between sm:rounded-3xl sm:p-5">
-            <p className="text-sm text-slate-800">
-              Found <strong className="font-semibold text-slate-900">{suggestedZones.length}</strong> zone
+          <div className="flex flex-col gap-3 rounded-[1.5rem] border border-slate-100 bg-slate-50/50 p-5 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-slate-700">
+              Found{" "}
+              <strong className="font-semibold text-slate-900">{suggestedZones.length}</strong> zone
               {suggestedZones.length !== 1 ? "s" : ""} near you
             </p>
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" className="rounded-xl" onClick={selectAll}>
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-full shadow-sm"
+                onClick={selectAll}
+              >
                 Select all
               </Button>
-              <Button variant="outline" size="sm" className="rounded-xl" onClick={deselectAll}>
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-full shadow-sm"
+                onClick={deselectAll}
+              >
                 Deselect all
               </Button>
             </div>
@@ -3315,10 +3516,10 @@ function Step9ServiceZones({
                     toggleZone(zone.id);
                   }
                 }}
-                className={`cursor-pointer rounded-2xl border-2 p-4 transition-all sm:rounded-3xl sm:p-5 ${
+                className={`cursor-pointer rounded-[1.5rem] border p-5 transition-all duration-300 ${
                   selectedZoneIds.includes(zone.id)
-                    ? "border-primary bg-primary/[0.07] shadow-sm ring-1 ring-primary/15"
-                    : "border-slate-200 bg-white hover:border-slate-300"
+                    ? "border-slate-900 bg-slate-900/5 shadow-sm"
+                    : "border-slate-100 bg-white hover:border-slate-200 hover:shadow-sm"
                 }`}
                 onClick={() => toggleZone(zone.id)}
               >
@@ -3344,7 +3545,9 @@ function Step9ServiceZones({
                       </span>
                     </div>
                     <p className="mb-1 text-sm font-medium text-sky-800">{zone.match_reason}</p>
-                    <p className="text-xs text-slate-600">Travel fees per zone can be customized after onboarding.</p>
+                    <p className="text-xs text-slate-600">
+                      Travel fees per zone can be customized after onboarding.
+                    </p>
                   </div>
                 </div>
               </div>
@@ -3355,7 +3558,8 @@ function Step9ServiceZones({
             <div className="rounded-2xl border border-primary/25 bg-primary/[0.06] p-4 sm:rounded-3xl sm:p-5">
               <p className="text-sm font-medium text-slate-900">
                 <span className="text-primary">{selectedZoneIds.length}</span> zone
-                {selectedZoneIds.length !== 1 ? "s" : ""} selected — set travel fees anytime after signup.
+                {selectedZoneIds.length !== 1 ? "s" : ""} selected — set travel fees anytime after
+                signup.
               </p>
             </div>
           )}
@@ -3375,22 +3579,34 @@ function Step10GlobalCategories({
   const [globalCategories, setGlobalCategories] = useState<GlobalCategory[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
+
   // Auto-select common categories for freelancers
   useEffect(() => {
-    if (data.business_type === "mobile" && globalCategories.length > 0 && (!data.global_category_ids || data.global_category_ids.length === 0)) {
+    if (
+      data.business_type === "mobile" &&
+      globalCategories.length > 0 &&
+      (!data.global_category_ids || data.global_category_ids.length === 0)
+    ) {
       // Suggest common categories for mobile services
       const commonCategories = globalCategories
-        .filter(cat => {
+        .filter((cat) => {
           const slug = cat.slug?.toLowerCase() || cat.name?.toLowerCase() || "";
-          return slug.includes("hair") || slug.includes("massage") || slug.includes("nails") || slug.includes("barber");
+          return (
+            slug.includes("hair") ||
+            slug.includes("massage") ||
+            slug.includes("nails") ||
+            slug.includes("barber")
+          );
         })
         .slice(0, 2)
-        .map(cat => cat.id);
-      
+        .map((cat) => cat.id);
+
       if (commonCategories.length > 0) {
         updateData({ global_category_ids: commonCategories });
-        toast.info(`We've pre-selected ${commonCategories.length} common categories. You can change them!`, { duration: 3000 });
+        toast.info(
+          `We've pre-selected ${commonCategories.length} common categories. You can change them!`,
+          { duration: 3000 }
+        );
       }
     }
   }, [globalCategories, data.business_type]);
@@ -3410,8 +3626,8 @@ function Step10GlobalCategories({
           err instanceof FetchTimeoutError
             ? "Request timed out. Please try again."
             : err instanceof FetchError
-            ? err.message
-            : "Failed to load categories";
+              ? err.message
+              : "Failed to load categories";
         setError(errorMessage);
         console.error("Error loading global categories:", err);
       } finally {
@@ -3448,7 +3664,11 @@ function Step10GlobalCategories({
     return (
       <div className="rounded-2xl border border-red-200 bg-red-50 p-5 shadow-sm sm:rounded-3xl">
         <p className="text-sm font-medium text-red-950">{error}</p>
-        <Button onClick={() => window.location.reload()} variant="outline" className="mt-4 rounded-xl">
+        <Button
+          onClick={() => window.location.reload()}
+          variant="outline"
+          className="mt-4 rounded-xl"
+        >
           Retry
         </Button>
       </div>
@@ -3460,15 +3680,22 @@ function Step10GlobalCategories({
       <Alert className="rounded-2xl border-indigo-200 bg-indigo-50 sm:rounded-3xl">
         <Sparkles className="h-4 w-4 text-indigo-700" />
         <AlertDescription className="text-sm leading-relaxed text-indigo-950">
-          <strong className="text-indigo-950">Tip:</strong> Categories help clients discover you in search and filters.
+          <strong className="text-indigo-950">Tip:</strong> Categories help clients discover you in
+          search and filters.
           {(!data.services || data.services.length === 0) && (
-            <span> If you skip services for now, we can draft simple services from the categories you pick.</span>
+            <span>
+              {" "}
+              If you skip services for now, we can draft simple services from the categories you
+              pick.
+            </span>
           )}
         </AlertDescription>
       </Alert>
       {globalCategories.length === 0 ? (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:rounded-3xl sm:p-5">
-          <p className="text-sm font-medium text-amber-950">No categories available. Please contact support.</p>
+          <p className="text-sm font-medium text-amber-950">
+            No categories available. Please contact support.
+          </p>
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
@@ -3477,32 +3704,41 @@ function Step10GlobalCategories({
               key={category.id}
               type="button"
               onClick={() => toggleCategory(category.id)}
-              className={`rounded-2xl border-2 p-4 text-left shadow-sm transition-all sm:rounded-3xl sm:p-5 ${
+              className={`rounded-[1.5rem] border p-4 text-left transition-all duration-300 sm:p-5 ${
                 data.global_category_ids?.includes(category.id)
-                  ? "border-primary bg-primary/[0.07] ring-1 ring-primary/20"
-                  : "border-slate-200 bg-white hover:border-slate-300"
+                  ? "border-slate-900 bg-slate-900/5 shadow-sm scale-[1.02]"
+                  : "border-slate-100 bg-white hover:border-slate-200 hover:shadow-sm"
               }`}
             >
-              <div className="mb-2 flex items-center gap-3">
-                <GlobalCategoryIcon
-                  icon={category.icon || "Tag"}
-                  size={28}
-                  strokeWidth={1.75}
-                  isActive={Boolean(data.global_category_ids?.includes(category.id))}
-                  className={
-                    data.global_category_ids?.includes(category.id) ? "text-primary" : "text-slate-600"
-                  }
-                />
+              <div className="mb-3 flex items-center gap-3">
+                <div
+                  className={`flex h-10 w-10 items-center justify-center rounded-full ${
+                    data.global_category_ids?.includes(category.id)
+                      ? "bg-slate-900 text-white"
+                      : "bg-slate-50 text-slate-600"
+                  }`}
+                >
+                  <GlobalCategoryIcon
+                    icon={category.icon || "Tag"}
+                    size={20}
+                    strokeWidth={2}
+                    isActive={Boolean(data.global_category_ids?.includes(category.id))}
+                  />
+                </div>
                 <span
                   className={`font-semibold ${
-                    data.global_category_ids?.includes(category.id) ? "text-primary" : "text-slate-900"
+                    data.global_category_ids?.includes(category.id)
+                      ? "text-slate-900"
+                      : "text-slate-700"
                   }`}
                 >
                   {category.name}
                 </span>
               </div>
               {category.description && (
-                <p className="line-clamp-2 text-xs leading-relaxed text-slate-600">{category.description}</p>
+                <p className="line-clamp-2 text-xs leading-relaxed text-slate-500">
+                  {category.description}
+                </p>
               )}
             </button>
           ))}
@@ -3588,34 +3824,43 @@ function Step11ServiceCatalog({
   };
 
   return (
-    <div className="space-y-5 sm:space-y-6">
-      <Alert className="rounded-2xl border-slate-200 bg-slate-50 sm:rounded-3xl">
-        <AlertCircle className="h-4 w-4 text-slate-700" />
-        <AlertDescription className="text-sm leading-relaxed text-slate-800">
-          Add the services you sell today with price and duration. Clients see these on your booking page; you can refine
-          them anytime after onboarding.
+    <div className="space-y-6">
+      <Alert className="rounded-[1.5rem] border-none bg-slate-50">
+        <AlertCircle className="h-5 w-5 text-slate-500" />
+        <AlertDescription className="text-sm leading-relaxed text-slate-600 ml-2">
+          Add the services you sell today with price and duration. Clients see these on your booking
+          page; you can refine them anytime after onboarding.
         </AlertDescription>
       </Alert>
 
       {services.length > 0 && (
         <div className="space-y-4">
           {services.map((service, index) => (
-            <div key={index} className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-5">
+            <div
+              key={index}
+              className="space-y-3 rounded-[1.5rem] border border-slate-100 bg-white p-5 shadow-sm"
+            >
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <h4 className="font-semibold text-slate-900">{service.title}</h4>
-                  {service.description && <p className="mt-1 text-sm text-slate-600">{service.description}</p>}
-                  <div className="mt-2 flex flex-wrap gap-3 text-sm text-slate-700">
-                    <span>{service.duration_minutes} mins</span>
-                    <span>{service.currency} {service.price}</span>
-                    <span>
+                  {service.description && (
+                    <p className="mt-1 text-sm text-slate-500">{service.description}</p>
+                  )}
+                  <div className="mt-3 flex flex-wrap gap-2 text-sm text-slate-700">
+                    <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-800">
+                      {service.duration_minutes} mins
+                    </span>
+                    <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-800">
+                      {service.currency} {service.price}
+                    </span>
+                    <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-800">
                       {service.supports_at_salon && "At Salon"}
                       {service.supports_at_salon && service.supports_at_home && " • "}
                       {service.supports_at_home && "At Home"}
                     </span>
                   </div>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 ml-4">
                   <Button
                     variant="outline"
                     size="sm"
@@ -3640,9 +3885,17 @@ function Step11ServiceCatalog({
                 <div className="space-y-2 border-l-2 border-primary/25 pl-4">
                   <p className="text-xs font-semibold text-slate-600">Add-ons</p>
                   {service.addons.map((addon, addonIndex) => (
-                    <div key={addonIndex} className="flex items-center justify-between text-sm text-slate-700">
-                      <span>{addon.name} {addon.duration_minutes ? `(+${addon.duration_minutes} mins)` : ""}</span>
-                      <span className="font-medium">{addon.currency} {addon.price}</span>
+                    <div
+                      key={addonIndex}
+                      className="flex items-center justify-between text-sm text-slate-700"
+                    >
+                      <span>
+                        {addon.name}{" "}
+                        {addon.duration_minutes ? `(+${addon.duration_minutes} mins)` : ""}
+                      </span>
+                      <span className="font-medium">
+                        {addon.currency} {addon.price}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -3692,7 +3945,8 @@ function Step11ServiceCatalog({
                 <p className="text-xs text-gray-500">
                   {formService.description && formService.description.length < 20 ? (
                     <span className="text-amber-600">
-                      Consider adding more details ({formService.description.length}/20 minimum recommended)
+                      Consider adding more details ({formService.description.length}/20 minimum
+                      recommended)
                     </span>
                   ) : (
                     <span>
@@ -3759,12 +4013,12 @@ function Step11ServiceCatalog({
                 <select
                   id="service_currency"
                   value={formService.currency || tenantCurrency}
-                  onChange={(e) =>
-                    setFormService({ ...formService, currency: e.target.value })
-                  }
+                  onChange={(e) => setFormService({ ...formService, currency: e.target.value })}
                   className="w-full p-2 border rounded-md"
                 >
-                  <option value={LAST_RESORT_CURRENCY}>{currencySelectLabel(LAST_RESORT_CURRENCY)}</option>
+                  <option value={LAST_RESORT_CURRENCY}>
+                    {currencySelectLabel(LAST_RESORT_CURRENCY)}
+                  </option>
                   <option value="USD">USD</option>
                   <option value="EUR">EUR</option>
                 </select>
@@ -3792,7 +4046,7 @@ function Step11ServiceCatalog({
                 <span className="text-sm">Available at home</span>
               </label>
             </div>
-            
+
             {/* Addons Section */}
             <ServiceAddonsManager
               addons={formService.addons || []}
@@ -3831,11 +4085,7 @@ function Step11ServiceCatalog({
           </div>
         </div>
       ) : (
-        <Button
-          onClick={() => setShowAddForm(true)}
-          variant="outline"
-          className="w-full"
-        >
+        <Button onClick={() => setShowAddForm(true)} variant="outline" className="w-full">
           <Plus className="w-4 h-4 mr-2" />
           Add Service
         </Button>
@@ -3912,16 +4162,12 @@ function ServiceAddonsManager({
         <div>
           <Label className="text-sm font-medium">Add-ons (Optional)</Label>
           <p className="text-xs text-gray-500 mt-1">
-            Add optional extras customers can purchase with this service (e.g., "Hair Treatment", "Nail Art")
+            Add optional extras customers can purchase with this service (e.g., "Hair Treatment",
+            "Nail Art")
           </p>
         </div>
         {!showAddForm && (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setShowAddForm(true)}
-          >
+          <Button type="button" variant="outline" size="sm" onClick={() => setShowAddForm(true)}>
             <Plus className="w-4 h-4 mr-1" />
             Add Add-on
           </Button>
@@ -3944,7 +4190,9 @@ function ServiceAddonsManager({
                   {addon.duration_minutes && addon.duration_minutes > 0 && (
                     <span>+{addon.duration_minutes} mins</span>
                   )}
-                  <span>{addon.currency} {addon.price}</span>
+                  <span>
+                    {addon.currency} {addon.price}
+                  </span>
                 </div>
               </div>
               <div className="flex gap-1">
@@ -3980,7 +4228,9 @@ function ServiceAddonsManager({
           </h5>
           <div className="space-y-3">
             <div>
-              <Label htmlFor="addon_name" className="text-xs">Name *</Label>
+              <Label htmlFor="addon_name" className="text-xs">
+                Name *
+              </Label>
               <Input
                 id="addon_name"
                 value={formAddon.name || ""}
@@ -3991,7 +4241,9 @@ function ServiceAddonsManager({
               />
             </div>
             <div>
-              <Label htmlFor="addon_description" className="text-xs">Description</Label>
+              <Label htmlFor="addon_description" className="text-xs">
+                Description
+              </Label>
               <Textarea
                 id="addon_description"
                 value={formAddon.description || ""}
@@ -4003,7 +4255,9 @@ function ServiceAddonsManager({
             </div>
             <div className="grid grid-cols-3 gap-3">
               <div>
-                <Label htmlFor="addon_price" className="text-xs">Price *</Label>
+                <Label htmlFor="addon_price" className="text-xs">
+                  Price *
+                </Label>
                 <Input
                   id="addon_price"
                   type="number"
@@ -4021,22 +4275,26 @@ function ServiceAddonsManager({
                 />
               </div>
               <div>
-                <Label htmlFor="addon_currency" className="text-xs">Currency</Label>
+                <Label htmlFor="addon_currency" className="text-xs">
+                  Currency
+                </Label>
                 <select
                   id="addon_currency"
                   value={formAddon.currency || currency}
-                  onChange={(e) =>
-                    setFormAddon({ ...formAddon, currency: e.target.value })
-                  }
+                  onChange={(e) => setFormAddon({ ...formAddon, currency: e.target.value })}
                   className="w-full p-2 border rounded-md text-sm"
                 >
-                  <option value={LAST_RESORT_CURRENCY}>{currencySelectLabel(LAST_RESORT_CURRENCY)}</option>
+                  <option value={LAST_RESORT_CURRENCY}>
+                    {currencySelectLabel(LAST_RESORT_CURRENCY)}
+                  </option>
                   <option value="USD">USD</option>
                   <option value="EUR">EUR</option>
                 </select>
               </div>
               <div>
-                <Label htmlFor="addon_duration" className="text-xs">Extra Time (mins)</Label>
+                <Label htmlFor="addon_duration" className="text-xs">
+                  Extra Time (mins)
+                </Label>
                 <Input
                   id="addon_duration"
                   type="number"
@@ -4121,7 +4379,7 @@ function Step12Hours({
   };
 
   const isFreelancer = data.business_type === "mobile";
-  
+
   // Smart defaults for freelancers (more flexible hours)
   useEffect(() => {
     if (isFreelancer && !data.operating_hours) {
@@ -4144,63 +4402,72 @@ function Step12Hours({
       <Alert
         className={
           isFreelancer
-            ? "rounded-2xl border-emerald-200 bg-emerald-50 sm:rounded-3xl"
-            : "rounded-2xl border-slate-200 bg-slate-50 sm:rounded-3xl"
+            ? "rounded-[1.5rem] border-none bg-emerald-50/50"
+            : "rounded-[1.5rem] border-none bg-slate-50"
         }
       >
-        <AlertCircle className={`h-4 w-4 ${isFreelancer ? "text-emerald-700" : "text-slate-600"}`} />
+        <AlertCircle
+          className={`h-5 w-5 ${isFreelancer ? "text-emerald-600" : "text-slate-500"}`}
+        />
         <AlertDescription
-          className={`text-sm leading-relaxed ${isFreelancer ? "text-emerald-950" : "text-slate-800"}`}
+          className={`text-sm leading-relaxed ml-2 ${isFreelancer ? "text-emerald-800" : "text-slate-600"}`}
         >
           {isFreelancer ? (
             <span>
-              <strong className="text-emerald-950">Freelancer hours:</strong> We started you on broad weekday hours (8:00–20:00);
-              tweak them to match how you actually work. You can change this anytime in Settings.
+              <strong className="text-emerald-900">Freelancer hours:</strong> We started you on
+              broad weekday hours (8:00–20:00); tweak them to match how you actually work. You can
+              change this anytime in Settings.
             </span>
           ) : (
             <span>
-              <strong className="text-slate-900">Location Booking Window:</strong> Clients only see slots inside these hours for the salon. 
-              You can set individual staff schedules later under Settings.
+              <strong className="text-slate-900">Location Booking Window:</strong> Clients only see
+              slots inside these hours for the salon. You can set individual staff schedules later
+              under Settings.
             </span>
           )}
         </AlertDescription>
       </Alert>
-      {days.map((day) => {
-        const dayHours = data.operating_hours?.[day.key as keyof typeof data.operating_hours];
-        return (
-          <div
-            key={day.key}
-            className="flex flex-col items-start gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:flex-row sm:items-center sm:gap-4 sm:rounded-3xl sm:p-4"
-          >
-            <div className="w-full text-sm font-semibold text-slate-900 sm:w-28 sm:text-base">{day.label}</div>
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={!dayHours?.closed}
-                onChange={(e) => updateHours(day.key, "closed", !e.target.checked)}
-              />
-              <span className="text-sm">Open</span>
-            </label>
-            {!dayHours?.closed && (
-              <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto">
-                <Input
-                  type="time"
-                  value={dayHours?.open || "09:00"}
-                  onChange={(e) => updateHours(day.key, "open", e.target.value)}
-                  className="w-full sm:w-32 text-sm sm:text-base"
-                />
-                <span className="text-sm sm:text-base">to</span>
-                <Input
-                  type="time"
-                  value={dayHours?.close || "18:00"}
-                  onChange={(e) => updateHours(day.key, "close", e.target.value)}
-                  className="w-full sm:w-32 text-sm sm:text-base"
-                />
+      <div className="space-y-3">
+        {days.map((day) => {
+          const dayHours = data.operating_hours?.[day.key as keyof typeof data.operating_hours];
+          return (
+            <div
+              key={day.key}
+              className="flex flex-col items-start gap-3 rounded-[1.5rem] border border-slate-100 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:gap-4 sm:p-5"
+            >
+              <div className="w-full text-sm font-semibold text-slate-900 sm:w-32 sm:text-base">
+                {day.label}
               </div>
-            )}
-          </div>
-        );
-      })}
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={!dayHours?.closed}
+                  onChange={(e) => updateHours(day.key, "closed", !e.target.checked)}
+                  className="rounded border-slate-300 text-slate-900 focus:ring-slate-900"
+                />
+                <span className="text-sm font-medium text-slate-700">Open</span>
+              </label>
+              {!dayHours?.closed && (
+                <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto mt-2 sm:mt-0">
+                  <Input
+                    type="time"
+                    value={dayHours?.open || "09:00"}
+                    onChange={(e) => updateHours(day.key, "open", e.target.value)}
+                    className="w-full sm:w-32 text-sm sm:text-base"
+                  />
+                  <span className="text-sm sm:text-base">to</span>
+                  <Input
+                    type="time"
+                    value={dayHours?.close || "18:00"}
+                    onChange={(e) => updateHours(day.key, "close", e.target.value)}
+                    className="w-full sm:w-32 text-sm sm:text-base"
+                  />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -4230,7 +4497,8 @@ function Step13Review({ data }: { data: Partial<OnboardingData> }) {
                 ? data.previous_software_other || "Other"
                 : data.previous_software === "none"
                   ? "None / first time using salon software"
-                  : data.previous_software.charAt(0).toUpperCase() + data.previous_software.slice(1).replace(/_/g, " ")}
+                  : data.previous_software.charAt(0).toUpperCase() +
+                    data.previous_software.slice(1).replace(/_/g, " ")}
             </p>
           )}
         </div>
@@ -4239,7 +4507,9 @@ function Step13Review({ data }: { data: Partial<OnboardingData> }) {
         <div>
           <h3 className={ONBOARDING_REVIEW_HEADING}>Business description</h3>
           <div className={ONBOARDING_REVIEW_CARD}>
-            <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-800">{data.description}</p>
+            <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-800">
+              {data.description}
+            </p>
             <p className="mt-3 text-xs text-slate-600">
               {data.description.length} characters
               {data.description.length >= 50 && (
@@ -4253,7 +4523,8 @@ function Step13Review({ data }: { data: Partial<OnboardingData> }) {
         <h3 className={ONBOARDING_REVIEW_HEADING}>Location</h3>
         <div className={ONBOARDING_REVIEW_CARD}>
           <p className="text-slate-800">
-            {data.address?.line1}, {data.address?.city}, {data.address?.state} {data.address?.postal_code}
+            {data.address?.line1}, {data.address?.city}, {data.address?.state}{" "}
+            {data.address?.postal_code}
           </p>
           {data.address?.latitude && data.address?.longitude && (
             <p className="mt-2 text-xs text-slate-600">
@@ -4283,8 +4554,8 @@ function Step13Review({ data }: { data: Partial<OnboardingData> }) {
         <div className={ONBOARDING_REVIEW_CARD}>
           {data.global_category_ids && data.global_category_ids.length > 0 ? (
             <p className="text-slate-800">
-              {data.global_category_ids.length} {data.global_category_ids.length === 1 ? "category" : "categories"}{" "}
-              selected
+              {data.global_category_ids.length}{" "}
+              {data.global_category_ids.length === 1 ? "category" : "categories"} selected
             </p>
           ) : (
             <p className="text-slate-600">No categories selected</p>
@@ -4316,11 +4587,14 @@ function Step13Review({ data }: { data: Partial<OnboardingData> }) {
               <div key={index} className="border-b border-slate-200 pb-4 last:border-0 last:pb-0">
                 <div className="text-sm">
                   <div className="mb-1 font-medium text-slate-900">
-                    {service.title} — {service.duration_minutes} min — {service.currency} {service.price}
+                    {service.title} — {service.duration_minutes} min — {service.currency}{" "}
+                    {service.price}
                   </div>
                   {service.description && (
                     <div className="mt-2 border-l-2 border-primary/30 pl-3">
-                      <p className="text-xs italic text-slate-700">&ldquo;{service.description}&rdquo;</p>
+                      <p className="text-xs italic text-slate-700">
+                        &ldquo;{service.description}&rdquo;
+                      </p>
                     </div>
                   )}
                   {service.addons && service.addons.length > 0 && (
@@ -4328,7 +4602,9 @@ function Step13Review({ data }: { data: Partial<OnboardingData> }) {
                       {service.addons.map((addon, addonIndex) => (
                         <div key={addonIndex} className="text-xs text-slate-700">
                           + {addon.name} — {addon.currency} {addon.price}
-                          {addon.duration_minutes && addon.duration_minutes > 0 && ` (+${addon.duration_minutes} min)`}
+                          {addon.duration_minutes &&
+                            addon.duration_minutes > 0 &&
+                            ` (+${addon.duration_minutes} min)`}
                         </div>
                       ))}
                     </div>
@@ -4343,8 +4619,8 @@ function Step13Review({ data }: { data: Partial<OnboardingData> }) {
           <h3 className={ONBOARDING_REVIEW_HEADING}>Services</h3>
           <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:rounded-3xl sm:p-5">
             <p className="text-sm font-medium text-amber-950">
-              <span className="font-semibold">Draft services:</span> We can create starter services from your categories
-              after you submit. You can edit them anytime.
+              <span className="font-semibold">Draft services:</span> We can create starter services
+              from your categories after you submit. You can edit them anytime.
             </p>
           </div>
         </div>
@@ -4355,7 +4631,10 @@ function Step13Review({ data }: { data: Partial<OnboardingData> }) {
           {data.operating_hours && Object.keys(data.operating_hours).length > 0 ? (
             <div className="space-y-2 text-sm">
               {Object.entries(data.operating_hours).map(([day, hours]: [string, any]) => (
-                <div key={day} className="flex justify-between gap-4 border-b border-slate-100 py-1 last:border-0">
+                <div
+                  key={day}
+                  className="flex justify-between gap-4 border-b border-slate-100 py-1 last:border-0"
+                >
                   <span className="capitalize font-semibold text-slate-900">{day}</span>
                   <span className="text-slate-700">
                     {hours.closed ? "Closed" : `${hours.open} – ${hours.close}`}
@@ -4376,13 +4655,15 @@ function Step13Review({ data }: { data: Partial<OnboardingData> }) {
             {data.business_type === "mobile" && <li>Mark you as mobile-ready where applicable</li>}
             {data.selected_zone_ids && data.selected_zone_ids.length > 0 && (
               <li>
-                Attach {data.selected_zone_ids.length} service zone{data.selected_zone_ids.length !== 1 ? "s" : ""} with
-                default travel settings
+                Attach {data.selected_zone_ids.length} service zone
+                {data.selected_zone_ids.length !== 1 ? "s" : ""} with default travel settings
               </li>
             )}
             {(!data.services || data.services.length === 0) &&
               data.global_category_ids &&
-              data.global_category_ids.length > 0 && <li>Draft basic services from your categories</li>}
+              data.global_category_ids.length > 0 && (
+                <li>Draft basic services from your categories</li>
+              )}
             <li>Create your provider profile and primary location</li>
           </ul>
         </AlertDescription>
@@ -4399,16 +4680,19 @@ function Step14PlanSelection({
   data: Partial<OnboardingData>;
   updateData: (updates: Partial<OnboardingData>) => void;
 }) {
-  const [pricingPlans, setPricingPlans] = useState<Array<{
-    id: string;
-    name: string;
-    price: string;
-    period: string | null;
-    description: string | null;
-    cta_text: string;
-    is_popular: boolean;
-    features: string[];
-  }>>([]);
+  const [pricingPlans, setPricingPlans] = useState<
+    Array<{
+      id: string;
+      name: string;
+      price: string;
+      period: string | null;
+      description: string | null;
+      cta_text: string;
+      is_popular: boolean;
+      features: string[];
+      is_free?: boolean;
+    }>
+  >([]);
   const [isLoadingPlans, setIsLoadingPlans] = useState(true);
 
   useEffect(() => {
@@ -4417,9 +4701,9 @@ function Step14PlanSelection({
         setIsLoadingPlans(true);
         const plans = await getPricingPlans();
         setPricingPlans(plans);
-        
+
         // If plan was pre-selected from query params, ensure it's in the list
-        if (data.selected_plan_id && !plans.find(p => p.id === data.selected_plan_id)) {
+        if (data.selected_plan_id && !plans.find((p) => p.id === data.selected_plan_id)) {
           // Plan might not be active anymore, clear selection
           updateData({ selected_plan_id: undefined });
         }
@@ -4464,18 +4748,25 @@ function Step14PlanSelection({
     );
   }
 
+  const selectedPlan = pricingPlans.find((p) => p.id === data.selected_plan_id) ?? null;
+  const selectedIsFree = selectedPlan?.is_free === true;
+
   return (
-    <div className="space-y-8">
-      <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-6 text-center shadow-sm sm:rounded-3xl sm:p-8">
-        <h3 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">Choose your plan</h3>
-        <p className="mx-auto mt-3 max-w-xl text-base leading-relaxed text-slate-600">
-          Beautonomi Starter is free and includes online booking, Yoco, and calendar sync. Upgrade anytime for SMS, WhatsApp, and higher limits.
+    <div className="space-y-6 sm:space-y-8">
+      <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-5 text-center shadow-sm sm:rounded-3xl sm:p-8">
+        <h3 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+          Choose your plan
+        </h3>
+        <p className="mx-auto mt-2 max-w-xl text-sm leading-relaxed text-slate-600 sm:mt-3 sm:text-base">
+          Beautonomi Starter is free and includes online booking, Yoco, and calendar sync. Upgrade
+          anytime for SMS, WhatsApp, and higher limits.
         </p>
       </div>
 
       <div className="grid grid-cols-1 gap-5 md:grid-cols-3 md:gap-6">
         {pricingPlans.map((plan) => {
           const isSelected = data.selected_plan_id === plan.id;
+          const planIsFree = plan.is_free === true;
           return (
             <div
               key={plan.id}
@@ -4488,7 +4779,7 @@ function Step14PlanSelection({
                   updateData({ selected_plan_id: plan.id });
                 }
               }}
-              className={`relative cursor-pointer rounded-2xl border-2 p-6 shadow-sm transition-all sm:rounded-3xl sm:p-7 ${
+              className={`relative cursor-pointer rounded-2xl border-2 p-5 shadow-sm transition-all sm:rounded-3xl sm:p-7 ${
                 isSelected
                   ? "border-primary bg-primary/[0.06] shadow-lg ring-2 ring-primary/20"
                   : plan.is_popular
@@ -4504,23 +4795,57 @@ function Step14PlanSelection({
                 </div>
               )}
 
-              <div className="mb-6 text-center">
-                <h4 className="mb-2 text-xl font-bold text-slate-900">{plan.name}</h4>
+              <div className="mb-5 text-center sm:mb-6">
+                <div className="mb-2 flex flex-wrap items-center justify-center gap-2">
+                  <h4 className="text-xl font-bold text-slate-900">{plan.name}</h4>
+                  {planIsFree ? (
+                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700">
+                      Free
+                    </span>
+                  ) : null}
+                </div>
                 <div className="mb-2 flex items-baseline justify-center gap-1">
                   <span className="text-3xl font-bold text-slate-900">{plan.price}</span>
                   {plan.period && <span className="text-sm text-slate-600">{plan.period}</span>}
                 </div>
-                {plan.description && <p className="text-sm text-slate-600">{plan.description}</p>}
+                {plan.description ? (
+                  <div className="text-sm text-slate-600 [&_a]:text-primary [&_a]:underline [&_p]:m-0">
+                    <PricingFeatureHtml html={plan.description} className="block leading-snug" />
+                  </div>
+                ) : null}
               </div>
 
-              <ul className="mb-6 space-y-3">
+              <ul className="mb-5 space-y-2.5 sm:mb-6 sm:space-y-3">
                 {plan.features.map((feature, index) => (
                   <li key={index} className="flex items-start gap-2">
-                    <Check className="mt-0.5 h-5 w-5 shrink-0 text-primary" aria-hidden />
-                    <span className="text-sm text-slate-800">{feature}</span>
+                    <Check
+                      className="mt-0.5 h-4 w-4 shrink-0 text-primary sm:h-5 sm:w-5"
+                      aria-hidden
+                    />
+                    <div className="min-w-0 flex-1 text-sm text-slate-800 [&_a]:text-primary [&_a]:underline [&_p]:m-0">
+                      <PricingFeatureHtml html={feature} className="block leading-snug" />
+                    </div>
                   </li>
                 ))}
               </ul>
+
+              <div
+                className={`mb-3 flex items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold ${
+                  planIsFree ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-primary"
+                }`}
+              >
+                {planIsFree ? (
+                  <>
+                    <Sparkles className="h-3.5 w-3.5" aria-hidden />
+                    <span>Activates instantly</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="h-3.5 w-3.5" aria-hidden />
+                    <span>Secure card payment after submit</span>
+                  </>
+                )}
+              </div>
 
               <div
                 className={`flex h-11 w-full items-center justify-center rounded-2xl ${
@@ -4541,22 +4866,35 @@ function Step14PlanSelection({
         })}
       </div>
 
-      {data.selected_plan_id && (
-        <Alert className="rounded-2xl border-emerald-200 bg-emerald-50 sm:rounded-3xl">
-          <Check className="h-4 w-4 text-emerald-700" />
-          <AlertDescription className="text-sm leading-relaxed text-emerald-950">
-            <strong className="text-emerald-950">Plan selected.</strong> After you submit, you&apos;ll be on this plan and
-            can start your trial.
+      {data.selected_plan_id ? (
+        <Alert
+          className={`rounded-2xl sm:rounded-3xl ${
+            selectedIsFree
+              ? "border-emerald-200 bg-emerald-50"
+              : "border-primary/30 bg-primary/[0.05]"
+          }`}
+        >
+          <Check className={`h-4 w-4 ${selectedIsFree ? "text-emerald-700" : "text-primary"}`} />
+          <AlertDescription
+            className={`text-sm leading-relaxed ${
+              selectedIsFree ? "text-emerald-950" : "text-slate-900"
+            }`}
+          >
+            <strong>{selectedIsFree ? "Free plan selected." : "Paid plan selected."}</strong>{" "}
+            {selectedIsFree
+              ? "After you submit, you'll be on this plan immediately — no payment needed."
+              : "After you submit, you'll be taken to a secure Paystack page to complete payment."}
+          </AlertDescription>
+        </Alert>
+      ) : (
+        <Alert className="rounded-2xl border-slate-200 bg-slate-50 sm:rounded-3xl">
+          <AlertCircle className="h-4 w-4 text-slate-700" />
+          <AlertDescription className="text-sm leading-relaxed text-slate-800">
+            Select a plan to continue. Free plans activate instantly; paid plans take you to a
+            secure card payment.
           </AlertDescription>
         </Alert>
       )}
-      <Alert className="rounded-2xl border-slate-200 bg-slate-50 sm:rounded-3xl">
-        <AlertCircle className="h-4 w-4 text-slate-700" />
-        <AlertDescription className="text-sm leading-relaxed text-slate-800">
-          <strong className="text-slate-900">Checkout behavior:</strong> Free plan activates instantly. Paid plan
-          continues for card payment and returns here automatically.
-        </AlertDescription>
-      </Alert>
     </div>
   );
 }

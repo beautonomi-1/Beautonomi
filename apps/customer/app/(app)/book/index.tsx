@@ -39,10 +39,11 @@ import {
   cartMatchesPublicCatalogPackage,
   coerceSelectedDate,
   flattenProviderServicesToMenu,
-  formatLocalDateYYYYMMDD,
+  formatBusinessDayYYYYMMDD,
   isPublicStaffIdForBooking,
   mergeExpressProductCartLines,
   resolvePackageOfferingsFromFlatMenu,
+  startOfBusinessDayLocalDate,
   toIsoUtcTimestamp,
   type PublicProductCatalogRow,
 } from "@beautonomi/utils";
@@ -1331,8 +1332,15 @@ export default function BookScreen() {
         : service_id;
 
   const { todayStart, lastSelectableDay, weekStart, weekDays, maxWeekOffset } = useMemo(() => {
-    const t = new Date();
-    t.setHours(0, 0, 0, 0);
+    // §Booking-slot-audit 2026-05: anchor the date strip to the **provider
+    // business day** when the provider timezone is known. Otherwise a
+    // customer in a far-away timezone (e.g. Asia at 1am with a SAST
+    // provider) sees their device-local "today" and the API call below
+    // requests the wrong salon date, producing missing/extra early-morning
+    // slots. The returned Date's Y/M/D matches the provider business day,
+    // so all downstream display logic (weekday labels, day numbers,
+    // formatLocalDateYYYYMMDD) keeps working unchanged.
+    const t = startOfBusinessDayLocalDate(provider?.timezone ?? null);
     const last = addDays(t, maxAdvanceDays);
     last.setHours(0, 0, 0, 0);
     const ws = addDays(t, weekOffset * 7);
@@ -1343,7 +1351,7 @@ export default function BookScreen() {
     });
     const mwo = Math.max(0, Math.floor(maxAdvanceDays / 7));
     return { todayStart: t, lastSelectableDay: last, weekStart: ws, weekDays: days, maxWeekOffset: mwo };
-  }, [weekOffset, maxAdvanceDays]);
+  }, [weekOffset, maxAdvanceDays, provider?.timezone]);
 
   const loadSlots = useCallback(async () => {
     if (!slug || !effectiveOfferingId || !selectedDay || !selectedStaff) return;
@@ -1351,7 +1359,12 @@ export default function BookScreen() {
     setLoadingSlots(true);
     setSlotLoadError(null);
     try {
-      const dateStr = formatLocalDateYYYYMMDD(selectedDay);
+      // §Booking-slot-audit 2026-05: send the **provider business date** so
+      // the salon receives the day the customer actually intends to book,
+      // even when their device is in a different timezone. When the provider
+      // TZ is unknown the helper falls back to device-local YYYY-MM-DD —
+      // matching previous behaviour.
+      const dateStr = formatBusinessDayYYYYMMDD(selectedDay, provider?.timezone ?? null);
       const staffQ = staffIdForPublicAvailabilityApi(selectedStaff);
       if (!staffQ) return;
       const params = new URLSearchParams({
@@ -1412,6 +1425,7 @@ export default function BookScreen() {
     selectedServices,
     excludeHoldIdForSlots,
     reschedule_booking_id,
+    provider?.timezone,
   ]);
 
   // Restore snapshot and reload stale data when screen regains focus (handles tab switching)
@@ -1492,10 +1506,11 @@ export default function BookScreen() {
     (async () => {
       const now = new Date();
       for (let offset = 0; offset < Math.min(14, maxAdvanceDays); offset++) {
-        const d = new Date();
-        d.setHours(0, 0, 0, 0);
-        d.setDate(d.getDate() + offset);
-        const dateStr = formatLocalDateYYYYMMDD(d);
+        // §Booking-slot-audit 2026-05: walk forward by provider business days
+        // (anchored to salon TZ when known) so cross-TZ customers don't skip
+        // or repeat a salon date near midnight.
+        const d = startOfBusinessDayLocalDate(provider?.timezone ?? null, offset);
+        const dateStr = formatBusinessDayYYYYMMDD(d, provider?.timezone ?? null);
         const staffQ = staffIdForPublicAvailabilityApi(selectedStaff);
         if (!staffQ) return;
         const params = new URLSearchParams({
@@ -1544,8 +1559,7 @@ export default function BookScreen() {
         }
       }
       if (!cancelled) {
-        const fallback = new Date();
-        fallback.setHours(0, 0, 0, 0);
+        const fallback = startOfBusinessDayLocalDate(provider?.timezone ?? null);
         setSelectedDate(fallback);
       }
     })();
@@ -1568,6 +1582,7 @@ export default function BookScreen() {
     excludeHoldIdForSlots,
     atHomeTravelBufferMinutes,
     reschedule_booking_id,
+    provider?.timezone,
   ]);
 
   const joinWaitlist = useCallback(async () => {
@@ -1583,7 +1598,7 @@ export default function BookScreen() {
     }
     setWaitlistJoining(true);
     try {
-      const preferredDate = formatLocalDateYYYYMMDD(selectedDay);
+      const preferredDate = formatBusinessDayYYYYMMDD(selectedDay, provider?.timezone ?? null);
       const waitlistSlot = selectedSlot ?? displaySlots[0] ?? slots[0] ?? null;
       const preferredStart = formatHHMMInTimeZone(waitlistSlot?.start, provider?.timezone ?? null) ?? "00:00";
       const preferredEnd = formatHHMMInTimeZone(waitlistSlot?.end, provider?.timezone ?? null) ?? preferredStart;

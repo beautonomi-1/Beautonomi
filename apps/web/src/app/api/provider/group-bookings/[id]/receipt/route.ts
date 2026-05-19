@@ -11,7 +11,10 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { parseReceiptDownloadToken } from "@/lib/receipts/receipt-download-token";
-import { groupPackageTotal, groupProductLineTotal } from "@/lib/bookings/group-booking-package-pricing";
+import {
+  groupPackageTotal,
+  groupProductLineTotal,
+} from "@/lib/bookings/group-booking-package-pricing";
 import { computeCatalogPackageServiceDiscount } from "@beautonomi/utils";
 import { isPaidBookingPaymentStatus } from "@/lib/payments/booking-payment-status";
 
@@ -81,17 +84,16 @@ function participantAddonSummary(addons: unknown): string | null {
       return String(obj.name ?? obj.addon_name ?? obj.title ?? "").trim();
     })
     .filter(Boolean);
-  return labels.length > 0 ? labels.join(", ") : `${addons.length} add-on${addons.length === 1 ? "" : "s"}`;
+  return labels.length > 0
+    ? labels.join(", ")
+    : `${addons.length} add-on${addons.length === 1 ? "" : "s"}`;
 }
 
 function normalizeGroupBookingId(rawId: string): string {
   return rawId.startsWith("group:") ? rawId.slice("group:".length) : rawId;
 }
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id: rawId } = await params;
     const id = normalizeGroupBookingId(rawId);
@@ -106,7 +108,10 @@ export async function GET(
         subjectId: id,
       });
       if (!parsed) {
-        return NextResponse.json({ error: "Signed download token is invalid or expired" }, { status: 401 });
+        return NextResponse.json(
+          { error: "Signed download token is invalid or expired" },
+          { status: 401 }
+        );
       }
       const { data: userRow } = await admin
         .from("users")
@@ -114,21 +119,29 @@ export async function GET(
         .eq("id", parsed.userId)
         .maybeSingle();
       if (!userRow) {
-        return NextResponse.json({ error: "Signed download token is invalid or expired" }, { status: 401 });
+        return NextResponse.json(
+          { error: "Signed download token is invalid or expired" },
+          { status: 401 }
+        );
       }
       user = { id: userRow.id as string, role: (userRow.role as string) || "provider_owner" };
     } else {
-      const authed = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
+      const authed = await requireRoleInApi(
+        ["provider_owner", "provider_staff", "superadmin"],
+        request
+      );
       user = { id: authed.user.id, role: authed.user.role as string };
     }
 
     const { data: group, error } = await admin
       .from("group_bookings")
-      .select(`
+      .select(
+        `
         *,
         service_packages:package_id(id, name, price, discount_percentage),
         booking_participants(id, booking_id, participant_name, participant_email, participant_phone, service_name, price, duration_minutes, addons)
-      `)
+      `
+      )
       .eq("id", id)
       .maybeSingle();
 
@@ -148,7 +161,10 @@ export async function GET(
     const tenantRegion = (group as { tenant_id?: string | null }).tenant_id
       ? await getTenantRegionConfig((group as { tenant_id?: string }).tenant_id!)
       : null;
-    const currency = (group as { currency?: string | null }).currency || tenantRegion?.defaultCurrency || LAST_RESORT_CURRENCY;
+    const currency =
+      (group as { currency?: string | null }).currency ||
+      tenantRegion?.defaultCurrency ||
+      LAST_RESORT_CURRENCY;
 
     const [{ data: providerRow }, { data: locationRow }] = await Promise.all([
       admin
@@ -178,10 +194,12 @@ export async function GET(
 
     const participants = ((group as any).booking_participants || []) as ParticipantRow[];
     const bookingIds = participants.map((p) => p.booking_id).filter(Boolean) as string[];
-    const { data: childBookings } = bookingIds.length > 0
-      ? await admin
-          .from("bookings")
-          .select(`
+    const { data: childBookings } =
+      bookingIds.length > 0
+        ? await admin
+            .from("bookings")
+            .select(
+              `
             id,
             booking_number,
             total_amount,
@@ -202,28 +220,40 @@ export async function GET(
             payment_status,
             customer:users!bookings_customer_id_fkey(full_name, email, phone),
             booking_payments(id, amount, status, payment_method, payment_provider, paid_at, created_at, notes)
-          `)
-          .in("id", bookingIds)
-      : { data: [] as ChildBookingRow[] };
+          `
+            )
+            .in("id", bookingIds)
+        : { data: [] as ChildBookingRow[] };
 
     const childRows = (childBookings || []) as ChildBookingRow[];
     const childById = new Map<string, ChildBookingRow>(childRows.map((b) => [b.id, b]));
     const participantTotal = participants.reduce((sum, p) => sum + Math.max(0, num(p.price)), 0);
-    const products = Array.isArray((group as any).products) ? ((group as any).products as any[]) : [];
+    const products = Array.isArray((group as any).products)
+      ? ((group as any).products as any[])
+      : [];
     const productTotal = products.reduce((sum, p) => sum + groupProductLineTotal(p), 0);
-    const travelFee = (group as any).location_type === "at_home" ? Math.max(0, num((group as any).travel_fee)) : 0;
+    const travelFee =
+      (group as any).location_type === "at_home" ? Math.max(0, num((group as any).travel_fee)) : 0;
     const pkg = Array.isArray((group as any).service_packages)
       ? (group as any).service_packages[0]
       : (group as any).service_packages;
     const packageDiscount = pkg ? computeCatalogPackageServiceDiscount(pkg, participantTotal) : 0;
-    const groupComputedTotal = groupPackageTotal({ participantTotal, productTotal, travelFee, packageDiscount });
-    const groupTotal = (group as any).total_price != null ? Math.max(0, num((group as any).total_price)) : groupComputedTotal;
+    const groupComputedTotal = groupPackageTotal({
+      participantTotal,
+      productTotal,
+      travelFee,
+      packageDiscount,
+    });
+    const groupTotal =
+      (group as any).total_price != null
+        ? Math.max(0, num((group as any).total_price))
+        : groupComputedTotal;
 
     const childTotalAmount = childRows.reduce((sum, b) => sum + num(b.total_amount), 0);
     const taxAmount = childRows.reduce((sum, b) => sum + num(b.tax_amount), 0);
     const platformFeeAmount = childRows.reduce(
       (sum, b) => sum + num(b.platform_fee_amount ?? b.service_fee_amount),
-      0,
+      0
     );
     const childDiscountAmount = childRows.reduce((sum, b) => sum + num(b.discount_amount), 0);
     const amountPaid = childRows.reduce((sum, b) => {
@@ -244,7 +274,7 @@ export async function GET(
      * `estimated_session_amount` for the PDF/UI to render distinctly from a
      * real outstanding balance.
      */
-    const isEstimateOnly = childRows.length === 0 && participants.length === 0;
+    const isEstimateOnly = childRows.length === 0;
     const balanceDue = isEstimateOnly ? 0 : Math.max(0, baseTotal - netCollected);
     const estimatedSessionAmount = isEstimateOnly ? Math.max(0, baseTotal) : 0;
     const paymentStatus =
@@ -304,7 +334,8 @@ export async function GET(
         booking_id: p.booking_id ?? null,
         booking_number: child?.booking_number ?? null,
         description: p.service_name || "Participant service",
-        participant_name: p.participant_name || child?.customer?.full_name || `Participant ${index + 1}`,
+        participant_name:
+          p.participant_name || child?.customer?.full_name || `Participant ${index + 1}`,
         email: p.participant_email || child?.customer?.email || null,
         phone: p.participant_phone || child?.customer?.phone || null,
         duration_minutes: p.duration_minutes ?? null,
@@ -312,13 +343,15 @@ export async function GET(
         service_amount: num(p.price),
         booking_total: child ? num(child.total_amount) : null,
         tax_amount: child ? num(child.tax_amount) : null,
-        platform_fee_amount: child ? num(child.platform_fee_amount ?? child.service_fee_amount) : null,
+        platform_fee_amount: child
+          ? num(child.platform_fee_amount ?? child.service_fee_amount)
+          : null,
         amount_paid: child
           ? Math.max(
               (child.booking_payments || [])
                 .filter((payment) => isPaidBookingPaymentStatus(payment.status))
                 .reduce((sum, payment) => sum + num(payment.amount), 0),
-              Math.max(0, num(child.wallet_amount) + num(child.gift_card_amount)),
+              Math.max(0, num(child.wallet_amount) + num(child.gift_card_amount))
             )
           : null,
         refunded: child ? num(child.total_refunded) : null,
@@ -349,7 +382,8 @@ export async function GET(
       },
       package_id: (group as any).package_id || null,
       package_name: pkg?.name || null,
-      settlement_basis: childRows.length > 0 ? "linked_participant_bookings" : "group_session_estimate",
+      settlement_basis:
+        childRows.length > 0 ? "linked_participant_bookings" : "group_session_estimate",
       participant_count: participants.length,
       items: lineItems,
       payments: paymentsAggregate,

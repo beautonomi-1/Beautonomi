@@ -78,11 +78,18 @@ export default function MembershipScreen() {
         onPress: async () => {
           setCancelling(true);
           try {
-            const res = await api.post("/api/me/membership/cancel", {});
+            const res = await api.post<{ cancelled?: boolean; message?: string }>(
+              "/api/me/membership/cancel",
+              {},
+            );
             if (res.error) {
               Alert.alert(errTitle, getApiErrorMessage(res.error, mem("cancelFailed")));
+            } else if (res.data?.cancelled) {
+              await load();
+              Alert.alert(mem("cancelSuccessTitle"), mem("cancelSuccessBody"));
             } else {
               await load();
+              Alert.alert(mem("cancelNothingTitle"), mem("cancelNothingBody"));
             }
           } catch (e) {
             Alert.alert(errTitle, getApiErrorMessage(e as Error, mem("cancelFailed")));
@@ -106,13 +113,24 @@ export default function MembershipScreen() {
           onPress: async () => {
             setCancellingSalonId(membership.id);
             try {
-              const res = await api.post("/api/me/membership/cancel", {
-                provider_membership_id: membership.id,
-              });
+              const res = await api.post<{ cancelled?: boolean; message?: string }>(
+                "/api/me/membership/cancel",
+                { provider_membership_id: membership.id },
+              );
               if (res.error) {
                 Alert.alert(errTitle, getApiErrorMessage(res.error, mem("cancelFailed")));
+              } else if (res.data?.cancelled) {
+                await load();
+                Alert.alert(
+                  mem("cancelSalonSuccessTitle"),
+                  mem("cancelSalonSuccessBody", {
+                    planName: membership.plan_name,
+                    providerName: membership.provider_name,
+                  }),
+                );
               } else {
                 await load();
+                Alert.alert(mem("cancelNothingTitle"), mem("cancelNothingBody"));
               }
             } catch (e) {
               Alert.alert(errTitle, getApiErrorMessage(e as Error, mem("cancelFailed")));

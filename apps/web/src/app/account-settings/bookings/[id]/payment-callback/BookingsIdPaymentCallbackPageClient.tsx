@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useParams, useSearchParams } from "next/navigation";
-import { CheckCircle, XCircle } from "lucide-react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { CheckCircle, Loader2, XCircle } from "lucide-react";
 import Link from "next/link";
 import { verifyWithRetry } from "@/lib/payments/verify-with-retry";
 
@@ -27,6 +27,7 @@ type VerifyResponse = {
  */
 export default function BookingPaymentCallbackPage() {
   const params = useParams();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const bookingId = params.id as string;
   const payRemaining = searchParams.get("pay_remaining") === "1";
@@ -90,36 +91,50 @@ export default function BookingPaymentCallbackPage() {
     verify();
   }, [verify]);
 
-  // Notify the customer app WebView so it can close and navigate to booking detail
+  // Notify the customer app WebView with the resolved outcome so the native
+  // shell can swap to the right result card (instead of only firing on
+  // success and stalling the WebView on failures).
   useEffect(() => {
-    if (status !== "success" || !bookingId) return;
+    if (status === "loading" || !bookingId) return;
     const win =
       typeof window !== "undefined"
         ? (window as unknown as {
             ReactNativeWebView?: { postMessage: (s: string) => void };
           })
         : null;
-    if (win?.ReactNativeWebView?.postMessage) {
-      try {
-        win.ReactNativeWebView.postMessage(
-          JSON.stringify({
-            type: "checkout_success",
-            booking_id: bookingId,
-            payment_type: payRemaining ? "booking_remaining" : "additional_charge",
-            reference: reference || undefined,
-          })
-        );
-      } catch {
-        // ignore
-      }
+    if (!win?.ReactNativeWebView?.postMessage) return;
+    try {
+      win.ReactNativeWebView.postMessage(
+        JSON.stringify({
+          type: status === "success" ? "checkout_success" : "checkout_failed",
+          status: status === "success" ? "success" : "failed",
+          booking_id: bookingId,
+          payment_type: payRemaining ? "booking_remaining" : "additional_charge",
+          reference: reference || undefined,
+          message: status === "error" ? message || null : undefined,
+        })
+      );
+    } catch {
+      // ignore
     }
-  }, [status, bookingId, payRemaining, reference]);
+  }, [status, bookingId, payRemaining, reference, message]);
+
+  // Auto-route on settled failure so the user is never stranded on a manual
+  // link in the standalone web view (they can still tap the link sooner).
+  useEffect(() => {
+    if (status !== "error" || !bookingId) return;
+    const t = setTimeout(() => {
+      router.replace(`/account-settings/bookings/${bookingId}`);
+    }, 4500);
+    return () => clearTimeout(t);
+  }, [status, bookingId, router]);
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md w-full text-center">
         {status === "loading" && (
           <>
+            <Loader2 className="w-12 h-12 text-pink-500 animate-spin mx-auto mb-4" />
             <h2 className="text-xl font-bold text-gray-900 mb-2">
               Confirming payment
             </h2>

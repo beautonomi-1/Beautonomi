@@ -36,6 +36,12 @@ vi.mock("@supabase/supabase-js", () => ({
   createClient: (...args: unknown[]) => mockCreateClient(...args),
 }));
 
+/** Required by onboardingSchema since provider card images became mandatory. */
+const onboardingProfileImages = {
+  thumbnail_url: "https://example.com/thumbnail.jpg",
+  avatar_url: "https://example.com/avatar.jpg",
+};
+
 describe("POST /api/provider/onboarding", () => {
   beforeEach(() => {
     vi.resetModules();
@@ -275,6 +281,7 @@ describe("POST /api/provider/onboarding", () => {
         selected_zone_ids: ["22222222-2222-4222-8222-222222222222"],
         operating_hours: {},
         services: [],
+        ...onboardingProfileImages,
       }),
     });
     const res = await POST(req);
@@ -540,6 +547,7 @@ describe("POST /api/provider/onboarding", () => {
         global_category_ids: ["11111111-1111-4111-8111-111111111111"],
         selected_zone_ids: [],
         operating_hours: {},
+        ...onboardingProfileImages,
         services: [
           {
             title: "Signature Blowout",
@@ -578,6 +586,395 @@ describe("POST /api/provider/onboarding", () => {
     expect(offeringsInsertPayloads[0]?.[1]?.is_onboarding_auto_generated).toBe(false);
     expect(addonInsertPayloads[0]?.[0]?.name).toBe("Hair Mask");
     expect(addonInsertPayloads[0]?.[0]?.offering_id).toBe("offering-1");
+  }, 45_000);
+
+  it("returns requires_checkout=true and a checkout_path when a paid pricing plan is selected", async () => {
+    mockRequireRoleInApi.mockResolvedValue({
+      user: { id: "user-paid", role: "customer" },
+    });
+    mockGetSupabaseServer.mockResolvedValue({});
+    mockResolveTenantIdWithZaFallback.mockResolvedValue("tenant-za");
+
+    const paidPlanId = "33333333-3333-4333-8333-333333333333";
+
+    // fetchScopedSingle is called twice: once for tenant settings, then for
+    // the selected pricing_plans row. Return tenant settings first, then a
+    // paid plan row with a paystack code.
+    mockFetchScopedSingle
+      .mockResolvedValueOnce({
+        data: {
+          settings: { features: { auto_approve_providers: true } },
+        },
+        source: "tenant",
+      })
+      .mockResolvedValueOnce({
+        data: {
+          id: paidPlanId,
+          price: "R 499",
+          paystack_plan_code_monthly: "PLN_xxxxx",
+          paystack_plan_code_yearly: null,
+          subscription_plan_id: "linked-sub-plan-uuid",
+        },
+        source: "tenant",
+      });
+
+    const mockSupabaseAdmin = {
+      storage: {
+        from: vi.fn(() => ({ upload: vi.fn(), getPublicUrl: vi.fn() })),
+      },
+      from: vi.fn((table: string) => {
+        if (table === "providers") {
+          let insertPayload: Record<string, unknown> | null = null;
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+              })),
+            })),
+            insert: vi.fn((payload: Record<string, unknown>) => {
+              insertPayload = payload;
+              return {
+                select: vi.fn(() => ({
+                  single: vi.fn(async () => ({
+                    data: { id: "provider-paid", ...insertPayload },
+                    error: null,
+                  })),
+                })),
+              };
+            }),
+            update: vi.fn(() => ({ eq: vi.fn(async () => ({ error: null })) })),
+          };
+        }
+        if (table === "tenants") {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                maybeSingle: vi.fn(async () => ({
+                  data: { default_currency: "ZAR" },
+                  error: null,
+                })),
+              })),
+            })),
+          };
+        }
+        if (table === "users") {
+          return { update: vi.fn(() => ({ eq: vi.fn(async () => ({ error: null })) })) };
+        }
+        if (table === "provider_locations") {
+          return {
+            insert: vi.fn(() => ({
+              select: vi.fn(() => ({
+                single: vi.fn(async () => ({ data: { id: "loc-paid" }, error: null })),
+              })),
+            })),
+          };
+        }
+        if (table === "provider_global_category_associations") {
+          return { insert: vi.fn(async () => ({ error: null })) };
+        }
+        if (table === "global_categories") {
+          return {
+            select: vi.fn(() => ({
+              in: vi.fn(async () => ({ data: [], error: null })),
+            })),
+          };
+        }
+        if (table === "provider_zone_selections") {
+          return { insert: vi.fn(async () => ({ error: null })) };
+        }
+        if (table === "provider_onboarding_drafts") {
+          return { delete: vi.fn(() => ({ eq: vi.fn(async () => ({ error: null })) })) };
+        }
+        if (table === "provider_onboarding_tracking") {
+          return {
+            upsert: vi.fn(async () => ({ error: null })),
+            update: vi.fn(() => ({ eq: vi.fn(async () => ({ error: null })) })),
+          };
+        }
+        if (table === "provider_leads") {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                is: vi.fn(() => ({
+                  or: vi.fn(() => ({
+                    limit: vi.fn(async () => ({ data: [], error: null })),
+                  })),
+                })),
+              })),
+            })),
+            update: vi.fn(() => ({ eq: vi.fn(async () => ({ error: null })) })),
+          };
+        }
+        if (table === "provider_lead_activities") {
+          return { insert: vi.fn(async () => ({ error: null })) };
+        }
+        if (table === "provider_subscriptions") {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+              })),
+            })),
+            insert: vi.fn(async () => ({ error: null })),
+          };
+        }
+        if (table === "subscription_plans") {
+          // Catalog fallback chain — paid plan path still ends up seeding a
+          // free row via the helper because the helper validates the
+          // preferred id (which is null here, since the plan is paid).
+          const planRow = {
+            data: { id: "00000000-0000-4000-8000-000000000099" },
+            error: null,
+          };
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  order: vi.fn(() => ({
+                    limit: vi.fn(() => ({
+                      maybeSingle: vi.fn(async () => planRow),
+                    })),
+                  })),
+                })),
+                limit: vi.fn(() => ({
+                  maybeSingle: vi.fn(async () => planRow),
+                })),
+              })),
+            })),
+          };
+        }
+        throw new Error(`Unexpected table: ${table}`);
+      }),
+      rpc: vi.fn(async () => ({ data: null, error: { message: "does not exist" } })),
+    };
+    mockCreateClient.mockReturnValue(mockSupabaseAdmin);
+
+    const { POST } = await import("../route");
+    const req = new NextRequest("http://localhost/api/provider/onboarding", {
+      method: "POST",
+      body: JSON.stringify({
+        business_name: "Paid Studio",
+        business_type: "salon",
+        address: {
+          line1: "1 Pay Street",
+          city: "Cape Town",
+          country: "ZA",
+          latitude: -33.92,
+          longitude: 18.42,
+        },
+        global_category_ids: ["11111111-1111-4111-8111-111111111111"],
+        selected_zone_ids: [],
+        operating_hours: {},
+        services: [],
+        selected_plan_id: paidPlanId,
+        ...onboardingProfileImages,
+      }),
+    });
+
+    const res = await POST(req);
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json?.data?.selected_plan_id).toBe(paidPlanId);
+    expect(json?.data?.selected_plan_is_free).toBe(false);
+    expect(json?.data?.requires_checkout).toBe(true);
+    expect(json?.data?.checkout_path).toBe(
+      `/provider/subscription-checkout?planId=${paidPlanId}`,
+    );
+    // Legacy field still emitted for older clients.
+    expect(json?.data?.subscription_endpoint).toBe("/api/provider/subscriptions/create");
+  }, 45_000);
+
+  it("returns requires_checkout=false for a free pricing plan and seeds the linked subscription plan", async () => {
+    mockRequireRoleInApi.mockResolvedValue({
+      user: { id: "user-free", role: "customer" },
+    });
+    mockGetSupabaseServer.mockResolvedValue({});
+    mockResolveTenantIdWithZaFallback.mockResolvedValue("tenant-za");
+
+    const freePlanId = "44444444-4444-4444-8444-444444444444";
+    const linkedSubscriptionPlanId = "55555555-5555-4555-8555-555555555555";
+
+    mockFetchScopedSingle
+      .mockResolvedValueOnce({
+        data: {
+          settings: { features: { auto_approve_providers: true } },
+        },
+        source: "tenant",
+      })
+      .mockResolvedValueOnce({
+        data: {
+          id: freePlanId,
+          price: "Free",
+          paystack_plan_code_monthly: null,
+          paystack_plan_code_yearly: null,
+          subscription_plan_id: linkedSubscriptionPlanId,
+        },
+        source: "tenant",
+      });
+
+    const subscriptionInserts: Array<Record<string, unknown>> = [];
+
+    const mockSupabaseAdmin = {
+      storage: {
+        from: vi.fn(() => ({ upload: vi.fn(), getPublicUrl: vi.fn() })),
+      },
+      from: vi.fn((table: string) => {
+        if (table === "providers") {
+          let insertPayload: Record<string, unknown> | null = null;
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+              })),
+            })),
+            insert: vi.fn((payload: Record<string, unknown>) => {
+              insertPayload = payload;
+              return {
+                select: vi.fn(() => ({
+                  single: vi.fn(async () => ({
+                    data: { id: "provider-free", ...insertPayload },
+                    error: null,
+                  })),
+                })),
+              };
+            }),
+            update: vi.fn(() => ({ eq: vi.fn(async () => ({ error: null })) })),
+          };
+        }
+        if (table === "tenants") {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                maybeSingle: vi.fn(async () => ({
+                  data: { default_currency: "ZAR" },
+                  error: null,
+                })),
+              })),
+            })),
+          };
+        }
+        if (table === "users") {
+          return { update: vi.fn(() => ({ eq: vi.fn(async () => ({ error: null })) })) };
+        }
+        if (table === "provider_locations") {
+          return {
+            insert: vi.fn(() => ({
+              select: vi.fn(() => ({
+                single: vi.fn(async () => ({ data: { id: "loc-free" }, error: null })),
+              })),
+            })),
+          };
+        }
+        if (table === "provider_global_category_associations") {
+          return { insert: vi.fn(async () => ({ error: null })) };
+        }
+        if (table === "global_categories") {
+          return {
+            select: vi.fn(() => ({
+              in: vi.fn(async () => ({ data: [], error: null })),
+            })),
+          };
+        }
+        if (table === "provider_zone_selections") {
+          return { insert: vi.fn(async () => ({ error: null })) };
+        }
+        if (table === "provider_onboarding_drafts") {
+          return { delete: vi.fn(() => ({ eq: vi.fn(async () => ({ error: null })) })) };
+        }
+        if (table === "provider_onboarding_tracking") {
+          return {
+            upsert: vi.fn(async () => ({ error: null })),
+            update: vi.fn(() => ({ eq: vi.fn(async () => ({ error: null })) })),
+          };
+        }
+        if (table === "provider_leads") {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                is: vi.fn(() => ({
+                  or: vi.fn(() => ({
+                    limit: vi.fn(async () => ({ data: [], error: null })),
+                  })),
+                })),
+              })),
+            })),
+            update: vi.fn(() => ({ eq: vi.fn(async () => ({ error: null })) })),
+          };
+        }
+        if (table === "provider_lead_activities") {
+          return { insert: vi.fn(async () => ({ error: null })) };
+        }
+        if (table === "provider_subscriptions") {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+              })),
+            })),
+            insert: vi.fn(async (payload: Record<string, unknown>) => {
+              subscriptionInserts.push(payload);
+              return { error: null };
+            }),
+          };
+        }
+        if (table === "subscription_plans") {
+          // ensureProviderFreeSubscriptionRow's preferred-plan validation call:
+          // `.eq("id", preferredPlanId).maybeSingle()` → return the linked free plan as active.
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                maybeSingle: vi.fn(async () => ({
+                  data: { id: linkedSubscriptionPlanId, is_free: true, is_active: true },
+                  error: null,
+                })),
+              })),
+            })),
+          };
+        }
+        throw new Error(`Unexpected table: ${table}`);
+      }),
+      rpc: vi.fn(async () => ({ data: null, error: { message: "does not exist" } })),
+    };
+    mockCreateClient.mockReturnValue(mockSupabaseAdmin);
+
+    const { POST } = await import("../route");
+    const req = new NextRequest("http://localhost/api/provider/onboarding", {
+      method: "POST",
+      body: JSON.stringify({
+        business_name: "Free Studio",
+        business_type: "salon",
+        address: {
+          line1: "1 Free Avenue",
+          city: "Johannesburg",
+          country: "ZA",
+          latitude: -26.2,
+          longitude: 28.04,
+        },
+        global_category_ids: ["11111111-1111-4111-8111-111111111111"],
+        selected_zone_ids: [],
+        operating_hours: {},
+        services: [],
+        selected_plan_id: freePlanId,
+        ...onboardingProfileImages,
+      }),
+    });
+
+    const res = await POST(req);
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json?.data?.selected_plan_id).toBe(freePlanId);
+    expect(json?.data?.selected_plan_is_free).toBe(true);
+    expect(json?.data?.requires_checkout).toBe(false);
+    expect(json?.data?.checkout_path).toBeNull();
+    expect(json?.data?.subscription_endpoint).toBeNull();
+    expect(json?.data?.selected_subscription_plan_id).toBe(linkedSubscriptionPlanId);
+
+    // The free subscription row should use the linked subscription_plans id,
+    // not a generic catalog fallback.
+    expect(subscriptionInserts).toHaveLength(1);
+    expect(subscriptionInserts[0]?.plan_id).toBe(linkedSubscriptionPlanId);
   }, 45_000);
 });
 

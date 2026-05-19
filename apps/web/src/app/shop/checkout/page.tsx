@@ -19,6 +19,7 @@ import {
   CheckCircle,
   Plus,
   ArrowLeft,
+  Trash2,
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -70,6 +71,8 @@ interface SavedCard {
   last4?: string;
   expiry_month?: number;
   expiry_year?: number;
+  expiry_label?: string;
+  is_expired?: boolean;
   is_default: boolean;
   is_active: boolean;
 }
@@ -95,7 +98,12 @@ export default function ProductCheckoutPage() {
   const [paymentMethod, setPaymentMethod] = useState<"paystack" | "card_on_delivery">("paystack");
   const [useWallet, setUseWallet] = useState(false);
   const [walletBalance, setWalletBalance] = useState(0);
-  const [platformFeeConfig, setPlatformFeeConfig] = useState({ type: "fixed", percentage: 0, fixed: 0, show: false });
+  const [platformFeeConfig, setPlatformFeeConfig] = useState({
+    type: "fixed",
+    percentage: 0,
+    fixed: 0,
+    show: false,
+  });
   const [cashEnabledOnPlatform, setCashEnabledOnPlatform] = useState(false);
   const { enabled: paystackEnabled } = useFeatureFlag("payment_paystack");
   const { enabled: walletEnabled } = useFeatureFlag("payment_wallet");
@@ -107,6 +115,7 @@ export default function ProductCheckoutPage() {
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [useNewCard, setUseNewCard] = useState(true);
   const [settingDefaultId, setSettingDefaultId] = useState<string | null>(null);
+  const [removingCardId, setRemovingCardId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) {
@@ -128,7 +137,7 @@ export default function ProductCheckoutPage() {
       try {
         const res = await fetcher.get<{ data: SavedCard[] }>("/api/me/payment-methods");
         if (cancelled) return;
-        const active = (res?.data ?? []).filter((c) => c.is_active);
+        const active = (res?.data ?? []).filter((c) => c.is_active && !c.is_expired);
         setSavedCards(active);
         if (active.length === 0) {
           setUseNewCard(true);
@@ -159,13 +168,46 @@ export default function ProductCheckoutPage() {
     try {
       await fetcher.patch(`/api/me/payment-methods/${cardId}`, { is_default: true });
       const listRes = await fetcher.get<{ data: SavedCard[] }>("/api/me/payment-methods");
-      const active = (listRes.data || []).filter((c) => c.is_active);
+      const active = (listRes.data || []).filter((c) => c.is_active && !c.is_expired);
       setSavedCards(active);
       toast.success("Default card updated");
     } catch {
       toast.error("Failed to set default card");
     } finally {
       setSettingDefaultId(null);
+    }
+  };
+
+  // Inline removal during shop checkout — confirm to avoid a slip in the
+  // dense list, then optimistically prune and re-select the next usable card
+  // (or fall back to entering a new card) so the customer keeps flowing.
+  const handleRemoveSavedCard = async (cardId: string) => {
+    if (typeof window !== "undefined") {
+      const ok = window.confirm(
+        "Remove this card from your saved cards? You can always re-add it during your next payment."
+      );
+      if (!ok) return;
+    }
+    setRemovingCardId(cardId);
+    try {
+      await fetcher.delete(`/api/me/payment-methods/${cardId}`);
+      const next = savedCards.filter((c) => c.id !== cardId);
+      setSavedCards(next);
+      if (selectedCardId === cardId) {
+        const fallback = next.find((c) => c.is_default) ?? next[0] ?? null;
+        if (fallback) {
+          setSelectedCardId(fallback.id);
+          setUseNewCard(false);
+        } else {
+          setSelectedCardId(null);
+          setUseNewCard(true);
+        }
+      }
+      toast.success("Card removed");
+    } catch {
+      toast.error("Failed to remove card");
+    } finally {
+      setRemovingCardId(null);
     }
   };
 
@@ -183,10 +225,11 @@ export default function ProductCheckoutPage() {
           new Set(
             allItems
               .map((item: any) => item.provider?.id ?? item.product?.provider_id ?? null)
-              .filter((id: string | null): id is string => Boolean(id)),
-          ),
+              .filter((id: string | null): id is string => Boolean(id))
+          )
         );
-        const effectiveProviderId = providerId ?? (providerIds.length === 1 ? providerIds[0] : null);
+        const effectiveProviderId =
+          providerId ?? (providerIds.length === 1 ? providerIds[0] : null);
 
         if (!effectiveProviderId) {
           if (!cancelled) {
@@ -202,15 +245,15 @@ export default function ProductCheckoutPage() {
         }
 
         const providerItems = allItems.filter(
-          (item: any) => (item.provider?.id ?? item.product?.provider_id) === effectiveProviderId,
+          (item: any) => (item.provider?.id ?? item.product?.provider_id) === effectiveProviderId
         );
         if (!cancelled) setItems(providerItems);
 
         const addrRes = await fetcher.get<{ data: { addresses: Address[] } | Address[] }>(
-          "/api/me/addresses",
+          "/api/me/addresses"
         );
         const addrData = addrRes?.data;
-        const addrList = Array.isArray(addrData) ? addrData : (addrData as any)?.addresses ?? [];
+        const addrList = Array.isArray(addrData) ? addrData : ((addrData as any)?.addresses ?? []);
         if (!cancelled) {
           setAddresses(addrList);
           const def = addrList.find((a: Address) => a.is_default);
@@ -218,17 +261,17 @@ export default function ProductCheckoutPage() {
         }
 
         const locRes = await fetcher.get<{ data: { locations: Location[] } | Location[] }>(
-          `/api/public/provider-locations?provider_id=${effectiveProviderId}`,
+          `/api/public/provider-locations?provider_id=${effectiveProviderId}`
         );
         const locData = locRes?.data;
-        const locList = Array.isArray(locData) ? locData : (locData as any)?.locations ?? [];
+        const locList = Array.isArray(locData) ? locData : ((locData as any)?.locations ?? []);
         if (!cancelled) {
           setLocations(locList);
           if (locList.length > 0) setSelectedLocation(locList[0].id);
         }
 
         const shipRes = await fetcher.get<{ data: any }>(
-          `/api/public/products/shipping-config?provider_id=${effectiveProviderId}`,
+          `/api/public/products/shipping-config?provider_id=${effectiveProviderId}`
         );
         if (!cancelled && shipRes?.data) {
           const sc = shipRes.data?.shipping ?? shipRes.data?.config ?? shipRes.data;
@@ -254,7 +297,7 @@ export default function ProductCheckoutPage() {
           try {
             const walletRes = await fetcher.get<{ data: { wallet: { balance: number } } }>(
               "/api/me/wallet",
-              { cache: "no-store" },
+              { cache: "no-store" }
             );
             if (!cancelled && walletRes?.data?.wallet) {
               setWalletBalance(Number(walletRes.data.wallet.balance) || 0);
@@ -292,14 +335,12 @@ export default function ProductCheckoutPage() {
     }
   }, [cashEnabledOnPlatform, paymentMethod]);
 
-  const linePrice = (i: CartItem) => (i.effective_price ?? i.product?.retail_price ?? 0) * i.quantity;
-  const subtotal = items.reduce(
-    (s, i) => s + linePrice(i),
-    0,
-  );
+  const linePrice = (i: CartItem) =>
+    (i.effective_price ?? i.product?.retail_price ?? 0) * i.quantity;
+  const subtotal = items.reduce((s, i) => s + linePrice(i), 0);
   const taxAmount = items.reduce((s, i) => {
     const rate = parseFloat(String(i.product?.tax_rate || "0")) || 0;
-    return s + Math.round((linePrice(i) * rate) / 100 * 100) / 100;
+    return s + Math.round(((linePrice(i) * rate) / 100) * 100) / 100;
   }, 0);
   const deliveryFee =
     fulfillment === "delivery" && shippingConfig
@@ -337,7 +378,11 @@ export default function ProductCheckoutPage() {
 
     try {
       const orderRes = await fetcher.post<{
-        data: { order: { id: string; order_number: string }; paid_with_wallet?: boolean; amount_due?: number };
+        data: {
+          order: { id: string; order_number: string };
+          paid_with_wallet?: boolean;
+          amount_due?: number;
+        };
       }>("/api/me/orders", {
         provider_id: providerId,
         fulfillment_type: fulfillment,
@@ -419,7 +464,7 @@ export default function ProductCheckoutPage() {
           ? err.message
           : err instanceof Error
             ? err.message
-            : "Could not place order. Please try again.",
+            : "Could not place order. Please try again."
       );
     } finally {
       setPlacing(false);
@@ -490,12 +535,15 @@ export default function ProductCheckoutPage() {
           )}
           {!hasAnyEnabledPaymentMethod && (
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
-              No payment methods are currently enabled for on-platform checkout. Please contact support.
+              No payment methods are currently enabled for on-platform checkout. Please contact
+              support.
             </div>
           )}
           {/* Fulfillment type */}
           <div className="bg-white rounded-xl border p-6">
-            <h3 className="font-semibold text-gray-900 mb-4">How would you like to receive your order?</h3>
+            <h3 className="font-semibold text-gray-900 mb-4">
+              How would you like to receive your order?
+            </h3>
             <div className="grid grid-cols-2 gap-4">
               {shippingConfig?.offers_collection !== false && (
                 <button
@@ -506,8 +554,12 @@ export default function ProductCheckoutPage() {
                       : "border-gray-200 hover:border-gray-300"
                   }`}
                 >
-                  <Store className={`w-6 h-6 mx-auto mb-2 ${fulfillment === "collection" ? "text-pink-600" : "text-gray-400"}`} />
-                  <p className={`font-medium ${fulfillment === "collection" ? "text-pink-600" : "text-gray-700"}`}>
+                  <Store
+                    className={`w-6 h-6 mx-auto mb-2 ${fulfillment === "collection" ? "text-pink-600" : "text-gray-400"}`}
+                  />
+                  <p
+                    className={`font-medium ${fulfillment === "collection" ? "text-pink-600" : "text-gray-700"}`}
+                  >
                     Collection
                   </p>
                   <p className="text-xs text-gray-400 mt-1">Free</p>
@@ -522,8 +574,12 @@ export default function ProductCheckoutPage() {
                       : "border-gray-200 hover:border-gray-300"
                   }`}
                 >
-                  <Truck className={`w-6 h-6 mx-auto mb-2 ${fulfillment === "delivery" ? "text-pink-600" : "text-gray-400"}`} />
-                  <p className={`font-medium ${fulfillment === "delivery" ? "text-pink-600" : "text-gray-700"}`}>
+                  <Truck
+                    className={`w-6 h-6 mx-auto mb-2 ${fulfillment === "delivery" ? "text-pink-600" : "text-gray-400"}`}
+                  />
+                  <p
+                    className={`font-medium ${fulfillment === "delivery" ? "text-pink-600" : "text-gray-700"}`}
+                  >
                     Delivery
                   </p>
                   <p className="text-xs text-gray-400 mt-1">
@@ -543,7 +599,9 @@ export default function ProductCheckoutPage() {
                   <label
                     key={loc.id}
                     className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
-                      selectedLocation === loc.id ? "border-pink-500 bg-pink-50" : "border-gray-200 hover:bg-gray-50"
+                      selectedLocation === loc.id
+                        ? "border-pink-500 bg-pink-50"
+                        : "border-gray-200 hover:bg-gray-50"
                     }`}
                   >
                     <input
@@ -568,11 +626,13 @@ export default function ProductCheckoutPage() {
           {fulfillment === "delivery" && (
             <div className="bg-white rounded-xl border p-6">
               <h3 className="font-semibold text-gray-900 mb-4">Delivery Address</h3>
-              {shippingConfig?.estimated_delivery_days != null && Number(shippingConfig.estimated_delivery_days) > 0 && (
-                <p className="text-sm text-gray-500 mb-4">
-                  Estimated delivery: within {Number(shippingConfig.estimated_delivery_days)} business day{Number(shippingConfig.estimated_delivery_days) !== 1 ? "s" : ""}
-                </p>
-              )}
+              {shippingConfig?.estimated_delivery_days != null &&
+                Number(shippingConfig.estimated_delivery_days) > 0 && (
+                  <p className="text-sm text-gray-500 mb-4">
+                    Estimated delivery: within {Number(shippingConfig.estimated_delivery_days)}{" "}
+                    business day{Number(shippingConfig.estimated_delivery_days) !== 1 ? "s" : ""}
+                  </p>
+                )}
               {addresses.length === 0 ? (
                 <div className="text-center py-4">
                   <AlertCircle className="w-8 h-8 text-gray-300 mx-auto mb-2" />
@@ -590,7 +650,9 @@ export default function ProductCheckoutPage() {
                     <label
                       key={addr.id}
                       className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
-                        selectedAddress === addr.id ? "border-pink-500 bg-pink-50" : "border-gray-200 hover:bg-gray-50"
+                        selectedAddress === addr.id
+                          ? "border-pink-500 bg-pink-50"
+                          : "border-gray-200 hover:bg-gray-50"
                       }`}
                     >
                       <input
@@ -627,7 +689,9 @@ export default function ProductCheckoutPage() {
               {paystackEnabled && (
                 <label
                   className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
-                    paymentMethod === "paystack" ? "border-pink-500 bg-pink-50" : "border-gray-200 hover:bg-gray-50"
+                    paymentMethod === "paystack"
+                      ? "border-pink-500 bg-pink-50"
+                      : "border-gray-200 hover:bg-gray-50"
                   }`}
                 >
                   <input
@@ -639,124 +703,157 @@ export default function ProductCheckoutPage() {
                   />
                   <div>
                     <p className="font-medium text-gray-900">Pay Online</p>
-                    <p className="text-xs text-gray-500">Secure payment with card (card, EFT, etc.)</p>
+                    <p className="text-xs text-gray-500">
+                      Secure payment with card (card, EFT, etc.)
+                    </p>
                   </div>
                 </label>
               )}
-              {paymentMethod === "paystack" && user && paystackEnabled && !useWallet && cardsLoading && (
-                <div className="space-y-2 pl-1">
-                  <div className="h-14 bg-gray-100 rounded-xl animate-pulse" />
-                  <div className="h-14 bg-gray-100 rounded-xl animate-pulse" />
-                </div>
-              )}
-              {paymentMethod === "paystack" && user && paystackEnabled && !useWallet && !cardsLoading && savedCards.length > 0 && (
-                <div className="space-y-3 pt-1">
-                  <p className="text-sm font-medium text-gray-700">Your saved cards</p>
-                  {!useNewCard ? (
-                    <>
-                      <div className="space-y-2">
-                        {savedCards.map((card) => {
-                          const active = selectedCardId === card.id;
-                          const brand = card.card_type
-                            ? card.card_type.charAt(0).toUpperCase() + card.card_type.slice(1)
-                            : "Card";
-                          const expiry =
-                            card.expiry_month && card.expiry_year
-                              ? `${String(card.expiry_month).padStart(2, "0")}/${String(card.expiry_year).slice(-2)}`
-                              : null;
-                          return (
-                            <div
-                              key={card.id}
-                              role="button"
-                              tabIndex={0}
-                              onClick={() => {
-                                setSelectedCardId(card.id);
-                                setUseNewCard(false);
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter" || e.key === " ") {
-                                  e.preventDefault();
+              {paymentMethod === "paystack" &&
+                user &&
+                paystackEnabled &&
+                !useWallet &&
+                cardsLoading && (
+                  <div className="space-y-2 pl-1">
+                    <div className="h-14 bg-gray-100 rounded-xl animate-pulse" />
+                    <div className="h-14 bg-gray-100 rounded-xl animate-pulse" />
+                  </div>
+                )}
+              {paymentMethod === "paystack" &&
+                user &&
+                paystackEnabled &&
+                !useWallet &&
+                !cardsLoading &&
+                savedCards.length > 0 && (
+                  <div className="space-y-3 pt-1">
+                    <p className="text-sm font-medium text-gray-700">Your saved cards</p>
+                    {!useNewCard ? (
+                      <>
+                        <div className="space-y-2">
+                          {savedCards.map((card) => {
+                            const active = selectedCardId === card.id;
+                            const brand = card.card_type
+                              ? card.card_type.charAt(0).toUpperCase() + card.card_type.slice(1)
+                              : "Card";
+                            const expiry =
+                              card.expiry_label ??
+                              (card.expiry_month && card.expiry_year
+                                ? `${String(card.expiry_month).padStart(2, "0")}/${String(card.expiry_year).slice(-2)}`
+                                : null);
+                            return (
+                              <div
+                                key={card.id}
+                                role="button"
+                                tabIndex={0}
+                                onClick={() => {
                                   setSelectedCardId(card.id);
                                   setUseNewCard(false);
-                                }
-                              }}
-                              className={`w-full flex items-center gap-4 p-4 rounded-xl border-2 transition-all text-left cursor-pointer ${
-                                active
-                                  ? "border-pink-500 bg-pink-50"
-                                  : "border-gray-200 hover:border-gray-300 bg-white"
-                              }`}
-                            >
-                              <div
-                                className={`w-10 h-7 rounded-md flex items-center justify-center shrink-0 ${
-                                  active ? "bg-pink-100" : "bg-gray-100"
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" || e.key === " ") {
+                                    e.preventDefault();
+                                    setSelectedCardId(card.id);
+                                    setUseNewCard(false);
+                                  }
+                                }}
+                                className={`w-full flex items-center gap-4 p-4 rounded-xl border-2 transition-all text-left cursor-pointer ${
+                                  active
+                                    ? "border-pink-500 bg-pink-50"
+                                    : "border-gray-200 hover:border-gray-300 bg-white"
                                 }`}
                               >
-                                <CreditCard className={`w-5 h-5 ${active ? "text-pink-600" : "text-gray-500"}`} />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span className={`text-sm font-semibold ${active ? "text-pink-600" : "text-gray-900"}`}>
-                                    {brand}
-                                    {card.last4 ? ` •••• ${card.last4}` : ""}
-                                  </span>
-                                  {card.is_default ? (
-                                    <span className="px-2 py-0.5 bg-green-100 text-green-700 text-[10px] font-semibold rounded-full">
-                                      Default
-                                    </span>
-                                  ) : (
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        void handleSetDefaultCard(card.id);
-                                      }}
-                                      disabled={settingDefaultId === card.id}
-                                      className="text-[10px] font-semibold text-pink-600 hover:text-pink-700 underline disabled:opacity-50"
-                                    >
-                                      {settingDefaultId === card.id ? "Updating…" : "Set default"}
-                                    </button>
-                                  )}
+                                <div
+                                  className={`w-10 h-7 rounded-md flex items-center justify-center shrink-0 ${
+                                    active ? "bg-pink-100" : "bg-gray-100"
+                                  }`}
+                                >
+                                  <CreditCard
+                                    className={`w-5 h-5 ${active ? "text-pink-600" : "text-gray-500"}`}
+                                  />
                                 </div>
-                                {expiry ? <span className="text-xs text-gray-500">Expires {expiry}</span> : null}
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span
+                                      className={`text-sm font-semibold ${active ? "text-pink-600" : "text-gray-900"}`}
+                                    >
+                                      {brand}
+                                      {card.last4 ? ` •••• ${card.last4}` : ""}
+                                    </span>
+                                    {card.is_default ? (
+                                      <span className="px-2 py-0.5 bg-green-100 text-green-700 text-[10px] font-semibold rounded-full">
+                                        Default
+                                      </span>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          void handleSetDefaultCard(card.id);
+                                        }}
+                                        disabled={settingDefaultId === card.id}
+                                        className="text-[10px] font-semibold text-pink-600 hover:text-pink-700 underline disabled:opacity-50"
+                                      >
+                                        {settingDefaultId === card.id ? "Updating…" : "Set default"}
+                                      </button>
+                                    )}
+                                  </div>
+                                  {expiry ? (
+                                    <span className="text-xs text-gray-500">Expires {expiry}</span>
+                                  ) : null}
+                                </div>
+                                {active ? (
+                                  <CheckCircle className="w-5 h-5 text-pink-600 shrink-0" />
+                                ) : null}
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void handleRemoveSavedCard(card.id);
+                                  }}
+                                  disabled={removingCardId === card.id}
+                                  aria-label={`Remove card ending in ${card.last4 ?? "****"}`}
+                                  title="Remove this card"
+                                  className="ml-1 p-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
                               </div>
-                              {active ? <CheckCircle className="w-5 h-5 text-pink-600 shrink-0" /> : null}
-                            </div>
-                          );
-                        })}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setUseNewCard(true);
-                          setSelectedCardId(null);
-                        }}
-                        className="w-full flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-dashed border-gray-300 hover:border-gray-400 text-gray-600 hover:text-gray-800 transition-all"
-                      >
-                        <Plus className="w-4 h-4" />
-                        <span className="text-sm font-medium">Use a new card</span>
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setUseNewCard(false);
-                          const def = savedCards.find((c) => c.is_default) ?? savedCards[0];
-                          if (def) setSelectedCardId(def.id);
-                        }}
-                        className="flex items-center gap-2 text-sm text-pink-600 hover:text-pink-700 font-medium transition-colors"
-                      >
-                        <ArrowLeft className="w-4 h-4" />
-                        Use a saved card instead
-                      </button>
-                      <p className="text-xs text-gray-500 pl-1">
-                        You will be redirected to our secure payment page to enter card details.
-                      </p>
-                    </>
-                  )}
-                </div>
-              )}
+                            );
+                          })}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setUseNewCard(true);
+                            setSelectedCardId(null);
+                          }}
+                          className="w-full flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-dashed border-gray-300 hover:border-gray-400 text-gray-600 hover:text-gray-800 transition-all"
+                        >
+                          <Plus className="w-4 h-4" />
+                          <span className="text-sm font-medium">Use a new card</span>
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setUseNewCard(false);
+                            const def = savedCards.find((c) => c.is_default) ?? savedCards[0];
+                            if (def) setSelectedCardId(def.id);
+                          }}
+                          className="flex items-center gap-2 text-sm text-pink-600 hover:text-pink-700 font-medium transition-colors"
+                        >
+                          <ArrowLeft className="w-4 h-4" />
+                          Use a saved card instead
+                        </button>
+                        <p className="text-xs text-gray-500 pl-1">
+                          You will be redirected to our secure payment page to enter card details.
+                        </p>
+                      </>
+                    )}
+                  </div>
+                )}
               {paymentMethod === "paystack" && user && walletBalance > 0 && walletEnabled && (
                 <label className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 bg-gray-50/50 cursor-pointer">
                   <input
@@ -774,7 +871,9 @@ export default function ProductCheckoutPage() {
               {cashEnabledOnPlatform && (
                 <label
                   className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
-                    paymentMethod === "card_on_delivery" ? "border-pink-500 bg-pink-50" : "border-gray-200 hover:bg-gray-50"
+                    paymentMethod === "card_on_delivery"
+                      ? "border-pink-500 bg-pink-50"
+                      : "border-gray-200 hover:bg-gray-50"
                   }`}
                 >
                   <input
@@ -788,14 +887,17 @@ export default function ProductCheckoutPage() {
                     <p className="font-medium text-gray-900">
                       Pay at {fulfillment === "delivery" ? "Delivery" : "Collection"}
                     </p>
-                    <p className="text-xs text-gray-500">Cash or card when you receive your order</p>
+                    <p className="text-xs text-gray-500">
+                      Cash or card when you receive your order
+                    </p>
                   </div>
                 </label>
               )}
             </div>
             {paymentMethod === "paystack" && platformFeeConfig.show && platformFee > 0 && (
               <div className="mt-3 p-3 bg-amber-50 rounded-lg text-sm text-amber-800">
-                A platform fee of {tenantCurrency} {platformFee.toFixed(2)} applies to online payments
+                A platform fee of {tenantCurrency} {platformFee.toFixed(2)} applies to online
+                payments
               </div>
             )}
           </div>
@@ -808,9 +910,16 @@ export default function ProductCheckoutPage() {
                 <div key={item.id} className="flex justify-between gap-2 text-sm">
                   <span className="min-w-0 truncate text-gray-700">
                     {item.product?.name}
-                    {item.product_variant?.option_values && Object.keys(item.product_variant.option_values).length > 0 && (
-                      <span className="text-gray-500 font-normal"> · {Object.entries(item.product_variant.option_values).map(([, v]) => v).join(", ")}</span>
-                    )}{" "}
+                    {item.product_variant?.option_values &&
+                      Object.keys(item.product_variant.option_values).length > 0 && (
+                        <span className="text-gray-500 font-normal">
+                          {" "}
+                          ·{" "}
+                          {Object.entries(item.product_variant.option_values)
+                            .map(([, v]) => v)
+                            .join(", ")}
+                        </span>
+                      )}{" "}
                     x{item.quantity}
                   </span>
                   <span className="flex-shrink-0 font-medium text-gray-900 whitespace-nowrap">
@@ -867,7 +976,8 @@ export default function ProductCheckoutPage() {
           {hasOutOfStock && (
             <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700 flex items-center gap-2">
               <AlertCircle className="w-4 h-4 flex-shrink-0" />
-              Some items in your cart are out of stock. Please update your cart before placing the order.
+              Some items in your cart are out of stock. Please update your cart before placing the
+              order.
             </div>
           )}
 

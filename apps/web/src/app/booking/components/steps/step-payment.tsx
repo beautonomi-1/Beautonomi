@@ -2,7 +2,25 @@
 
 import { useState, useEffect, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { CheckCircle, CreditCard, Calendar, MapPin, Wallet, Gift, Banknote, Check, Plus, Shield, ArrowLeft, Lock, Info, Heart, Repeat, Clock } from "lucide-react";
+import {
+  CheckCircle,
+  CreditCard,
+  Calendar,
+  MapPin,
+  Wallet,
+  Gift,
+  Banknote,
+  Check,
+  Plus,
+  Shield,
+  ArrowLeft,
+  Lock,
+  Info,
+  Heart,
+  Repeat,
+  Clock,
+  Trash2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -49,6 +67,8 @@ interface SavedCard {
   last4?: string;
   expiry_month?: number;
   expiry_year?: number;
+  expiry_label?: string;
+  is_expired?: boolean;
   cardholder_name?: string;
   is_default: boolean;
   is_active: boolean;
@@ -136,16 +156,31 @@ function HoldCountdown({
       role="status"
       className="rounded-2xl border p-4 flex gap-3 items-start"
       style={{
-        backgroundColor: tick.expired ? "rgba(254, 242, 242, 0.95)" : urgent ? "rgba(255, 251, 235, 0.95)" : "rgba(239, 246, 255, 0.95)",
+        backgroundColor: tick.expired
+          ? "rgba(254, 242, 242, 0.95)"
+          : urgent
+            ? "rgba(255, 251, 235, 0.95)"
+            : "rgba(239, 246, 255, 0.95)",
         borderColor: tick.expired ? "#fecaca" : urgent ? "#fde68a" : "#bfdbfe",
       }}
     >
-      <Clock className="h-5 w-5 shrink-0 mt-0.5" style={{ color: tick.expired ? "#dc2626" : urgent ? "#d97706" : "#2563eb" }} />
-      <div className="min-w-0 flex-1 text-sm font-medium" style={{ color: tick.expired ? "#991b1b" : urgent ? "#92400e" : "#1e40af" }}>
+      <Clock
+        className="h-5 w-5 shrink-0 mt-0.5"
+        style={{ color: tick.expired ? "#dc2626" : urgent ? "#d97706" : "#2563eb" }}
+      />
+      <div
+        className="min-w-0 flex-1 text-sm font-medium"
+        style={{ color: tick.expired ? "#991b1b" : urgent ? "#92400e" : "#1e40af" }}
+      >
         {tick.expired ? (
           <>
             <p>Your reserved slot has expired. Go back and pick a new time to continue.</p>
-            <Button type="button" variant="outline" className="mt-3 w-full" onClick={onBackToCalendar}>
+            <Button
+              type="button"
+              variant="outline"
+              className="mt-3 w-full"
+              onClick={onBackToCalendar}
+            >
               Back to calendar
             </Button>
           </>
@@ -173,7 +208,9 @@ export default function StepPayment({
   // Prefer hold created by the new booking flow (bookingState.holdId); fall back
   // to URL param for bookings started from the old /book/[slug] flow.
   const holdId = bookingState.holdId || searchParams.get("hold_id")?.trim() || null;
-  const [holdExpiresAt, setHoldExpiresAt] = useState<string | null>(bookingState.holdExpiresAt ?? null);
+  const [holdExpiresAt, setHoldExpiresAt] = useState<string | null>(
+    bookingState.holdExpiresAt ?? null
+  );
   const [serverClockOffsetMs, setServerClockOffsetMs] = useState(0);
   const [isHoldLoading, setIsHoldLoading] = useState(false);
   const [isHoldExpired, setIsHoldExpired] = useState(false);
@@ -209,8 +246,15 @@ export default function StepPayment({
     late_cancellation_type: string;
   } | null>(null);
   const [settingDefaultId, setSettingDefaultId] = useState<string | null>(null);
+  const [removingCardId, setRemovingCardId] = useState<string | null>(null);
   const [packageEntitlements, setPackageEntitlements] = useState<
-    Array<{ id: string; package_id: string; sessions_remaining: number; valid_from?: string | null; valid_until?: string | null }>
+    Array<{
+      id: string;
+      package_id: string;
+      sessions_remaining: number;
+      valid_from?: string | null;
+      valid_until?: string | null;
+    }>
   >([]);
   const [packageEntitlementsLoading, setPackageEntitlementsLoading] = useState(false);
   // Package catalog for the at-checkout picker (canonical pattern: package
@@ -241,9 +285,9 @@ export default function StepPayment({
     "gift_cards",
     "payment_wallet",
   ]);
-  const paystackEnabled = flagsLoading ? true : featureFlags["payment_paystack"] ?? false;
-  const giftCardsEnabled = flagsLoading ? true : featureFlags["gift_cards"] ?? false;
-  const walletEnabled = flagsLoading ? true : featureFlags["payment_wallet"] ?? false;
+  const paystackEnabled = flagsLoading ? true : (featureFlags["payment_paystack"] ?? false);
+  const giftCardsEnabled = flagsLoading ? true : (featureFlags["gift_cards"] ?? false);
+  const walletEnabled = flagsLoading ? true : (featureFlags["payment_wallet"] ?? false);
   const [cashEnabledOnPlatform, setCashEnabledOnPlatform] = useState(false);
 
   const saveCardInfo = useMemo(() => {
@@ -286,11 +330,19 @@ export default function StepPayment({
       .then((res) => {
         if (cancelled) return;
         const data = res?.data ?? res;
-        const expiresAt = typeof data?.expires_at === "string" ? data.expires_at : bookingState.holdExpiresAt ?? null;
+        const expiresAt =
+          typeof data?.expires_at === "string"
+            ? data.expires_at
+            : (bookingState.holdExpiresAt ?? null);
         const serverNow = typeof data?.server_now === "string" ? data.server_now : null;
         setServerClockOffsetMs(serverNow ? serverNowToClockOffsetMs(serverNow) : 0);
         setHoldExpiresAt(expiresAt);
-        setIsHoldExpired(expiresAt ? getHoldTimeRemaining(expiresAt, serverNow ? serverNowToClockOffsetMs(serverNow) : 0).expired : false);
+        setIsHoldExpired(
+          expiresAt
+            ? getHoldTimeRemaining(expiresAt, serverNow ? serverNowToClockOffsetMs(serverNow) : 0)
+                .expired
+            : false
+        );
         setHoldLoadError(null);
       })
       .catch((error: { status?: number; code?: string; message?: string }) => {
@@ -307,7 +359,7 @@ export default function StepPayment({
             ? "Hold expired"
             : inactive
               ? "This slot is no longer available"
-              : error?.message || "Could not verify your slot hold",
+              : error?.message || "Could not verify your slot hold"
         );
       })
       .finally(() => {
@@ -333,7 +385,6 @@ export default function StepPayment({
     }, 1000);
     return () => clearInterval(id);
   }, [holdExpiresAt, serverClockOffsetMs]);
-
 
   // When Paystack / gift cards / cash are disabled, switch away from that method
   useEffect(() => {
@@ -361,7 +412,9 @@ export default function StepPayment({
       .catch(() => {
         if (!cancelled) setCashEnabledOnPlatform(false);
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const handleSetDefaultCard = async (cardId: string) => {
@@ -379,25 +432,59 @@ export default function StepPayment({
     }
   };
 
+  // Inline saved-card removal during checkout. We confirm first to avoid
+  // accidental deletion in a dense list, then optimistically prune the local
+  // state and re-pick the next default so the customer can keep checking out
+  // without an extra refresh round-trip.
+  const handleRemoveSavedCard = async (cardId: string) => {
+    if (typeof window !== "undefined") {
+      const ok = window.confirm(
+        "Remove this card from your saved cards? You can always re-add it during your next payment."
+      );
+      if (!ok) return;
+    }
+    setRemovingCardId(cardId);
+    try {
+      await fetcher.delete(`/api/me/payment-methods/${cardId}`);
+      const next = savedCards.filter((c) => c.id !== cardId);
+      setSavedCards(next);
+      if (selectedCardId === cardId) {
+        const fallback = next.find((c) => c.is_default) || next[0] || null;
+        if (fallback) {
+          setSelectedCardId(fallback.id);
+          setUseNewCard(false);
+        } else {
+          setSelectedCardId(null);
+          setUseNewCard(true);
+        }
+      }
+      toast.success("Card removed");
+    } catch {
+      toast.error("Failed to remove card");
+    } finally {
+      setRemovingCardId(null);
+    }
+  };
+
   // Fetch cancellation policy for the provider
   useEffect(() => {
     const fetchCancellationPolicy = async () => {
       if (!bookingState.providerId) return;
-      
+
       try {
         const locationType = bookingState.mode === "salon" ? "at_salon" : "at_home";
         // First try to get policy for specific location type
         let response = await fetcher.get<{ data: any[] }>(
           `/api/public/cancellation-policy?provider_id=${bookingState.providerId}&location_type=${locationType}`
         );
-        
+
         // If no specific policy, try to get general policy (location_type = null)
         if (!response.data || response.data.length === 0) {
           response = await fetcher.get<{ data: any[] }>(
             `/api/public/cancellation-policy?provider_id=${bookingState.providerId}`
           );
         }
-        
+
         if (response.data && response.data.length > 0) {
           setCancellationPolicy(response.data[0]);
         }
@@ -405,13 +492,14 @@ export default function StepPayment({
         console.error("Error fetching cancellation policy:", error);
         // Set a default policy if fetch fails
         setCancellationPolicy({
-          policy_text: "Cancellations must be made at least 24 hours before your appointment. Cancellations made within 24 hours may be subject to a cancellation fee.",
+          policy_text:
+            "Cancellations must be made at least 24 hours before your appointment. Cancellations made within 24 hours may be subject to a cancellation fee.",
           hours_before_cutoff: 24,
           late_cancellation_type: "no_refund",
         });
       }
     };
-    
+
     fetchCancellationPolicy();
   }, [bookingState.providerId, bookingState.mode]);
 
@@ -430,7 +518,9 @@ export default function StepPayment({
       package_id: bookingState.selectedPackage.id,
     });
     fetcher
-      .get<{ data?: { entitlements?: typeof packageEntitlements } }>(`/api/me/package-entitlements?${q}`)
+      .get<{ data?: { entitlements?: typeof packageEntitlements } }>(
+        `/api/me/package-entitlements?${q}`
+      )
       .then((res) => {
         if (cancelled) return;
         setPackageEntitlements(res?.data?.entitlements ?? []);
@@ -462,19 +552,26 @@ export default function StepPayment({
     let cancelled = false;
     setPackageCatalogLoading(true);
     fetcher
-      .get<{ data?: unknown } | unknown[]>(`/api/public/providers/${encodeURIComponent(slug)}/packages`)
+      .get<{ data?: unknown } | unknown[]>(
+        `/api/public/providers/${encodeURIComponent(slug)}/packages`
+      )
       .then((res) => {
         if (cancelled) return;
         const raw = (res as { data?: unknown } | unknown) ?? null;
         const inner =
-          raw && typeof raw === "object" && "data" in (raw as Record<string, unknown>) && !Array.isArray(raw)
+          raw &&
+          typeof raw === "object" &&
+          "data" in (raw as Record<string, unknown>) &&
+          !Array.isArray(raw)
             ? (raw as { data: unknown }).data
             : raw;
         const arr = Array.isArray(inner) ? (inner as Array<Record<string, unknown>>) : [];
         setPackageCatalog(
           arr
             .map((p) => {
-              const servicesRaw = Array.isArray(p.services) ? (p.services as Array<{ id?: string; type?: string }>) : [];
+              const servicesRaw = Array.isArray(p.services)
+                ? (p.services as Array<{ id?: string; type?: string }>)
+                : [];
               const serviceOfferingIds = servicesRaw
                 .filter((row) => !row.type || row.type === "service")
                 .map((row) => String(row.id ?? "").trim())
@@ -485,11 +582,12 @@ export default function StepPayment({
                 description: (p.description as string | null | undefined) ?? null,
                 price: Number(p.price) || 0,
                 currency: String(p.currency ?? tenantCurrency),
-                discount_percentage: p.discount_percentage != null ? Number(p.discount_percentage) : null,
+                discount_percentage:
+                  p.discount_percentage != null ? Number(p.discount_percentage) : null,
                 serviceOfferingIds,
               };
             })
-            .filter((p) => p.id),
+            .filter((p) => p.id)
         );
       })
       .catch(() => {
@@ -526,9 +624,13 @@ export default function StepPayment({
     if (!bookingState.providerId) return;
     let cancelled = false;
     fetcher
-      .get<{ data?: { tip_suggestions?: number[]; deposit_required?: boolean; deposit_percent?: number | null } }>(
-        `/api/public/provider-online-booking-settings?provider_id=${bookingState.providerId}`
-      )
+      .get<{
+        data?: {
+          tip_suggestions?: number[];
+          deposit_required?: boolean;
+          deposit_percent?: number | null;
+        };
+      }>(`/api/public/provider-online-booking-settings?provider_id=${bookingState.providerId}`)
       .then((res) => {
         if (cancelled) return;
         const d = res?.data;
@@ -542,13 +644,16 @@ export default function StepPayment({
       .catch(() => {
         if (!cancelled) setTipSuggestions([0, 50, 100, 150, 200]);
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [bookingState.providerId]);
 
   // True when the user has a saved card selected (not entering a new card).
   // When true we pass payment_method_id to the booking API so the server charges it
   // at the correct deposit amount, avoiding a separate client-side charge.
-  const usingSavedCard = paymentMethod === "card" && Boolean(selectedCardId) && !useNewCard && savedCards.length > 0;
+  const usingSavedCard =
+    paymentMethod === "card" && Boolean(selectedCardId) && !useNewCard && savedCards.length > 0;
 
   const tipPercentageBase = useMemo(() => getSubtotalAfterDiscounts(bookingState), [bookingState]);
 
@@ -569,7 +674,7 @@ export default function StepPayment({
       setCardsLoading(true);
       try {
         const res = await fetcher.get<{ data: SavedCard[] }>("/api/me/payment-methods");
-        const active = (res.data || []).filter((c) => c.is_active);
+        const active = (res.data || []).filter((c) => c.is_active && !c.is_expired);
         setSavedCards(active);
         const defaultCard = active.find((c) => c.is_default) || active[0];
         if (defaultCard && !selectedCardId) {
@@ -588,7 +693,11 @@ export default function StepPayment({
   useEffect(() => {
     if (!user) return;
     setWalletLoading(true);
-    fetcher.get<{ data: { wallet: { balance: number; currency: string }; transactions: any[] } }>("/api/me/wallet", { cache: "no-store" })
+    fetcher
+      .get<{ data: { wallet: { balance: number; currency: string }; transactions: any[] } }>(
+        "/api/me/wallet",
+        { cache: "no-store" }
+      )
       .then((res) => {
         if (res?.data?.wallet) {
           setWalletBalance(Number(res.data.wallet.balance) || 0);
@@ -614,7 +723,15 @@ export default function StepPayment({
       saveCard,
       setAsDefault,
     });
-  }, [tipAmount, tipPercentSelection, paymentMethod, paymentOption, useWallet, saveCard, setAsDefault]);
+  }, [
+    tipAmount,
+    tipPercentSelection,
+    paymentMethod,
+    paymentOption,
+    useWallet,
+    saveCard,
+    setAsDefault,
+  ]);
 
   // Calculate totals - for group bookings, sum all participant services
   const calculateServicesTotal = () => {
@@ -622,7 +739,7 @@ export default function StepPayment({
       // For group bookings, calculate from participants
       return bookingState.groupParticipants.reduce((total, participant) => {
         const participantTotal = participant.serviceIds.reduce((sum, serviceId) => {
-          const service = bookingState.selectedServices.find(s => s.id === serviceId);
+          const service = bookingState.selectedServices.find((s) => s.id === serviceId);
           return sum + (service?.price || 0);
         }, 0);
         return total + participantTotal;
@@ -635,11 +752,12 @@ export default function StepPayment({
   const totals = {
     services: calculateServicesTotal(),
     addons: bookingState.selectedAddons.reduce((sum, a) => sum + a.price, 0),
-    products: bookingState.selectedProducts.reduce((sum, p) => sum + (p.price * p.quantity), 0),
+    products: bookingState.selectedProducts.reduce((sum, p) => sum + p.price * p.quantity, 0),
     travelFee: bookingState.address?.travelFee || 0,
     travelFeeBreakdown: bookingState.address?.breakdown || [],
     subtotal: 0,
-    discounts: (bookingState.promotions.couponDiscount || 0) +
+    discounts:
+      (bookingState.promotions.couponDiscount || 0) +
       (bookingState.promotions.loyaltyDiscount || 0) +
       (bookingState.promotions.membershipDiscount || 0),
     subtotalAfterDiscounts: 0,
@@ -657,7 +775,8 @@ export default function StepPayment({
   // Fee amounts come from bookingState (set by booking-flow.tsx on mount from /api/public/platform-fees).
   // Do NOT re-estimate here — that would cause fees to appear/change between steps if platform-fees
   // API responds at slightly different times. bookingState is the single source of truth.
-  totals.total = totals.subtotalAfterDiscounts + totals.taxAmount + totals.serviceFeeAmount + totals.tipAmount;
+  totals.total =
+    totals.subtotalAfterDiscounts + totals.taxAmount + totals.serviceFeeAmount + totals.tipAmount;
 
   const createBookingDraft = async () => {
     if (!bookingState.providerId || !bookingState.selectedDate || !bookingState.selectedTimeSlot) {
@@ -688,25 +807,26 @@ export default function StepPayment({
       bookingState.selectedSlotStart,
       dateYmd,
       bookingState.selectedTimeSlot!,
-      bookingState.providerTimezone,
+      bookingState.providerTimezone
     );
 
     // For group bookings, create services array from all participants
     // For regular bookings, use selected services
-    const servicesForBooking = bookingState.isGroupBooking && bookingState.groupParticipants
-      ? bookingState.groupParticipants.flatMap(participant =>
-          participant.serviceIds.map(serviceId => {
-            const service = bookingState.selectedServices.find(s => s.id === serviceId);
-            return {
-              offering_id: serviceId,
-              staff_id: service?.staffId || null,
-            };
-          })
-        )
-      : bookingState.selectedServices.map(s => ({
-          offering_id: s.id,
-          staff_id: s.staffId,
-        }));
+    const servicesForBooking =
+      bookingState.isGroupBooking && bookingState.groupParticipants
+        ? bookingState.groupParticipants.flatMap((participant) =>
+            participant.serviceIds.map((serviceId) => {
+              const service = bookingState.selectedServices.find((s) => s.id === serviceId);
+              return {
+                offering_id: serviceId,
+                staff_id: service?.staffId || null,
+              };
+            })
+          )
+        : bookingState.selectedServices.map((s) => ({
+            offering_id: s.id,
+            staff_id: s.staffId,
+          }));
 
     const bookingData: any = {
       provider_id: bookingState.providerId,
@@ -714,22 +834,34 @@ export default function StepPayment({
       selected_datetime: bookingDateTime.toISOString(),
       location_type: bookingState.mode === "salon" ? "at_salon" : "at_home",
       location_id: bookingState.selectedLocationId || null,
-      address: bookingState.mode === "mobile" && bookingState.address ? {
-        line1: bookingState.address.structuredAddress?.line1 || bookingState.address.fullAddress.split(",")[0] || bookingState.address.fullAddress,
-        city: bookingState.address.structuredAddress?.city || bookingState.address.fullAddress.split(",").slice(-2)[0]?.trim() || "",
-        country: bookingState.address.structuredAddress?.country || bookingState.address.fullAddress.split(",").slice(-1)[0]?.trim() || "",
-        postal_code: bookingState.address.structuredAddress?.postalCode,
-        latitude: bookingState.address.coordinates?.lat,
-        longitude: bookingState.address.coordinates?.lng,
-        apartment_unit: bookingState.address.apartmentUnit,
-        building_name: bookingState.address.buildingName,
-        floor_number: bookingState.address.floorNumber,
-        access_codes: bookingState.address.accessCodes,
-        parking_instructions: bookingState.address.parkingInstructions,
-        location_landmarks: bookingState.address.locationLandmarks,
-      } : null,
-      addons: bookingState.selectedAddons.map(a => a.id),
-      products: bookingState.selectedProducts.map(p => {
+      address:
+        bookingState.mode === "mobile" && bookingState.address
+          ? {
+              line1:
+                bookingState.address.structuredAddress?.line1 ||
+                bookingState.address.fullAddress.split(",")[0] ||
+                bookingState.address.fullAddress,
+              city:
+                bookingState.address.structuredAddress?.city ||
+                bookingState.address.fullAddress.split(",").slice(-2)[0]?.trim() ||
+                "",
+              country:
+                bookingState.address.structuredAddress?.country ||
+                bookingState.address.fullAddress.split(",").slice(-1)[0]?.trim() ||
+                "",
+              postal_code: bookingState.address.structuredAddress?.postalCode,
+              latitude: bookingState.address.coordinates?.lat,
+              longitude: bookingState.address.coordinates?.lng,
+              apartment_unit: bookingState.address.apartmentUnit,
+              building_name: bookingState.address.buildingName,
+              floor_number: bookingState.address.floorNumber,
+              access_codes: bookingState.address.accessCodes,
+              parking_instructions: bookingState.address.parkingInstructions,
+              location_landmarks: bookingState.address.locationLandmarks,
+            }
+          : null,
+      addons: bookingState.selectedAddons.map((a) => a.id),
+      products: bookingState.selectedProducts.map((p) => {
         // id may be "productUUID" or "productUUID:variantUUID" for variant products
         const colonIdx = p.id.indexOf(":");
         const productId = colonIdx !== -1 ? p.id.slice(0, colonIdx) : p.id;
@@ -747,7 +879,10 @@ export default function StepPayment({
       tip_amount: tipAmount,
       travel_fee: bookingState.address?.travelFee || 0,
       special_requests: bookingState.clientInfo?.specialRequests || null,
-      house_call_instructions: bookingState.mode === "mobile" ? (bookingState.clientInfo?.houseCallInstructions || null) : null,
+      house_call_instructions:
+        bookingState.mode === "mobile"
+          ? bookingState.clientInfo?.houseCallInstructions || null
+          : null,
       client_info: bookingState.clientInfo,
       payment_method: paymentMethod,
       payment_option: paymentOption,
@@ -757,7 +892,8 @@ export default function StepPayment({
       promotion_code: bookingState.promotions.couponCode || null,
       gift_card_code: bookingState.promotions.giftCardCode || null,
       membership_plan_id: bookingState.promotions.membershipPlanId || null,
-      ...(bookingState.promotions.loyaltyPointsUsed != null && bookingState.promotions.loyaltyPointsUsed > 0
+      ...(bookingState.promotions.loyaltyPointsUsed != null &&
+      bookingState.promotions.loyaltyPointsUsed > 0
         ? { loyalty_points_used: bookingState.promotions.loyaltyPointsUsed }
         : {}),
       use_wallet: bookingState.useWallet ?? false,
@@ -770,8 +906,7 @@ export default function StepPayment({
       Object.keys(bookingState.providerFormResponses).length > 0
         ? { provider_form_responses: bookingState.providerFormResponses }
         : {}),
-      ...(bookingState.customFieldValues &&
-      Object.keys(bookingState.customFieldValues).length > 0
+      ...(bookingState.customFieldValues && Object.keys(bookingState.customFieldValues).length > 0
         ? { custom_field_values: bookingState.customFieldValues }
         : {}),
       ...(adCampaignId ? { campaign_id: adCampaignId } : {}),
@@ -788,7 +923,7 @@ export default function StepPayment({
     // Add group booking data if it's a group booking
     if (bookingState.isGroupBooking && bookingState.groupParticipants) {
       bookingData.is_group_booking = true;
-      bookingData.group_participants = bookingState.groupParticipants.map(p => ({
+      bookingData.group_participants = bookingState.groupParticipants.map((p) => ({
         name: p.name,
         email: p.email,
         phone: p.phone,
@@ -806,7 +941,7 @@ export default function StepPayment({
         reschedule_booking_id: null,
         is_group_booking: bookingState.isGroupBooking,
         has_group_participants: Boolean(
-          bookingState.groupParticipants && bookingState.groupParticipants.length > 0,
+          bookingState.groupParticipants && bookingState.groupParticipants.length > 0
         ),
       })
     ) {
@@ -862,14 +997,16 @@ export default function StepPayment({
       toast.error("Please enter a gift card code in the promotions step");
       return;
     }
-      if (paymentMethod === "giftcard") {
-        const depositAmount = percentOf(totals.total, depositPercentage);
-        const amountDueNow = paymentOption === "deposit" ? depositAmount : totals.total;
-        if ((bookingState.promotions.giftCardAmount || 0) + 0.005 < amountDueNow) {
-          toast.error("This gift card does not cover the amount due now. Use card payment to combine a gift card with another tender.");
-          return;
-        }
+    if (paymentMethod === "giftcard") {
+      const depositAmount = percentOf(totals.total, depositPercentage);
+      const amountDueNow = paymentOption === "deposit" ? depositAmount : totals.total;
+      if ((bookingState.promotions.giftCardAmount || 0) + 0.005 < amountDueNow) {
+        toast.error(
+          "This gift card does not cover the amount due now. Use card payment to combine a gift card with another tender."
+        );
+        return;
       }
+    }
 
     if (cancellationPolicy && !acceptedCancellationPolicy) {
       toast.error("Please accept the cancellation policy to continue");
@@ -934,14 +1071,16 @@ export default function StepPayment({
         if (errCode === "HOLD_IN_FLIGHT" || (errStatus === 409 && errCode === "HOLD_IN_FLIGHT")) {
           toast.error(
             "This booking is already being processed. Please wait a moment, then try again.",
-            { duration: 6000 },
+            { duration: 6000 }
           );
           return;
         }
 
         if (errCode === "HOLD_INACTIVE" || (errStatus === 410 && errCode === "HOLD_INACTIVE")) {
           updateBookingState({ holdId: null, holdExpiresAt: null, selectedTimeSlot: null });
-          toast.error("This slot is no longer available. Please choose another time.", { duration: 6000 });
+          toast.error("This slot is no longer available. Please choose another time.", {
+            duration: 6000,
+          });
           onNavigateToStep("calendar");
           return;
         }
@@ -952,10 +1091,7 @@ export default function StepPayment({
           (errStatus === 410 && (errCode === "HOLD_INVALID" || errCode === "HOLD_EXPIRED"));
         if (isHoldExpired) {
           updateBookingState({ holdId: null, holdExpiresAt: null, selectedTimeSlot: null });
-          toast.error(
-            "Your hold expired. Please select your time slot again.",
-            { duration: 6000 }
-          );
+          toast.error("Your hold expired. Please select your time slot again.", { duration: 6000 });
           onNavigateToStep("calendar");
           return;
         }
@@ -967,34 +1103,37 @@ export default function StepPayment({
           "RESOURCE_UNAVAILABLE",
         ]);
         const messageLooksLikeSlotConflict =
-          /slot|time|overlap|unavailable|already booked|conflict|resource/i.test(error.message ?? "");
+          /slot|time|overlap|unavailable|already booked|conflict|resource/i.test(
+            error.message ?? ""
+          );
         // VALIDATION_ERROR must never be shown as "time slot taken" — it means the request itself
         // was malformed (e.g. zero-duration service, invalid time range). Show the real message.
         const isAvailabilityConflict =
           (slotConflictCodes.has(error.code) ||
-           (error.status === 409 && messageLooksLikeSlotConflict)) &&
+            (error.status === 409 && messageLooksLikeSlotConflict)) &&
           error.code !== "VALIDATION_ERROR";
         if (isAvailabilityConflict) {
           updateBookingState({ holdId: null, holdExpiresAt: null, selectedTimeSlot: null });
-          toast.error(
-            "That time slot was just taken. Please choose another time.",
-            { duration: 6000 }
-          );
+          toast.error("That time slot was just taken. Please choose another time.", {
+            duration: 6000,
+          });
           onNavigateToStep("calendar");
           return;
         }
-        
+
         toast.error(error.message || "Failed to create booking. Please try again.");
         return;
       }
 
       if (adCampaignId && bookingResult.booking_id && bookingState.providerId) {
-        fetcher.post("/api/public/ads/event", {
-          event_type: "book",
-          campaign_id: adCampaignId,
-          provider_id: bookingState.providerId,
-          idempotency_key: `web-book:${adCampaignId}:${bookingResult.booking_id}`,
-        }).catch(() => {});
+        fetcher
+          .post("/api/public/ads/event", {
+            event_type: "book",
+            campaign_id: adCampaignId,
+            provider_id: bookingState.providerId,
+            idempotency_key: `web-book:${adCampaignId}:${bookingResult.booking_id}`,
+          })
+          .catch(() => {});
       }
 
       // Step 2: Process payment based on method
@@ -1021,7 +1160,10 @@ export default function StepPayment({
       const draftWithUrl = bookingResult;
 
       // Wallet covered full amount — server returned null payment_url
-      if ((bookingState.useWallet ?? false) && (draftWithUrl.payment_url == null || draftWithUrl.payment_url === "")) {
+      if (
+        (bookingState.useWallet ?? false) &&
+        (draftWithUrl.payment_url == null || draftWithUrl.payment_url === "")
+      ) {
         toast.success("Booking created! Payment processed from wallet.");
         notifyRecurringFromResult(bookingResult.recurring_subscription);
         router.push(`/booking/confirmation?bookingId=${bookingResult.booking_id}`);
@@ -1054,9 +1196,10 @@ export default function StepPayment({
       const depositAmount = percentOf(totals.total, depositPercentage);
       const amountDueNow = paymentOption === "deposit" ? depositAmount : totals.total;
       const giftCardApplied = Math.min(bookingState.promotions.giftCardAmount || 0, amountDueNow);
-      const walletApplied = paymentMethod === "card" && useWallet
-        ? Math.min(walletBalance, Math.max(0, amountDueNow - giftCardApplied))
-        : 0;
+      const walletApplied =
+        paymentMethod === "card" && useWallet
+          ? Math.min(walletBalance, Math.max(0, amountDueNow - giftCardApplied))
+          : 0;
       const amountToCharge = Math.max(0, amountDueNow - giftCardApplied - walletApplied);
       const freqFallback = bookingState.recurringFrequency || "weekly";
       const paystackFallbackRecurring =
@@ -1067,7 +1210,7 @@ export default function StepPayment({
           reschedule_booking_id: null,
           is_group_booking: bookingState.isGroupBooking,
           has_group_participants: Boolean(
-            bookingState.groupParticipants && bookingState.groupParticipants.length > 0,
+            bookingState.groupParticipants && bookingState.groupParticipants.length > 0
           ),
         });
 
@@ -1087,7 +1230,7 @@ export default function StepPayment({
       if (result.authorization_url) {
         notifyRecurringFromResult(
           bookingResult.recurring_subscription ??
-            (paystackFallbackRecurring ? { created: false, pending: true } : undefined),
+            (paystackFallbackRecurring ? { created: false, pending: true } : undefined)
         );
         window.location.href = result.authorization_url;
       } else {
@@ -1097,13 +1240,14 @@ export default function StepPayment({
     } catch (error: any) {
       const errorMessage = error.message || "Payment initialization failed";
       toast.error(errorMessage);
-      
+
       // If booking draft was created but payment failed, provide retry option
       if (bookingResult) {
         toast.info("Booking draft created. You can retry payment from your bookings page.", {
           action: {
             label: "View Booking",
-            onClick: () => router.push(`/booking/confirmation?bookingId=${bookingResult!.booking_id}`),
+            onClick: () =>
+              router.push(`/booking/confirmation?bookingId=${bookingResult!.booking_id}`),
           },
         });
       }
@@ -1129,7 +1273,9 @@ export default function StepPayment({
             <Clock className="h-5 w-5 shrink-0 mt-0.5 text-amber-600" />
             <div>
               <p className="font-medium">Your time slot still needs to be reserved.</p>
-              <p className="mt-1">Go back to the calendar and choose an available slot before checkout.</p>
+              <p className="mt-1">
+                Go back to the calendar and choose an available slot before checkout.
+              </p>
             </div>
           </div>
         )}
@@ -1148,49 +1294,59 @@ export default function StepPayment({
               Change
             </button>
           </div>
-          {bookingState.isGroupBooking && bookingState.groupParticipants ? (
-            // Show participants for group bookings
-            bookingState.groupParticipants.map((participant) => {
-              const participantServices = participant.serviceIds
-                .map(id => bookingState.selectedServices.find(s => s.id === id))
-                .filter(Boolean) as typeof bookingState.selectedServices;
-              const participantTotal = participantServices.reduce((sum, s) => sum + s.price, 0);
-              
-              return (
-                <div key={participant.id} className="border-b border-gray-200 pb-3 last:border-0 last:pb-0">
-                  <p className="font-medium text-gray-900 mb-2">{participant.name}</p>
-                  {participantServices.map((service) => (
-                    <div key={service.id} className="flex justify-between gap-2 text-sm ml-4 mb-1">
-                      <span className="min-w-0 truncate text-gray-600">
-                        {service.title}
-                        {service.staffName && ` - ${service.staffName}`}
-                      </span>
-                      <span className="flex-shrink-0 font-medium whitespace-nowrap">{formatCurrency(service.price, totals.currency)}</span>
+          {bookingState.isGroupBooking && bookingState.groupParticipants
+            ? // Show participants for group bookings
+              bookingState.groupParticipants.map((participant) => {
+                const participantServices = participant.serviceIds
+                  .map((id) => bookingState.selectedServices.find((s) => s.id === id))
+                  .filter(Boolean) as typeof bookingState.selectedServices;
+                const participantTotal = participantServices.reduce((sum, s) => sum + s.price, 0);
+
+                return (
+                  <div
+                    key={participant.id}
+                    className="border-b border-gray-200 pb-3 last:border-0 last:pb-0"
+                  >
+                    <p className="font-medium text-gray-900 mb-2">{participant.name}</p>
+                    {participantServices.map((service) => (
+                      <div
+                        key={service.id}
+                        className="flex justify-between gap-2 text-sm ml-4 mb-1"
+                      >
+                        <span className="min-w-0 truncate text-gray-600">
+                          {service.title}
+                          {service.staffName && ` - ${service.staffName}`}
+                        </span>
+                        <span className="flex-shrink-0 font-medium whitespace-nowrap">
+                          {formatCurrency(service.price, totals.currency)}
+                        </span>
+                      </div>
+                    ))}
+                    <div className="flex justify-between text-sm font-medium mt-2 ml-4">
+                      <span>Subtotal</span>
+                      <span>{formatCurrency(participantTotal, totals.currency)}</span>
                     </div>
-                  ))}
-                  <div className="flex justify-between text-sm font-medium mt-2 ml-4">
-                    <span>Subtotal</span>
-                    <span>{formatCurrency(participantTotal, totals.currency)}</span>
                   </div>
+                );
+              })
+            : // Show services for regular bookings
+              bookingState.selectedServices.map((service) => (
+                <div key={service.id} className="flex justify-between gap-2 text-sm">
+                  <span className="min-w-0 truncate text-gray-600">
+                    {service.title}
+                    {service.staffName && ` - ${service.staffName}`}
+                  </span>
+                  <span className="flex-shrink-0 font-medium whitespace-nowrap">
+                    {formatCurrency(service.price, totals.currency)}
+                  </span>
                 </div>
-              );
-            })
-          ) : (
-            // Show services for regular bookings
-            bookingState.selectedServices.map((service) => (
-              <div key={service.id} className="flex justify-between gap-2 text-sm">
-                <span className="min-w-0 truncate text-gray-600">
-                  {service.title}
-                  {service.staffName && ` - ${service.staffName}`}
-                </span>
-                <span className="flex-shrink-0 font-medium whitespace-nowrap">{formatCurrency(service.price, totals.currency)}</span>
-              </div>
-            ))
-          )}
+              ))}
           {bookingState.selectedAddons.map((addon) => (
             <div key={addon.id} className="flex justify-between gap-2 text-sm">
               <span className="min-w-0 truncate text-gray-600">+ {addon.title}</span>
-              <span className="flex-shrink-0 font-medium whitespace-nowrap">{formatCurrency(addon.price, totals.currency)}</span>
+              <span className="flex-shrink-0 font-medium whitespace-nowrap">
+                {formatCurrency(addon.price, totals.currency)}
+              </span>
             </div>
           ))}
           {bookingState.selectedProducts.map((product) => (
@@ -1199,7 +1355,10 @@ export default function StepPayment({
                 {product.name} {product.quantity > 1 && `× ${product.quantity}`}
               </span>
               <span className="flex-shrink-0 font-medium whitespace-nowrap">
-                {formatCurrency(product.price * product.quantity, product.currency || totals.currency)}
+                {formatCurrency(
+                  product.price * product.quantity,
+                  product.currency || totals.currency
+                )}
               </span>
             </div>
           ))}
@@ -1210,7 +1369,9 @@ export default function StepPayment({
                   <MapPin className="w-3 h-3" />
                   Travel Fee
                 </span>
-                <span className="font-medium">{formatCurrency(totals.travelFee, totals.currency)}</span>
+                <span className="font-medium">
+                  {formatCurrency(totals.travelFee, totals.currency)}
+                </span>
               </div>
               {totals.travelFeeBreakdown && totals.travelFeeBreakdown.length > 0 && (
                 <div className="pl-4 text-xs text-gray-500 space-y-0.5">
@@ -1225,7 +1386,8 @@ export default function StepPayment({
               {bookingState.address?.distanceKm && (
                 <div className="pl-4 text-xs text-gray-500">
                   Distance: {bookingState.address.distanceKm.toFixed(1)}km
-                  {bookingState.address.travelTimeMinutes && ` • Est. travel: ${bookingState.address.travelTimeMinutes} min`}
+                  {bookingState.address.travelTimeMinutes &&
+                    ` • Est. travel: ${bookingState.address.travelTimeMinutes} min`}
                 </div>
               )}
             </div>
@@ -1241,9 +1403,7 @@ export default function StepPayment({
                 <p className="text-sm font-medium text-gray-900">
                   {formatDate(bookingState.selectedDate)}
                 </p>
-                <p className="text-xs text-gray-600">
-                  {formatTime(bookingState.selectedTimeSlot)}
-                </p>
+                <p className="text-xs text-gray-600">{formatTime(bookingState.selectedTimeSlot)}</p>
               </div>
             </div>
             <button
@@ -1264,14 +1424,16 @@ export default function StepPayment({
               <p className="text-sm font-medium text-gray-900">At the Salon</p>
             </div>
           </div>
-        ) : bookingState.address && (
-          <div className="p-4 bg-gray-50 rounded-lg flex items-center gap-3">
-            <MapPin className="w-5 h-5 text-gray-400" />
-            <div>
-              <p className="text-sm font-medium text-gray-900">House Call</p>
-              <p className="text-xs text-gray-600">{bookingState.address.fullAddress}</p>
+        ) : (
+          bookingState.address && (
+            <div className="p-4 bg-gray-50 rounded-lg flex items-center gap-3">
+              <MapPin className="w-5 h-5 text-gray-400" />
+              <div>
+                <p className="text-sm font-medium text-gray-900">House Call</p>
+                <p className="text-xs text-gray-600">{bookingState.address.fullAddress}</p>
+              </div>
             </div>
-          </div>
+          )
         )}
 
         {/* Redeem prepaid package — only packages that include a selected service (canonical: mirrors customer-app `book-checkout.tsx`) */}
@@ -1281,10 +1443,13 @@ export default function StepPayment({
               <Gift className="w-5 h-5 text-violet-700 shrink-0" />
               <div>
                 <p className="text-sm font-medium text-gray-900">
-                  {bookingState.selectedPackage?.id ? "Package applied" : "Redeem a prepaid package (optional)"}
+                  {bookingState.selectedPackage?.id
+                    ? "Package applied"
+                    : "Redeem a prepaid package (optional)"}
                 </p>
                 <p className="text-xs text-gray-600">
-                  Only packages that include your selected service(s) are shown. Bundle pricing applies when you pick one.
+                  Only packages that include your selected service(s) are shown. Bundle pricing
+                  applies when you pick one.
                 </p>
               </div>
             </div>
@@ -1300,7 +1465,10 @@ export default function StepPayment({
                       key={pkg.id}
                       onClick={() => {
                         if (selected) {
-                          updateBookingState({ selectedPackage: undefined, customerPackageEntitlementId: null });
+                          updateBookingState({
+                            selectedPackage: undefined,
+                            customerPackageEntitlementId: null,
+                          });
                         } else {
                           updateBookingState({
                             selectedPackage: {
@@ -1317,14 +1485,16 @@ export default function StepPayment({
                         "w-full text-left flex items-start gap-3 rounded-lg border p-3 transition-colors",
                         selected
                           ? "border-violet-500 bg-white ring-1 ring-violet-300"
-                          : "border-gray-200 bg-white hover:border-violet-300",
+                          : "border-gray-200 bg-white hover:border-violet-300"
                       )}
                       aria-pressed={selected}
                     >
                       <span
                         className={cn(
                           "mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border",
-                          selected ? "border-violet-600 bg-violet-600 text-white" : "border-gray-300 bg-white text-transparent",
+                          selected
+                            ? "border-violet-600 bg-violet-600 text-white"
+                            : "border-gray-300 bg-white text-transparent"
                         )}
                       >
                         <Check className="h-3.5 w-3.5" />
@@ -1332,13 +1502,17 @@ export default function StepPayment({
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium text-gray-900 truncate">{pkg.name}</p>
                         {pkg.description ? (
-                          <p className="text-xs text-gray-600 line-clamp-2 mt-0.5">{pkg.description}</p>
+                          <p className="text-xs text-gray-600 line-clamp-2 mt-0.5">
+                            {pkg.description}
+                          </p>
                         ) : null}
                       </div>
                       <span className="text-sm font-semibold text-gray-900 shrink-0">
                         {formatCurrency(pkg.price, pkg.currency)}
                         {pkg.discount_percentage != null && pkg.discount_percentage > 0 ? (
-                          <span className="ml-1 text-xs font-medium text-emerald-600">·Save {pkg.discount_percentage}%</span>
+                          <span className="ml-1 text-xs font-medium text-emerald-600">
+                            ·Save {pkg.discount_percentage}%
+                          </span>
                         ) : null}
                       </span>
                     </button>
@@ -1348,7 +1522,10 @@ export default function StepPayment({
                   <button
                     type="button"
                     onClick={() =>
-                      updateBookingState({ selectedPackage: undefined, customerPackageEntitlementId: null })
+                      updateBookingState({
+                        selectedPackage: undefined,
+                        customerPackageEntitlementId: null,
+                      })
                     }
                     className="text-xs font-medium text-violet-700 hover:text-violet-900"
                   >
@@ -1367,7 +1544,8 @@ export default function StepPayment({
               <div>
                 <p className="text-sm font-medium text-gray-900">Package credit</p>
                 <p className="text-xs text-gray-600">
-                  If you bought this package online and have prepaid sessions left, apply one to this booking.
+                  If you bought this package online and have prepaid sessions left, apply one to
+                  this booking.
                 </p>
               </div>
             </div>
@@ -1426,19 +1604,25 @@ export default function StepPayment({
           {bookingState.promotions.couponDiscount > 0 && (
             <div className="flex justify-between text-sm text-green-600">
               <span>{t("booking.discount")}</span>
-              <span>-{formatCurrency(bookingState.promotions.couponDiscount, totals.currency)}</span>
+              <span>
+                -{formatCurrency(bookingState.promotions.couponDiscount, totals.currency)}
+              </span>
             </div>
           )}
           {bookingState.promotions.loyaltyDiscount > 0 && (
             <div className="flex justify-between text-sm text-green-600">
               <span>Loyalty Points</span>
-              <span>-{formatCurrency(bookingState.promotions.loyaltyDiscount, totals.currency)}</span>
+              <span>
+                -{formatCurrency(bookingState.promotions.loyaltyDiscount, totals.currency)}
+              </span>
             </div>
           )}
           {bookingState.promotions.membershipDiscount > 0 && (
             <div className="flex justify-between text-sm text-green-600">
               <span>{bookingState.promotions.membershipPlanName || "Membership"}</span>
-              <span>-{formatCurrency(bookingState.promotions.membershipDiscount, totals.currency)}</span>
+              <span>
+                -{formatCurrency(bookingState.promotions.membershipDiscount, totals.currency)}
+              </span>
             </div>
           )}
           {totals.subtotalAfterDiscounts !== totals.subtotal && (
@@ -1449,15 +1633,16 @@ export default function StepPayment({
           )}
           {totals.serviceFeeAmount > 0 && (
             <div className="flex justify-between text-sm text-gray-600">
-              <span>Platform Fee{totals.serviceFeePercentage > 0 ? ` (${totals.serviceFeePercentage}%)` : ''}</span>
+              <span>
+                Platform Fee
+                {totals.serviceFeePercentage > 0 ? ` (${totals.serviceFeePercentage}%)` : ""}
+              </span>
               <span>{formatCurrency(totals.serviceFeeAmount, totals.currency)}</span>
             </div>
           )}
           {totals.taxAmount > 0 && (
             <div className="flex justify-between text-sm text-gray-600">
-              <span>
-                Tax{totals.taxRate > 0 ? ` (${Number(totals.taxRate).toFixed(2)}%)` : ""}
-              </span>
+              <span>Tax{totals.taxRate > 0 ? ` (${Number(totals.taxRate).toFixed(2)}%)` : ""}</span>
               <span>{formatCurrency(totals.taxAmount, totals.currency)}</span>
             </div>
           )}
@@ -1475,47 +1660,66 @@ export default function StepPayment({
             <span>{formatCurrency(totals.total, totals.currency)}</span>
           </div>
 
-          {bookingState.promotions.giftCardAmount > 0 && (() => {
-            const depositAmount = percentOf(totals.total, depositPercentage);
-            const amountDueNow = paymentOption === "deposit" ? depositAmount : totals.total;
-            const giftCardApplied = Math.min(bookingState.promotions.giftCardAmount || 0, amountDueNow);
-            return (
-              <div className="flex justify-between text-sm text-blue-700">
-                <span>Gift card tender</span>
-                <span>−{formatCurrency(giftCardApplied, totals.currency)}</span>
-              </div>
-            );
-          })()}
+          {bookingState.promotions.giftCardAmount > 0 &&
+            (() => {
+              const depositAmount = percentOf(totals.total, depositPercentage);
+              const amountDueNow = paymentOption === "deposit" ? depositAmount : totals.total;
+              const giftCardApplied = Math.min(
+                bookingState.promotions.giftCardAmount || 0,
+                amountDueNow
+              );
+              return (
+                <div className="flex justify-between text-sm text-blue-700">
+                  <span>Gift card tender</span>
+                  <span>−{formatCurrency(giftCardApplied, totals.currency)}</span>
+                </div>
+              );
+            })()}
 
           {/* Wallet split — show breakdown of what wallet covers vs what Paystack charges */}
-          {paymentMethod === "card" && useWallet && walletBalance > 0 && (() => {
-            const depositAmount = percentOf(totals.total, depositPercentage);
-            const amountDueNow = paymentOption === "deposit" ? depositAmount : totals.total;
-            const giftCardApplied = Math.min(bookingState.promotions.giftCardAmount || 0, amountDueNow);
-            const walletApplied = Math.min(walletBalance, Math.max(0, amountDueNow - giftCardApplied));
-            const paystackRemainder = Math.max(0, amountDueNow - giftCardApplied - walletApplied);
-            return (
-              <div className="mt-3 pt-3 border-t border-dashed border-gray-300 space-y-1.5">
-                <div className="flex justify-between text-sm text-green-700">
-                  <span className="flex items-center gap-1.5">
-                    <Wallet className="w-3.5 h-3.5" />
-                    Wallet credit applied
-                  </span>
-                  <span className="font-medium">−{formatCurrency(walletApplied, walletCurrency)}</span>
+          {paymentMethod === "card" &&
+            useWallet &&
+            walletBalance > 0 &&
+            (() => {
+              const depositAmount = percentOf(totals.total, depositPercentage);
+              const amountDueNow = paymentOption === "deposit" ? depositAmount : totals.total;
+              const giftCardApplied = Math.min(
+                bookingState.promotions.giftCardAmount || 0,
+                amountDueNow
+              );
+              const walletApplied = Math.min(
+                walletBalance,
+                Math.max(0, amountDueNow - giftCardApplied)
+              );
+              const paystackRemainder = Math.max(0, amountDueNow - giftCardApplied - walletApplied);
+              return (
+                <div className="mt-3 pt-3 border-t border-dashed border-gray-300 space-y-1.5">
+                  <div className="flex justify-between text-sm text-green-700">
+                    <span className="flex items-center gap-1.5">
+                      <Wallet className="w-3.5 h-3.5" />
+                      Wallet credit applied
+                    </span>
+                    <span className="font-medium">
+                      −{formatCurrency(walletApplied, walletCurrency)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm font-semibold text-gray-900 bg-gray-100 rounded-lg px-3 py-2">
+                    <span>You pay via Paystack</span>
+                    <span>
+                      {paystackRemainder <= 0
+                        ? formatCurrency(0, totals.currency)
+                        : formatCurrency(paystackRemainder, totals.currency)}
+                    </span>
+                  </div>
+                  {paystackRemainder <= 0 && (
+                    <p className="text-xs text-green-700 flex items-center gap-1">
+                      <CheckCircle className="w-3.5 h-3.5" />
+                      Wallet fully covers this booking — no card charge needed
+                    </p>
+                  )}
                 </div>
-                <div className="flex justify-between text-sm font-semibold text-gray-900 bg-gray-100 rounded-lg px-3 py-2">
-                  <span>You pay via Paystack</span>
-                  <span>{paystackRemainder <= 0 ? formatCurrency(0, totals.currency) : formatCurrency(paystackRemainder, totals.currency)}</span>
-                </div>
-                {paystackRemainder <= 0 && (
-                  <p className="text-xs text-green-700 flex items-center gap-1">
-                    <CheckCircle className="w-3.5 h-3.5" />
-                    Wallet fully covers this booking — no card charge needed
-                  </p>
-                )}
-              </div>
-            );
-          })()}
+              );
+            })()}
         </div>
       </div>
 
@@ -1527,9 +1731,9 @@ export default function StepPayment({
             Add a tip (optional)
           </h3>
           <p className="text-xs text-gray-600 leading-relaxed">
-            Percentages apply to your <strong>service subtotal after discounts</strong> (before tax and platform fees). They
-            update automatically if your booking total changes. 100% of tips go to your provider and are charged with
-            your booking total.
+            Percentages apply to your <strong>service subtotal after discounts</strong> (before tax
+            and platform fees). They update automatically if your booking total changes. 100% of
+            tips go to your provider and are charged with your booking total.
           </p>
 
           <div className="space-y-2">
@@ -1574,7 +1778,12 @@ export default function StepPayment({
                     )}
                   >
                     <span className="font-bold leading-tight">{p}%</span>
-                    <span className={cn("text-[11px] leading-tight", selected ? "text-white/90" : "text-gray-600")}>
+                    <span
+                      className={cn(
+                        "text-[11px] leading-tight",
+                        selected ? "text-white/90" : "text-gray-600"
+                      )}
+                    >
                       {tipPercentageBase <= 0 ? "—" : formatCurrency(computed, totals.currency)}
                     </span>
                   </button>
@@ -1591,7 +1800,9 @@ export default function StepPayment({
           {tipSuggestions.some((n) => n > 0) && (
             <div className="space-y-2">
               <p className="text-sm font-semibold text-gray-900">Or choose a set amount</p>
-              <p className="text-xs text-gray-500">Quick amounts from this provider (fixed currency).</p>
+              <p className="text-xs text-gray-500">
+                Quick amounts from this provider (fixed currency).
+              </p>
               <div className="flex flex-wrap gap-2">
                 {tipSuggestions
                   .filter((n) => n > 0)
@@ -1651,9 +1862,11 @@ export default function StepPayment({
       {/* Payment Method Selection */}
       <div className="space-y-4">
         <h3 className="text-lg font-semibold text-gray-900">Payment Method</h3>
-        
+
         {/* Method toggle: Card / Cash / Gift Card (each gated by feature flags) */}
-        <div className={`grid gap-3 ${paystackEnabled && giftCardsEnabled && cashEnabledOnPlatform ? "grid-cols-3" : (paystackEnabled || giftCardsEnabled || cashEnabledOnPlatform) ? "grid-cols-2" : "grid-cols-1"}`}>
+        <div
+          className={`grid gap-3 ${paystackEnabled && giftCardsEnabled && cashEnabledOnPlatform ? "grid-cols-3" : paystackEnabled || giftCardsEnabled || cashEnabledOnPlatform ? "grid-cols-2" : "grid-cols-1"}`}
+        >
           {paystackEnabled && (
             <button
               type="button"
@@ -1664,8 +1877,14 @@ export default function StepPayment({
                   : "border-gray-200 hover:border-gray-300 bg-white"
               }`}
             >
-              <CreditCard className={`w-5 h-5 ${paymentMethod === "card" ? "text-primary" : "text-gray-500"}`} />
-              <span className={`text-sm font-medium ${paymentMethod === "card" ? "text-primary" : "text-gray-700"}`}>Card</span>
+              <CreditCard
+                className={`w-5 h-5 ${paymentMethod === "card" ? "text-primary" : "text-gray-500"}`}
+              />
+              <span
+                className={`text-sm font-medium ${paymentMethod === "card" ? "text-primary" : "text-gray-700"}`}
+              >
+                Card
+              </span>
               {paymentMethod === "card" && <Check className="w-4 h-4 text-primary" />}
             </button>
           )}
@@ -1679,8 +1898,14 @@ export default function StepPayment({
                   : "border-gray-200 hover:border-gray-300 bg-white"
               }`}
             >
-              <Banknote className={`w-5 h-5 ${paymentMethod === "cash" ? "text-primary" : "text-gray-500"}`} />
-              <span className={`text-sm font-medium ${paymentMethod === "cash" ? "text-primary" : "text-gray-700"}`}>Cash</span>
+              <Banknote
+                className={`w-5 h-5 ${paymentMethod === "cash" ? "text-primary" : "text-gray-500"}`}
+              />
+              <span
+                className={`text-sm font-medium ${paymentMethod === "cash" ? "text-primary" : "text-gray-700"}`}
+              >
+                Cash
+              </span>
               {paymentMethod === "cash" && <Check className="w-4 h-4 text-primary" />}
             </button>
           )}
@@ -1694,8 +1919,14 @@ export default function StepPayment({
                   : "border-gray-200 hover:border-gray-300 bg-white"
               }`}
             >
-              <Gift className={`w-5 h-5 ${paymentMethod === "giftcard" ? "text-primary" : "text-gray-500"}`} />
-              <span className={`text-sm font-medium ${paymentMethod === "giftcard" ? "text-primary" : "text-gray-700"}`}>Gift Card</span>
+              <Gift
+                className={`w-5 h-5 ${paymentMethod === "giftcard" ? "text-primary" : "text-gray-500"}`}
+              />
+              <span
+                className={`text-sm font-medium ${paymentMethod === "giftcard" ? "text-primary" : "text-gray-700"}`}
+              >
+                Gift Card
+              </span>
               {paymentMethod === "giftcard" && <Check className="w-4 h-4 text-primary" />}
             </button>
           )}
@@ -1719,9 +1950,7 @@ export default function StepPayment({
                 "Use wallet balance (no balance)"
               )}
             </label>
-            {useWallet && walletBalance > 0 && (
-              <Wallet className="w-4 h-4 text-primary shrink-0" />
-            )}
+            {useWallet && walletBalance > 0 && <Wallet className="w-4 h-4 text-primary shrink-0" />}
           </div>
         )}
 
@@ -1738,7 +1967,9 @@ export default function StepPayment({
               }`}
             >
               {paymentOption === "full" && <CheckCircle className="w-4 h-4 text-primary" />}
-              <span className={`text-sm font-medium ${paymentOption === "full" ? "text-primary" : "text-gray-700"}`}>
+              <span
+                className={`text-sm font-medium ${paymentOption === "full" ? "text-primary" : "text-gray-700"}`}
+              >
                 Pay in Full
               </span>
             </button>
@@ -1752,7 +1983,9 @@ export default function StepPayment({
               }`}
             >
               {paymentOption === "deposit" && <CheckCircle className="w-4 h-4 text-primary" />}
-              <span className={`text-sm font-medium ${paymentOption === "deposit" ? "text-primary" : "text-gray-700"}`}>
+              <span
+                className={`text-sm font-medium ${paymentOption === "deposit" ? "text-primary" : "text-gray-700"}`}
+              >
                 Deposit ({depositPercentage}%)
               </span>
             </button>
@@ -1782,9 +2015,11 @@ export default function StepPayment({
                       const brand = card.card_type
                         ? card.card_type.charAt(0).toUpperCase() + card.card_type.slice(1)
                         : "Card";
-                      const expiry = card.expiry_month && card.expiry_year
-                        ? `${String(card.expiry_month).padStart(2, "0")}/${String(card.expiry_year).slice(-2)}`
-                        : null;
+                      const expiry =
+                        card.expiry_label ??
+                        (card.expiry_month && card.expiry_year
+                          ? `${String(card.expiry_month).padStart(2, "0")}/${String(card.expiry_year).slice(-2)}`
+                          : null);
 
                       const selectCard = () => {
                         setSelectedCardId(card.id);
@@ -1811,15 +2046,22 @@ export default function StepPayment({
                               : "border-gray-200 hover:border-gray-300 bg-white"
                           }`}
                         >
-                          <div className={`w-10 h-7 rounded-md flex items-center justify-center ${
-                            active ? "bg-primary/10" : "bg-gray-100"
-                          }`}>
-                            <CreditCard className={`w-5 h-5 ${active ? "text-primary" : "text-gray-500"}`} />
+                          <div
+                            className={`w-10 h-7 rounded-md flex items-center justify-center ${
+                              active ? "bg-primary/10" : "bg-gray-100"
+                            }`}
+                          >
+                            <CreditCard
+                              className={`w-5 h-5 ${active ? "text-primary" : "text-gray-500"}`}
+                            />
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className={`text-sm font-semibold ${active ? "text-primary" : "text-gray-900"}`}>
-                                {brand}{card.last4 ? ` •••• ${card.last4}` : ""}
+                              <span
+                                className={`text-sm font-semibold ${active ? "text-primary" : "text-gray-900"}`}
+                              >
+                                {brand}
+                                {card.last4 ? ` •••• ${card.last4}` : ""}
                               </span>
                               {card.is_default ? (
                                 <span className="px-2 py-0.5 bg-green-100 text-green-700 text-[10px] font-semibold rounded-full">
@@ -1828,7 +2070,10 @@ export default function StepPayment({
                               ) : (
                                 <button
                                   type="button"
-                                  onClick={(e) => { e.stopPropagation(); handleSetDefaultCard(card.id); }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleSetDefaultCard(card.id);
+                                  }}
                                   disabled={settingDefaultId === card.id}
                                   className="text-[10px] font-semibold text-primary hover:text-primary-hover underline disabled:opacity-50"
                                 >
@@ -1841,13 +2086,29 @@ export default function StepPayment({
                             )}
                           </div>
                           {active && <CheckCircle className="w-5 h-5 text-primary flex-shrink-0" />}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRemoveSavedCard(card.id);
+                            }}
+                            disabled={removingCardId === card.id}
+                            aria-label={`Remove card ending in ${card.last4 ?? "****"}`}
+                            title="Remove this card"
+                            className="ml-1 p-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </motion.div>
                       );
                     })}
                   </div>
                   <button
                     type="button"
-                    onClick={() => { setUseNewCard(true); setSelectedCardId(null); }}
+                    onClick={() => {
+                      setUseNewCard(true);
+                      setSelectedCardId(null);
+                    }}
                     className="w-full flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-dashed border-gray-300 hover:border-gray-400 text-gray-600 hover:text-gray-800 transition-all"
                   >
                     <Plus className="w-4 h-4" />
@@ -1930,7 +2191,9 @@ export default function StepPayment({
             </div>
             <div className="min-w-0 flex-1">
               <h3 className="font-semibold text-gray-900 text-base mb-1">Cancellation Policy</h3>
-              <p className="text-sm text-gray-700 leading-relaxed">{cancellationPolicy.policy_text}</p>
+              <p className="text-sm text-gray-700 leading-relaxed">
+                {cancellationPolicy.policy_text}
+              </p>
             </div>
           </div>
           <div
@@ -1954,8 +2217,9 @@ export default function StepPayment({
               htmlFor="accept-cancellation-policy"
               className="text-sm sm:text-base font-medium text-gray-900 cursor-pointer leading-snug"
             >
-              I understand and accept the cancellation policy. I acknowledge that cancellations made within{" "}
-              {cancellationPolicy.hours_before_cutoff} hours of my appointment may result in a{" "}
+              I understand and accept the cancellation policy. I acknowledge that cancellations made
+              within {cancellationPolicy.hours_before_cutoff} hours of my appointment may result in
+              a{" "}
               {cancellationPolicy.late_cancellation_type === "no_refund"
                 ? "no refund"
                 : cancellationPolicy.late_cancellation_type === "partial_refund"
@@ -1966,7 +2230,10 @@ export default function StepPayment({
           </div>
           {!acceptedCancellationPolicy && (
             <p className="mt-3 text-sm font-medium text-amber-900 flex items-center gap-2">
-              <span className="inline-flex h-2 w-2 rounded-full bg-amber-500 animate-pulse" aria-hidden />
+              <span
+                className="inline-flex h-2 w-2 rounded-full bg-amber-500 animate-pulse"
+                aria-hidden
+              />
               Check the box above to continue to payment
             </p>
           )}
@@ -1982,16 +2249,15 @@ export default function StepPayment({
               Repeat this booking
             </h3>
             <p className="text-sm text-gray-600">
-              Save the same services on a repeating schedule. If you pay online, the schedule is created after
-              payment succeeds. Manage repeats under Account settings → Recurring bookings.
+              Save the same services on a repeating schedule. If you pay online, the schedule is
+              created after payment succeeds. Manage repeats under Account settings → Recurring
+              bookings.
             </p>
             <div className="flex items-start gap-3">
               <Checkbox
                 id="booking-flow-subscribe-recurring"
                 checked={bookingState.subscribeRecurring === true}
-                onCheckedChange={(c) =>
-                  updateBookingState({ subscribeRecurring: c === true })
-                }
+                onCheckedChange={(c) => updateBookingState({ subscribeRecurring: c === true })}
                 className="mt-1"
               />
               <div className="space-y-2 flex-1 min-w-0">
@@ -2030,18 +2296,24 @@ export default function StepPayment({
       {/* Payment Button */}
       <div className="sticky bottom-0 bg-white border-t border-gray-200 -mx-4 px-4 py-4 safe-area-bottom">
         {(() => {
-          const selectedCard = usingSavedCard ? savedCards.find((c) => c.id === selectedCardId) : null;
+          const selectedCard = usingSavedCard
+            ? savedCards.find((c) => c.id === selectedCardId)
+            : null;
           const depositAmount = percentOf(totals.total, depositPercentage);
           const amountDueNow = paymentOption === "deposit" ? depositAmount : totals.total;
-          const giftCardApplied = Math.min(bookingState.promotions.giftCardAmount || 0, amountDueNow);
-          const walletApplied = paymentMethod === "card" && useWallet
-            ? Math.min(walletBalance, Math.max(0, amountDueNow - giftCardApplied))
-            : 0;
+          const giftCardApplied = Math.min(
+            bookingState.promotions.giftCardAmount || 0,
+            amountDueNow
+          );
+          const walletApplied =
+            paymentMethod === "card" && useWallet
+              ? Math.min(walletBalance, Math.max(0, amountDueNow - giftCardApplied))
+              : 0;
           const chargeAmount = Math.max(0, amountDueNow - giftCardApplied - walletApplied);
           const giftCardOnlyUnderfunded =
             paymentMethod === "giftcard" &&
-            ((bookingState.promotions.giftCardAmount || 0) + 0.005 < amountDueNow);
-          
+            (bookingState.promotions.giftCardAmount || 0) + 0.005 < amountDueNow;
+
           return (
             <Button
               onClick={handlePayment}
@@ -2058,7 +2330,7 @@ export default function StepPayment({
               }
               className="w-full h-14 text-base font-semibold bg-primary hover:bg-primary-hover disabled:opacity-50 touch-target flex items-center justify-center gap-2"
             >
-              {(isProcessing || isChargingCard) ? (
+              {isProcessing || isChargingCard ? (
                 <>
                   <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                   {isChargingCard ? "Charging card..." : "Processing..."}
@@ -2108,11 +2380,11 @@ export default function StepPayment({
           // After successful auth, automatically retry booking
           setIsLoginModalOpen(false);
           // Small delay to ensure auth state is updated
-          await new Promise(resolve => setTimeout(resolve, 500));
+          await new Promise((resolve) => setTimeout(resolve, 500));
           // Retry the payment/booking
           handlePayment();
         }}
-        redirectUrl={typeof window !== 'undefined' ? window.location.href : undefined}
+        redirectUrl={typeof window !== "undefined" ? window.location.href : undefined}
       />
     </div>
   );

@@ -258,6 +258,8 @@ export interface SavedPaymentMethod {
   last4?: string;
   expiry_month?: number;
   expiry_year?: number;
+  expiry_label?: string;
+  is_expired?: boolean;
   cardholder_name?: string;
   is_default: boolean;
   is_active: boolean;
@@ -301,7 +303,12 @@ export interface CartItem {
   in_stock: boolean;
   stock_available: number;
   product_variant_id?: string | null;
-  product_variant?: { id: string; retail_price: number; quantity: number; option_values?: Record<string, string> } | null;
+  product_variant?: {
+    id: string;
+    retail_price: number;
+    quantity: number;
+    option_values?: Record<string, string>;
+  } | null;
   product: {
     id: string;
     name: string;

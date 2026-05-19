@@ -18,6 +18,16 @@ export default async function PortalPage() {
       role: result.role,
       provider_status: result.provider_status,
     });
+    if (portal === "customer") {
+      const { data } = await supabase
+        .from("users")
+        .select("customer_onboarding_completed_at")
+        .eq("id", result.userId)
+        .maybeSingle();
+      if (!data?.customer_onboarding_completed_at) {
+        redirect("/onboarding");
+      }
+    }
     // Superadmin: send to dedicated admin login (they are already signed in, so it will redirect to dashboard)
     const target =
       portal === "admin"

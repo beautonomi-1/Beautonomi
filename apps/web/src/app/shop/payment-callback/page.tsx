@@ -16,12 +16,32 @@ function ProductPaymentCallbackInner() {
   useEffect(() => {
     let cancelled = false;
 
+    const notifyWebView = (payload: Record<string, unknown>) => {
+      if (typeof window === "undefined") return;
+      const win = window as unknown as {
+        ReactNativeWebView?: { postMessage: (s: string) => void };
+      };
+      if (!win.ReactNativeWebView?.postMessage) return;
+      try {
+        win.ReactNativeWebView.postMessage(JSON.stringify(payload));
+      } catch {
+        // ignore
+      }
+    };
+
     const verifyPayment = async () => {
       const reference = searchParams.get("reference");
       if (!reference) {
         if (!cancelled) {
           setStatus("error");
           setMessage("Payment reference not found");
+          notifyWebView({ type: "checkout_failed", payment_type: "product_order", status: "failed" });
+          // Auto-route to the shop after a few seconds so users are never
+          // stuck on an actionless error state if they arrived here without
+          // a reference (e.g. opened the bare URL or copied the wrong link).
+          setTimeout(() => {
+            if (!cancelled) router.replace("/shop");
+          }, 3500);
         }
         return;
       }
@@ -42,20 +62,11 @@ function ProductPaymentCallbackInner() {
           setOrderNumber(result.data?.orderNumber ?? "");
           setMessage("Payment successful! Your order has been confirmed.");
 
-          // Notify customer app WebView so it can close and navigate to orders
-          const win =
-            typeof window !== "undefined"
-              ? (window as unknown as { ReactNativeWebView?: { postMessage: (s: string) => void } })
-              : null;
-          if (win?.ReactNativeWebView?.postMessage) {
-            try {
-              win.ReactNativeWebView.postMessage(
-                JSON.stringify({ type: "checkout_success", payment_type: "product_order" }),
-              );
-            } catch {
-              // ignore
-            }
-          }
+          notifyWebView({
+            type: "checkout_success",
+            payment_type: "product_order",
+            status: "success",
+          });
 
           setTimeout(() => {
             if (!cancelled) router.push("/account-settings/orders");
@@ -63,13 +74,30 @@ function ProductPaymentCallbackInner() {
         } else if (result.status === "failed") {
           setStatus("error");
           setMessage(result.errorMessage || "Payment could not be confirmed.");
+          notifyWebView({
+            type: "checkout_failed",
+            payment_type: "product_order",
+            status: "failed",
+            message: result.errorMessage || null,
+          });
+          // Auto-route back to orders so a definitive failure does not
+          // strand the user on a manual-link-only screen.
+          setTimeout(() => {
+            if (!cancelled) router.replace("/account-settings/orders");
+          }, 4000);
         } else {
-          // If verification remains pending/unknown after retries, show a soft
-          // success so customers are guided to orders while webhook settles.
           setStatus("success");
           setMessage(
             "We received your payment. Your order will appear in your orders shortly.",
           );
+          notifyWebView({
+            type: "checkout_pending",
+            payment_type: "product_order",
+            status: "pending",
+          });
+          setTimeout(() => {
+            if (!cancelled) router.replace("/account-settings/orders");
+          }, 4000);
         }
       } catch (error: unknown) {
         if (cancelled) return;
@@ -79,6 +107,14 @@ function ProductPaymentCallbackInner() {
             ? `We received your payment. ${error.message}`
             : "We received your payment. Please check your orders in a few minutes.",
         );
+        notifyWebView({
+          type: "checkout_pending",
+          payment_type: "product_order",
+          status: "pending",
+        });
+        setTimeout(() => {
+          if (!cancelled) router.replace("/account-settings/orders");
+        }, 4000);
       }
     };
 

@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse, normalizePhoneToE164 } from "@/lib/supabase/api-helpers";
+import {
+  getProviderIdForUser,
+  successResponse,
+  notFoundResponse,
+  handleApiError,
+  errorResponse,
+  normalizePhoneToE164,
+} from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { checkBookingLimitsFeatureAccess } from "@/lib/subscriptions/feature-access";
 import type { Booking } from "@/types/beautonomi";
@@ -106,7 +113,7 @@ async function waitForUserProfileRow(supabaseAdmin: any, userId: string) {
 
 /**
  * GET /api/provider/bookings
- * 
+ *
  * Get provider's bookings with filters
  */
 async function handleGetProviderBookings(request: NextRequest) {
@@ -220,8 +227,13 @@ async function handleGetProviderBookings(request: NextRequest) {
     if (status && status !== "all") {
       // Handle comma-separated statuses; map frontend values (e.g. "booked") to DB enum (pending, confirmed, in_progress, completed, cancelled, no_show)
       if (status.includes(",")) {
-        const raw = status.split(",").map(s => s.trim()).filter(Boolean);
-        const statuses = [...new Set(raw.map(mapStatusToDatabase).filter((s): s is string => s !== null))];
+        const raw = status
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+        const statuses = [
+          ...new Set(raw.map(mapStatusToDatabase).filter((s): s is string => s !== null)),
+        ];
         if (statuses.length) query = query.in("status", statuses);
       } else {
         const dbStatus = mapStatusToDatabase(status);
@@ -237,7 +249,11 @@ async function handleGetProviderBookings(request: NextRequest) {
     const startDate = searchParams.get("start_date");
     const endDate = searchParams.get("end_date");
     if (startDate && ymdParam.test(startDate.slice(0, 10))) {
-      const fromIso = dateRangeBoundsUtc(startDate.slice(0, 10), startDate.slice(0, 10), tz).fromIso;
+      const fromIso = dateRangeBoundsUtc(
+        startDate.slice(0, 10),
+        startDate.slice(0, 10),
+        tz
+      ).fromIso;
       query = query.gte("scheduled_at", fromIso);
     }
     if (endDate && ymdParam.test(endDate.slice(0, 10))) {
@@ -275,7 +291,7 @@ async function handleGetProviderBookings(request: NextRequest) {
             `full_name.ilike.%${safe}%`,
             `email.ilike.%${safe}%`,
             ...(digitsOnly.length > 0 ? [`phone.ilike.%${digitsOnly}%`] : []),
-          ].join(","),
+          ].join(",")
         )
         .limit(500);
 
@@ -300,10 +316,7 @@ async function handleGetProviderBookings(request: NextRequest) {
         const capped = Math.min(parsedLimit, 1000);
         const parsedOffset = Number(offsetParam ?? NaN);
         if (Number.isFinite(parsedOffset) && parsedOffset >= 0) {
-          query = query.range(
-            Math.floor(parsedOffset),
-            Math.floor(parsedOffset) + capped - 1,
-          );
+          query = query.range(Math.floor(parsedOffset), Math.floor(parsedOffset) + capped - 1);
         } else {
           query = query.limit(capped);
         }
@@ -328,7 +341,11 @@ async function handleGetProviderBookings(request: NextRequest) {
       orderColumn = "scheduled_at";
       // Legacy: `sort=scheduled_at` alone meant chronological (ascending),
       // matching the provider mobile list default.
-      if (sortParam === "scheduled_at" || sortParam === "scheduled_at:asc" || orderParam === "asc") {
+      if (
+        sortParam === "scheduled_at" ||
+        sortParam === "scheduled_at:asc" ||
+        orderParam === "asc"
+      ) {
         ascending = true;
       } else if (sortParam === "scheduled_at:desc" || orderParam === "desc") {
         ascending = false;
@@ -373,7 +390,8 @@ async function handleGetProviderBookings(request: NextRequest) {
         product_name: bp.products?.name || "Product",
         quantity: bp.quantity || 1,
         unit_price: bp.unit_price || bp.products?.retail_price || 0,
-        total_price: bp.total_price || (bp.unit_price || bp.products?.retail_price || 0) * (bp.quantity || 1),
+        total_price:
+          bp.total_price || (bp.unit_price || bp.products?.retail_price || 0) * (bp.quantity || 1),
       }));
       const recurringSeries = Array.isArray(booking.recurring_appointments)
         ? booking.recurring_appointments[0]
@@ -393,7 +411,9 @@ async function handleGetProviderBookings(request: NextRequest) {
       // the status for this response. This mirrors the detail-endpoint repair so the
       // list card and detail page always agree.
       const _listRawStatus = booking.status as string | undefined;
-      const _listPaymentStatus = (booking as Record<string, unknown>).payment_status as string | undefined;
+      const _listPaymentStatus = (booking as Record<string, unknown>).payment_status as
+        | string
+        | undefined;
       const _listNormalizedStatus =
         _listRawStatus === "pending_payment" &&
         (_listPaymentStatus === "paid" || _listPaymentStatus === "partially_paid")
@@ -412,24 +432,28 @@ async function handleGetProviderBookings(request: NextRequest) {
         location_type: booking.location_type,
         location_id: booking.location_id,
         // Construct address object (include at-home / house-call detail fields for calendar + list UIs)
-        address: booking.address_line1 ? {
-          line1: booking.address_line1,
-          line2: booking.address_line2,
-          city: booking.address_city,
-          state: booking.address_state,
-          country: booking.address_country,
-          postal_code: booking.address_postal_code,
-          latitude: booking.address_latitude,
-          longitude: booking.address_longitude,
-          apartment_unit: booking.apartment_unit,
-          building_name: booking.building_name,
-          floor_number: booking.floor_number,
-          access_codes: booking.access_codes
-            ? (typeof booking.access_codes === "string" ? JSON.parse(booking.access_codes) : booking.access_codes)
-            : null,
-          parking_instructions: booking.parking_instructions,
-          location_landmarks: booking.location_landmarks,
-        } : null,
+        address: booking.address_line1
+          ? {
+              line1: booking.address_line1,
+              line2: booking.address_line2,
+              city: booking.address_city,
+              state: booking.address_state,
+              country: booking.address_country,
+              postal_code: booking.address_postal_code,
+              latitude: booking.address_latitude,
+              longitude: booking.address_longitude,
+              apartment_unit: booking.apartment_unit,
+              building_name: booking.building_name,
+              floor_number: booking.floor_number,
+              access_codes: booking.access_codes
+                ? typeof booking.access_codes === "string"
+                  ? JSON.parse(booking.access_codes)
+                  : booking.access_codes
+                : null,
+              parking_instructions: booking.parking_instructions,
+              location_landmarks: booking.location_landmarks,
+            }
+          : null,
         house_call_instructions: booking.house_call_instructions || null,
         scheduled_at: booking.scheduled_at,
         completed_at: booking.completed_at || null,
@@ -440,7 +464,9 @@ async function handleGetProviderBookings(request: NextRequest) {
         addons: [], // Addons would need to be fetched from booking_addons table
         package_id: booking.package_id || null,
         package_name: (() => {
-          const sp = (booking as { service_packages?: { name?: string } | Array<{ name?: string }> }).service_packages;
+          const sp = (
+            booking as { service_packages?: { name?: string } | Array<{ name?: string }> }
+          ).service_packages;
           const one = Array.isArray(sp) ? sp[0] : sp;
           return typeof one?.name === "string" ? one.name : null;
         })(),
@@ -450,9 +476,13 @@ async function handleGetProviderBookings(request: NextRequest) {
         discount_reason: booking.discount_reason || null,
         tax_amount: booking.tax_amount || 0,
         tax_rate: booking.tax_rate || 0,
-        platform_fee_percentage: Number(booking.platform_fee_percentage ?? booking.service_fee_percentage ?? 0),
+        platform_fee_percentage: Number(
+          booking.platform_fee_percentage ?? booking.service_fee_percentage ?? 0
+        ),
         platform_fee_amount: Number(booking.platform_fee_amount ?? booking.service_fee_amount ?? 0),
-        service_fee_percentage: Number(booking.service_fee_percentage ?? booking.platform_fee_percentage ?? 0),
+        service_fee_percentage: Number(
+          booking.service_fee_percentage ?? booking.platform_fee_percentage ?? 0
+        ),
         service_fee_amount: Number(booking.service_fee_amount ?? booking.platform_fee_amount ?? 0),
         platform_fee_paid_by: booking.platform_fee_paid_by ?? booking.service_fee_paid_by ?? null,
         service_fee_paid_by: booking.service_fee_paid_by ?? booking.platform_fee_paid_by ?? null,
@@ -464,7 +494,9 @@ async function handleGetProviderBookings(request: NextRequest) {
         total_refunded: booking.total_refunded || 0,
         wallet_amount: Number(booking.wallet_amount ?? 0),
         gift_card_amount: Number(booking.gift_card_amount ?? 0),
-        loyalty_points_used: Number(booking.loyalty_points_used ?? booking.loyalty_points_redeemed ?? 0),
+        loyalty_points_used: Number(
+          booking.loyalty_points_used ?? booking.loyalty_points_redeemed ?? 0
+        ),
         loyalty_discount_amount: Number(booking.loyalty_discount_amount ?? 0),
         promotion_discount_amount: Number(booking.promotion_discount_amount ?? 0),
         membership_discount_amount: Number(booking.membership_discount_amount ?? 0),
@@ -504,8 +536,10 @@ async function handleGetProviderBookings(request: NextRequest) {
         is_group_booking: Boolean(booking.is_group_booking),
         group_booking_id: booking.group_booking_id || null,
         group_booking_ref: (() => {
-          const gb = (booking as { group_bookings?: { ref_number?: string } | Array<{ ref_number?: string }> }).group_bookings;
-          return Array.isArray(gb) ? gb[0]?.ref_number ?? null : gb?.ref_number ?? null;
+          const gb = (
+            booking as { group_bookings?: { ref_number?: string } | Array<{ ref_number?: string }> }
+          ).group_bookings;
+          return Array.isArray(gb) ? (gb[0]?.ref_number ?? null) : (gb?.ref_number ?? null);
         })(),
         provider_form_responses: booking.provider_form_responses ?? null,
         // Booking channel — used for Walk-in / Provider / Online / Custom labeling in UI
@@ -515,12 +549,17 @@ async function handleGetProviderBookings(request: NextRequest) {
 
     let groupQuery = supabaseAdmin
       .from("group_bookings")
-      .select("*, booking_participants(id, participant_name, participant_email, participant_phone, is_primary_contact, service_id, service_name, price, duration_minutes, addons)")
+      .select(
+        "*, booking_participants(id, participant_name, participant_email, participant_phone, is_primary_contact, service_id, service_name, price, duration_minutes, addons)"
+      )
       .eq("provider_id", providerId);
 
     if (status && status !== "all") {
       const rawStatuses = status.includes(",")
-        ? status.split(",").map((s) => s.trim()).filter(Boolean)
+        ? status
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
         : [status];
       const groupStatuses = [
         ...new Set(
@@ -529,13 +568,17 @@ async function handleGetProviderBookings(request: NextRequest) {
             if (s === "booked" || db === "confirmed") return ["booked", "confirmed"];
             if (s === "started" || db === "in_progress") return ["started", "in_progress"];
             return [s, db].filter((v): v is string => Boolean(v));
-          }),
+          })
         ),
       ];
       if (groupStatuses.length) groupQuery = groupQuery.in("status", groupStatuses);
     }
     if (startDate && ymdParam.test(startDate.slice(0, 10))) {
-      const fromIso = dateRangeBoundsUtc(startDate.slice(0, 10), startDate.slice(0, 10), tz).fromIso;
+      const fromIso = dateRangeBoundsUtc(
+        startDate.slice(0, 10),
+        startDate.slice(0, 10),
+        tz
+      ).fromIso;
       groupQuery = groupQuery.gte("scheduled_at", fromIso);
     }
     if (endDate && ymdParam.test(endDate.slice(0, 10))) {
@@ -554,39 +597,52 @@ async function handleGetProviderBookings(request: NextRequest) {
       console.warn("[GET /api/provider/bookings] Failed to merge group bookings:", groupErr);
     }
 
-    const groupStaffIds = [...new Set((groupRows ?? []).map((g: any) => g.staff_id).filter(Boolean))];
-    const groupLocationIds = [...new Set((groupRows ?? []).map((g: any) => g.location_id).filter(Boolean))];
+    const groupStaffIds = [
+      ...new Set((groupRows ?? []).map((g: any) => g.staff_id).filter(Boolean)),
+    ];
+    const groupLocationIds = [
+      ...new Set((groupRows ?? []).map((g: any) => g.location_id).filter(Boolean)),
+    ];
     const groupIds = (groupRows ?? []).map((g: any) => g.id).filter(Boolean);
     const [groupStaffRes, groupLocRes, groupChildBookingsRes] = await Promise.all([
       groupStaffIds.length
         ? supabaseAdmin.from("provider_staff").select("id, name").in("id", groupStaffIds)
         : Promise.resolve({ data: [] as any[] }),
       groupLocationIds.length
-        ? supabaseAdmin.from("provider_locations").select("id, name, address_line1, city").in("id", groupLocationIds)
+        ? supabaseAdmin
+            .from("provider_locations")
+            .select("id, name, address_line1, city")
+            .in("id", groupLocationIds)
         : Promise.resolve({ data: [] as any[] }),
       groupIds.length
         ? supabaseAdmin
             .from("bookings")
-            .select("id, group_booking_id, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status, tip_amount, status, additional_charges(amount,status)")
+            .select(
+              "id, group_booking_id, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status, tip_amount, status, additional_charges(amount,status)"
+            )
             .eq("provider_id", providerId)
             .in("group_booking_id", groupIds)
         : Promise.resolve({ data: [] as any[] }),
     ]);
     const groupStaffName = new Map((groupStaffRes.data ?? []).map((s: any) => [s.id, s.name]));
     const groupLocation = new Map((groupLocRes.data ?? []).map((l: any) => [l.id, l]));
-    const groupPaymentById = new Map<string, {
-      totalAmount: number;
-      totalPaid: number;
-      totalRefunded: number;
-      walletGiftCoverage: number;
-      coverage: number;
-      balanceDue: number;
-      tipAmount: number;
-      paymentStatus: string;
-      hasRefundStatus: boolean;
-    }>();
+    const groupPaymentById = new Map<
+      string,
+      {
+        totalAmount: number;
+        totalPaid: number;
+        totalRefunded: number;
+        walletGiftCoverage: number;
+        coverage: number;
+        balanceDue: number;
+        tipAmount: number;
+        paymentStatus: string;
+        hasRefundStatus: boolean;
+      }
+    >();
     for (const child of groupChildBookingsRes.data ?? []) {
-      if (!child.group_booking_id || ["cancelled", "no_show"].includes(String(child.status ?? ""))) continue;
+      if (!child.group_booking_id || ["cancelled", "no_show"].includes(String(child.status ?? "")))
+        continue;
       const prev = groupPaymentById.get(child.group_booking_id) ?? {
         totalAmount: 0,
         totalPaid: 0,
@@ -599,8 +655,12 @@ async function handleGetProviderBookings(request: NextRequest) {
         hasRefundStatus: false,
       };
       const childPaymentStatus = String(child.payment_status ?? "");
-      const paidAfterRefunds = Math.max(0, Number(child.total_paid ?? 0) - Number(child.total_refunded ?? 0));
-      const walletGiftCoverage = Number(child.wallet_amount ?? 0) + Number(child.gift_card_amount ?? 0);
+      const paidAfterRefunds = Math.max(
+        0,
+        Number(child.total_paid ?? 0) - Number(child.total_refunded ?? 0)
+      );
+      const walletGiftCoverage =
+        Number(child.wallet_amount ?? 0) + Number(child.gift_card_amount ?? 0);
       const childCoverage = Math.max(paidAfterRefunds, walletGiftCoverage);
       const childUnpaidCharges = sumUnpaidAdditionalCharges(child.additional_charges);
       const childTotal = Number(child.total_amount ?? 0);
@@ -631,31 +691,50 @@ async function handleGetProviderBookings(request: NextRequest) {
     }
 
     const transformedGroups = (groupRows ?? []).map((group: any) => {
-      const participants = Array.isArray(group.booking_participants) ? group.booking_participants : [];
+      const participants = Array.isArray(group.booking_participants)
+        ? group.booking_participants
+        : [];
       const primary = participants.find((p: any) => p.is_primary_contact) ?? participants[0] ?? {};
-      const firstParticipantService = participants.find((p: any) => p.service_id || p.service_name) ?? {};
+      const firstParticipantService =
+        participants.find((p: any) => p.service_id || p.service_name) ?? {};
       const serviceId = firstParticipantService.service_id || group.service_id || "";
       const serviceName =
         firstParticipantService.service_name ||
         group.service_name ||
         group.title ||
         "Group booking";
-      const participantTotal = participants.reduce((sum: number, p: any) => sum + (Number(p.price) || 0), 0);
+      const participantTotal = participants.reduce(
+        (sum: number, p: any) => sum + (Number(p.price) || 0),
+        0
+      );
       const productRows = Array.isArray(group.products) ? group.products : [];
       const products = productRows.map((p: any, idx: number) => ({
         id: p.id ?? `${group.id}-product-${idx}`,
         product_id: p.product_id ?? p.productId ?? null,
         product_variant_id: p.product_variant_id ?? p.productVariantId ?? null,
-        product_variant: p.product_variant_id || p.productVariantId
-          ? { option_values: p.product_variant_name || p.productVariantName ? { option: p.product_variant_name ?? p.productVariantName } : {} }
-          : null,
+        product_variant:
+          p.product_variant_id || p.productVariantId
+            ? {
+                option_values:
+                  p.product_variant_name || p.productVariantName
+                    ? { option: p.product_variant_name ?? p.productVariantName }
+                    : {},
+              }
+            : null,
         product_name: p.product_name ?? p.productName ?? "Product",
         quantity: Number(p.quantity ?? 1) || 1,
         unit_price: Number(p.unit_price ?? p.unitPrice ?? 0) || 0,
-        total_price: Number(p.total_price ?? p.totalPrice ?? 0) || (Number(p.unit_price ?? p.unitPrice ?? 0) || 0) * (Number(p.quantity ?? 1) || 1),
+        total_price:
+          Number(p.total_price ?? p.totalPrice ?? 0) ||
+          (Number(p.unit_price ?? p.unitPrice ?? 0) || 0) * (Number(p.quantity ?? 1) || 1),
       }));
-      const productTotal = products.reduce((sum: number, p: any) => sum + (Number(p.total_price) || 0), 0);
-      const total = Number(group.total_price ?? 0) || participantTotal + productTotal + (Number(group.travel_fee) || 0);
+      const productTotal = products.reduce(
+        (sum: number, p: any) => sum + (Number(p.total_price) || 0),
+        0
+      );
+      const total =
+        Number(group.total_price ?? 0) ||
+        participantTotal + productTotal + (Number(group.travel_fee) || 0);
       const payment = groupPaymentById.get(group.id) ?? {
         totalAmount: 0,
         totalPaid: 0,
@@ -667,10 +746,15 @@ async function handleGetProviderBookings(request: NextRequest) {
         paymentStatus: "pending",
         hasRefundStatus: false,
       };
-      const balanceDue = Math.max(0, payment.totalAmount > 0 ? payment.balanceDue : total - payment.coverage);
+      const balanceDue = Math.max(
+        0,
+        payment.totalAmount > 0 ? payment.balanceDue : total - payment.coverage
+      );
       const displayTotal = payment.totalAmount > 0 ? Math.max(total, payment.totalAmount) : total;
       const groupPaymentStatus =
-        payment.hasRefundStatus && payment.totalPaid > 0 && payment.totalRefunded >= payment.totalPaid - 0.01
+        payment.hasRefundStatus &&
+        payment.totalPaid > 0 &&
+        payment.totalRefunded >= payment.totalPaid - 0.01
           ? "refunded"
           : payment.hasRefundStatus
             ? "partially_refunded"
@@ -679,8 +763,8 @@ async function handleGetProviderBookings(request: NextRequest) {
               : payment.totalPaid > 0 || payment.walletGiftCoverage > 0
                 ? "partially_paid"
                 : "pending";
-      const staffName = group.staff_id ? groupStaffName.get(group.staff_id) ?? null : null;
-      const loc = group.location_id ? groupLocation.get(group.location_id) ?? null : null;
+      const staffName = group.staff_id ? (groupStaffName.get(group.staff_id) ?? null) : null;
+      const loc = group.location_id ? (groupLocation.get(group.location_id) ?? null) : null;
       return {
         id: `group:${group.id}`,
         group_booking_id: group.id,
@@ -688,38 +772,53 @@ async function handleGetProviderBookings(request: NextRequest) {
         customer_id: null,
         version: 0,
         provider_id: group.provider_id,
-        status: mapStatusFromDatabase(group.status === "started" ? "in_progress" : group.status === "booked" ? "confirmed" : group.status),
-        db_status: group.status === "started" ? "in_progress" : group.status === "booked" ? "confirmed" : group.status,
+        status: mapStatusFromDatabase(
+          group.status === "started"
+            ? "in_progress"
+            : group.status === "booked"
+              ? "confirmed"
+              : group.status
+        ),
+        db_status:
+          group.status === "started"
+            ? "in_progress"
+            : group.status === "booked"
+              ? "confirmed"
+              : group.status,
         location_type: group.location_type || "at_salon",
         location_id: group.location_id,
-        address: group.address_line1 ? {
-          line1: group.address_line1,
-          city: group.address_city,
-          state: group.address_state,
-          country: group.address_country,
-          postal_code: group.address_postal_code,
-          latitude: group.address_latitude,
-          longitude: group.address_longitude,
-        } : null,
+        address: group.address_line1
+          ? {
+              line1: group.address_line1,
+              city: group.address_city,
+              state: group.address_state,
+              country: group.address_country,
+              postal_code: group.address_postal_code,
+              latitude: group.address_latitude,
+              longitude: group.address_longitude,
+            }
+          : null,
         scheduled_at: group.scheduled_at,
         completed_at: null,
         cancelled_at: null,
         cancellation_reason: null,
-        services: [{
-          id: serviceId || group.id,
-          offering_id: serviceId || null,
-          staff_id: group.staff_id || null,
-          staff_name: staffName,
-          name: serviceName,
-          offering_name: serviceName,
-          service_name: serviceName,
-          duration_minutes: Number(group.duration_minutes) || 60,
-          price: participantTotal || total,
-          currency: lastResortCurrency,
-          scheduled_start_at: group.scheduled_at,
-          scheduled_end_at: null,
-          guest_name: primary.participant_name || null,
-        }],
+        services: [
+          {
+            id: serviceId || group.id,
+            offering_id: serviceId || null,
+            staff_id: group.staff_id || null,
+            staff_name: staffName,
+            name: serviceName,
+            offering_name: serviceName,
+            service_name: serviceName,
+            duration_minutes: Number(group.duration_minutes) || 60,
+            price: participantTotal || total,
+            currency: lastResortCurrency,
+            scheduled_start_at: group.scheduled_at,
+            scheduled_end_at: null,
+            guest_name: primary.participant_name || null,
+          },
+        ],
         products,
         addons: [],
         package_id: group.package_id || null,
@@ -776,10 +875,10 @@ async function handleGetProviderBookings(request: NextRequest) {
     setCachedProviderBookingsList(cacheKey, mergedBookings as unknown as Booking[]);
 
     const response = successResponse(mergedBookings as unknown as Booking[]);
-    
+
     // Add cache headers for faster subsequent requests (5 seconds)
-    response.headers.set('Cache-Control', 'private, max-age=5, stale-while-revalidate=10');
-    
+    response.headers.set("Cache-Control", "private, max-age=5, stale-while-revalidate=10");
+
     return response;
   } catch (error) {
     console.error("[GET /api/provider/bookings]", error);
@@ -789,13 +888,13 @@ async function handleGetProviderBookings(request: NextRequest) {
 
 /**
  * POST /api/provider/bookings
- * 
+ *
  * Create a new booking/appointment
  */
 async function handleCreateProviderBooking(request: NextRequest) {
   try {
     // Check permission to create appointments
-    const permissionCheck = await requirePermission('create_appointments', request);
+    const permissionCheck = await requirePermission("create_appointments", request);
     if (!permissionCheck.authorized) {
       return permissionCheck.response!;
     }
@@ -857,7 +956,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
     // Handle walk-in clients - create or find customer
     // customer_id is REQUIRED, so we must always have one
     let customerId = body.customer_id;
-    
+
     if (!customerId) {
       // Check if customer exists by email or phone (use admin client to bypass RLS)
       if (body.customer_email) {
@@ -866,12 +965,12 @@ async function handleCreateProviderBooking(request: NextRequest) {
           .select("id")
           .eq("email", body.customer_email)
           .maybeSingle();
-        
+
         if (existingCustomer) {
           customerId = existingCustomer.id;
         }
       }
-      
+
       // Also check by phone if email didn't work
       if (!customerId && body.customer_phone) {
         const { data: existingCustomer } = await supabaseAdmin
@@ -879,7 +978,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
           .select("id")
           .eq("phone", body.customer_phone)
           .maybeSingle();
-        
+
         if (existingCustomer) {
           customerId = existingCustomer.id;
         }
@@ -891,7 +990,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
           return errorResponse(
             "Customer name is required for walk-in appointments",
             "WALK_IN_NAME_REQUIRED",
-            422,
+            422
           );
         }
 
@@ -901,16 +1000,17 @@ async function handleCreateProviderBooking(request: NextRequest) {
         const walkInEmail = body.customer_email || createWalkInEmail();
         // Normalize phone to E.164 format if provided
         const normalizedPhone = normalizePhoneToE164(body.customer_phone);
-        const { data: createdUser, error: createUserError } = await supabaseAdmin.auth.admin.createUser({
-          email: walkInEmail,
-          phone: normalizedPhone,
-          email_confirm: true,
-          user_metadata: {
-            full_name: body.customer_name,
-            phone: body.customer_phone || null, // Store original phone in metadata
-            role: "customer",
-          },
-        });
+        const { data: createdUser, error: createUserError } =
+          await supabaseAdmin.auth.admin.createUser({
+            email: walkInEmail,
+            phone: normalizedPhone,
+            email_confirm: true,
+            user_metadata: {
+              full_name: body.customer_name,
+              phone: body.customer_phone || null, // Store original phone in metadata
+              role: "customer",
+            },
+          });
 
         if (createUserError || !createdUser?.user?.id) {
           console.error("Error creating auth user for walk-in:", createUserError);
@@ -920,42 +1020,42 @@ async function handleCreateProviderBooking(request: NextRequest) {
               : "Could not create walk-in customer. Check email/phone and try again.",
             "WALK_IN_AUTH_FAILED",
             422,
-            createUserError ? { auth: createUserError } : undefined,
+            createUserError ? { auth: createUserError } : undefined
           );
         }
 
         customerId = createdUser.user.id;
-        
+
         // Wait for trigger to create public.users record
         await waitForUserProfileRow(supabaseAdmin, customerId);
-        
+
         // Ensure user record exists - if trigger failed, create it manually
         const { data: userProfile, error: _profileError } = await supabaseAdmin
           .from("users")
           .select("id, full_name, phone")
           .eq("id", customerId)
           .maybeSingle();
-        
+
         if (!userProfile) {
-          console.warn("User profile not created by trigger, creating manually for walk-in customer");
+          console.warn(
+            "User profile not created by trigger, creating manually for walk-in customer"
+          );
           // Manually create the user record if trigger didn't fire
-          const { error: insertError } = await supabaseAdmin
-            .from("users")
-            .insert({
-              id: customerId,
-              email: walkInEmail,
-              full_name: body.customer_name,
-              phone: body.customer_phone || null,
-              role: "customer",
-            });
-          
+          const { error: insertError } = await supabaseAdmin.from("users").insert({
+            id: customerId,
+            email: walkInEmail,
+            full_name: body.customer_name,
+            phone: body.customer_phone || null,
+            role: "customer",
+          });
+
           if (insertError) {
             console.error("Error manually creating user profile:", insertError);
             return errorResponse(
               `Failed to create customer profile: ${insertError.message ?? "unknown error"}`,
               "WALK_IN_PROFILE_FAILED",
               422,
-              { db: insertError },
+              { db: insertError }
             );
           }
         } else {
@@ -967,22 +1067,19 @@ async function handleCreateProviderBooking(request: NextRequest) {
           if (body.customer_phone && !userProfile.phone) {
             updateData.phone = body.customer_phone;
           }
-          
+
           if (Object.keys(updateData).length > 0) {
-            await supabaseAdmin
-              .from("users")
-              .update(updateData)
-              .eq("id", customerId);
+            await supabaseAdmin.from("users").update(updateData).eq("id", customerId);
           }
         }
       }
     }
-    
+
     if (!customerId) {
       return errorResponse(
         "Customer ID is required but could not be determined. Please select an existing customer or provide a name for a walk-in.",
         "CUSTOMER_ID_REQUIRED",
-        422,
+        422
       );
     }
 
@@ -991,7 +1088,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
       if (!addrLine || !String(addrLine).trim()) {
         return NextResponse.json(
           { error: "A service address is required for at-home bookings" },
-          { status: 400 },
+          { status: 400 }
         );
       }
     }
@@ -1015,7 +1112,10 @@ async function handleCreateProviderBooking(request: NextRequest) {
       if (providerTaxRow) {
         taxInclusive = providerTaxRow.tax_inclusive ?? true;
         if (!effectiveTaxRate || effectiveTaxRate === 0) {
-          if (providerTaxRow.tax_rate_percent !== null && providerTaxRow.tax_rate_percent !== undefined) {
+          if (
+            providerTaxRow.tax_rate_percent !== null &&
+            providerTaxRow.tax_rate_percent !== undefined
+          ) {
             effectiveTaxRate = providerTaxRow.tax_rate_percent;
           }
         }
@@ -1038,7 +1138,9 @@ async function handleCreateProviderBooking(request: NextRequest) {
         .order("is_primary", { ascending: false })
         .order("created_at", { ascending: true });
 
-      const firstSalon = salonLocations?.find((l: { location_type?: string }) => (l.location_type || "salon") === "salon");
+      const firstSalon = salonLocations?.find(
+        (l: { location_type?: string }) => (l.location_type || "salon") === "salon"
+      );
       if (!locationId) {
         if (firstSalon) locationId = firstSalon.id;
       } else {
@@ -1053,8 +1155,8 @@ async function handleCreateProviderBooking(request: NextRequest) {
     // Determine booking source. Only actual walk-ins should be 'walk_in';
     // other provider-created bookings should be 'provider' so payout/reporting
     // logic can distinguish platform-mediated from in-person revenue correctly.
-    const bookingSource = body.booking_source || 'provider';
-    
+    const bookingSource = body.booking_source || "provider";
+
     // Referral source (where did this client come from?) — must belong to this provider
     let referralSourceId: string | null = body.referral_source_id ?? null;
     if (referralSourceId) {
@@ -1069,9 +1171,13 @@ async function handleCreateProviderBooking(request: NextRequest) {
     }
 
     // For walk-in bookings, set Platform Fee to 0 (platform doesn't charge direct customers)
-    const isWalkIn = bookingSource === 'walk_in';
-    const platformFeeAmount = isWalkIn ? 0 : (body.platform_fee_amount ?? body.service_fee_amount ?? 0);
-    const platformFeePercentage = isWalkIn ? 0 : (body.platform_fee_percentage ?? body.service_fee_percentage ?? 0);
+    const isWalkIn = bookingSource === "walk_in";
+    const platformFeeAmount = isWalkIn
+      ? 0
+      : (body.platform_fee_amount ?? body.service_fee_amount ?? 0);
+    const platformFeePercentage = isWalkIn
+      ? 0
+      : (body.platform_fee_percentage ?? body.service_fee_percentage ?? 0);
 
     const numOrNull = (v: unknown): number | null => {
       if (v == null || v === "") return null;
@@ -1081,12 +1187,12 @@ async function handleCreateProviderBooking(request: NextRequest) {
     const bodyLat = numOrNull(
       (body as { address_latitude?: unknown }).address_latitude ??
         (body as { address?: { latitude?: unknown; lat?: unknown } }).address?.latitude ??
-        (body as { address?: { lat?: unknown } }).address?.lat,
+        (body as { address?: { lat?: unknown } }).address?.lat
     );
     const bodyLng = numOrNull(
       (body as { address_longitude?: unknown }).address_longitude ??
         (body as { address?: { longitude?: unknown; lng?: unknown } }).address?.longitude ??
-        (body as { address?: { lng?: unknown } }).address?.lng,
+        (body as { address?: { lng?: unknown } }).address?.lng
     );
 
     // Server-side pricing recomputation to prevent client-trusted totals from causing incorrect records.
@@ -1101,7 +1207,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
             body.services
               .flatMap((svc: any) => (Array.isArray(svc.add_on_ids) ? svc.add_on_ids : []))
               .filter((id: unknown): id is string => typeof id === "string" && id.trim().length > 0)
-              .map((id: string) => id.trim()),
+              .map((id: string) => id.trim())
           ),
         ]
       : [];
@@ -1112,28 +1218,49 @@ async function handleCreateProviderBooking(request: NextRequest) {
         .select("id, price")
         .in("id", addOnIdsFromServices);
       if (addOnPriceError) {
-        console.warn("[provider/bookings] Could not resolve add-on prices for subtotal recomputation:", addOnPriceError);
+        console.warn(
+          "[provider/bookings] Could not resolve add-on prices for subtotal recomputation:",
+          addOnPriceError
+        );
       }
       serviceAddOnsSubtotal = (addOnPriceRows ?? []).reduce(
         (sum: number, row: any) => sum + (Number(row.price) || 0),
-        0,
+        0
       );
     }
-    const addonsSubtotal = Array.isArray(body.addons) ? explicitAddonsSubtotal : serviceAddOnsSubtotal;
-    const productsSubtotal = Array.isArray(body.products)
-      ? body.products.reduce((sum: number, product: any) => {
-          const qty = Number(product.quantity ?? 1) || 1;
-          const line =
-            Number(product.totalPrice ?? product.total_price) ||
-            (Number(product.unitPrice ?? product.unit_price ?? product.price) || 0) * qty;
-          return sum + line;
-        }, 0)
-      : 0;
+    const addonsSubtotal = Array.isArray(body.addons)
+      ? explicitAddonsSubtotal
+      : serviceAddOnsSubtotal;
+    if (shouldRejectProductOnlyProviderBooking(body as Record<string, unknown>)) {
+      return errorResponse(
+        "Product-only sales are not appointment bookings. Use the product sale checkout so stock, receipts, and end-of-day reporting stay consistent.",
+        "UNSUPPORTED_PRODUCT_ONLY_BOOKING",
+        422
+      );
+    }
+    const productValidation = await validateProviderBookingProducts(
+      supabaseAdmin,
+      providerId,
+      Array.isArray(body.products) ? body.products : []
+    );
+    if (productValidation.ok === false) {
+      return errorResponse(
+        productValidation.message,
+        productValidation.code,
+        productValidation.code === "PRODUCT_VALIDATION_FAILED" ? 503 : 400
+      );
+    }
+    const validatedProducts = productValidation.products;
+    const productsSubtotal = validatedProducts.reduce(
+      (sum, product) => sum + product.totalPrice,
+      0
+    );
     const computedLineSubtotal = servicesSubtotal + addonsSubtotal + productsSubtotal;
-    const serverSubtotal = computedLineSubtotal > 0 ? computedLineSubtotal : Number(body.subtotal) || 0;
+    const serverSubtotal =
+      computedLineSubtotal > 0 ? computedLineSubtotal : Number(body.subtotal) || 0;
     const explicitMembershipDiscount = Math.max(
       0,
-      Number((body as { membership_discount_amount?: unknown }).membership_discount_amount) || 0,
+      Number((body as { membership_discount_amount?: unknown }).membership_discount_amount) || 0
     );
     const normalizedDiscounts = normalizeProviderCreateDiscounts({
       discountAmount: Number(body.discount_amount) || 0,
@@ -1143,26 +1270,6 @@ async function handleCreateProviderBooking(request: NextRequest) {
     });
     let serverDiscountAmount = normalizedDiscounts.discountAmount;
     const serverPromotionDiscountAmount = normalizedDiscounts.promotionDiscountAmount;
-    if (shouldRejectProductOnlyProviderBooking(body as Record<string, unknown>)) {
-      return errorResponse(
-        "Product-only sales are not appointment bookings. Use the product sale checkout so stock, receipts, and end-of-day reporting stay consistent.",
-        "UNSUPPORTED_PRODUCT_ONLY_BOOKING",
-        422,
-      );
-    }
-    const productValidation = await validateProviderBookingProducts(
-      supabaseAdmin,
-      providerId,
-      Array.isArray(body.products) ? body.products : [],
-    );
-    if (productValidation.ok === false) {
-      return errorResponse(
-        productValidation.message,
-        productValidation.code,
-        productValidation.code === "PRODUCT_VALIDATION_FAILED" ? 503 : 400,
-      );
-    }
-    const validatedProducts = productValidation.products;
     // Catalog package: validate lines against `service_package_items`, then discount SERVICES-only
     // subtotal (matches public `validate-booking.ts`).
     const bookingLocationTypeForPkg = body.location_type || "at_salon";
@@ -1184,7 +1291,9 @@ async function handleCreateProviderBooking(request: NextRequest) {
         ? (body.products as Array<Record<string, unknown>>)
             .map((p) => ({
               product_id: String(p.product_id ?? p.productId ?? ""),
-              product_variant_id: (p.product_variant_id ?? p.productVariantId ?? null) as string | null,
+              product_variant_id: (p.product_variant_id ?? p.productVariantId ?? null) as
+                | string
+                | null,
               quantity: Math.max(1, Math.floor(Number(p.quantity) || 1)),
             }))
             .filter((p) => p.product_id.length > 0)
@@ -1212,7 +1321,10 @@ async function handleCreateProviderBooking(request: NextRequest) {
     // when their stylist created the booking from the provider app.
     const bookingLocationType = body.location_type || "at_salon";
     const serverTravelFee = bookingLocationType === "at_home" ? Number(body.travel_fee) || 0 : 0;
-    const subtotalForMembership = Math.max(0, serverSubtotal + serverTravelFee - serverDiscountAmount);
+    const subtotalForMembership = Math.max(
+      0,
+      serverSubtotal + serverTravelFee - serverDiscountAmount
+    );
     const membershipResult = await resolveMembershipDiscount({
       supabase: supabaseAdmin,
       customerId,
@@ -1238,8 +1350,17 @@ async function handleCreateProviderBooking(request: NextRequest) {
       : Math.round(taxableAmount * taxRateDecimal * 100) / 100;
 
     const recomputedTotalAmount = taxInclusive
-      ? Math.round((taxableAmount + serverTipAmount + serverTravelFee + serverPlatformFeeAmount) * 100) / 100
-      : Math.round((taxableAmount + recomputedTaxAmount + serverTipAmount + serverTravelFee + serverPlatformFeeAmount) * 100) / 100;
+      ? Math.round(
+          (taxableAmount + serverTipAmount + serverTravelFee + serverPlatformFeeAmount) * 100
+        ) / 100
+      : Math.round(
+          (taxableAmount +
+            recomputedTaxAmount +
+            serverTipAmount +
+            serverTravelFee +
+            serverPlatformFeeAmount) *
+            100
+        ) / 100;
 
     const finalTaxAmount = recomputedTaxAmount;
     const finalTotalAmount = recomputedTotalAmount;
@@ -1251,7 +1372,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
       return errorResponse(
         `Unknown booking status: "${finalStatus}". Accepted values: pending, confirmed, cancelled, completed.`,
         "INVALID_STATUS",
-        422,
+        422
       );
     }
 
@@ -1302,10 +1423,14 @@ async function handleCreateProviderBooking(request: NextRequest) {
       payment_status: (() => {
         if (body.payment_option === "deposit") {
           // Deposit booking: if an in-person payment was collected now, partially_paid; otherwise pending.
-          return body.payment_method === "cash" || body.payment_method === "card" ? "partially_paid" : "pending";
+          return body.payment_method === "cash" || body.payment_method === "card"
+            ? "partially_paid"
+            : "pending";
         }
         // Full payment: manual cash/card means the provider already collected it; terminal/link stay pending.
-        return body.payment_method === "cash" || body.payment_method === "card" ? "paid" : "pending";
+        return body.payment_method === "cash" || body.payment_method === "card"
+          ? "paid"
+          : "pending";
       })(),
       special_requests: body.special_requests || null,
       // Deposit metadata
@@ -1317,10 +1442,14 @@ async function handleCreateProviderBooking(request: NextRequest) {
       travel_fee: serverTravelFee,
       platform_fee_percentage: platformFeePercentage,
       platform_fee_amount: platformFeeAmount,
-      platform_fee_paid_by: isWalkIn ? null : (body.platform_fee_paid_by ?? body.service_fee_paid_by ?? 'customer'),
+      platform_fee_paid_by: isWalkIn
+        ? null
+        : (body.platform_fee_paid_by ?? body.service_fee_paid_by ?? "customer"),
       service_fee_percentage: platformFeePercentage,
       service_fee_amount: platformFeeAmount,
-      service_fee_paid_by: isWalkIn ? null : (body.platform_fee_paid_by ?? body.service_fee_paid_by ?? 'customer'),
+      service_fee_paid_by: isWalkIn
+        ? null
+        : (body.platform_fee_paid_by ?? body.service_fee_paid_by ?? "customer"),
       referral_source_id: referralSourceId,
       ...(normalizedGroupBookingId
         ? { group_booking_id: normalizedGroupBookingId, is_group_booking: true }
@@ -1330,7 +1459,11 @@ async function handleCreateProviderBooking(request: NextRequest) {
 
     // Validate required fields
     if (!bookingData.scheduled_at) {
-      return errorResponse("Appointment date/time (scheduled_at) is required.", "MISSING_SCHEDULED_AT", 422);
+      return errorResponse(
+        "Appointment date/time (scheduled_at) is required.",
+        "MISSING_SCHEDULED_AT",
+        422
+      );
     }
     if (!bookingData.provider_id) {
       return errorResponse("Provider ID is required.", "MISSING_PROVIDER_ID", 422);
@@ -1371,7 +1504,8 @@ async function handleCreateProviderBooking(request: NextRequest) {
     // intentionally outside the availability grid without changing their global
     // "allow double booking" setting.
     const bodyOverride = body.allow_override === true || body.allow_override_slot === true;
-    const allowOverride = bodyOverride || await canOverrideDoubleBooking(supabaseAdmin, providerId);
+    const allowOverride =
+      bodyOverride || (await canOverrideDoubleBooking(supabaseAdmin, providerId));
     // When a participant booking is created for an existing group booking, the
     // group itself now occupies the slot in the availability grid. Callers can
     // pass exclude_group_booking_id so the grid ignores the parent group and
@@ -1393,7 +1527,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
       providerId,
       startAt,
       endAt,
-      { dbStaffId: staffId, ...(holdIdForExclude ? { excludeHoldId: holdIdForExclude } : {}) },
+      { dbStaffId: staffId, ...(holdIdForExclude ? { excludeHoldId: holdIdForExclude } : {}) }
     );
     if (holdOverlap) {
       return errorResponse(
@@ -1419,8 +1553,8 @@ async function handleCreateProviderBooking(request: NextRequest) {
             ? // Multi-service: sum of per-service (duration + svcBuffer) — already correct
               Math.round((endAt.getTime() - startAt.getTime()) / 60000)
             : // Simple booking: use the raw duration only, no defaultBuffer
-              Math.round(Number(body.duration_minutes ?? 60)),
-        ),
+              Math.round(Number(body.duration_minutes ?? 60))
+        )
       );
       const staffSet =
         body.services && Array.isArray(body.services) && body.services.length > 0
@@ -1428,7 +1562,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
               ...new Set(
                 (body.services as { staffId?: string; staff_id?: string }[])
                   .map((s) => s.staffId || s.staff_id)
-                  .filter((x): x is string => !!x),
+                  .filter((x): x is string => !!x)
               ),
             ]
           : staffId
@@ -1440,9 +1574,15 @@ async function handleCreateProviderBooking(request: NextRequest) {
         body.services && Array.isArray(body.services) && body.services.length > 0
           ? [
               ...new Set(
-                (body.services as { serviceId?: string; service_id?: string; offering_id?: string }[])
+                (
+                  body.services as {
+                    serviceId?: string;
+                    service_id?: string;
+                    offering_id?: string;
+                  }[]
+                )
                   .map((s) => s.serviceId || s.service_id || s.offering_id)
-                  .filter((x): x is string => !!x),
+                  .filter((x): x is string => !!x)
               ),
             ]
           : [body.offering_id, body.service_id].filter((x): x is string => !!x);
@@ -1467,10 +1607,9 @@ async function handleCreateProviderBooking(request: NextRequest) {
       });
       if (!slotEval.ok) {
         return errorResponse(
-          slotEval.conflicts[0] ??
-            "This time slot is not available for this provider calendar.",
+          slotEval.conflicts[0] ?? "This time slot is not available for this provider calendar.",
           "SLOT_NOT_AVAILABLE",
-          409,
+          409
         );
       }
     }
@@ -1500,7 +1639,9 @@ async function handleCreateProviderBooking(request: NextRequest) {
       const pBookingServices =
         body.services && Array.isArray(body.services) && body.services.length > 0
           ? (() => {
-              let cursor = new Date(body.services[0].scheduled_start_at || bookingData.scheduled_at);
+              let cursor = new Date(
+                body.services[0].scheduled_start_at || bookingData.scheduled_at
+              );
               return body.services.map((service: any) => {
                 const duration = service.duration ?? service.duration_minutes ?? 60;
                 const start = new Date(cursor);
@@ -1547,18 +1688,21 @@ async function handleCreateProviderBooking(request: NextRequest) {
             })()
           : endAt.toISOString();
 
-      const { data: bookingId, error: rpcError } = await supabaseAdmin.rpc("create_booking_with_locking", {
-        p_booking_data: bookingData,
-        p_booking_services: pBookingServices,
-        p_staff_id: staffId,
-        p_start_at: startAt.toISOString(),
-        p_end_at: pEndAt,
-        p_entitlement_id: null,
-        p_entitlement_customer_id: null,
-        p_resource_ids: requiredResourceIds.length > 0 ? requiredResourceIds : null,
-        p_resource_start_at: requiredResourceIds.length > 0 ? startAt.toISOString() : null,
-        p_resource_end_at: requiredResourceIds.length > 0 ? endAt.toISOString() : null,
-      });
+      const { data: bookingId, error: rpcError } = await supabaseAdmin.rpc(
+        "create_booking_with_locking",
+        {
+          p_booking_data: bookingData,
+          p_booking_services: pBookingServices,
+          p_staff_id: staffId,
+          p_start_at: startAt.toISOString(),
+          p_end_at: pEndAt,
+          p_entitlement_id: null,
+          p_entitlement_customer_id: null,
+          p_resource_ids: requiredResourceIds.length > 0 ? requiredResourceIds : null,
+          p_resource_start_at: requiredResourceIds.length > 0 ? startAt.toISOString() : null,
+          p_resource_end_at: requiredResourceIds.length > 0 ? endAt.toISOString() : null,
+        }
+      );
 
       if (rpcError) {
         const msg = (rpcError as { message?: string }).message ?? "";
@@ -1580,7 +1724,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
         return errorResponse(
           "A database error occurred while saving the booking. Please try again.",
           "DB_ERROR",
-          500,
+          500
         );
       }
       if (!bookingId) {
@@ -1588,7 +1732,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
         return errorResponse(
           "The booking could not be created: the database did not return a booking ID. Please try again.",
           "DB_NO_RESULT",
-          500,
+          500
         );
       }
 
@@ -1621,10 +1765,13 @@ async function handleCreateProviderBooking(request: NextRequest) {
         .maybeSingle();
 
       if (fetchErr) {
-        console.warn("Booking created, but post-RPC reload failed; using request payload fallback:", {
-          bookingId: createdBookingId,
-          error: fetchErr,
-        });
+        console.warn(
+          "Booking created, but post-RPC reload failed; using request payload fallback:",
+          {
+            bookingId: createdBookingId,
+            error: fetchErr,
+          }
+        );
       }
 
       booking = createdBooking;
@@ -1666,7 +1813,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
               // Non-fatal — booking is still usable; surface in logs for debugging.
               console.warn(
                 `[provider/bookings] customization patch failed for booking ${booking.id}, offering ${offeringId}:`,
-                custErr,
+                custErr
               );
             }
           }
@@ -1715,7 +1862,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
                   ? "UNIQUE_VIOLATION"
                   : "DB_ERROR",
           500,
-          { db_code: dbCode, hint: dbHint, detail: dbDetail },
+          { db_code: dbCode, hint: dbHint, detail: dbDetail }
         );
       }
       if (!insertedBooking) {
@@ -1723,7 +1870,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
         return errorResponse(
           "The booking could not be created: the database did not return a record. Please try again.",
           "DB_NO_RESULT",
-          500,
+          500
         );
       }
       booking = insertedBooking;
@@ -1737,11 +1884,14 @@ async function handleCreateProviderBooking(request: NextRequest) {
       // per-service `customization` string (DB column exists — see
       // migration 464_booking_services_customization.sql).
       if (body.services && Array.isArray(body.services) && body.services.length > 0) {
+        let serviceCursor = new Date(body.services[0]?.scheduled_start_at || booking.scheduled_at);
         const bookingServicesData = body.services.map((service: any) => {
-          const startAtS = service.scheduled_start_at || booking.scheduled_at;
           const duration = service.duration || service.duration_minutes || 60;
-          const start = new Date(startAtS);
+          const start = service.scheduled_start_at
+            ? new Date(service.scheduled_start_at)
+            : new Date(serviceCursor);
           const end = new Date(start.getTime() + duration * 60 * 1000);
+          serviceCursor = new Date(end.getTime() + (service.buffer_minutes ?? 0) * 60 * 1000);
           const customization =
             typeof service.customization === "string" && service.customization.trim().length > 0
               ? service.customization.trim()
@@ -1749,7 +1899,8 @@ async function handleCreateProviderBooking(request: NextRequest) {
           return {
             booking_id: booking.id,
             offering_id: service.serviceId || service.service_id || service.offering_id,
-            staff_id: service.staffId || service.staff_id || body.team_member_id || body.staff_id || null,
+            staff_id:
+              service.staffId || service.staff_id || body.team_member_id || body.staff_id || null,
             duration_minutes: duration,
             price: service.price || 0,
             currency: service.currency || lastResortCurrency,
@@ -1758,14 +1909,16 @@ async function handleCreateProviderBooking(request: NextRequest) {
             ...(customization ? { customization } : {}),
           };
         });
-        const { error: bsError } = await supabaseAdmin.from("booking_services").insert(bookingServicesData);
+        const { error: bsError } = await supabaseAdmin
+          .from("booking_services")
+          .insert(bookingServicesData);
         if (bsError) {
           console.error("Error creating booking_services — rolling back booking:", bsError);
           await supabaseAdmin.from("bookings").delete().eq("id", booking.id);
           return errorResponse(
             "The booking could not be saved because the service items failed to save. The booking has been rolled back — please try again.",
             "SERVICES_FAILED",
-            500,
+            500
           );
         }
         console.log("Booking services created:", bookingServicesData.length);
@@ -1784,14 +1937,16 @@ async function handleCreateProviderBooking(request: NextRequest) {
           scheduled_start_at: start.toISOString(),
           scheduled_end_at: end.toISOString(),
         };
-        const { error: bsError } = await supabaseAdmin.from("booking_services").insert(bookingServiceData);
+        const { error: bsError } = await supabaseAdmin
+          .from("booking_services")
+          .insert(bookingServiceData);
         if (bsError) {
           console.error("Error creating booking_services — rolling back booking:", bsError);
           await supabaseAdmin.from("bookings").delete().eq("id", booking.id);
           return errorResponse(
             "The booking could not be saved because the service item failed to save. The booking has been rolled back — please try again.",
             "SERVICE_FAILED",
-            500,
+            500
           );
         }
       }
@@ -1799,7 +1954,6 @@ async function handleCreateProviderBooking(request: NextRequest) {
 
     // Create addons / products / notification (shared for both paths)
     if (body.services && Array.isArray(body.services) && body.services.length > 0) {
-
       // Persist add-ons to booking_addons (addon_id = offering id, price from offerings)
       const addonIds = (body.services || [])
         .flatMap((s: any) => (Array.isArray(s.add_on_ids) ? s.add_on_ids : []))
@@ -1809,7 +1963,9 @@ async function handleCreateProviderBooking(request: NextRequest) {
           .from("offerings")
           .select("id, price")
           .in("id", addonIds);
-        const priceByAddonId = new Map((addonOfferings || []).map((o: any) => [o.id, Number(o.price || 0)]));
+        const priceByAddonId = new Map(
+          (addonOfferings || []).map((o: any) => [o.id, Number(o.price || 0)])
+        );
         const bookingAddonsData = addonIds.map((addonId: string) => ({
           booking_id: booking.id,
           addon_id: addonId,
@@ -1851,7 +2007,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
           `Failed to create booking products: ${bpError.message ?? "unknown error"}`,
           "BOOKING_PRODUCTS_FAILED",
           422,
-          { db: bpError },
+          { db: bpError }
         );
       } else {
         console.log("Booking products created:", bookingProductsData.length);
@@ -1862,7 +2018,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
       } catch (orderSyncError) {
         console.error(
           `[provider/bookings create] failed to sync appointment product order — rolling back booking ${booking.id}:`,
-          orderSyncError,
+          orderSyncError
         );
         await supabaseAdmin.from("product_orders").delete().eq("booking_id", booking.id);
         await supabaseAdmin.from("bookings").delete().eq("id", booking.id);
@@ -1878,7 +2034,11 @@ async function handleCreateProviderBooking(request: NextRequest) {
           orderSyncError instanceof Error
             ? orderSyncError.message
             : "Failed to sync product order for this appointment";
-        const formattedMessage = [msg, dbCode ? `(db:${dbCode})` : null, dbDetails ? `- ${dbDetails}` : null]
+        const formattedMessage = [
+          msg,
+          dbCode ? `(db:${dbCode})` : null,
+          dbDetails ? `- ${dbDetails}` : null,
+        ]
           .filter(Boolean)
           .join(" ");
         return errorResponse(formattedMessage, "PRODUCT_SYNC_FAILED", 422, {
@@ -1899,7 +2059,9 @@ async function handleCreateProviderBooking(request: NextRequest) {
         try {
           const { data: pendingProducts } = await supabaseAdmin
             .from("booking_products")
-            .select("id, product_id, product_variant_id, quantity, products:products!booking_products_product_id_fkey(track_stock_quantity)")
+            .select(
+              "id, product_id, product_variant_id, quantity, products:products!booking_products_product_id_fkey(track_stock_quantity)"
+            )
             .eq("booking_id", booking.id)
             .is("stock_deducted_at", null);
           if (Array.isArray(pendingProducts) && pendingProducts.length > 0) {
@@ -1915,17 +2077,17 @@ async function handleCreateProviderBooking(request: NextRequest) {
               if (row.products?.track_stock_quantity === false) continue;
               const { error: decErr } = row.product_variant_id
                 ? await (supabaseAdmin.rpc as any)("decrement_product_variant_stock", {
-                  p_variant_id: row.product_variant_id,
-                  p_quantity: row.quantity,
-                })
-                : await supabaseAdmin.rpc(
-                  "decrement_product_stock",
-                  { p_product_id: row.product_id, p_quantity: row.quantity },
-                );
+                    p_variant_id: row.product_variant_id,
+                    p_quantity: row.quantity,
+                  })
+                : await supabaseAdmin.rpc("decrement_product_stock", {
+                    p_product_id: row.product_id,
+                    p_quantity: row.quantity,
+                  });
               if (decErr) {
                 console.error(
                   `[provider/bookings create] decrement_product_stock failed for booking ${booking.id}, row ${row.id}:`,
-                  decErr,
+                  decErr
                 );
                 throw new Error(decErr.message || "Product stock could not be deducted");
               }
@@ -1936,10 +2098,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
             }
           }
         } catch (stockErr) {
-          console.error(
-            "[provider/bookings create] failed to deduct retail stock:",
-            stockErr,
-          );
+          console.error("[provider/bookings create] failed to deduct retail stock:", stockErr);
           await supabaseAdmin.from("product_orders").delete().eq("booking_id", booking.id);
           await supabaseAdmin.from("bookings").delete().eq("id", booking.id);
           return errorResponse(
@@ -1947,7 +2106,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
               ? stockErr.message
               : "Product stock could not be deducted for this completed booking.",
             "INSUFFICIENT_STOCK",
-            400,
+            400
           );
         }
       }
@@ -1958,24 +2117,27 @@ async function handleCreateProviderBooking(request: NextRequest) {
     // 2. The create_finance_ledger_from_payment trigger creates finance_transactions
     // 3. End-of-day reports (which query booking_payments) include this revenue
     // 4. Payout balance calculations (which use finance_transactions) are accurate
-    if ((body.payment_method === "cash" || body.payment_method === "card") && finalTotalAmount > 0) {
-      const collectedAmount = body.payment_option === "deposit" && body.deposit_amount
-        ? Number(body.deposit_amount)
-        : finalTotalAmount;
-      const { error: paymentRowError } = await supabaseAdmin
-        .from("booking_payments")
-        .insert({
-          booking_id: booking.id,
-          amount: collectedAmount,
-          payment_method: body.payment_method === "card" ? "card" : "cash",
-          payment_provider: body.payment_method === "card" ? "manual" : "cash",
-          status: "completed",
-          notes: body.payment_option === "deposit"
+    if (
+      (body.payment_method === "cash" || body.payment_method === "card") &&
+      finalTotalAmount > 0
+    ) {
+      const collectedAmount =
+        body.payment_option === "deposit" && body.deposit_amount
+          ? Number(body.deposit_amount)
+          : finalTotalAmount;
+      const { error: paymentRowError } = await supabaseAdmin.from("booking_payments").insert({
+        booking_id: booking.id,
+        amount: collectedAmount,
+        payment_method: body.payment_method === "card" ? "card" : "cash",
+        payment_provider: body.payment_method === "card" ? "manual" : "cash",
+        status: "completed",
+        notes:
+          body.payment_option === "deposit"
             ? `${body.payment_method === "card" ? "Manual card" : "Cash"} deposit collected at booking creation (${body.deposit_percentage ?? 0}%)`
             : `${body.payment_method === "card" ? "Manual card" : "Cash"} payment recorded at booking creation`,
-          created_by: user.id,
-          ...(tenantId ? { tenant_id: tenantId } : {}),
-        });
+        created_by: user.id,
+        ...(tenantId ? { tenant_id: tenantId } : {}),
+      });
       if (paymentRowError) {
         console.warn("Failed to insert booking_payments row for manual payment:", paymentRowError);
       }
@@ -1995,7 +2157,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
           requiredResourceIds,
           startAt,
           endAt,
-          booking.id,
+          booking.id
         );
         if (resourceCheck.available) {
           const assignments = requiredResourceIds.map((rid) => ({
@@ -2013,7 +2175,10 @@ async function handleCreateProviderBooking(request: NextRequest) {
               .from("resources")
               .select("id, name")
               .in("id", conflictIds);
-            conflictNames = (names || []).map((n) => n.name).filter(Boolean).join(", ");
+            conflictNames = (names || [])
+              .map((n) => n.name)
+              .filter(Boolean)
+              .join(", ");
           }
           resourceWarnings.push(
             conflictNames
@@ -2023,7 +2188,9 @@ async function handleCreateProviderBooking(request: NextRequest) {
         }
       } catch (resourceErr) {
         console.warn("Resource auto-assignment skipped:", resourceErr);
-        resourceWarnings.push("Resource assignment could not be completed automatically. Check resource availability manually.");
+        resourceWarnings.push(
+          "Resource assignment could not be completed automatically. Check resource availability manually."
+        );
       }
     }
 
@@ -2037,14 +2204,16 @@ async function handleCreateProviderBooking(request: NextRequest) {
       location_type: booking.location_type,
       location_id: booking.location_id,
       // Construct address object from individual columns
-      address: booking.address_line1 ? {
-        line1: booking.address_line1,
-        line2: booking.address_line2,
-        city: booking.address_city,
-        state: booking.address_state,
-        country: booking.address_country,
-        postal_code: booking.address_postal_code,
-      } : null,
+      address: booking.address_line1
+        ? {
+            line1: booking.address_line1,
+            line2: booking.address_line2,
+            city: booking.address_city,
+            state: booking.address_state,
+            country: booking.address_country,
+            postal_code: booking.address_postal_code,
+          }
+        : null,
       scheduled_at: booking.scheduled_at,
       completed_at: booking.completed_at || null,
       cancelled_at: booking.cancelled_at || null,
@@ -2084,15 +2253,18 @@ async function handleCreateProviderBooking(request: NextRequest) {
       );
 
       void import("@/lib/notifications/notification-service").then(({ notifyBookingConfirmed }) =>
-        notifyBookingConfirmed(booking.id, ['email', 'push'])
-          .catch((e) => console.warn("Booking confirmation notification:", e))
+        notifyBookingConfirmed(booking.id, ["email", "push"]).catch((e) =>
+          console.warn("Booking confirmation notification:", e)
+        )
       );
     }
 
     const paymentLinkWarnings: string[] = [];
     if (body.payment_method === "payment_link") {
       if (!shouldNotify) {
-        paymentLinkWarnings.push("Payment link was not sent because customer notifications are disabled for this booking.");
+        paymentLinkWarnings.push(
+          "Payment link was not sent because customer notifications are disabled for this booking."
+        );
       } else {
         try {
           const bookingRef = booking.booking_number || booking.id.slice(0, 8).toUpperCase();
@@ -2108,7 +2280,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
             paymentStatus: booking.payment_status,
           });
           const { format: formatMoney } = await getTenantMoneyFormatter(
-            (booking as { tenant_id?: string | null }).tenant_id ?? tenantId,
+            (booking as { tenant_id?: string | null }).tenant_id ?? tenantId
           );
           const { data: customerContact } = await supabaseAdmin
             .from("users")
@@ -2149,15 +2321,25 @@ async function handleCreateProviderBooking(request: NextRequest) {
                 payment_link: paymentLink,
               },
               channels,
-              { appType: "customer" },
+              { appType: "customer" }
             );
           } catch (pushError) {
-            console.warn("Payment-link notification delivery failed after provider-created booking:", pushError);
-            paymentLinkWarnings.push("Payment link was created, but push/email/SMS delivery could not be confirmed.");
+            console.warn(
+              "Payment-link notification delivery failed after provider-created booking:",
+              pushError
+            );
+            paymentLinkWarnings.push(
+              "Payment link was created, but push/email/SMS delivery could not be confirmed."
+            );
           }
         } catch (paymentLinkError) {
-          console.warn("Payment link notification failed after provider-created booking:", paymentLinkError);
-          paymentLinkWarnings.push("Booking was created, but the payment link could not be sent automatically. Send it from booking details.");
+          console.warn(
+            "Payment link notification failed after provider-created booking:",
+            paymentLinkError
+          );
+          paymentLinkWarnings.push(
+            "Booking was created, but the payment link could not be sent automatically. Send it from booking details."
+          );
         }
       }
     }
@@ -2178,9 +2360,13 @@ async function handleCreateProviderBooking(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  return withRouteMetrics(request, "/api/provider/bookings", "GET", () => handleGetProviderBookings(request));
+  return withRouteMetrics(request, "/api/provider/bookings", "GET", () =>
+    handleGetProviderBookings(request)
+  );
 }
 
 export async function POST(request: NextRequest) {
-  return withRouteMetrics(request, "/api/provider/bookings", "POST", () => handleCreateProviderBooking(request));
+  return withRouteMetrics(request, "/api/provider/bookings", "POST", () =>
+    handleCreateProviderBooking(request)
+  );
 }

@@ -102,9 +102,12 @@ const onboardingSchema = z.object({
       duration_minutes: z.number().optional().nullable(),
     })).optional().default([]),
   })).optional().default([]),
-  // New fields for public homepage optimization
-  thumbnail_url: z.string().url().optional().nullable(),
-  avatar_url: z.string().optional().nullable(), // optional profile circle (business face); data URLs from form or URL string
+  // New fields for public homepage optimization. Required at final onboarding
+  // submit so customer web/app provider cards always have both a hero
+  // thumbnail and a circular profile/avatar image. Accept URL-like strings
+  // and browser data URLs; the route uploads them to provider-gallery below.
+  thumbnail_url: z.string().trim().min(1, "Thumbnail photo is required"),
+  avatar_url: z.string().trim().min(1, "Profile image/avatar is required"),
   gallery: z.array(z.string().url()).optional().default([]),
   years_in_business: z.number().int().min(0).optional().nullable(),
   accepts_custom_requests: z.boolean().optional().default(true),
@@ -848,18 +851,16 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Upgrade user role to provider_owner if they're currently a customer using admin client
+    // Upgrade user role to provider_owner (customer or legacy provider_onboarding)
     const userRole = user.role;
-    if (userRole === 'customer') {
+    if (userRole === "customer" || userRole === "provider_onboarding") {
       const { error: roleError } = await supabaseAdmin
-        .from('users')
-        .update({ role: 'provider_owner' })
-        .eq('id', user.id);
-      
+        .from("users")
+        .update({ role: "provider_owner" })
+        .eq("id", user.id);
+
       if (roleError) {
-        console.error('Error upgrading user role:', roleError);
-        // Don't fail the request, but log the error
-        // The role can be updated manually if needed
+        console.error("Error upgrading user role:", roleError);
       }
     }
 
@@ -1063,23 +1064,20 @@ export async function POST(request: NextRequest) {
       console.warn("Provider Ops tracking/matching (non-fatal):", trackingErr);
     }
 
-    try {
-      const { ensureProviderFreeSubscriptionRow } = await import(
-        "@/lib/subscriptions/ensure-provider-free-subscription"
-      );
-      await ensureProviderFreeSubscriptionRow(supabaseAdmin, providerId, tenantId);
-    } catch (subErr) {
-      console.warn("ensureProviderFreeSubscriptionRow (non-fatal):", subErr);
-    }
-
+    // §Provider-launch (2026-05): resolve the *selected* pricing plan upfront
+    // so we can both (a) seed the free subscription row with the plan the user
+    // actually picked and (b) hand the client a deterministic "requires checkout"
+    // decision rather than relying on the wizard to re-derive paid/free.
     let selectedPlanRequiresCheckout = false;
     let selectedPlanIsFree = false;
+    let selectedSubscriptionPlanId: string | null = null;
     if (selected_plan_id) {
       const scopedSelectedPlan = await fetchScopedSingle<Record<string, unknown>>({
         supabase: supabaseAdmin,
         table: "pricing_plans",
         tenantId,
-        select: "id, price, paystack_plan_code_monthly, paystack_plan_code_yearly",
+        select:
+          "id, price, paystack_plan_code_monthly, paystack_plan_code_yearly, subscription_plan_id",
         apply: (q) => q.eq("id", selected_plan_id).eq("is_active", true),
         orderBy: { column: "updated_at", ascending: false },
       });
@@ -1089,6 +1087,7 @@ export async function POST(request: NextRequest) {
             price?: string | number | null;
             paystack_plan_code_monthly?: string | null;
             paystack_plan_code_yearly?: string | null;
+            subscription_plan_id?: string | null;
           }
         | null;
 
@@ -1108,6 +1107,23 @@ export async function POST(request: NextRequest) {
         /free/i.test(String(selectedPlan?.price ?? ""));
       selectedPlanIsFree = isFreeByPrice && !hasAnyPaystackCode;
       selectedPlanRequiresCheckout = !selectedPlanIsFree;
+      selectedSubscriptionPlanId = selectedPlan?.subscription_plan_id ?? null;
+    }
+
+    try {
+      const { ensureProviderFreeSubscriptionRow } = await import(
+        "@/lib/subscriptions/ensure-provider-free-subscription"
+      );
+      // Pass the linked subscription_plans id when the user picked a free
+      // pricing card; the helper validates it is free/active before using it.
+      await ensureProviderFreeSubscriptionRow(
+        supabaseAdmin,
+        providerId,
+        tenantId,
+        selectedPlanIsFree ? selectedSubscriptionPlanId : null,
+      );
+    } catch (subErr) {
+      console.warn("ensureProviderFreeSubscriptionRow (non-fatal):", subErr);
     }
 
     // Build success message with details
@@ -1132,14 +1148,23 @@ export async function POST(request: NextRequest) {
       message += ` We've automatically configured: ${autoConfigDetails.join(', ')}.`;
     }
 
+    const requiresCheckout = Boolean(selected_plan_id && selectedPlanRequiresCheckout);
     return successResponse({
       provider,
       message,
       auto_approved: autoApprove,
       selected_plan_id: selected_plan_id || null,
       selected_plan_is_free: selectedPlanIsFree,
-      subscription_endpoint:
-        selected_plan_id && selectedPlanRequiresCheckout ? "/api/provider/subscriptions/create" : null,
+      selected_subscription_plan_id: selectedSubscriptionPlanId,
+      // Explicit client contract — clients should branch on `requires_checkout`
+      // and use `checkout_path` rather than re-deriving free/paid.
+      requires_checkout: requiresCheckout,
+      checkout_path:
+        requiresCheckout && selected_plan_id
+          ? `/provider/subscription-checkout?planId=${encodeURIComponent(selected_plan_id)}`
+          : null,
+      // Legacy field kept for older clients that still branch on this URL.
+      subscription_endpoint: requiresCheckout ? "/api/provider/subscriptions/create" : null,
       auto_configured: {
         zones: selected_zone_ids?.length || 0,
         services: servicesToCreate.length > 0 && services.length === 0 ? servicesToCreate.length : 0,

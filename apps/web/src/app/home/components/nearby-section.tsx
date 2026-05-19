@@ -8,6 +8,7 @@ import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import type { PublicProviderCard } from "@/types/beautonomi";
 import { useUserLocation } from "@/hooks/useUserLocation";
+import { providerHeroImage } from "@/lib/provider-images";
 
 const NearbySection = () => {
   const [providers, setProviders] = useState<PublicProviderCard[]>([]);
@@ -102,7 +103,7 @@ const NearbySection = () => {
           {providers.slice(0, 4).map((provider) => (
             <LandingServiceCard 
               key={provider.id} 
-              image={provider.thumbnail_url || "/images/placeholder-provider.jpg"}
+              image={providerHeroImage(provider)}
               providerName={provider.business_name}
               rating={provider.rating || 0}
               reviewCount={`${provider.review_count || 0} ${provider.review_count === 1 ? "review" : "reviews"}`}

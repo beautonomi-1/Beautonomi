@@ -1,7 +1,11 @@
 import { NextRequest } from "next/server";
 import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { getSupabaseServer } from "@/lib/supabase/server";
+import { getUserRoleServer } from "@/lib/auth/role-server";
+import { getPortalForUser, type Portal } from "@/lib/auth/role";
 import { withRouteMetrics } from "@/lib/monitoring/route-metrics";
+import type { UserRole } from "@/types/beautonomi";
 
 const ROLE_QUERY_TIMEOUT_MS = 3000;
 
@@ -89,7 +93,30 @@ async function handleGetRole(request: NextRequest) {
       }
     }
 
-    const response = successResponse({ role });
+    // Provider app boot: when `/api/me/portal` fails, the native shell falls back
+    // to this route. Include `portal` (same mapping as `/api/me/portal`) so
+    // pending vs active routing matches web — avoid treating every owner as
+    // fully in the live portal.
+    let portal: Portal | undefined;
+    if (isProviderContext) {
+      try {
+        const supabase = await getSupabaseServer(request);
+        const rr = await getUserRoleServer(supabase);
+        if (rr) {
+          // Use the resolved `role` (customer→owner/staff heuristics above), not
+          // only `rr.role`, so portal matches this response when the DB row
+          // has not caught up in the same request.
+          portal = getPortalForUser({
+            role: role as UserRole,
+            provider_status: rr.provider_status,
+          });
+        }
+      } catch {
+        /* omit portal — client keeps role-only fallback */
+      }
+    }
+
+    const response = successResponse(portal != null ? { role, portal } : { role });
     response.headers.set("Cache-Control", "no-store");
     return response;
   } catch (error) {

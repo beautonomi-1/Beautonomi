@@ -79,14 +79,28 @@ export async function GET(
 
     const { data: yocoIntegration } = await supabase
       .from("provider_yoco_integrations")
-      .select("is_enabled, connected_date, last_sync, public_key, created_at, updated_at")
+      .select(
+        "is_enabled, connected_date, last_sync, public_key, secret_key, credential_mode, environment, created_at, updated_at",
+      )
       .eq("provider_id", providerId)
+      .maybeSingle();
+
+    const integEnv =
+      (yocoIntegration as { environment?: string } | null)?.environment === "sandbox"
+        ? "sandbox"
+        : "live";
+
+    const { data: yocoOauthToken } = await (supabase
+      .from("provider_yoco_oauth_tokens") as any)
+      .select("id")
+      .eq("provider_id", providerId)
+      .eq("environment", integEnv)
       .maybeSingle();
 
     const { data: yocoDevices } = await supabase
       .from("provider_yoco_devices")
       .select(
-        "id, name, yoco_device_id, location_id, location_name, is_active, last_used, total_transactions, created_at, updated_at",
+        "id, name, yoco_device_id, location_id, location_name, is_active, last_used, total_transactions, credential_mode, created_at, updated_at",
       )
       .eq("provider_id", providerId)
       .order("created_at", { ascending: true });
@@ -102,12 +116,20 @@ export async function GET(
       connected_date?: string | null;
       last_sync?: string | null;
       public_key?: string | null;
+      secret_key?: string | null;
+      credential_mode?: string | null;
+      environment?: string | null;
     } | null;
 
     const devices = yocoDevices ?? [];
     const legacy = yocoLegacyTerminals ?? [];
     const hasLegacyTerminal = legacy.some((t: { active?: boolean }) => t.active !== false);
     const activeWebDevices = devices.filter((d: { is_active?: boolean }) => d.is_active !== false);
+    const hasOauthToken = Boolean(yocoOauthToken);
+    const hasRealWebPosDevice = activeWebDevices.some(
+      (d: { yoco_device_id?: string | null }) =>
+        !String(d.yoco_device_id ?? "").startsWith("virtual:"),
+    );
 
     const yoco_summary = {
       integration: integ
@@ -116,6 +138,13 @@ export async function GET(
             connected_at: integ.connected_date ?? null,
             last_sync: integ.last_sync ?? null,
             has_public_key: Boolean(integ.public_key && String(integ.public_key).length > 0),
+            has_secret_key: Boolean(integ.secret_key && String(integ.secret_key).trim().length > 0),
+            credential_mode:
+              integ.credential_mode === "oauth" || integ.credential_mode === "checkout"
+                ? integ.credential_mode
+                : "none",
+            environment: integEnv,
+            oauth_token_present: hasOauthToken,
           }
         : null,
       web_pos_devices: devices,
@@ -127,9 +156,17 @@ export async function GET(
         has_active_legacy_terminal: hasLegacyTerminal,
         /** Integration toggled on (credentials path); use with device rows for operational picture */
         integration_enabled: Boolean(integ?.is_enabled),
-        /** Best-effort: enabled integration and at least one active device or legacy terminal */
+        /** Best-effort: Web POS on api.yoco.com needs OAuth + a non-virtual device (or legacy terminal). */
         likely_ready_for_terminal_payments:
-          Boolean(integ?.is_enabled) && (activeWebDevices.length > 0 || hasLegacyTerminal),
+          Boolean(integ?.is_enabled) &&
+          (hasRealWebPosDevice || hasLegacyTerminal) &&
+          (hasOauthToken || hasLegacyTerminal),
+        /** Hosted-checkout virtual devices only — no physical tap-to-pay. */
+        has_virtual_checkout_devices_only:
+          Boolean(integ?.is_enabled) &&
+          activeWebDevices.length > 0 &&
+          !hasRealWebPosDevice &&
+          !hasLegacyTerminal,
       },
     };
 

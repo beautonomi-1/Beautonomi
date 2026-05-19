@@ -66,18 +66,28 @@ describe("getPortalForUser", () => {
     expect(getPortalForUser({ role: "support_agent" })).toBe("customer");
   });
 
-  // §Release-audit 2026-04: when users.role is the transitional
-  // "provider_onboarding" value (legacy seed path or explicit pre-approval
-  // state), the portal must be "provider_onboarding", NOT "customer" — the
-  // previous behaviour caused the mobile customer app to try to run customer
-  // onboarding for a user who belongs in the provider shell.
-  it("returns provider_onboarding when role is provider_onboarding", () => {
+  // §Release-audit 2026-04: legacy `users.role = provider_onboarding` must not
+  // send active salons to the customer app. Pre-provider users stay on the
+  // onboarding portal; once `providers.status` is active, use the provider portal.
+  it("returns provider when role is provider_onboarding and provider is active", () => {
+    expect(
+      getPortalForUser({ role: "provider_onboarding", provider_status: "active" })
+    ).toBe("provider");
+  });
+
+  it("returns provider_onboarding when role is provider_onboarding and not active", () => {
+    expect(
+      getPortalForUser({ role: "provider_onboarding", provider_status: "pending_approval" })
+    ).toBe("provider_onboarding");
+  });
+
+  it("returns provider_onboarding when role is provider_onboarding and no provider_status", () => {
     expect(getPortalForUser({ role: "provider_onboarding" })).toBe(
       "provider_onboarding"
     );
   });
 
-  it("returns provider_onboarding when role is provider_onboarding even with no provider_status", () => {
+  it("returns provider_onboarding when role is provider_onboarding even with null provider_status", () => {
     expect(
       getPortalForUser({ role: "provider_onboarding", provider_status: null })
     ).toBe("provider_onboarding");

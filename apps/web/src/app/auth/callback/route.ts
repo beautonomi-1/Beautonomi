@@ -14,6 +14,7 @@ const ALLOWED_NEXT_PREFIXES = [
   "/",
   "/login",
   "/signup",
+  "/onboarding",
   "/portal",
   "/provider",
   "/provider/dashboard",
@@ -71,7 +72,9 @@ export async function GET(request: NextRequest) {
       return authErrorRedirect(requestUrl, verifyError.message);
     }
     if (type === "recovery") {
-      return NextResponse.redirect(new URL("/account-settings/login-and-security/reset-password", requestUrl.origin));
+      return NextResponse.redirect(
+        new URL("/account-settings/login-and-security/reset-password", requestUrl.origin)
+      );
     }
     const next = safeReturnPath(requestUrl.searchParams.get("next"), requestUrl.origin) || "/";
     return NextResponse.redirect(new URL(next, requestUrl.origin));
@@ -100,13 +103,14 @@ export async function GET(request: NextRequest) {
       } = {};
 
       // Extract name from OAuth metadata (different providers use different fields)
-      const name = userMetadata.full_name || 
-                   userMetadata.name || 
-                   (userMetadata.first_name && userMetadata.last_name 
-                     ? `${userMetadata.first_name} ${userMetadata.last_name}` 
-                     : null) ||
-                   userMetadata.display_name ||
-                   userMetadata.preferred_username;
+      const name =
+        userMetadata.full_name ||
+        userMetadata.name ||
+        (userMetadata.first_name && userMetadata.last_name
+          ? `${userMetadata.first_name} ${userMetadata.last_name}`
+          : null) ||
+        userMetadata.display_name ||
+        userMetadata.preferred_username;
 
       if (name) {
         updateData.full_name = name;
@@ -119,7 +123,11 @@ export async function GET(request: NextRequest) {
         avatar = userMetadata.avatar_url as string;
       } else if (typeof rawPicture === "string") {
         avatar = rawPicture;
-      } else if (rawPicture && typeof rawPicture === "object" && (rawPicture as { data?: { url?: string } }).data?.url) {
+      } else if (
+        rawPicture &&
+        typeof rawPicture === "object" &&
+        (rawPicture as { data?: { url?: string } }).data?.url
+      ) {
         avatar = (rawPicture as { data: { url: string } }).data.url;
       } else if (userMetadata.photo || userMetadata.image) {
         avatar = (userMetadata.photo || userMetadata.image) as string;
@@ -137,19 +145,19 @@ export async function GET(request: NextRequest) {
       // Update user profile if we have any data to update
       if (Object.keys(updateData).length > 0) {
         const { error: updateError } = await supabase
-          .from('users')
+          .from("users")
           .update(updateData)
-          .eq('id', data.user.id);
+          .eq("id", data.user.id);
 
         if (updateError) {
-          console.error('Error updating user profile with OAuth data:', updateError);
+          console.error("Error updating user profile with OAuth data:", updateError);
           // Don't fail the auth flow if profile update fails
         } else {
-          console.log('Successfully updated user profile with OAuth data:', updateData);
+          console.log("Successfully updated user profile with OAuth data:", updateData);
         }
       }
     } catch (profileError) {
-      console.error('Error processing OAuth profile data:', profileError);
+      console.error("Error processing OAuth profile data:", profileError);
       // Don't fail the auth flow if profile update fails
     }
   }

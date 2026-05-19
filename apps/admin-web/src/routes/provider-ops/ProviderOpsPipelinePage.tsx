@@ -15,23 +15,12 @@ import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminToast } from "@/lib/adminToast";
 import { handleLeadConcurrent409 } from "@/lib/handleLeadConcurrentUpdate";
+import { LEAD_STAGE_OPTIONS as PIPELINE_STAGES } from "@/lib/providerOpsLeadStages";
 import { GripVertical, Mail, Phone, MapPin, Tag, Calendar } from "lucide-react";
 import { LeadAssigneeInline } from "@/components/provider-ops/LeadAssigneeInline";
 
 const PIPELINE_PAGE_SIZE = 120;
 const OPS_PIPELINE_REFETCH_MS = 45_000;
-
-const PIPELINE_STAGES = [
-  { key: "new", label: "New", color: "border-blue-300 bg-blue-50", headerBg: "bg-blue-500", dot: "bg-blue-500" },
-  { key: "contacted", label: "Contacted", color: "border-cyan-300 bg-cyan-50", headerBg: "bg-cyan-500", dot: "bg-cyan-500" },
-  { key: "qualified", label: "Qualified", color: "border-emerald-300 bg-emerald-50", headerBg: "bg-emerald-500", dot: "bg-emerald-500" },
-  { key: "proposal_sent", label: "Proposal Sent", color: "border-violet-300 bg-violet-50", headerBg: "bg-violet-500", dot: "bg-violet-500" },
-  { key: "negotiating", label: "Negotiating", color: "border-purple-300 bg-purple-50", headerBg: "bg-purple-500", dot: "bg-purple-500" },
-  { key: "won", label: "Won", color: "border-green-300 bg-green-50", headerBg: "bg-green-500", dot: "bg-green-500" },
-  { key: "lost", label: "Lost", color: "border-red-300 bg-red-50", headerBg: "bg-red-500", dot: "bg-red-500" },
-  { key: "nurture", label: "Nurture", color: "border-amber-300 bg-amber-50", headerBg: "bg-amber-500", dot: "bg-amber-500" },
-  { key: "matched", label: "Matched", color: "border-teal-300 bg-teal-50", headerBg: "bg-teal-500", dot: "bg-teal-500" },
-] as const;
 
 interface LeadCategory {
   global_category_id: string;
@@ -519,7 +508,10 @@ export function ProviderOpsPipelinePage() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className={cn("h-2.5 w-2.5 rounded-full", stage.dot)} />
-                    <h3 className="text-sm font-semibold text-gray-800">{stage.label}</h3>
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-800">{stage.label}</h3>
+                      <p className="mt-0.5 line-clamp-2 text-[10px] leading-tight text-gray-500">{stage.description}</p>
+                    </div>
                   </div>
                   <span className={cn(
                     "rounded-full px-2 py-0.5 text-xs font-bold",

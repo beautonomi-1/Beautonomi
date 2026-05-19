@@ -4,10 +4,12 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   successResponse,
   handleApiError,
+  errorResponse,
 } from "@/lib/supabase/api-helpers";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { getPublicPageContent } from "@/lib/content/getPublicPageContent";
+import { getPaymentFeatureFlagsForTenant } from "@/lib/subscriptions/entitlements";
 
 /** CMS-managed template shape; `currency` is set per request from tenant region. */
 type GiftCardTemplate = {
@@ -148,6 +150,17 @@ export async function GET(request: NextRequest) {
         { status: 503 }
       );
     }
+
+    // Gate the catalog by the same `gift_cards` flag the purchase route uses
+    // so disabling gift cards consistently hides designs/denominations across
+    // the funnel (marketing page → purchase form → checkout). Without this
+    // gate, the purchase page still loaded design cards while the submit
+    // action returned 403 — confusing for buyers.
+    const flags = await getPaymentFeatureFlagsForTenant(tenantId);
+    if (!flags.gift_cards) {
+      return errorResponse("Gift cards are currently unavailable.", "FEATURE_DISABLED", 403);
+    }
+
     const tenantRegion = await getTenantRegionConfig(tenantId);
     const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 

@@ -54,8 +54,9 @@ export async function GET(
       );
     }
 
+    const row = faq as { display_order?: number } & Record<string, unknown>;
     return NextResponse.json({
-      data: faq,
+      data: { ...row, order: row.display_order ?? 0 },
       error: null,
     });
   } catch (error) {
@@ -109,9 +110,28 @@ export async function PUT(
       );
     }
 
+    const { order, ...rest } = validationResult.data;
+    const updatePayload: Record<string, unknown> = { ...rest };
+    if (order !== undefined) {
+      updatePayload.display_order = order;
+    }
+
+    if (Object.keys(updatePayload).length === 0) {
+      return NextResponse.json(
+        {
+          data: null,
+          error: {
+            message: "No updatable fields supplied",
+            code: "VALIDATION_ERROR",
+          },
+        },
+        { status: 400 }
+      );
+    }
+
     const { data: faq, error } = await supabase
       .from("faqs")
-      .update(validationResult.data)
+      .update(updatePayload)
       .eq("id", id)
       .or(`tenant_id.eq.${tenantId},tenant_id.is.null`)
       .select()
@@ -140,8 +160,9 @@ export async function PUT(
       metadata: validationResult.data,
     });
 
+    const row = faq as { display_order?: number } & Record<string, unknown>;
     return NextResponse.json({
-      data: faq,
+      data: { ...row, order: row.display_order ?? 0 },
       error: null,
     });
   } catch (error) {

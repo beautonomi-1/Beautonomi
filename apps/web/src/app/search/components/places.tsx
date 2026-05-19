@@ -21,6 +21,7 @@ import { useSearchParams } from "next/navigation";
 import { fetcher } from "@/lib/http/fetcher";
 import type { PublicProviderCard, SearchResult } from "@/types/beautonomi";
 import LoadingTimeout from "@/components/ui/loading-timeout";
+import { WEB_PROVIDER_IMAGE_FALLBACK } from "@/lib/provider-images";
 
 // Import the location marker image
 import type { StaticImageData } from "next/image";
@@ -63,10 +64,15 @@ const createListingsFromProviders = (providers: PublicProviderCard[], userLat?: 
         : `${provider.distance_km.toFixed(1)}km away`;
     }
 
-    // Create slides from provider thumbnail (PublicProviderCard doesn't have gallery_images)
-    const slides = provider.thumbnail_url
-      ? [{ src: provider.thumbnail_url, alt: `${provider.business_name} thumbnail` }]
-      : [{ src: "/images/placeholder-provider.jpg", alt: "Provider image" }];
+    // Create slides from provider thumbnail (PublicProviderCard doesn't have
+    // gallery_images). Falls back to avatar when no thumbnail exists, then to
+    // the bundled web placeholder so Next/Image never requests a missing
+    // /images/placeholder-provider.jpg.
+    const slideSrc = provider.thumbnail_url || provider.avatar_url || WEB_PROVIDER_IMAGE_FALLBACK;
+    const slideAlt = provider.thumbnail_url || provider.avatar_url
+      ? `${provider.business_name} thumbnail`
+      : "Provider image";
+    const slides = [{ src: slideSrc, alt: slideAlt }];
 
     return {
       id: provider.id,

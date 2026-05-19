@@ -1,5 +1,5 @@
 import { SupabaseClient } from "@supabase/supabase-js";
-import { handleApiError } from "@/lib/supabase/api-helpers";
+import { handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import {
   isPaystackEnabledForTenant,
   isWalletEnabledForTenant,
@@ -17,6 +17,7 @@ import { resolveCommissionPercentageForProvider } from "@/lib/finance/resolve-co
 import { percentOf, subtractMoney } from "@beautonomi/utils";
 import { resolvePaymentTenantForBookingRequest } from "@/lib/bookings/resolve-payment-tenant";
 import { recordBookingPaystackPayment } from "@/lib/bookings/record-booking-paystack-payment";
+import { revalidateBookingSlotBeforePayment } from "@/lib/bookings/revalidate-booking-slot-before-payment";
 import { syncBookingAfterPaystackSuccess } from "@/lib/bookings/sync-booking-after-paystack-success";
 import {
   completeWalletGiftSyntheticPayments,
@@ -26,6 +27,7 @@ import { getPlatformPaymentTypesForTenant } from "@/lib/payments/platform-paymen
 import { insertCustomerRecurringSeriesFromPaidBooking } from "@/lib/recurring/insert-customer-recurring-from-paid-booking";
 import { subscribeRecurringEligible } from "@/lib/recurring/subscribe-recurring-eligibility";
 import { recordLoyaltyRedemption } from "@/lib/loyalty/record-redemption";
+import { isPaymentMethodExpired } from "@/lib/payments/payment-method-expiry";
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 
@@ -67,10 +69,7 @@ export async function processPayment(
 ): Promise<PaymentResult | Response> {
   const { supabase, supabaseAdmin, draft, validatedDraft, v, booking, request } = input;
 
-  const tenantResolved = await resolvePaymentTenantForBookingRequest(
-    request,
-    booking.tenant_id,
-  );
+  const tenantResolved = await resolvePaymentTenantForBookingRequest(request, booking.tenant_id);
   if (tenantResolved.ok === false) {
     return tenantResolved.response;
   }
@@ -83,20 +82,17 @@ export async function processPayment(
     reschedule_booking_id: validatedDraft.reschedule_booking_id,
     is_group_booking: validatedDraft.is_group_booking,
     has_group_participants: Boolean(
-      validatedDraft.group_participants && validatedDraft.group_participants.length > 0,
+      validatedDraft.group_participants && validatedDraft.group_participants.length > 0
     ),
   });
-  const paymentTypes = await getPlatformPaymentTypesForTenant(
-    supabaseAdmin as any,
-    flagTenantId,
-  );
+  const paymentTypes = await getPlatformPaymentTypesForTenant(supabaseAdmin as any, flagTenantId);
 
   if (paymentMethod === "cash" && !paymentTypes.cash) {
     return handleApiError(
       new Error("Cash payments are currently unavailable"),
       "Cash payments are currently unavailable. Please pay online.",
       "FEATURE_DISABLED",
-      400,
+      400
     );
   }
 
@@ -114,12 +110,15 @@ export async function processPayment(
   // Persist deposit context on the booking row so receipts, invoices, and
   // reports can display deposit vs balance information.
   if (providerRequiresDeposit) {
-    await supabaseAdmin.from("bookings").update({
-      deposit_required: true,
-      deposit_percentage: depositPct,
-      deposit_amount: computedDeposit,
-      payment_option: isDepositPayment ? "deposit" : "full",
-    }).eq("id", booking.id);
+    await supabaseAdmin
+      .from("bookings")
+      .update({
+        deposit_required: true,
+        deposit_percentage: depositPct,
+        deposit_amount: computedDeposit,
+        payment_option: isDepositPayment ? "deposit" : "full",
+      })
+      .eq("id", booking.id);
   }
 
   // ── Gift card reservation ────────────────────────────────────────────────
@@ -132,7 +131,7 @@ export async function processPayment(
       new Error("Gift card code required"),
       "Enter a valid gift card code to pay with a gift card.",
       "VALIDATION_ERROR",
-      400,
+      400
     );
   }
 
@@ -146,7 +145,9 @@ export async function processPayment(
         400
       );
     }
-    const { data: giftCardRow, error: giftCardLookupError } = await (supabaseAdmin.from("gift_cards") as any)
+    const { data: giftCardRow, error: giftCardLookupError } = await (
+      supabaseAdmin.from("gift_cards") as any
+    )
       .select("balance, currency, is_active, expires_at")
       .eq("code", giftCardCode)
       .maybeSingle();
@@ -155,27 +156,38 @@ export async function processPayment(
         giftCardLookupError || new Error("Invalid gift card code"),
         "Invalid gift card code",
         "GIFT_CARD_INVALID",
-        400,
+        400
       );
     }
     if (!giftCardRow.is_active) {
-      return handleApiError(new Error("Gift card is inactive"), "Gift card is inactive", "GIFT_CARD_INVALID", 400);
+      return handleApiError(
+        new Error("Gift card is inactive"),
+        "Gift card is inactive",
+        "GIFT_CARD_INVALID",
+        400
+      );
     }
     if (giftCardRow.expires_at && new Date(giftCardRow.expires_at) < new Date()) {
-      return handleApiError(new Error("Gift card has expired"), "Gift card has expired", "GIFT_CARD_INVALID", 400);
+      return handleApiError(
+        new Error("Gift card has expired"),
+        "Gift card has expired",
+        "GIFT_CARD_INVALID",
+        400
+      );
     }
     if (giftCardRow.currency && giftCardRow.currency !== v.currency) {
       return handleApiError(
         new Error("Gift card currency mismatch"),
         "Gift card currency does not match this booking.",
         "GIFT_CARD_INVALID",
-        400,
+        400
       );
     }
     const giftCardBalance = Math.max(0, Number(giftCardRow.balance || 0));
-    const applyAmount = paymentMethod === "giftcard"
-      ? Math.max(0, amountToCollect)
-      : Math.min(giftCardBalance, Math.max(0, amountToCollect));
+    const applyAmount =
+      paymentMethod === "giftcard"
+        ? Math.max(0, amountToCollect)
+        : Math.min(giftCardBalance, Math.max(0, amountToCollect));
     if (applyAmount > 0) {
       const { data: reserved, error: reserveError } = await (supabase.rpc as any)(
         "reserve_gift_card_redemption",
@@ -282,7 +294,7 @@ export async function processPayment(
       new Error("Gift card does not cover the full booking amount"),
       "This gift card does not cover the full amount. Use card payment to combine a gift card with a card.",
       "INSUFFICIENT_GIFT_CARD_BALANCE",
-      400,
+      400
     );
   }
 
@@ -310,7 +322,7 @@ export async function processPayment(
           new Error("Loyalty points could not be redeemed"),
           "We could not redeem your loyalty points. Please try again.",
           "LOYALTY_REDEMPTION_FAILED",
-          500,
+          500
         );
       }
       await (supabase.from("bookings") as any)
@@ -407,7 +419,9 @@ export async function processPayment(
     const clientCb = validatedDraft.paystack_callback_url?.trim();
     const callbackUrl =
       clientCb &&
-      (clientCb.startsWith("customer://") || clientCb.startsWith("exp://") || clientCb.startsWith("https://"))
+      (clientCb.startsWith("customer://") ||
+        clientCb.startsWith("exp://") ||
+        clientCb.startsWith("https://"))
         ? clientCb
         : webSuccessUrl;
 
@@ -439,6 +453,28 @@ export async function processPayment(
           404
         );
       }
+      if (isPaymentMethodExpired(savedCard.expiry_month, savedCard.expiry_year)) {
+        return handleApiError(
+          new Error("Saved payment method has expired"),
+          "This saved card has expired. Please remove it and pay with a new card.",
+          "CARD_EXPIRED",
+          400
+        );
+      }
+
+      // §Booking-slot-audit 2026-05: last-gate slot revalidation parity.
+      // `/api/payments/charge-saved-card` already calls this helper, but the
+      // direct public-booking path went straight to `chargeAuthorization`
+      // without a final hold/conflict/calendar-block check. A race between
+      // booking insert and Paystack charge (or a calendar block added in the
+      // last few seconds) could let us capture money for a slot another
+      // customer already locked. Fail safe before money moves.
+      {
+        const slotOk = await revalidateBookingSlotBeforePayment(supabaseAdmin, booking.id);
+        if (slotOk.ok === false) {
+          return errorResponse(slotOk.message, slotOk.code, 409);
+        }
+      }
 
       const loyaltyPointsRedeemed = v.loyaltyPointsRedeemed ?? 0;
       let chargeResult: Awaited<ReturnType<typeof chargeAuthorization>>;
@@ -464,7 +500,8 @@ export async function processPayment(
             payment_method_id: savedPaymentMethodId,
             hold_id: validatedDraft.hold_id || null,
             loyalty_points_used: loyaltyPointsRedeemed > 0 ? loyaltyPointsRedeemed : undefined,
-            loyalty_discount_amount: v.loyaltyDiscountAmount > 0 ? v.loyaltyDiscountAmount : undefined,
+            loyalty_discount_amount:
+              v.loyaltyDiscountAmount > 0 ? v.loyaltyDiscountAmount : undefined,
             ...(recurringSubscribeEligible
               ? { subscribe_recurring_frequency: validatedDraft.subscribe_recurring!.frequency }
               : {}),
@@ -481,7 +518,7 @@ export async function processPayment(
           chargeErr,
           "Payment provider is temporarily unavailable. Please try again in a moment or use a different card.",
           "PAYMENT_INIT_FAILED",
-          502,
+          502
         );
       }
 
@@ -505,7 +542,11 @@ export async function processPayment(
       // these writes is recoverable; losing idempotency of the caller is
       // not. Wrap the whole tail in try/catch and log loudly.
       try {
-        const chargeData = chargeResult.data as { id?: number; reference?: string; amount?: number };
+        const chargeData = chargeResult.data as {
+          id?: number;
+          reference?: string;
+          amount?: number;
+        };
         const amountMajor =
           typeof chargeData.amount === "number" ? chargeData.amount / 100 : amountToCollect;
         paymentReference = chargeData.reference ?? reference;
@@ -522,19 +563,25 @@ export async function processPayment(
           notes: `Saved card charge. Ref: ${chargeData.reference ?? reference}`,
         });
         if (recordedPayment.ok === false) {
-          console.error("[process-payment] failed to record saved-card booking_payments row after charge", {
-            bookingId: booking.id,
-            reference: chargeData.reference ?? reference,
-            reason: recordedPayment.reason,
-            error: recordedPayment.error,
-          });
+          console.error(
+            "[process-payment] failed to record saved-card booking_payments row after charge",
+            {
+              bookingId: booking.id,
+              reference: chargeData.reference ?? reference,
+              reason: recordedPayment.reason,
+              error: recordedPayment.error,
+            }
+          );
         }
 
         if (giftCardAmountApplied > 0) {
           try {
-            const { data: captureResult } = await (supabaseAdmin.rpc as any)("capture_gift_card_redemption", {
-              p_booking_id: booking.id,
-            });
+            const { data: captureResult } = await (supabaseAdmin.rpc as any)(
+              "capture_gift_card_redemption",
+              {
+                p_booking_id: booking.id,
+              }
+            );
             if (captureResult === false || captureResult === null) {
               console.warn("[process-payment] saved-card gift card capture returned no capture", {
                 bookingId: booking.id,
@@ -556,7 +603,7 @@ export async function processPayment(
           } catch (giftCaptureErr) {
             console.error(
               "[process-payment] saved-card gift card capture threw after successful charge; webhook will retry",
-              { bookingId: booking.id, err: giftCaptureErr },
+              { bookingId: booking.id, err: giftCaptureErr }
             );
           }
         }
@@ -569,7 +616,7 @@ export async function processPayment(
         } catch (syncErr) {
           console.error(
             "[process-payment] syncBookingAfterPaystackSuccess threw after successful saved-card charge; webhook will reconcile",
-            { bookingId: booking.id, reference: chargeData?.reference, err: syncErr },
+            { bookingId: booking.id, reference: chargeData?.reference, err: syncErr }
           );
         }
 
@@ -588,7 +635,7 @@ export async function processPayment(
           } catch (recurringErr) {
             console.error(
               "[process-payment] insertCustomerRecurringSeriesFromPaidBooking threw after saved-card charge",
-              { bookingId: booking.id, err: recurringErr },
+              { bookingId: booking.id, err: recurringErr }
             );
           }
         }
@@ -618,7 +665,7 @@ export async function processPayment(
         } catch (paymentRowErr) {
           console.error(
             "[process-payment] legacy payments insert threw after saved-card charge; webhook will reconcile",
-            { bookingId: booking.id, err: paymentRowErr },
+            { bookingId: booking.id, err: paymentRowErr }
           );
         }
       } catch (reconcileErr) {
@@ -627,11 +674,24 @@ export async function processPayment(
         // bubble; return success so the client doesn't retry.
         console.error(
           "[process-payment] post-charge reconcile threw; returning success to prevent double charge",
-          { bookingId: booking.id, err: reconcileErr },
+          { bookingId: booking.id, err: reconcileErr }
         );
       }
     } else {
       // ── New card (Paystack redirect) ───────────────────────────────────
+      // §Booking-slot-audit 2026-05: last-gate slot revalidation parity.
+      // `/api/payments/initialize` already calls this helper, but the
+      // direct public-booking path was returning an `authorization_url`
+      // without one final hold/conflict/calendar-block check. Fail safe
+      // BEFORE the customer is redirected to Paystack so they don't pay
+      // for a slot another customer just locked.
+      {
+        const slotOk = await revalidateBookingSlotBeforePayment(supabaseAdmin, booking.id);
+        if (slotOk.ok === false) {
+          return errorResponse(slotOk.message, slotOk.code, 409);
+        }
+      }
+
       const loyaltyPointsRedeemed = v.loyaltyPointsRedeemed ?? 0;
       let paystackData: Awaited<ReturnType<typeof initializePaystackTransaction>>;
       try {
@@ -662,7 +722,8 @@ export async function processPayment(
             set_as_default: setAsDefault,
             hold_id: validatedDraft.hold_id || undefined,
             loyalty_points_used: loyaltyPointsRedeemed > 0 ? loyaltyPointsRedeemed : undefined,
-            loyalty_discount_amount: v.loyaltyDiscountAmount > 0 ? v.loyaltyDiscountAmount : undefined,
+            loyalty_discount_amount:
+              v.loyaltyDiscountAmount > 0 ? v.loyaltyDiscountAmount : undefined,
             cancel_action: bookingCancelAction,
             ...(recurringSubscribeEligible
               ? { subscribe_recurring_frequency: validatedDraft.subscribe_recurring!.frequency }
@@ -680,7 +741,7 @@ export async function processPayment(
           initErr,
           "Payment provider is temporarily unavailable. Please try again in a moment.",
           "PAYMENT_INIT_FAILED",
-          502,
+          502
         );
       }
 
@@ -775,7 +836,15 @@ async function insertNoGatewayLedger(
     marketTenantId?: string | null;
   }
 ) {
-  const { booking, draft, v, giftCardAmountApplied, giftCardCode: _giftCardCode, walletAmountApplied, marketTenantId } = ctx;
+  const {
+    booking,
+    draft,
+    v,
+    giftCardAmountApplied,
+    giftCardCode: _giftCardCode,
+    walletAmountApplied,
+    marketTenantId,
+  } = ctx;
 
   const financeTenantId = await resolveTenantIdForFinanceLedger(supabase, {
     tenant_id: booking.tenant_id ?? marketTenantId ?? null,
@@ -791,15 +860,10 @@ async function insertNoGatewayLedger(
   // Scale commission to the amount actually collected (deposit vs full, wallet/gift card only).
   // Matches Paystack webhook: net_revenue_ratio × collected_amount (see charge-success.ts).
   const amountCollected = walletAmountApplied + giftCardAmountApplied;
-  const effectiveAmount =
-    amountCollected > 0 ? amountCollected : v.totalAmount;
+  const effectiveAmount = amountCollected > 0 ? amountCollected : v.totalAmount;
   const bookingTotalForScale = v.totalAmount;
-  const scale =
-    bookingTotalForScale > 0 ? effectiveAmount / bookingTotalForScale : 1;
-  const scaledCommissionBase = Math.max(
-    0,
-    Math.round(v.commissionBase * scale * 100) / 100,
-  );
+  const scale = bookingTotalForScale > 0 ? effectiveAmount / bookingTotalForScale : 1;
+  const scaledCommissionBase = Math.max(0, Math.round(v.commissionBase * scale * 100) / 100);
 
   const platformCommission =
     commissionRate > 0 ? percentOf(scaledCommissionBase, commissionRate) : 0;
@@ -857,7 +921,9 @@ async function insertNoGatewayLedger(
     .maybeSingle();
 
   if (existingLedgerPayment) {
-    console.log(`[process-payment] finance_transactions already present for booking ${booking.id} (${settlementMethod}) — skipping duplicate write.`);
+    console.log(
+      `[process-payment] finance_transactions already present for booking ${booking.id} (${settlementMethod}) — skipping duplicate write.`
+    );
     return { paymentUrl: null };
   }
 
@@ -888,32 +954,36 @@ async function insertNoGatewayLedger(
       created_at: now,
     },
     ...(v.tipAmount > 0
-      ? [{
-          booking_id: booking.id,
-          provider_id: draft.provider_id,
-          tenant_id: financeTenantId,
-          transaction_type: "tip",
-          amount: v.tipAmount,
-          fees: 0,
-          commission: 0,
-          net: v.tipAmount,
-          description: `Tip for booking ${booking.booking_number}`,
-          created_at: now,
-        }]
+      ? [
+          {
+            booking_id: booking.id,
+            provider_id: draft.provider_id,
+            tenant_id: financeTenantId,
+            transaction_type: "tip",
+            amount: v.tipAmount,
+            fees: 0,
+            commission: 0,
+            net: v.tipAmount,
+            description: `Tip for booking ${booking.booking_number}`,
+            created_at: now,
+          },
+        ]
       : []),
     ...(v.taxAmount > 0
-      ? [{
-          booking_id: booking.id,
-          provider_id: draft.provider_id,
-          tenant_id: financeTenantId,
-          transaction_type: "tax",
-          amount: v.taxAmount,
-          fees: 0,
-          commission: 0,
-          net: 0,
-          description: `Tax for booking ${booking.booking_number}`,
-          created_at: now,
-        }]
+      ? [
+          {
+            booking_id: booking.id,
+            provider_id: draft.provider_id,
+            tenant_id: financeTenantId,
+            transaction_type: "tax",
+            amount: v.taxAmount,
+            fees: 0,
+            commission: 0,
+            net: 0,
+            description: `Tax for booking ${booking.booking_number}`,
+            created_at: now,
+          },
+        ]
       : []),
     ...(v.travelFee > 0
       ? [
@@ -949,63 +1019,71 @@ async function insertNoGatewayLedger(
       : []),
     // Record wallet and gift-card payment sources as separate ledger entries for full audit trail
     ...(walletAmountApplied > 0
-      ? [{
-          booking_id: booking.id,
-          provider_id: draft.provider_id,
-          tenant_id: financeTenantId,
-          transaction_type: "wallet_payment",
-          amount: walletAmountApplied,
-          fees: 0,
-          commission: 0,
-          net: walletAmountApplied,
-          description: `Wallet payment for booking ${booking.booking_number}`,
-          created_at: now,
-        }]
+      ? [
+          {
+            booking_id: booking.id,
+            provider_id: draft.provider_id,
+            tenant_id: financeTenantId,
+            transaction_type: "wallet_payment",
+            amount: walletAmountApplied,
+            fees: 0,
+            commission: 0,
+            net: walletAmountApplied,
+            description: `Wallet payment for booking ${booking.booking_number}`,
+            created_at: now,
+          },
+        ]
       : []),
     ...(giftCardAmountApplied > 0
-      ? [{
-          booking_id: booking.id,
-          provider_id: draft.provider_id,
-          tenant_id: financeTenantId,
-          transaction_type: "gift_card_payment",
-          amount: giftCardAmountApplied,
-          fees: 0,
-          commission: 0,
-          net: giftCardAmountApplied,
-          description: `Gift card payment for booking ${booking.booking_number}`,
-          created_at: now,
-        }]
+      ? [
+          {
+            booking_id: booking.id,
+            provider_id: draft.provider_id,
+            tenant_id: financeTenantId,
+            transaction_type: "gift_card_payment",
+            amount: giftCardAmountApplied,
+            fees: 0,
+            commission: 0,
+            net: giftCardAmountApplied,
+            description: `Gift card payment for booking ${booking.booking_number}`,
+            created_at: now,
+          },
+        ]
       : []),
     // Gift card liability reduction: when a gift card is redeemed the gift_card_sale entry
     // (recorded at purchase time) represents a deferred liability. The redemption unwinds it.
     ...(giftCardAmountApplied > 0
-      ? [{
-          booking_id: booking.id,
-          provider_id: draft.provider_id,
-          tenant_id: financeTenantId,
-          transaction_type: "gift_card_liability_reduction",
-          amount: giftCardAmountApplied,
-          fees: 0,
-          commission: 0,
-          net: -giftCardAmountApplied,
-          description: `Gift card liability redeemed for booking ${booking.booking_number}`,
-          created_at: now,
-        }]
+      ? [
+          {
+            booking_id: booking.id,
+            provider_id: draft.provider_id,
+            tenant_id: financeTenantId,
+            transaction_type: "gift_card_liability_reduction",
+            amount: giftCardAmountApplied,
+            fees: 0,
+            commission: 0,
+            net: -giftCardAmountApplied,
+            description: `Gift card liability redeemed for booking ${booking.booking_number}`,
+            created_at: now,
+          },
+        ]
       : []),
     // Promotion discount: record as a negative revenue line so GMV vs net revenue is clear.
     ...(v.promoDiscountAmount > 0
-      ? [{
-          booking_id: booking.id,
-          provider_id: draft.provider_id,
-          tenant_id: financeTenantId,
-          transaction_type: "promotion_discount",
-          amount: v.promoDiscountAmount,
-          fees: 0,
-          commission: 0,
-          net: -v.promoDiscountAmount,
-          description: `Promotion discount applied to booking ${booking.booking_number}`,
-          created_at: now,
-        }]
+      ? [
+          {
+            booking_id: booking.id,
+            provider_id: draft.provider_id,
+            tenant_id: financeTenantId,
+            transaction_type: "promotion_discount",
+            amount: v.promoDiscountAmount,
+            fees: 0,
+            commission: 0,
+            net: -v.promoDiscountAmount,
+            description: `Promotion discount applied to booking ${booking.booking_number}`,
+            created_at: now,
+          },
+        ]
       : []),
   ]);
 }

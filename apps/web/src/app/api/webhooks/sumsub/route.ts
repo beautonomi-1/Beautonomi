@@ -21,6 +21,7 @@ import {
   slackNotifyVerificationNeedsReview,
   slackNotifyVerificationRejected,
 } from "@/lib/integrations/slack/ops-triggers";
+import { syncProviderVerificationState } from "@/lib/verification/sync-provider-verification";
 
 export async function POST(request: NextRequest) {
   try {
@@ -149,23 +150,38 @@ export async function POST(request: NextRequest) {
       const providerId = externalUserId;
       const { data: provRow } = await supabase
         .from("providers")
-        .select("tenant_id, business_name")
+        .select("tenant_id, business_name, user_id")
         .eq("id", providerId)
         .maybeSingle();
       const providerTenantId =
         (provRow as { tenant_id?: string | null; business_name?: string | null } | null)?.tenant_id ?? null;
+      const providerOwnerUserId =
+        (provRow as { user_id?: string | null } | null)?.user_id ?? null;
 
-      await supabase.from("provider_verification_status").upsert(
-        {
-          provider_id: providerId,
-          status,
-          sumsub_applicant_id: applicantId ?? null,
-          last_reviewed_at: now,
-          metadata: { webhook: payload },
-          updated_at: now,
-        },
-        { onConflict: "provider_id" }
-      );
+      // §provider-verification-sync 2026-05: Sumsub approval should also lift
+      // the provider's identity badge AND the public marketplace verified
+      // flag so the setup checklist, the provider profile, and trust signals
+      // all agree without requiring a follow-up admin click.
+      const syncOutcome =
+        status === "approved"
+          ? "approved"
+          : status === "rejected"
+            ? "rejected"
+            : "in_progress";
+      const syncResult = await syncProviderVerificationState(supabase, {
+        providerId,
+        userId: providerOwnerUserId,
+        status: syncOutcome,
+        source: "sumsub",
+        sumsubApplicantId: applicantId ?? null,
+        metadata: { webhook: payload },
+      });
+      if (!syncResult.ok) {
+        console.error(
+          "[webhooks/sumsub] provider verification sync had errors:",
+          syncResult.errors,
+        );
+      }
 
       const provBusinessName = (provRow as { business_name?: string | null } | null)?.business_name ?? null;
       if (providerTenantId) {

@@ -87,13 +87,16 @@ function formatBadgeCount(count: number): string | null {
  * server-returned `native_route` per step. The previous client-side
  * `PROFILE_COMPLETION_ROUTE_MAP` was deleted; we keep only a defensive
  * fallback for steps whose `native_route` came back null or is a web path.
+ *
+ * When no native route is available we deep-link into the onboarding wizard
+ * with `?focus=<id>` so the provider lands directly on the step that fixes
+ * the missing field — matching the setup-status and Dashboard cards.
  */
-const SETTINGS_HUB_ROUTE = "/(app)/(tabs)/more/settings-account-hub";
 function getStepNativeRoute(step: SetupStatusStep): string {
   if (step.native_route && step.native_route.startsWith("/(app)/")) {
     return step.native_route;
   }
-  return SETTINGS_HUB_ROUTE;
+  return `/(app)/onboarding/wizard?focus=${encodeURIComponent(step.id)}`;
 }
 
 interface MenuItem {
@@ -234,7 +237,36 @@ export default function MoreScreen() {
   const completionItems = completion?.steps ?? [];
   const completionPct = completion?.completionPercentage ?? 0;
   const showCompletionCard = completionItems.length > 0 && !completion?.isComplete;
-  const firstIncompleteStep = completionItems.find((s) => !s.completed) ?? null;
+  // Prefer the next *required* blocker for the card's primary CTA so tapping
+  // the card lands the provider on a step that actually gates accepting
+  // bookings (Yoco / portfolio are optional and should not steal the slot).
+  const firstIncompleteStep =
+    completionItems.find((s) => s.required && !s.completed) ??
+    completionItems.find((s) => !s.completed) ??
+    null;
+  const incompleteRequiredCount = completionItems.filter(
+    (s) => s.required && !s.completed,
+  ).length;
+  const incompleteOptionalCount = completionItems.filter(
+    (s) => !s.required && !s.completed,
+  ).length;
+  // Required steps first (in the order returned by the API), then any
+  // optional rows still pending. Drop the arbitrary "first 6" cap so the
+  // user can see every outstanding required task without leaving the More
+  // tab — with an overflow hint when many steps remain.
+  const orderedIncompleteSteps = [
+    ...completionItems.filter((s) => s.required && !s.completed),
+    ...completionItems.filter((s) => !s.required && !s.completed),
+  ];
+  const COMPLETION_ITEM_DISPLAY_LIMIT = 10;
+  const completionStepsToRender = orderedIncompleteSteps.slice(
+    0,
+    COMPLETION_ITEM_DISPLAY_LIMIT,
+  );
+  const completionOverflowCount = Math.max(
+    0,
+    orderedIncompleteSteps.length - completionStepsToRender.length,
+  );
   const showCompletionError = !completionLoading && !!completionError && !completionData;
   const availablePayout = Number(financeSummary?.earnings?.available_balance ?? 0);
   const pendingPayouts = Number(financeSummary?.earnings?.pending_payouts ?? 0);
@@ -721,7 +753,11 @@ export default function MoreScreen() {
                     {t("provider.profileCompletionTitle")}
                   </Text>
                   <Text style={{ fontSize: 14, color: Colors.gray[500], marginTop: 4 }}>
-                    {t("provider.profileCompletionSubtitle")}
+                    {incompleteRequiredCount > 0
+                      ? `${incompleteRequiredCount} required task${incompleteRequiredCount === 1 ? "" : "s"} left${incompleteOptionalCount > 0 ? ` · ${incompleteOptionalCount} optional` : ""}`
+                      : incompleteOptionalCount > 0
+                        ? `All required tasks done · ${incompleteOptionalCount} optional improvement${incompleteOptionalCount === 1 ? "" : "s"}`
+                        : t("provider.profileCompletionSubtitle")}
                   </Text>
                   <View style={{ marginTop: 12, flexDirection: "row", alignItems: "center" }}>
                     <View style={{ flex: 1, height: 6, backgroundColor: Colors.gray[100], borderRadius: 9999, overflow: "hidden", marginRight: 10 }}>
@@ -733,17 +769,14 @@ export default function MoreScreen() {
                       {completionPct}%
                     </Text>
                   </View>
-                  {completionItems.length > 0 && (
+                  {completionStepsToRender.length > 0 && (
                     <View style={{ marginTop: 12 }}>
-                      {completionItems.slice(0, 6).map((step, idx) => {
-                        const done = step.completed;
-                        const mandatoryMissing = !done && step.required;
-                        const iconName = done
-                          ? "checkmark-circle"
-                          : mandatoryMissing
-                            ? "close-circle"
-                            : "ellipse-outline";
-                        const iconColor = done ? "#16A34A" : mandatoryMissing ? "#ef4444" : "#9ca3af";
+                      {completionStepsToRender.map((step, idx) => {
+                        const mandatoryMissing = step.required;
+                        const iconName = mandatoryMissing
+                          ? "alert-circle"
+                          : "ellipse-outline";
+                        const iconColor = mandatoryMissing ? "#ef4444" : "#9ca3af";
                         const route = getStepNativeRoute(step);
                         return (
                           <TouchableOpacity
@@ -753,24 +786,71 @@ export default function MoreScreen() {
                               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                               router.push(route as never);
                             }}
-                            style={{ flexDirection: "row", alignItems: "center", marginTop: idx === 0 ? 0 : 8 }}
+                            style={{ flexDirection: "row", alignItems: "center", marginTop: idx === 0 ? 0 : 10 }}
                             accessibilityRole="button"
-                            accessibilityLabel={`${completionItemLabel(step)}${step.required ? ", required" : ""}`}
+                            accessibilityLabel={`${completionItemLabel(step)}${mandatoryMissing ? ", required" : ", optional"}`}
                           >
                             <Ionicons
                               name={iconName as keyof typeof Ionicons.glyphMap}
                               size={18}
                               color={iconColor}
-                              style={{ marginRight: 8 }}
+                              style={{ marginRight: 10 }}
                             />
                             <Text
-                              style={{ flex: 1, fontSize: 14, color: done ? "#16A34A" : mandatoryMissing ? "#b91c1c" : "#6b7280" }}
+                              style={{ flex: 1, fontSize: 14, color: mandatoryMissing ? "#b91c1c" : "#6b7280" }}
+                              numberOfLines={1}
                             >
                               {completionItemLabel(step)}
                             </Text>
+                            {!mandatoryMissing ? (
+                              <View
+                                style={{
+                                  marginLeft: 8,
+                                  paddingHorizontal: 6,
+                                  paddingVertical: 2,
+                                  borderRadius: 9999,
+                                  backgroundColor: Colors.gray[100],
+                                }}
+                              >
+                                <Text style={{ fontSize: 10, fontWeight: "700", color: Colors.gray[600] }}>
+                                  Optional
+                                </Text>
+                              </View>
+                            ) : null}
+                            <Ionicons
+                              name="chevron-forward"
+                              size={14}
+                              color="#cbd5f5"
+                              style={{ marginLeft: 6 }}
+                            />
                           </TouchableOpacity>
                         );
                       })}
+                      <TouchableOpacity
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          router.push("/(app)/(tabs)/more/settings/setup-status" as never);
+                        }}
+                        style={{
+                          marginTop: 12,
+                          paddingVertical: 10,
+                          paddingHorizontal: 12,
+                          borderRadius: 12,
+                          backgroundColor: "#eef2ff",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          flexDirection: "row",
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel="Open full setup checklist"
+                      >
+                        <Text style={{ fontSize: 13, fontWeight: "600", color: "#4338ca" }}>
+                          {completionOverflowCount > 0
+                            ? `View full checklist · +${completionOverflowCount} more`
+                            : "View full checklist"}
+                        </Text>
+                      </TouchableOpacity>
                     </View>
                   )}
                 </View>

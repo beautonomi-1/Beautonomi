@@ -18,6 +18,65 @@ async function getProviderId(userId: string, request: NextRequest): Promise<stri
   return getProviderIdForUser(userId, supabase as never, { request });
 }
 
+type CampaignRow = {
+  id: string;
+  status?: string | null;
+  budget?: number | string | null;
+  spent?: number | string | null;
+  daily_budget?: number | string | null;
+  bid_cpc?: number | string | null;
+  start_at?: string | null;
+  end_at?: string | null;
+  targeting?: unknown;
+  bid_settings?: unknown;
+  pack_impressions?: number | string | null;
+  billing_model?: string | null;
+  duration_days?: number | string | null;
+  created_at?: string;
+  updated_at?: string;
+};
+
+type BudgetOrderRow = {
+  id: string;
+  campaign_id: string | null;
+  status: string;
+  amount: number | string | null;
+  currency: string | null;
+  created_at: string;
+};
+
+type CampaignPaymentState = "none" | "unpaid" | "pending" | "failed" | "paid";
+
+/**
+ * §Provider-paystack-audit 2026-05: Derive the payment state shown on each
+ * campaign card from the campaign + its most recent `ads_budget_orders` row.
+ * Mobile + web rely on this so unfunded campaigns can offer "Complete payment"
+ * (unpaid), "Try again" (failed), or "Confirming payment…" (pending) instead
+ * of a single passive "awaiting payment" badge with no actions.
+ */
+function deriveCampaignPaymentState(
+  campaign: CampaignRow,
+  latestOrder: BudgetOrderRow | null,
+): CampaignPaymentState {
+  const budget = Number(campaign.budget ?? 0);
+  const status = String(campaign.status ?? "");
+  const isTime = campaign.billing_model === "time_based";
+  const isPack = campaign.pack_impressions != null;
+
+  if (status === "active" || status === "paused") {
+    if (budget > 0 || isTime || isPack) return "paid";
+  }
+  if (latestOrder) {
+    if (latestOrder.status === "paid") return "paid";
+    if (latestOrder.status === "pending") return "pending";
+    if (latestOrder.status === "failed" || latestOrder.status === "refunded") return "failed";
+  }
+  if (budget <= 0 && (status === "draft" || status === "paused")) {
+    return "unpaid";
+  }
+  return "none";
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
@@ -33,18 +92,18 @@ export async function GET(request: NextRequest) {
       .order("created_at", { ascending: false });
 
     if (error) throw error;
-    const rows = data ?? [];
+    let rows: CampaignRow[] = (data as CampaignRow[] | null) ?? [];
     // Align list with reality without waiting for cron: end time-based campaigns whose window has passed.
     const timeExpiredIds = rows
       .filter(
-        (c: { billing_model?: string; status?: string; end_at?: string | null }) =>
+        (c) =>
           c.billing_model === "time_based" &&
           c.status === "active" &&
           typeof c.end_at === "string" &&
           c.end_at.length > 0 &&
           c.end_at < nowIso,
       )
-      .map((c: { id: string }) => c.id);
+      .map((c) => c.id);
     if (timeExpiredIds.length > 0) {
       await supabase
         .from("ads_campaigns")
@@ -57,14 +116,52 @@ export async function GET(request: NextRequest) {
         .eq("provider_id", providerId)
         .order("created_at", { ascending: false });
       if (!refreshErr && refreshed?.length) {
-        return successResponse(refreshed);
+        rows = refreshed as CampaignRow[];
+      } else {
+        rows = rows.map((c) =>
+          timeExpiredIds.includes(c.id) ? { ...c, status: "ended" } : c,
+        );
       }
-      const patched = rows.map((c: { id: string; status?: string }) =>
-        timeExpiredIds.includes(c.id) ? { ...c, status: "ended" as const } : c,
-      );
-      return successResponse(patched);
     }
-    return successResponse(rows);
+
+    /**
+     * Enrich each campaign with its newest budget order so the UI can
+     * distinguish unpaid / pending / failed and surface the correct CTA.
+     * One round-trip to `ads_budget_orders` is cheaper than per-card
+     * fetches and stays inside the existing RLS policy (provider scope).
+     */
+    const campaignIds = rows.map((c) => c.id).filter(Boolean);
+    const latestOrderByCampaign = new Map<string, BudgetOrderRow>();
+    if (campaignIds.length > 0) {
+      const { data: orderRows } = await supabase
+        .from("ads_budget_orders")
+        .select("id, campaign_id, status, amount, currency, created_at")
+        .eq("provider_id", providerId)
+        .in("campaign_id", campaignIds)
+        .order("created_at", { ascending: false });
+      const orders = (orderRows as BudgetOrderRow[] | null) ?? [];
+      for (const order of orders) {
+        if (!order.campaign_id) continue;
+        if (!latestOrderByCampaign.has(order.campaign_id)) {
+          latestOrderByCampaign.set(order.campaign_id, order);
+        }
+      }
+    }
+
+    const enriched = rows.map((c) => {
+      const order = latestOrderByCampaign.get(c.id) ?? null;
+      const payment_state = deriveCampaignPaymentState(c, order);
+      const latest_budget_order = order
+        ? {
+            id: order.id,
+            status: order.status,
+            amount: Number(order.amount ?? 0),
+            currency: order.currency ?? null,
+          }
+        : null;
+      return { ...c, payment_state, latest_budget_order };
+    });
+    return successResponse(enriched);
   } catch (error) {
     return handleApiError(error as Error, "Failed to list campaigns");
   }
@@ -211,15 +308,20 @@ export async function POST(request: NextRequest) {
 
     const reference = generateTransactionReference("ads_budget", order.id);
     const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin || "").replace(/\/$/, "");
-    const callbackUrl =
-      paymentRedirect === "provider_inapp"
-        ? `provider://settings/ads-payment-return?success=1&order_id=${encodeURIComponent(order.id)}`
-        : `${baseUrl}/provider/settings/ads/payment-return?success=1&order_id=${encodeURIComponent(order.id)}&context=web`;
+    /**
+     * §Provider-paystack-audit 2026-05: Paystack `callback_url` MUST be HTTPS.
+     * The provider app opens this URL inside `WebBrowser.openAuthSessionAsync` and
+     * the auth session resolves on prefix match against the HTTPS bridge page
+     * (`/provider/settings/ads/payment-return`). Custom schemes (`provider://`)
+     * caused Paystack to fall back to the merchant default and dump providers on
+     * the customer `/checkout/success` page. The bridge handles both web (`context=web`)
+     * and the mobile auth-session return (`context=app`) so a single HTTPS path
+     * serves every platform.
+     */
+    const adsContext = paymentRedirect === "provider_inapp" ? "app" : "web";
+    const callbackUrl = `${baseUrl}/provider/settings/ads/payment-return?success=1&order_id=${encodeURIComponent(order.id)}&context=${adsContext}`;
 
-    const adsCancelAction =
-      paymentRedirect === "provider_inapp"
-        ? `provider://settings/ads-payment-return?cancelled=1&order_id=${encodeURIComponent(order.id)}`
-        : `${baseUrl}/provider/settings/ads/payment-return?cancelled=1&order_id=${encodeURIComponent(order.id)}`;
+    const adsCancelAction = `${baseUrl}/provider/settings/ads/payment-return?cancelled=1&order_id=${encodeURIComponent(order.id)}&context=${adsContext}`;
 
     const paystackData = await initializePaystackTransaction({
       email,

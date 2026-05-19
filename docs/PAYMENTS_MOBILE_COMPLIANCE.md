@@ -158,8 +158,60 @@ If we receive a Paystack breach notification, suspect token leakage, or detect a
 
 ---
 
-## 7. Change log
+## 7. Yoco card terminal integration (in-person card present)
+
+Beautonomi providers can optionally accept in-person card payments via the **Yoco Web POS API**. Yoco is a PCI DSS Level 1 acquirer and processor; their hardware/SDK / hosted checkout pages handle PAN, CVV, EMV, and 3DS. Beautonomi never sees card data.
+
+### Credential modes
+
+A provider's Yoco integration is in exactly one of three credential modes (`provider_yoco_integrations.credential_mode`):
+
+| Mode | Authenticates with | Surface used | What providers can do |
+|---|---|---|---|
+| `oauth` | OAuth 2.0 JWT bearer (auto-refreshed) issued by `iam.yoco.com` | `api.yoco.com/v1/webpos/...` | Real Web POS card terminals — tap-on-phone or paired card readers. |
+| `checkout` | Dashboard secret key (`sk_live_…` / `sk_test_…`) | `payments.yoco.com/api/checkouts` | Hosted checkout link / QR — customer pays on Yoco's domain in their own browser. No physical terminal. |
+| `none` | — | — | Not yet connected. UI prompts the provider to choose. |
+
+The two modes are **not mutually exclusive in storage** — a provider can save Checkout keys *and* connect OAuth. When both are present, `credential_mode = 'oauth'` wins and Web POS device creation is enabled.
+
+### Where the card data lives
+
+| Surface | In CDE? | Justification |
+|---|---|---|
+| `apps/provider` Yoco Devices screen | **No** | Lists device names + amounts + status. No card data passes through. Charge actions either (a) open the Yoco Web POS SDK / device pairing flow on Yoco's hardware, or (b) open a Yoco-hosted checkout URL in `ASWebAuthenticationSession`. |
+| `apps/web` `/api/provider/yoco/*` routes | **Minimal** | Server holds (i) the provider's Yoco OAuth tokens and (ii) optional Checkout API secret key. Calls `api.yoco.com/v1/webpos/{id}/payments` (server-to-server) to initiate a charge — Yoco then prompts the customer on the terminal / hardware. No PAN / CVV ever traverses our server. |
+| `provider_yoco_oauth_tokens` table | **No** | Stores OAuth access + refresh tokens scoped to a Yoco *business*, not card data. Encrypted at rest by Supabase. Read restricted to service role + the owning provider via RLS. |
+| `provider_yoco_devices` table | **No** | Stores Yoco-issued device IDs and display names. No card data. |
+| `provider_yoco_payments` table | **No** | Stores Yoco payment intent IDs, amounts, currency, and statuses returned by Yoco. Last 4 digits and brand may be persisted if Yoco's API returns them — these are PCI DSS §3.4-permitted. |
+
+### Yoco-specific control statements
+
+1. **OAuth state CSRF defense.** `GET /api/provider/yoco/oauth/authorize` generates a 32-byte random `state`, persists it in `yoco_oauth_states` with a 10-minute TTL and the issuing provider/tenant, and `/callback` rejects any `state` that doesn't match a live row. Mismatched, expired, or replayed state values produce a `yoco_error=invalid_state` redirect and never exchange the auth code.
+2. **No client secret in mobile.** The Yoco OAuth `client_secret` is loaded server-side only — from `tenant_yoco_oauth_apps.client_secret` or `YOCO_OAUTH_CLIENT_SECRET` env. The mobile app only ever sees `https://app.beautonomi.com/api/provider/yoco/oauth/authorize`, which it opens in `Linking.openURL` and returns via `AppState` foreground.
+3. **OAuth token refresh is server-only.** `getValidAccessToken` in `apps/web/src/lib/payments/yoco-oauth.ts` checks the 5-minute expiry buffer, refreshes via `iam.yoco.com/oauth2/token`, and writes the new `access_token` / `refresh_token` back to `provider_yoco_oauth_tokens` using the service role client. Refresh failures are recorded in `last_refresh_error` and surfaced to the provider as a "reconnect Yoco" banner.
+4. **Webhook signature verification.** Yoco webhook events arriving at `/api/provider/yoco/webhook` are HMAC-verified against the per-provider `webhook_secret` before any payment state is mutated. Both Yoco Checkout API style (`payment.notification`) and Yoco API style (`payment.succeeded` / `payment.failed` / `payment.refunded` / `payment.created`) events are handled.
+5. **No card data in mobile bundles.** The same `safeLog.ts` stripper covers Yoco payloads — `card_number`, `pan`, `cvv`, `cvc`, `expiry*`, `track_data`, `magstripe` are scrubbed before any log.
+6. **Per-tenant white-label.** White-label tenants can register their own Yoco OAuth app (their own `client_id` / `client_secret`) by inserting a row in `tenant_yoco_oauth_apps`. The resolver order is **tenant row → global row → env vars**, so platform defaults work out-of-the-box but tenants control their own brand on the Yoco consent screen.
+7. **Hosted checkout URL allowlist.** When `credential_mode = 'checkout'` and the provider initiates a hosted checkout, the returned `redirectUrl` is asserted against the Yoco domain allowlist (`payments.yoco.com`, `payments.yocosandbox.com`) before the mobile app opens it in `ASWebAuthenticationSession` / Chrome Custom Tabs — same defense as the Paystack allowlist in `useInAppPaystackCheckout`.
+
+### Decision matrix for providers
+
+```mermaid
+flowchart TD
+    start[Provider opens Yoco settings] --> q1{Need card terminal?}
+    q1 -->|Yes — tap-on-phone or reader| oauth[Connect Yoco via OAuth<br/>credential_mode = oauth]
+    q1 -->|Online checkout link only| checkout[Paste dashboard secret/public keys<br/>credential_mode = checkout]
+    oauth --> result1[Web POS devices enabled<br/>+ optional hosted checkout fallback]
+    checkout --> result2[Hosted checkout enabled<br/>terminals disabled until OAuth]
+```
+
+See [`docs/YOCO_OAUTH_SETUP.md`](./YOCO_OAUTH_SETUP.md) for the operator-facing setup, env vars, per-tenant overrides, and rollout / rollback steps.
+
+---
+
+## 8. Change log
 
 | Date | Author | Change |
 |---|---|---|
 | 2026-05-17 | Engineering | Initial document. Mobile Paystack verify-with-retry hardening + dead `PaystackWebViewModal` removal + URL allowlist guard + `safeLog` stripper. |
+| 2026-05-17 | Engineering | Added Yoco card terminal section: OAuth 2.0 vs Checkout API credential modes, CSRF state defense, per-tenant white-label, webhook signature verification, and hosted-checkout URL allowlist. |

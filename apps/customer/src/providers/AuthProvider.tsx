@@ -55,9 +55,7 @@ interface AuthContextType {
   verifyOtp: (phone: string, token: string) => Promise<{ error: Error | null }>;
   signInWithOtpEmail: (email: string) => Promise<{ error: Error | null }>;
   verifyOtpEmail: (email: string, token: string) => Promise<{ error: Error | null }>;
-  signInWithOAuth: (
-    provider: OAuthProvider,
-  ) => Promise<{ error: Error | null }>;
+  signInWithOAuth: (provider: OAuthProvider) => Promise<{ error: Error | null }>;
   signInWithEmail: (
     email: string,
     password: string
@@ -141,7 +139,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refreshSession = useCallback(async () => {
-    const { data: { session: s } } = await supabase.auth.getSession();
+    const {
+      data: { session: s },
+    } = await supabase.auth.getSession();
     updateSession(s);
   }, [updateSession]);
 
@@ -232,10 +232,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // `prevUserId` so we still know which user's rows to delete.
         void clearCustomerUserCaches(prevUserId);
       }
-      if (
-        newSession?.user &&
-        (event === "INITIAL_SESSION" || event === "SIGNED_IN")
-      ) {
+      if (newSession?.user && (event === "INITIAL_SESSION" || event === "SIGNED_IN")) {
         scheduleRetentionSyncOnSession();
       }
     });
@@ -245,7 +242,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (timeoutId) clearTimeout(timeoutId);
       subscription.unsubscribe();
     };
-   
   }, [updateSession]);
 
   useEffect(() => {
@@ -287,7 +283,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (phone: string, token: string) => {
       const otpToken = normalizeSupabaseSmsOtpToken(token);
       if (!isCompleteSupabaseSmsOtp(otpToken)) {
-        return { error: new Error(`Enter the ${SUPABASE_AUTH_OTP_LENGTH}-digit code from your SMS`) };
+        return {
+          error: new Error(`Enter the ${SUPABASE_AUTH_OTP_LENGTH}-digit code from your SMS`),
+        };
       }
       const raw = phone.startsWith("+") ? phone : `+${phone}`;
       const e164 = normalizeSupabaseAuthPhone(raw);
@@ -300,7 +298,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (data.session) updateSession(data.session);
       return { error: null };
     },
-    [updateSession],
+    [updateSession]
   );
 
   const signInWithOtpEmail = useCallback(async (email: string) => {
@@ -323,7 +321,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const trimmed = email.trim();
       const otpToken = normalizeSupabaseSmsOtpToken(token);
       if (!isCompleteSupabaseSmsOtp(otpToken)) {
-        return { error: new Error(`Enter the ${SUPABASE_AUTH_OTP_LENGTH}-digit code from your email`) };
+        return {
+          error: new Error(`Enter the ${SUPABASE_AUTH_OTP_LENGTH}-digit code from your email`),
+        };
       }
       const { data, error } = await supabase.auth.verifyOtp({
         email: trimmed,
@@ -334,7 +334,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (data.session) updateSession(data.session);
       return { error: null };
     },
-    [updateSession],
+    [updateSession]
   );
 
   const signInWithOAuth = useCallback(
@@ -377,8 +377,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 access_token: accessToken,
                 refresh_token: refreshToken,
               });
-              if (sessionError)
-                return { error: new Error(sessionError.message) };
+              if (sessionError) return { error: new Error(sessionError.message) };
             } catch (err: any) {
               if (err.message?.includes("Lock") && err.message?.includes("stole it")) {
                 console.warn("Ignored lock error on setSession", err);
@@ -390,10 +389,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const code = new URL(url).searchParams.get("code");
             if (code) {
               try {
-                const { error: exchangeError } =
-                  await supabase.auth.exchangeCodeForSession(code);
-                if (exchangeError)
-                  return { error: new Error(exchangeError.message) };
+                const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+                if (exchangeError) return { error: new Error(exchangeError.message) };
               } catch (err: any) {
                 if (err.message?.includes("Lock") && err.message?.includes("stole it")) {
                   console.warn("Ignored lock error on exchangeCodeForSession", err);
@@ -410,6 +407,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } else {
           return { error: new Error("OAuth was cancelled or failed") };
         }
+        const {
+          data: { session: oauthSession },
+        } = await supabase.auth.getSession();
+        updateSession(oauthSession);
         return { error: null };
       } catch (err) {
         return {
@@ -417,11 +418,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         };
       }
     },
-    []
+    [updateSession]
   );
 
   const signInWithEmail = useCallback(
-    async (email: string, password: string): Promise<{ error: Error | null; requiresConfirmation?: boolean }> => {
+    async (
+      email: string,
+      password: string
+    ): Promise<{ error: Error | null; requiresConfirmation?: boolean }> => {
       const { data, error } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password,
@@ -446,6 +450,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email: email.trim(),
         password,
         options: {
+          emailRedirectTo: getRedirectUrl(),
           data: {
             full_name: fullName?.trim(),
             role: "customer",
@@ -497,10 +502,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    void Promise.allSettled([
-      clearCustomerUserCaches(signedOutUserId),
-      clearBiometricPreference(),
-    ]);
+    void Promise.allSettled([clearCustomerUserCaches(signedOutUserId), clearBiometricPreference()]);
   }, [updateSession]);
 
   return (

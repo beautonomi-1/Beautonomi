@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, Alert, ScrollView } from "react-native";
-import { useFocusEffect } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import * as ExpoLinking from "expo-linking";
 import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
 import { useTranslation } from "@beautonomi/i18n";
@@ -313,17 +313,42 @@ export default function WalletScreen() {
             <View>
               {paymentOption === "saved_card" && savedCards.length > 0 && (
                 <View style={{ marginBottom: 12 }}>
-                  {savedCards.map((c) => (
-                    <TouchableOpacity
-                      key={c.id}
-                      onPress={() => setSelectedCardId(c.id)}
-                      style={{ flexDirection: "row", alignItems: "center", padding: 12, borderWidth: 1, borderColor: selectedCardId === c.id ? Colors.primary : Colors.gray[200], borderRadius: 12, marginBottom: 8, backgroundColor: Colors.white }}
-                    >
-                      <Ionicons name="card" size={24} color={selectedCardId === c.id ? Colors.primary : Colors.gray[400]} />
-                      <Text style={{ marginLeft: 12, fontSize: 15, color: Colors.gray[900], flex: 1 }}>•••• {c.last4} ({c.brand})</Text>
-                      {selectedCardId === c.id && <Ionicons name="checkmark-circle" size={20} color={Colors.primary} />}
-                    </TouchableOpacity>
-                  ))}
+                  {savedCards.map((c) => {
+                    const expiry =
+                      c.expiry_label ??
+                      (c.expiry_month && c.expiry_year
+                        ? `${String(c.expiry_month).padStart(2, "0")}/${String(c.expiry_year).slice(-2)}`
+                        : null);
+                    return (
+                      <TouchableOpacity
+                        key={c.id}
+                        onPress={() => setSelectedCardId(c.id)}
+                        style={{ flexDirection: "row", alignItems: "center", padding: 12, borderWidth: 1, borderColor: selectedCardId === c.id ? Colors.primary : Colors.gray[200], borderRadius: 12, marginBottom: 8, backgroundColor: Colors.white }}
+                      >
+                        <Ionicons name="card" size={24} color={selectedCardId === c.id ? Colors.primary : Colors.gray[400]} />
+                        <View style={{ marginLeft: 12, flex: 1 }}>
+                          <Text style={{ fontSize: 15, color: Colors.gray[900] }}>•••• {c.last4} ({c.brand})</Text>
+                          {expiry ? (
+                            <Text style={{ fontSize: 11, color: Colors.gray[500], marginTop: 2 }}>
+                              Expires {expiry}
+                            </Text>
+                          ) : null}
+                        </View>
+                        {selectedCardId === c.id && <Ionicons name="checkmark-circle" size={20} color={Colors.primary} />}
+                      </TouchableOpacity>
+                    );
+                  })}
+                  <TouchableOpacity
+                    onPress={() => router.push("/account-settings/payments")}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    style={{ paddingVertical: 6, alignSelf: "flex-start" }}
+                    accessibilityRole="link"
+                    accessibilityLabel="Manage saved cards"
+                  >
+                    <Text style={{ fontSize: 12, color: Colors.primary, fontWeight: "600" }}>
+                      Manage saved cards
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               )}
 

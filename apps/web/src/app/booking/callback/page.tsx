@@ -46,6 +46,11 @@ export default function PaymentCallback() {
         } else if (response.status === "failed") {
           setStatus("error");
           setMessage(response.errorMessage || "Payment verification failed");
+          // Send the user to bookings so a hard failure does not leave them
+          // stuck on a "Try Again" dead end without context.
+          setTimeout(() => {
+            router.replace("/account-settings/bookings");
+          }, 5000);
         } else {
           setStatus("success");
           setMessage("Payment received. We are finalizing your booking now.");

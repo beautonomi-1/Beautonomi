@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { USER_VERIFICATION_QUEUE_STATUSES } from "@/lib/admin/verification-queue-statuses";
 
 /**
  * GET /api/admin/verifications
@@ -28,7 +29,9 @@ export async function GET(request: NextRequest) {
       .eq("tenant_id", tenantId)
       .order("submitted_at", { ascending: false });
 
-    if (status !== "all") {
+    if (status === "pending") {
+      query = query.in("status", [...USER_VERIFICATION_QUEUE_STATUSES]);
+    } else if (status !== "all") {
       query = query.eq("status", status);
     }
 

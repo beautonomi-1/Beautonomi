@@ -1,9 +1,15 @@
+import crypto from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser } from "@/lib/supabase/api-helpers";
 import { checkYocoFeatureAccess } from "@/lib/subscriptions/feature-access";
 import { z } from "zod";
-import { YOCO_ENDPOINTS } from "@/lib/payments/yoco";
+import { getYocoEndpoints } from "@/lib/payments/yoco";
+import {
+  getValidAccessToken,
+  resolveProviderCredentialMode,
+  YocoOAuthRequired,
+} from "@/lib/payments/yoco-oauth";
 
 /** Create Web POS device: only name required (Yoco API). Optional fields for our DB. */
 const createDeviceSchema = z.object({
@@ -47,6 +53,7 @@ export async function GET(request: NextRequest) {
         location_id,
         location_name,
         is_active,
+        credential_mode,
         total_transactions,
         total_amount,
         last_used,
@@ -81,21 +88,33 @@ export async function GET(request: NextRequest) {
       console.warn("Error fetching legacy Yoco terminals:", legacyError);
     }
 
-    const mappedDevices = (devices || []).map((device: any) => ({
-      id: device.id,
-      name: device.name,
-      device_id: device.yoco_device_id,
-      serial_number: device.yoco_device_id, // App display; same as device_id
-      device_type: "web_pos" as const,
-      location_id: device.location_id,
-      location_name: device.location_name,
-      is_active: device.is_active,
-      total_transactions: device.total_transactions || 0,
-      total_amount: device.total_amount || 0,
-      last_used: device.last_used,
-      created_date: device.created_at,
-      created_at: device.created_at,
-    }));
+    const mappedDevices = (devices || []).map((device: any) => {
+      const credMode =
+        device.credential_mode === "virtual_checkout"
+          ? "virtual_checkout"
+          : "web_pos";
+      // §Yoco-OAuth 2026-05: a virtual device has no real Yoco device id and we
+      // should not show the synthetic "virtual:..." placeholder in the UI.
+      const yocoId = String(device.yoco_device_id ?? "");
+      const isVirtual = credMode === "virtual_checkout" || yocoId.startsWith("virtual:");
+      const displayId = isVirtual ? "" : yocoId;
+      return {
+        id: device.id,
+        name: device.name,
+        device_id: displayId,
+        serial_number: displayId,
+        device_type: isVirtual ? ("virtual_checkout" as const) : ("web_pos" as const),
+        credential_mode: isVirtual ? ("virtual_checkout" as const) : ("web_pos" as const),
+        location_id: device.location_id,
+        location_name: device.location_name,
+        is_active: device.is_active,
+        total_transactions: device.total_transactions || 0,
+        total_amount: device.total_amount || 0,
+        last_used: device.last_used,
+        created_date: device.created_at,
+        created_at: device.created_at,
+      };
+    });
 
     const existingYocoIds = new Set(
       mappedDevices
@@ -110,6 +129,7 @@ export async function GET(request: NextRequest) {
         device_id: terminal.device_id,
         serial_number: terminal.device_id,
         device_type: "card_machine" as const,
+        credential_mode: "web_pos" as const,
         location_id: null,
         location_name: terminal.location_name ?? null,
         is_active: terminal.active !== false,
@@ -230,76 +250,27 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Get Yoco integration credentials
-    const { data: integration } = await supabase
-      .from("provider_yoco_integrations")
-      .select("secret_key, public_key, is_enabled")
-      .eq("provider_id", providerId)
-      .single();
-
-    if (!integration || !(integration as any).is_enabled) {
+    // §Yoco-OAuth 2026-05: branch on the credential the provider has stored.
+    //   - 'oauth':    Bearer OAuth JWT → real Yoco Web POS device on api.yoco.com
+    //   - 'checkout': only the dashboard secret_key → create a *virtual* device
+    //                 locally; payments go via the Checkout API (no per-device
+    //                 endpoint exists on payments.yoco.com).
+    //   - 'none':     nothing to do; tell the user to connect Yoco first.
+    const credentials = await resolveProviderCredentialMode(providerId);
+    if (!credentials.isEnabled || credentials.credentialMode === "none") {
       return NextResponse.json(
         {
           data: null,
           error: {
-            message: "Yoco integration not enabled",
-            code: "INTEGRATION_DISABLED",
+            message:
+              "Connect Yoco before adding a device. Open Payment Settings → Connect Yoco to start.",
+            code: "CREDENTIALS_REQUIRED",
           },
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    const secretKey = (integration as any).secret_key as string;
-
-    // Create Web POS device on Yoco (https://developer.yoco.com/api-reference/yoco-api/web-pos/create-web-pos-device-v-1-webpos-post)
-    const yocoCreateRes = await fetch(YOCO_ENDPOINTS.createWebPosDevice, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${secretKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ name: validationResult.data.name }),
-    });
-
-    if (!yocoCreateRes.ok) {
-      const errBody = await yocoCreateRes.json().catch(() => ({}));
-      const message =
-        (errBody as any)?.detail ?? (errBody as any)?.message ?? "Yoco API error";
-      console.error("Yoco create device error:", yocoCreateRes.status, errBody);
-      return NextResponse.json(
-        {
-          data: null,
-          error: {
-            message: String(message),
-            code: "YOCO_API_ERROR",
-            details: errBody,
-          },
-        },
-        { status: yocoCreateRes.status >= 500 ? 502 : 400 }
-      );
-    }
-
-    const yocoDevice = (await yocoCreateRes.json()) as { id?: string; name?: string };
-    const yocoDeviceId = yocoDevice?.id ?? "";
-    if (!yocoDeviceId) {
-      console.error("Yoco create device response missing id:", yocoDevice);
-      return NextResponse.json(
-        {
-          data: null,
-          error: {
-            message: "Invalid response from Yoco",
-            code: "YOCO_API_ERROR",
-          },
-        },
-        { status: 502 }
-      );
-    }
-
-    // §Yoco-synergy 2026-05: denormalize location_name onto the device row.
-    // The mobile picker + settings list both read `location_name` directly
-    // off the device (so they don't have to join). Without this, providers
-    // saw the name as null until a cron/edit refreshed it.
     let locationNameForInsert: string | null = null;
     if (validationResult.data.location_id) {
       const { data: loc } = await supabase
@@ -311,32 +282,140 @@ export async function POST(request: NextRequest) {
       if (loc?.name && typeof loc.name === "string") locationNameForInsert = loc.name;
     }
 
-    // Store device in database (yoco_device_id = Yoco's returned id)
+    if (credentials.credentialMode === "oauth") {
+      const endpoints = getYocoEndpoints(credentials.environment);
+      let accessToken: string;
+      try {
+        accessToken = await getValidAccessToken(providerId, {
+          environment: credentials.environment,
+        });
+      } catch (err) {
+        if (err instanceof YocoOAuthRequired) {
+          return NextResponse.json(
+            { data: null, error: { message: err.message, code: err.code } },
+            { status: 400 },
+          );
+        }
+        throw err;
+      }
+
+      const yocoCreateRes = await fetch(endpoints.createWebPosDevice, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ name: validationResult.data.name }),
+      });
+
+      if (!yocoCreateRes.ok) {
+        const errBody = await yocoCreateRes.json().catch(() => ({}));
+        const yocoMessage =
+          (errBody as any)?.detail ??
+          (errBody as any)?.errors?.[0]?.detail ??
+          (errBody as any)?.message ??
+          `Yoco API error (HTTP ${yocoCreateRes.status})`;
+        const isAuth = yocoCreateRes.status === 401 || yocoCreateRes.status === 403;
+        console.error(
+          "Yoco create device error:",
+          yocoCreateRes.status,
+          errBody,
+        );
+        return NextResponse.json(
+          {
+            data: null,
+            error: {
+              message: isAuth
+                ? "Your Yoco connection was rejected. Please reconnect Yoco in Payment Settings and try again."
+                : String(yocoMessage),
+              code: isAuth ? "YOCO_OAUTH_EXPIRED" : "YOCO_API_ERROR",
+              details: errBody,
+            },
+          },
+          { status: yocoCreateRes.status >= 500 ? 502 : 400 },
+        );
+      }
+
+      const yocoDevice = (await yocoCreateRes.json()) as { id?: string; name?: string };
+      const yocoDeviceId = yocoDevice?.id ?? "";
+      if (!yocoDeviceId) {
+        console.error("Yoco create device response missing id:", yocoDevice);
+        return NextResponse.json(
+          {
+            data: null,
+            error: {
+              message: "Invalid response from Yoco",
+              code: "YOCO_API_ERROR",
+            },
+          },
+          { status: 502 },
+        );
+      }
+
+      const { data: device, error: insertError } = await (supabase
+        .from("provider_yoco_devices") as any)
+        .insert({
+          provider_id: providerId,
+          name: yocoDevice?.name ?? validationResult.data.name,
+          yoco_device_id: yocoDeviceId,
+          location_id: validationResult.data.location_id,
+          location_name: locationNameForInsert,
+          is_active: validationResult.data.is_active,
+          credential_mode: "web_pos",
+          created_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+      if (insertError || !device) {
+        console.error("Error storing Yoco device:", insertError);
+        return NextResponse.json(
+          { data: null, error: { message: "Failed to save device", code: "CREATE_ERROR" } },
+          { status: 500 },
+        );
+      }
+
+      return NextResponse.json({
+        data: {
+          id: device.id,
+          name: device.name,
+          device_id: device.yoco_device_id,
+          serial_number: device.yoco_device_id,
+          device_type: "web_pos" as const,
+          credential_mode: "web_pos" as const,
+          location_id: device.location_id,
+          is_active: device.is_active,
+          created_date: device.created_at,
+        },
+        error: null,
+      });
+    }
+
+    // credential_mode === 'checkout': create a virtual station — no Yoco call.
+    // Each payment will mint its own Yoco Checkout link/QR and the customer
+    // will pay on Yoco's hosted page. The `yoco_device_id` is set to a stable
+    // sentinel so existing reporting joins on the column do not blow up.
+    const virtualDeviceId = `virtual:${crypto.randomUUID()}`;
     const { data: device, error: insertError } = await (supabase
       .from("provider_yoco_devices") as any)
       .insert({
         provider_id: providerId,
-        name: yocoDevice?.name ?? validationResult.data.name,
-        yoco_device_id: yocoDeviceId,
+        name: validationResult.data.name,
+        yoco_device_id: virtualDeviceId,
         location_id: validationResult.data.location_id,
         location_name: locationNameForInsert,
         is_active: validationResult.data.is_active,
+        credential_mode: "virtual_checkout",
         created_at: new Date().toISOString(),
       })
       .select()
       .single();
 
     if (insertError || !device) {
-      console.error("Error storing Yoco device:", insertError);
+      console.error("Error storing virtual Yoco device:", insertError);
       return NextResponse.json(
-        {
-          data: null,
-          error: {
-            message: "Failed to save device",
-            code: "CREATE_ERROR",
-          },
-        },
-        { status: 500 }
+        { data: null, error: { message: "Failed to save device", code: "CREATE_ERROR" } },
+        { status: 500 },
       );
     }
 
@@ -346,6 +425,8 @@ export async function POST(request: NextRequest) {
         name: device.name,
         device_id: device.yoco_device_id,
         serial_number: device.yoco_device_id,
+        device_type: "virtual_checkout" as const,
+        credential_mode: "virtual_checkout" as const,
         location_id: device.location_id,
         is_active: device.is_active,
         created_date: device.created_at,

@@ -71,6 +71,9 @@ const VALID_TYPES_570 = new Set<string>([
   "additional_charge_requested",
 ]);
 
+// Values added by migration 612 (provider membership lifecycle).
+const VALID_TYPES_612 = new Set<string>(["provider_membership_cancelled"]);
+
 /**
  * Closest 413-valid enum value for any new type. Used when migration 570
  * has not yet run on the target DB so the row is preserved (with slightly
@@ -100,11 +103,13 @@ const TYPE_FALLBACK: Record<string, string> = {
   provider_broadcast: "system",
   custom_offer: "system",
   custom_request: "system",
+  provider_membership_cancelled: "system",
 };
 
 function normaliseType(raw: string): string {
   if (VALID_TYPES_413.has(raw)) return raw;
   if (VALID_TYPES_570.has(raw)) return raw;
+  if (VALID_TYPES_612.has(raw)) return raw;
   return TYPE_FALLBACK[raw] ?? "system";
 }
 

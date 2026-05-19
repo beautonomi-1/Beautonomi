@@ -90,7 +90,16 @@ interface Participant {
   balance_due?: number | null;
   total_paid?: number | null;
   total_refunded?: number | null;
-  addons?: { id?: string; addonId?: string; name?: string; price?: number; duration?: number; duration_minutes?: number }[] | null;
+  addons?:
+    | {
+        id?: string;
+        addonId?: string;
+        name?: string;
+        price?: number;
+        duration?: number;
+        duration_minutes?: number;
+      }[]
+    | null;
   notes?: string | null;
 }
 
@@ -277,7 +286,9 @@ function SelectChip({
       onPress={onPress}
       style={[
         twStyle("rounded-full border px-3 py-2"),
-        selected ? twStyle("border-indigo-600 bg-indigo-50") : twStyle("border-gray-200 bg-gray-50"),
+        selected
+          ? twStyle("border-indigo-600 bg-indigo-50")
+          : twStyle("border-gray-200 bg-gray-50"),
         { marginRight: 8, maxWidth: 220 },
       ]}
       accessibilityRole="button"
@@ -329,7 +340,7 @@ function createBlankParticipant(id: string, serviceId = ""): ParticipantFormRow 
 function getParticipantLine(
   participant: Pick<ParticipantFormRow, "serviceId" | "addOnIds">,
   fallbackServiceId: string,
-  services: ServiceRow[],
+  services: ServiceRow[]
 ) {
   const serviceId = participant.serviceId || fallbackServiceId;
   const service = services.find((s) => s.id === serviceId);
@@ -339,7 +350,10 @@ function getParticipantLine(
   const basePrice = Number(service?.price ?? 0) || 0;
   const baseDuration = Number(service?.duration_minutes ?? 60) || 60;
   const addOnPrice = addOns.reduce((sum, ao) => sum + (Number(ao.price ?? 0) || 0), 0);
-  const addOnDuration = addOns.reduce((sum, ao) => sum + (Number(ao.duration_minutes ?? 0) || 0), 0);
+  const addOnDuration = addOns.reduce(
+    (sum, ao) => sum + (Number(ao.duration_minutes ?? 0) || 0),
+    0
+  );
   return {
     serviceId,
     service,
@@ -364,8 +378,12 @@ export default function GroupBookingsScreen() {
   const providerTz = provider?.timezone ?? null;
   const locations = provider?.locations ?? [];
 
-  const { data: servicesRaw } = useApi<ServiceRow[]>("/api/provider/services?include_variants=true");
-  const { data: productsRaw, refresh: refreshProducts } = useApi<unknown>("/api/provider/products?limit=200");
+  const { data: servicesRaw } = useApi<ServiceRow[]>(
+    "/api/provider/services?include_variants=true"
+  );
+  const { data: productsRaw, refresh: refreshProducts } = useApi<unknown>(
+    "/api/provider/products?limit=200"
+  );
   const teamUrl = selectedLocationId
     ? `/api/provider/team?location_id=${encodeURIComponent(selectedLocationId)}`
     : "/api/provider/team";
@@ -382,7 +400,10 @@ export default function GroupBookingsScreen() {
     : "/api/provider/packages";
   const { data: packagesRaw } = useApi<{ packages?: PackageRow[] }>(packagesUrl);
   const services = useMemo(() => (Array.isArray(servicesRaw) ? servicesRaw : []), [servicesRaw]);
-  const productsList = useMemo(() => normalizeProductsList(productsRaw) as ProductRow[], [productsRaw]);
+  const productsList = useMemo(
+    () => normalizeProductsList(productsRaw) as ProductRow[],
+    [productsRaw]
+  );
 
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener(PROVIDER_PRODUCTS_CATALOG_CHANGED, () => {
@@ -396,21 +417,21 @@ export default function GroupBookingsScreen() {
   const packagesList = useMemo<PackageRow[]>(
     () =>
       (packagesRaw?.packages ?? []).filter(
-        (p) => p.is_active !== false && Array.isArray(p.items) && p.items.length > 0,
+        (p) => p.is_active !== false && Array.isArray(p.items) && p.items.length > 0
       ),
-    [packagesRaw],
+    [packagesRaw]
   );
   const parentServices = useMemo(
     () => services.filter((s) => !s.parent_service_id && s.service_type !== "variant"),
-    [services],
+    [services]
   );
   const variantServices = useMemo(
     () => services.filter((s) => s.parent_service_id || s.service_type === "variant"),
-    [services],
+    [services]
   );
   const servicesForPicking = useMemo(
     () => [...parentServices, ...variantServices],
-    [parentServices, variantServices],
+    [parentServices, variantServices]
   );
   const serviceCategoryOptions = useMemo(() => {
     const categories = new Map<string, { id: string; label: string; count: number }>();
@@ -427,7 +448,7 @@ export default function GroupBookingsScreen() {
       selectedServiceCategory === "all"
         ? parentServices
         : parentServices.filter((s) => getServiceCategoryInfo(s).id === selectedServiceCategory),
-    [parentServices, selectedServiceCategory],
+    [parentServices, selectedServiceCategory]
   );
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
@@ -435,7 +456,7 @@ export default function GroupBookingsScreen() {
   const [selectedGroup, setSelectedGroup] = useState<GroupBooking | null>(null);
   const [showAddParticipant, setShowAddParticipant] = useState(false);
   const [participantForm, setParticipantForm] = useState<ParticipantFormRow>(
-    createBlankParticipant("participant-form"),
+    createBlankParticipant("participant-form")
   );
   const [showEdit, setShowEdit] = useState(false);
   // B9: persist the id the edit sheet is operating on so a PATCH never goes
@@ -465,7 +486,11 @@ export default function GroupBookingsScreen() {
   const [editingGroupContext, setEditingGroupContext] = useState<EditingGroupContext | null>(null);
   // Track the slot that was in effect when the edit sheet opened so we can
   // skip the availability pre-flight when only non-slot fields change.
-  const [editOriginalSlot, setEditOriginalSlot] = useState<{ date: string; time: string; duration: string } | null>(null);
+  const [editOriginalSlot, setEditOriginalSlot] = useState<{
+    date: string;
+    time: string;
+    duration: string;
+  } | null>(null);
   const [verifyingEditSlot, setVerifyingEditSlot] = useState(false);
 
   // B10: create path — minimal form. Participants are added from the detail
@@ -499,7 +524,9 @@ export default function GroupBookingsScreen() {
   });
   const [createParticipants, setCreateParticipants] = useState<ParticipantFormRow[]>([]);
   // Per-participant client search state (keyed by ParticipantFormRow.id)
-  const [participantSearchMap, setParticipantSearchMap] = useState<Record<string, ParticipantClientSearchState>>({});
+  const [participantSearchMap, setParticipantSearchMap] = useState<
+    Record<string, ParticipantClientSearchState>
+  >({});
   const participantSearchTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const [createProducts, setCreateProducts] = useState<SelectedGroupProduct[]>([]);
   const [showPackagePicker, setShowPackagePicker] = useState(false);
@@ -514,15 +541,23 @@ export default function GroupBookingsScreen() {
 
   const createDateOptions = useMemo(
     () => Array.from({ length: 21 }, (_, i) => addDays(startOfDay(new Date()), i)),
-    [],
+    []
   );
   const editDateOptions = useMemo(() => {
-    const base = editForm.date && YMD_RE.test(editForm.date) ? parseISO(`${editForm.date}T00:00:00`) : new Date();
+    const base =
+      editForm.date && YMD_RE.test(editForm.date)
+        ? parseISO(`${editForm.date}T00:00:00`)
+        : new Date();
     return Array.from({ length: 21 }, (_, i) => addDays(startOfDay(base), i));
   }, [editForm.date]);
 
   const statusParam = filter !== "all" ? `&status=${filter}` : "";
-  const { data: groupData, loading, error: groupError, refresh } = useApi<GroupBookingsResponse>(
+  const {
+    data: groupData,
+    loading,
+    error: groupError,
+    refresh,
+  } = useApi<GroupBookingsResponse>(
     `/api/provider/group-bookings?limit=${GROUP_PAGE_LIMIT}&page=1${statusParam}`
   );
   const { execute: updateGroup, loading: updatingGroup } = useApiMutation("patch");
@@ -575,13 +610,10 @@ export default function GroupBookingsScreen() {
 
   const createSlotParams = useMemo(() => {
     const serviceIds = Array.from(
-      new Set([
-        createForm.serviceId,
-        ...createParticipants.map((p) => p.serviceId),
-      ].filter(Boolean)),
+      new Set([createForm.serviceId, ...createParticipants.map((p) => p.serviceId)].filter(Boolean))
     );
     const participantDurations = createParticipants.map(
-      (p) => getParticipantLine(p, createForm.serviceId, services).durationMinutes,
+      (p) => getParticipantLine(p, createForm.serviceId, services).durationMinutes
     );
     const duration = Math.max(Number(createForm.duration) || 60, ...participantDurations, 60);
     return {
@@ -591,7 +623,16 @@ export default function GroupBookingsScreen() {
       locationId: createForm.locationId || selectedLocationId || "",
       serviceIds,
     };
-  }, [createForm.date, createForm.duration, createForm.staffId, createForm.locationId, createForm.serviceId, createParticipants, services, selectedLocationId]);
+  }, [
+    createForm.date,
+    createForm.duration,
+    createForm.staffId,
+    createForm.locationId,
+    createForm.serviceId,
+    createParticipants,
+    services,
+    selectedLocationId,
+  ]);
 
   const createSlotsUrl = useMemo(() => {
     if (!createSlotParams.date || !YMD_RE.test(createSlotParams.date)) return "";
@@ -599,19 +640,21 @@ export default function GroupBookingsScreen() {
       `/api/provider/bookings/available-slots?date=${encodeURIComponent(createSlotParams.date)}` +
       `&duration_minutes=${encodeURIComponent(String(createSlotParams.duration))}`;
     if (createSlotParams.staffId) q += `&staff_ids=${encodeURIComponent(createSlotParams.staffId)}`;
-    if (createForm.locationType === "at_salon" && createSlotParams.locationId) q += `&location_id=${encodeURIComponent(createSlotParams.locationId)}`;
+    if (createForm.locationType === "at_salon" && createSlotParams.locationId)
+      q += `&location_id=${encodeURIComponent(createSlotParams.locationId)}`;
     if (createSlotParams.serviceIds.length > 0) {
       q += `&service_ids=${encodeURIComponent(createSlotParams.serviceIds.join(","))}`;
     }
-    q += createForm.locationType === "at_home"
-      ? "&mode=mobile&travel_buffer=30"
-      : "&mode=salon&travel_buffer=0";
+    q +=
+      createForm.locationType === "at_home"
+        ? "&mode=mobile&travel_buffer=30"
+        : "&mode=salon&travel_buffer=0";
     return q;
   }, [createForm.locationType, createSlotParams]);
 
   const { data: createSlotsData, loading: createSlotsLoading } = useApi<AvailableSlotsApiResponse>(
     createSlotsUrl,
-    { enabled: createSlotsUrl.length > 0 },
+    { enabled: createSlotsUrl.length > 0 }
   );
 
   const createSlotRows = useMemo(() => {
@@ -619,7 +662,9 @@ export default function GroupBookingsScreen() {
       return createSlotsData.slot_grid;
     }
     if (Array.isArray(createSlotsData?.slots)) {
-      return createSlotsData.slots.map((time) => ({ time, available: true } as AvailableSlotsApiRow));
+      return createSlotsData.slots.map(
+        (time) => ({ time, available: true }) as AvailableSlotsApiRow
+      );
     }
     return [] as AvailableSlotsApiRow[];
   }, [createSlotsData]);
@@ -639,21 +684,23 @@ export default function GroupBookingsScreen() {
       `/api/provider/bookings/available-slots?date=${encodeURIComponent(editSlotParams.date)}` +
       `&duration_minutes=${encodeURIComponent(String(editSlotParams.duration))}`;
     if (editSlotParams.staffId) q += `&staff_ids=${encodeURIComponent(editSlotParams.staffId)}`;
-    if (editingGroupContext?.locationType !== "at_home" && editSlotParams.locationId) q += `&location_id=${encodeURIComponent(editSlotParams.locationId)}`;
+    if (editingGroupContext?.locationType !== "at_home" && editSlotParams.locationId)
+      q += `&location_id=${encodeURIComponent(editSlotParams.locationId)}`;
     if (editSlotParams.serviceIds.length > 0) {
       q += `&service_ids=${encodeURIComponent(editSlotParams.serviceIds.join(","))}`;
     }
     // Exclude the group being edited so it doesn't block its own current slot.
     if (editingGroupId) q += `&exclude_group_booking_id=${encodeURIComponent(editingGroupId)}`;
-    q += editingGroupContext?.locationType === "at_home"
-      ? "&mode=mobile&travel_buffer=30"
-      : "&mode=salon&travel_buffer=0";
+    q +=
+      editingGroupContext?.locationType === "at_home"
+        ? "&mode=mobile&travel_buffer=30"
+        : "&mode=salon&travel_buffer=0";
     return q;
   }, [showEdit, editSlotParams, editingGroupContext?.locationType, editingGroupId]);
 
   const { data: editSlotsData, loading: editSlotsLoading } = useApi<AvailableSlotsApiResponse>(
     editSlotsUrl,
-    { enabled: editSlotsUrl.length > 0 },
+    { enabled: editSlotsUrl.length > 0 }
   );
 
   const editSlotRows = useMemo(() => {
@@ -661,7 +708,7 @@ export default function GroupBookingsScreen() {
       return editSlotsData.slot_grid;
     }
     if (Array.isArray(editSlotsData?.slots)) {
-      return editSlotsData.slots.map((time) => ({ time, available: true } as AvailableSlotsApiRow));
+      return editSlotsData.slots.map((time) => ({ time, available: true }) as AvailableSlotsApiRow);
     }
     return [] as AvailableSlotsApiRow[];
   }, [editSlotsData]);
@@ -694,11 +741,16 @@ export default function GroupBookingsScreen() {
       const payload = res.data?.data ?? res.data?.group ?? res.data;
       const fetched = Array.isArray(payload) ? null : payload;
       if (res.error || !fetched?.id) {
-        Alert.alert("Group booking not found", "This group booking could not be opened. It may be archived, filtered out, or unavailable.");
+        Alert.alert(
+          "Group booking not found",
+          "This group booking could not be opened. It may be archived, filtered out, or unavailable."
+        );
         openGroupFetchRef.current = null;
         return;
       }
-      setExtraGroups((prev) => (prev.some((g) => g.id === fetched.id) ? prev : [...prev, fetched as GroupBooking]));
+      setExtraGroups((prev) =>
+        prev.some((g) => g.id === fetched.id) ? prev : [...prev, fetched as GroupBooking]
+      );
       setSelectedGroup(fetched as GroupBooking);
       openGroupFetchRef.current = null;
     })();
@@ -723,7 +775,7 @@ export default function GroupBookingsScreen() {
     try {
       const nextPage = loadedGroupPage + 1;
       const res = await api.get<GroupBookingsResponse>(
-        `/api/provider/group-bookings?limit=${GROUP_PAGE_LIMIT}&page=${nextPage}${statusParam}`,
+        `/api/provider/group-bookings?limit=${GROUP_PAGE_LIMIT}&page=${nextPage}${statusParam}`
       );
       if (res.error) {
         Alert.alert("Could not load more groups", res.error.message || "Please try again.");
@@ -791,11 +843,12 @@ export default function GroupBookingsScreen() {
       travel_buffer: args.locationType === "at_home" ? "30" : "0",
     });
     if (args.staffId) params.set("staff_ids", args.staffId);
-    if (args.locationType !== "at_home" && args.locationId) params.set("location_id", args.locationId);
+    if (args.locationType !== "at_home" && args.locationId)
+      params.set("location_id", args.locationId);
     if (args.serviceId) params.set("offering_ids", args.serviceId);
     if (editingGroupId) params.set("exclude_group_booking_id", editingGroupId);
     const res = await api.get<{ available?: boolean; conflicts?: string[] }>(
-      `/api/provider/bookings/check-availability?${params.toString()}`,
+      `/api/provider/bookings/check-availability?${params.toString()}`
     );
     if (res.error) return res.error.message || "Could not verify availability.";
     if (res.data?.available === false) {
@@ -858,8 +911,14 @@ export default function GroupBookingsScreen() {
       Alert.alert("Error", "Unsupported status transition.");
       return;
     }
-    const { error } = await postGroupAction(`/api/provider/group-bookings/${group.id}?action=${action}`, {});
-    if (error) { Alert.alert("Error", error); return; }
+    const { error } = await postGroupAction(
+      `/api/provider/group-bookings/${group.id}?action=${action}`,
+      {}
+    );
+    if (error) {
+      Alert.alert("Error", error);
+      return;
+    }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setSelectedGroup(null);
     refresh();
@@ -867,11 +926,14 @@ export default function GroupBookingsScreen() {
 
   async function handleRecordGroupPayment(
     group: GroupBooking,
-    paymentMethod: "cash" | "card" | "bank_transfer" | "other" | "yoco",
+    paymentMethod: "cash" | "card" | "bank_transfer" | "other" | "yoco"
   ) {
-    const { error } = await postGroupAction(`/api/provider/group-bookings/${group.id}?action=mark_paid`, {
-      payment_method: paymentMethod,
-    });
+    const { error } = await postGroupAction(
+      `/api/provider/group-bookings/${group.id}?action=mark_paid`,
+      {
+        payment_method: paymentMethod,
+      }
+    );
     if (error) {
       Alert.alert("Payment not recorded", error);
       return;
@@ -997,7 +1059,10 @@ export default function GroupBookingsScreen() {
         ...packageIdPayload,
       }
     );
-    if (error) { Alert.alert("Error", error); return; }
+    if (error) {
+      Alert.alert("Error", error);
+      return;
+    }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setShowEdit(false);
     setEditingGroupId(null);
@@ -1020,8 +1085,10 @@ export default function GroupBookingsScreen() {
       typeof params.default_time === "string" && HHMM_RE.test(params.default_time)
         ? params.default_time
         : `${hh}:00`;
-    const requestedStaffId = typeof params.default_staff_id === "string" ? params.default_staff_id : "";
-    const requestedLocationId = typeof params.default_location_id === "string" ? params.default_location_id : "";
+    const requestedStaffId =
+      typeof params.default_staff_id === "string" ? params.default_staff_id : "";
+    const requestedLocationId =
+      typeof params.default_location_id === "string" ? params.default_location_id : "";
     const defaultLoc = selectedLocationId ?? locations[0]?.id ?? "";
     setCreateForm({
       title: "",
@@ -1047,6 +1114,14 @@ export default function GroupBookingsScreen() {
     });
     setCreateParticipants([createBlankParticipant(`participant-${Date.now()}`)]);
     setCreateProducts([]);
+    // §Group-booking-audit 2026-05: reset two-step review state on every open
+    // (parity with web `GroupBookingDialog`). Without this, a previous open
+    // could leave `showCreateReview === true`, stranding a stacked modal that
+    // intercepts touches on the underlying "Review & Create" button.
+    setShowCreateReview(false);
+    setCreatePaymentMethod("pay_later");
+    setCreateSendNotification(true);
+    setValidatingCreateAddress(false);
     setShowCreate(true);
   }
 
@@ -1063,7 +1138,9 @@ export default function GroupBookingsScreen() {
 
   function removeCreateParticipantRow(id: string) {
     setCreateParticipants((prev) =>
-      prev.length <= 1 ? [createBlankParticipant(`participant-${Date.now()}`, createForm.serviceId)] : prev.filter((p) => p.id !== id),
+      prev.length <= 1
+        ? [createBlankParticipant(`participant-${Date.now()}`, createForm.serviceId)]
+        : prev.filter((p) => p.id !== id)
     );
     // Clean up search state for this participant
     setParticipantSearchMap((prev) => {
@@ -1102,7 +1179,9 @@ export default function GroupBookingsScreen() {
     }));
     participantSearchTimers.current[participantId] = setTimeout(async () => {
       try {
-        const res = await api.get<any>(`/api/provider/clients?search=${encodeURIComponent(query.trim())}&limit=8`);
+        const res = await api.get<any>(
+          `/api/provider/clients?search=${encodeURIComponent(query.trim())}&limit=8`
+        );
         const rows = (res.data || []).map((c: any) => ({
           id: c.id,
           customer_id: c.customer_id || c.id,
@@ -1123,7 +1202,10 @@ export default function GroupBookingsScreen() {
     }, 300);
   }
 
-  function selectClientForParticipant(participantId: string, client: { id: string; customer_id: string; full_name: string; email?: string; phone?: string }) {
+  function selectClientForParticipant(
+    participantId: string,
+    client: { id: string; customer_id: string; full_name: string; email?: string; phone?: string }
+  ) {
     updateCreateParticipantRow(participantId, {
       name: client.full_name,
       email: client.email || "",
@@ -1161,13 +1243,19 @@ export default function GroupBookingsScreen() {
     products?: SelectedGroupProduct[];
     durationMinutes: number;
     unitPrice: number;
-    participant: { name: string; phone?: string; email?: string; notes?: string; customerId?: string };
+    participant: {
+      name: string;
+      phone?: string;
+      email?: string;
+      notes?: string;
+      customerId?: string;
+    };
     isPrimary: boolean;
   }) {
     const scheduledAt = buildZonedIsoForWallClock(
       args.scheduledDate,
       args.scheduledTime.substring(0, 5),
-      providerTz,
+      providerTz
     );
     if (!Number.isFinite(Date.parse(scheduledAt))) {
       return { error: "This group booking has an invalid date/time." };
@@ -1181,7 +1269,7 @@ export default function GroupBookingsScreen() {
       customer_id: args.participant.customerId || undefined,
       scheduled_at: scheduledAt,
       location_type: args.locationType,
-      location_id: args.locationType === "at_salon" ? (args.locationId || undefined) : undefined,
+      location_id: args.locationType === "at_salon" ? args.locationId || undefined : undefined,
       ...(args.locationType === "at_home" && args.address
         ? {
             address_line1: args.address.address_line1,
@@ -1212,7 +1300,8 @@ export default function GroupBookingsScreen() {
           offering_id: args.serviceId,
           serviceId: args.serviceId,
           staff_id: args.staffId || undefined,
-          add_on_ids: args.addOns && args.addOns.length > 0 ? args.addOns.map((ao) => ao.id) : undefined,
+          add_on_ids:
+            args.addOns && args.addOns.length > 0 ? args.addOns.map((ao) => ao.id) : undefined,
           price: args.unitPrice,
           duration_minutes: args.durationMinutes,
           duration: args.durationMinutes,
@@ -1235,8 +1324,12 @@ export default function GroupBookingsScreen() {
       booking_source: "provider",
       status: "confirmed",
       special_requests: args.groupRef
-        ? [`Group booking ${args.groupRef}`, args.participant.notes?.trim()].filter(Boolean).join("\n")
-        : [`Group booking ${args.groupId}`, args.participant.notes?.trim()].filter(Boolean).join("\n"),
+        ? [`Group booking ${args.groupRef}`, args.participant.notes?.trim()]
+            .filter(Boolean)
+            .join("\n")
+        : [`Group booking ${args.groupId}`, args.participant.notes?.trim()]
+            .filter(Boolean)
+            .join("\n"),
     };
 
     const bookingRes = await createBooking("/api/provider/bookings", bookingPayload);
@@ -1248,24 +1341,27 @@ export default function GroupBookingsScreen() {
       return { error: "Booking was created without an id response." };
     }
 
-    const linkRes = await addParticipant(`/api/provider/group-bookings/${args.groupId}/participants`, {
-      booking_id: createdBookingId,
-      participant_name: args.participant.name.trim(),
-      participant_email: args.participant.email?.trim() || undefined,
-      participant_phone: args.participant.phone?.trim() || undefined,
-      service_id: args.serviceId,
-      service_name: args.serviceName || undefined,
-      price: args.unitPrice,
-      duration_minutes: args.durationMinutes,
-      addons: (args.addOns ?? []).map((ao) => ({
-        id: ao.id,
-        name: ao.name,
-        price: Number(ao.price ?? 0) || 0,
-        duration: Number(ao.duration_minutes ?? 0) || 0,
-      })),
-      notes: args.participant.notes?.trim() || undefined,
-      is_primary_contact: args.isPrimary,
-    });
+    const linkRes = await addParticipant(
+      `/api/provider/group-bookings/${args.groupId}/participants`,
+      {
+        booking_id: createdBookingId,
+        participant_name: args.participant.name.trim(),
+        participant_email: args.participant.email?.trim() || undefined,
+        participant_phone: args.participant.phone?.trim() || undefined,
+        service_id: args.serviceId,
+        service_name: args.serviceName || undefined,
+        price: args.unitPrice,
+        duration_minutes: args.durationMinutes,
+        addons: (args.addOns ?? []).map((ao) => ({
+          id: ao.id,
+          name: ao.name,
+          price: Number(ao.price ?? 0) || 0,
+          duration: Number(ao.duration_minutes ?? 0) || 0,
+        })),
+        notes: args.participant.notes?.trim() || undefined,
+        is_primary_contact: args.isPrimary,
+      }
+    );
     if (linkRes.error) {
       return { error: linkRes.error };
     }
@@ -1288,17 +1384,15 @@ export default function GroupBookingsScreen() {
       setCreateForm((p) => ({ ...p, packageId: "" }));
       return;
     }
-    const serviceItems = (pkg.items ?? []).filter(
-      (it) => !!it.offering_id || !!it.offering?.id,
-    );
+    const serviceItems = (pkg.items ?? []).filter((it) => !!it.offering_id || !!it.offering?.id);
     const firstService = serviceItems[0];
-    const firstServiceId =
-      firstService?.offering_id ?? firstService?.offering?.id ?? "";
+    const firstServiceId = firstService?.offering_id ?? firstService?.offering?.id ?? "";
 
     // Prefer a service the provider already has in their service list so
     // downstream UI (service chips) can highlight it.
-    const matchedService =
-      firstServiceId ? services.find((s) => s.id === firstServiceId) : undefined;
+    const matchedService = firstServiceId
+      ? services.find((s) => s.id === firstServiceId)
+      : undefined;
 
     // Package duration = sum of service item durations (weighted by qty),
     // falling back to whatever is currently in the form.
@@ -1328,8 +1422,11 @@ export default function GroupBookingsScreen() {
         prev.map((participant) => ({
           ...participant,
           serviceId: participant.serviceId || firstServiceId,
-          addOnIds: participant.serviceId && participant.serviceId !== firstServiceId ? participant.addOnIds : [],
-        })),
+          addOnIds:
+            participant.serviceId && participant.serviceId !== firstServiceId
+              ? participant.addOnIds
+              : [],
+        }))
       );
     }
     Haptics.selectionAsync().catch(() => {});
@@ -1358,20 +1455,32 @@ export default function GroupBookingsScreen() {
       return;
     }
     if (!createForm.serviceId) {
-      Alert.alert("Service required", "Select a service so participant bookings can be created for calendar + accounting.");
+      Alert.alert(
+        "Service required",
+        "Select a service so participant bookings can be created for calendar + accounting."
+      );
       return;
     }
     if (!createForm.staffId) {
-      Alert.alert("Staff required", "Select a team member to schedule this group booking correctly.");
+      Alert.alert(
+        "Staff required",
+        "Select a team member to schedule this group booking correctly."
+      );
       return;
     }
     if (createForm.locationType === "at_home") {
       if (!createForm.addressLine1.trim()) {
-        Alert.alert("Address required", "Search and select the client address so the map pin and travel fee are accurate.");
+        Alert.alert(
+          "Address required",
+          "Search and select the client address so the map pin and travel fee are accurate."
+        );
         return;
       }
       if (createForm.addressLatitude == null || createForm.addressLongitude == null) {
-        Alert.alert("Map pin required", "Choose a Mapbox address suggestion so the exact coordinates are saved.");
+        Alert.alert(
+          "Map pin required",
+          "Choose a Mapbox address suggestion so the exact coordinates are saved."
+        );
         return;
       }
     }
@@ -1386,7 +1495,10 @@ export default function GroupBookingsScreen() {
       }))
       .filter((p) => p.name.length > 0 || p.phone.length > 0 || p.email.length > 0);
     if (participantsToCreate.length === 0) {
-      Alert.alert("Participant required", "Add at least one participant so the group creates booking records.");
+      Alert.alert(
+        "Participant required",
+        "Add at least one participant so the group creates booking records."
+      );
       return;
     }
     for (const [idx, p] of participantsToCreate.entries()) {
@@ -1428,20 +1540,32 @@ export default function GroupBookingsScreen() {
       return;
     }
     if (!createForm.serviceId) {
-      Alert.alert("Service required", "Select a service so participant bookings can be created for calendar + accounting.");
+      Alert.alert(
+        "Service required",
+        "Select a service so participant bookings can be created for calendar + accounting."
+      );
       return;
     }
     if (!createForm.staffId) {
-      Alert.alert("Staff required", "Select a team member to schedule this group booking correctly.");
+      Alert.alert(
+        "Staff required",
+        "Select a team member to schedule this group booking correctly."
+      );
       return;
     }
     if (createForm.locationType === "at_home") {
       if (!createForm.addressLine1.trim()) {
-        Alert.alert("Address required", "Search and select the client address so the map pin and travel fee are accurate.");
+        Alert.alert(
+          "Address required",
+          "Search and select the client address so the map pin and travel fee are accurate."
+        );
         return;
       }
       if (createForm.addressLatitude == null || createForm.addressLongitude == null) {
-        Alert.alert("Map pin required", "Choose a Mapbox address suggestion so the exact coordinates are saved.");
+        Alert.alert(
+          "Map pin required",
+          "Choose a Mapbox address suggestion so the exact coordinates are saved."
+        );
         return;
       }
     }
@@ -1450,7 +1574,10 @@ export default function GroupBookingsScreen() {
       time: createForm.time,
       durationMinutes: duration,
       staffId: createForm.staffId,
-      locationId: createForm.locationType === "at_home" ? null : (createForm.locationId || selectedLocationId || null),
+      locationId:
+        createForm.locationType === "at_home"
+          ? null
+          : createForm.locationId || selectedLocationId || null,
       serviceId: createForm.serviceId,
       locationType: createForm.locationType,
     });
@@ -1471,7 +1598,10 @@ export default function GroupBookingsScreen() {
       }))
       .filter((p) => p.name.length > 0 || p.phone.length > 0 || p.email.length > 0);
     if (participantsToCreate.length === 0) {
-      Alert.alert("Participant required", "Add at least one participant so the group creates booking records.");
+      Alert.alert(
+        "Participant required",
+        "Add at least one participant so the group creates booking records."
+      );
       return;
     }
     for (const [idx, p] of participantsToCreate.entries()) {
@@ -1493,21 +1623,33 @@ export default function GroupBookingsScreen() {
     const scheduledAt = buildZonedIsoForWallClock(
       createForm.date,
       createForm.time.substring(0, 5),
-      providerTz,
+      providerTz
     );
     if (!Number.isFinite(Date.parse(scheduledAt))) {
       Alert.alert("Invalid date/time", "Please enter a valid date and time.");
       return;
     }
 
-    const svc = createForm.serviceId ? services.find((s) => s.id === createForm.serviceId) : undefined;
+    const svc = createForm.serviceId
+      ? services.find((s) => s.id === createForm.serviceId)
+      : undefined;
     const travelFee = Math.max(0, Number(createForm.travelFee || 0) || 0);
-    const productsTotal = createProducts.reduce((sum, p) => sum + (Number(p.unitPrice) || 0) * Math.max(1, Number(p.quantity) || 1), 0);
+    const productsTotal = createProducts.reduce(
+      (sum, p) => sum + (Number(p.unitPrice) || 0) * Math.max(1, Number(p.quantity) || 1),
+      0
+    );
     const participantLines = participantsToCreate.map((p) =>
-      getParticipantLine({ serviceId: p.serviceId, addOnIds: p.addOnIds }, createForm.serviceId, services),
+      getParticipantLine(
+        { serviceId: p.serviceId, addOnIds: p.addOnIds },
+        createForm.serviceId,
+        services
+      )
     );
     const participantTotal = participantLines.reduce((sum, line) => sum + line.price, 0);
-    const totalDuration = Math.max(duration, ...participantLines.map((line) => line.durationMinutes));
+    const totalDuration = Math.max(
+      duration,
+      ...participantLines.map((line) => line.durationMinutes)
+    );
     const payload: Record<string, unknown> = {
       title: createForm.title.trim() || (svc ? serviceLabel(svc) : undefined) || "Group Session",
       scheduled_at: scheduledAt,
@@ -1516,7 +1658,8 @@ export default function GroupBookingsScreen() {
       notes: createForm.notes.trim() || undefined,
       location_type: createForm.locationType,
       travel_fee: createForm.locationType === "at_home" ? travelFee : 0,
-      total_price: participantTotal + productsTotal + (createForm.locationType === "at_home" ? travelFee : 0),
+      total_price:
+        participantTotal + productsTotal + (createForm.locationType === "at_home" ? travelFee : 0),
       // §Group-booking-audit 2026-05 (notify primary): tell the API whether
       // to email/push the primary contact (default true from review sheet).
       send_notification: createSendNotification,
@@ -1535,7 +1678,8 @@ export default function GroupBookingsScreen() {
       payload.service_name = svc ? serviceLabel(svc) : undefined;
     }
     if (createForm.staffId) payload.staff_id = createForm.staffId;
-    if (createForm.locationType === "at_salon" && createForm.locationId) payload.location_id = createForm.locationId;
+    if (createForm.locationType === "at_salon" && createForm.locationId)
+      payload.location_id = createForm.locationId;
     if (createForm.locationType === "at_home") {
       payload.address_line1 = createForm.addressLine1.trim();
       payload.address_city = createForm.addressCity.trim() || undefined;
@@ -1551,11 +1695,20 @@ export default function GroupBookingsScreen() {
     // matching the web `GroupBookingDialog` submit path.
     if (createForm.packageId) payload.package_id = createForm.packageId;
 
-    const { data: createdGroup, error } = await createGroup("/api/provider/group-bookings", payload);
-    if (error) { Alert.alert("Error", error); return; }
+    const { data: createdGroup, error } = await createGroup(
+      "/api/provider/group-bookings",
+      payload
+    );
+    if (error) {
+      Alert.alert("Error", error);
+      return;
+    }
     const createdGroupId = createdGroup?.id || createdGroup?.data?.id || null;
     if (!createdGroupId) {
-      Alert.alert("Created group", "The group was created, but the API did not return an id to attach participants.");
+      Alert.alert(
+        "Created group",
+        "The group was created, but the API did not return an id to attach participants."
+      );
       setShowCreate(false);
       refresh();
       return;
@@ -1578,18 +1731,19 @@ export default function GroupBookingsScreen() {
             staffId: createForm.staffId,
             locationId: createForm.locationType === "at_home" ? null : createForm.locationId,
             locationType: createForm.locationType,
-            address: createForm.locationType === "at_home"
-              ? {
-                  address_line1: createForm.addressLine1.trim(),
-                  address_city: createForm.addressCity.trim(),
-                  address_state: createForm.addressState.trim(),
-                  address_postal_code: createForm.addressPostalCode.trim(),
-                  address_country: createForm.addressCountry.trim() || "South Africa",
-                  address_latitude: createForm.addressLatitude,
-                  address_longitude: createForm.addressLongitude,
-                  travel_fee: idx === 0 ? travelFee : 0,
-                }
-              : undefined,
+            address:
+              createForm.locationType === "at_home"
+                ? {
+                    address_line1: createForm.addressLine1.trim(),
+                    address_city: createForm.addressCity.trim(),
+                    address_state: createForm.addressState.trim(),
+                    address_postal_code: createForm.addressPostalCode.trim(),
+                    address_country: createForm.addressCountry.trim() || "South Africa",
+                    address_latitude: createForm.addressLatitude,
+                    address_longitude: createForm.addressLongitude,
+                    travel_fee: idx === 0 ? travelFee : 0,
+                  }
+                : undefined,
             products: idx === 0 ? createProducts : [],
             durationMinutes: line.durationMinutes,
             unitPrice: line.price,
@@ -1598,7 +1752,7 @@ export default function GroupBookingsScreen() {
           });
           if (res.error) throw new Error(`${participant.name}: ${res.error}`);
           return res;
-        }),
+        })
       );
       if (createdBookings.length === 0) {
         throw new Error("Could not add participants to the group.");
@@ -1619,37 +1773,44 @@ export default function GroupBookingsScreen() {
               ? "yoco"
               : null;
       if (methodToMark) {
-        try {
-          await postGroupAction(
-            `/api/provider/group-bookings/${createdGroupId}?action=mark_paid`,
-            { payment_method: methodToMark },
-          );
-        } catch (e) {
+        const paymentResult = await postGroupAction(
+          `/api/provider/group-bookings/${createdGroupId}?action=mark_paid`,
+          { payment_method: methodToMark }
+        );
+        if (paymentResult.error) {
           // Group is created and visible; surface the payment problem so the
           // provider can mark-paid manually from the detail sheet.
           Alert.alert(
             "Group created — payment not recorded",
-            `The group session was created, but recording the payment as ${methodToMark} failed: ${e instanceof Error ? e.message : "Unknown error"}. Open the group to mark it paid manually.`,
+            `The group session was created, but recording the payment as ${methodToMark} failed: ${paymentResult.error}. Open the group to mark it paid manually.`
           );
         }
       }
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      // Close the review sheet first so the create sheet's onClose can fire
+      // cleanly when we close it below.
+      setShowCreateReview(false);
       setShowCreate(false);
       InteractionManager.runAfterInteractions(() => {
         void refresh();
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Could not add all participants.";
-      const { error: deleteErr } = await cancelGroup(`/api/provider/group-bookings/${createdGroupId}`);
+      const { error: deleteErr } = await cancelGroup(
+        `/api/provider/group-bookings/${createdGroupId}`
+      );
       if (deleteErr) {
         Alert.alert(
           "Group creation failed",
-          `${msg}\n\nThe group could not be rolled back automatically: ${deleteErr}. Check the group list for a partial group to cancel manually.`,
+          `${msg}\n\nThe group could not be rolled back automatically: ${deleteErr}. Check the group list for a partial group to cancel manually.`
         );
       } else {
         Alert.alert("Group creation failed", msg);
       }
+      // Drop back to the create form so the user can fix and retry — leaving
+      // the review sheet open would block taps on the underlying form.
+      setShowCreateReview(false);
       refresh();
     }
   }
@@ -1676,7 +1837,8 @@ export default function GroupBookingsScreen() {
       addressLongitude: parsed.longitude,
     }));
 
-    const addressString = parsed.full_address || `${parsed.address_line1}, ${parsed.city}, ${parsed.country}`;
+    const addressString =
+      parsed.full_address || `${parsed.address_line1}, ${parsed.city}, ${parsed.country}`;
     if (!provider?.id || !addressString.trim()) return;
     setValidatingCreateAddress(true);
     try {
@@ -1684,7 +1846,14 @@ export default function GroupBookingsScreen() {
         valid?: boolean;
         travelFee?: number;
         coordinates?: { latitude: number; longitude: number };
-        address?: { line1?: string; city?: string; state?: string; country?: string; postalCode?: string; fullAddress?: string };
+        address?: {
+          line1?: string;
+          city?: string;
+          state?: string;
+          country?: string;
+          postalCode?: string;
+          fullAddress?: string;
+        };
         reason?: string;
       }>("/api/location/validate", {
         address: addressString,
@@ -1692,7 +1861,10 @@ export default function GroupBookingsScreen() {
       });
       const data = res.data ?? {};
       if (!data.valid) {
-        Alert.alert("Outside service area", data.reason || "This address is outside your active service zones.");
+        Alert.alert(
+          "Outside service area",
+          data.reason || "This address is outside your active service zones."
+        );
         return;
       }
       setCreateForm((p) => ({
@@ -1708,7 +1880,10 @@ export default function GroupBookingsScreen() {
         travelFee: String(Math.max(0, Number(data.travelFee || 0))),
       }));
     } catch (e) {
-      Alert.alert("Travel fee unavailable", e instanceof Error ? e.message : "Could not calculate the travel fee.");
+      Alert.alert(
+        "Travel fee unavailable",
+        e instanceof Error ? e.message : "Could not calculate the travel fee."
+      );
     } finally {
       setValidatingCreateAddress(false);
     }
@@ -1792,10 +1967,7 @@ export default function GroupBookingsScreen() {
     }
     const serviceId = participantForm.serviceId || selectedGroup.service_id || "";
     if (!serviceId) {
-      Alert.alert(
-        "Service missing",
-        "Select what this participant wants before adding them.",
-      );
+      Alert.alert("Service missing", "Select what this participant wants before adding them.");
       return;
     }
 
@@ -1811,20 +1983,23 @@ export default function GroupBookingsScreen() {
       staffId: selectedGroup.team_member_id,
       locationId: selectedGroup.location_type === "at_home" ? null : selectedGroup.location_id,
       locationType: selectedGroup.location_type === "at_home" ? "at_home" : "at_salon",
-      address: selectedGroup.location_type === "at_home"
-        ? {
-            address_line1: selectedGroup.address_line1 || "",
-            address_city: selectedGroup.address_city || "",
-            address_state: selectedGroup.address_state || "",
-            address_postal_code: selectedGroup.address_postal_code || "",
-            address_country: selectedGroup.address_country || "South Africa",
-            address_latitude: selectedGroup.address_latitude ?? null,
-            address_longitude: selectedGroup.address_longitude ?? null,
-            travel_fee: 0,
-          }
-        : undefined,
+      address:
+        selectedGroup.location_type === "at_home"
+          ? {
+              address_line1: selectedGroup.address_line1 || "",
+              address_city: selectedGroup.address_city || "",
+              address_state: selectedGroup.address_state || "",
+              address_postal_code: selectedGroup.address_postal_code || "",
+              address_country: selectedGroup.address_country || "South Africa",
+              address_latitude: selectedGroup.address_latitude ?? null,
+              address_longitude: selectedGroup.address_longitude ?? null,
+              travel_fee: 0,
+            }
+          : undefined,
       products: [],
-      durationMinutes: line.durationMinutes || Number(selectedGroup.duration_minutes || matchedService?.duration_minutes || 60),
+      durationMinutes:
+        line.durationMinutes ||
+        Number(selectedGroup.duration_minutes || matchedService?.duration_minutes || 60),
       unitPrice: line.price,
       serviceName: matchedService ? serviceLabel(matchedService) : undefined,
       addOns: line.addOns,
@@ -1846,7 +2021,7 @@ export default function GroupBookingsScreen() {
     if (!selectedGroup) return;
     const { error } = await checkInParticipant(
       `/api/provider/group-bookings/${selectedGroup.id}/participants/${participant.id}/check-in`,
-      {},
+      {}
     );
     if (error) {
       Alert.alert("Error", error);
@@ -1860,7 +2035,7 @@ export default function GroupBookingsScreen() {
     if (!selectedGroup) return;
     const { error } = await checkOutParticipant(
       `/api/provider/group-bookings/${selectedGroup.id}/participants/${participant.id}/check-out`,
-      {},
+      {}
     );
     if (error) {
       Alert.alert("Error", error);
@@ -1914,7 +2089,7 @@ export default function GroupBookingsScreen() {
 
       const res = await api.post<{ url: string; expires_at: string }>(
         `/api/provider/group-bookings/${encodeURIComponent(group.id)}/receipt/signed-url`,
-        {},
+        {}
       );
       const signedUrl = res.data?.url;
       if (res.error || !signedUrl) {
@@ -1948,7 +2123,9 @@ export default function GroupBookingsScreen() {
       });
     } catch (err) {
       const msg =
-        err instanceof Error ? err.message : "Something went wrong while opening the group receipt.";
+        err instanceof Error
+          ? err.message
+          : "Something went wrong while opening the group receipt.";
       Alert.alert("Group receipt", msg);
     }
   }
@@ -1958,7 +2135,7 @@ export default function GroupBookingsScreen() {
     if (!bookingId) {
       Alert.alert(
         "Refund participant",
-        "This participant does not have a linked booking yet, so there is nothing to refund.",
+        "This participant does not have a linked booking yet, so there is nothing to refund."
       );
       return;
     }
@@ -2014,140 +2191,195 @@ export default function GroupBookingsScreen() {
       />
 
       <View style={{ flex: 1, minHeight: 0 }}>
-      <TouchableOpacity
-        onPress={openCreate}
-        activeOpacity={0.86}
-        style={twStyle("mb-3 overflow-hidden rounded-2xl bg-gray-900 p-4")}
-        accessibilityRole="button"
-        accessibilityLabel="Create a new group booking"
-      >
-        <View style={twStyle("flex-row items-center justify-between")}>
-          <View style={twStyle("flex-1 pr-3")}>
-            <View style={twStyle("mb-2 flex-row items-center")}>
-              <View style={twStyle("mr-2 rounded-full bg-white/10 px-2 py-1")}>
-                <Text style={twStyle("text-[10px] font-semibold uppercase tracking-wide text-indigo-100")}>
-                  New
-                </Text>
-              </View>
-              <Text style={twStyle("text-xs font-medium text-indigo-100")}>
-                Guided group setup
-              </Text>
-            </View>
-            <Text style={twStyle("text-lg font-bold text-white")}>Create a group booking</Text>
-            <Text style={twStyle("mt-1 text-xs leading-5 text-gray-300")}>
-              Add a shared time slot, service, team member, and initial participants with calendar checks.
-            </Text>
-          </View>
-          <View style={twStyle("h-11 w-11 items-center justify-center rounded-2xl bg-indigo-500")}>
-            <Ionicons name="add" size={24} color="#ffffff" />
-          </View>
-        </View>
-      </TouchableOpacity>
-
-      <View style={twStyle("mb-3 flex-row")}>
-        <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
-          <StatCard title="Total" value={String(stats.total)} icon="people-outline" iconColor="#6366f1" iconBg="bg-indigo-50" compact />
-        </View>
-        <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
-          <StatCard title="People" value={String(stats.totalParticipants)} icon="person-outline" iconColor="#3b82f6" iconBg="bg-blue-50" compact />
-        </View>
-        <View style={twStyle("flex-1")}>
-          <StatCard title="Revenue" value={formatCurrency(stats.revenue)} icon="cash-outline" iconColor="#22c55e" iconBg="bg-green-50" compact />
-        </View>
-      </View>
-
-      <SearchBar value={search} onChangeText={setSearch} placeholder="Search by ref, service, staff..." />
-
-      <View style={twStyle("my-3")}>
-        <FilterChipGroup options={STATUS_FILTERS} selected={filter} onSelect={setFilter} />
-      </View>
-
-      {loading && !groups.length ? (
-        <SkeletonList rows={4} />
-      ) : groupError && !groups.length ? (
-        <ErrorState message={groupError} onRetry={refresh} />
-      ) : filtered.length === 0 ? (
-        <EmptyState
-          icon="people-outline"
-          title="No group bookings"
-          description="Create a group session for bridal parties, events, families, or shared service appointments."
-          actionLabel="Create group booking"
-          actionAccessibilityLabel="Create a new group booking"
-          onAction={openCreate}
-        />
-      ) : (
-        <FlatList
-          {...verticalFlatListPerf}
-          data={filtered}
-          keyExtractor={(g: GroupBooking) => g.id}
-          style={{ flex: 1, minHeight: 0 }}
-          showsVerticalScrollIndicator={true}
-          refreshing={refreshing}
-          onRefresh={handleRefresh}
-          onEndReached={search.trim() ? undefined : loadMoreGroups}
-          onEndReachedThreshold={0.35}
-          ListFooterComponent={
-            loadingMoreGroups ? (
-              <View style={twStyle("py-4")}>
-                <ActivityIndicator color="#7C3AED" />
-              </View>
-            ) : null
-          }
-          contentContainerStyle={{ paddingBottom: 120 }}
-          ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
-          renderItem={({ item: group }: { item: GroupBooking }) => {
-            const ss = statusStyle(group.status);
-            return (
-              <TouchableOpacity
-                style={twStyle("rounded-xl border border-gray-100 bg-white p-4")}
-                onPress={() => setSelectedGroup(group)}
-                activeOpacity={0.7}
-              >
-                <View style={twStyle("flex-row items-start justify-between")}>
-                  <View style={twStyle("flex-1")}>
-                    <View style={twStyle("flex-row items-center")}>
-                      <Text style={[twStyle("text-base font-semibold text-gray-900"), { marginRight: 8 }]}>
-                        {group.title?.trim() || group.service_name || group.ref_number || "Group Session"}
-                      </Text>
-                      <View style={twStyle(`rounded-full px-2 py-0.5 ${ss.bg}`)}>
-                        <Text style={twStyle(`text-[10px] font-medium capitalize ${ss.text}`)}>
-                          {group.status}
-                        </Text>
-                      </View>
-                    </View>
-                    <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
-                      {formatDate(group.scheduled_date)} at {group.scheduled_time?.substring(0, 5)} · {group.duration_minutes}min
-                    </Text>
-                    <View style={twStyle("mt-1.5 flex-row items-center")}>
-                      {group.team_member_name && (
-                        <View style={[twStyle("flex-row items-center"), { marginRight: 12 }]}>
-                          <Ionicons name="person-outline" size={12} color="#6b7280" style={{ marginRight: 4 }} />
-                          <Text style={twStyle("text-xs text-gray-500")}>{group.team_member_name}</Text>
-                        </View>
-                      )}
-                      <View style={twStyle("flex-row items-center")}>
-                        <Ionicons name="people-outline" size={12} color="#6b7280" style={{ marginRight: 4 }} />
-                        <Text style={twStyle("text-xs text-gray-500")}>
-                          {group.current_participants ?? 0}
-                          {group.max_participants ? `/${group.max_participants}` : ""} participants
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-                  <Text style={twStyle("text-base font-bold text-gray-900")}>
-                    {formatCurrency(Number(group.total_price) || 0)}
+        <TouchableOpacity
+          onPress={openCreate}
+          activeOpacity={0.86}
+          style={twStyle("mb-3 overflow-hidden rounded-2xl bg-gray-900 p-4")}
+          accessibilityRole="button"
+          accessibilityLabel="Create a new group booking"
+        >
+          <View style={twStyle("flex-row items-center justify-between")}>
+            <View style={twStyle("flex-1 pr-3")}>
+              <View style={twStyle("mb-2 flex-row items-center")}>
+                <View style={twStyle("mr-2 rounded-full bg-white/10 px-2 py-1")}>
+                  <Text
+                    style={twStyle(
+                      "text-[10px] font-semibold uppercase tracking-wide text-indigo-100"
+                    )}
+                  >
+                    New
                   </Text>
                 </View>
+                <Text style={twStyle("text-xs font-medium text-indigo-100")}>
+                  Guided group setup
+                </Text>
+              </View>
+              <Text style={twStyle("text-lg font-bold text-white")}>Create a group booking</Text>
+              <Text style={twStyle("mt-1 text-xs leading-5 text-gray-300")}>
+                Add a shared time slot, service, team member, and initial participants with calendar
+                checks.
+              </Text>
+            </View>
+            <View
+              style={twStyle("h-11 w-11 items-center justify-center rounded-2xl bg-indigo-500")}
+            >
+              <Ionicons name="add" size={24} color="#ffffff" />
+            </View>
+          </View>
+        </TouchableOpacity>
 
-                {group.ref_number && (
-                  <Text style={twStyle("mt-1 text-[10px] text-gray-400")}>#{group.ref_number}</Text>
-                )}
-              </TouchableOpacity>
-            );
-          }}
+        <View style={twStyle("mb-3 flex-row")}>
+          <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
+            <StatCard
+              title="Total"
+              value={String(stats.total)}
+              icon="people-outline"
+              iconColor="#6366f1"
+              iconBg="bg-indigo-50"
+              compact
+            />
+          </View>
+          <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
+            <StatCard
+              title="People"
+              value={String(stats.totalParticipants)}
+              icon="person-outline"
+              iconColor="#3b82f6"
+              iconBg="bg-blue-50"
+              compact
+            />
+          </View>
+          <View style={twStyle("flex-1")}>
+            <StatCard
+              title="Revenue"
+              value={formatCurrency(stats.revenue)}
+              icon="cash-outline"
+              iconColor="#22c55e"
+              iconBg="bg-green-50"
+              compact
+            />
+          </View>
+        </View>
+
+        <SearchBar
+          value={search}
+          onChangeText={setSearch}
+          placeholder="Search by ref, service, staff..."
         />
-      )}
 
+        <View style={twStyle("my-3")}>
+          <FilterChipGroup options={STATUS_FILTERS} selected={filter} onSelect={setFilter} />
+        </View>
+
+        {loading && !groups.length ? (
+          <SkeletonList rows={4} />
+        ) : groupError && !groups.length ? (
+          <ErrorState message={groupError} onRetry={refresh} />
+        ) : filtered.length === 0 ? (
+          <EmptyState
+            icon="people-outline"
+            title="No group bookings"
+            description="Create a group session for bridal parties, events, families, or shared service appointments."
+            actionLabel="Create group booking"
+            actionAccessibilityLabel="Create a new group booking"
+            onAction={openCreate}
+          />
+        ) : (
+          <FlatList
+            {...verticalFlatListPerf}
+            data={filtered}
+            keyExtractor={(g: GroupBooking) => g.id}
+            style={{ flex: 1, minHeight: 0 }}
+            showsVerticalScrollIndicator={true}
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            onEndReached={search.trim() ? undefined : loadMoreGroups}
+            onEndReachedThreshold={0.35}
+            ListFooterComponent={
+              loadingMoreGroups ? (
+                <View style={twStyle("py-4")}>
+                  <ActivityIndicator color="#7C3AED" />
+                </View>
+              ) : null
+            }
+            contentContainerStyle={{ paddingBottom: 120 }}
+            ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+            renderItem={({ item: group }: { item: GroupBooking }) => {
+              const ss = statusStyle(group.status);
+              return (
+                <TouchableOpacity
+                  style={twStyle("rounded-xl border border-gray-100 bg-white p-4")}
+                  onPress={() => setSelectedGroup(group)}
+                  activeOpacity={0.7}
+                >
+                  <View style={twStyle("flex-row items-start justify-between")}>
+                    <View style={twStyle("flex-1")}>
+                      <View style={twStyle("flex-row items-center")}>
+                        <Text
+                          style={[
+                            twStyle("text-base font-semibold text-gray-900"),
+                            { marginRight: 8 },
+                          ]}
+                        >
+                          {group.title?.trim() ||
+                            group.service_name ||
+                            group.ref_number ||
+                            "Group Session"}
+                        </Text>
+                        <View style={twStyle(`rounded-full px-2 py-0.5 ${ss.bg}`)}>
+                          <Text style={twStyle(`text-[10px] font-medium capitalize ${ss.text}`)}>
+                            {group.status}
+                          </Text>
+                        </View>
+                      </View>
+                      <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
+                        {formatDate(group.scheduled_date)} at{" "}
+                        {group.scheduled_time?.substring(0, 5)} · {group.duration_minutes}min
+                      </Text>
+                      <View style={twStyle("mt-1.5 flex-row items-center")}>
+                        {group.team_member_name && (
+                          <View style={[twStyle("flex-row items-center"), { marginRight: 12 }]}>
+                            <Ionicons
+                              name="person-outline"
+                              size={12}
+                              color="#6b7280"
+                              style={{ marginRight: 4 }}
+                            />
+                            <Text style={twStyle("text-xs text-gray-500")}>
+                              {group.team_member_name}
+                            </Text>
+                          </View>
+                        )}
+                        <View style={twStyle("flex-row items-center")}>
+                          <Ionicons
+                            name="people-outline"
+                            size={12}
+                            color="#6b7280"
+                            style={{ marginRight: 4 }}
+                          />
+                          <Text style={twStyle("text-xs text-gray-500")}>
+                            {group.current_participants ?? 0}
+                            {group.max_participants ? `/${group.max_participants}` : ""}{" "}
+                            participants
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                    <Text style={twStyle("text-base font-bold text-gray-900")}>
+                      {formatCurrency(Number(group.total_price) || 0)}
+                    </Text>
+                  </View>
+
+                  {group.ref_number && (
+                    <Text style={twStyle("mt-1 text-[10px] text-gray-400")}>
+                      #{group.ref_number}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              );
+            }}
+          />
+        )}
       </View>
 
       {/* Group detail sheet */}
@@ -2165,10 +2397,17 @@ export default function GroupBookingsScreen() {
           <View>
             <View style={twStyle("mb-3 flex-row items-center justify-between")}>
               <Text style={twStyle("text-sm text-gray-500")}>
-                {formatDate(selectedGroup.scheduled_date)} at {selectedGroup.scheduled_time?.substring(0, 5)}
+                {formatDate(selectedGroup.scheduled_date)} at{" "}
+                {selectedGroup.scheduled_time?.substring(0, 5)}
               </Text>
-              <View style={twStyle(`rounded-full px-3 py-1 ${statusStyle(selectedGroup.status).bg}`)}>
-                <Text style={twStyle(`text-xs font-medium capitalize ${statusStyle(selectedGroup.status).text}`)}>
+              <View
+                style={twStyle(`rounded-full px-3 py-1 ${statusStyle(selectedGroup.status).bg}`)}
+              >
+                <Text
+                  style={twStyle(
+                    `text-xs font-medium capitalize ${statusStyle(selectedGroup.status).text}`
+                  )}
+                >
                   {selectedGroup.status}
                 </Text>
               </View>
@@ -2177,12 +2416,16 @@ export default function GroupBookingsScreen() {
             <View style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 p-3")}>
               <View style={twStyle("flex-row justify-between mb-1")}>
                 <Text style={twStyle("text-sm text-gray-500")}>Duration</Text>
-                <Text style={twStyle("text-sm text-gray-700")}>{selectedGroup.duration_minutes} min</Text>
+                <Text style={twStyle("text-sm text-gray-700")}>
+                  {selectedGroup.duration_minutes} min
+                </Text>
               </View>
               {selectedGroup.team_member_name && (
                 <View style={twStyle("flex-row justify-between mb-1")}>
                   <Text style={twStyle("text-sm text-gray-500")}>Staff</Text>
-                  <Text style={twStyle("text-sm text-gray-700")}>{selectedGroup.team_member_name}</Text>
+                  <Text style={twStyle("text-sm text-gray-700")}>
+                    {selectedGroup.team_member_name}
+                  </Text>
                 </View>
               )}
               {/* §Provider-audit 2026-04 (packages round 3): show the
@@ -2194,14 +2437,17 @@ export default function GroupBookingsScreen() {
                 <View style={twStyle("flex-row justify-between mb-1")}>
                   <Text style={twStyle("text-sm text-gray-500")}>Package</Text>
                   <Text style={twStyle("text-sm text-gray-700")} numberOfLines={1}>
-                    {packagesList.find((p) => p.id === selectedGroup.package_id)?.name ?? "Attached"}
+                    {packagesList.find((p) => p.id === selectedGroup.package_id)?.name ??
+                      "Attached"}
                   </Text>
                 </View>
               ) : null}
               {selectedGroup.price_per_person && (
                 <View style={twStyle("flex-row justify-between mb-1")}>
                   <Text style={twStyle("text-sm text-gray-500")}>Per Person</Text>
-                  <Text style={twStyle("text-sm text-gray-700")}>{formatCurrency(selectedGroup.price_per_person)}</Text>
+                  <Text style={twStyle("text-sm text-gray-700")}>
+                    {formatCurrency(selectedGroup.price_per_person)}
+                  </Text>
                 </View>
               )}
               <View style={twStyle("flex-row justify-between mb-1")}>
@@ -2228,13 +2474,20 @@ export default function GroupBookingsScreen() {
             {/* Participants */}
             <View style={twStyle("mb-3")}>
               <View style={twStyle("flex-row items-center justify-between mb-2")}>
-                <Text style={twStyle("text-xs font-semibold uppercase text-gray-400")}>Participants</Text>
+                <Text style={twStyle("text-xs font-semibold uppercase text-gray-400")}>
+                  Participants
+                </Text>
                 {selectedGroup.status !== "completed" && selectedGroup.status !== "cancelled" && (
                   <TouchableOpacity
                     style={[twStyle("flex-row items-center"), { marginRight: 4 }]}
                     onPress={openAddParticipant}
                   >
-                    <Ionicons name="add-circle-outline" size={16} color="#6366f1" style={{ marginRight: 4 }} />
+                    <Ionicons
+                      name="add-circle-outline"
+                      size={16}
+                      color="#6366f1"
+                      style={{ marginRight: 4 }}
+                    />
                     <Text style={twStyle("text-xs font-medium text-indigo-600")}>Add</Text>
                   </TouchableOpacity>
                 )}
@@ -2242,42 +2495,41 @@ export default function GroupBookingsScreen() {
 
               {(selectedGroup.participants ?? []).length === 0 ? (
                 <View style={twStyle("rounded-lg bg-gray-50 p-3")}>
-                  <Text style={twStyle("text-center text-xs text-gray-400")}>No participants yet</Text>
+                  <Text style={twStyle("text-center text-xs text-gray-400")}>
+                    No participants yet
+                  </Text>
                 </View>
               ) : (
                 (selectedGroup.participants ?? []).map((p) => {
                   const displayName =
-                    p.customer_name ||
-                    p.client_name ||
-                    p.participant_name ||
-                    "Guest";
-                  const displayPhone =
-                    p.customer_phone || p.client_phone || p.participant_phone;
+                    p.customer_name || p.client_name || p.participant_name || "Guest";
+                  const displayPhone = p.customer_phone || p.client_phone || p.participant_phone;
                   const checkedIn =
-                    p.checked_in === true ||
-                    !!p.checked_in_time ||
-                    !!p.checked_in_at;
+                    p.checked_in === true || !!p.checked_in_time || !!p.checked_in_at;
                   const checkedOut =
-                    p.checked_out === true ||
-                    !!p.checked_out_time ||
-                    !!p.checked_out_at;
+                    p.checked_out === true || !!p.checked_out_time || !!p.checked_out_at;
                   const isCheckedIn = checkedIn && !checkedOut;
                   const isCheckedOut = checkedOut;
                   const canCheckInOut =
-                    selectedGroup.status !== "completed" &&
-                    selectedGroup.status !== "cancelled";
+                    selectedGroup.status !== "completed" && selectedGroup.status !== "cancelled";
                   return (
                     <View key={p.id} style={twStyle("mb-1.5 rounded-lg bg-gray-50 p-3")}>
                       <View style={twStyle("flex-row items-center")}>
                         <Avatar name={displayName} size="sm" />
                         <View style={twStyle("ml-2 flex-1")}>
-                          <Text style={twStyle("text-sm font-medium text-gray-900")}>{displayName}</Text>
+                          <Text style={twStyle("text-sm font-medium text-gray-900")}>
+                            {displayName}
+                          </Text>
                           {p.service_name ? (
                             <Text style={twStyle("text-xs text-gray-500")}>{p.service_name}</Text>
                           ) : null}
                           {Array.isArray(p.addons) && p.addons.length > 0 ? (
                             <Text style={twStyle("text-xs text-indigo-600")} numberOfLines={2}>
-                              Add-ons: {p.addons.map((ao) => ao.name || ao.id || ao.addonId).filter(Boolean).join(", ")}
+                              Add-ons:{" "}
+                              {p.addons
+                                .map((ao) => ao.name || ao.id || ao.addonId)
+                                .filter(Boolean)
+                                .join(", ")}
                             </Text>
                           ) : null}
                           {p.notes ? (
@@ -2296,20 +2548,39 @@ export default function GroupBookingsScreen() {
                           )}
                         </View>
                         <View style={twStyle("flex-row items-center")}>
-                          <View style={[twStyle(`rounded-full px-2 py-0.5 ${(Number((p as Participant & { price?: number }).price) || 0) > 0 ? "bg-green-50" : "bg-amber-50"}`), { marginRight: 8 }]}>
-                            <Text style={twStyle(`text-[10px] font-medium ${(Number((p as Participant & { price?: number }).price) || 0) > 0 ? "text-green-700" : "text-amber-700"}`)}>
+                          <View
+                            style={[
+                              twStyle(
+                                `rounded-full px-2 py-0.5 ${(Number((p as Participant & { price?: number }).price) || 0) > 0 ? "bg-green-50" : "bg-amber-50"}`
+                              ),
+                              { marginRight: 8 },
+                            ]}
+                          >
+                            <Text
+                              style={twStyle(
+                                `text-[10px] font-medium ${(Number((p as Participant & { price?: number }).price) || 0) > 0 ? "text-green-700" : "text-amber-700"}`
+                              )}
+                            >
                               {(Number((p as Participant & { price?: number }).price) || 0) > 0
-                                ? formatCurrency(Number((p as Participant & { price?: number }).price) || 0)
+                                ? formatCurrency(
+                                    Number((p as Participant & { price?: number }).price) || 0
+                                  )
                                 : "No price"}
                             </Text>
                           </View>
                           <View
                             style={[
-                              twStyle(`rounded-full px-2 py-0.5 ${p.paid ? "bg-emerald-50" : (Number(p.total_paid ?? 0) > 0 ? "bg-amber-50" : "bg-gray-100")}`),
+                              twStyle(
+                                `rounded-full px-2 py-0.5 ${p.paid ? "bg-emerald-50" : Number(p.total_paid ?? 0) > 0 ? "bg-amber-50" : "bg-gray-100"}`
+                              ),
                               { marginRight: 8 },
                             ]}
                           >
-                            <Text style={twStyle(`text-[10px] font-medium ${p.paid ? "text-emerald-700" : (Number(p.total_paid ?? 0) > 0 ? "text-amber-700" : "text-gray-600")}`)}>
+                            <Text
+                              style={twStyle(
+                                `text-[10px] font-medium ${p.paid ? "text-emerald-700" : Number(p.total_paid ?? 0) > 0 ? "text-amber-700" : "text-gray-600"}`
+                              )}
+                            >
                               {p.paid
                                 ? "Paid"
                                 : Number(p.total_paid ?? 0) > 0
@@ -2318,7 +2589,10 @@ export default function GroupBookingsScreen() {
                             </Text>
                           </View>
                           {canCheckInOut && (
-                            <TouchableOpacity onPress={() => handleRemoveParticipant(p)} hitSlop={8}>
+                            <TouchableOpacity
+                              onPress={() => handleRemoveParticipant(p)}
+                              hitSlop={8}
+                            >
                               <Ionicons name="close-circle" size={18} color="#ef4444" />
                             </TouchableOpacity>
                           )}
@@ -2330,34 +2604,63 @@ export default function GroupBookingsScreen() {
                             <TouchableOpacity
                               onPress={() => handleCheckIn(p)}
                               style={[
-                                twStyle("flex-1 flex-row items-center justify-center rounded-md bg-blue-50 py-2"),
+                                twStyle(
+                                  "flex-1 flex-row items-center justify-center rounded-md bg-blue-50 py-2"
+                                ),
                                 { marginRight: 8 },
                               ]}
                               accessibilityRole="button"
                               accessibilityLabel={`Check in ${p.customer_name}`}
                             >
-                              <Ionicons name="log-in-outline" size={14} color="#1d4ed8" style={{ marginRight: 4 }} />
-                              <Text style={twStyle("text-xs font-semibold text-blue-700")}>Check in</Text>
+                              <Ionicons
+                                name="log-in-outline"
+                                size={14}
+                                color="#1d4ed8"
+                                style={{ marginRight: 4 }}
+                              />
+                              <Text style={twStyle("text-xs font-semibold text-blue-700")}>
+                                Check in
+                              </Text>
                             </TouchableOpacity>
                           ) : null}
                           {isCheckedIn ? (
                             <TouchableOpacity
                               onPress={() => handleCheckOut(p)}
                               style={[
-                                twStyle("flex-1 flex-row items-center justify-center rounded-md bg-green-50 py-2"),
+                                twStyle(
+                                  "flex-1 flex-row items-center justify-center rounded-md bg-green-50 py-2"
+                                ),
                                 { marginRight: 8 },
                               ]}
                               accessibilityRole="button"
                               accessibilityLabel={`Check out ${p.customer_name}`}
                             >
-                              <Ionicons name="log-out-outline" size={14} color="#15803d" style={{ marginRight: 4 }} />
-                              <Text style={twStyle("text-xs font-semibold text-green-700")}>Check out</Text>
+                              <Ionicons
+                                name="log-out-outline"
+                                size={14}
+                                color="#15803d"
+                                style={{ marginRight: 4 }}
+                              />
+                              <Text style={twStyle("text-xs font-semibold text-green-700")}>
+                                Check out
+                              </Text>
                             </TouchableOpacity>
                           ) : null}
                           {isCheckedOut ? (
-                            <View style={twStyle("flex-1 flex-row items-center justify-center rounded-md bg-gray-100 py-2")}>
-                              <Ionicons name="checkmark-done-outline" size={14} color="#4b5563" style={{ marginRight: 4 }} />
-                              <Text style={twStyle("text-xs font-semibold text-gray-600")}>Completed</Text>
+                            <View
+                              style={twStyle(
+                                "flex-1 flex-row items-center justify-center rounded-md bg-gray-100 py-2"
+                              )}
+                            >
+                              <Ionicons
+                                name="checkmark-done-outline"
+                                size={14}
+                                color="#4b5563"
+                                style={{ marginRight: 4 }}
+                              />
+                              <Text style={twStyle("text-xs font-semibold text-gray-600")}>
+                                Completed
+                              </Text>
                             </View>
                           ) : null}
                         </View>
@@ -2365,12 +2668,21 @@ export default function GroupBookingsScreen() {
                       {p.booking_id ? (
                         <TouchableOpacity
                           onPress={() => openParticipantRefund(p)}
-                          style={twStyle("mt-2 flex-row items-center justify-center rounded-md bg-amber-50 py-2")}
+                          style={twStyle(
+                            "mt-2 flex-row items-center justify-center rounded-md bg-amber-50 py-2"
+                          )}
                           accessibilityRole="button"
                           accessibilityLabel={`Refund ${displayName}`}
                         >
-                          <Ionicons name="cash-outline" size={14} color="#b45309" style={{ marginRight: 4 }} />
-                          <Text style={twStyle("text-xs font-semibold text-amber-700")}>Refund participant</Text>
+                          <Ionicons
+                            name="cash-outline"
+                            size={14}
+                            color="#b45309"
+                            style={{ marginRight: 4 }}
+                          />
+                          <Text style={twStyle("text-xs font-semibold text-amber-700")}>
+                            Refund participant
+                          </Text>
                         </TouchableOpacity>
                       ) : null}
                     </View>
@@ -2389,16 +2701,18 @@ export default function GroupBookingsScreen() {
             */}
             {selectedGroup.status !== "cancelled" ? (
               <TouchableOpacity
-                style={twStyle("mb-3 flex-row items-center justify-center rounded-lg bg-amber-50 py-2.5")}
+                style={twStyle(
+                  "mb-3 flex-row items-center justify-center rounded-lg bg-amber-50 py-2.5"
+                )}
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   const participantsWithBooking = (selectedGroup.participants ?? []).filter(
-                    (participant) => !!participant.booking_id,
+                    (participant) => !!participant.booking_id
                   );
                   if (participantsWithBooking.length === 0) {
                     Alert.alert(
                       "Refund participant",
-                      "No participants in this group have linked bookings yet, so refunds are not available.",
+                      "No participants in this group have linked bookings yet, so refunds are not available."
                     );
                     return;
                   }
@@ -2408,7 +2722,7 @@ export default function GroupBookingsScreen() {
                   }
                   Alert.alert(
                     "Refund participant",
-                    "Use the Refund participant button on the specific participant row below to refund the correct booking.",
+                    "Use the Refund participant button on the specific participant row below to refund the correct booking."
                   );
                 }}
                 accessibilityRole="button"
@@ -2422,7 +2736,9 @@ export default function GroupBookingsScreen() {
             ) : null}
 
             <TouchableOpacity
-              style={twStyle("mb-3 flex-row items-center justify-center rounded-lg bg-indigo-50 py-2.5")}
+              style={twStyle(
+                "mb-3 flex-row items-center justify-center rounded-lg bg-indigo-50 py-2.5"
+              )}
               onPress={() => openGroupReceipt(selectedGroup)}
               accessibilityRole="button"
               accessibilityLabel="Open group receipt"
@@ -2437,14 +2753,20 @@ export default function GroupBookingsScreen() {
             {selectedGroup.status !== "completed" && selectedGroup.status !== "cancelled" && (
               <View style={twStyle("flex-row")}>
                 <TouchableOpacity
-                  style={[twStyle("flex-1 items-center rounded-lg bg-indigo-50 py-2.5"), { marginRight: 8 }]}
+                  style={[
+                    twStyle("flex-1 items-center rounded-lg bg-indigo-50 py-2.5"),
+                    { marginRight: 8 },
+                  ]}
                   onPress={() => openEdit(selectedGroup)}
                 >
                   <Text style={twStyle("text-sm font-medium text-indigo-700")}>Edit</Text>
                 </TouchableOpacity>
                 {selectedGroup.status === "confirmed" && (
                   <TouchableOpacity
-                    style={[twStyle("flex-1 items-center rounded-lg bg-green-50 py-2.5"), { marginRight: 8 }]}
+                    style={[
+                      twStyle("flex-1 items-center rounded-lg bg-green-50 py-2.5"),
+                      { marginRight: 8 },
+                    ]}
                     onPress={() => handleStatusChange(selectedGroup, "started")}
                   >
                     <Text style={twStyle("text-sm font-medium text-green-700")}>Start</Text>
@@ -2452,14 +2774,20 @@ export default function GroupBookingsScreen() {
                 )}
                 {selectedGroup.status === "started" && (
                   <TouchableOpacity
-                    style={[twStyle("flex-1 items-center rounded-lg bg-green-50 py-2.5"), { marginRight: 8 }]}
+                    style={[
+                      twStyle("flex-1 items-center rounded-lg bg-green-50 py-2.5"),
+                      { marginRight: 8 },
+                    ]}
                     onPress={() => handleStatusChange(selectedGroup, "completed")}
                   >
                     <Text style={twStyle("text-sm font-medium text-green-700")}>Complete</Text>
                   </TouchableOpacity>
                 )}
                 <TouchableOpacity
-                  style={[twStyle("flex-1 items-center rounded-lg bg-red-50 py-2.5"), { marginRight: 8 }]}
+                  style={[
+                    twStyle("flex-1 items-center rounded-lg bg-red-50 py-2.5"),
+                    { marginRight: 8 },
+                  ]}
                   onPress={() => handleCancel(selectedGroup)}
                 >
                   <Text style={twStyle("text-sm font-medium text-red-700")}>Cancel</Text>
@@ -2472,12 +2800,18 @@ export default function GroupBookingsScreen() {
                 {(["cash", "card", "yoco", "bank_transfer"] as const).map((method) => (
                   <TouchableOpacity
                     key={method}
-                    style={twStyle("mb-2 mr-2 rounded-full border border-gray-200 bg-white px-3 py-1.5")}
+                    style={twStyle(
+                      "mb-2 mr-2 rounded-full border border-gray-200 bg-white px-3 py-1.5"
+                    )}
                     disabled={groupActionLoading}
                     onPress={() => handleRecordGroupPayment(selectedGroup, method)}
                   >
                     <Text style={twStyle("text-xs font-medium text-gray-700")}>
-                      {method === "bank_transfer" ? "Bank transfer" : method === "yoco" ? "Yoco" : method[0].toUpperCase() + method.slice(1)}
+                      {method === "bank_transfer"
+                        ? "Bank transfer"
+                        : method === "yoco"
+                          ? "Yoco"
+                          : method[0].toUpperCase() + method.slice(1)}
                     </Text>
                   </TouchableOpacity>
                 ))}
@@ -2528,7 +2862,7 @@ export default function GroupBookingsScreen() {
                     editForm.packageId
                       ? "border-indigo-300 bg-indigo-50"
                       : "border-gray-200 bg-gray-50"
-                  }`,
+                  }`
                 )}
                 accessibilityRole="button"
                 accessibilityLabel={
@@ -2544,12 +2878,13 @@ export default function GroupBookingsScreen() {
                   />
                   <Text
                     style={twStyle(
-                      `text-sm ${editForm.packageId ? "text-indigo-800 font-medium" : "text-gray-600"}`,
+                      `text-sm ${editForm.packageId ? "text-indigo-800 font-medium" : "text-gray-600"}`
                     )}
                     numberOfLines={1}
                   >
                     {editForm.packageId
-                      ? packagesList.find((p) => p.id === editForm.packageId)?.name ?? "Package attached"
+                      ? (packagesList.find((p) => p.id === editForm.packageId)?.name ??
+                        "Package attached")
                       : "Tap to attach a service package"}
                   </Text>
                 </View>
@@ -2557,13 +2892,19 @@ export default function GroupBookingsScreen() {
               </TouchableOpacity>
               {editForm.packageId !== editForm.originalPackageId ? (
                 <Text style={twStyle("mt-1 text-[11px] text-amber-600")}>
-                  Package change will save on &quot;Save Changes&quot;. Duration and service stay as shown — update them manually if needed.
+                  Package change will save on &quot;Save Changes&quot;. Duration and service stay as
+                  shown — update them manually if needed.
                 </Text>
               ) : null}
             </View>
           ) : null}
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Date</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={twStyle("mb-3")} contentContainerStyle={{ paddingVertical: 4 }}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={twStyle("mb-3")}
+            contentContainerStyle={{ paddingVertical: 4 }}
+          >
             {editDateOptions.map((d) => {
               const dateKey = formatDateFns(d, "yyyy-MM-dd");
               const isActive = editForm.date === dateKey;
@@ -2571,17 +2912,25 @@ export default function GroupBookingsScreen() {
                 <TouchableOpacity
                   key={dateKey}
                   style={[
-                    twStyle(`items-center rounded-xl px-3 py-2.5 ${isActive ? "bg-gray-900" : "border border-gray-200 bg-white"}`),
+                    twStyle(
+                      `items-center rounded-xl px-3 py-2.5 ${isActive ? "bg-gray-900" : "border border-gray-200 bg-white"}`
+                    ),
                     { minWidth: 56, marginRight: 8 },
                   ]}
                   onPress={() => setEditForm((p) => ({ ...p, date: dateKey }))}
                   accessibilityRole="radio"
                   accessibilityState={{ checked: isActive }}
                 >
-                  <Text style={twStyle(`text-[10px] ${isActive ? "text-gray-300" : "text-gray-500"}`)}>
+                  <Text
+                    style={twStyle(`text-[10px] ${isActive ? "text-gray-300" : "text-gray-500"}`)}
+                  >
                     {isSameDay(d, new Date()) ? "Today" : formatDateFns(d, "EEE")}
                   </Text>
-                  <Text style={twStyle(`text-base font-bold ${isActive ? "text-white" : "text-gray-900"}`)}>
+                  <Text
+                    style={twStyle(
+                      `text-base font-bold ${isActive ? "text-white" : "text-gray-900"}`
+                    )}
+                  >
                     {formatDateFns(d, "d")}
                   </Text>
                 </TouchableOpacity>
@@ -2613,15 +2962,19 @@ export default function GroupBookingsScreen() {
                               : slot.available
                                 ? "border-emerald-200 bg-white"
                                 : "border-gray-100 bg-gray-50"
-                          }`,
+                          }`
                         ),
                       ]}
                     >
                       <Text
                         style={twStyle(
                           `text-xs font-semibold ${
-                            isActive ? "text-white" : slot.available ? "text-emerald-700" : "text-gray-300"
-                          }`,
+                            isActive
+                              ? "text-white"
+                              : slot.available
+                                ? "text-emerald-700"
+                                : "text-gray-300"
+                          }`
                         )}
                       >
                         {slot.time}
@@ -2640,7 +2993,9 @@ export default function GroupBookingsScreen() {
             <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
               <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Duration (min)</Text>
               <TextInput
-                style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+                style={twStyle(
+                  "rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                )}
                 value={editForm.duration}
                 onChangeText={(t) => setEditForm((p) => ({ ...p, duration: t }))}
                 keyboardType="number-pad"
@@ -2649,9 +3004,13 @@ export default function GroupBookingsScreen() {
               />
             </View>
             <View style={twStyle("flex-1")}>
-              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Max Participants</Text>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
+                Max Participants
+              </Text>
               <TextInput
-                style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+                style={twStyle(
+                  "rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                )}
                 value={editForm.maxParticipants}
                 onChangeText={(t) => setEditForm((p) => ({ ...p, maxParticipants: t }))}
                 keyboardType="number-pad"
@@ -2662,14 +3021,21 @@ export default function GroupBookingsScreen() {
           </View>
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Notes</Text>
           <TextInput
-            style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+            style={twStyle(
+              "mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            )}
             value={editForm.notes}
             onChangeText={(t) => setEditForm((p) => ({ ...p, notes: t }))}
             placeholder="Optional notes..."
             placeholderTextColor="#9ca3af"
             multiline
           />
-          <ActionButton label="Save Changes" onPress={handleSaveEdit} loading={verifyingEditSlot || updatingGroup} fullWidth />
+          <ActionButton
+            label="Save Changes"
+            onPress={handleSaveEdit}
+            loading={verifyingEditSlot || updatingGroup}
+            fullWidth
+          />
         </ScrollView>
       </BottomSheet>
 
@@ -2702,12 +3068,17 @@ export default function GroupBookingsScreen() {
                 }}
                 activeOpacity={0.7}
                 style={twStyle(
-                  "mb-2 flex-row items-center justify-between rounded-xl border border-red-200 bg-red-50 px-4 py-3",
+                  "mb-2 flex-row items-center justify-between rounded-xl border border-red-200 bg-red-50 px-4 py-3"
                 )}
                 accessibilityRole="button"
               >
                 <View style={twStyle("flex-row items-center")}>
-                  <Ionicons name="close-circle-outline" size={16} color="#dc2626" style={{ marginRight: 8 }} />
+                  <Ionicons
+                    name="close-circle-outline"
+                    size={16}
+                    color="#dc2626"
+                    style={{ marginRight: 8 }}
+                  />
                   <Text style={twStyle("text-sm font-medium text-red-700")}>
                     Detach current package
                   </Text>
@@ -2718,10 +3089,10 @@ export default function GroupBookingsScreen() {
             {packagesList.map((pkg) => {
               const isSelected = editForm.packageId === pkg.id;
               const serviceCount = (pkg.items ?? []).filter(
-                (it) => !!it.offering_id || !!it.offering?.id,
+                (it) => !!it.offering_id || !!it.offering?.id
               ).length;
               const productCount = (pkg.items ?? []).filter(
-                (it) => !!it.product_id || !!it.product?.id,
+                (it) => !!it.product_id || !!it.product?.id
               ).length;
               const priceNum = typeof pkg.price === "number" ? pkg.price : null;
               const discount =
@@ -2739,10 +3110,8 @@ export default function GroupBookingsScreen() {
                   activeOpacity={0.7}
                   style={twStyle(
                     `mb-2 rounded-xl border px-4 py-3 ${
-                      isSelected
-                        ? "border-indigo-400 bg-indigo-50"
-                        : "border-gray-200 bg-white"
-                    }`,
+                      isSelected ? "border-indigo-400 bg-indigo-50" : "border-gray-200 bg-white"
+                    }`
                   )}
                   accessibilityRole="button"
                   accessibilityState={{ selected: isSelected }}
@@ -2756,32 +3125,23 @@ export default function GroupBookingsScreen() {
                         {pkg.name}
                       </Text>
                       {pkg.description ? (
-                        <Text
-                          style={twStyle("mt-0.5 text-xs text-gray-500")}
-                          numberOfLines={2}
-                        >
+                        <Text style={twStyle("mt-0.5 text-xs text-gray-500")} numberOfLines={2}>
                           {pkg.description}
                         </Text>
                       ) : null}
                       <View style={twStyle("mt-1.5 flex-row items-center")}>
                         {serviceCount > 0 ? (
-                          <Text
-                            style={[twStyle("text-[11px] text-gray-500"), { marginRight: 10 }]}
-                          >
+                          <Text style={[twStyle("text-[11px] text-gray-500"), { marginRight: 10 }]}>
                             {serviceCount} service{serviceCount === 1 ? "" : "s"}
                           </Text>
                         ) : null}
                         {productCount > 0 ? (
-                          <Text
-                            style={[twStyle("text-[11px] text-gray-500"), { marginRight: 10 }]}
-                          >
+                          <Text style={[twStyle("text-[11px] text-gray-500"), { marginRight: 10 }]}>
                             {productCount} product{productCount === 1 ? "" : "s"}
                           </Text>
                         ) : null}
                         {discount != null ? (
-                          <View
-                            style={twStyle("rounded-full bg-green-50 px-1.5 py-0.5")}
-                          >
+                          <View style={twStyle("rounded-full bg-green-50 px-1.5 py-0.5")}>
                             <Text style={twStyle("text-[10px] font-medium text-green-700")}>
                               -{discount}%
                             </Text>
@@ -2810,11 +3170,17 @@ export default function GroupBookingsScreen() {
       </BottomSheet>
 
       {/* Add participant */}
-      <BottomSheet visible={showAddParticipant} onClose={() => setShowAddParticipant(false)} title="Add Participant">
+      <BottomSheet
+        visible={showAddParticipant}
+        onClose={() => setShowAddParticipant(false)}
+        title="Add Participant"
+      >
         <View>
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Name *</Text>
           <TextInput
-            style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+            style={twStyle(
+              "mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            )}
             value={participantForm.name}
             onChangeText={(t) => setParticipantForm((p) => ({ ...p, name: t }))}
             placeholder="Client name"
@@ -2829,7 +3195,9 @@ export default function GroupBookingsScreen() {
           />
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Email</Text>
           <TextInput
-            style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+            style={twStyle(
+              "mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            )}
             value={participantForm.email}
             onChangeText={(t) => setParticipantForm((p) => ({ ...p, email: t }))}
             placeholder="Optional"
@@ -2838,21 +3206,29 @@ export default function GroupBookingsScreen() {
           />
           {servicesForPicking.length > 0 ? (
             <View style={twStyle("mb-3")}>
-              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Participant service *</Text>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
+                Participant service *
+              </Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 {servicesForPicking.map((svc) => (
                   <SelectChip
                     key={`add-participant-service-${svc.id}`}
                     label={`${serviceLabel(svc)}${svc.price != null ? ` · ${formatCurrency(Number(svc.price) || 0)}` : ""}`}
                     selected={participantForm.serviceId === svc.id}
-                    onPress={() => setParticipantForm((p) => ({ ...p, serviceId: svc.id, addOnIds: [] }))}
+                    onPress={() =>
+                      setParticipantForm((p) => ({ ...p, serviceId: svc.id, addOnIds: [] }))
+                    }
                   />
                 ))}
               </ScrollView>
             </View>
           ) : null}
           {(() => {
-            const line = getParticipantLine(participantForm, selectedGroup?.service_id ?? "", services);
+            const line = getParticipantLine(
+              participantForm,
+              selectedGroup?.service_id ?? "",
+              services
+            );
             const addOns = line.service?.add_ons ?? [];
             if (addOns.length === 0) return null;
             return (
@@ -2873,14 +3249,21 @@ export default function GroupBookingsScreen() {
                           }))
                         }
                         style={[
-                          twStyle(`mb-2 rounded-full border px-3 py-1.5 ${checked ? "border-indigo-500 bg-indigo-50" : "border-gray-200 bg-white"}`),
+                          twStyle(
+                            `mb-2 rounded-full border px-3 py-1.5 ${checked ? "border-indigo-500 bg-indigo-50" : "border-gray-200 bg-white"}`
+                          ),
                           { marginRight: 8 },
                         ]}
                         accessibilityRole="checkbox"
                         accessibilityState={{ checked }}
                       >
-                        <Text style={twStyle(`text-xs font-medium ${checked ? "text-indigo-700" : "text-gray-600"}`)}>
-                          {ao.name}{ao.price ? ` · ${formatCurrency(Number(ao.price) || 0)}` : ""}
+                        <Text
+                          style={twStyle(
+                            `text-xs font-medium ${checked ? "text-indigo-700" : "text-gray-600"}`
+                          )}
+                        >
+                          {ao.name}
+                          {ao.price ? ` · ${formatCurrency(Number(ao.price) || 0)}` : ""}
                         </Text>
                       </TouchableOpacity>
                     );
@@ -2894,7 +3277,9 @@ export default function GroupBookingsScreen() {
           })()}
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Participant notes</Text>
           <TextInput
-            style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+            style={twStyle(
+              "mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            )}
             value={participantForm.notes}
             onChangeText={(t) => setParticipantForm((p) => ({ ...p, notes: t }))}
             placeholder="Preferences, allergies, add-on notes..."
@@ -2913,13 +3298,21 @@ export default function GroupBookingsScreen() {
       {/* B10: Create new group booking */}
       <BottomSheet
         visible={showCreate && !showProductPicker}
-        onClose={() => setShowCreate(false)}
+        onClose={() => {
+          setShowCreate(false);
+          // Clearing the review sheet here prevents a swipe-down on the create
+          // sheet from leaving the upper review modal mounted with no parent.
+          setShowCreateReview(false);
+          setValidatingCreateAddress(false);
+        }}
         title="New Group Booking"
       >
         <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Title</Text>
           <TextInput
-            style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+            style={twStyle(
+              "mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            )}
             value={createForm.title}
             onChangeText={(t) => setCreateForm((p) => ({ ...p, title: t }))}
             placeholder="e.g. Bridal Party (defaults to service name if empty)"
@@ -2927,11 +3320,18 @@ export default function GroupBookingsScreen() {
           />
 
           <View style={twStyle("mb-3")}>
-            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Where is it happening?</Text>
+            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>
+              Where is it happening?
+            </Text>
             <View style={twStyle("mb-3 flex-row")}>
               <TouchableOpacity
                 onPress={() => setCreateForm((p) => ({ ...p, locationType: "at_salon" }))}
-                style={[twStyle(`flex-1 rounded-xl border px-3 py-3 ${createForm.locationType === "at_salon" ? "border-indigo-500 bg-indigo-50" : "border-gray-200 bg-white"}`), { marginRight: 8 }]}
+                style={[
+                  twStyle(
+                    `flex-1 rounded-xl border px-3 py-3 ${createForm.locationType === "at_salon" ? "border-indigo-500 bg-indigo-50" : "border-gray-200 bg-white"}`
+                  ),
+                  { marginRight: 8 },
+                ]}
                 accessibilityRole="radio"
                 accessibilityState={{ checked: createForm.locationType === "at_salon" }}
               >
@@ -2939,8 +3339,12 @@ export default function GroupBookingsScreen() {
                 <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>Use a provider location</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={() => setCreateForm((p) => ({ ...p, locationType: "at_home", locationId: "" }))}
-                style={twStyle(`flex-1 rounded-xl border px-3 py-3 ${createForm.locationType === "at_home" ? "border-indigo-500 bg-indigo-50" : "border-gray-200 bg-white"}`)}
+                onPress={() =>
+                  setCreateForm((p) => ({ ...p, locationType: "at_home", locationId: "" }))
+                }
+                style={twStyle(
+                  `flex-1 rounded-xl border px-3 py-3 ${createForm.locationType === "at_home" ? "border-indigo-500 bg-indigo-50" : "border-gray-200 bg-white"}`
+                )}
                 accessibilityRole="radio"
                 accessibilityState={{ checked: createForm.locationType === "at_home" }}
               >
@@ -2970,7 +3374,8 @@ export default function GroupBookingsScreen() {
             {createForm.locationType === "at_home" ? (
               <View style={twStyle("rounded-2xl border border-blue-100 bg-blue-50 p-3")}>
                 <Text style={twStyle("mb-2 text-xs text-blue-800")}>
-                  Search, drop a pin, or use current location — coordinates are used for travel buffer and fee accuracy.
+                  Search, drop a pin, or use current location — coordinates are used for travel
+                  buffer and fee accuracy.
                 </Text>
                 <AddressAutocomplete
                   label="Search address"
@@ -2981,10 +3386,19 @@ export default function GroupBookingsScreen() {
                   onSelect={(parsed) => {
                     void applyCreateAddress(parsed);
                   }}
-                  onBlur={(q) => setCreateForm((p) => ({ ...p, addressSearchValue: q, addressLine1: p.addressLine1 || q }))}
+                  onBlur={(q) =>
+                    setCreateForm((p) => ({
+                      ...p,
+                      addressSearchValue: q,
+                      addressLine1: p.addressLine1 || q,
+                    }))
+                  }
                   proximity={
                     createForm.addressLatitude != null && createForm.addressLongitude != null
-                      ? { latitude: createForm.addressLatitude, longitude: createForm.addressLongitude }
+                      ? {
+                          latitude: createForm.addressLatitude,
+                          longitude: createForm.addressLongitude,
+                        }
                       : undefined
                   }
                 />
@@ -2994,8 +3408,10 @@ export default function GroupBookingsScreen() {
                     disabled={createLocatingHome}
                     style={twStyle(
                       `rounded-full border px-3 py-1.5 flex-row items-center ${
-                        createLocatingHome ? "border-gray-200 bg-gray-100" : "border-blue-200 bg-blue-50"
-                      }`,
+                        createLocatingHome
+                          ? "border-gray-200 bg-gray-100"
+                          : "border-blue-200 bg-blue-50"
+                      }`
                     )}
                     accessibilityRole="button"
                     accessibilityLabel="Use current location"
@@ -3011,18 +3427,24 @@ export default function GroupBookingsScreen() {
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => setCreateMapPinOpen(true)}
-                    style={twStyle("rounded-full border border-gray-200 bg-white px-3 py-1.5 flex-row items-center")}
+                    style={twStyle(
+                      "rounded-full border border-gray-200 bg-white px-3 py-1.5 flex-row items-center"
+                    )}
                     accessibilityRole="button"
                     accessibilityLabel="Drop pin on map"
                   >
                     <Ionicons name="map-outline" size={16} color="#374151" />
-                    <Text style={twStyle("ml-1.5 text-xs font-semibold text-gray-700")}>Drop pin on map</Text>
+                    <Text style={twStyle("ml-1.5 text-xs font-semibold text-gray-700")}>
+                      Drop pin on map
+                    </Text>
                   </TouchableOpacity>
                 </View>
                 {validatingCreateAddress ? (
                   <View style={twStyle("mt-2 flex-row items-center")}>
                     <ActivityIndicator size="small" color="#2563eb" />
-                    <Text style={twStyle("ml-2 text-xs text-blue-700")}>Calculating travel fee...</Text>
+                    <Text style={twStyle("ml-2 text-xs text-blue-700")}>
+                      Calculating travel fee...
+                    </Text>
                   </View>
                 ) : null}
                 {createForm.addressLatitude != null && createForm.addressLongitude != null ? (
@@ -3035,13 +3457,20 @@ export default function GroupBookingsScreen() {
                       zoom={15}
                     />
                     <Text style={twStyle("mt-1.5 text-xs text-gray-500")}>
-                      Selected map pin{Number(createForm.travelFee || 0) > 0 ? ` · Travel fee ${formatCurrency(Number(createForm.travelFee || 0))}` : ""}
+                      Selected map pin
+                      {Number(createForm.travelFee || 0) > 0
+                        ? ` · Travel fee ${formatCurrency(Number(createForm.travelFee || 0))}`
+                        : ""}
                     </Text>
                   </View>
                 ) : null}
-                <Text style={twStyle("mb-1 mt-3 text-xs font-medium text-gray-600")}>Street line</Text>
+                <Text style={twStyle("mb-1 mt-3 text-xs font-medium text-gray-600")}>
+                  Street line
+                </Text>
                 <TextInput
-                  style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
+                  style={twStyle(
+                    "rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900"
+                  )}
                   value={createForm.addressLine1}
                   onChangeText={(t) => setCreateForm((p) => ({ ...p, addressLine1: t }))}
                   placeholder="Street and number"
@@ -3049,23 +3478,34 @@ export default function GroupBookingsScreen() {
                 />
                 <View style={[twStyle("flex-row"), { marginTop: 10 }]}>
                   <TextInput
-                    style={[twStyle("flex-1 rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900"), { marginRight: 8 }]}
+                    style={[
+                      twStyle(
+                        "flex-1 rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900"
+                      ),
+                      { marginRight: 8 },
+                    ]}
                     value={createForm.addressCity}
                     onChangeText={(t) => setCreateForm((p) => ({ ...p, addressCity: t }))}
                     placeholder="City"
                     placeholderTextColor="#9ca3af"
                   />
                   <TextInput
-                    style={twStyle("flex-1 rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
+                    style={twStyle(
+                      "flex-1 rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900"
+                    )}
                     value={createForm.addressPostalCode}
                     onChangeText={(t) => setCreateForm((p) => ({ ...p, addressPostalCode: t }))}
                     placeholder="Postal code"
                     placeholderTextColor="#9ca3af"
                   />
                 </View>
-                <Text style={twStyle("mb-1 mt-3 text-xs font-medium text-gray-600")}>Travel fee (optional)</Text>
+                <Text style={twStyle("mb-1 mt-3 text-xs font-medium text-gray-600")}>
+                  Travel fee (optional)
+                </Text>
                 <TextInput
-                  style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
+                  style={twStyle(
+                    "rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900"
+                  )}
                   value={createForm.travelFee}
                   onChangeText={(t) => setCreateForm((p) => ({ ...p, travelFee: t }))}
                   keyboardType="decimal-pad"
@@ -3099,7 +3539,7 @@ export default function GroupBookingsScreen() {
                     createForm.packageId
                       ? "border-indigo-300 bg-indigo-50"
                       : "border-gray-200 bg-gray-50"
-                  }`,
+                  }`
                 )}
                 accessibilityRole="button"
                 accessibilityLabel={
@@ -3115,12 +3555,13 @@ export default function GroupBookingsScreen() {
                   />
                   <Text
                     style={twStyle(
-                      `text-sm ${createForm.packageId ? "text-indigo-800 font-medium" : "text-gray-600"}`,
+                      `text-sm ${createForm.packageId ? "text-indigo-800 font-medium" : "text-gray-600"}`
                     )}
                     numberOfLines={1}
                   >
                     {createForm.packageId
-                      ? packagesList.find((p) => p.id === createForm.packageId)?.name ?? "Package attached"
+                      ? (packagesList.find((p) => p.id === createForm.packageId)?.name ??
+                        "Package attached")
                       : "Tap to attach a service package"}
                   </Text>
                 </View>
@@ -3138,10 +3579,15 @@ export default function GroupBookingsScreen() {
             <View style={twStyle("mb-3")}>
               <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Default service</Text>
               <Text style={twStyle("mb-2 text-xs text-gray-500")}>
-                This pre-fills participants. Each participant can still choose a different service below.
+                This pre-fills participants. Each participant can still choose a different service
+                below.
               </Text>
               {serviceCategoryOptions.length > 1 ? (
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={twStyle("mb-2")}>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={twStyle("mb-2")}
+                >
                   <SelectChip
                     label="All"
                     selected={selectedServiceCategory === "all"}
@@ -3183,8 +3629,8 @@ export default function GroupBookingsScreen() {
                           prev.map((participant) =>
                             participant.serviceId
                               ? participant
-                              : { ...participant, serviceId: choice.id, addOnIds: [] },
-                          ),
+                              : { ...participant, serviceId: choice.id, addOnIds: [] }
+                          )
                         );
                       }}
                     />
@@ -3224,24 +3670,38 @@ export default function GroupBookingsScreen() {
                 accessibilityRole="button"
               >
                 <Ionicons name="add" size={14} color="#4f46e5" />
-                <Text style={twStyle("ml-1 text-xs font-semibold text-indigo-700")}>Add product</Text>
+                <Text style={twStyle("ml-1 text-xs font-semibold text-indigo-700")}>
+                  Add product
+                </Text>
               </TouchableOpacity>
             </View>
             {createProducts.length === 0 ? (
               <Text style={twStyle("text-xs text-gray-500")}>No products added.</Text>
             ) : (
               createProducts.map((p, idx) => (
-                <View key={`${p.productId}-${p.productVariantId ?? "simple"}`} style={twStyle("mb-2 flex-row items-center justify-between rounded-xl bg-white px-3 py-2")}>
+                <View
+                  key={`${p.productId}-${p.productVariantId ?? "simple"}`}
+                  style={twStyle(
+                    "mb-2 flex-row items-center justify-between rounded-xl bg-white px-3 py-2"
+                  )}
+                >
                   <View style={twStyle("min-w-0 flex-1")}>
                     <Text style={twStyle("text-sm font-medium text-gray-900")} numberOfLines={1}>
-                      {p.productName}{p.productVariantName ? ` · ${p.productVariantName}` : ""}
+                      {p.productName}
+                      {p.productVariantName ? ` · ${p.productVariantName}` : ""}
                     </Text>
-                    <Text style={twStyle("text-xs text-gray-500")}>{formatCurrency(p.unitPrice)} × {p.quantity}</Text>
+                    <Text style={twStyle("text-xs text-gray-500")}>
+                      {formatCurrency(p.unitPrice)} × {p.quantity}
+                    </Text>
                   </View>
                   <View style={twStyle("flex-row items-center")}>
                     <TouchableOpacity
                       onPress={() => {
-                        setCreateProducts((prev) => prev.map((item, i) => i === idx ? { ...item, quantity: Math.max(1, item.quantity - 1) } : item));
+                        setCreateProducts((prev) =>
+                          prev.map((item, i) =>
+                            i === idx ? { ...item, quantity: Math.max(1, item.quantity - 1) } : item
+                          )
+                        );
                       }}
                       style={twStyle("rounded-full bg-gray-100 px-2 py-1")}
                     >
@@ -3250,7 +3710,11 @@ export default function GroupBookingsScreen() {
                     <Text style={twStyle("mx-2 text-sm text-gray-700")}>{p.quantity}</Text>
                     <TouchableOpacity
                       onPress={() => {
-                        setCreateProducts((prev) => prev.map((item, i) => i === idx ? { ...item, quantity: item.quantity + 1 } : item));
+                        setCreateProducts((prev) =>
+                          prev.map((item, i) =>
+                            i === idx ? { ...item, quantity: item.quantity + 1 } : item
+                          )
+                        );
                       }}
                       style={twStyle("rounded-full bg-gray-100 px-2 py-1")}
                     >
@@ -3270,7 +3734,12 @@ export default function GroupBookingsScreen() {
           </View>
 
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Date *</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={twStyle("mb-3")} contentContainerStyle={{ paddingVertical: 4 }}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={twStyle("mb-3")}
+            contentContainerStyle={{ paddingVertical: 4 }}
+          >
             {createDateOptions.map((d) => {
               const dateKey = formatDateFns(d, "yyyy-MM-dd");
               const isActive = createForm.date === dateKey;
@@ -3278,17 +3747,25 @@ export default function GroupBookingsScreen() {
                 <TouchableOpacity
                   key={dateKey}
                   style={[
-                    twStyle(`items-center rounded-xl px-3 py-2.5 ${isActive ? "bg-gray-900" : "border border-gray-200 bg-white"}`),
+                    twStyle(
+                      `items-center rounded-xl px-3 py-2.5 ${isActive ? "bg-gray-900" : "border border-gray-200 bg-white"}`
+                    ),
                     { minWidth: 56, marginRight: 8 },
                   ]}
                   onPress={() => setCreateForm((p) => ({ ...p, date: dateKey }))}
                   accessibilityRole="radio"
                   accessibilityState={{ checked: isActive }}
                 >
-                  <Text style={twStyle(`text-[10px] ${isActive ? "text-gray-300" : "text-gray-500"}`)}>
+                  <Text
+                    style={twStyle(`text-[10px] ${isActive ? "text-gray-300" : "text-gray-500"}`)}
+                  >
                     {isSameDay(d, new Date()) ? "Today" : formatDateFns(d, "EEE")}
                   </Text>
-                  <Text style={twStyle(`text-base font-bold ${isActive ? "text-white" : "text-gray-900"}`)}>
+                  <Text
+                    style={twStyle(
+                      `text-base font-bold ${isActive ? "text-white" : "text-gray-900"}`
+                    )}
+                  >
                     {formatDateFns(d, "d")}
                   </Text>
                 </TouchableOpacity>
@@ -3320,15 +3797,19 @@ export default function GroupBookingsScreen() {
                               : slot.available
                                 ? "border-emerald-200 bg-white"
                                 : "border-gray-100 bg-gray-50"
-                          }`,
+                          }`
                         ),
                       ]}
                     >
                       <Text
                         style={twStyle(
                           `text-xs font-semibold ${
-                            isActive ? "text-white" : slot.available ? "text-emerald-700" : "text-gray-300"
-                          }`,
+                            isActive
+                              ? "text-white"
+                              : slot.available
+                                ? "text-emerald-700"
+                                : "text-gray-300"
+                          }`
                         )}
                       >
                         {slot.time}
@@ -3347,9 +3828,13 @@ export default function GroupBookingsScreen() {
           </View>
           <View style={twStyle("mb-3 flex-row")}>
             <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
-              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Duration (min) *</Text>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
+                Duration (min) *
+              </Text>
               <TextInput
-                style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+                style={twStyle(
+                  "rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                )}
                 value={createForm.duration}
                 onChangeText={(t) => setCreateForm((p) => ({ ...p, duration: t }))}
                 keyboardType="number-pad"
@@ -3358,9 +3843,13 @@ export default function GroupBookingsScreen() {
               />
             </View>
             <View style={twStyle("flex-1")}>
-              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Max Participants *</Text>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
+                Max Participants *
+              </Text>
               <TextInput
-                style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+                style={twStyle(
+                  "rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                )}
                 value={createForm.maxParticipants}
                 onChangeText={(t) => setCreateForm((p) => ({ ...p, maxParticipants: t }))}
                 keyboardType="number-pad"
@@ -3371,7 +3860,9 @@ export default function GroupBookingsScreen() {
           </View>
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Notes</Text>
           <TextInput
-            style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+            style={twStyle(
+              "mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            )}
             value={createForm.notes}
             onChangeText={(t) => setCreateForm((p) => ({ ...p, notes: t }))}
             placeholder="Optional notes..."
@@ -3382,8 +3873,15 @@ export default function GroupBookingsScreen() {
           <View style={twStyle("mb-4 rounded-2xl border border-purple-100 bg-purple-50 p-3")}>
             <View style={twStyle("mb-2 flex-row items-center justify-between")}>
               <View style={twStyle("flex-row items-center")}>
-                <Ionicons name="people-outline" size={16} color="#7c3aed" style={{ marginRight: 6 }} />
-                <Text style={twStyle("text-sm font-semibold text-purple-900")}>Initial participants</Text>
+                <Ionicons
+                  name="people-outline"
+                  size={16}
+                  color="#7c3aed"
+                  style={{ marginRight: 6 }}
+                />
+                <Text style={twStyle("text-sm font-semibold text-purple-900")}>
+                  Initial participants
+                </Text>
               </View>
               <TouchableOpacity
                 onPress={addCreateParticipantRow}
@@ -3396,203 +3894,269 @@ export default function GroupBookingsScreen() {
               </TouchableOpacity>
             </View>
             <Text style={twStyle("mb-3 text-xs text-purple-700")}>
-              These people become real bookings immediately, so calendar availability and accounting stay aligned.
+              These people become real bookings immediately, so calendar availability and accounting
+              stay aligned.
             </Text>
 
             {createParticipants.map((participant, idx) => {
-              const search = participantSearchMap[participant.id] || { query: "", results: [], loading: false, open: false };
+              const search = participantSearchMap[participant.id] || {
+                query: "",
+                results: [],
+                loading: false,
+                open: false,
+              };
               const isLast = idx === createParticipants.length - 1;
               return (
-              <View key={participant.id} style={twStyle("mb-3 rounded-xl border border-purple-100 bg-white p-3")}>
-                <View style={twStyle("mb-2 flex-row items-center justify-between")}>
-                  <View style={twStyle("flex-row items-center gap-2")}>
-                    <Text style={twStyle("text-xs font-semibold uppercase text-gray-400")}>
-                      Participant {idx + 1}
-                    </Text>
-                    {participant.customerId ? (
-                      <View style={twStyle("rounded-full bg-purple-50 border border-purple-200 px-2 py-0.5")}>
-                        <Text style={twStyle("text-[10px] font-medium text-purple-700")}>Existing client</Text>
-                      </View>
-                    ) : null}
-                  </View>
-                  <TouchableOpacity
-                    onPress={() => removeCreateParticipantRow(participant.id)}
-                    hitSlop={8}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Remove participant ${idx + 1}`}
-                  >
-                    <Ionicons name="close-circle-outline" size={18} color="#ef4444" />
-                  </TouchableOpacity>
-                </View>
-
-                {/* ── Client search ── */}
-                {!participant.customerId ? (
-                  <View style={twStyle("mb-2")}>
-                    <View style={twStyle("flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-3 py-2")}>
-                      <Ionicons name="search-outline" size={14} color="#9ca3af" />
-                      <TextInput
-                        style={[twStyle("ml-2 flex-1 text-sm text-gray-900"), { paddingVertical: 0 }]}
-                        placeholder="Search existing client…"
-                        placeholderTextColor="#9ca3af"
-                        value={search.query}
-                        onChangeText={(q) => searchClientsForParticipant(participant.id, q)}
-                        autoCapitalize="words"
-                        returnKeyType="search"
-                        accessibilityLabel={`Search clients for participant ${idx + 1}`}
-                      />
-                      {search.loading && <ActivityIndicator size="small" color="#7c3aed" />}
+                <View
+                  key={participant.id}
+                  style={twStyle("mb-3 rounded-xl border border-purple-100 bg-white p-3")}
+                >
+                  <View style={twStyle("mb-2 flex-row items-center justify-between")}>
+                    <View style={twStyle("flex-row items-center gap-2")}>
+                      <Text style={twStyle("text-xs font-semibold uppercase text-gray-400")}>
+                        Participant {idx + 1}
+                      </Text>
+                      {participant.customerId ? (
+                        <View
+                          style={twStyle(
+                            "rounded-full bg-purple-50 border border-purple-200 px-2 py-0.5"
+                          )}
+                        >
+                          <Text style={twStyle("text-[10px] font-medium text-purple-700")}>
+                            Existing client
+                          </Text>
+                        </View>
+                      ) : null}
                     </View>
-                    {search.open && search.results.length > 0 && (
-                      <View style={twStyle("mt-1 rounded-xl border border-gray-100 bg-white overflow-hidden")}>
-                        {search.results.map((c) => (
-                          <TouchableOpacity
-                            key={c.id}
-                            style={twStyle("flex-row items-center border-b border-gray-50 px-3 py-2.5")}
-                            onPress={() => selectClientForParticipant(participant.id, c)}
-                            accessibilityLabel={`Select ${c.full_name}`}
-                          >
-                            <Avatar name={c.full_name} size="sm" />
-                            <View style={twStyle("ml-2 flex-1")}>
-                              <Text style={twStyle("text-sm font-medium text-gray-900")}>{c.full_name}</Text>
-                              <Text style={twStyle("text-xs text-gray-500")} numberOfLines={1}>{c.phone || c.email || "—"}</Text>
-                            </View>
-                            <Ionicons name="chevron-forward" size={14} color="#d1d5db" />
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    )}
-                    {search.open && !search.loading && search.results.length === 0 && search.query.length >= 2 && (
-                      <Text style={twStyle("mt-1 text-center text-xs text-gray-400")}>No existing clients found — enter details below.</Text>
-                    )}
+                    <TouchableOpacity
+                      onPress={() => removeCreateParticipantRow(participant.id)}
+                      hitSlop={8}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Remove participant ${idx + 1}`}
+                    >
+                      <Ionicons name="close-circle-outline" size={18} color="#ef4444" />
+                    </TouchableOpacity>
                   </View>
-                ) : (
-                  <TouchableOpacity
-                    onPress={() => updateCreateParticipantRow(participant.id, { customerId: undefined })}
-                    style={twStyle("mb-2")}
-                    accessibilityRole="button"
-                  >
-                    <Text style={twStyle("text-xs text-purple-600 underline")}>Change client</Text>
-                  </TouchableOpacity>
-                )}
 
-                <Text style={twStyle("mb-1 text-xs font-medium text-gray-600")}>Name *</Text>
-                <TextInput
-                  style={twStyle("mb-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900")}
-                  value={participant.name}
-                  onChangeText={(name) => updateCreateParticipantRow(participant.id, { name })}
-                  placeholder="Client name"
-                  placeholderTextColor="#9ca3af"
-                />
-                <E164PhoneField
-                  label="Phone"
-                  valueE164={participant.phone}
-                  onChangeE164={(phone) => updateCreateParticipantRow(participant.id, { phone })}
-                  muted
-                  accessibilityLabel={`Participant ${idx + 1} phone`}
-                />
-                <Text style={twStyle("mb-1 text-xs font-medium text-gray-600")}>Email</Text>
-                <TextInput
-                  style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900")}
-                  value={participant.email}
-                  onChangeText={(email) => updateCreateParticipantRow(participant.id, { email })}
-                  placeholder="Optional"
-                  placeholderTextColor="#9ca3af"
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                />
-                <View style={twStyle("mt-3")}>
-                  <Text style={twStyle("mb-1 text-xs font-medium text-gray-600")}>What does this participant want? *</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                    {servicesForPicking.map((svc) => (
-                      <SelectChip
-                        key={`${participant.id}-${svc.id}`}
-                        label={`${serviceLabel(svc)}${svc.price != null ? ` · ${formatCurrency(Number(svc.price) || 0)}` : ""}`}
-                        selected={(participant.serviceId || createForm.serviceId) === svc.id}
-                        onPress={() =>
-                          updateCreateParticipantRow(participant.id, {
-                            serviceId: svc.id,
-                            addOnIds: [],
-                          })
-                        }
-                      />
-                    ))}
-                  </ScrollView>
-                  {(() => {
-                    const line = getParticipantLine(participant, createForm.serviceId, services);
-                    const addOns = line.service?.add_ons ?? [];
-                    if (!line.service) {
-                      return (
-                        <Text style={twStyle("mt-1 text-[11px] text-red-600")}>
-                          Select a service for this participant.
-                        </Text>
-                      );
-                    }
-                    return (
-                      <View>
-                        {addOns.length > 0 ? (
-                          <View style={twStyle("mt-2")}>
-                            <Text style={twStyle("mb-1 text-xs font-medium text-gray-600")}>Add-ons</Text>
-                            <View style={twStyle("flex-row flex-wrap")}>
-                              {addOns.map((ao) => {
-                                const checked = participant.addOnIds.includes(ao.id);
-                                return (
-                                  <TouchableOpacity
-                                    key={`${participant.id}-ao-${ao.id}`}
-                                    onPress={() => {
-                                      updateCreateParticipantRow(participant.id, {
-                                        addOnIds: checked
-                                          ? participant.addOnIds.filter((id) => id !== ao.id)
-                                          : [...participant.addOnIds, ao.id],
-                                      });
-                                    }}
-                                    style={[
-                                      twStyle(`mb-2 rounded-full border px-3 py-1.5 ${checked ? "border-indigo-500 bg-indigo-50" : "border-gray-200 bg-white"}`),
-                                      { marginRight: 8 },
-                                    ]}
-                                    accessibilityRole="checkbox"
-                                    accessibilityState={{ checked }}
-                                  >
-                                    <Text style={twStyle(`text-xs font-medium ${checked ? "text-indigo-700" : "text-gray-600"}`)}>
-                                      {ao.name}
-                                      {ao.price ? ` · ${formatCurrency(Number(ao.price) || 0)}` : ""}
-                                    </Text>
-                                  </TouchableOpacity>
-                                );
-                              })}
-                            </View>
-                          </View>
-                        ) : null}
-                        <Text style={twStyle("mt-1 text-[11px] font-medium text-purple-800")}>
-                          {serviceLabel(line.service)} · {line.durationMinutes} min · {formatCurrency(line.price)}
-                        </Text>
+                  {/* ── Client search ── */}
+                  {!participant.customerId ? (
+                    <View style={twStyle("mb-2")}>
+                      <View
+                        style={twStyle(
+                          "flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-3 py-2"
+                        )}
+                      >
+                        <Ionicons name="search-outline" size={14} color="#9ca3af" />
+                        <TextInput
+                          style={[
+                            twStyle("ml-2 flex-1 text-sm text-gray-900"),
+                            { paddingVertical: 0 },
+                          ]}
+                          placeholder="Search existing client…"
+                          placeholderTextColor="#9ca3af"
+                          value={search.query}
+                          onChangeText={(q) => searchClientsForParticipant(participant.id, q)}
+                          autoCapitalize="words"
+                          returnKeyType="search"
+                          accessibilityLabel={`Search clients for participant ${idx + 1}`}
+                        />
+                        {search.loading && <ActivityIndicator size="small" color="#7c3aed" />}
                       </View>
-                    );
-                  })()}
-                </View>
-                <Text style={twStyle("mb-1 mt-3 text-xs font-medium text-gray-600")}>Participant notes</Text>
-                <TextInput
-                  style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900")}
-                  value={participant.notes}
-                  onChangeText={(notes) => updateCreateParticipantRow(participant.id, { notes })}
-                  placeholder="e.g. wants gel removal, allergy, prefers quiet service"
-                  placeholderTextColor="#9ca3af"
-                  multiline
-                />
-                {/* Add another participant inline after the last row */}
-                {isLast && (
-                  <TouchableOpacity
-                    onPress={addCreateParticipantRow}
-                    style={twStyle("mt-3 flex-row items-center justify-center rounded-xl border border-dashed border-purple-200 py-2")}
-                    accessibilityRole="button"
-                    accessibilityLabel="Add another participant"
-                  >
-                    <Ionicons name="add" size={14} color="#7c3aed" />
-                    <Text style={twStyle("ml-1 text-xs font-semibold text-purple-700")}>Add another participant</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            );})}
+                      {search.open && search.results.length > 0 && (
+                        <View
+                          style={twStyle(
+                            "mt-1 rounded-xl border border-gray-100 bg-white overflow-hidden"
+                          )}
+                        >
+                          {search.results.map((c) => (
+                            <TouchableOpacity
+                              key={c.id}
+                              style={twStyle(
+                                "flex-row items-center border-b border-gray-50 px-3 py-2.5"
+                              )}
+                              onPress={() => selectClientForParticipant(participant.id, c)}
+                              accessibilityLabel={`Select ${c.full_name}`}
+                            >
+                              <Avatar name={c.full_name} size="sm" />
+                              <View style={twStyle("ml-2 flex-1")}>
+                                <Text style={twStyle("text-sm font-medium text-gray-900")}>
+                                  {c.full_name}
+                                </Text>
+                                <Text style={twStyle("text-xs text-gray-500")} numberOfLines={1}>
+                                  {c.phone || c.email || "—"}
+                                </Text>
+                              </View>
+                              <Ionicons name="chevron-forward" size={14} color="#d1d5db" />
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      )}
+                      {search.open &&
+                        !search.loading &&
+                        search.results.length === 0 &&
+                        search.query.length >= 2 && (
+                          <Text style={twStyle("mt-1 text-center text-xs text-gray-400")}>
+                            No existing clients found — enter details below.
+                          </Text>
+                        )}
+                    </View>
+                  ) : (
+                    <TouchableOpacity
+                      onPress={() =>
+                        updateCreateParticipantRow(participant.id, { customerId: undefined })
+                      }
+                      style={twStyle("mb-2")}
+                      accessibilityRole="button"
+                    >
+                      <Text style={twStyle("text-xs text-purple-600 underline")}>
+                        Change client
+                      </Text>
+                    </TouchableOpacity>
+                  )}
 
+                  <Text style={twStyle("mb-1 text-xs font-medium text-gray-600")}>Name *</Text>
+                  <TextInput
+                    style={twStyle(
+                      "mb-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900"
+                    )}
+                    value={participant.name}
+                    onChangeText={(name) => updateCreateParticipantRow(participant.id, { name })}
+                    placeholder="Client name"
+                    placeholderTextColor="#9ca3af"
+                  />
+                  <E164PhoneField
+                    label="Phone"
+                    valueE164={participant.phone}
+                    onChangeE164={(phone) => updateCreateParticipantRow(participant.id, { phone })}
+                    muted
+                    accessibilityLabel={`Participant ${idx + 1} phone`}
+                  />
+                  <Text style={twStyle("mb-1 text-xs font-medium text-gray-600")}>Email</Text>
+                  <TextInput
+                    style={twStyle(
+                      "rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900"
+                    )}
+                    value={participant.email}
+                    onChangeText={(email) => updateCreateParticipantRow(participant.id, { email })}
+                    placeholder="Optional"
+                    placeholderTextColor="#9ca3af"
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                  />
+                  <View style={twStyle("mt-3")}>
+                    <Text style={twStyle("mb-1 text-xs font-medium text-gray-600")}>
+                      What does this participant want? *
+                    </Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                      {servicesForPicking.map((svc) => (
+                        <SelectChip
+                          key={`${participant.id}-${svc.id}`}
+                          label={`${serviceLabel(svc)}${svc.price != null ? ` · ${formatCurrency(Number(svc.price) || 0)}` : ""}`}
+                          selected={(participant.serviceId || createForm.serviceId) === svc.id}
+                          onPress={() =>
+                            updateCreateParticipantRow(participant.id, {
+                              serviceId: svc.id,
+                              addOnIds: [],
+                            })
+                          }
+                        />
+                      ))}
+                    </ScrollView>
+                    {(() => {
+                      const line = getParticipantLine(participant, createForm.serviceId, services);
+                      const addOns = line.service?.add_ons ?? [];
+                      if (!line.service) {
+                        return (
+                          <Text style={twStyle("mt-1 text-[11px] text-red-600")}>
+                            Select a service for this participant.
+                          </Text>
+                        );
+                      }
+                      return (
+                        <View>
+                          {addOns.length > 0 ? (
+                            <View style={twStyle("mt-2")}>
+                              <Text style={twStyle("mb-1 text-xs font-medium text-gray-600")}>
+                                Add-ons
+                              </Text>
+                              <View style={twStyle("flex-row flex-wrap")}>
+                                {addOns.map((ao) => {
+                                  const checked = participant.addOnIds.includes(ao.id);
+                                  return (
+                                    <TouchableOpacity
+                                      key={`${participant.id}-ao-${ao.id}`}
+                                      onPress={() => {
+                                        updateCreateParticipantRow(participant.id, {
+                                          addOnIds: checked
+                                            ? participant.addOnIds.filter((id) => id !== ao.id)
+                                            : [...participant.addOnIds, ao.id],
+                                        });
+                                      }}
+                                      style={[
+                                        twStyle(
+                                          `mb-2 rounded-full border px-3 py-1.5 ${checked ? "border-indigo-500 bg-indigo-50" : "border-gray-200 bg-white"}`
+                                        ),
+                                        { marginRight: 8 },
+                                      ]}
+                                      accessibilityRole="checkbox"
+                                      accessibilityState={{ checked }}
+                                    >
+                                      <Text
+                                        style={twStyle(
+                                          `text-xs font-medium ${checked ? "text-indigo-700" : "text-gray-600"}`
+                                        )}
+                                      >
+                                        {ao.name}
+                                        {ao.price
+                                          ? ` · ${formatCurrency(Number(ao.price) || 0)}`
+                                          : ""}
+                                      </Text>
+                                    </TouchableOpacity>
+                                  );
+                                })}
+                              </View>
+                            </View>
+                          ) : null}
+                          <Text style={twStyle("mt-1 text-[11px] font-medium text-purple-800")}>
+                            {serviceLabel(line.service)} · {line.durationMinutes} min ·{" "}
+                            {formatCurrency(line.price)}
+                          </Text>
+                        </View>
+                      );
+                    })()}
+                  </View>
+                  <Text style={twStyle("mb-1 mt-3 text-xs font-medium text-gray-600")}>
+                    Participant notes
+                  </Text>
+                  <TextInput
+                    style={twStyle(
+                      "rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900"
+                    )}
+                    value={participant.notes}
+                    onChangeText={(notes) => updateCreateParticipantRow(participant.id, { notes })}
+                    placeholder="e.g. wants gel removal, allergy, prefers quiet service"
+                    placeholderTextColor="#9ca3af"
+                    multiline
+                  />
+                  {/* Add another participant inline after the last row */}
+                  {isLast && (
+                    <TouchableOpacity
+                      onPress={addCreateParticipantRow}
+                      style={twStyle(
+                        "mt-3 flex-row items-center justify-center rounded-xl border border-dashed border-purple-200 py-2"
+                      )}
+                      accessibilityRole="button"
+                      accessibilityLabel="Add another participant"
+                    >
+                      <Ionicons name="add" size={14} color="#7c3aed" />
+                      <Text style={twStyle("ml-1 text-xs font-semibold text-purple-700")}>
+                        Add another participant
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              );
+            })}
           </View>
 
           <ActionButton
@@ -3612,57 +4176,84 @@ export default function GroupBookingsScreen() {
         onClose={() => setShowCreateReview(false)}
         title="Review group booking"
       >
-        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 32 }}>
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{ paddingBottom: 32 }}
+        >
           {(() => {
-            const svc = createForm.serviceId ? services.find((s) => s.id === createForm.serviceId) : undefined;
-            const staff = createForm.staffId ? teamMembers.find((s: any) => s.id === createForm.staffId) : null;
-            const loc = createForm.locationType === "at_salon" && createForm.locationId
-              ? locations.find((l) => l.id === createForm.locationId)
+            const svc = createForm.serviceId
+              ? services.find((s) => s.id === createForm.serviceId)
+              : undefined;
+            const staff = createForm.staffId
+              ? teamMembers.find((s: any) => s.id === createForm.staffId)
               : null;
+            const loc =
+              createForm.locationType === "at_salon" && createForm.locationId
+                ? locations.find((l) => l.id === createForm.locationId)
+                : null;
             const travelFee = Math.max(0, Number(createForm.travelFee || 0) || 0);
             const productsTotal = createProducts.reduce(
               (sum, p) => sum + (Number(p.unitPrice) || 0) * Math.max(1, Number(p.quantity) || 1),
-              0,
+              0
             );
             const participantsList = createParticipants.filter(
-              (p) => p.name.trim() || p.phone.trim() || p.email.trim(),
+              (p) => p.name.trim() || p.phone.trim() || p.email.trim()
             );
             const participantLines = participantsList.map((p) =>
-              getParticipantLine({ serviceId: p.serviceId, addOnIds: p.addOnIds }, createForm.serviceId, services),
+              getParticipantLine(
+                { serviceId: p.serviceId, addOnIds: p.addOnIds },
+                createForm.serviceId,
+                services
+              )
             );
             const participantTotal = participantLines.reduce((sum, line) => sum + line.price, 0);
-            const sessionTotal = participantTotal + productsTotal + (createForm.locationType === "at_home" ? travelFee : 0);
+            const sessionTotal =
+              participantTotal +
+              productsTotal +
+              (createForm.locationType === "at_home" ? travelFee : 0);
             return (
               <View style={twStyle("rounded-2xl border border-gray-100 bg-white p-4")}>
-                <Text style={twStyle("mb-3 text-xs font-bold uppercase tracking-wider text-gray-500")}>
+                <Text
+                  style={twStyle("mb-3 text-xs font-bold uppercase tracking-wider text-gray-500")}
+                >
                   Session
                 </Text>
                 <View style={twStyle("mb-1 flex-row items-center justify-between")}>
                   <Text style={twStyle("text-sm text-gray-600")}>Date</Text>
-                  <Text style={twStyle("text-sm font-semibold text-gray-900")}>{createForm.date} · {createForm.time}</Text>
+                  <Text style={twStyle("text-sm font-semibold text-gray-900")}>
+                    {createForm.date} · {createForm.time}
+                  </Text>
                 </View>
                 {svc ? (
                   <View style={twStyle("mb-1 flex-row items-center justify-between")}>
                     <Text style={twStyle("text-sm text-gray-600")}>Service</Text>
-                    <Text style={twStyle("text-sm font-semibold text-gray-900")}>{serviceLabel(svc)}</Text>
+                    <Text style={twStyle("text-sm font-semibold text-gray-900")}>
+                      {serviceLabel(svc)}
+                    </Text>
                   </View>
                 ) : null}
                 {staff ? (
                   <View style={twStyle("mb-1 flex-row items-center justify-between")}>
                     <Text style={twStyle("text-sm text-gray-600")}>Staff</Text>
-                    <Text style={twStyle("text-sm font-semibold text-gray-900")}>{staff.name || "Staff"}</Text>
+                    <Text style={twStyle("text-sm font-semibold text-gray-900")}>
+                      {staff.name || "Staff"}
+                    </Text>
                   </View>
                 ) : null}
                 <View style={twStyle("mb-1 flex-row items-center justify-between")}>
                   <Text style={twStyle("text-sm text-gray-600")}>Location</Text>
                   <Text style={twStyle("text-sm font-semibold text-gray-900")}>
                     {createForm.locationType === "at_home"
-                      ? (createForm.addressLine1 || "Client address")
-                      : (loc?.name || "Salon")}
+                      ? createForm.addressLine1 || "Client address"
+                      : loc?.name || "Salon"}
                   </Text>
                 </View>
 
-                <Text style={twStyle("mt-4 mb-2 text-xs font-bold uppercase tracking-wider text-gray-500")}>
+                <Text
+                  style={twStyle(
+                    "mt-4 mb-2 text-xs font-bold uppercase tracking-wider text-gray-500"
+                  )}
+                >
                   Participants ({participantsList.length})
                 </Text>
                 {participantsList.map((p, idx) => {
@@ -3671,11 +4262,14 @@ export default function GroupBookingsScreen() {
                     <View key={p.id} style={twStyle("mb-2 flex-row items-start justify-between")}>
                       <View style={{ flex: 1, paddingRight: 8 }}>
                         <Text style={twStyle("text-sm font-medium text-gray-900")}>
-                          {p.name || "—"}{idx === 0 ? "  · Primary" : ""}
+                          {p.name || "—"}
+                          {idx === 0 ? "  · Primary" : ""}
                         </Text>
                         <Text style={twStyle("text-xs text-gray-500")}>
                           {line.service ? serviceLabel(line.service) : "Service TBD"}
-                          {line.addOns.length > 0 ? ` + ${line.addOns.length} add-on${line.addOns.length === 1 ? "" : "s"}` : ""}
+                          {line.addOns.length > 0
+                            ? ` + ${line.addOns.length} add-on${line.addOns.length === 1 ? "" : "s"}`
+                            : ""}
                         </Text>
                       </View>
                       <Text style={twStyle("text-sm font-semibold text-gray-900")}>
@@ -3687,16 +4281,26 @@ export default function GroupBookingsScreen() {
 
                 {createProducts.length > 0 ? (
                   <>
-                    <Text style={twStyle("mt-4 mb-2 text-xs font-bold uppercase tracking-wider text-gray-500")}>
+                    <Text
+                      style={twStyle(
+                        "mt-4 mb-2 text-xs font-bold uppercase tracking-wider text-gray-500"
+                      )}
+                    >
                       Products
                     </Text>
                     {createProducts.map((p, idx) => (
-                      <View key={`${p.productId}-${idx}`} style={twStyle("mb-1 flex-row items-center justify-between")}>
+                      <View
+                        key={`${p.productId}-${idx}`}
+                        style={twStyle("mb-1 flex-row items-center justify-between")}
+                      >
                         <Text style={twStyle("flex-1 text-sm text-gray-700")} numberOfLines={1}>
-                          {p.productName}{p.productVariantName ? ` · ${p.productVariantName}` : ""}  ·  ×{p.quantity}
+                          {p.productName}
+                          {p.productVariantName ? ` · ${p.productVariantName}` : ""} · ×{p.quantity}
                         </Text>
                         <Text style={twStyle("text-sm font-semibold text-gray-900")}>
-                          {formatCurrency((Number(p.unitPrice) || 0) * Math.max(1, Number(p.quantity) || 1))}
+                          {formatCurrency(
+                            (Number(p.unitPrice) || 0) * Math.max(1, Number(p.quantity) || 1)
+                          )}
                         </Text>
                       </View>
                     ))}
@@ -3706,13 +4310,21 @@ export default function GroupBookingsScreen() {
                 {createForm.locationType === "at_home" && travelFee > 0 ? (
                   <View style={twStyle("mt-3 flex-row items-center justify-between")}>
                     <Text style={twStyle("text-sm text-gray-600")}>Travel fee</Text>
-                    <Text style={twStyle("text-sm font-semibold text-gray-900")}>{formatCurrency(travelFee)}</Text>
+                    <Text style={twStyle("text-sm font-semibold text-gray-900")}>
+                      {formatCurrency(travelFee)}
+                    </Text>
                   </View>
                 ) : null}
 
-                <View style={twStyle("mt-4 border-t border-gray-100 pt-3 flex-row items-center justify-between")}>
+                <View
+                  style={twStyle(
+                    "mt-4 border-t border-gray-100 pt-3 flex-row items-center justify-between"
+                  )}
+                >
                   <Text style={twStyle("text-base font-bold text-gray-900")}>Total</Text>
-                  <Text style={twStyle("text-base font-extrabold text-gray-900")}>{formatCurrency(sessionTotal)}</Text>
+                  <Text style={twStyle("text-base font-extrabold text-gray-900")}>
+                    {formatCurrency(sessionTotal)}
+                  </Text>
                 </View>
               </View>
             );
@@ -3724,26 +4336,36 @@ export default function GroupBookingsScreen() {
               Payment
             </Text>
             <View style={twStyle("flex-row flex-wrap")}>
-              {([
-                { value: "pay_later", label: "Pay later", icon: "time-outline" as const },
-                { value: "cash", label: "Cash", icon: "cash-outline" as const },
-                { value: "card", label: "Manual card", icon: "card-outline" as const },
-                { value: "yoco_pos", label: "Yoco terminal", icon: "phone-portrait-outline" as const },
-                { value: "payment_link", label: "Payment link", icon: "send-outline" as const },
-              ] as const).map((m) => {
+              {(
+                [
+                  { value: "pay_later", label: "Pay later", icon: "time-outline" as const },
+                  { value: "cash", label: "Cash", icon: "cash-outline" as const },
+                  { value: "card", label: "Manual card", icon: "card-outline" as const },
+                  {
+                    value: "yoco_pos",
+                    label: "Yoco terminal",
+                    icon: "phone-portrait-outline" as const,
+                  },
+                  { value: "payment_link", label: "Payment link", icon: "send-outline" as const },
+                ] as const
+              ).map((m) => {
                 const active = createPaymentMethod === m.value;
                 return (
                   <TouchableOpacity
                     key={m.value}
                     onPress={() => setCreatePaymentMethod(m.value)}
                     style={twStyle(
-                      `mb-2 mr-2 flex-row items-center rounded-full border px-3 py-2 ${active ? "border-pink-500 bg-pink-50" : "border-gray-200 bg-white"}`,
+                      `mb-2 mr-2 flex-row items-center rounded-full border px-3 py-2 ${active ? "border-pink-500 bg-pink-50" : "border-gray-200 bg-white"}`
                     )}
                     accessibilityRole="radio"
                     accessibilityState={{ selected: active }}
                   >
                     <Ionicons name={m.icon} size={16} color={active ? "#db2777" : "#475569"} />
-                    <Text style={twStyle(`ml-2 text-sm font-medium ${active ? "text-pink-700" : "text-gray-700"}`)}>
+                    <Text
+                      style={twStyle(
+                        `ml-2 text-sm font-medium ${active ? "text-pink-700" : "text-gray-700"}`
+                      )}
+                    >
                       {m.label}
                     </Text>
                   </TouchableOpacity>
@@ -3764,7 +4386,9 @@ export default function GroupBookingsScreen() {
           {/* Notification toggle for the primary contact. */}
           <TouchableOpacity
             onPress={() => setCreateSendNotification((v) => !v)}
-            style={twStyle("mt-4 flex-row items-start rounded-2xl border border-gray-100 bg-white p-4")}
+            style={twStyle(
+              "mt-4 flex-row items-start rounded-2xl border border-gray-100 bg-white p-4"
+            )}
             activeOpacity={0.8}
           >
             <Ionicons
@@ -3777,7 +4401,8 @@ export default function GroupBookingsScreen() {
                 Notify primary contact
               </Text>
               <Text style={twStyle("mt-1 text-xs text-gray-500")}>
-                Sends a single email + push confirmation to the first participant. Other guests are not contacted.
+                Sends a single email + push confirmation to the first participant. Other guests are
+                not contacted.
               </Text>
             </View>
           </TouchableOpacity>
@@ -3833,58 +4458,84 @@ export default function GroupBookingsScreen() {
               if (product.variants && product.variants.length > 0) {
                 return (
                   <View key={product.id}>
-                    <Text style={twStyle("px-4 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500")}>
+                    <Text
+                      style={twStyle(
+                        "px-4 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500"
+                      )}
+                    >
                       {product.name}
                     </Text>
                     {product.variants.map((variant) => {
-                      const alreadyAdded = createProducts.some((p) => p.productId === product.id && p.productVariantId === variant.id);
+                      const alreadyAdded = createProducts.some(
+                        (p) => p.productId === product.id && p.productVariantId === variant.id
+                      );
                       return (
                         <TouchableOpacity
                           key={variant.id}
                           onPress={() => {
                             if (!alreadyAdded) {
-                              setCreateProducts((prev) => [...prev, {
-                                productId: product.id,
-                                productName: product.name,
-                                productVariantId: variant.id,
-                                productVariantName: variant.name,
-                                quantity: 1,
-                                unitPrice: variant.price,
-                              }]);
+                              setCreateProducts((prev) => [
+                                ...prev,
+                                {
+                                  productId: product.id,
+                                  productName: product.name,
+                                  productVariantId: variant.id,
+                                  productVariantName: variant.name,
+                                  quantity: 1,
+                                  unitPrice: variant.price,
+                                },
+                              ]);
                             }
                             setShowProductPicker(false);
                           }}
-                          style={twStyle(`flex-row items-center justify-between border-b border-gray-100 px-4 py-3 ${alreadyAdded ? "bg-indigo-50" : ""}`)}
+                          style={twStyle(
+                            `flex-row items-center justify-between border-b border-gray-100 px-4 py-3 ${alreadyAdded ? "bg-indigo-50" : ""}`
+                          )}
                           accessibilityRole="button"
                         >
-                          <Text style={twStyle("flex-1 text-sm text-gray-900")} numberOfLines={1}>{variant.name}</Text>
-                          <Text style={twStyle("ml-3 text-sm font-medium text-gray-700")}>{formatCurrency(variant.price)}</Text>
+                          <Text style={twStyle("flex-1 text-sm text-gray-900")} numberOfLines={1}>
+                            {variant.name}
+                          </Text>
+                          <Text style={twStyle("ml-3 text-sm font-medium text-gray-700")}>
+                            {formatCurrency(variant.price)}
+                          </Text>
                         </TouchableOpacity>
                       );
                     })}
                   </View>
                 );
               }
-              const alreadyAdded = createProducts.some((p) => p.productId === product.id && !p.productVariantId);
+              const alreadyAdded = createProducts.some(
+                (p) => p.productId === product.id && !p.productVariantId
+              );
               return (
                 <TouchableOpacity
                   key={product.id}
                   onPress={() => {
                     if (!alreadyAdded) {
-                      setCreateProducts((prev) => [...prev, {
-                        productId: product.id,
-                        productName: product.name,
-                        quantity: 1,
-                        unitPrice: product.price,
-                      }]);
+                      setCreateProducts((prev) => [
+                        ...prev,
+                        {
+                          productId: product.id,
+                          productName: product.name,
+                          quantity: 1,
+                          unitPrice: product.price,
+                        },
+                      ]);
                     }
                     setShowProductPicker(false);
                   }}
-                  style={twStyle(`flex-row items-center justify-between border-b border-gray-100 px-4 py-3 ${alreadyAdded ? "bg-indigo-50" : ""}`)}
+                  style={twStyle(
+                    `flex-row items-center justify-between border-b border-gray-100 px-4 py-3 ${alreadyAdded ? "bg-indigo-50" : ""}`
+                  )}
                   accessibilityRole="button"
                 >
-                  <Text style={twStyle("flex-1 text-sm text-gray-900")} numberOfLines={1}>{product.name}</Text>
-                  <Text style={twStyle("ml-3 text-sm font-medium text-gray-700")}>{formatCurrency(product.price)}</Text>
+                  <Text style={twStyle("flex-1 text-sm text-gray-900")} numberOfLines={1}>
+                    {product.name}
+                  </Text>
+                  <Text style={twStyle("ml-3 text-sm font-medium text-gray-700")}>
+                    {formatCurrency(product.price)}
+                  </Text>
                 </TouchableOpacity>
               );
             })}
@@ -3921,12 +4572,17 @@ export default function GroupBookingsScreen() {
                 }}
                 activeOpacity={0.7}
                 style={twStyle(
-                  "mb-2 flex-row items-center justify-between rounded-xl border border-red-200 bg-red-50 px-4 py-3",
+                  "mb-2 flex-row items-center justify-between rounded-xl border border-red-200 bg-red-50 px-4 py-3"
                 )}
                 accessibilityRole="button"
               >
                 <View style={twStyle("flex-row items-center")}>
-                  <Ionicons name="close-circle-outline" size={16} color="#dc2626" style={{ marginRight: 8 }} />
+                  <Ionicons
+                    name="close-circle-outline"
+                    size={16}
+                    color="#dc2626"
+                    style={{ marginRight: 8 }}
+                  />
                   <Text style={twStyle("text-sm font-medium text-red-700")}>
                     Detach current package
                   </Text>
@@ -3937,10 +4593,10 @@ export default function GroupBookingsScreen() {
             {packagesList.map((pkg) => {
               const isSelected = createForm.packageId === pkg.id;
               const serviceCount = (pkg.items ?? []).filter(
-                (it) => !!it.offering_id || !!it.offering?.id,
+                (it) => !!it.offering_id || !!it.offering?.id
               ).length;
               const productCount = (pkg.items ?? []).filter(
-                (it) => !!it.product_id || !!it.product?.id,
+                (it) => !!it.product_id || !!it.product?.id
               ).length;
               const priceNum = typeof pkg.price === "number" ? pkg.price : null;
               const discount =
@@ -3958,10 +4614,8 @@ export default function GroupBookingsScreen() {
                   activeOpacity={0.7}
                   style={twStyle(
                     `mb-2 rounded-xl border px-4 py-3 ${
-                      isSelected
-                        ? "border-indigo-400 bg-indigo-50"
-                        : "border-gray-200 bg-white"
-                    }`,
+                      isSelected ? "border-indigo-400 bg-indigo-50" : "border-gray-200 bg-white"
+                    }`
                   )}
                   accessibilityRole="button"
                   accessibilityState={{ selected: isSelected }}
@@ -3975,32 +4629,23 @@ export default function GroupBookingsScreen() {
                         {pkg.name}
                       </Text>
                       {pkg.description ? (
-                        <Text
-                          style={twStyle("mt-0.5 text-xs text-gray-500")}
-                          numberOfLines={2}
-                        >
+                        <Text style={twStyle("mt-0.5 text-xs text-gray-500")} numberOfLines={2}>
                           {pkg.description}
                         </Text>
                       ) : null}
                       <View style={twStyle("mt-1.5 flex-row items-center")}>
                         {serviceCount > 0 ? (
-                          <Text
-                            style={[twStyle("text-[11px] text-gray-500"), { marginRight: 10 }]}
-                          >
+                          <Text style={[twStyle("text-[11px] text-gray-500"), { marginRight: 10 }]}>
                             {serviceCount} service{serviceCount === 1 ? "" : "s"}
                           </Text>
                         ) : null}
                         {productCount > 0 ? (
-                          <Text
-                            style={[twStyle("text-[11px] text-gray-500"), { marginRight: 10 }]}
-                          >
+                          <Text style={[twStyle("text-[11px] text-gray-500"), { marginRight: 10 }]}>
                             {productCount} product{productCount === 1 ? "" : "s"}
                           </Text>
                         ) : null}
                         {discount != null ? (
-                          <View
-                            style={twStyle("rounded-full bg-green-50 px-1.5 py-0.5")}
-                          >
+                          <View style={twStyle("rounded-full bg-green-50 px-1.5 py-0.5")}>
                             <Text style={twStyle("text-[10px] font-medium text-green-700")}>
                               -{discount}%
                             </Text>

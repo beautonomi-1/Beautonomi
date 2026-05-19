@@ -34,17 +34,40 @@ export default function SubscriptionPaymentReturnScreen() {
     trxref?: string;
     payment_success?: string;
     payment_cancelled?: string;
+    order_id?: string;
   }>();
   const reference = useMemo(() => pickStr(params.reference) || pickStr(params.trxref), [params]);
   const cancelledFlag = pickStr(params.payment_cancelled);
+  const orderId = pickStr(params.order_id);
   const [status, setStatus] = useState<ReturnStatus>(reference ? "verifying" : "pending");
 
   useEffect(() => {
     let aborted = false;
+
+    /**
+     * §Provider-paystack-audit 2026-05: forward the verified outcome back
+     * to the Subscription screen so it surfaces the same outcome card as the
+     * foreground flow. Includes `order_id` so the screen can poll the matching
+     * subscription state instead of grabbing a stale snapshot.
+     */
+    const navigateBack = (
+      flag: "payment_success" | "payment_failed" | "payment_pending" | null,
+    ) => {
+      const query: Record<string, string> = {};
+      if (flag === "payment_success") query.payment_success = "1";
+      if (flag === "payment_failed") query.payment_failed = "1";
+      if (flag === "payment_pending") query.payment_pending = "1";
+      if (orderId) query.order_id = orderId;
+      router.replace({
+        pathname: "/(app)/(tabs)/more/settings/subscription",
+        params: query,
+      });
+    };
+
     if (cancelledFlag === "1") {
       setStatus("cancel");
       const t = setTimeout(() => {
-        if (!aborted) router.replace("/(app)/(tabs)/more/settings/subscription");
+        if (!aborted) navigateBack("payment_failed");
       }, 800);
       return () => {
         aborted = true;
@@ -53,7 +76,7 @@ export default function SubscriptionPaymentReturnScreen() {
     }
     if (!reference) {
       const t = setTimeout(() => {
-        if (!aborted) router.replace("/(app)/(tabs)/more/settings/subscription");
+        if (!aborted) navigateBack(null);
       }, 200);
       return () => {
         aborted = true;
@@ -72,13 +95,16 @@ export default function SubscriptionPaymentReturnScreen() {
       }
       const delay = verifyResult.status === "success" ? 700 : 1500;
       setTimeout(() => {
-        if (!aborted) router.replace("/(app)/(tabs)/more/settings/subscription");
+        if (aborted) return;
+        if (verifyResult.status === "success") navigateBack("payment_success");
+        else if (verifyResult.status === "failed") navigateBack("payment_failed");
+        else navigateBack("payment_pending");
       }, delay);
     })();
     return () => {
       aborted = true;
     };
-  }, [reference, cancelledFlag, router]);
+  }, [reference, cancelledFlag, orderId, router]);
 
   const isSuccess = status === "success";
   const isCancel = status === "cancel";
@@ -113,7 +139,7 @@ export default function SubscriptionPaymentReturnScreen() {
           )}
           <Text style={twStyle("mt-4 text-lg font-bold text-gray-900 text-center")}>
             {isSuccess
-              ? "Subscription activated"
+              ? "Plan activated"
               : isFailed
                 ? "Payment could not be confirmed"
                 : isPending

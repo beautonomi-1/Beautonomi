@@ -39,6 +39,12 @@ interface PaymentMethod {
   name: string;
   type: string;
   last4?: string;
+  expiry_month?: number;
+  expiry_year?: number;
+  /** Pre-formatted `MM/YY` from the server. Preferred over recomputing. */
+  expiry_label?: string;
+  /** True when today is past the end of the expiry month. */
+  is_expired?: boolean;
   is_default: boolean;
 }
 
@@ -55,7 +61,7 @@ interface Invoice {
 }
 
 interface BillingData {
-  billingAddress: string | null;
+  billingAddress: string | Record<string, unknown> | null;
   billingEmail: string | null;
   billingPhone: string | null;
   paymentMethods: PaymentMethod[];
@@ -83,6 +89,15 @@ function invoiceStatusStyle(status: string): { bg: string; text: string } {
   }
 }
 
+function formatBillingAddress(value: BillingData["billingAddress"]): string {
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  const line1 = typeof value.address_line1 === "string" ? value.address_line1 : "";
+  const city = typeof value.city === "string" ? value.city : "";
+  const country = typeof value.country === "string" ? value.country : "";
+  return [line1, city, country].filter(Boolean).join(", ");
+}
+
 /* ------------------------------------------------------------------ */
 /*  Screen                                                             */
 /* ------------------------------------------------------------------ */
@@ -99,6 +114,8 @@ export default function BillingScreen() {
 
   const { execute: postAction, loading: paying } = useApiMutation("post");
   const { execute: patchInvoice } = useApiMutation("patch");
+  const { execute: patchPaymentMethod } = useApiMutation("patch");
+  const { execute: deletePaymentMethod } = useApiMutation("delete");
 
   const [refreshing, setRefreshing] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -106,6 +123,7 @@ export default function BillingScreen() {
   const [invoiceFilter, setInvoiceFilter] = useState("all");
   const [paymentAmount, setPaymentAmount] = useState("");
   const [showPayment, setShowPayment] = useState(false);
+  const [busyPaymentMethodId, setBusyPaymentMethodId] = useState<string | null>(null);
   const [form, setForm] = useState({
     billingAddress: "",
     billingEmail: "",
@@ -115,7 +133,7 @@ export default function BillingScreen() {
   useEffect(() => {
     if (billing) {
       setForm({
-        billingAddress: billing.billingAddress ?? "",
+        billingAddress: formatBillingAddress(billing.billingAddress),
         billingEmail: billing.billingEmail ?? "",
         billingPhone: billing.billingPhone ?? "",
       });
@@ -131,43 +149,89 @@ export default function BillingScreen() {
     }
   }, [refresh]);
 
-  const handleDownloadInvoice = useCallback(
-    async (inv: Invoice) => {
-      if (Platform.OS === "web") {
-        const base = (APP_URL || "").replace(/\/$/, "");
-        const url = base ? `${base}/api/provider/invoices/${inv.id}/download` : "";
-        if (!url) {
-          Alert.alert("Error", "App URL not configured");
-          return;
-        }
-        Linking.openURL(url).catch(() => {});
+  const handleDownloadInvoice = useCallback(async (inv: Invoice) => {
+    if (Platform.OS === "web") {
+      const base = (APP_URL || "").replace(/\/$/, "");
+      const url = base ? `${base}/api/provider/invoices/${inv.id}/download` : "";
+      if (!url) {
+        Alert.alert("Error", "App URL not configured");
         return;
       }
-      try {
-        const res = await api.post<{ url?: string }>(
-          `/api/provider/invoices/${inv.id}/signed-url`,
-          {},
-        );
-        const signedUrl = res.data?.url;
-        if (res.error || !signedUrl) {
-          const msg =
-            (res.error as { message?: string } | null)?.message ??
-            "Could not generate invoice. Please try again.";
-          Alert.alert("Download invoice", msg);
-          return;
-        }
-        const fileUri = `${FileSystem.cacheDirectory}invoice_${inv.invoice_number || inv.id}.pdf`;
-        await FileSystem.downloadAsync(signedUrl, fileUri);
-        await Share.share({
-          url: fileUri,
-          message: `Invoice ${inv.invoice_number} - ${formatCurrency(inv.total_amount)}`,
-        });
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : "Download failed";
-        Alert.alert("Download failed", msg);
+      Linking.openURL(url).catch(() => {});
+      return;
+    }
+    try {
+      const res = await api.post<{ url?: string }>(
+        `/api/provider/invoices/${inv.id}/signed-url`,
+        {}
+      );
+      const signedUrl = res.data?.url;
+      if (res.error || !signedUrl) {
+        const msg =
+          (res.error as { message?: string } | null)?.message ??
+          "Could not generate invoice. Please try again.";
+        Alert.alert("Download invoice", msg);
+        return;
+      }
+      const fileUri = `${FileSystem.cacheDirectory}invoice_${inv.invoice_number || inv.id}.pdf`;
+      await FileSystem.downloadAsync(signedUrl, fileUri);
+      await Share.share({
+        url: fileUri,
+        message: `Invoice ${inv.invoice_number} - ${formatCurrency(inv.total_amount)}`,
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Download failed";
+      Alert.alert("Download failed", msg);
+    }
+  }, []);
+
+  const handleSetDefaultPaymentMethod = useCallback(
+    async (pm: PaymentMethod) => {
+      setBusyPaymentMethodId(pm.id);
+      const { error: err } = await patchPaymentMethod(
+        `/api/provider/payment-methods/${pm.id}`,
+        { is_default: true },
+      );
+      setBusyPaymentMethodId(null);
+      if (err) {
+        Alert.alert("Error", err);
+      } else {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        refresh();
       }
     },
-    []
+    [patchPaymentMethod, refresh],
+  );
+
+  const handleRemovePaymentMethod = useCallback(
+    async (pm: PaymentMethod) => {
+      const label = pm.last4 ? `${pm.name} ending in ${pm.last4}` : pm.name;
+      Alert.alert(
+        "Remove payment method?",
+        `${label} will be removed from your billing settings. Pending invoices that referenced it stay unchanged.`,
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Remove",
+            style: "destructive",
+            onPress: async () => {
+              setBusyPaymentMethodId(pm.id);
+              const { error: err } = await deletePaymentMethod(
+                `/api/provider/payment-methods/${pm.id}`,
+              );
+              setBusyPaymentMethodId(null);
+              if (err) {
+                Alert.alert("Error", err);
+              } else {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                refresh();
+              }
+            },
+          },
+        ],
+      );
+    },
+    [deletePaymentMethod, refresh],
   );
 
   async function handleSave() {
@@ -178,14 +242,11 @@ export default function BillingScreen() {
         return;
       }
     }
-    const { error: err } = await updateBilling(
-      "/api/provider/settings/billing",
-      {
-        billing_address: form.billingAddress.trim() || null,
-        billing_email: form.billingEmail.trim() || null,
-        billing_phone: form.billingPhone.trim() || null,
-      },
-    );
+    const { error: err } = await updateBilling("/api/provider/settings/billing", {
+      billingAddress: form.billingAddress.trim() || null,
+      billingEmail: form.billingEmail.trim() || null,
+      billingPhone: form.billingPhone.trim() || null,
+    });
     if (err) {
       Alert.alert("Error", err);
     } else {
@@ -221,11 +282,11 @@ export default function BillingScreen() {
         {editing ? (
           <>
             <View style={twStyle("mb-3")}>
-              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-                Billing Address
-              </Text>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Billing Address</Text>
               <TextInput
-                style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+                style={twStyle(
+                  "rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                )}
                 value={form.billingAddress}
                 onChangeText={(t) => setForm((p) => ({ ...p, billingAddress: t }))}
                 placeholder="Street, City, Code"
@@ -235,11 +296,11 @@ export default function BillingScreen() {
               />
             </View>
             <View style={twStyle("mb-3")}>
-              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-                Billing Email
-              </Text>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Billing Email</Text>
               <TextInput
-                style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+                style={twStyle(
+                  "rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                )}
                 value={form.billingEmail}
                 onChangeText={(t) => setForm((p) => ({ ...p, billingEmail: t }))}
                 placeholder="billing@example.com"
@@ -257,30 +318,17 @@ export default function BillingScreen() {
               showHint={false}
               accessibilityLabel="Billing phone"
             />
-            <ActionButton
-              label="Save"
-              onPress={handleSave}
-              loading={saving}
-              fullWidth
-            />
+            <ActionButton label="Save" onPress={handleSave} loading={saving} fullWidth />
           </>
         ) : (
           <>
             <Row
               icon="location-outline"
               label="Address"
-              value={billing?.billingAddress ?? "Not set"}
+              value={formatBillingAddress(billing?.billingAddress ?? null) || "Not set"}
             />
-            <Row
-              icon="mail-outline"
-              label="Email"
-              value={billing?.billingEmail ?? "Not set"}
-            />
-            <Row
-              icon="call-outline"
-              label="Phone"
-              value={billing?.billingPhone ?? "Not set"}
-            />
+            <Row icon="mail-outline" label="Email" value={billing?.billingEmail ?? "Not set"} />
+            <Row icon="call-outline" label="Phone" value={billing?.billingPhone ?? "Not set"} />
           </>
         )}
       </View>
@@ -290,42 +338,80 @@ export default function BillingScreen() {
       {paymentMethods.length === 0 ? (
         <View style={twStyle("items-center rounded-2xl border border-gray-100 bg-white px-4 py-8")}>
           <Ionicons name="card-outline" size={24} color="#d1d5db" />
-          <Text style={twStyle("mt-2 text-sm text-gray-400")}>
-            No payment methods on file
-          </Text>
+          <Text style={twStyle("mt-2 text-sm text-gray-400")}>No payment methods on file</Text>
         </View>
       ) : (
         <View style={twStyle("rounded-2xl border border-gray-100 bg-white")}>
-          {paymentMethods.map((pm, i, arr) => (
-            <View
-              key={pm.id}
-              style={twStyle(`flex-row items-center px-4 py-3.5 ${i < arr.length - 1 ? "border-b border-gray-50" : ""}`)}
-              accessibilityLabel={`${pm.name} ending in ${pm.last4 ?? "****"}`}
-            >
-              <Ionicons
-                name={pm.type === "card" ? "card-outline" : "wallet-outline"}
-                size={20}
-                color="#6366f1"
-              />
-              <View style={twStyle("ml-3 flex-1")}>
-                <Text style={twStyle("text-sm font-medium text-gray-900")}>
-                  {pm.name}
-                </Text>
-                {pm.last4 && (
-                  <Text style={twStyle("text-xs text-gray-500")}>
-                    •••• {pm.last4}
-                  </Text>
+          {paymentMethods.map((pm, i, arr) => {
+            const expiry =
+              pm.expiry_label ??
+              (pm.expiry_month && pm.expiry_year
+                ? `${String(pm.expiry_month).padStart(2, "0")}/${String(pm.expiry_year).slice(-2)}`
+                : null);
+            const busy = busyPaymentMethodId === pm.id;
+            return (
+              <View
+                key={pm.id}
+                style={twStyle(
+                  `flex-row items-center px-4 py-3.5 ${i < arr.length - 1 ? "border-b border-gray-50" : ""}`
                 )}
-              </View>
-              {pm.is_default && (
-                <View style={twStyle("rounded-full bg-indigo-50 px-2.5 py-0.5")}>
-                  <Text style={twStyle("text-xs font-medium text-indigo-700")}>
-                    Default
-                  </Text>
+                accessibilityLabel={`${pm.name} ending in ${pm.last4 ?? "****"}`}
+              >
+                <Ionicons
+                  name={pm.type === "card" ? "card-outline" : "wallet-outline"}
+                  size={20}
+                  color="#6366f1"
+                />
+                <View style={twStyle("ml-3 flex-1")}>
+                  <Text style={twStyle("text-sm font-medium text-gray-900")}>{pm.name}</Text>
+                  <View style={twStyle("flex-row flex-wrap items-center")}>
+                    {pm.last4 ? (
+                      <Text style={twStyle("text-xs text-gray-500")}>•••• {pm.last4}</Text>
+                    ) : null}
+                    {expiry ? (
+                      <Text
+                        style={twStyle(
+                          `${pm.last4 ? "ml-2" : ""} text-xs ${
+                            pm.is_expired ? "font-semibold text-red-600" : "text-gray-500"
+                          }`,
+                        )}
+                      >
+                        {pm.is_expired ? "Expired" : "Expires"} {expiry}
+                      </Text>
+                    ) : null}
+                  </View>
                 </View>
-              )}
-            </View>
-          ))}
+                {pm.is_default ? (
+                  <View style={twStyle("mr-2 rounded-full bg-indigo-50 px-2.5 py-0.5")}>
+                    <Text style={twStyle("text-xs font-medium text-indigo-700")}>Default</Text>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    onPress={() => handleSetDefaultPaymentMethod(pm)}
+                    disabled={busy}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    style={twStyle(
+                      `mr-2 rounded-full bg-gray-50 px-2.5 py-1 ${busy ? "opacity-50" : ""}`,
+                    )}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Set ${pm.name} as default`}
+                  >
+                    <Text style={twStyle("text-xs font-medium text-gray-700")}>Set default</Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity
+                  onPress={() => handleRemovePaymentMethod(pm)}
+                  disabled={busy}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  style={twStyle(`p-1 ${busy ? "opacity-50" : ""}`)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove ${pm.name}`}
+                >
+                  <Ionicons name="trash-outline" size={18} color="#9ca3af" />
+                </TouchableOpacity>
+              </View>
+            );
+          })}
         </View>
       )}
 
@@ -358,42 +444,46 @@ export default function BillingScreen() {
               return invoiceFilter.split(",").includes(inv.status);
             })
             .map((inv, i, arr) => {
-            const st = invoiceStatusStyle(inv.status);
-            return (
-              <TouchableOpacity
-                key={inv.id}
-                style={twStyle(`flex-row items-center px-4 py-3.5 ${i < arr.length - 1 ? "border-b border-gray-50" : ""}`)}
-                accessibilityLabel={`Invoice ${inv.invoice_number}, ${formatCurrency(inv.total_amount)}, ${inv.status}`}
-                onPress={() => setSelectedInvoice(inv)}
-              >
-                <View style={twStyle("mr-3 h-9 w-9 items-center justify-center rounded-lg bg-gray-50")}>
-                  <Ionicons name="document-text-outline" size={18} color="#6b7280" />
-                </View>
-                <View style={twStyle("flex-1")}>
-                  <Text style={twStyle("text-sm font-medium text-gray-900")}>
-                    {inv.invoice_number}
-                  </Text>
-                  <Text style={twStyle("text-xs text-gray-400")}>
-                    {formatDate(inv.issue_date)}
-                    {inv.due_date && !inv.paid_at
-                      ? ` · Due ${formatDate(inv.due_date)}`
-                      : ""}
-                    {inv.paid_at ? ` · Paid ${formatDate(inv.paid_at)}` : ""}
-                  </Text>
-                </View>
-                <View style={twStyle("items-end")}>
-                  <Text style={twStyle("text-sm font-semibold text-gray-900")}>
-                    {formatCurrency(inv.total_amount)}
-                  </Text>
-                  <View style={twStyle(`mt-0.5 rounded-full px-2 py-0.5 ${st.bg}`)}>
-                    <Text style={twStyle(`text-[10px] font-medium capitalize ${st.text}`)}>
-                      {inv.status}
+              const st = invoiceStatusStyle(inv.status);
+              return (
+                <TouchableOpacity
+                  key={inv.id}
+                  style={twStyle(
+                    `flex-row items-center px-4 py-3.5 ${i < arr.length - 1 ? "border-b border-gray-50" : ""}`
+                  )}
+                  accessibilityLabel={`Invoice ${inv.invoice_number}, ${formatCurrency(inv.total_amount)}, ${inv.status}`}
+                  onPress={() => setSelectedInvoice(inv)}
+                >
+                  <View
+                    style={twStyle(
+                      "mr-3 h-9 w-9 items-center justify-center rounded-lg bg-gray-50"
+                    )}
+                  >
+                    <Ionicons name="document-text-outline" size={18} color="#6b7280" />
+                  </View>
+                  <View style={twStyle("flex-1")}>
+                    <Text style={twStyle("text-sm font-medium text-gray-900")}>
+                      {inv.invoice_number}
+                    </Text>
+                    <Text style={twStyle("text-xs text-gray-400")}>
+                      {formatDate(inv.issue_date)}
+                      {inv.due_date && !inv.paid_at ? ` · Due ${formatDate(inv.due_date)}` : ""}
+                      {inv.paid_at ? ` · Paid ${formatDate(inv.paid_at)}` : ""}
                     </Text>
                   </View>
-                </View>
-              </TouchableOpacity>
-            );
-          })}
+                  <View style={twStyle("items-end")}>
+                    <Text style={twStyle("text-sm font-semibold text-gray-900")}>
+                      {formatCurrency(inv.total_amount)}
+                    </Text>
+                    <View style={twStyle(`mt-0.5 rounded-full px-2 py-0.5 ${st.bg}`)}>
+                      <Text style={twStyle(`text-[10px] font-medium capitalize ${st.text}`)}>
+                        {inv.status}
+                      </Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
         </View>
       )}
 
@@ -402,15 +492,28 @@ export default function BillingScreen() {
       {/* ─── Invoice Detail Sheet ─── */}
       <BottomSheet
         visible={!!selectedInvoice}
-        onClose={() => { setSelectedInvoice(null); setShowPayment(false); }}
+        onClose={() => {
+          setSelectedInvoice(null);
+          setShowPayment(false);
+        }}
         title={`Invoice ${selectedInvoice?.invoice_number ?? ""}`}
       >
         {selectedInvoice && (
           <View>
             <View style={twStyle("mb-3 flex-row items-center justify-between")}>
-              <Text style={twStyle("text-sm text-gray-500")}>{formatDate(selectedInvoice.issue_date)}</Text>
-              <View style={twStyle(`rounded-full px-3 py-1 ${invoiceStatusStyle(selectedInvoice.status).bg}`)}>
-                <Text style={twStyle(`text-xs font-medium capitalize ${invoiceStatusStyle(selectedInvoice.status).text}`)}>
+              <Text style={twStyle("text-sm text-gray-500")}>
+                {formatDate(selectedInvoice.issue_date)}
+              </Text>
+              <View
+                style={twStyle(
+                  `rounded-full px-3 py-1 ${invoiceStatusStyle(selectedInvoice.status).bg}`
+                )}
+              >
+                <Text
+                  style={twStyle(
+                    `text-xs font-medium capitalize ${invoiceStatusStyle(selectedInvoice.status).text}`
+                  )}
+                >
                   {selectedInvoice.status}
                 </Text>
               </View>
@@ -419,24 +522,32 @@ export default function BillingScreen() {
             <View style={twStyle("mb-3 rounded-xl border border-gray-200 bg-white p-4")}>
               <View style={twStyle("flex-row justify-between")}>
                 <Text style={twStyle("text-sm text-gray-500")}>Amount</Text>
-                <Text style={twStyle("text-lg font-bold text-gray-900")}>{formatCurrency(selectedInvoice.total_amount)}</Text>
+                <Text style={twStyle("text-lg font-bold text-gray-900")}>
+                  {formatCurrency(selectedInvoice.total_amount)}
+                </Text>
               </View>
               {selectedInvoice.due_date && (
                 <View style={twStyle("mt-1 flex-row justify-between")}>
                   <Text style={twStyle("text-sm text-gray-500")}>Due Date</Text>
-                  <Text style={twStyle("text-sm text-gray-700")}>{formatDate(selectedInvoice.due_date)}</Text>
+                  <Text style={twStyle("text-sm text-gray-700")}>
+                    {formatDate(selectedInvoice.due_date)}
+                  </Text>
                 </View>
               )}
               {selectedInvoice.paid_at && (
                 <View style={twStyle("mt-1 flex-row justify-between")}>
                   <Text style={twStyle("text-sm text-gray-500")}>Paid On</Text>
-                  <Text style={twStyle("text-sm text-green-700")}>{formatDate(selectedInvoice.paid_at)}</Text>
+                  <Text style={twStyle("text-sm text-green-700")}>
+                    {formatDate(selectedInvoice.paid_at)}
+                  </Text>
                 </View>
               )}
               {selectedInvoice.invoice_type && (
                 <View style={twStyle("mt-1 flex-row justify-between")}>
                   <Text style={twStyle("text-sm text-gray-500")}>Type</Text>
-                  <Text style={twStyle("text-sm text-gray-700 capitalize")}>{selectedInvoice.invoice_type}</Text>
+                  <Text style={twStyle("text-sm text-gray-700 capitalize")}>
+                    {selectedInvoice.invoice_type}
+                  </Text>
                 </View>
               )}
             </View>
@@ -444,17 +555,26 @@ export default function BillingScreen() {
             {/* Actions */}
             <View>
               <TouchableOpacity
-                style={[twStyle("flex-row items-center justify-center rounded-xl border border-gray-200 bg-white py-3"), { marginBottom: 8 }]}
+                style={[
+                  twStyle(
+                    "flex-row items-center justify-center rounded-xl border border-gray-200 bg-white py-3"
+                  ),
+                  { marginBottom: 8 },
+                ]}
                 onPress={() => selectedInvoice && handleDownloadInvoice(selectedInvoice)}
                 accessibilityLabel="Share invoice"
                 accessibilityRole="button"
               >
                 <Ionicons name="share-outline" size={18} color="#6366f1" />
-                <Text style={twStyle("ml-2 text-sm font-medium text-indigo-600")}>Share Invoice</Text>
+                <Text style={twStyle("ml-2 text-sm font-medium text-indigo-600")}>
+                  Share Invoice
+                </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={twStyle("flex-row items-center justify-center rounded-xl border border-gray-200 bg-white py-3")}
+                style={twStyle(
+                  "flex-row items-center justify-center rounded-xl border border-gray-200 bg-white py-3"
+                )}
                 onPress={() => selectedInvoice && handleDownloadInvoice(selectedInvoice)}
                 accessibilityLabel="Download invoice"
                 accessibilityRole="button"
@@ -476,9 +596,13 @@ export default function BillingScreen() {
                     />
                   ) : (
                     <View style={twStyle("rounded-xl border border-gray-200 bg-gray-50 p-4")}>
-                      <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Payment Amount</Text>
+                      <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
+                        Payment Amount
+                      </Text>
                       <TextInput
-                        style={twStyle("mb-3 rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
+                        style={twStyle(
+                          "mb-3 rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900"
+                        )}
                         value={paymentAmount}
                         onChangeText={setPaymentAmount}
                         keyboardType="decimal-pad"
@@ -513,7 +637,9 @@ export default function BillingScreen() {
 
                   {selectedInvoice.status === "draft" && (
                     <TouchableOpacity
-                      style={twStyle("flex-row items-center justify-center rounded-xl border border-blue-200 bg-blue-50 py-3")}
+                      style={twStyle(
+                        "flex-row items-center justify-center rounded-xl border border-blue-200 bg-blue-50 py-3"
+                      )}
                       onPress={async () => {
                         const { error: err } = await patchInvoice(
                           `/api/provider/invoices/${selectedInvoice.id}`,
@@ -528,7 +654,9 @@ export default function BillingScreen() {
                       }}
                     >
                       <Ionicons name="send-outline" size={18} color="#2563eb" />
-                      <Text style={twStyle("ml-2 text-sm font-medium text-blue-700")}>Mark as Sent</Text>
+                      <Text style={twStyle("ml-2 text-sm font-medium text-blue-700")}>
+                        Mark as Sent
+                      </Text>
                     </TouchableOpacity>
                   )}
                 </>

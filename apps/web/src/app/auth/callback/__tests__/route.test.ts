@@ -22,7 +22,8 @@ vi.mock("@/lib/auth/role", () => ({
   getDefaultRouteForPortal: (...args: any[]) => mockGetDefaultRouteForPortal(...args),
 }));
 vi.mock("@/lib/auth/post-login-return-path", () => ({
-  resolvePortalAwareReturnPathname: (...args: any[]) => mockResolvePortalAwareReturnPathname(...args),
+  resolvePortalAwareReturnPathname: (...args: any[]) =>
+    mockResolvePortalAwareReturnPathname(...args),
 }));
 
 describe("GET /auth/callback", () => {
@@ -31,36 +32,34 @@ describe("GET /auth/callback", () => {
     mockGetUserRoleServer.mockResolvedValue({ role: "customer", provider_status: null });
     mockGetPortalForUser.mockReturnValue("customer");
     mockGetDefaultRouteForPortal.mockReturnValue("/bookings");
-    mockResolvePortalAwareReturnPathname.mockImplementation((_portal: string, pathname: string) => pathname);
+    mockResolvePortalAwareReturnPathname.mockImplementation(
+      (_portal: string, pathname: string) => pathname
+    );
   });
 
-  it(
-    "redirects to reset-password when token_hash and type=recovery and verifyOtp succeeds",
-    async () => {
-      const mockVerifyOtp = vi.fn().mockResolvedValue({ error: null });
-      mockGetSupabaseServer.mockResolvedValue({
-        auth: {
-          verifyOtp: mockVerifyOtp,
-        },
-      });
+  it("redirects to reset-password when token_hash and type=recovery and verifyOtp succeeds", async () => {
+    const mockVerifyOtp = vi.fn().mockResolvedValue({ error: null });
+    mockGetSupabaseServer.mockResolvedValue({
+      auth: {
+        verifyOtp: mockVerifyOtp,
+      },
+    });
 
-      const { GET } = await import("../route");
-      const req = new NextRequest(
-        "https://app.example.com/auth/callback?token_hash=abc123&type=recovery"
-      );
-      const res = await GET(req);
+    const { GET } = await import("../route");
+    const req = new NextRequest(
+      "https://app.example.com/auth/callback?token_hash=abc123&type=recovery"
+    );
+    const res = await GET(req);
 
-      expect(res.status).toBe(307);
-      expect(res.headers.get("location")).toBe(
-        "https://app.example.com/account-settings/login-and-security/reset-password"
-      );
-      expect(mockVerifyOtp).toHaveBeenCalledWith({
-        token_hash: "abc123",
-        type: "recovery",
-      });
-    },
-    30_000
-  );
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toBe(
+      "https://app.example.com/account-settings/login-and-security/reset-password"
+    );
+    expect(mockVerifyOtp).toHaveBeenCalledWith({
+      token_hash: "abc123",
+      type: "recovery",
+    });
+  }, 30_000);
 
   it("redirects to login with error when token_hash and type=recovery but verifyOtp fails", async () => {
     const mockVerifyOtp = vi.fn().mockResolvedValue({
@@ -113,6 +112,22 @@ describe("GET /auth/callback", () => {
     expect(mockVerifyOtp).toHaveBeenCalledWith({ token_hash: "xyz", type: "signup" });
   });
 
+  it("allows customer onboarding as an email confirmation destination", async () => {
+    const mockVerifyOtp = vi.fn().mockResolvedValue({ error: null });
+    mockGetSupabaseServer.mockResolvedValue({
+      auth: { verifyOtp: mockVerifyOtp },
+    });
+
+    const { GET } = await import("../route");
+    const req = new NextRequest(
+      "https://app.example.com/auth/callback?token_hash=customer&type=signup&next=/onboarding"
+    );
+    const res = await GET(req);
+
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toBe("https://app.example.com/onboarding");
+  });
+
   it("redirects to login with missing_code when no code and no token_hash", async () => {
     mockGetSupabaseServer.mockResolvedValue({ auth: {} });
 
@@ -144,7 +159,9 @@ describe("GET /auth/callback", () => {
     const res = await GET(req);
 
     expect(res.status).toBe(307);
-    expect(res.headers.get("location")).toBe("https://app.example.com/book/continue?hold_id=hold-123");
+    expect(res.headers.get("location")).toBe(
+      "https://app.example.com/book/continue?hold_id=hold-123"
+    );
   });
 
   it("preserves non-dashboard admin OAuth next paths through the dedicated admin login", async () => {

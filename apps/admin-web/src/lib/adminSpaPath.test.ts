@@ -16,6 +16,7 @@ describe("adminSpaTo", () => {
 
   it("preserves query strings", () => {
     expect(adminSpaTo("/admin/login?next=%2Fadmin%2Fdashboard")).toBe("/login?next=%2Fadmin%2Fdashboard");
+    expect(adminSpaTo("/admin/verifications?status=all")).toBe("/verifications?status=all");
   });
 });
 

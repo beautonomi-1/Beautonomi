@@ -44,6 +44,88 @@ export function formatLocalDateYYYYMMDD(d: Date): string {
 }
 
 /**
+ * §Booking-slot-audit 2026-05: customer booking flows need to anchor the
+ * date strip and `date=` query params to the **provider business day**, not
+ * the device-local day. Otherwise a customer in a far-away timezone (e.g.
+ * Asia at 1am with a SAST provider) requests the wrong salon business date
+ * and sees "missing" or "extra" early-morning slots.
+ *
+ * This helper returns a **device-local `Date` whose Y/M/D matches the
+ * provider's business day** for `(now + offsetDays)`. Because the returned
+ * Date's `.getFullYear()`, `.getMonth()`, `.getDate()`, `.getDay()` all
+ * return values for the provider business day:
+ *
+ *  - `formatLocalDateYYYYMMDD(d)` returns the provider business `YYYY-MM-DD`
+ *    so the availability API receives the salon's date.
+ *  - Existing display code (date strip, month grid, weekday labels) keeps
+ *    working unchanged because the Date "looks like" device-local on that
+ *    date.
+ *
+ * When `tz` is missing or unparseable, falls back to device-local "today"
+ * (existing behaviour), so providers without a configured timezone are
+ * unaffected.
+ */
+export function startOfBusinessDayLocalDate(
+  tz: string | null | undefined,
+  offsetDays = 0,
+): Date {
+  const normalized = normalizeProviderTimezone(tz);
+  if (!normalized) {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    if (offsetDays !== 0) d.setDate(d.getDate() + offsetDays);
+    return d;
+  }
+  try {
+    const ymd = new Intl.DateTimeFormat("en-CA", {
+      timeZone: normalized,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
+    if (!match) throw new Error("Bad Intl date output");
+    const y = Number(match[1]);
+    const mo = Number(match[2]);
+    const d = Number(match[3]);
+    const out = new Date(y, mo - 1, d);
+    if (offsetDays !== 0) out.setDate(out.getDate() + offsetDays);
+    return out;
+  } catch {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    if (offsetDays !== 0) d.setDate(d.getDate() + offsetDays);
+    return d;
+  }
+}
+
+/**
+ * §Booking-slot-audit 2026-05: format a Date as `YYYY-MM-DD` using the
+ * provider business timezone when known. When `tz` is missing or invalid,
+ * falls back to {@link formatLocalDateYYYYMMDD} (device-local).
+ *
+ * Use at the API boundary (`date=` query param) so the salon receives the
+ * date the customer actually intends to book, even when their device is in
+ * a different timezone.
+ */
+export function formatBusinessDayYYYYMMDD(d: Date, tz: string | null | undefined): string {
+  const normalized = normalizeProviderTimezone(tz);
+  if (!normalized) return formatLocalDateYYYYMMDD(d);
+  try {
+    const ymd = new Intl.DateTimeFormat("en-CA", {
+      timeZone: normalized,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(d);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return ymd;
+    return formatLocalDateYYYYMMDD(d);
+  } catch {
+    return formatLocalDateYYYYMMDD(d);
+  }
+}
+
+/**
  * Normalizes any `Date`-parsable value (including ISO strings with `Z` or `±hh:mm`) to UTC ISO 8601 (`…Z`).
  * Use for booking/hold payloads that must satisfy `z.string().datetime()` (RFC 3339).
  */

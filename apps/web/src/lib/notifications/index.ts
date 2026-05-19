@@ -127,6 +127,7 @@ export {
   // Memberships & Subscriptions
   notifyMembershipRenewalReminder,
   notifyMembershipActivated,
+  notifyProviderMembershipCancelled,
   
   // Support & Messages
   notifyNewMessage,

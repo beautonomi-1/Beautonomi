@@ -26,8 +26,10 @@ type Faq = {
   question: string;
   answer: string;
   category?: string;
-  sort_order?: number;
-  is_published?: boolean;
+  /** API field — backed by DB column `display_order`. */
+  order?: number;
+  /** API field — backed by DB column `is_active`. */
+  is_active?: boolean;
   updated_at?: string;
   created_at?: string;
 };
@@ -50,8 +52,8 @@ function FaqForm({
   const [question, setQuestion] = useState(initial.question ?? "");
   const [answer, setAnswer] = useState(initial.answer ?? "");
   const [category, setCategory] = useState(initial.category ?? "");
-  const [sortOrder, setSortOrder] = useState(initial.sort_order ?? 0);
-  const [isPublished, setIsPublished] = useState(initial.is_published !== false);
+  const [order, setOrder] = useState(initial.order ?? 0);
+  const [isActive, setIsActive] = useState(initial.is_active !== false);
 
   return (
     <div className="space-y-3 rounded-lg border border-indigo-200 bg-indigo-50 p-4">
@@ -75,10 +77,10 @@ function FaqForm({
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">Sort order</label>
-          <input type="number" className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm" value={sortOrder} onChange={(e) => setSortOrder(Number(e.target.value))} />
+          <input type="number" className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm" value={order} onChange={(e) => setOrder(Number(e.target.value))} />
         </div>
         <div className="flex items-center gap-2">
-          <input type="checkbox" id="faqPublished" checked={isPublished} onChange={(e) => setIsPublished(e.target.checked)} className="accent-indigo-600" />
+          <input type="checkbox" id="faqPublished" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} className="accent-indigo-600" />
           <label htmlFor="faqPublished" className="text-sm text-gray-700">Published</label>
         </div>
       </div>
@@ -92,8 +94,8 @@ function FaqForm({
             question: question.trim(),
             answer: answer.trim(),
             category: category || undefined,
-            sort_order: sortOrder,
-            is_published: isPublished,
+            order,
+            is_active: isActive,
           })}
           className="rounded bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
         >
@@ -132,7 +134,7 @@ export function ContentFaqsPage() {
 
   const updateMut = useMutation({
     mutationFn: ({ id, ...d }: Partial<Faq> & { id: string }) =>
-      adminApi.patchJson(`/api/admin/content/faqs/${id}`, d),
+      adminApi.putJson(`/api/admin/content/faqs/${id}`, d),
     onSuccess: () => { invalidate(); setEditId(null); setMutError(null); },
     onError: (e) => setMutError(e instanceof Error ? e.message : "Failed"),
   });
@@ -231,14 +233,14 @@ export function ContentFaqsPage() {
               <tr key={r.id}>
                 <AdminTd className="font-medium max-w-xs truncate">{r.question}</AdminTd>
                 <AdminTd className="text-xs">{r.category ?? "—"}</AdminTd>
-                <AdminTd className="text-xs">{r.sort_order ?? 0}</AdminTd>
+                <AdminTd className="text-xs">{r.order ?? 0}</AdminTd>
                 <AdminTd>
                   <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
-                    r.is_published !== false
+                    r.is_active !== false
                       ? "bg-green-100 text-green-700"
                       : "bg-gray-100 text-gray-500"
                   }`}>
-                    {r.is_published !== false ? "Published" : "Draft"}
+                    {r.is_active !== false ? "Published" : "Draft"}
                   </span>
                 </AdminTd>
                 <AdminTd>

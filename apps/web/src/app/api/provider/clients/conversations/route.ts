@@ -8,6 +8,10 @@ import {
   requireRoleInApi,
 } from "@/lib/supabase/api-helpers";
 import { fetchDefaultAddressesForUsers } from "@/lib/provider-portal/user-default-address";
+import {
+  attachSalonMembership,
+  buildSalonMembershipMap,
+} from "@/lib/provider/attach-salon-membership-to-clients";
 
 /**
  * GET /api/provider/clients/conversations
@@ -171,18 +175,32 @@ export async function GET(request: NextRequest) {
         };
       }) || [];
 
+    // §Membership-cancel 2026-05: attach salon_membership so the mobile
+    // clients tab can render Active / Cancelled / Expired pills even when
+    // the client first surfaced via the conversations-only feed.
+    const membershipByUserId = await buildSalonMembershipMap(
+      providerId,
+      customerIds as string[],
+      supabaseAdmin,
+    );
+    const enrichedConversationCustomers = attachSalonMembership(
+      conversationCustomers,
+      (row) => row.customer_id,
+      membershipByUserId,
+    );
+
     // Sort by last message date (most recent first)
-    conversationCustomers.sort((a, b) => {
+    enrichedConversationCustomers.sort((a, b) => {
       const dateA = a.last_message_date ? new Date(a.last_message_date).getTime() : 0;
       const dateB = b.last_message_date ? new Date(b.last_message_date).getTime() : 0;
       return dateB - dateA;
     });
 
     // If search query is provided, filter by name, email, or phone
-    let filteredCustomers = conversationCustomers;
+    let filteredCustomers = enrichedConversationCustomers;
     if (searchQuery && searchQuery.trim().length > 0) {
       const searchLower = searchQuery.toLowerCase().trim();
-      filteredCustomers = conversationCustomers.filter((item) => {
+      filteredCustomers = enrichedConversationCustomers.filter((item) => {
         const customer = item.customer;
         if (!customer) return false;
         

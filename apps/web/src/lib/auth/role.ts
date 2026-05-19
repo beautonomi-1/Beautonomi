@@ -35,12 +35,13 @@ export function getPortalForUser(params: {
   if (role === "customer") return "customer";
 
   // §Release-audit 2026-04: DB can store role = "provider_onboarding" directly
-  // (legacy / explicit seed path). Previously this fell through to `"customer"`,
-  // which produced a wrong-app loop on mobile: the portal route returned
-  // "customer", so the provider app flipped to WrongApp, and the customer app
-  // then tried to gate them through customer onboarding. Map it to the
-  // dedicated portal so both apps can route them to provider get-started.
-  if (role === "provider_onboarding") return "provider_onboarding";
+  // (legacy / explicit seed path). Map pre-provider users to the onboarding
+  // portal. Once `providers.status` is active, treat like a normal owner so
+  // `/api/me/portal` + ProviderPortalGate do not trap them on get-started.
+  if (role === "provider_onboarding") {
+    if (provider_status === "active") return "provider";
+    return "provider_onboarding";
+  }
 
   if (role === "provider_owner" || role === "provider_staff") {
     if (provider_status === "active") return "provider";

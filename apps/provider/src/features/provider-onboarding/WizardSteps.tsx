@@ -39,6 +39,7 @@ import {
   resolveGlobalCategoryIconUri,
 } from "@beautonomi/utils";
 import { getDeviceDefaultCountryDial } from "@/lib/phone";
+import { stripHtmlToPlainText } from "@/lib/htmlPlainText";
 import { AddressAutocomplete, type ParsedAddress } from "@/components/ui/AddressAutocomplete";
 import { StaticMapImage } from "@/components/ui/StaticMapImage";
 import { AddressMapPinModal } from "@/components/AddressMapPinModal";
@@ -54,9 +55,9 @@ import { coerceOwnerPhoneToE164ForForm, isValidOwnerPhoneE164 } from "./onboardi
 import { DEFAULT_COUNTRY_NAME } from "./state";
 import type { BusinessType, OnboardingService, TeamSize, YocoMachine } from "./types";
 
-const labelCls = "mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500";
+const labelCls = "mb-1.5 text-[13px] font-semibold tracking-wide text-slate-800";
 const inputCls =
-  "rounded-xl border border-gray-200 bg-white px-4 py-3.5 text-base text-gray-900";
+  "rounded-[1.5rem] border border-slate-200 bg-white px-5 py-4 text-base text-slate-900 shadow-sm";
 
 // ─── Step 1: Team size ───────────────────────────────────────────────────────
 
@@ -70,16 +71,27 @@ type TeamSizeOpt = {
 function Step1TeamSize() {
   const { formData, updateFormData } = useOnboardingWizard();
   const opts: TeamSizeOpt[] = [
-    { id: "freelancer", title: "Solo / freelancer", sub: "Just me, building my brand", icon: "person-outline" },
+    {
+      id: "freelancer",
+      title: "Solo / freelancer",
+      sub: "Just me, building my brand",
+      icon: "person-outline",
+    },
     { id: "small", title: "Small team", sub: "2–10 staff or stylists", icon: "people-outline" },
     { id: "medium", title: "Medium team", sub: "11–20 staff members", icon: "business-outline" },
-    { id: "large", title: "Large team", sub: "20+ staff across locations", icon: "storefront-outline" },
+    {
+      id: "large",
+      title: "Large team",
+      sub: "20+ staff across locations",
+      icon: "storefront-outline",
+    },
   ];
   return (
-    <View style={twStyle("gap-3")}>
-      <View style={twStyle("mb-1 rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-3")}>
-        <Text style={twStyle("text-sm leading-5 text-indigo-800")}>
-          We use this to tailor payroll questions and booking defaults. You can still run salon, mobile, or both services later.
+    <View style={twStyle("gap-4")}>
+      <View style={twStyle("mb-2 rounded-[1.5rem] bg-slate-50 px-5 py-4")}>
+        <Text style={twStyle("text-[15px] leading-[22px] text-slate-600")}>
+          We use this to tailor payroll questions and booking defaults. You can still run salon,
+          mobile, or both services later.
         </Text>
       </View>
       {opts.map((o) => {
@@ -95,7 +107,7 @@ function Step1TeamSize() {
               });
             }}
             style={twStyle(
-              `rounded-2xl border-2 p-4 flex-row items-center gap-4 ${sel ? "border-primary bg-rose-50" : "border-gray-200 bg-white"}`,
+              `rounded-[1.5rem] border p-5 flex-row items-center gap-4 ${sel ? "border-slate-900 bg-slate-900/5 shadow-sm" : "border-slate-100 bg-white shadow-sm"}`
             )}
             accessibilityRole="button"
             accessibilityLabel={o.title}
@@ -103,19 +115,25 @@ function Step1TeamSize() {
           >
             <View
               style={twStyle(
-                `h-12 w-12 items-center justify-center rounded-2xl ${sel ? "bg-primary" : "bg-gray-100"}`,
+                `h-12 w-12 items-center justify-center rounded-full ${sel ? "bg-slate-900" : "bg-slate-50"}`
               )}
             >
-              <Ionicons name={o.icon} size={24} color={sel ? "#fff" : "#6b7280"} />
+              <Ionicons name={o.icon} size={22} color={sel ? "#fff" : "#64748b"} />
             </View>
             <View style={twStyle("flex-1")}>
-              <Text style={twStyle(`text-base font-semibold ${sel ? "text-primary" : "text-gray-900"}`)}>{o.title}</Text>
-              <Text style={twStyle("mt-0.5 text-sm text-gray-500")}>{o.sub}</Text>
+              <Text
+                style={twStyle(
+                  `text-[17px] font-semibold ${sel ? "text-slate-900" : "text-slate-800"}`
+                )}
+              >
+                {o.title}
+              </Text>
+              <Text style={twStyle("mt-1 text-[14px] text-slate-500")}>{o.sub}</Text>
             </View>
             {sel ? (
-              <Ionicons name="checkmark-circle" size={22} color={Colors.primary} />
+              <Ionicons name="checkmark-circle" size={24} color="#0f172a" />
             ) : (
-              <View style={twStyle("h-5 w-5 rounded-full border-2 border-gray-300")} />
+              <View style={twStyle("h-6 w-6 rounded-full border-2 border-slate-200")} />
             )}
           </TouchableOpacity>
         );
@@ -168,7 +186,9 @@ function Step2Identity() {
   }, [countryCode, national, formData.owner_phone, updateFormData]);
 
   const sendCode = async () => {
-    const e164 = coerceOwnerPhoneToE164ForForm(formData.owner_phone) || composeE164FromNational(countryCode, national);
+    const e164 =
+      coerceOwnerPhoneToE164ForForm(formData.owner_phone) ||
+      composeE164FromNational(countryCode, national);
     const normalized = e164 ? normalizeSupabaseAuthPhone(e164) : "";
     if (!normalized || !isValidOwnerPhoneE164(normalized)) {
       Alert.alert("Phone", "Enter a valid mobile number.");
@@ -211,7 +231,8 @@ function Step2Identity() {
       });
       if (error) throw error;
       const patchRes = await api.patch("/api/me/profile", { phone, phone_verified: true });
-      if (patchRes.error) throw new Error("Phone verified but could not save to profile. Please try again.");
+      if (patchRes.error)
+        throw new Error("Phone verified but could not save to profile. Please try again.");
       updateFormData({
         phone_verified: true,
         owner_phone: phone,
@@ -233,7 +254,11 @@ function Step2Identity() {
         <Text style={twStyle("mb-2 text-xs leading-5 text-gray-500")}>
           The name clients see on your profile and bookings.
         </Text>
-        <View style={twStyle("flex-row items-center overflow-hidden rounded-xl border border-gray-200 bg-white")}>
+        <View
+          style={twStyle(
+            "flex-row items-center overflow-hidden rounded-xl border border-gray-200 bg-white"
+          )}
+        >
           <View style={twStyle("pl-3 pr-1")}>
             <Ionicons name="person-outline" size={18} color="#9ca3af" />
           </View>
@@ -250,7 +275,11 @@ function Step2Identity() {
       {/* Email */}
       <View>
         <Text style={twStyle(labelCls)}>Email</Text>
-        <View style={twStyle("flex-row items-center overflow-hidden rounded-xl border border-gray-200 bg-white")}>
+        <View
+          style={twStyle(
+            "flex-row items-center overflow-hidden rounded-xl border border-gray-200 bg-white"
+          )}
+        >
           <View style={twStyle("pl-3 pr-1")}>
             <Ionicons name="mail-outline" size={18} color="#9ca3af" />
           </View>
@@ -275,7 +304,9 @@ function Step2Identity() {
         <View style={twStyle("flex-row gap-2")}>
           <TouchableOpacity
             onPress={() => setCountryModal(true)}
-            style={twStyle("flex-row items-center gap-1 rounded-xl border border-gray-200 bg-gray-50 px-3 py-3.5")}
+            style={twStyle(
+              "flex-row items-center gap-1 rounded-xl border border-gray-200 bg-gray-50 px-3 py-3.5"
+            )}
           >
             <Text style={twStyle("font-medium text-gray-800")}>
               {countryCode.startsWith("+") ? countryCode : `+${countryCode}`}
@@ -299,7 +330,9 @@ function Step2Identity() {
               value={countrySearch}
               onChangeText={setCountrySearch}
               placeholder="Search country…"
-              style={twStyle("mt-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-base")}
+              style={twStyle(
+                "mt-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-base"
+              )}
             />
             <FlatList<CountryCodeOption>
               {...verticalFlatListPerf}
@@ -307,7 +340,7 @@ function Step2Identity() {
                 (c: CountryCodeOption) =>
                   !countrySearch.trim() ||
                   c.label.toLowerCase().includes(countrySearch.toLowerCase()) ||
-                  c.code.replace(/\D/g, "").includes(countrySearch.replace(/\D/g, "")),
+                  c.code.replace(/\D/g, "").includes(countrySearch.replace(/\D/g, ""))
               )}
               keyExtractor={(c: CountryCodeOption) => c.code}
               style={twStyle("mt-3 flex-1")}
@@ -340,7 +373,7 @@ function Step2Identity() {
             onPress={sendCode}
             disabled={sending || resendCooldown > 0}
             style={twStyle(
-              `mt-3 flex-row items-center justify-center gap-2 rounded-xl py-3.5 ${sending || resendCooldown > 0 ? "bg-gray-200" : "bg-gray-900"}`,
+              `mt-3 flex-row items-center justify-center gap-2 rounded-xl py-3.5 ${sending || resendCooldown > 0 ? "bg-gray-200" : "bg-gray-900"}`
             )}
           >
             <Ionicons
@@ -348,7 +381,11 @@ function Step2Identity() {
               size={16}
               color={sending || resendCooldown > 0 ? "#6b7280" : "#fff"}
             />
-            <Text style={twStyle(`font-semibold ${sending || resendCooldown > 0 ? "text-gray-600" : "text-white"}`)}>
+            <Text
+              style={twStyle(
+                `font-semibold ${sending || resendCooldown > 0 ? "text-gray-600" : "text-white"}`
+              )}
+            >
               {sending
                 ? "Sending…"
                 : resendCooldown > 0
@@ -366,7 +403,9 @@ function Step2Identity() {
         <View style={twStyle("gap-3 rounded-2xl border-2 border-primary bg-rose-50 p-4")}>
           <View style={twStyle("flex-row items-center gap-2")}>
             <Ionicons name="lock-closed-outline" size={16} color={Colors.primary} />
-            <Text style={twStyle("text-sm font-semibold text-primary")}>Enter verification code</Text>
+            <Text style={twStyle("text-sm font-semibold text-primary")}>
+              Enter verification code
+            </Text>
           </View>
           <OtpDigitRow
             value={otp}
@@ -400,11 +439,23 @@ function Step2Identity() {
 
       {/* Verified state */}
       {formData.phone_verified ? (
-        <View style={twStyle("flex-row items-center gap-3 rounded-2xl border-2 border-green-300 bg-green-50 p-4")}>
-          <Ionicons name="checkmark-circle" size={26} color="#16a34a" />
+        <View
+          style={twStyle(
+            "flex-row items-center gap-3 rounded-[1.5rem] border border-emerald-100 bg-emerald-50/50 p-5 mt-2 shadow-sm"
+          )}
+        >
+          <View
+            style={twStyle("flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100")}
+          >
+            <Ionicons name="checkmark" size={18} color="#059669" />
+          </View>
           <View style={twStyle("flex-1")}>
-            <Text style={twStyle("text-sm font-bold text-green-900")}>Phone verified</Text>
-            <Text style={twStyle("text-xs text-green-700")}>{formData.owner_phone}</Text>
+            <Text style={twStyle("text-[15px] font-semibold text-emerald-900")}>
+              Phone verified
+            </Text>
+            <Text style={twStyle("text-[14px] text-emerald-700 mt-0.5")}>
+              {formData.owner_phone}
+            </Text>
           </View>
           <TouchableOpacity
             onPress={() => {
@@ -416,17 +467,23 @@ function Step2Identity() {
             }}
             accessibilityRole="button"
             accessibilityLabel="Change phone number"
+            style={twStyle("bg-white px-3 py-1.5 rounded-full border border-emerald-200 shadow-sm")}
           >
-            <Text style={twStyle("text-xs font-semibold text-gray-500 underline")}>Change</Text>
+            <Text style={twStyle("text-[13px] font-semibold text-emerald-700")}>Change</Text>
           </TouchableOpacity>
         </View>
       ) : null}
 
       {/* Identity verification hint */}
-      <View style={twStyle("flex-row gap-2 rounded-xl border border-amber-100 bg-amber-50 p-3")}>
-        <Ionicons name="shield-checkmark-outline" size={16} color="#92400e" style={{ marginTop: 1 }} />
-        <Text style={twStyle("flex-1 text-xs leading-5 text-amber-900")}>
-          After setup, you can complete full identity verification (ID document) to earn the &ldquo;Verified&rdquo; marketplace badge. This is optional but increases customer trust.
+      <View
+        style={twStyle(
+          "flex-row gap-3 rounded-[1.5rem] border border-slate-100 bg-white p-5 shadow-sm mt-2"
+        )}
+      >
+        <Ionicons name="shield-checkmark-outline" size={20} color="#64748b" />
+        <Text style={twStyle("flex-1 text-[14px] leading-5 text-slate-600")}>
+          After setup, you can complete full identity verification (ID document) to earn the
+          &ldquo;Verified&rdquo; marketplace badge. This is optional but increases customer trust.
         </Text>
       </View>
     </View>
@@ -445,35 +502,46 @@ type BizTypeOpt = {
 function Step3Business() {
   const { formData, updateFormData } = useOnboardingWizard();
   const types: BizTypeOpt[] = [
-    { id: "salon", label: "Salon / studio", sub: "Fixed location — clients come to you", icon: "storefront-outline" },
+    {
+      id: "salon",
+      label: "Salon / studio",
+      sub: "Fixed location — clients come to you",
+      icon: "storefront-outline",
+    },
     { id: "mobile", label: "Mobile / at-home", sub: "You travel to clients", icon: "car-outline" },
     { id: "both", label: "Both", sub: "Fixed location + mobile visits", icon: "apps-outline" },
   ];
   return (
-    <View style={twStyle("gap-4")}>
+    <View style={twStyle("gap-6")}>
       <View>
         <Text style={twStyle(labelCls)}>Business name</Text>
-        <Text style={twStyle("mb-2 text-xs text-gray-500")}>This is shown to clients on your profile and bookings.</Text>
-        <View style={twStyle("flex-row items-center overflow-hidden rounded-xl border border-gray-200 bg-white")}>
-          <View style={twStyle("pl-3 pr-1")}>
-            <Ionicons name="briefcase-outline" size={18} color="#9ca3af" />
+        <Text style={twStyle("mb-3 text-[14px] text-slate-500")}>
+          This is shown to clients on your profile and bookings.
+        </Text>
+        <View
+          style={twStyle(
+            "flex-row items-center overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white shadow-sm"
+          )}
+        >
+          <View style={twStyle("pl-4 pr-2")}>
+            <Ionicons name="briefcase-outline" size={20} color="#64748b" />
           </View>
           <TextInput
             value={formData.business_name || ""}
             onChangeText={(t) => updateFormData({ business_name: t })}
             placeholder="Shown to clients"
-            placeholderTextColor="#9ca3af"
-            style={twStyle("flex-1 py-3.5 pr-4 text-base text-gray-900")}
+            placeholderTextColor="#94a3b8"
+            style={twStyle("flex-1 py-4 pr-5 text-[17px] text-slate-900")}
           />
         </View>
       </View>
 
       <View>
         <Text style={twStyle(labelCls)}>Business type</Text>
-        <Text style={twStyle("mb-2 text-xs text-gray-500")}>
+        <Text style={twStyle("mb-3 text-[14px] text-slate-500")}>
           Determines which features are enabled and how zones work.
         </Text>
-        <View style={twStyle("gap-3")}>
+        <View style={twStyle("gap-4")}>
           {types.map((t) => {
             const sel = formData.business_type === t.id;
             return (
@@ -484,7 +552,7 @@ function Step3Business() {
                   updateFormData({ business_type: t.id });
                 }}
                 style={twStyle(
-                  `rounded-2xl border-2 p-4 flex-row items-center gap-3 ${sel ? "border-primary bg-rose-50" : "border-gray-200 bg-white"}`,
+                  `rounded-[1.5rem] border p-5 flex-row items-center gap-4 transition-all duration-300 ${sel ? "border-slate-900 bg-slate-900/5 shadow-sm" : "border-slate-100 bg-white shadow-sm"}`
                 )}
                 accessibilityRole="button"
                 accessibilityLabel={t.label}
@@ -492,19 +560,25 @@ function Step3Business() {
               >
                 <View
                   style={twStyle(
-                    `h-10 w-10 items-center justify-center rounded-xl ${sel ? "bg-primary" : "bg-gray-100"}`,
+                    `h-12 w-12 items-center justify-center rounded-full ${sel ? "bg-slate-900" : "bg-slate-50"}`
                   )}
                 >
-                  <Ionicons name={t.icon} size={20} color={sel ? "#fff" : "#6b7280"} />
+                  <Ionicons name={t.icon} size={22} color={sel ? "#fff" : "#64748b"} />
                 </View>
                 <View style={twStyle("flex-1")}>
-                  <Text style={twStyle(`text-base font-semibold ${sel ? "text-primary" : "text-gray-900"}`)}>{t.label}</Text>
-                  <Text style={twStyle("text-xs text-gray-500")}>{t.sub}</Text>
+                  <Text
+                    style={twStyle(
+                      `text-[17px] font-semibold ${sel ? "text-slate-900" : "text-slate-800"}`
+                    )}
+                  >
+                    {t.label}
+                  </Text>
+                  <Text style={twStyle("mt-1 text-[14px] text-slate-500")}>{t.sub}</Text>
                 </View>
                 {sel ? (
-                  <Ionicons name="checkmark-circle" size={20} color={Colors.primary} />
+                  <Ionicons name="checkmark-circle" size={24} color="#0f172a" />
                 ) : (
-                  <View style={twStyle("h-5 w-5 rounded-full border-2 border-gray-300")} />
+                  <View style={twStyle("h-6 w-6 rounded-full border-2 border-slate-200")} />
                 )}
               </TouchableOpacity>
             );
@@ -514,19 +588,19 @@ function Step3Business() {
 
       <View>
         <Text style={twStyle(labelCls)}>Description (recommended)</Text>
-        <Text style={twStyle("mb-2 text-xs text-gray-500")}>
+        <Text style={twStyle("mb-3 text-[14px] text-slate-500")}>
           Tell clients what you offer and what makes you stand out.
         </Text>
         <TextInput
           value={formData.description || ""}
           onChangeText={(t) => updateFormData({ description: t })}
           placeholder="e.g. Specialist in balayage and precision cuts, serving Cape Town for 8 years."
-          placeholderTextColor="#9ca3af"
+          placeholderTextColor="#94a3b8"
           multiline
           numberOfLines={4}
-          style={twStyle(`${inputCls} min-h-[100px]`)}
+          style={twStyle(`${inputCls} min-h-[120px] text-[17px] pt-4`)}
         />
-        <Text style={twStyle("mt-1 text-right text-xs text-gray-400")}>
+        <Text style={twStyle("mt-2 text-right text-[13px] text-slate-400")}>
           {(formData.description || "").length} chars · 10 min recommended
         </Text>
       </View>
@@ -546,18 +620,33 @@ type YocoOpt = {
 function Step4Payment() {
   const { formData, updateFormData } = useOnboardingWizard();
   const yoco: YocoOpt[] = [
-    { id: "yes", t: "Yes, I have Yoco", sub: "I'm already set up for in-person card payments", icon: "card-outline" },
-    { id: "no", t: "No — I want one", sub: "Help me get a Yoco device", icon: "add-circle-outline" },
-    { id: "other", t: "Other card machine", sub: "iZettle, Square, SumUp, or other", icon: "phone-portrait-outline" },
+    {
+      id: "yes",
+      t: "Yes, I have Yoco",
+      sub: "I'm already set up for in-person card payments",
+      icon: "card-outline",
+    },
+    {
+      id: "no",
+      t: "No — I want one",
+      sub: "Help me get a Yoco device",
+      icon: "add-circle-outline",
+    },
+    {
+      id: "other",
+      t: "Other card machine",
+      sub: "iZettle, Square, SumUp, or other",
+      icon: "phone-portrait-outline",
+    },
   ];
   return (
-    <View style={twStyle("gap-4")}>
+    <View style={twStyle("gap-6")}>
       <View>
         <Text style={twStyle(labelCls)}>Card machine</Text>
-        <Text style={twStyle("mb-2 text-xs text-gray-500")}>
+        <Text style={twStyle("mb-3 text-[14px] text-slate-500")}>
           Beautonomi uses Yoco for in-person card payments. Select what applies to you.
         </Text>
-        <View style={twStyle("gap-3")}>
+        <View style={twStyle("gap-4")}>
           {yoco.map((o) => {
             const sel = formData.yoco_machine === o.id;
             return (
@@ -568,19 +657,33 @@ function Step4Payment() {
                   updateFormData({ yoco_machine: o.id });
                 }}
                 style={twStyle(
-                  `rounded-2xl border-2 p-4 flex-row items-center gap-3 ${sel ? "border-primary bg-rose-50" : "border-gray-200 bg-white"}`,
+                  `rounded-[1.5rem] border p-5 flex-row items-center gap-4 transition-all duration-300 ${sel ? "border-slate-900 bg-slate-900/5 shadow-sm" : "border-slate-100 bg-white shadow-sm"}`
                 )}
                 accessibilityRole="button"
                 accessibilityLabel={o.t}
               >
-                <View style={twStyle(`h-10 w-10 items-center justify-center rounded-xl ${sel ? "bg-primary" : "bg-gray-100"}`)}>
-                  <Ionicons name={o.icon} size={20} color={sel ? "#fff" : "#6b7280"} />
+                <View
+                  style={twStyle(
+                    `h-12 w-12 items-center justify-center rounded-full ${sel ? "bg-slate-900" : "bg-slate-50"}`
+                  )}
+                >
+                  <Ionicons name={o.icon} size={22} color={sel ? "#fff" : "#64748b"} />
                 </View>
                 <View style={twStyle("flex-1")}>
-                  <Text style={twStyle(`text-base font-semibold ${sel ? "text-primary" : "text-gray-900"}`)}>{o.t}</Text>
-                  <Text style={twStyle("text-xs text-gray-500")}>{o.sub}</Text>
+                  <Text
+                    style={twStyle(
+                      `text-[17px] font-semibold ${sel ? "text-slate-900" : "text-slate-800"}`
+                    )}
+                  >
+                    {o.t}
+                  </Text>
+                  <Text style={twStyle("mt-1 text-[14px] text-slate-500")}>{o.sub}</Text>
                 </View>
-                {sel ? <Ionicons name="checkmark-circle" size={20} color={Colors.primary} /> : <View style={twStyle("h-5 w-5 rounded-full border-2 border-gray-300")} />}
+                {sel ? (
+                  <Ionicons name="checkmark-circle" size={24} color="#0f172a" />
+                ) : (
+                  <View style={twStyle("h-6 w-6 rounded-full border-2 border-slate-200")} />
+                )}
               </TouchableOpacity>
             );
           })}
@@ -590,36 +693,50 @@ function Step4Payment() {
             value={formData.yoco_machine_other || ""}
             onChangeText={(t) => updateFormData({ yoco_machine_other: t })}
             placeholder="Which device? (e.g. iZettle, Square)"
-            placeholderTextColor="#9ca3af"
-            style={twStyle(`${inputCls} mt-3`)}
+            placeholderTextColor="#94a3b8"
+            style={twStyle(`${inputCls} mt-4 text-[17px]`)}
           />
         ) : null}
       </View>
 
-      <View style={twStyle("rounded-2xl border-2 border-gray-200 bg-white p-4 gap-3")}>
-        <View style={twStyle("flex-row items-center gap-3")}>
-          <Ionicons name="receipt-outline" size={20} color="#6b7280" />
+      <View
+        style={twStyle("rounded-[1.5rem] border border-slate-200 bg-white p-5 gap-4 shadow-sm")}
+      >
+        <View style={twStyle("flex-row items-center gap-4")}>
+          <View style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-slate-50")}>
+            <Ionicons name="receipt-outline" size={20} color="#64748b" />
+          </View>
           <View style={twStyle("flex-1")}>
-            <Text style={twStyle("text-base font-semibold text-gray-900")}>VAT registered (SARS)</Text>
-            <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>Enables VAT on invoices and financial reports.</Text>
+            <Text style={twStyle("text-[17px] font-semibold text-slate-900")}>
+              VAT registered (SARS)
+            </Text>
+            <Text style={twStyle("mt-1 text-[14px] text-slate-500")}>
+              Enables VAT on invoices and financial reports.
+            </Text>
           </View>
           <Switch
             value={formData.is_vat_registered === true}
             onValueChange={(v) =>
-              updateFormData({ is_vat_registered: v, vat_number: v ? formData.vat_number : undefined })
+              updateFormData({
+                is_vat_registered: v,
+                vat_number: v ? formData.vat_number : undefined,
+              })
             }
+            trackColor={{ false: "#e2e8f0", true: "#0f172a" }}
           />
         </View>
         {formData.is_vat_registered ? (
           <>
-            <View style={twStyle("h-px bg-gray-100")} />
+            <View style={twStyle("h-px bg-slate-100")} />
             <TextInput
               value={formData.vat_number || ""}
-              onChangeText={(t) => updateFormData({ vat_number: t.replace(/\D/g, "").slice(0, 10) })}
+              onChangeText={(t) =>
+                updateFormData({ vat_number: t.replace(/\D/g, "").slice(0, 10) })
+              }
               placeholder="10-digit VAT number"
-              placeholderTextColor="#9ca3af"
+              placeholderTextColor="#94a3b8"
               keyboardType="number-pad"
-              style={twStyle(inputCls)}
+              style={twStyle(`${inputCls} text-[17px]`)}
             />
           </>
         ) : null}
@@ -641,19 +758,19 @@ type SoftwareOption = {
  * Slugs not present here fall back to `apps-outline`.
  */
 const SLUG_ICON_MAP: Record<string, ComponentProps<typeof Ionicons>["name"]> = {
-  mangomint:    "sparkles-outline",
-  fresha:       "calendar-outline",
-  booksy:       "book-outline",
-  Malakyt:      "apps-outline",
-  acuity:       "alarm-outline",
-  mindbody:     "body-outline",
-  glossgenius:  "color-wand-outline",
+  mangomint: "sparkles-outline",
+  fresha: "calendar-outline",
+  booksy: "book-outline",
+  Malakyt: "apps-outline",
+  acuity: "alarm-outline",
+  mindbody: "body-outline",
+  glossgenius: "color-wand-outline",
   schedulicity: "calendar-clear-outline",
-  vagaro:       "grid-outline",
-  salon_iris:   "flower-outline",
-  phorest:      "leaf-outline",
-  zenoti:       "business-outline",
-  mio:          "phone-portrait-outline",
+  vagaro: "grid-outline",
+  salon_iris: "flower-outline",
+  phorest: "leaf-outline",
+  zenoti: "business-outline",
+  mio: "phone-portrait-outline",
 };
 
 /**
@@ -664,25 +781,25 @@ const SLUG_ICON_MAP: Record<string, ComponentProps<typeof Ionicons>["name"]> = {
  * call fails or the table is empty.
  */
 const FALLBACK_SOFTWARE: SoftwareOption[] = [
-  { id: "mangomint",    label: "Mangomint",            icon: "sparkles-outline" },
-  { id: "fresha",       label: "Fresha",               icon: "calendar-outline" },
-  { id: "booksy",       label: "Booksy",               icon: "book-outline" },
-  { id: "Malakyt",      label: "Malakyt",              icon: "apps-outline" },
-  { id: "acuity",       label: "Acuity Scheduling",    icon: "alarm-outline" },
-  { id: "mindbody",     label: "Mindbody",             icon: "body-outline" },
-  { id: "glossgenius",  label: "GlossGenius",          icon: "color-wand-outline" },
-  { id: "schedulicity", label: "Schedulicity",         icon: "calendar-clear-outline" },
-  { id: "vagaro",       label: "Vagaro",               icon: "grid-outline" },
-  { id: "salon_iris",   label: "Salon Iris",           icon: "flower-outline" },
-  { id: "phorest",      label: "Phorest",              icon: "leaf-outline" },
-  { id: "zenoti",       label: "Zenoti",               icon: "business-outline" },
-  { id: "mio",          label: "Mio",                  icon: "phone-portrait-outline" },
+  { id: "mangomint", label: "Mangomint", icon: "sparkles-outline" },
+  { id: "fresha", label: "Fresha", icon: "calendar-outline" },
+  { id: "booksy", label: "Booksy", icon: "book-outline" },
+  { id: "Malakyt", label: "Malakyt", icon: "apps-outline" },
+  { id: "acuity", label: "Acuity Scheduling", icon: "alarm-outline" },
+  { id: "mindbody", label: "Mindbody", icon: "body-outline" },
+  { id: "glossgenius", label: "GlossGenius", icon: "color-wand-outline" },
+  { id: "schedulicity", label: "Schedulicity", icon: "calendar-clear-outline" },
+  { id: "vagaro", label: "Vagaro", icon: "grid-outline" },
+  { id: "salon_iris", label: "Salon Iris", icon: "flower-outline" },
+  { id: "phorest", label: "Phorest", icon: "leaf-outline" },
+  { id: "zenoti", label: "Zenoti", icon: "business-outline" },
+  { id: "mio", label: "Mio", icon: "phone-portrait-outline" },
 ];
 
 /** Always pinned at the bottom — same slugs/names as in the table. */
 const ALWAYS_BOTTOM: SoftwareOption[] = [
-  { id: "none",  label: "None / First time using salon software", icon: "hand-left-outline" },
-  { id: "other", label: "Other (please specify)",                 icon: "ellipsis-horizontal-outline" },
+  { id: "none", label: "None / First time using salon software", icon: "hand-left-outline" },
+  { id: "other", label: "Other (please specify)", icon: "ellipsis-horizontal-outline" },
 ];
 
 /** Slugs managed by ALWAYS_BOTTOM — filtered out of the API-mapped list to avoid duplicates. */
@@ -696,7 +813,7 @@ function Step5Software() {
   const [loadingOptions, setLoadingOptions] = useState(true);
 
   const [customValue, setCustomValue] = useState(
-    formData.previous_software === "other" ? formData.previous_software_other || "" : "",
+    formData.previous_software === "other" ? formData.previous_software_other || "" : ""
   );
 
   // Fetch the canonical list from the platform API — same source as the web onboarding.
@@ -713,11 +830,13 @@ function Step5Software() {
           // Filter out "none" and "other" — those are handled by ALWAYS_BOTTOM.
           const mapped = list
             .filter((o) => !SPECIAL_SLUGS.has(o.slug))
-            .map((o): SoftwareOption => ({
-              id: o.slug,
-              label: o.name,
-              icon: SLUG_ICON_MAP[o.slug] ?? ("apps-outline" as const),
-            }));
+            .map(
+              (o): SoftwareOption => ({
+                id: o.slug,
+                label: o.name,
+                icon: SLUG_ICON_MAP[o.slug] ?? ("apps-outline" as const),
+              })
+            );
           if (mapped.length > 0) setSoftwareOptions(mapped);
         }
         // If API returns nothing usable, keep FALLBACK_SOFTWARE already set above.
@@ -727,7 +846,9 @@ function Step5Software() {
         if (active) setLoadingOptions(false);
       }
     })();
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, []);
 
   // All displayed options: dynamic/fallback list + always-bottom fixed options.
@@ -743,7 +864,10 @@ function Step5Software() {
   const handleSelect = (id: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (id === "other") {
-      updateFormData({ previous_software: "other", previous_software_other: customValue || undefined });
+      updateFormData({
+        previous_software: "other",
+        previous_software_other: customValue || undefined,
+      });
     } else {
       updateFormData({ previous_software: id || undefined, previous_software_other: undefined });
       setCustomValue("");
@@ -751,20 +875,21 @@ function Step5Software() {
   };
 
   return (
-    <View style={twStyle("gap-3")}>
-      <View style={twStyle("rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3")}>
-        <Text style={twStyle("text-sm leading-5 text-gray-600")}>
-          Optional — helps us understand where you&apos;re coming from. We&apos;ll tailor import tips and onboarding hints.
+    <View style={twStyle("gap-4")}>
+      <View style={twStyle("rounded-[1.5rem] bg-slate-50 px-5 py-4")}>
+        <Text style={twStyle("text-[14px] leading-5 text-slate-600")}>
+          Optional — helps us understand where you&apos;re coming from. We&apos;ll tailor import
+          tips and onboarding hints.
         </Text>
       </View>
 
       {loadingOptions ? (
         <View style={twStyle("items-center py-6")}>
-          <ActivityIndicator color={Colors.primary} size="small" />
-          <Text style={twStyle("mt-2 text-xs text-gray-400")}>Loading options…</Text>
+          <ActivityIndicator color="#0f172a" size="small" />
+          <Text style={twStyle("mt-2 text-[13px] text-slate-400")}>Loading options…</Text>
         </View>
       ) : (
-        <View style={twStyle("flex-row flex-wrap gap-2")}>
+        <View style={twStyle("flex-row flex-wrap gap-2.5")}>
           {allOptions.map((s) => {
             const sel = selectedId === s.id;
             return (
@@ -772,15 +897,21 @@ function Step5Software() {
                 key={s.id}
                 onPress={() => handleSelect(s.id)}
                 style={twStyle(
-                  `flex-row items-center gap-1.5 rounded-full border-2 px-3 py-2 ${sel ? "border-primary bg-rose-50" : "border-gray-200 bg-white"}`,
+                  `flex-row items-center gap-2 rounded-full border px-4 py-3 transition-all duration-300 ${sel ? "border-slate-900 bg-slate-900/5 shadow-sm" : "border-slate-200 bg-white"}`
                 )}
                 accessibilityRole="button"
                 accessibilityLabel={s.label}
                 accessibilityState={{ selected: sel }}
               >
-                <Ionicons name={s.icon} size={14} color={sel ? Colors.primary : "#6b7280"} />
-                <Text style={twStyle(`text-sm font-semibold ${sel ? "text-primary" : "text-gray-700"}`)}>{s.label}</Text>
-                {sel ? <Ionicons name="checkmark-circle" size={14} color={Colors.primary} /> : null}
+                <Ionicons name={s.icon} size={16} color={sel ? "#0f172a" : "#64748b"} />
+                <Text
+                  style={twStyle(
+                    `text-[15px] font-semibold ${sel ? "text-slate-900" : "text-slate-700"}`
+                  )}
+                >
+                  {s.label}
+                </Text>
+                {sel ? <Ionicons name="checkmark-circle" size={16} color="#0f172a" /> : null}
               </TouchableOpacity>
             );
           })}
@@ -794,7 +925,10 @@ function Step5Software() {
             onChangeText={(t) => {
               setCustomValue(t);
               const slug = t.toLowerCase().replace(/\s+/g, "_").slice(0, 80);
-              updateFormData({ previous_software: "other", previous_software_other: slug || undefined });
+              updateFormData({
+                previous_software: "other",
+                previous_software_other: slug || undefined,
+              });
             }}
             placeholder="Type the software name…"
             placeholderTextColor="#9ca3af"
@@ -807,19 +941,28 @@ function Step5Software() {
       {/* Show the currently-selected value for confirmation when it matches
           a free-form slug that isn't in the displayed list (edge case on resume). */}
       {formData.previous_software &&
-       formData.previous_software !== "other" &&
-       formData.previous_software !== "none" &&
-       !allOptions.find((s) => s.id === formData.previous_software) ? (
-        <View style={twStyle("flex-row items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2")}>
-          <Ionicons name="checkmark-circle" size={14} color={Colors.primary} />
-          <Text style={twStyle("text-sm text-gray-700")}>
-            Selected: <Text style={twStyle("font-semibold")}>{formData.previous_software.replace(/_/g, " ")}</Text>
+      formData.previous_software !== "other" &&
+      formData.previous_software !== "none" &&
+      !allOptions.find((s) => s.id === formData.previous_software) ? (
+        <View
+          style={twStyle(
+            "flex-row items-center gap-3 rounded-[1.5rem] border border-slate-200 bg-slate-50 px-4 py-3"
+          )}
+        >
+          <Ionicons name="checkmark-circle" size={18} color="#0f172a" />
+          <Text style={twStyle("text-[15px] text-slate-700")}>
+            Selected:{" "}
+            <Text style={twStyle("font-semibold")}>
+              {formData.previous_software.replace(/_/g, " ")}
+            </Text>
           </Text>
           <TouchableOpacity
-            onPress={() => updateFormData({ previous_software: undefined, previous_software_other: undefined })}
+            onPress={() =>
+              updateFormData({ previous_software: undefined, previous_software_other: undefined })
+            }
             style={twStyle("ml-auto")}
           >
-            <Text style={twStyle("text-xs font-semibold text-gray-400")}>Clear</Text>
+            <Text style={twStyle("text-[13px] font-semibold text-slate-400")}>Clear</Text>
           </TouchableOpacity>
         </View>
       ) : null}
@@ -839,51 +982,92 @@ type PayrollOpt = {
 function Step6Payroll() {
   const { formData, updateFormData } = useOnboardingWizard();
   const opts: PayrollOpt[] = [
-    { id: "commission", label: "Commission", sub: "Staff earn a % of each service", icon: "pie-chart-outline" },
-    { id: "hourly", label: "Hourly / salary", sub: "Fixed rate regardless of bookings", icon: "time-outline" },
-    { id: "both", label: "Mixed", sub: "Combination of commission and fixed pay", icon: "layers-outline" },
-    { id: "other", label: "Other", sub: "We'll discuss this after setup", icon: "ellipsis-horizontal-circle-outline" },
+    {
+      id: "commission",
+      label: "Commission",
+      sub: "Staff earn a % of each service",
+      icon: "pie-chart-outline",
+    },
+    {
+      id: "hourly",
+      label: "Hourly / salary",
+      sub: "Fixed rate regardless of bookings",
+      icon: "time-outline",
+    },
+    {
+      id: "both",
+      label: "Mixed",
+      sub: "Combination of commission and fixed pay",
+      icon: "layers-outline",
+    },
+    {
+      id: "other",
+      label: "Other",
+      sub: "We'll discuss this after setup",
+      icon: "ellipsis-horizontal-circle-outline",
+    },
   ];
   return (
-    <View style={twStyle("gap-3")}>
-      <View style={twStyle("rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3")}>
-        <Text style={twStyle("text-sm leading-5 text-gray-600")}>
-          How you compensate your staff or contractors. You can refine this in Payroll settings anytime.
+    <View style={twStyle("gap-6")}>
+      <View style={twStyle("rounded-[1.5rem] bg-slate-50 px-5 py-4")}>
+        <Text style={twStyle("text-[14px] leading-5 text-slate-600")}>
+          How you compensate your staff or contractors. You can refine this in Payroll settings
+          anytime.
         </Text>
       </View>
-      <Text style={twStyle(labelCls)}>Payroll model</Text>
-      <View style={twStyle("gap-2")}>
-        {opts.map((o) => {
-          const sel = formData.payroll_type === o.id;
-          return (
-            <TouchableOpacity
-              key={o.id}
-              onPress={() => updateFormData({ payroll_type: o.id })}
-              style={twStyle(
-                `rounded-2xl border-2 p-4 flex-row items-center gap-3 ${sel ? "border-primary bg-rose-50" : "border-gray-200 bg-white"}`,
-              )}
-            >
-              <View style={twStyle(`h-10 w-10 items-center justify-center rounded-xl ${sel ? "bg-primary" : "bg-gray-100"}`)}>
-                <Ionicons name={o.icon} size={20} color={sel ? "#fff" : "#6b7280"} />
-              </View>
-              <View style={twStyle("flex-1")}>
-                <Text style={twStyle(`text-base font-semibold ${sel ? "text-primary" : "text-gray-900"}`)}>{o.label}</Text>
-                <Text style={twStyle("text-xs text-gray-500")}>{o.sub}</Text>
-              </View>
-              {sel ? <Ionicons name="checkmark-circle" size={20} color={Colors.primary} /> : <View style={twStyle("h-5 w-5 rounded-full border-2 border-gray-300")} />}
-            </TouchableOpacity>
-          );
-        })}
+      <View>
+        <Text style={twStyle(labelCls)}>Payroll model</Text>
+        <View style={twStyle("gap-4 mt-2")}>
+          {opts.map((o) => {
+            const sel = formData.payroll_type === o.id;
+            return (
+              <TouchableOpacity
+                key={o.id}
+                onPress={() => updateFormData({ payroll_type: o.id })}
+                style={twStyle(
+                  `rounded-[1.5rem] border p-5 flex-row items-center gap-4 transition-all duration-300 ${sel ? "border-slate-900 bg-slate-900/5 shadow-sm" : "border-slate-100 bg-white shadow-sm"}`
+                )}
+              >
+                <View
+                  style={twStyle(
+                    `h-12 w-12 items-center justify-center rounded-full ${sel ? "bg-slate-900" : "bg-slate-50"}`
+                  )}
+                >
+                  <Ionicons name={o.icon} size={22} color={sel ? "#fff" : "#64748b"} />
+                </View>
+                <View style={twStyle("flex-1")}>
+                  <Text
+                    style={twStyle(
+                      `text-[17px] font-semibold ${sel ? "text-slate-900" : "text-slate-800"}`
+                    )}
+                  >
+                    {o.label}
+                  </Text>
+                  <Text style={twStyle("mt-1 text-[14px] text-slate-500")}>{o.sub}</Text>
+                </View>
+                {sel ? (
+                  <Ionicons name="checkmark-circle" size={24} color="#0f172a" />
+                ) : (
+                  <View style={twStyle("h-6 w-6 rounded-full border-2 border-slate-200")} />
+                )}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
       </View>
-      <View style={twStyle("rounded-2xl border-2 border-gray-200 bg-white p-4 gap-2")}>
+      <View
+        style={twStyle("rounded-[1.5rem] border border-slate-200 bg-white p-5 gap-3 shadow-sm")}
+      >
         <Text style={twStyle(labelCls)}>Optional details</Text>
-        <Text style={twStyle("text-xs text-gray-500")}>Anything about schedules, commission splits, or tools.</Text>
+        <Text style={twStyle("text-[14px] text-slate-500 mb-1")}>
+          Anything about schedules, commission splits, or tools.
+        </Text>
         <TextInput
           value={formData.payroll_details || ""}
           onChangeText={(t) => updateFormData({ payroll_details: t })}
           placeholder="Optional details"
-          placeholderTextColor="#9ca3af"
-          style={twStyle(inputCls)}
+          placeholderTextColor="#94a3b8"
+          style={twStyle(`${inputCls} text-[17px]`)}
         />
       </View>
     </View>
@@ -905,8 +1089,7 @@ function Step7Location() {
     postal_code: "",
     country: DEFAULT_COUNTRY_NAME,
   };
-  const mapboxCountry =
-    countryFilterIso2FromStorage(addr.country || DEFAULT_COUNTRY_NAME) ?? "ZA";
+  const mapboxCountry = countryFilterIso2FromStorage(addr.country || DEFAULT_COUNTRY_NAME) ?? "ZA";
 
   const onSelect = (p: ParsedAddress) => {
     updateFormData({
@@ -929,7 +1112,10 @@ function Step7Location() {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
-        Alert.alert("Location", "Allow location access to set your address from your current position.");
+        Alert.alert(
+          "Location",
+          "Allow location access to set your address from your current position."
+        );
         return;
       }
       const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
@@ -983,10 +1169,13 @@ function Step7Location() {
   };
 
   return (
-    <View style={twStyle("gap-4")}>
-      <Text style={twStyle("text-sm leading-5 text-gray-600")}>
-        Search for your street, drop a pin on the map, or use your current location — we save coordinates for zones and travel.
-      </Text>
+    <View style={twStyle("gap-6")}>
+      <View style={twStyle("rounded-[1.5rem] bg-slate-50 px-5 py-4")}>
+        <Text style={twStyle("text-[14px] leading-5 text-slate-600")}>
+          Search for your street, drop a pin on the map, or use your current location — we save
+          coordinates for zones and travel.
+        </Text>
+      </View>
       <AddressAutocomplete
         value={addr.line1 || ""}
         onSelect={onSelect}
@@ -1006,56 +1195,68 @@ function Step7Location() {
             : undefined
         }
       />
-      <View style={twStyle("flex-row flex-wrap gap-2")}>
+      <View style={twStyle("flex-row flex-wrap gap-3")}>
         <TouchableOpacity
           onPress={() => void handleUseCurrentLocation()}
           disabled={locating}
           style={twStyle(
-            `rounded-full border px-3.5 py-2 flex-row items-center gap-1.5 ${locating ? "border-gray-200 bg-gray-100" : "border-blue-200 bg-blue-50"}`,
+            `rounded-full border px-4 py-2.5 flex-row items-center gap-2 transition-all duration-300 ${locating ? "border-slate-200 bg-slate-100" : "border-slate-900 bg-slate-900 shadow-sm"}`
           )}
           accessibilityRole="button"
           accessibilityLabel="Use current location"
         >
           {locating ? (
-            <ActivityIndicator size="small" color="#2563eb" />
+            <ActivityIndicator size="small" color="#fff" />
           ) : (
-            <Ionicons name="locate-outline" size={16} color="#2563eb" />
+            <Ionicons name="locate-outline" size={16} color="#fff" />
           )}
-          <Text style={twStyle("text-xs font-semibold text-blue-700")}>
+          <Text
+            style={twStyle(
+              `text-[14px] font-semibold ${locating ? "text-slate-500" : "text-white"}`
+            )}
+          >
             {locating ? "Locating…" : "Current location"}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => setMapPinOpen(true)}
-          style={twStyle("rounded-full border border-gray-200 bg-white px-3.5 py-2 flex-row items-center gap-1.5")}
+          style={twStyle(
+            "rounded-full border border-slate-200 bg-white px-4 py-2.5 flex-row items-center gap-2 shadow-sm transition-all duration-300"
+          )}
           accessibilityRole="button"
           accessibilityLabel="Drop pin on map"
         >
-          <Ionicons name="map-outline" size={16} color="#374151" />
-          <Text style={twStyle("text-xs font-semibold text-gray-700")}>Drop pin on map</Text>
+          <Ionicons name="map-outline" size={16} color="#0f172a" />
+          <Text style={twStyle("text-[14px] font-semibold text-slate-800")}>Drop pin on map</Text>
         </TouchableOpacity>
       </View>
 
       {addr.latitude != null && addr.longitude != null ? (
-        <View>
-          <StaticMapImage
-            latitude={addr.latitude}
-            longitude={addr.longitude}
-            width={Math.min(windowWidth - 48, 400)}
-            height={140}
-            zoom={15}
-          />
-          <Text style={twStyle("mt-1.5 text-center text-xs text-gray-500")}>Map preview · edit fields below if needed</Text>
+        <View style={twStyle("mt-2")}>
+          <View
+            style={twStyle("overflow-hidden rounded-[1.5rem] border border-slate-200 shadow-sm")}
+          >
+            <StaticMapImage
+              latitude={addr.latitude}
+              longitude={addr.longitude}
+              width={Math.min(windowWidth - 48, 400)}
+              height={160}
+              zoom={15}
+            />
+          </View>
+          <Text style={twStyle("mt-2 text-center text-[13px] text-slate-500")}>
+            Map preview · edit fields below if needed
+          </Text>
         </View>
       ) : null}
 
-      <View style={twStyle("gap-3")}>
+      <View style={twStyle("gap-4 mt-2")}>
         <View>
           <Text style={twStyle(labelCls)}>Apt / suite (optional)</Text>
           <TextInput
             value={addr.line2 || ""}
             onChangeText={(t) => updateFormData({ address: { ...addr, line2: t || undefined } })}
-            style={twStyle(inputCls)}
+            style={twStyle(`${inputCls} text-[17px]`)}
           />
         </View>
         <View>
@@ -1063,7 +1264,7 @@ function Step7Location() {
           <TextInput
             value={addr.city || ""}
             onChangeText={(t) => updateFormData({ address: { ...addr, city: t } })}
-            style={twStyle(inputCls)}
+            style={twStyle(`${inputCls} text-[17px]`)}
           />
         </View>
         <View>
@@ -1071,7 +1272,7 @@ function Step7Location() {
           <TextInput
             value={addr.country || ""}
             onChangeText={(t) => updateFormData({ address: { ...addr, country: t } })}
-            style={twStyle(inputCls)}
+            style={twStyle(`${inputCls} text-[17px]`)}
           />
         </View>
       </View>
@@ -1094,7 +1295,11 @@ function Step7Location() {
 
 // ─── Step 8: Photos ───────────────────────────────────────────────────────────
 
-async function uploadOnboardingImage(uri: string, mime: string, name: string): Promise<string | null> {
+async function uploadOnboardingImage(
+  uri: string,
+  mime: string,
+  name: string
+): Promise<string | null> {
   const formData = new FormData();
   appendFormDataFileNative(formData, "file", { uri, type: mime, name });
   formData.append("folder", "provider-onboarding");
@@ -1109,7 +1314,7 @@ async function uploadOnboardingImage(uri: string, mime: string, name: string): P
 function Step8Photos() {
   const { formData, updateFormData } = useOnboardingWizard();
   const [uploading, setUploading] = useState<{ thumb: boolean; avatar: boolean; gallery: boolean }>(
-    { thumb: false, avatar: false, gallery: false },
+    { thumb: false, avatar: false, gallery: false }
   );
 
   const pick = async (kind: "thumb" | "avatar" | "gallery") => {
@@ -1135,7 +1340,7 @@ function Step8Photos() {
         const url = await uploadOnboardingImage(
           a.uri,
           a.mimeType || "image/jpeg",
-          a.fileName || `img-${Date.now()}.jpg`,
+          a.fileName || `img-${Date.now()}.jpg`
         );
         if (!url) {
           Alert.alert("Upload failed", "Try again.");
@@ -1150,9 +1355,9 @@ function Step8Photos() {
             uploadOnboardingImage(
               a.uri,
               a.mimeType || "image/jpeg",
-              a.fileName || `img-${Date.now()}.jpg`,
-            ),
-          ),
+              a.fileName || `img-${Date.now()}.jpg`
+            )
+          )
         );
         const newUrls = uploads.filter((u): u is string => !!u);
         if (newUrls.length === 0) {
@@ -1163,7 +1368,7 @@ function Step8Photos() {
         if (newUrls.length < result.assets.length) {
           Alert.alert(
             "Some uploads failed",
-            `${result.assets.length - newUrls.length} of ${result.assets.length} photo${result.assets.length === 1 ? "" : "s"} could not be uploaded.`,
+            `${result.assets.length - newUrls.length} of ${result.assets.length} photo${result.assets.length === 1 ? "" : "s"} could not be uploaded.`
           );
         }
       }
@@ -1181,12 +1386,17 @@ function Step8Photos() {
   const avatarUrl = formData.avatar_url;
   const gallery = formData.gallery || [];
 
-  const renderSlot = (kind: "thumb" | "avatar", title: string, subtitle: string, url: string | undefined) => (
-    <View style={twStyle("rounded-2xl border-2 border-gray-200 bg-white p-4")}>
+  const renderSlot = (
+    kind: "thumb" | "avatar",
+    title: string,
+    subtitle: string,
+    url: string | undefined
+  ) => (
+    <View style={twStyle("rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm")}>
       <View style={twStyle("flex-row items-center gap-4")}>
         <View
           style={twStyle(
-            `h-20 w-20 items-center justify-center overflow-hidden rounded-2xl ${url ? "" : "border-2 border-dashed border-gray-200 bg-gray-50"}`,
+            `h-20 w-20 items-center justify-center overflow-hidden rounded-[1.25rem] ${url ? "" : "border-2 border-dashed border-slate-200 bg-slate-50"}`
           )}
         >
           {url ? (
@@ -1196,32 +1406,38 @@ function Step8Photos() {
           )}
         </View>
         <View style={twStyle("flex-1")}>
-          <Text style={twStyle("text-base font-semibold text-gray-900")}>{title}</Text>
-          <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>{subtitle}</Text>
+          <Text style={twStyle("text-[17px] font-semibold text-slate-900")}>{title}</Text>
+          <Text style={twStyle("mt-1 text-[14px] text-slate-500")}>{subtitle}</Text>
           {url ? (
-            <View style={twStyle("mt-1.5 flex-row items-center gap-1")}>
-              <Ionicons name="checkmark-circle" size={14} color="#16a34a" />
-              <Text style={twStyle("text-xs font-medium text-green-700")}>Uploaded</Text>
+            <View style={twStyle("mt-2 flex-row items-center gap-1.5")}>
+              <Ionicons name="checkmark-circle" size={16} color="#059669" />
+              <Text style={twStyle("text-[13px] font-medium text-emerald-700")}>Uploaded</Text>
             </View>
           ) : null}
         </View>
       </View>
-      <View style={twStyle("mt-3.5 flex-row gap-2")}>
+      <View style={twStyle("mt-4 flex-row gap-3")}>
         <TouchableOpacity
           onPress={() => pick(kind)}
           disabled={uploading[kind]}
           style={twStyle(
-            `flex-1 flex-row items-center justify-center gap-2 rounded-xl py-2.5 ${uploading[kind] ? "bg-gray-100" : url ? "bg-gray-900" : "bg-primary"}`,
+            `flex-1 flex-row items-center justify-center gap-2 rounded-full py-3.5 transition-all duration-300 ${uploading[kind] ? "bg-slate-100" : url ? "bg-slate-900 shadow-sm" : "bg-slate-900 shadow-sm"}`
           )}
           accessibilityRole="button"
           accessibilityLabel={url ? `Replace ${title}` : `Upload ${title}`}
         >
           {uploading[kind] ? (
-            <ActivityIndicator color="#6b7280" size="small" />
+            <ActivityIndicator color="#64748b" size="small" />
           ) : (
             <>
-              <Ionicons name={url ? "refresh-outline" : "cloud-upload-outline"} size={16} color="#fff" />
-              <Text style={twStyle("text-sm font-semibold text-white")}>{url ? "Replace" : "Choose photo"}</Text>
+              <Ionicons
+                name={url ? "refresh-outline" : "cloud-upload-outline"}
+                size={18}
+                color="#fff"
+              />
+              <Text style={twStyle("text-[15px] font-semibold text-white")}>
+                {url ? "Replace" : "Choose photo"}
+              </Text>
             </>
           )}
         </TouchableOpacity>
@@ -1231,11 +1447,13 @@ function Step8Photos() {
               if (kind === "thumb") updateFormData({ thumbnail_url: undefined });
               else updateFormData({ avatar_url: undefined });
             }}
-            style={twStyle("items-center justify-center rounded-xl border border-red-100 bg-red-50 px-4")}
+            style={twStyle(
+              "items-center justify-center rounded-full border border-rose-100 bg-rose-50 px-5 transition-all duration-300"
+            )}
             accessibilityRole="button"
             accessibilityLabel={`Remove ${title}`}
           >
-            <Ionicons name="trash-outline" size={18} color="#dc2626" />
+            <Ionicons name="trash-outline" size={20} color="#e11d48" />
           </TouchableOpacity>
         ) : null}
       </View>
@@ -1243,48 +1461,60 @@ function Step8Photos() {
   );
 
   return (
-    <View style={twStyle("gap-3")}>
-      <View style={twStyle("rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3")}>
-        <Text style={twStyle("text-sm leading-5 text-amber-900")}>
-          Optional — add photos now or later in Settings. Profiles with a photo get{" "}
-          <Text style={twStyle("font-bold")}>3× more bookings.</Text>
+    <View style={twStyle("gap-4")}>
+      <View
+        style={twStyle(
+          "rounded-[1.5rem] border border-amber-100 bg-amber-50/80 px-5 py-4 shadow-sm"
+        )}
+      >
+        <Text style={twStyle("text-[14px] leading-5 text-amber-900")}>
+          Required — upload both images so your customer web and app provider cards always have a
+          reliable thumbnail and profile avatar.
         </Text>
       </View>
-      {renderSlot("thumb", "Main business photo", "Hero image on your public listing", thumbUrl)}
-      {renderSlot("avatar", "Profile photo", "Shown on chats, reviews, and bookings", avatarUrl)}
+      {renderSlot("thumb", "Main business photo", "Required hero image on your public listing", thumbUrl)}
+      {renderSlot("avatar", "Profile photo", "Required avatar shown on cards, chats, reviews, and bookings", avatarUrl)}
 
-      <View style={twStyle("rounded-2xl border-2 border-gray-200 bg-white p-4 gap-3")}>
+      <View
+        style={twStyle("rounded-[1.5rem] border border-slate-200 bg-white p-5 gap-4 shadow-sm")}
+      >
         <View style={twStyle("flex-row items-center justify-between")}>
           <View style={twStyle("flex-1 pr-2")}>
-            <Text style={twStyle("text-base font-semibold text-gray-900")}>Gallery</Text>
-            <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
-              {gallery.length > 0 ? `${gallery.length} photo${gallery.length === 1 ? "" : "s"} added` : "Portfolio-style work photos"}
+            <Text style={twStyle("text-[17px] font-semibold text-slate-900")}>Gallery</Text>
+            <Text style={twStyle("mt-1 text-[14px] text-slate-500")}>
+              {gallery.length > 0
+                ? `${gallery.length} photo${gallery.length === 1 ? "" : "s"} added`
+                : "Portfolio-style work photos"}
             </Text>
           </View>
           <TouchableOpacity
             onPress={() => pick("gallery")}
             disabled={uploading.gallery}
             style={twStyle(
-              `flex-row items-center gap-1.5 rounded-xl px-3.5 py-2.5 ${uploading.gallery ? "bg-gray-100" : "bg-primary"}`,
+              `flex-row items-center gap-2 rounded-full px-4 py-3 transition-all duration-300 ${uploading.gallery ? "bg-slate-100" : "bg-slate-900 shadow-sm"}`
             )}
             accessibilityRole="button"
             accessibilityLabel="Add gallery photo"
           >
             {uploading.gallery ? (
-              <ActivityIndicator color="#6b7280" size="small" />
+              <ActivityIndicator color="#64748b" size="small" />
             ) : (
               <>
-                <Ionicons name="add" size={16} color="#fff" />
-                <Text style={twStyle("text-sm font-semibold text-white")}>Add</Text>
+                <Ionicons name="add" size={18} color="#fff" />
+                <Text style={twStyle("text-[15px] font-semibold text-white")}>Add</Text>
               </>
             )}
           </TouchableOpacity>
         </View>
         {gallery.length > 0 ? (
-          <View style={twStyle("flex-row flex-wrap gap-2")}>
+          <View style={twStyle("flex-row flex-wrap gap-3")}>
             {gallery.map((url, idx) => (
               <View key={`${url}-${idx}`} style={{ position: "relative", width: 80, height: 80 }}>
-                <Image source={{ uri: url }} style={{ width: 80, height: 80, borderRadius: 12 }} resizeMode="cover" />
+                <Image
+                  source={{ uri: url }}
+                  style={{ width: 80, height: 80, borderRadius: 16 }}
+                  resizeMode="cover"
+                />
                 <TouchableOpacity
                   onPress={() => removeGalleryAt(idx)}
                   hitSlop={8}
@@ -1292,12 +1522,14 @@ function Step8Photos() {
                     position: "absolute",
                     top: -6,
                     right: -6,
-                    width: 24,
-                    height: 24,
-                    borderRadius: 12,
-                    backgroundColor: "#ef4444",
+                    width: 26,
+                    height: 26,
+                    borderRadius: 13,
+                    backgroundColor: "#e11d48",
                     alignItems: "center",
                     justifyContent: "center",
+                    borderWidth: 2,
+                    borderColor: "#fff",
                   }}
                   accessibilityRole="button"
                   accessibilityLabel={`Remove gallery image ${idx + 1}`}
@@ -1334,14 +1566,17 @@ function Step9Zones() {
       setLoading(true);
       const hadZones = (formData.selected_zone_ids?.length ?? 0) > 0;
       try {
-        const res = await api.post<{ suggested_zones: ZoneRow[] }>("/api/provider/onboarding/suggest-zones", {
-          address: formData.address?.line1 || "",
-          latitude: lat,
-          longitude: lng,
-          city: formData.address?.city || "",
-          postal_code: formData.address?.postal_code || "",
-          country: formData.address?.country || "",
-        });
+        const res = await api.post<{ suggested_zones: ZoneRow[] }>(
+          "/api/provider/onboarding/suggest-zones",
+          {
+            address: formData.address?.line1 || "",
+            latitude: lat,
+            longitude: lng,
+            city: formData.address?.city || "",
+            postal_code: formData.address?.postal_code || "",
+            country: formData.address?.country || "",
+          }
+        );
         const list = res.data?.suggested_zones ?? [];
         setZones(list);
         if (list.length && !hadZones && !autoSelectedRef.current) {
@@ -1354,7 +1589,7 @@ function Step9Zones() {
         setLoading(false);
       }
     })();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     formData.address?.latitude,
     formData.address?.longitude,
@@ -1367,19 +1602,31 @@ function Step9Zones() {
 
   if (loading) {
     return (
-      <View style={twStyle("py-10 items-center gap-2")}>
-        <ActivityIndicator color={Colors.primary} />
-        <Text style={twStyle("text-sm text-gray-500")}>Finding nearby zones…</Text>
+      <View style={twStyle("py-12 items-center gap-3")}>
+        <ActivityIndicator color="#0f172a" size="large" />
+        <Text style={twStyle("text-[15px] font-medium text-slate-500")}>Finding nearby zones…</Text>
       </View>
     );
   }
 
   if (!zones.length) {
     return (
-      <View style={twStyle("rounded-2xl border border-gray-200 bg-gray-50 p-6 items-center gap-2")}>
-        <Ionicons name="map-outline" size={32} color="#9ca3af" />
-        <Text style={twStyle("text-base font-semibold text-gray-600")}>No zones found nearby</Text>
-        <Text style={twStyle("text-center text-sm text-gray-500")}>
+      <View
+        style={twStyle(
+          "rounded-[1.5rem] border border-slate-200 bg-slate-50 p-8 items-center gap-3 shadow-sm"
+        )}
+      >
+        <View
+          style={twStyle(
+            "h-16 w-16 items-center justify-center rounded-full bg-white shadow-sm mb-2"
+          )}
+        >
+          <Ionicons name="map-outline" size={32} color="#94a3b8" />
+        </View>
+        <Text style={twStyle("text-[17px] font-semibold text-slate-700")}>
+          No zones found nearby
+        </Text>
+        <Text style={twStyle("text-center text-[14px] text-slate-500 max-w-[250px]")}>
           You can configure service zones later in Settings › Service Zones.
         </Text>
       </View>
@@ -1395,9 +1642,9 @@ function Step9Zones() {
   const selectedIds = formData.selected_zone_ids || [];
 
   return (
-    <View style={twStyle("gap-2")}>
-      <View style={twStyle("flex-row items-center justify-between mb-1")}>
-        <Text style={twStyle("text-sm text-gray-600")}>
+    <View style={twStyle("gap-4")}>
+      <View style={twStyle("flex-row items-center justify-between mb-2")}>
+        <Text style={twStyle("text-[14px] font-medium text-slate-600")}>
           {selectedIds.length} of {zones.length} zones selected
         </Text>
         <TouchableOpacity
@@ -1406,8 +1653,9 @@ function Step9Zones() {
               ? updateFormData({ selected_zone_ids: [] })
               : updateFormData({ selected_zone_ids: zones.map((z) => z.id) })
           }
+          style={twStyle("rounded-full bg-slate-100 px-3 py-1.5")}
         >
-          <Text style={twStyle("text-xs font-semibold text-primary")}>
+          <Text style={twStyle("text-[13px] font-semibold text-slate-700")}>
             {selectedIds.length === zones.length ? "Deselect all" : "Select all"}
           </Text>
         </TouchableOpacity>
@@ -1417,23 +1665,42 @@ function Step9Zones() {
         data={zones}
         keyExtractor={(z: ZoneRow) => z.id}
         scrollEnabled={false}
+        contentContainerStyle={twStyle("gap-3")}
         renderItem={({ item }: { item: ZoneRow }) => {
           const on = selectedIds.includes(item.id);
           return (
             <TouchableOpacity
               onPress={() => toggle(item.id)}
               style={twStyle(
-                `mb-2 rounded-2xl border-2 p-4 flex-row items-center gap-3 ${on ? "border-primary bg-rose-50" : "border-gray-200 bg-white"}`,
+                `rounded-[1.5rem] border p-5 flex-row items-center gap-4 transition-all duration-300 ${on ? "border-slate-900 bg-slate-50 shadow-sm" : "border-slate-200 bg-white"}`
               )}
             >
-              <Ionicons name="location-outline" size={18} color={on ? Colors.primary : "#9ca3af"} />
+              <View
+                style={twStyle(
+                  `h-10 w-10 items-center justify-center rounded-full ${on ? "bg-slate-900" : "bg-slate-100"}`
+                )}
+              >
+                <Ionicons name="location-outline" size={20} color={on ? "#fff" : "#64748b"} />
+              </View>
               <View style={twStyle("flex-1")}>
-                <Text style={twStyle(`text-base font-semibold ${on ? "text-primary" : "text-gray-900"}`)}>{item.name}</Text>
+                <Text
+                  style={twStyle(
+                    `text-[17px] font-semibold ${on ? "text-slate-900" : "text-slate-800"}`
+                  )}
+                >
+                  {item.name}
+                </Text>
                 {item.match_reason ? (
-                  <Text style={twStyle("mt-0.5 text-xs text-sky-700")}>{item.match_reason}</Text>
+                  <Text style={twStyle("mt-1 text-[13px] text-slate-500")}>
+                    {item.match_reason}
+                  </Text>
                 ) : null}
               </View>
-              {on ? <Ionicons name="checkmark-circle" size={20} color={Colors.primary} /> : <View style={twStyle("h-5 w-5 rounded-full border-2 border-gray-300")} />}
+              {on ? (
+                <Ionicons name="checkmark-circle" size={24} color="#0f172a" />
+              ) : (
+                <View style={twStyle("h-6 w-6 rounded-full border-2 border-slate-200")} />
+              )}
             </TouchableOpacity>
           );
         }}
@@ -1461,9 +1728,9 @@ function Step10Categories() {
 
   if (loading) {
     return (
-      <View style={twStyle("py-10 items-center gap-2")}>
-        <ActivityIndicator color={Colors.primary} />
-        <Text style={twStyle("text-sm text-gray-500")}>Loading categories…</Text>
+      <View style={twStyle("py-12 items-center gap-3")}>
+        <ActivityIndicator color="#0f172a" size="large" />
+        <Text style={twStyle("text-[15px] font-medium text-slate-500")}>Loading categories…</Text>
       </View>
     );
   }
@@ -1478,14 +1745,14 @@ function Step10Categories() {
   const selectedCount = (formData.global_category_ids || []).length;
 
   return (
-    <View style={twStyle("gap-3")}>
+    <View style={twStyle("gap-5")}>
       <View style={twStyle("flex-row items-center justify-between")}>
-        <Text style={twStyle("text-sm text-gray-600")}>
+        <Text style={twStyle("text-[14px] text-slate-600")}>
           Choose all that apply — you can change these later.
         </Text>
         {selectedCount > 0 ? (
-          <View style={twStyle("rounded-full bg-primary px-2.5 py-0.5")}>
-            <Text style={twStyle("text-xs font-bold text-white")}>{selectedCount}</Text>
+          <View style={twStyle("rounded-full bg-slate-900 px-3 py-1")}>
+            <Text style={twStyle("text-[12px] font-bold text-white")}>{selectedCount}</Text>
           </View>
         ) : null}
       </View>
@@ -1494,7 +1761,7 @@ function Step10Categories() {
         data={cats}
         keyExtractor={(c: Cat) => c.id}
         numColumns={2}
-        columnWrapperStyle={twStyle("gap-2")}
+        columnWrapperStyle={twStyle("gap-3")}
         scrollEnabled={false}
         renderItem={({ item }: { item: Cat }) => {
           const on = (formData.global_category_ids || []).includes(item.id);
@@ -1503,7 +1770,7 @@ function Step10Categories() {
             <TouchableOpacity
               onPress={() => toggle(item.id)}
               style={twStyle(
-                `mb-2.5 flex-1 rounded-2xl border-2 p-3.5 ${on ? "border-primary bg-rose-50" : "border-gray-200 bg-white"}`,
+                `mb-3 flex-1 rounded-[1.5rem] border p-4 transition-all duration-300 ${on ? "border-slate-900 bg-slate-50 shadow-sm" : "border-slate-200 bg-white shadow-sm"}`
               )}
               accessibilityRole="button"
               accessibilityLabel={item.name}
@@ -1511,34 +1778,32 @@ function Step10Categories() {
             >
               <View
                 style={twStyle(
-                  `mb-2 h-11 w-11 items-center justify-center rounded-xl ${on ? "bg-primary" : "bg-gray-100"}`,
+                  `mb-3 h-12 w-12 items-center justify-center rounded-full ${on ? "bg-slate-900" : "bg-slate-100"}`
                 )}
               >
                 {iconUri ? (
                   <Image
                     source={{ uri: iconUri }}
-                    style={{ width: 26, height: 26, tintColor: on ? "#ffffff" : undefined }}
+                    style={{ width: 24, height: 24, tintColor: on ? "#ffffff" : undefined }}
                     resizeMode="contain"
                     accessibilityIgnoresInvertColors
                   />
                 ) : (
-                  <Ionicons
-                    name="pricetag-outline"
-                    size={22}
-                    color={on ? "#ffffff" : "#6b7280"}
-                  />
+                  <Ionicons name="pricetag-outline" size={20} color={on ? "#ffffff" : "#64748b"} />
                 )}
               </View>
               <Text
-                style={twStyle(`text-sm font-semibold leading-snug ${on ? "text-primary" : "text-gray-900"}`)}
+                style={twStyle(
+                  `text-[15px] font-semibold leading-snug ${on ? "text-slate-900" : "text-slate-800"}`
+                )}
                 numberOfLines={2}
               >
                 {item.name}
               </Text>
               {on ? (
-                <View style={twStyle("mt-1.5 flex-row items-center gap-1")}>
-                  <Ionicons name="checkmark-circle" size={12} color={Colors.primary} />
-                  <Text style={twStyle("text-[10px] font-semibold text-primary")}>Selected</Text>
+                <View style={twStyle("mt-2 flex-row items-center gap-1.5")}>
+                  <Ionicons name="checkmark-circle" size={14} color="#0f172a" />
+                  <Text style={twStyle("text-[12px] font-semibold text-slate-900")}>Selected</Text>
                 </View>
               ) : null}
             </TouchableOpacity>
@@ -1596,8 +1861,14 @@ function Step11Services() {
   const addAddon = () => {
     const parsedAddonPrice = parseFloat(addonPrice);
     const parsedAddonDuration = addonDuration ? parseInt(addonDuration, 10) : undefined;
-    if (!addonName.trim()) { Alert.alert("Add-on", "Enter an add-on name."); return; }
-    if (Number.isNaN(parsedAddonPrice) || parsedAddonPrice < 0) { Alert.alert("Add-on", "Enter a valid add-on price."); return; }
+    if (!addonName.trim()) {
+      Alert.alert("Add-on", "Enter an add-on name.");
+      return;
+    }
+    if (Number.isNaN(parsedAddonPrice) || parsedAddonPrice < 0) {
+      Alert.alert("Add-on", "Enter a valid add-on price.");
+      return;
+    }
     setDraftAddons((prev) => [
       ...prev,
       {
@@ -1605,21 +1876,43 @@ function Step11Services() {
         description: addonDescription.trim() || undefined,
         price: parsedAddonPrice,
         currency: tenantCurrency,
-        duration_minutes: parsedAddonDuration && parsedAddonDuration > 0 ? parsedAddonDuration : undefined,
+        duration_minutes:
+          parsedAddonDuration && parsedAddonDuration > 0 ? parsedAddonDuration : undefined,
       },
     ]);
-    setAddonName(""); setAddonPrice(""); setAddonDuration(""); setAddonDescription("");
+    setAddonName("");
+    setAddonPrice("");
+    setAddonDuration("");
+    setAddonDescription("");
   };
 
   const add = () => {
     const p = parseFloat(price);
     const d = parseInt(dur, 10) || 60;
-    if (!selectedCategoryIds.length) { Alert.alert("Service", "Select at least one category in the previous step first."); return; }
-    if (!categoryId) { Alert.alert("Service", "Select a category to continue."); return; }
-    if (!title.trim()) { Alert.alert("Service", "Enter a service name."); return; }
-    if (Number.isNaN(p) || p < 0) { Alert.alert("Service", "Enter a valid service price."); return; }
-    if (Number.isNaN(d) || d <= 0) { Alert.alert("Service", "Duration must be more than 0 minutes."); return; }
-    if (!supportsAtSalon && !supportsAtHome) { Alert.alert("Service", "Choose at least one availability option: salon or at-home."); return; }
+    if (!selectedCategoryIds.length) {
+      Alert.alert("Service", "Select at least one category in the previous step first.");
+      return;
+    }
+    if (!categoryId) {
+      Alert.alert("Service", "Select a category to continue.");
+      return;
+    }
+    if (!title.trim()) {
+      Alert.alert("Service", "Enter a service name.");
+      return;
+    }
+    if (Number.isNaN(p) || p < 0) {
+      Alert.alert("Service", "Enter a valid service price.");
+      return;
+    }
+    if (Number.isNaN(d) || d <= 0) {
+      Alert.alert("Service", "Duration must be more than 0 minutes.");
+      return;
+    }
+    if (!supportsAtSalon && !supportsAtHome) {
+      Alert.alert("Service", "Choose at least one availability option: salon or at-home.");
+      return;
+    }
     const s: OnboardingService = {
       title: title.trim(),
       category_id: categoryId,
@@ -1632,7 +1925,11 @@ function Step11Services() {
       addons: draftAddons.length ? draftAddons : [],
     };
     updateFormData({ services: [...services, s] });
-    setTitle(""); setPrice(""); setDur("60"); setDescription(""); setShowAdvanced(false);
+    setTitle("");
+    setPrice("");
+    setDur("60");
+    setDescription("");
+    setShowAdvanced(false);
     setSupportsAtSalon(formData.business_type !== "mobile");
     setSupportsAtHome(formData.business_type !== "salon");
     setDraftAddons([]);
@@ -1646,11 +1943,22 @@ function Step11Services() {
 
   return (
     <View style={twStyle("gap-4")}>
-      <View style={twStyle("rounded-2xl border border-sky-200 bg-sky-50 p-4 flex-row gap-2")}>
-        <Ionicons name="information-circle-outline" size={18} color="#0284c7" style={{ marginTop: 1 }} />
+      <View
+        style={twStyle(
+          "rounded-[1.5rem] border border-sky-200 bg-sky-50 p-5 flex-row gap-3 shadow-sm"
+        )}
+      >
+        <Ionicons
+          name="information-circle-outline"
+          size={20}
+          color="#0284c7"
+          style={{ marginTop: 2 }}
+        />
         <View style={twStyle("flex-1")}>
-          <Text style={twStyle("text-sm font-semibold text-sky-900")}>Add services now or skip</Text>
-          <Text style={twStyle("mt-1 text-sm leading-5 text-sky-900")}>
+          <Text style={twStyle("text-[15px] font-semibold text-sky-900")}>
+            Add services now or skip
+          </Text>
+          <Text style={twStyle("mt-1 text-[14px] leading-relaxed text-sky-800")}>
             If you skip, we&apos;ll draft starter services from your selected categories.
           </Text>
         </View>
@@ -1659,43 +1967,49 @@ function Step11Services() {
       {services.map((s, i) => (
         <View
           key={`${s.title}-${i}`}
-          style={twStyle("rounded-2xl border-2 border-gray-200 bg-white p-4 flex-row items-center gap-3")}
+          style={twStyle(
+            "rounded-[1.5rem] border border-slate-200 bg-white p-5 flex-row items-center gap-4 shadow-sm"
+          )}
         >
-          <View style={twStyle("h-10 w-10 items-center justify-center rounded-xl bg-emerald-100")}>
-            <Ionicons name="cut-outline" size={18} color="#059669" />
+          <View style={twStyle("h-12 w-12 items-center justify-center rounded-full bg-emerald-50")}>
+            <Ionicons name="cut-outline" size={20} color="#059669" />
           </View>
           <View style={twStyle("flex-1 pr-2")}>
-            <Text style={twStyle("text-base font-semibold text-gray-900")}>{s.title}</Text>
-            <Text style={twStyle("mt-0.5 text-xs font-medium text-gray-500")}>
+            <Text style={twStyle("text-[17px] font-semibold text-slate-900")}>{s.title}</Text>
+            <Text style={twStyle("mt-1 text-[13px] font-medium text-slate-500")}>
               {s.category_id ? categoryNameById.get(s.category_id) || "Category" : "No category"}
             </Text>
-            <Text style={twStyle("text-xs text-gray-400")}>
+            <Text style={twStyle("mt-0.5 text-[13px] text-slate-400")}>
               {s.duration_minutes} min · {s.currency || tenantCurrency} {s.price}
               {s.supports_at_salon ? " · Salon" : ""}
               {s.supports_at_home ? " · Home" : ""}
-              {s.addons?.length ? ` · ${s.addons.length} add-on${s.addons.length === 1 ? "" : "s"}` : ""}
+              {s.addons?.length
+                ? ` · ${s.addons.length} add-on${s.addons.length === 1 ? "" : "s"}`
+                : ""}
             </Text>
           </View>
           <TouchableOpacity
             onPress={() => remove(i)}
-            style={twStyle("h-8 w-8 items-center justify-center rounded-lg border border-red-100 bg-red-50")}
+            style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-rose-50")}
           >
-            <Ionicons name="trash-outline" size={16} color="#dc2626" />
+            <Ionicons name="trash-outline" size={18} color="#e11d48" />
           </TouchableOpacity>
         </View>
       ))}
 
       {loadingCats ? (
-        <View style={twStyle("py-6 items-center")}>
-          <ActivityIndicator color={Colors.primary} />
+        <View style={twStyle("py-8 items-center")}>
+          <ActivityIndicator color="#0f172a" size="small" />
         </View>
       ) : null}
 
-      <View style={twStyle("rounded-2xl border-2 border-gray-200 bg-white p-4 gap-3")}>
-        <Text style={twStyle("text-base font-semibold text-gray-900")}>Add a service</Text>
+      <View
+        style={twStyle("rounded-[1.5rem] border border-slate-200 bg-white p-5 gap-4 shadow-sm")}
+      >
+        <Text style={twStyle("text-[17px] font-semibold text-slate-900")}>Add a service</Text>
         <Text style={twStyle(labelCls)}>Category</Text>
         {selectedCategories.length > 0 ? (
-          <View style={twStyle("gap-2")}>
+          <View style={twStyle("flex-row flex-wrap gap-2")}>
             {selectedCategories.map((cat) => {
               const selected = categoryId === cat.id;
               return (
@@ -1703,91 +2017,171 @@ function Step11Services() {
                   key={cat.id}
                   onPress={() => setCategoryId(cat.id)}
                   style={twStyle(
-                    `rounded-xl border px-3 py-2.5 ${selected ? "border-primary bg-rose-50" : "border-gray-200 bg-gray-50"}`,
+                    `rounded-full border px-4 py-2 transition-all duration-300 ${selected ? "border-slate-900 bg-slate-900 shadow-sm" : "border-slate-200 bg-slate-50"}`
                   )}
                 >
-                  <Text style={twStyle(`text-sm font-medium ${selected ? "text-primary" : "text-gray-700"}`)}>{cat.name}</Text>
+                  <Text
+                    style={twStyle(
+                      `text-[14px] font-medium ${selected ? "text-white" : "text-slate-700"}`
+                    )}
+                  >
+                    {cat.name}
+                  </Text>
                 </TouchableOpacity>
               );
             })}
           </View>
         ) : (
-          <View style={twStyle("flex-row gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3")}>
-            <Ionicons name="alert-circle-outline" size={16} color="#92400e" />
-            <Text style={twStyle("flex-1 text-sm text-amber-900")}>Select categories in the previous step first.</Text>
+          <View
+            style={twStyle(
+              "flex-row gap-3 rounded-[1.5rem] border border-amber-200 bg-amber-50 p-4"
+            )}
+          >
+            <Ionicons name="alert-circle-outline" size={20} color="#92400e" />
+            <Text style={twStyle("flex-1 text-[14px] text-amber-900 leading-relaxed")}>
+              Select categories in the previous step first.
+            </Text>
           </View>
         )}
-        <TextInput value={title} onChangeText={setTitle} placeholder="Service name" style={twStyle(inputCls)} />
-        <View style={twStyle("flex-row gap-2")}>
+        <TextInput
+          value={title}
+          onChangeText={setTitle}
+          placeholder="Service name"
+          style={twStyle(inputCls)}
+          placeholderTextColor="#94a3b8"
+        />
+        <View style={twStyle("flex-row gap-3")}>
           <TextInput
             value={price}
             onChangeText={setPrice}
             placeholder={`Price (${tenantCurrency})`}
             keyboardType="decimal-pad"
             style={twStyle(`${inputCls} flex-1`)}
+            placeholderTextColor="#94a3b8"
           />
           <TextInput
             value={dur}
             onChangeText={setDur}
             placeholder="Minutes"
             keyboardType="number-pad"
-            style={twStyle(`${inputCls} w-28`)}
+            style={twStyle(`${inputCls} w-32`)}
+            placeholderTextColor="#94a3b8"
           />
         </View>
 
         <TouchableOpacity
           onPress={() => setShowAdvanced((prev) => !prev)}
-          style={twStyle("flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-3 py-3")}
+          style={twStyle(
+            "flex-row items-center justify-between rounded-[1.5rem] border border-slate-200 bg-slate-50 px-5 py-4"
+          )}
         >
-          <Text style={twStyle("text-sm font-semibold text-gray-700")}>Description, availability & add-ons</Text>
-          <Ionicons name={showAdvanced ? "chevron-up" : "chevron-down"} size={18} color="#6b7280" />
+          <Text style={twStyle("text-[15px] font-semibold text-slate-700")}>
+            Description, availability & add-ons
+          </Text>
+          <Ionicons name={showAdvanced ? "chevron-up" : "chevron-down"} size={20} color="#64748b" />
         </TouchableOpacity>
 
         {showAdvanced ? (
-          <View style={twStyle("gap-3 rounded-xl border border-gray-200 bg-gray-50 p-3")}>
+          <View style={twStyle("gap-4 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4")}>
             <TextInput
               value={description}
               onChangeText={setDescription}
               placeholder="Description (optional)"
-              style={twStyle(`${inputCls} min-h-[90px]`)}
+              style={twStyle(`${inputCls} min-h-[100px] pt-4`)}
               multiline
               numberOfLines={3}
+              placeholderTextColor="#94a3b8"
             />
-            <View style={twStyle("rounded-xl border border-gray-200 bg-white p-3 gap-3")}>
+            <View style={twStyle("rounded-[1.5rem] border border-slate-200 bg-white p-4 gap-4")}>
               <View style={twStyle("flex-row items-center justify-between")}>
-                <Text style={twStyle("text-sm font-medium text-gray-800")}>Available at salon</Text>
-                <Switch value={supportsAtSalon} onValueChange={setSupportsAtSalon} />
+                <Text style={twStyle("text-[15px] font-medium text-slate-800")}>
+                  Available at salon
+                </Text>
+                <Switch
+                  value={supportsAtSalon}
+                  onValueChange={setSupportsAtSalon}
+                  trackColor={{ false: "#cbd5e1", true: "#0f172a" }}
+                />
               </View>
               <View style={twStyle("flex-row items-center justify-between")}>
-                <Text style={twStyle("text-sm font-medium text-gray-800")}>Available at home</Text>
-                <Switch value={supportsAtHome} onValueChange={setSupportsAtHome} />
+                <Text style={twStyle("text-[15px] font-medium text-slate-800")}>
+                  Available at home
+                </Text>
+                <Switch
+                  value={supportsAtHome}
+                  onValueChange={setSupportsAtHome}
+                  trackColor={{ false: "#cbd5e1", true: "#0f172a" }}
+                />
               </View>
             </View>
 
-            <View style={twStyle("rounded-xl border border-gray-200 bg-white p-3 gap-2")}>
-              <Text style={twStyle("text-sm font-semibold text-gray-900")}>Add-ons (optional)</Text>
+            <View style={twStyle("rounded-[1.5rem] border border-slate-200 bg-white p-4 gap-3")}>
+              <Text style={twStyle("text-[15px] font-semibold text-slate-900 mb-1")}>
+                Add-ons (optional)
+              </Text>
               {draftAddons.map((addon, idx) => (
-                <View key={`${addon.name}-${idx}`} style={twStyle("flex-row items-center justify-between rounded-lg bg-gray-50 px-3 py-2")}>
-                  <View style={twStyle("flex-1 pr-2")}>
-                    <Text style={twStyle("text-sm font-medium text-gray-900")}>{addon.name}</Text>
-                    <Text style={twStyle("text-xs text-gray-500")}>
-                      {addon.currency || tenantCurrency} {addon.price}{addon.duration_minutes ? ` · +${addon.duration_minutes} min` : ""}
+                <View
+                  key={`${addon.name}-${idx}`}
+                  style={twStyle(
+                    "flex-row items-center justify-between rounded-[1rem] bg-slate-50 px-4 py-3"
+                  )}
+                >
+                  <View style={twStyle("flex-1 pr-3")}>
+                    <Text style={twStyle("text-[15px] font-medium text-slate-900")}>
+                      {addon.name}
+                    </Text>
+                    <Text style={twStyle("mt-0.5 text-[13px] text-slate-500")}>
+                      {addon.currency || tenantCurrency} {addon.price}
+                      {addon.duration_minutes ? ` · +${addon.duration_minutes} min` : ""}
                     </Text>
                   </View>
-                  <TouchableOpacity onPress={() => setDraftAddons((prev) => prev.filter((_, i) => i !== idx))}>
-                    <Ionicons name="close-circle" size={20} color="#ef4444" />
+                  <TouchableOpacity
+                    onPress={() => setDraftAddons((prev) => prev.filter((_, i) => i !== idx))}
+                  >
+                    <Ionicons name="close-circle" size={22} color="#e11d48" />
                   </TouchableOpacity>
                 </View>
               ))}
-              <TextInput value={addonName} onChangeText={setAddonName} placeholder="Add-on name" style={twStyle(inputCls)} />
-              <View style={twStyle("flex-row gap-2")}>
-                <TextInput value={addonPrice} onChangeText={setAddonPrice} placeholder={`Price (${tenantCurrency})`} keyboardType="decimal-pad" style={twStyle(`${inputCls} flex-1`)} />
-                <TextInput value={addonDuration} onChangeText={setAddonDuration} placeholder="+ min" keyboardType="number-pad" style={twStyle(`${inputCls} w-20`)} />
+              <TextInput
+                value={addonName}
+                onChangeText={setAddonName}
+                placeholder="Add-on name"
+                style={twStyle(inputCls)}
+                placeholderTextColor="#94a3b8"
+              />
+              <View style={twStyle("flex-row gap-3")}>
+                <TextInput
+                  value={addonPrice}
+                  onChangeText={setAddonPrice}
+                  placeholder={`Price (${tenantCurrency})`}
+                  keyboardType="decimal-pad"
+                  style={twStyle(`${inputCls} flex-1`)}
+                  placeholderTextColor="#94a3b8"
+                />
+                <TextInput
+                  value={addonDuration}
+                  onChangeText={setAddonDuration}
+                  placeholder="+ min"
+                  keyboardType="number-pad"
+                  style={twStyle(`${inputCls} w-24`)}
+                  placeholderTextColor="#94a3b8"
+                />
               </View>
-              <TextInput value={addonDescription} onChangeText={setAddonDescription} placeholder="Add-on description (optional)" style={twStyle(inputCls)} />
-              <TouchableOpacity onPress={addAddon} style={twStyle("flex-row items-center justify-center gap-2 rounded-xl border border-primary bg-white py-2.5")}>
-                <Ionicons name="add" size={16} color={Colors.primary} />
-                <Text style={twStyle("text-sm font-semibold text-primary")}>Add add-on</Text>
+              <TextInput
+                value={addonDescription}
+                onChangeText={setAddonDescription}
+                placeholder="Add-on description (optional)"
+                style={twStyle(inputCls)}
+                placeholderTextColor="#94a3b8"
+              />
+              <TouchableOpacity
+                onPress={addAddon}
+                style={twStyle(
+                  "flex-row items-center justify-center gap-2 rounded-[1.5rem] border-2 border-slate-900 bg-white py-3.5 mt-1"
+                )}
+              >
+                <Ionicons name="add" size={18} color="#0f172a" />
+                <Text style={twStyle("text-[15px] font-semibold text-slate-900")}>Add add-on</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1796,10 +2190,12 @@ function Step11Services() {
 
       <TouchableOpacity
         onPress={add}
-        style={[twStyle("flex-row items-center justify-center gap-2 rounded-2xl py-4"), { backgroundColor: Colors.primary }]}
+        style={twStyle(
+          "flex-row items-center justify-center gap-2 rounded-full bg-slate-900 py-4 shadow-sm"
+        )}
       >
-        <Ionicons name="add-circle-outline" size={20} color="#fff" />
-        <Text style={twStyle("text-base font-semibold text-white")}>Add service</Text>
+        <Ionicons name="add-circle-outline" size={22} color="#fff" />
+        <Text style={twStyle("text-[16px] font-semibold text-white")}>Add service</Text>
       </TouchableOpacity>
     </View>
   );
@@ -1807,7 +2203,15 @@ function Step11Services() {
 
 // ─── Step 12: Hours ──────────────────────────────────────────────────────────
 
-const DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] as const;
+const DAYS = [
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+  "sunday",
+] as const;
 const DAY_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 
 function Step12Hours() {
@@ -1820,22 +2224,28 @@ function Step12Hours() {
   const [pickerTime, setPickerTime] = useState<string>("09:00");
 
   useEffect(() => {
-    if (isFreelancer && (!formData.operating_hours || Object.keys(formData.operating_hours).length === 0)) {
+    if (
+      isFreelancer &&
+      (!formData.operating_hours || Object.keys(formData.operating_hours).length === 0)
+    ) {
       updateFormData({
         operating_hours: {
-          monday:    { open: "08:00", close: "20:00", closed: false },
-          tuesday:   { open: "08:00", close: "20:00", closed: false },
+          monday: { open: "08:00", close: "20:00", closed: false },
+          tuesday: { open: "08:00", close: "20:00", closed: false },
           wednesday: { open: "08:00", close: "20:00", closed: false },
-          thursday:  { open: "08:00", close: "20:00", closed: false },
-          friday:    { open: "08:00", close: "20:00", closed: false },
-          saturday:  { open: "09:00", close: "18:00", closed: false },
-          sunday:    { open: "10:00", close: "16:00", closed: false },
+          thursday: { open: "08:00", close: "20:00", closed: false },
+          friday: { open: "08:00", close: "20:00", closed: false },
+          saturday: { open: "09:00", close: "18:00", closed: false },
+          sunday: { open: "10:00", close: "16:00", closed: false },
         },
       });
     }
   }, [isFreelancer, formData.operating_hours, updateFormData]);
 
-  const setDay = (day: string, patch: Partial<{ open: string; close: string; closed: boolean }>) => {
+  const setDay = (
+    day: string,
+    patch: Partial<{ open: string; close: string; closed: boolean }>
+  ) => {
     const cur = oh[day] || { open: "09:00", close: "18:00", closed: false };
     updateFormData({ operating_hours: { ...oh, [day]: { ...cur, ...patch } } });
   };
@@ -1859,13 +2269,13 @@ function Step12Hours() {
     updateFormData({ operating_hours: newHours });
   };
 
-  const openDays = DAYS.filter((d) => !(oh[d]?.closed));
+  const openDays = DAYS.filter((d) => !oh[d]?.closed);
 
   return (
     <View style={twStyle("gap-3")}>
       <View
         style={twStyle(
-          `rounded-2xl border p-4 flex-row gap-2 ${isFreelancer ? "border-emerald-200 bg-emerald-50" : "border-indigo-100 bg-indigo-50"}`,
+          `rounded-2xl border p-4 flex-row gap-2 ${isFreelancer ? "border-emerald-200 bg-emerald-50" : "border-indigo-100 bg-indigo-50"}`
         )}
       >
         <Ionicons
@@ -1874,7 +2284,11 @@ function Step12Hours() {
           color={isFreelancer ? "#047857" : "#4338ca"}
           style={{ marginTop: 1 }}
         />
-        <Text style={twStyle(`flex-1 text-sm leading-5 ${isFreelancer ? "text-emerald-900" : "text-indigo-900"}`)}>
+        <Text
+          style={twStyle(
+            `flex-1 text-sm leading-5 ${isFreelancer ? "text-emerald-900" : "text-indigo-900"}`
+          )}
+        >
           {isFreelancer
             ? "We've started you on broad weekday hours (8 am–8 pm). Tweak them to match how you actually work."
             : "Clients can only book slots within these hours. Set individual staff schedules in Settings later."}
@@ -1883,7 +2297,7 @@ function Step12Hours() {
 
       {/* Quick summary chips */}
       {openDays.length > 0 ? (
-        <View style={twStyle("flex-row flex-wrap gap-1")}>
+        <View style={twStyle("flex-row flex-wrap gap-1.5 mb-2")}>
           {DAYS.map((day, i) => {
             const h = oh[day];
             const open = h && !h.closed;
@@ -1891,10 +2305,14 @@ function Step12Hours() {
               <View
                 key={day}
                 style={twStyle(
-                  `rounded-full px-2.5 py-1 ${open ? "bg-primary" : "bg-gray-100"}`,
+                  `rounded-full px-3 py-1.5 transition-all duration-300 ${open ? "bg-slate-900 shadow-sm" : "bg-slate-100"}`
                 )}
               >
-                <Text style={twStyle(`text-xs font-semibold ${open ? "text-white" : "text-gray-400"}`)}>
+                <Text
+                  style={twStyle(
+                    `text-[13px] font-semibold ${open ? "text-white" : "text-slate-500"}`
+                  )}
+                >
                   {DAY_SHORT[i]}
                 </Text>
               </View>
@@ -1906,34 +2324,55 @@ function Step12Hours() {
       {DAYS.map((day) => {
         const h = oh[day] || { open: "09:00", close: "18:00", closed: false };
         return (
-          <View key={day} style={twStyle("rounded-2xl border-2 border-gray-200 bg-white p-4")}>
+          <View
+            key={day}
+            style={twStyle("rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm")}
+          >
             <View style={twStyle("flex-row items-center justify-between")}>
-              <Text style={twStyle("text-base font-semibold capitalize text-gray-900")}>{day}</Text>
-              <View style={twStyle("flex-row items-center gap-2.5")}>
+              <Text style={twStyle("text-[17px] font-semibold capitalize text-slate-900")}>
+                {day}
+              </Text>
+              <View style={twStyle("flex-row items-center gap-3")}>
                 {!h.closed ? (
-                  <TouchableOpacity onPress={() => copyToAll(day)}>
-                    <Text style={twStyle("text-xs font-semibold text-gray-400")}>Copy all</Text>
+                  <TouchableOpacity onPress={() => copyToAll(day)} style={twStyle("px-2 py-1")}>
+                    <Text style={twStyle("text-[13px] font-semibold text-slate-500")}>
+                      Copy all
+                    </Text>
                   </TouchableOpacity>
                 ) : null}
-                <Text style={twStyle(`text-sm ${h.closed ? "text-gray-400" : "text-gray-600"}`)}>{h.closed ? "Closed" : "Open"}</Text>
-                <Switch value={!h.closed} onValueChange={(v) => setDay(day, { closed: !v })} />
+                <Text
+                  style={twStyle(
+                    `text-[14px] font-medium ${h.closed ? "text-slate-400" : "text-slate-700"}`
+                  )}
+                >
+                  {h.closed ? "Closed" : "Open"}
+                </Text>
+                <Switch
+                  value={!h.closed}
+                  onValueChange={(v) => setDay(day, { closed: !v })}
+                  trackColor={{ false: "#cbd5e1", true: "#0f172a" }}
+                />
               </View>
             </View>
             {!h.closed ? (
-              <View style={twStyle("mt-3 flex-row gap-2")}>
+              <View style={twStyle("mt-4 flex-row gap-3")}>
                 <TouchableOpacity
                   onPress={() => {
                     setPickerDay(day);
                     setShowPicker("open");
                     setPickerTime(h.open || "09:00");
                   }}
-                  style={twStyle("flex-1 flex-row items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-gray-50 py-2.5")}
+                  style={twStyle(
+                    "flex-1 flex-row items-center justify-center gap-2 rounded-[1rem] border border-slate-200 bg-slate-50 py-3"
+                  )}
                 >
-                  <Ionicons name="time-outline" size={15} color="#6b7280" />
-                  <Text style={twStyle("text-base font-semibold text-gray-900")}>{h.open || "09:00"}</Text>
+                  <Ionicons name="time-outline" size={18} color="#64748b" />
+                  <Text style={twStyle("text-[16px] font-semibold text-slate-900")}>
+                    {h.open || "09:00"}
+                  </Text>
                 </TouchableOpacity>
                 <View style={twStyle("items-center justify-center")}>
-                  <Text style={twStyle("text-sm text-gray-400")}>→</Text>
+                  <Text style={twStyle("text-[15px] font-medium text-slate-400")}>to</Text>
                 </View>
                 <TouchableOpacity
                   onPress={() => {
@@ -1941,10 +2380,14 @@ function Step12Hours() {
                     setShowPicker("close");
                     setPickerTime(h.close || "18:00");
                   }}
-                  style={twStyle("flex-1 flex-row items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-gray-50 py-2.5")}
+                  style={twStyle(
+                    "flex-1 flex-row items-center justify-center gap-2 rounded-[1rem] border border-slate-200 bg-slate-50 py-3"
+                  )}
                 >
-                  <Ionicons name="time-outline" size={15} color="#6b7280" />
-                  <Text style={twStyle("text-base font-semibold text-gray-900")}>{h.close || "18:00"}</Text>
+                  <Ionicons name="time-outline" size={18} color="#64748b" />
+                  <Text style={twStyle("text-[16px] font-semibold text-slate-900")}>
+                    {h.close || "18:00"}
+                  </Text>
                 </TouchableOpacity>
               </View>
             ) : null}
@@ -1977,19 +2420,34 @@ type ReviewRowProps = {
 
 function ReviewRow({ icon, iconBg, iconColor, label, value, ok }: ReviewRowProps) {
   return (
-    <View style={twStyle("flex-row items-center gap-3 py-2.5 border-b border-gray-100 last:border-0")}>
-      <View style={[twStyle("h-9 w-9 items-center justify-center rounded-xl"), { backgroundColor: iconBg }]}>
-        <Ionicons name={icon} size={18} color={iconColor} />
+    <View
+      style={twStyle("flex-row items-center gap-4 py-3.5 border-b border-slate-100 last:border-0")}
+    >
+      <View
+        style={[
+          twStyle("h-11 w-11 items-center justify-center rounded-full"),
+          { backgroundColor: iconBg },
+        ]}
+      >
+        <Ionicons name={icon} size={20} color={iconColor} />
       </View>
       <View style={twStyle("flex-1 min-w-0")}>
-        <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-400")}>{label}</Text>
-        <Text style={twStyle("text-sm font-medium text-gray-900")} numberOfLines={2}>{value}</Text>
+        <Text
+          style={twStyle(
+            "text-[12px] font-semibold uppercase tracking-wider text-slate-500 mb-0.5"
+          )}
+        >
+          {label}
+        </Text>
+        <Text style={twStyle("text-[15px] font-medium text-slate-900")} numberOfLines={2}>
+          {value}
+        </Text>
       </View>
       {ok !== undefined ? (
         <Ionicons
           name={ok ? "checkmark-circle" : "alert-circle-outline"}
-          size={18}
-          color={ok ? "#16a34a" : "#f59e0b"}
+          size={22}
+          color={ok ? "#10b981" : "#f59e0b"}
         />
       ) : null}
     </View>
@@ -1999,10 +2457,12 @@ function ReviewRow({ icon, iconBg, iconColor, label, value, ok }: ReviewRowProps
 function Step13Review() {
   const { formData } = useOnboardingWizard();
   const a = formData.address;
-  const hasPhoto = !!(formData.thumbnail_url || formData.avatar_url || (formData.gallery || []).length > 0);
+  const hasRequiredPhotos = !!(formData.thumbnail_url && formData.avatar_url);
   const catCount = (formData.global_category_ids || []).length;
   const svcCount = (formData.services || []).length;
-  const openDayCount = Object.values(formData.operating_hours || {}).filter((h) => !h.closed).length;
+  const openDayCount = Object.values(formData.operating_hours || {}).filter(
+    (h) => !h.closed
+  ).length;
 
   const bizTypeLabel =
     formData.business_type === "salon"
@@ -2013,7 +2473,11 @@ function Step13Review() {
 
   return (
     <View style={twStyle("gap-4")}>
-      <View style={twStyle("rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 flex-row gap-2 items-center")}>
+      <View
+        style={twStyle(
+          "rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 flex-row gap-2 items-center"
+        )}
+      >
         <Ionicons name="rocket-outline" size={18} color="#047857" />
         <Text style={twStyle("flex-1 text-sm font-semibold text-emerald-900")}>
           You&apos;re almost there! Review your details then hit Submit.
@@ -2022,9 +2486,25 @@ function Step13Review() {
 
       {/* Identity */}
       <View style={twStyle("rounded-2xl border-2 border-gray-200 bg-white p-4")}>
-        <Text style={twStyle("mb-1 text-xs font-bold uppercase tracking-wide text-gray-400")}>Your identity</Text>
-        <ReviewRow icon="person-outline" iconBg="#f0f9ff" iconColor="#0284c7" label="Name" value={formData.owner_name || "—"} ok={!!formData.owner_name} />
-        <ReviewRow icon="mail-outline" iconBg="#f0f9ff" iconColor="#0284c7" label="Email" value={formData.owner_email || "—"} ok={!!formData.owner_email} />
+        <Text style={twStyle("mb-1 text-xs font-bold uppercase tracking-wide text-gray-400")}>
+          Your identity
+        </Text>
+        <ReviewRow
+          icon="person-outline"
+          iconBg="#f0f9ff"
+          iconColor="#0284c7"
+          label="Name"
+          value={formData.owner_name || "—"}
+          ok={!!formData.owner_name}
+        />
+        <ReviewRow
+          icon="mail-outline"
+          iconBg="#f0f9ff"
+          iconColor="#0284c7"
+          label="Email"
+          value={formData.owner_email || "—"}
+          ok={!!formData.owner_email}
+        />
         <ReviewRow
           icon="phone-portrait-outline"
           iconBg={formData.phone_verified ? "#f0fdf4" : "#fffbeb"}
@@ -2037,19 +2517,52 @@ function Step13Review() {
 
       {/* Business */}
       <View style={twStyle("rounded-2xl border-2 border-gray-200 bg-white p-4")}>
-        <Text style={twStyle("mb-1 text-xs font-bold uppercase tracking-wide text-gray-400")}>Business</Text>
-        <ReviewRow icon="briefcase-outline" iconBg="#fdf4ff" iconColor="#9333ea" label="Name" value={formData.business_name || "—"} ok={!!formData.business_name} />
-        <ReviewRow icon="storefront-outline" iconBg="#fdf4ff" iconColor="#9333ea" label="Type" value={bizTypeLabel} />
+        <Text style={twStyle("mb-1 text-xs font-bold uppercase tracking-wide text-gray-400")}>
+          Business
+        </Text>
+        <ReviewRow
+          icon="briefcase-outline"
+          iconBg="#fdf4ff"
+          iconColor="#9333ea"
+          label="Name"
+          value={formData.business_name || "—"}
+          ok={!!formData.business_name}
+        />
+        <ReviewRow
+          icon="storefront-outline"
+          iconBg="#fdf4ff"
+          iconColor="#9333ea"
+          label="Type"
+          value={bizTypeLabel}
+        />
         {formData.description ? (
-          <ReviewRow icon="document-text-outline" iconBg="#fdf4ff" iconColor="#9333ea" label="Description" value={formData.description.slice(0, 80) + (formData.description.length > 80 ? "…" : "")} ok />
+          <ReviewRow
+            icon="document-text-outline"
+            iconBg="#fdf4ff"
+            iconColor="#9333ea"
+            label="Description"
+            value={
+              formData.description.slice(0, 80) + (formData.description.length > 80 ? "…" : "")
+            }
+            ok
+          />
         ) : (
-          <ReviewRow icon="document-text-outline" iconBg="#fdf4ff" iconColor="#9333ea" label="Description" value="Not added — recommended" ok={false} />
+          <ReviewRow
+            icon="document-text-outline"
+            iconBg="#fdf4ff"
+            iconColor="#9333ea"
+            label="Description"
+            value="Not added — recommended"
+            ok={false}
+          />
         )}
       </View>
 
       {/* Location & hours */}
       <View style={twStyle("rounded-2xl border-2 border-gray-200 bg-white p-4")}>
-        <Text style={twStyle("mb-1 text-xs font-bold uppercase tracking-wide text-gray-400")}>Location & hours</Text>
+        <Text style={twStyle("mb-1 text-xs font-bold uppercase tracking-wide text-gray-400")}>
+          Location & hours
+        </Text>
         <ReviewRow
           icon="location-outline"
           iconBg="#f0fdf4"
@@ -2058,13 +2571,29 @@ function Step13Review() {
           value={a?.line1 ? `${a.line1}, ${a.city}` : "Not set"}
           ok={!!(a?.line1 && a?.city)}
         />
-        <ReviewRow icon="time-outline" iconBg="#f0fdf4" iconColor="#16a34a" label="Open days" value={`${openDayCount} of 7 days`} ok={openDayCount > 0} />
+        <ReviewRow
+          icon="time-outline"
+          iconBg="#f0fdf4"
+          iconColor="#16a34a"
+          label="Open days"
+          value={`${openDayCount} of 7 days`}
+          ok={openDayCount > 0}
+        />
       </View>
 
       {/* Categories & services */}
       <View style={twStyle("rounded-2xl border-2 border-gray-200 bg-white p-4")}>
-        <Text style={twStyle("mb-1 text-xs font-bold uppercase tracking-wide text-gray-400")}>Catalogue</Text>
-        <ReviewRow icon="pricetag-outline" iconBg="#fffbeb" iconColor="#d97706" label="Categories" value={catCount > 0 ? `${catCount} selected` : "None selected"} ok={catCount > 0} />
+        <Text style={twStyle("mb-1 text-xs font-bold uppercase tracking-wide text-gray-400")}>
+          Catalogue
+        </Text>
+        <ReviewRow
+          icon="pricetag-outline"
+          iconBg="#fffbeb"
+          iconColor="#d97706"
+          label="Categories"
+          value={catCount > 0 ? `${catCount} selected` : "None selected"}
+          ok={catCount > 0}
+        />
         <ReviewRow
           icon="cut-outline"
           iconBg="#fffbeb"
@@ -2073,14 +2602,30 @@ function Step13Review() {
           value={svcCount > 0 ? `${svcCount} added` : "Auto-generated from categories"}
           ok={svcCount >= 0}
         />
-        <ReviewRow icon="images-outline" iconBg="#fffbeb" iconColor="#d97706" label="Photos" value={hasPhoto ? "Uploaded" : "None — can add later"} ok={hasPhoto} />
+        <ReviewRow
+          icon="images-outline"
+          iconBg="#fffbeb"
+          iconColor="#d97706"
+          label="Photos"
+          value={hasRequiredPhotos ? "Thumbnail + profile image uploaded" : "Thumbnail and profile image required"}
+          ok={hasRequiredPhotos}
+        />
       </View>
 
       {/* Plan */}
       {formData.selected_plan_name ? (
         <View style={twStyle("rounded-2xl border-2 border-gray-200 bg-white p-4")}>
-          <Text style={twStyle("mb-1 text-xs font-bold uppercase tracking-wide text-gray-400")}>Plan</Text>
-          <ReviewRow icon="star-outline" iconBg="#fdf4ff" iconColor="#9333ea" label="Selected plan" value={formData.selected_plan_name} ok />
+          <Text style={twStyle("mb-1 text-xs font-bold uppercase tracking-wide text-gray-400")}>
+            Plan
+          </Text>
+          <ReviewRow
+            icon="star-outline"
+            iconBg="#fdf4ff"
+            iconColor="#9333ea"
+            label="Selected plan"
+            value={formData.selected_plan_name}
+            ok
+          />
         </View>
       ) : null}
     </View>
@@ -2097,7 +2642,149 @@ type PlanRow = {
   description: string | null;
   is_popular: boolean;
   features: string[];
+  is_free?: boolean;
 };
+
+const FEATURE_PREVIEW_COUNT = 4;
+
+function PlanCard({
+  plan,
+  selected,
+  onSelect,
+}: {
+  plan: PlanRow;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const features = plan.features ?? [];
+  const visibleFeatures = expanded ? features : features.slice(0, FEATURE_PREVIEW_COUNT);
+  const extraCount = Math.max(0, features.length - FEATURE_PREVIEW_COUNT);
+
+  return (
+    <TouchableOpacity
+      onPress={onSelect}
+      activeOpacity={0.9}
+      style={twStyle(
+        `rounded-3xl border-2 p-4 ${selected ? "border-primary bg-rose-50" : "border-gray-200 bg-white"}`
+      )}
+      accessibilityRole="button"
+      accessibilityLabel={plan.name}
+      accessibilityState={{ selected }}
+    >
+      {/* Header row: name + badges + selection indicator */}
+      <View style={twStyle("flex-row items-start justify-between gap-3")}>
+        <View style={twStyle("flex-1 min-w-0")}>
+          <View style={twStyle("flex-row flex-wrap items-center gap-2")}>
+            <Text style={twStyle("text-lg font-bold text-gray-900")}>{plan.name}</Text>
+            {plan.is_popular ? (
+              <View
+                style={twStyle("flex-row items-center gap-1 rounded-full bg-amber-400 px-2 py-0.5")}
+              >
+                <Ionicons name="star" size={10} color="#fff" />
+                <Text style={twStyle("text-[10px] font-bold text-white")}>Popular</Text>
+              </View>
+            ) : null}
+            {plan.is_free ? (
+              <View style={twStyle("rounded-full bg-emerald-100 px-2 py-0.5")}>
+                <Text
+                  style={twStyle("text-[10px] font-bold uppercase tracking-wider text-emerald-700")}
+                >
+                  Free
+                </Text>
+              </View>
+            ) : null}
+          </View>
+          <View style={twStyle("mt-1.5 flex-row items-baseline gap-1")}>
+            <Text style={twStyle("text-2xl font-extrabold text-primary")}>{plan.price}</Text>
+            {plan.period ? (
+              <Text style={twStyle("text-sm font-medium text-gray-500")}>{plan.period}</Text>
+            ) : null}
+          </View>
+          {plan.description ? (
+            <Text style={twStyle("mt-1.5 text-sm leading-5 text-gray-600")} numberOfLines={3}>
+              {stripHtmlToPlainText(plan.description)}
+            </Text>
+          ) : null}
+        </View>
+        <View
+          style={twStyle(
+            `h-9 w-9 items-center justify-center rounded-full border-2 ${
+              selected ? "border-primary bg-primary" : "border-gray-300 bg-white"
+            }`
+          )}
+        >
+          {selected ? <Ionicons name="checkmark" size={18} color="#fff" /> : null}
+        </View>
+      </View>
+
+      {/* Features list */}
+      {features.length > 0 ? (
+        <View style={twStyle("mt-3 gap-2 border-t border-gray-100 pt-3")}>
+          {visibleFeatures.map((f, i) => (
+            <View key={`${plan.id}-feat-${i}`} style={twStyle("flex-row items-start gap-2")}>
+              <View style={twStyle("mt-0.5")}>
+                <Ionicons
+                  name="checkmark-circle"
+                  size={15}
+                  color={selected ? Colors.primary : "#16a34a"}
+                />
+              </View>
+              <Text style={twStyle("flex-1 text-[13px] leading-[19px] text-gray-700")}>
+                {stripHtmlToPlainText(f)}
+              </Text>
+            </View>
+          ))}
+          {extraCount > 0 ? (
+            <TouchableOpacity
+              onPress={(e) => {
+                e.stopPropagation();
+                Haptics.selectionAsync();
+                setExpanded((v) => !v);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={
+                expanded ? "Show fewer features" : `Show ${extraCount} more features`
+              }
+              style={twStyle("mt-2 flex-row items-center gap-1.5 self-start py-1.5")}
+            >
+              <Text style={twStyle("text-[13px] font-semibold text-slate-900")}>
+                {expanded
+                  ? "Show less"
+                  : `+ ${extraCount} more feature${extraCount === 1 ? "" : "s"}`}
+              </Text>
+              <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={14} color="#0f172a" />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      ) : null}
+
+      {/* Footer hint reinforcing the free/paid path so users know what's next */}
+      <View
+        style={twStyle(
+          `mt-4 flex-row items-center gap-2 rounded-[1rem] px-4 py-3 ${
+            plan.is_free ? "bg-emerald-50" : "bg-slate-100"
+          }`
+        )}
+      >
+        <Ionicons
+          name={plan.is_free ? "rocket-outline" : "card-outline"}
+          size={16}
+          color={plan.is_free ? "#047857" : "#0f172a"}
+        />
+        <Text
+          style={twStyle(
+            `flex-1 text-[13px] font-semibold ${plan.is_free ? "text-emerald-800" : "text-slate-800"}`
+          )}
+        >
+          {plan.is_free
+            ? "Activates instantly — no payment needed"
+            : "Secure card payment after submitting"}
+        </Text>
+      </View>
+    </TouchableOpacity>
+  );
+}
 
 function Step14Plan() {
   const { formData, updateFormData } = useOnboardingWizard();
@@ -2122,10 +2809,18 @@ function Step14Plan() {
         setPlans(list);
 
         if (list.length === 0) {
-          updateFormData({ no_plans_available: true, selected_plan_id: undefined, selected_plan_name: undefined });
+          updateFormData({
+            no_plans_available: true,
+            selected_plan_id: undefined,
+            selected_plan_name: undefined,
+          });
         } else if (!initialPlanId.current?.trim()) {
           const popular = list.find((p) => p.is_popular) ?? list[0];
-          updateFormData({ selected_plan_id: popular.id, selected_plan_name: popular.name, no_plans_available: false });
+          updateFormData({
+            selected_plan_id: popular.id,
+            selected_plan_name: popular.name,
+            no_plans_available: false,
+          });
         } else {
           updateFormData({ no_plans_available: false });
         }
@@ -2133,91 +2828,59 @@ function Step14Plan() {
         if (active) setLoading(false);
       }
     })();
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [updateFormData]);
 
   if (loading) {
     return (
-      <View style={twStyle("py-10 items-center gap-2")}>
-        <ActivityIndicator color={Colors.primary} />
-        <Text style={twStyle("text-sm text-gray-500")}>Loading plans…</Text>
+      <View style={twStyle("py-12 items-center gap-3")}>
+        <ActivityIndicator color="#0f172a" size="large" />
+        <Text style={twStyle("text-[15px] font-medium text-slate-500")}>Loading plans…</Text>
       </View>
     );
   }
 
   if (plans.length === 0) {
     return (
-      <View style={twStyle("py-10 items-center gap-3")}>
-        <Ionicons name="pricetags-outline" size={36} color="#d1d5db" />
-        <Text style={twStyle("text-center text-base text-gray-500")}>
-          No subscription plans available right now. Hit Submit to continue — we&apos;ll sort this after.
+      <View style={twStyle("py-12 items-center gap-4")}>
+        <View style={twStyle("h-16 w-16 items-center justify-center rounded-full bg-slate-100")}>
+          <Ionicons name="pricetags-outline" size={32} color="#94a3b8" />
+        </View>
+        <Text
+          style={twStyle("text-center text-[15px] leading-relaxed text-slate-500 max-w-[280px]")}
+        >
+          No subscription plans available right now. Hit Submit to continue — we&apos;ll sort this
+          after.
         </Text>
       </View>
     );
   }
 
   return (
-    <View style={twStyle("gap-3")}>
-      <Text style={twStyle("text-sm text-gray-600")}>
-        Your plan determines features and booking limits. You can upgrade anytime.
-      </Text>
-      {plans.map((p) => {
-        const sel = formData.selected_plan_id === p.id;
-        return (
-          <TouchableOpacity
-            key={p.id}
-            onPress={() => updateFormData({ selected_plan_id: p.id, selected_plan_name: p.name })}
-            style={twStyle(
-              `rounded-2xl border-2 p-4 ${sel ? "border-primary bg-rose-50" : "border-gray-200 bg-white"}`,
-            )}
-            accessibilityRole="button"
-            accessibilityLabel={p.name}
-            accessibilityState={{ selected: sel }}
-          >
-            <View style={twStyle("flex-row items-start justify-between gap-2")}>
-              <View style={twStyle("flex-1")}>
-                <View style={twStyle("flex-row flex-wrap items-center gap-2")}>
-                  <Text style={twStyle("text-lg font-bold text-gray-900")}>{p.name}</Text>
-                  {p.is_popular ? (
-                    <View style={twStyle("rounded-full bg-amber-400 px-2.5 py-0.5 flex-row items-center gap-1")}>
-                      <Ionicons name="star" size={10} color="#fff" />
-                      <Text style={twStyle("text-[10px] font-bold text-white")}>Most popular</Text>
-                    </View>
-                  ) : null}
-                </View>
-                <View style={twStyle("mt-1 flex-row items-baseline gap-1")}>
-                  <Text style={twStyle("text-xl font-extrabold text-primary")}>{p.price}</Text>
-                  {p.period ? <Text style={twStyle("text-sm text-gray-500")}>{p.period}</Text> : null}
-                </View>
-                {p.description ? (
-                  <Text style={twStyle("mt-1.5 text-sm leading-5 text-gray-600")}>{p.description}</Text>
-                ) : null}
-              </View>
-              <View
-                style={twStyle(
-                  `h-8 w-8 items-center justify-center rounded-full border-2 ${sel ? "border-primary bg-primary" : "border-gray-300 bg-white"}`,
-                )}
-              >
-                {sel ? <Ionicons name="checkmark" size={16} color="#fff" /> : null}
-              </View>
-            </View>
-
-            {p.features && p.features.length > 0 ? (
-              <View style={twStyle("mt-3 gap-1.5 border-t border-gray-100 pt-3")}>
-                {p.features.slice(0, 5).map((f, i) => (
-                  <View key={i} style={twStyle("flex-row items-center gap-2")}>
-                    <Ionicons name="checkmark-circle" size={14} color={sel ? Colors.primary : "#16a34a"} />
-                    <Text style={twStyle("text-xs text-gray-700")}>{f}</Text>
-                  </View>
-                ))}
-                {p.features.length > 5 ? (
-                  <Text style={twStyle("text-xs text-gray-400 ml-5")}>+{p.features.length - 5} more features</Text>
-                ) : null}
-              </View>
-            ) : null}
-          </TouchableOpacity>
-        );
-      })}
+    <View style={twStyle("gap-4")}>
+      <View
+        style={twStyle(
+          "rounded-[1.5rem] border border-indigo-200 bg-indigo-50 px-5 py-4 shadow-sm"
+        )}
+      >
+        <Text style={twStyle("text-[15px] leading-relaxed text-indigo-900")}>
+          Pick the plan that fits today. Free activates instantly — paid plans take you to a secure
+          card payment after you submit. You can upgrade or downgrade any time from settings.
+        </Text>
+      </View>
+      {plans.map((p) => (
+        <PlanCard
+          key={p.id}
+          plan={p}
+          selected={formData.selected_plan_id === p.id}
+          onSelect={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            updateFormData({ selected_plan_id: p.id, selected_plan_name: p.name });
+          }}
+        />
+      ))}
     </View>
   );
 }
@@ -2227,20 +2890,35 @@ function Step14Plan() {
 export function OnboardingStepBody() {
   const { currentStep } = useOnboardingWizard();
   switch (currentStep) {
-    case 1: return <Step1TeamSize />;
-    case 2: return <Step2Identity />;
-    case 3: return <Step3Business />;
-    case 4: return <Step4Payment />;
-    case 5: return <Step5Software />;
-    case 6: return <Step6Payroll />;
-    case 7: return <Step7Location />;
-    case 8: return <Step8Photos />;
-    case 9: return <Step9Zones />;
-    case 10: return <Step10Categories />;
-    case 11: return <Step11Services />;
-    case 12: return <Step12Hours />;
-    case 13: return <Step13Review />;
-    case 14: return <Step14Plan />;
-    default: return null;
+    case 1:
+      return <Step1TeamSize />;
+    case 2:
+      return <Step2Identity />;
+    case 3:
+      return <Step3Business />;
+    case 4:
+      return <Step4Payment />;
+    case 5:
+      return <Step5Software />;
+    case 6:
+      return <Step6Payroll />;
+    case 7:
+      return <Step7Location />;
+    case 8:
+      return <Step8Photos />;
+    case 9:
+      return <Step9Zones />;
+    case 10:
+      return <Step10Categories />;
+    case 11:
+      return <Step11Services />;
+    case 12:
+      return <Step12Hours />;
+    case 13:
+      return <Step13Review />;
+    case 14:
+      return <Step14Plan />;
+    default:
+      return null;
   }
 }

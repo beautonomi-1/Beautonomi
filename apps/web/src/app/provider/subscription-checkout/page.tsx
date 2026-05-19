@@ -7,6 +7,7 @@ import { ChevronLeft, Loader2, Check, AlertCircle } from "lucide-react";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import PartnerNavbar from "../../become-a-partner/components/partner-navbar";
+import { PricingFeatureHtml } from "@/components/pricing/PricingFeatureHtml";
 
 interface PricingPlanCheckout {
   id: string;
@@ -43,16 +44,16 @@ function CartCard({
         </div>
         <div className="min-w-0 flex-1">
           <h3 className="font-semibold text-gray-900">{plan.name}</h3>
-          {plan.description && (
-            <p className="text-sm text-gray-600 mt-0.5">{plan.description}</p>
-          )}
+          {plan.description ? (
+            <div className="mt-0.5 text-sm text-gray-600 [&_a]:text-[#FF0077] [&_a]:underline [&_p]:m-0">
+              <PricingFeatureHtml html={plan.description} className="block leading-snug" />
+            </div>
+          ) : null}
           {plan.is_free ? (
             <div className="mt-4">
               <p className="text-sm text-gray-600">Free plan — no billing period</p>
               <p className="mt-3 text-gray-900 font-semibold">Free</p>
-              <p className="text-xs text-gray-500 mt-1">
-                No payment required. Upgrade anytime.
-              </p>
+              <p className="text-xs text-gray-500 mt-1">No payment required. Upgrade anytime.</p>
             </div>
           ) : (
             <>
@@ -119,7 +120,9 @@ function OrderSummaryCard({
 }) {
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-      <h2 className="text-lg font-semibold text-gray-900 mb-4">{isFree ? "Plan summary" : "Order summary"}</h2>
+      <h2 className="text-lg font-semibold text-gray-900 mb-4">
+        {isFree ? "Plan summary" : "Order summary"}
+      </h2>
       <div className="space-y-3 mb-4">
         <div className="flex justify-between text-sm">
           <span className="text-gray-700">{planName}</span>
@@ -155,8 +158,10 @@ function OrderSummaryCard({
             <Loader2 className="w-5 h-5 animate-spin" />
             {isFree ? "Activating…" : "Redirecting to payment…"}
           </>
+        ) : isFree ? (
+          "Activate Free Plan"
         ) : (
-          isFree ? "Activate Free Plan" : "Continue"
+          "Continue"
         )}
       </button>
       {!isFree && (
@@ -192,6 +197,7 @@ export default function SubscriptionCheckoutPage() {
   const planId = searchParams.get("planId");
   const billingParam = searchParams.get("billing_period");
   const inApp = searchParams.get("in_app") === "1";
+  const returnToDashboard = searchParams.get("return_to") === "dashboard";
 
   const [plan, setPlan] = useState<PricingPlanCheckout | null>(null);
   const [loading, setLoading] = useState(true);
@@ -220,7 +226,10 @@ export default function SubscriptionCheckoutPage() {
           setPlan(data);
           if (data.available_billing_periods.length === 1) {
             setBillingPeriod(data.available_billing_periods[0]);
-          } else if (billingParam === "yearly" && data.available_billing_periods.includes("yearly")) {
+          } else if (
+            billingParam === "yearly" &&
+            data.available_billing_periods.includes("yearly")
+          ) {
             setBillingPeriod("yearly");
           }
         }
@@ -256,8 +265,18 @@ export default function SubscriptionCheckoutPage() {
           toast.success("Free plan activated successfully!");
           // In-app checkout should mirror paid flow completion so the native
           // WebView listener can close and return to the app screen.
-          const inAppSuffix = inApp ? "?payment_success=true&in_app=1" : "";
-          router.push(`/provider/subscription${inAppSuffix}`);
+          if (inApp) {
+            const dashboardReturnParam = returnToDashboard ? "&return_to=dashboard" : "";
+            router.push(
+              `/provider/subscription?payment_success=true&in_app=1${dashboardReturnParam}`
+            );
+            return;
+          }
+          if (returnToDashboard) {
+            router.replace("/provider/dashboard?subscription_success=1");
+            return;
+          }
+          router.push("/provider/subscription");
           return;
         }
         setError("Could not activate free plan. Please try again.");
@@ -271,6 +290,7 @@ export default function SubscriptionCheckoutPage() {
         plan_id: planId,
         billing_period: billingPeriod,
         ...(inApp && { in_app: true }),
+        ...(returnToDashboard && { return_to_dashboard: true }),
       });
       const data = (res as any)?.data;
       const authUrl = data?.authorization_url;
@@ -281,14 +301,12 @@ export default function SubscriptionCheckoutPage() {
       }
       setError("Could not start payment. Please try again.");
     } catch (err) {
-      const msg =
-        err instanceof FetchError
-          ? err.message
-          : "Checkout failed. Please try again.";
+      const msg = err instanceof FetchError ? err.message : "Checkout failed. Please try again.";
       if (err instanceof FetchError && err.status === 401) {
         toast.error("Please sign in to complete your subscription.");
         const inAppParam = inApp ? "&in_app=1" : "";
-        const redirectPath = `/provider/subscription-checkout?planId=${planId}&billing_period=${billingPeriod}${inAppParam}`;
+        const dashboardReturnParam = returnToDashboard ? "&return_to=dashboard" : "";
+        const redirectPath = `/provider/subscription-checkout?planId=${planId}&billing_period=${billingPeriod}${inAppParam}${dashboardReturnParam}`;
         router.push(`/?login=true&redirect=${encodeURIComponent(redirectPath)}`);
         return;
       }
@@ -314,10 +332,7 @@ export default function SubscriptionCheckoutPage() {
         <PartnerNavbar />
         <div className="max-w-2xl mx-auto px-4 py-12 text-center">
           <p className="text-gray-600 mb-4">No plan selected.</p>
-          <Link
-            href="/pricing"
-            className="text-[#FF0077] font-medium hover:underline"
-          >
+          <Link href="/pricing" className="text-[#FF0077] font-medium hover:underline">
             View pricing plans
           </Link>
         </div>
@@ -343,10 +358,7 @@ export default function SubscriptionCheckoutPage() {
         <PartnerNavbar />
         <div className="max-w-2xl mx-auto px-4 py-12 text-center">
           <p className="text-gray-600 mb-4">{error || "Plan not found."}</p>
-          <Link
-            href="/pricing"
-            className="text-[#FF0077] font-medium hover:underline"
-          >
+          <Link href="/pricing" className="text-[#FF0077] font-medium hover:underline">
             View pricing plans
           </Link>
         </div>
@@ -360,13 +372,10 @@ export default function SubscriptionCheckoutPage() {
         <PartnerNavbar />
         <div className="max-w-2xl mx-auto px-4 py-12 text-center">
           <p className="text-gray-600 mb-4">
-            This plan is not available for subscription at the moment. Please
-            contact support or choose another plan.
+            This plan is not available for subscription at the moment. Please contact support or
+            choose another plan.
           </p>
-          <Link
-            href="/pricing"
-            className="text-[#FF0077] font-medium hover:underline"
-          >
+          <Link href="/pricing" className="text-[#FF0077] font-medium hover:underline">
             View pricing plans
           </Link>
         </div>
@@ -381,24 +390,36 @@ export default function SubscriptionCheckoutPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <PartnerNavbar />
-      <div className="max-w-5xl mx-auto px-4 py-8">
+      <div className="max-w-5xl mx-auto px-4 py-6 sm:py-8">
         <Link
           href="/pricing"
-          className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 mb-6"
+          className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 mb-4 sm:mb-6"
         >
           <ChevronLeft className="w-4 h-4" />
           Back to pricing
         </Link>
-        <h1 className="text-2xl font-bold text-gray-900 mb-8">
-          {plan.is_free ? "Activate your free plan" : "Complete your subscription"}
-        </h1>
-        <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-          <span className="font-semibold text-slate-900">Checkout behavior:</span>{" "}
-          {plan.is_free
-            ? "Free plan activates instantly."
-            : "Paid plan continues for card payment and returns here automatically."}
+        <div className="mb-5 sm:mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
+            {plan.is_free ? "Activate your free plan" : "Complete your subscription"}
+          </h1>
+          <span
+            className={`inline-flex w-fit items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${
+              plan.is_free
+                ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200"
+                : "bg-[#FF0077]/10 text-[#FF0077] ring-1 ring-[#FF0077]/20"
+            }`}
+          >
+            <Check className="h-3.5 w-3.5" />
+            {plan.is_free ? "No payment needed" : "Secure card payment"}
+          </span>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div className="mb-5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+          <span className="font-semibold text-slate-900">What happens next:</span>{" "}
+          {plan.is_free
+            ? "Tap Activate and you're live — no card required."
+            : "We'll send you to Paystack to enter your card, then bring you straight back here."}
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
           <div className="order-2 md:order-1">
             <CartCard
               plan={plan}

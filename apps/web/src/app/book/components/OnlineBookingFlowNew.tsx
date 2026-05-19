@@ -45,13 +45,14 @@ import {
   buildRetailCartRowsFromPublicPackage,
   cartMatchesPublicCatalogPackage,
   coerceSelectedDate,
+  formatBusinessDayYYYYMMDD,
   mergeExpressProductCartLines,
   resolvePackageOfferingsFromFlatMenu,
+  startOfBusinessDayLocalDate,
   type ProviderServiceLike,
   type ResolvedOfferingLine,
   type PublicProductCatalogRow,
 } from "@beautonomi/utils";
-import { formatLocalDateYYYYMMDD } from "@/lib/dates/format-local-date-yyyymmdd";
 import { parseProductsQueryParam, type ProductCartLine } from "@/lib/express-booking/prefill";
 import {
   BOOKING_ACCENT,
@@ -1089,7 +1090,9 @@ export default function OnlineBookingFlowNew({
     const day = coerceSelectedDate(bookingData.selectedDate);
     if (step !== "schedule" || !day || bookingData.selectedServices.length === 0) return;
     const staffId = bookingData.selectedStaff?.id === "any" ? "any" : bookingData.selectedStaff?.id ?? "any";
-    const dateStr = formatLocalDateYYYYMMDD(day);
+    // §Booking-slot-audit 2026-05: send the provider business date so cross-TZ
+    // customers don't request the wrong salon day near midnight boundaries.
+    const dateStr = formatBusinessDayYYYYMMDD(day, provider.timezone ?? null);
     const { durationMinutes, bufferMinutes } = slotParams;
     const serviceId = bookingData.selectedServices[0].offering_id;
     setLoadingSlots(true);
@@ -1145,11 +1148,11 @@ export default function OnlineBookingFlowNew({
       const staffId = bookingData.selectedStaff?.id === "any" ? "any" : bookingData.selectedStaff?.id ?? "any";
       const { durationMinutes, bufferMinutes } = slotParams;
       const now = new Date();
-      const dateStr = (d: Date) => formatLocalDateYYYYMMDD(d);
+      const tzForDates = provider.timezone ?? null;
+      const dateStr = (d: Date) => formatBusinessDayYYYYMMDD(d, tzForDates);
       for (let offset = 0; offset < Math.min(14, settings.max_advance_days); offset++) {
-        const d = new Date();
-        d.setHours(0, 0, 0, 0);
-        d.setDate(d.getDate() + offset);
+        // §Booking-slot-audit 2026-05: walk forward by provider business days.
+        const d = startOfBusinessDayLocalDate(tzForDates, offset);
         try {
           const url = `/api/public/providers/${provider.slug}/availability?date=${dateStr(d)}&service_id=${serviceId}&staff_id=${staffId}&duration_minutes=${durationMinutes}&buffer_minutes=${bufferMinutes}&location_id=${bookingData.selectedLocation?.id ?? ""}&min_notice_minutes=${settings.min_notice_minutes}&max_advance_days=${settings.max_advance_days}${multiServiceIdsParam}${excludeHoldParam}${travelBufferParam}`;
           const res = await fetcher.get<{ data: any[] }>(url, AVAILABILITY_FETCH_OPTS);
@@ -1174,8 +1177,7 @@ export default function OnlineBookingFlowNew({
         }
       }
       if (!cancelled) {
-        const fallback = new Date();
-        fallback.setHours(0, 0, 0, 0);
+        const fallback = startOfBusinessDayLocalDate(provider.timezone ?? null);
         setBookingData((prev) => ({ ...prev, selectedDate: fallback, selectedSlot: null, selectedResourceIds: [] }));
       }
     })();
@@ -1189,6 +1191,7 @@ export default function OnlineBookingFlowNew({
     bookingData.selectedStaff,
     bookingData.selectedLocation,
     provider.slug,
+    provider.timezone,
     settings.max_advance_days,
     settings.min_notice_minutes,
     slotParams,
@@ -1210,16 +1213,16 @@ export default function OnlineBookingFlowNew({
   };
 
   const handleNextAvailable = async () => {
-    const dateStr = (d: Date) => formatLocalDateYYYYMMDD(d);
+    const tzForDates = provider.timezone ?? null;
+    const dateStr = (d: Date) => formatBusinessDayYYYYMMDD(d, tzForDates);
     const staffId = bookingData.selectedStaff?.id === "any" ? "any" : bookingData.selectedStaff?.id ?? "any";
     const { durationMinutes, bufferMinutes } = slotParams;
     const serviceId = bookingData.selectedServices[0]?.offering_id;
     if (!serviceId) return;
     const now = new Date();
     for (let offset = 0; offset < Math.min(14, settings.max_advance_days); offset++) {
-      const d = new Date();
-      d.setHours(0, 0, 0, 0);
-      d.setDate(d.getDate() + offset);
+      // §Booking-slot-audit 2026-05: walk by provider business days, not device-local.
+      const d = startOfBusinessDayLocalDate(tzForDates, offset);
       const url = `/api/public/providers/${provider.slug}/availability?date=${dateStr(d)}&service_id=${serviceId}&staff_id=${staffId}&duration_minutes=${durationMinutes}&buffer_minutes=${bufferMinutes}&location_id=${bookingData.selectedLocation?.id ?? ""}&min_notice_minutes=${settings.min_notice_minutes}&max_advance_days=${settings.max_advance_days}${multiServiceIdsParam}${excludeHoldParam}${travelBufferParam}`;
       const res = await fetcher.get<{ data: any[] }>(url, AVAILABILITY_FETCH_OPTS).catch(() => ({ data: [] }));
       const raw = (res as any)?.data?.slots ?? (res as any)?.data ?? [];

@@ -3,8 +3,8 @@
  * Calls existing backend API endpoints at /api/provider/yoco/*.
  */
 import { useState, useEffect, useCallback } from "react";
-import { Alert } from "react-native";
-import { api } from "@/lib/api-client";
+import { Alert, Linking } from "react-native";
+import { api, getApiBaseUrl } from "@/lib/api-client";
 
 /* ─── Types ─── */
 
@@ -12,7 +12,12 @@ export interface YocoDevice {
   id: string;
   name: string;
   serial_number: string;
-  device_type: "web_pos" | "card_machine";
+  /**
+   * §Yoco-OAuth 2026-05: `virtual_checkout` devices have no physical Yoco
+   * terminal — they mint a hosted-checkout link/QR per charge instead.
+   */
+  device_type: "web_pos" | "card_machine" | "virtual_checkout";
+  credential_mode?: "web_pos" | "virtual_checkout";
   location_id: string | null;
   location_name?: string;
   is_active: boolean;
@@ -41,6 +46,18 @@ export interface YocoIntegration {
   created_at: string;
   /** Present on GET when plan does not include Yoco (UI can prompt upgrade). */
   subscription_required?: boolean;
+  /** §Yoco-OAuth 2026-05 — see migration 610. */
+  credential_mode?: "none" | "checkout" | "oauth";
+  environment?: "sandbox" | "live";
+  oauth_connected?: boolean;
+  oauth_business_name?: string | null;
+  oauth_expires_at?: string | null;
+  oauth_scopes?: string[];
+  oauth_last_refresh_error?: string | null;
+  /** §Yoco-OAuth 2026-05 — flips the "Connect Yoco" CTA on/off per tenant rollout. */
+  oauth_v2_enabled?: boolean;
+  /** §Yoco-OAuth 2026-05 — when set, suppress the reconnect-for-terminals banner. */
+  reconnect_banner_dismissed_at?: string | null;
 }
 
 export interface YocoPaymentRequest {
@@ -58,6 +75,14 @@ export interface YocoPaymentResult {
   reference: string;
   amount_cents: number;
   receipt_url?: string;
+  /**
+   * §Yoco-OAuth 2026-05: virtual_checkout payments return a hosted-checkout
+   * URL the customer pays at. The mobile UI should render a QR sheet that
+   * encodes this URL and stop polling until the webhook flips status.
+   */
+  credential_mode?: "web_pos" | "virtual_checkout";
+  checkout_url?: string;
+  qr_payload?: string;
 }
 
 /* ─── Integration Status ─── */
@@ -65,11 +90,19 @@ export interface YocoPaymentResult {
 function normalizeIntegrationPayload(raw: Record<string, unknown> | null | undefined): YocoIntegration | null {
   if (!raw || typeof raw !== "object") return null;
   const pub = raw.public_key;
-  /** GET /api/provider/yoco/integration sets this when both public + secret are stored (required for Web POS Bearer calls). */
+  /** GET /api/provider/yoco/integration sets this when any usable credential is stored (OAuth token OR Checkout API key). */
   const hasKey =
     typeof raw.api_key_set === "boolean"
       ? raw.api_key_set
       : (typeof pub === "string" && pub.length > 0);
+  const credentialMode =
+    raw.credential_mode === "oauth" || raw.credential_mode === "checkout"
+      ? raw.credential_mode
+      : "none";
+  const environment = raw.environment === "sandbox" ? "sandbox" : "live";
+  const scopes = Array.isArray(raw.oauth_scopes)
+    ? raw.oauth_scopes.filter((s): s is string => typeof s === "string")
+    : undefined;
   return {
     id: typeof raw.id === "string" ? raw.id : "",
     provider_id: typeof raw.provider_id === "string" ? raw.provider_id : "",
@@ -78,6 +111,23 @@ function normalizeIntegrationPayload(raw: Record<string, unknown> | null | undef
     webhook_configured: raw.webhook_configured === true,
     created_at: typeof raw.created_at === "string" ? raw.created_at : new Date().toISOString(),
     subscription_required: raw.subscription_required === true,
+    credential_mode: credentialMode,
+    environment,
+    oauth_connected: raw.oauth_connected === true,
+    oauth_business_name:
+      typeof raw.oauth_business_name === "string" ? raw.oauth_business_name : null,
+    oauth_expires_at:
+      typeof raw.oauth_expires_at === "string" ? raw.oauth_expires_at : null,
+    oauth_scopes: scopes,
+    oauth_last_refresh_error:
+      typeof raw.oauth_last_refresh_error === "string"
+        ? raw.oauth_last_refresh_error
+        : null,
+    oauth_v2_enabled: raw.oauth_v2_enabled === true,
+    reconnect_banner_dismissed_at:
+      typeof raw.reconnect_banner_dismissed_at === "string"
+        ? raw.reconnect_banner_dismissed_at
+        : null,
   };
 }
 
@@ -146,7 +196,87 @@ export function useYocoIntegration() {
     }
   }, [load]);
 
-  return { integration, loading, error, reload: load, connect, disconnect };
+  /**
+   * §Yoco-OAuth 2026-05: launch the in-app browser at /oauth/authorize so the
+   * provider can sign in with Yoco. The web callback redirects to the
+   * Beautonomi settings page; the provider then taps "Return to app" or we
+   * detect their next foreground and refetch the integration status to flip
+   * the UI to "Connected".
+   *
+   * NB: we deliberately use Linking.openURL rather than WebBrowser/AuthSession
+   * here so the cookie session — needed by /oauth/authorize's requireRole —
+   * is the same one the provider already used to sign in on web. AuthSession
+   * runs in a sandboxed Safari/Custom Tab without those cookies.
+   */
+  const connectOauth = useCallback(async () => {
+    try {
+      const base = (getApiBaseUrl() ?? "").replace(/\/$/, "");
+      if (!base) {
+        Alert.alert("Could not start Yoco connection", "Backend URL is not configured.");
+        return false;
+      }
+      const url = `${base}/api/provider/yoco/oauth/authorize?return_to=${encodeURIComponent(
+        "/provider/settings/sales/yoco-integration?from=app",
+      )}`;
+      const can = await Linking.canOpenURL(url);
+      if (!can) {
+        Alert.alert("Could not start Yoco connection", `URL not supported: ${url}`);
+        return false;
+      }
+      await Linking.openURL(url);
+      return true;
+    } catch (err) {
+      console.error("Yoco OAuth launch failed:", err);
+      Alert.alert("Could not start Yoco connection", "Please try again.");
+      return false;
+    }
+  }, []);
+
+  const disconnectOauth = useCallback(async () => {
+    try {
+      const res = await api.post("/api/provider/yoco/oauth/disconnect", {});
+      if (res.error) {
+        Alert.alert("Error", res.error.message || "Failed to disconnect");
+        return false;
+      }
+      await load();
+      return true;
+    } catch {
+      Alert.alert("Error", "Failed to disconnect Yoco");
+      return false;
+    }
+  }, [load]);
+
+  /**
+   * §Yoco-OAuth 2026-05: dismiss the "reconnect for terminals" banner shown
+   * to providers stuck in credential_mode='checkout'. Server records the
+   * timestamp so the banner stays gone until they actively want it back
+   * (e.g. after disconnecting OAuth).
+   */
+  const dismissReconnectBanner = useCallback(async () => {
+    try {
+      const res = await api.post("/api/provider/yoco/reconnect-banner", {
+        action: "dismiss",
+      });
+      if (res.error) return false;
+      await load();
+      return true;
+    } catch {
+      return false;
+    }
+  }, [load]);
+
+  return {
+    integration,
+    loading,
+    error,
+    reload: load,
+    connect,
+    connectOauth,
+    disconnect,
+    disconnectOauth,
+    dismissReconnectBanner,
+  };
 }
 
 /* ─── Device Management ─── */
@@ -170,8 +300,14 @@ export function useYocoDevices() {
         ? row.serial_number
         : fallbackDeviceId;
     const deviceType =
-      row.device_type === "card_machine" || row.device_type === "web_pos"
+      row.device_type === "card_machine" ||
+      row.device_type === "web_pos" ||
+      row.device_type === "virtual_checkout"
         ? row.device_type
+        : "web_pos";
+    const credentialMode =
+      row.credential_mode === "virtual_checkout"
+        ? "virtual_checkout"
         : "web_pos";
     const isActive =
       typeof row.is_active === "boolean"
@@ -193,6 +329,7 @@ export function useYocoDevices() {
       name: typeof row.name === "string" && row.name.length > 0 ? row.name : "Yoco device",
       serial_number: serialNumber,
       device_type: deviceType,
+      credential_mode: credentialMode,
       location_id: typeof row.location_id === "string" ? row.location_id : null,
       location_name: typeof row.location_name === "string" ? row.location_name : undefined,
       is_active: isActive,
@@ -329,6 +466,12 @@ function toPaymentResult(row: Record<string, unknown>): YocoPaymentResult {
       : typeof row.amount === "number"
         ? row.amount
         : 0;
+  const credentialMode =
+    row.credential_mode === "virtual_checkout"
+      ? "virtual_checkout"
+      : row.credential_mode === "web_pos"
+        ? "web_pos"
+        : undefined;
   return {
     id: String(row.id ?? ""),
     status: normalizePaymentStatus(typeof row.status === "string" ? row.status : undefined),
@@ -338,6 +481,10 @@ function toPaymentResult(row: Record<string, unknown>): YocoPaymentResult {
       typeof row.receipt_url === "string"
         ? row.receipt_url
         : undefined,
+    credential_mode: credentialMode,
+    checkout_url:
+      typeof row.checkout_url === "string" ? row.checkout_url : undefined,
+    qr_payload: typeof row.qr_payload === "string" ? row.qr_payload : undefined,
   };
 }
 
@@ -354,25 +501,42 @@ export function useYocoPayment() {
         );
         if (res.error) {
           const code = res.error.code;
+          const isOauthIssue =
+            code === "YOCO_OAUTH_EXPIRED" ||
+            code === "YOCO_OAUTH_REQUIRED" ||
+            code === "YOCO_OAUTH_APP_NOT_CONFIGURED";
           const msg =
             code === "SUBSCRIPTION_REQUIRED"
               ? "Upgrade your plan to use Yoco card payments."
-              : code === "TERMINAL_UNAVAILABLE" || code === "TERMINAL_NOT_FOUND"
+              : isOauthIssue
                 ? res.error.message ||
-                  "Could not reach your Yoco terminal. Check that it is powered on, online, and paired, then try again."
-                : res.error.message || "Card payment could not be processed";
+                  "Your Yoco connection has expired. Open Payment Settings and tap Connect Yoco."
+                : code === "TERMINAL_UNAVAILABLE" || code === "TERMINAL_NOT_FOUND"
+                  ? res.error.message ||
+                    "Could not reach your Yoco terminal. Check that it is powered on, online, and paired, then try again."
+                  : res.error.message || "Card payment could not be processed";
           const title =
             code === "SUBSCRIPTION_REQUIRED"
               ? "Yoco not available"
-              : code === "TERMINAL_UNAVAILABLE" || code === "TERMINAL_NOT_FOUND"
-                ? "Terminal unavailable"
-                : "Payment Failed";
+              : isOauthIssue
+                ? "Reconnect Yoco"
+                : code === "TERMINAL_UNAVAILABLE" || code === "TERMINAL_NOT_FOUND"
+                  ? "Terminal unavailable"
+                  : "Payment Failed";
           Alert.alert(title, msg);
           return null;
         }
         const raw = res.data;
         if (!raw || typeof raw !== "object") return null;
         const data = toPaymentResult(raw as Record<string, unknown>);
+
+        // §Yoco-OAuth 2026-05: virtual_checkout payments return a hosted-page
+        // URL that the customer pays on their own phone/tablet. There is no
+        // terminal to poll — the webhook flips status when the customer is
+        // done. Return immediately so the UI can render a QR sheet.
+        if (data.credential_mode === "virtual_checkout") {
+          return data;
+        }
 
         // If still pending, poll until success/fail or timeout (avoids "check the device" without follow-up)
         if (data.status === "pending" && data.id) {
