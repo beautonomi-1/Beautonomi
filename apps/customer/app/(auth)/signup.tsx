@@ -34,6 +34,13 @@ import * as Localization from "expo-localization";
 import { getDeviceDefaultCountryDial } from "@/lib/device-default-country-dial";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { getSocialAuthConfig } from "@/lib/third-party-config";
+import { OtpDigitRow } from "@/components/OtpDigitRow";
+import {
+  isCompleteSupabaseSmsOtp,
+  normalizeSupabaseSmsOtpToken,
+  SUPABASE_AUTH_OTP_LENGTH,
+  SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS,
+} from "@/lib/supabase-sms-otp";
 
 const REFERRAL_REF_KEY = "referral_ref";
 const PENDING_SIGNUP_SOURCE_KEY = "beautonomi_pending_signup_source";
@@ -117,7 +124,7 @@ export default function SignupScreen() {
   useScreenTracking("Signup");
   const { t } = useTranslation();
   const as = useCallback((key: string) => t(`customer.mobile.screens.authSignup.${key}`), [t]);
-  const { signUpWithEmail, signInWithOAuth } = useAuth();
+  const { signUpWithEmail, signInWithOAuth, verifySignupEmailOtp, resendSignupConfirmationEmail } = useAuth();
   const params = useLocalSearchParams<{
     ref?: string;
     return_to?: string;
@@ -172,6 +179,26 @@ export default function SignupScreen() {
   const [signupSource, setSignupSource] = useState<string | null>(null);
   const [showLanguagePicker, setShowLanguagePicker] = useState(false);
   const [showSignupSourcePicker, setShowSignupSourcePicker] = useState(false);
+  /** When true, replace the form with the email confirmation OTP step (after successful signup). */
+  const [awaitingSignupVerification, setAwaitingSignupVerification] = useState(false);
+  const [signupOtpCode, setSignupOtpCode] = useState("");
+  const [verifyingSignupOtp, setVerifyingSignupOtp] = useState(false);
+  const [resendingSignupOtp, setResendingSignupOtp] = useState(false);
+  const [signupOtpResendCooldown, setSignupOtpResendCooldown] = useState(0);
+  const [signupOtpError, setSignupOtpError] = useState<string | null>(null);
+  /** Captured at signup time so verification step can persist them after the session lands. */
+  const pendingProfileRef = useRef<{
+    fullPhone: string;
+    signupSource: string | null;
+    preferredLanguage: string;
+    referralCode: string | null;
+  } | null>(null);
+
+  useEffect(() => {
+    if (signupOtpResendCooldown <= 0) return;
+    const id = setInterval(() => setSignupOtpResendCooldown((s) => (s > 0 ? s - 1 : 0)), 1000);
+    return () => clearInterval(id);
+  }, [signupOtpResendCooldown]);
 
   // Capture ref from route params, the cold-start URL, AND warm deep-link
   // events (user tapping a referral link while the app is in the foreground).
@@ -258,6 +285,35 @@ export default function SignupScreen() {
     return Object.keys(newErrors).length === 0;
   }
 
+  async function finalizeSignedUpProfile() {
+    const pending = pendingProfileRef.current;
+    if (!pending) return;
+    const profilePayload: { phone?: string; signup_source?: string; preferred_language?: string } = {};
+    if (pending.fullPhone) profilePayload.phone = pending.fullPhone;
+    if (pending.signupSource) profilePayload.signup_source = pending.signupSource;
+    profilePayload.preferred_language = pending.preferredLanguage;
+    try {
+      await api.patch("/api/me/profile", profilePayload);
+    } catch {
+      // Non-blocking
+    }
+    try {
+      await changeLanguage(pending.preferredLanguage);
+    } catch {
+      // Non-blocking
+    }
+    const ref = pending.referralCode?.trim() || (await AsyncStorage.getItem(REFERRAL_REF_KEY));
+    if (ref?.trim()) {
+      try {
+        await api.post("/api/me/referrals/attach", { referral_code: ref.trim() });
+      } catch {
+        // Non-blocking
+      }
+      await AsyncStorage.removeItem(REFERRAL_REF_KEY);
+    }
+    pendingProfileRef.current = null;
+  }
+
   async function handleSignup() {
     if (!validate()) return;
     haptic.medium();
@@ -268,41 +324,82 @@ export default function SignupScreen() {
         Alert.alert(as("signUpFailedTitle"), result.error.message);
         return;
       }
+
+      const fullPhone =
+        phone.trim() ? `${countryCode}${stripLeadingZero(phone.replace(/\D/g, ""))}`.trim() : "";
+      pendingProfileRef.current = {
+        fullPhone,
+        signupSource,
+        preferredLanguage,
+        referralCode: referralCode ?? null,
+      };
+
       if (result.requiresConfirmation) {
         haptic.success();
         trackSignUp("email");
         if (signupSource) AsyncStorage.setItem(PENDING_SIGNUP_SOURCE_KEY, signupSource).catch(() => {});
         AsyncStorage.setItem(PENDING_PREFERRED_LANGUAGE_KEY, preferredLanguage).catch(() => {});
-        Alert.alert(as("checkEmailTitle"), as("checkEmailBody"), [
-          { text: t("common.ok"), onPress: () => router.replace("/(auth)/login") },
-        ]);
+        setSignupOtpCode("");
+        setSignupOtpError(null);
+        setSignupOtpResendCooldown(SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS);
+        setAwaitingSignupVerification(true);
         return;
       }
-      // Session is available: persist phone, signup source, language, and attach referral
+      // Session is available immediately (Supabase email confirmation off):
+      // persist phone, signup source, language, and attach referral.
       trackSignUp("email");
-      const fullPhone =
-        phone.trim() ? `${countryCode}${stripLeadingZero(phone.replace(/\D/g, ""))}`.trim() : "";
-      const profilePayload: { phone?: string; signup_source?: string; preferred_language?: string } = {};
-      if (fullPhone) profilePayload.phone = fullPhone;
-      if (signupSource) profilePayload.signup_source = signupSource;
-      profilePayload.preferred_language = preferredLanguage;
-      api.patch("/api/me/profile", profilePayload).catch(() => {});
-      await changeLanguage(preferredLanguage);
-      const refToAttach = referralCode ?? (await AsyncStorage.getItem(REFERRAL_REF_KEY));
-      if (refToAttach?.trim()) {
-        try {
-          await api.post("/api/me/referrals/attach", { referral_code: refToAttach.trim() });
-        } catch {
-          // Non-blocking
-        }
-        await AsyncStorage.removeItem(REFERRAL_REF_KEY);
-      }
+      await finalizeSignedUpProfile();
       haptic.success();
       await navigateAfterNewCustomerSignup(params.return_to);
     } catch (e) {
       Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), e instanceof Error ? e.message : as("genericError"));
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleVerifySignupOtp(codeOverride?: string) {
+    const token = normalizeSupabaseSmsOtpToken(codeOverride ?? signupOtpCode);
+    if (!isCompleteSupabaseSmsOtp(token)) return;
+    setVerifyingSignupOtp(true);
+    setSignupOtpError(null);
+    try {
+      const { error } = await verifySignupEmailOtp(email.trim(), token);
+      if (error) {
+        setSignupOtpError(error.message);
+        haptic.warning();
+        return;
+      }
+      haptic.success();
+      try {
+        await finalizeSignedUpProfile();
+      } catch {
+        // Non-blocking
+      }
+      await navigateAfterNewCustomerSignup(params.return_to);
+    } catch (e) {
+      setSignupOtpError(e instanceof Error ? e.message : as("genericError"));
+    } finally {
+      setVerifyingSignupOtp(false);
+    }
+  }
+
+  async function handleResendSignupOtp() {
+    if (signupOtpResendCooldown > 0 || resendingSignupOtp) return;
+    setResendingSignupOtp(true);
+    setSignupOtpError(null);
+    try {
+      const { error } = await resendSignupConfirmationEmail(email.trim());
+      if (error) {
+        setSignupOtpError(error.message);
+        return;
+      }
+      setSignupOtpCode("");
+      setSignupOtpResendCooldown(SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS);
+    } catch (e) {
+      setSignupOtpError(e instanceof Error ? e.message : as("genericError"));
+    } finally {
+      setResendingSignupOtp(false);
     }
   }
 
@@ -363,6 +460,174 @@ export default function SignupScreen() {
     paddingBottom: 48,
     ...(formNarrow ? { alignItems: "center" as const } : {}),
   };
+
+  if (awaitingSignupVerification) {
+    return (
+      <SafeAreaView edges={["top", "left", "right"]} style={{ flex: 1, backgroundColor: Colors.gray[50] }}>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={scrollContentStyle}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={formStyle}>
+              <TouchableOpacity
+                onPress={() => {
+                  setAwaitingSignupVerification(false);
+                  setSignupOtpCode("");
+                  setSignupOtpError(null);
+                }}
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 22,
+                  backgroundColor: Colors.white,
+                  borderWidth: 1,
+                  borderColor: Colors.gray[200],
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginBottom: 20,
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Go back to edit signup details"
+              >
+                <Ionicons name="arrow-back" size={20} color="#111827" />
+              </TouchableOpacity>
+
+              <View
+                style={{
+                  borderWidth: 1,
+                  borderColor: "#A7F3D0",
+                  backgroundColor: "#ECFDF5",
+                  borderRadius: 16,
+                  padding: 20,
+                  marginBottom: 16,
+                }}
+              >
+                <View
+                  style={{
+                    alignSelf: "center",
+                    width: 52,
+                    height: 52,
+                    borderRadius: 26,
+                    backgroundColor: "#D1FAE5",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    marginBottom: 14,
+                  }}
+                >
+                  <Ionicons name="checkmark-circle" size={28} color="#059669" />
+                </View>
+                <Text style={{ textAlign: "center", fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 6 }}>
+                  Verify your email
+                </Text>
+                <Text style={{ textAlign: "center", fontSize: 13, color: "#4B5563", marginBottom: 6 }}>
+                  We sent a {SUPABASE_AUTH_OTP_LENGTH}-digit verification code to:
+                </Text>
+                <Text style={{ textAlign: "center", fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 16 }}>
+                  {email.trim()}
+                </Text>
+
+                <OtpDigitRow
+                  value={signupOtpCode}
+                  onChange={(v) => {
+                    setSignupOtpCode(v);
+                    if (signupOtpError) setSignupOtpError(null);
+                  }}
+                  onComplete={(code) => {
+                    if (!verifyingSignupOtp && isCompleteSupabaseSmsOtp(code)) {
+                      void handleVerifySignupOtp(code);
+                    }
+                  }}
+                  disabled={verifyingSignupOtp}
+                  autoFocus
+                  accessibilityLabelPrefix="Signup verification code"
+                />
+
+                {signupOtpError ? (
+                  <Text style={{ marginTop: 12, textAlign: "center", fontSize: 12, color: "#EF4444" }}>
+                    {signupOtpError}
+                  </Text>
+                ) : null}
+
+                <TouchableOpacity
+                  onPress={() => void handleVerifySignupOtp()}
+                  disabled={verifyingSignupOtp || !isCompleteSupabaseSmsOtp(signupOtpCode)}
+                  style={{
+                    marginTop: 16,
+                    backgroundColor: PRIMARY,
+                    borderRadius: RADIUS_BUTTON,
+                    paddingVertical: 14,
+                    alignItems: "center",
+                    opacity: verifyingSignupOtp || !isCompleteSupabaseSmsOtp(signupOtpCode) ? 0.6 : 1,
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Verify and continue"
+                >
+                  {verifyingSignupOtp ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={{ color: "#fff", fontSize: 15, fontWeight: "700" }}>Verify & continue</Text>
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => void handleResendSignupOtp()}
+                  disabled={resendingSignupOtp || signupOtpResendCooldown > 0}
+                  style={{
+                    marginTop: 10,
+                    backgroundColor: "#fff",
+                    borderRadius: RADIUS_BUTTON,
+                    borderWidth: 1,
+                    borderColor: "#A7F3D0",
+                    paddingVertical: 12,
+                    alignItems: "center",
+                    opacity: resendingSignupOtp || signupOtpResendCooldown > 0 ? 0.6 : 1,
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Resend verification code"
+                >
+                  {resendingSignupOtp ? (
+                    <ActivityIndicator color={PRIMARY} />
+                  ) : signupOtpResendCooldown > 0 ? (
+                    <Text style={{ color: "#374151", fontSize: 14, fontWeight: "600" }}>
+                      Resend code in {signupOtpResendCooldown}s
+                    </Text>
+                  ) : (
+                    <Text style={{ color: "#374151", fontSize: 14, fontWeight: "600" }}>
+                      Resend verification code
+                    </Text>
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => {
+                    setAwaitingSignupVerification(false);
+                    setSignupOtpCode("");
+                    setSignupOtpError(null);
+                  }}
+                  style={{ marginTop: 14, alignItems: "center" }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Go back to edit signup details"
+                >
+                  <Text style={{ color: "#6B7280", fontSize: 13 }}>Wrong email? Go back and edit</Text>
+                </TouchableOpacity>
+              </View>
+
+              <Text style={{ fontSize: 11, color: "#9CA3AF", textAlign: "center" }}>
+                No code in your inbox? The Supabase &quot;Confirm signup&quot; template must include {"{{ .Token }}"}.
+                You can also tap the confirmation link in the email — both work.
+              </Text>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView

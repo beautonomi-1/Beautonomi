@@ -31,6 +31,7 @@ import {
   signInWithOAuth,
   resendVerificationEmail,
   buildEmailConfirmationRedirectUrl,
+  verifySignupEmailOtp,
 } from "@/lib/supabase/auth";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
@@ -49,6 +50,8 @@ import {
   normalizeSupabaseAuthPhone,
   normalizeSupabaseSmsOtpToken,
   isCompleteOtpForLength,
+  isCompleteSupabaseSmsOtp,
+  SUPABASE_AUTH_OTP_LENGTH,
   SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS,
   SUPABASE_SMS_OTP_RESEND_COOLDOWN_SECONDS,
 } from "@/lib/supabase/auth-sms-otp";
@@ -164,6 +167,11 @@ export default function LoginModal({
   /** After email/password signup when Supabase requires confirmation — replaces the form with a clear next step. */
   const [awaitingEmailVerification, setAwaitingEmailVerification] = useState(false);
   const [isResendingVerification, setIsResendingVerification] = useState(false);
+  /** Numeric OTP entered on the signup confirmation step (email/password flow). */
+  const [passwordSignupOtpCode, setPasswordSignupOtpCode] = useState("");
+  const [isVerifyingPasswordSignupOtp, setIsVerifyingPasswordSignupOtp] = useState(false);
+  /** Resend cooldown (seconds) for the signup OTP — distinct from the login email OTP cooldown. */
+  const [signupVerificationResendCooldown, setSignupVerificationResendCooldown] = useState(0);
   const [showPassword, setShowPassword] = useState(false);
   const [otpSent, setOtpSent] = useState(false);
   const [otpCode, setOtpCode] = useState("");
@@ -265,6 +273,9 @@ export default function LoginModal({
       setPhoneFull("");
       setShowResendVerification(false);
       setAwaitingEmailVerification(false);
+      setPasswordSignupOtpCode("");
+      setIsVerifyingPasswordSignupOtp(false);
+      setSignupVerificationResendCooldown(0);
       setShowPassword(false);
       setOtpSent(false);
       setOtpCode("");
@@ -342,6 +353,15 @@ export default function LoginModal({
     );
     return () => window.clearInterval(id);
   }, [emailOtpResendCooldown]);
+
+  useEffect(() => {
+    if (signupVerificationResendCooldown <= 0) return;
+    const id = window.setInterval(
+      () => setSignupVerificationResendCooldown((s) => (s > 0 ? s - 1 : 0)),
+      1000
+    );
+    return () => window.clearInterval(id);
+  }, [signupVerificationResendCooldown]);
 
   const formatOtpCountdown = (seconds: number) => {
     const mm = String(Math.floor(seconds / 60)).padStart(2, "0");
@@ -482,7 +502,8 @@ export default function LoginModal({
               throw new Error("Email verification required");
             }
           } catch (loginError: unknown) {
-            // If login fails, email verification is required
+            // If login fails, email verification is required — collect the OTP inline instead of
+            // bouncing the user out to email + sign-in (old "Almost there" link UX).
             console.log(
               "Auto-login after signup failed, email verification is required:",
               loginError
@@ -491,17 +512,15 @@ export default function LoginModal({
               if (signupSource) sessionStorage.setItem(PENDING_SIGNUP_SOURCE_KEY, signupSource);
               sessionStorage.setItem(PENDING_PREFERRED_LANGUAGE_KEY, preferredLanguage);
             }
-            // Dedicated UI — do not leave user on the signup/password step (feels broken).
             setPassword("");
-            setIsSignup(false);
             setShowPasswordField(false);
             setShowResendVerification(true);
             setError(null);
+            setPasswordSignupOtpCode("");
+            setSignupVerificationResendCooldown(SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS);
             setAwaitingEmailVerification(true);
             toast.success(
-              redirectContext === "provider"
-                ? "Check your email — verify your account, then sign in here to continue."
-                : "Check your email to verify your account, then sign in.",
+              "We sent a verification code to your email — enter it below to finish signing up.",
               { duration: 4500 }
             );
           }
@@ -653,6 +672,7 @@ export default function LoginModal({
       toast.error("Please enter your email address first");
       return;
     }
+    if (signupVerificationResendCooldown > 0) return;
 
     setIsResendingVerification(true);
     try {
@@ -660,7 +680,8 @@ export default function LoginModal({
         email.trim(),
         buildEmailConfirmationRedirectUrl({ redirectContext, redirectUrl })
       );
-      toast.success("Verification email sent! Please check your inbox and spam folder.");
+      toast.success("Verification code sent! Please check your inbox and spam folder.");
+      setSignupVerificationResendCooldown(SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS);
       setShowResendVerification(false);
     } catch (error: unknown) {
       console.error("Error resending verification email:", error);
@@ -690,6 +711,58 @@ export default function LoginModal({
       }
     } finally {
       setIsResendingVerification(false);
+    }
+  };
+
+  /**
+   * Verify the numeric OTP from the Supabase "Confirm signup" email and route the user onward —
+   * replaces the click-the-email-link-and-come-back step for email/password signup.
+   */
+  const handleVerifyPasswordSignupOtp = async (codeOverride?: string) => {
+    const token = normalizeSupabaseSmsOtpToken(codeOverride ?? passwordSignupOtpCode);
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail || !isCompleteSupabaseSmsOtp(token)) return;
+    setIsVerifyingPasswordSignupOtp(true);
+    setError(null);
+    try {
+      await verifySignupEmailOtp(trimmedEmail, token);
+      if (isReady) track(EVENT_SIGNUP_COMPLETE, { method: "email" });
+      toast.success("Email verified — welcome to Beautonomi!");
+
+      await refreshUser();
+      try {
+        await fetcher.patch("/api/me/profile", {
+          signup_source: signupSource || undefined,
+          preferred_language: preferredLanguage,
+        });
+      } catch {
+        // Non-blocking
+      }
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      setAwaitingEmailVerification(false);
+      setShowResendVerification(false);
+      setPasswordSignupOtpCode("");
+      setOpen(false);
+
+      if (skipDefaultSignupRedirect && onAuthSuccess) {
+        onAuthSuccess();
+        return;
+      }
+      if (redirectContext === "provider") {
+        router.push("/provider/onboarding");
+      } else if (redirectUrl) {
+        router.push(redirectUrl);
+      } else {
+        router.push("/onboarding");
+      }
+      onAuthSuccess?.();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Invalid or expired code";
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setIsVerifyingPasswordSignupOtp(false);
     }
   };
 
@@ -1223,36 +1296,70 @@ export default function LoginModal({
                 <CheckCircle2 className="h-8 w-8 text-emerald-600" aria-hidden />
               </div>
               <p className="text-center text-[15px] font-semibold text-gray-900 mb-2">
-                Almost there
+                Verify your email
               </p>
               <p className="text-center text-[13px] leading-relaxed text-gray-600 mb-4">
-                We sent a verification link to:
+                We sent a {SUPABASE_AUTH_OTP_LENGTH}-digit verification code to:
               </p>
               <p className="text-center text-sm font-semibold text-gray-900 break-all mb-5 px-1">
                 {email.trim()}
               </p>
-              <p className="text-[13px] leading-relaxed text-gray-600 mb-6">
-                {redirectContext === "provider" ? (
-                  <>
-                    Open the email and tap{" "}
-                    <strong className="font-semibold text-gray-800">Confirm</strong>. Then return
-                    here and <strong className="font-semibold text-gray-800">sign in</strong> with
-                    the same email and password to open your provider dashboard.
-                  </>
-                ) : (
-                  <>
-                    Open the email and confirm your address. Then sign in below with your email and
-                    password.
-                  </>
-                )}
+              <p className="text-[13px] leading-relaxed text-gray-600 mb-5 text-center">
+                Enter the code below to finish creating your{" "}
+                {redirectContext === "provider" ? "provider " : ""}account.
               </p>
+              <OtpDigitInput
+                value={passwordSignupOtpCode}
+                onChange={(v) => {
+                  setPasswordSignupOtpCode(v);
+                  if (error) setError(null);
+                }}
+                onComplete={(code) => {
+                  if (!isVerifyingPasswordSignupOtp && isCompleteSupabaseSmsOtp(code)) {
+                    void handleVerifyPasswordSignupOtp(code);
+                  }
+                }}
+                disabled={isVerifyingPasswordSignupOtp}
+                autoFocus
+                label="Signup verification code"
+                length={SUPABASE_AUTH_OTP_LENGTH}
+                className="mb-4"
+              />
+              {error && (
+                <p className="mb-4 text-center text-xs text-red-600" role="alert">
+                  {error}
+                </p>
+              )}
               <div className="flex flex-col gap-3">
+                <Button
+                  type="button"
+                  className="w-full rounded-2xl bg-gradient-to-r from-primary to-primary-hover text-white min-h-[48px] text-[15px] font-semibold touch-manipulation shadow-lg shadow-pink-200/40"
+                  onClick={() => void handleVerifyPasswordSignupOtp()}
+                  disabled={
+                    isVerifyingPasswordSignupOtp ||
+                    !isCompleteSupabaseSmsOtp(passwordSignupOtpCode)
+                  }
+                  aria-busy={isVerifyingPasswordSignupOtp}
+                >
+                  {isVerifyingPasswordSignupOtp ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin inline" aria-hidden />
+                      Verifying…
+                    </>
+                  ) : (
+                    "Verify & continue"
+                  )}
+                </Button>
                 <Button
                   type="button"
                   variant="outline"
                   className="w-full rounded-2xl border-emerald-200 bg-white min-h-[48px] text-[15px] font-semibold touch-manipulation"
                   onClick={() => void handleResendVerification()}
-                  disabled={isResendingVerification || !email.trim()}
+                  disabled={
+                    isResendingVerification ||
+                    !email.trim() ||
+                    signupVerificationResendCooldown > 0
+                  }
                   aria-busy={isResendingVerification}
                 >
                   {isResendingVerification ? (
@@ -1260,23 +1367,11 @@ export default function LoginModal({
                       <Loader2 className="mr-2 h-4 w-4 animate-spin inline" aria-hidden />
                       Sending…
                     </>
+                  ) : signupVerificationResendCooldown > 0 ? (
+                    `Resend code in ${signupVerificationResendCooldown}s`
                   ) : (
-                    "Resend verification email"
+                    "Resend verification code"
                   )}
-                </Button>
-                <Button
-                  type="button"
-                  className="w-full rounded-2xl bg-gradient-to-r from-primary to-primary-hover text-white min-h-[48px] text-[15px] font-semibold touch-manipulation shadow-lg shadow-pink-200/40"
-                  onClick={() => {
-                    setAwaitingEmailVerification(false);
-                    setIsSignup(false);
-                    setShowPasswordField(false);
-                    setPassword("");
-                    setError(null);
-                    setShowResendVerification(false);
-                  }}
-                >
-                  I&apos;ve verified — Sign in
                 </Button>
                 <button
                   type="button"
@@ -1286,12 +1381,17 @@ export default function LoginModal({
                     setIsSignup(true);
                     setShowPasswordField(false);
                     setPassword("");
+                    setPasswordSignupOtpCode("");
                     setError(null);
                     setShowResendVerification(false);
                   }}
                 >
                   Wrong email? Go back and edit
                 </button>
+                <p className="mt-1 text-center text-[11px] leading-relaxed text-gray-500">
+                  No code in your inbox? The Supabase &quot;Confirm signup&quot; email template
+                  must include <code className="text-[10px]">{"{{ .Token }}"}</code>.
+                </p>
               </div>
             </div>
           )}

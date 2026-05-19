@@ -65,7 +65,12 @@ export async function generateMetadata(): Promise<Metadata> {
       shortcut: "/icon.svg",
       apple: [{ url: "/icon.svg", type: "image/svg+xml" }],
     },
-    manifest: "/manifest.webmanifest",
+    // NOTE: `manifest` is NOT set here — we emit the `<link rel="manifest" ... crossOrigin="use-credentials">`
+    // tag manually in <head> below so Vercel Preview Protection (which gates
+    // every preview URL behind an SSO challenge) lets the browser send its
+    // auth cookie with the manifest request. Without `use-credentials`, the
+    // browser strips cookies on the manifest fetch and the request 401s. The
+    // real file is served by `src/app/manifest.ts` (a metadata route).
     title: {
       default: "Beautonomi | Book Beauty Services, Salons & Mobile Pros",
       template: "%s | Beautonomi",
@@ -171,6 +176,14 @@ export default async function RootLayout({
   return (
     <html lang={lang} className="overflow-x-hidden max-w-full">
       <head>
+        {/**
+         * §Provider-launch (2026-05): emit the PWA manifest link manually so
+         * `crossOrigin="use-credentials"` is set. Required for Vercel preview
+         * deployments to attach the SSO cookie on the manifest fetch and
+         * avoid the noisy `manifest.webmanifest 401 (Unauthorized)` console
+         * spam reported by providers testing on `*-git-develop-*.vercel.app`.
+         */}
+        <link rel="manifest" href="/manifest.webmanifest" crossOrigin="use-credentials" />
         {supabaseStorageOrigin ? (
           <>
             <link rel="preconnect" href={supabaseStorageOrigin} crossOrigin="anonymous" />

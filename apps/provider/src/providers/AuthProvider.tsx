@@ -58,6 +58,8 @@ interface AuthContextType {
   verifyOtp: (phone: string, token: string) => Promise<{ error: Error | null }>;
   signInWithOtpEmail: (email: string) => Promise<{ error: Error | null }>;
   verifyOtpEmail: (email: string, token: string) => Promise<{ error: Error | null }>;
+  /** Verify the numeric OTP from the Supabase "Confirm signup" email (password signup flow). */
+  verifySignupEmailOtp: (email: string, token: string) => Promise<{ error: Error | null }>;
   signInWithOAuth: (
     provider: OAuthProvider,
   ) => Promise<{ error: Error | null }>;
@@ -464,6 +466,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) throw error;
   }, []);
 
+  /**
+   * Verify the numeric OTP from the Supabase "Confirm signup" email — replaces the
+   * click-the-link confirmation step for provider email/password signup. Uses
+   * `type: "signup"` to match the password signup confirmation flow (distinct from
+   * passwordless email `type: "email"`).
+   */
+  const verifySignupEmailOtp = useCallback(
+    async (emailAddr: string, token: string): Promise<{ error: Error | null }> => {
+      const trimmed = emailAddr.trim();
+      const otpToken = normalizeSupabaseSmsOtpToken(token);
+      if (!isCompleteSupabaseSmsOtp(otpToken)) {
+        return {
+          error: new Error(`Enter the ${SUPABASE_AUTH_OTP_LENGTH}-digit code from your email`),
+        };
+      }
+      const { data, error } = await supabase.auth.verifyOtp({
+        email: trimmed,
+        token: otpToken,
+        type: "signup",
+      });
+      if (error) return { error: new Error(error.message) };
+      if (data.session) updateSession(data.session);
+      return { error: null };
+    },
+    [updateSession],
+  );
+
   const contextValue = useMemo<AuthContextType>(
     () => ({
       session,
@@ -476,6 +505,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       verifyOtp,
       signInWithOtpEmail,
       verifyOtpEmail,
+      verifySignupEmailOtp,
       signInWithOAuth,
       signUpWithEmail,
       signInWithEmail,
@@ -492,6 +522,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       verifyOtp,
       signInWithOtpEmail,
       verifyOtpEmail,
+      verifySignupEmailOtp,
       signInWithOAuth,
       signUpWithEmail,
       signInWithEmail,

@@ -43,6 +43,12 @@ import {
   validateFileSize,
   IMAGE_CONSTRAINTS,
 } from "@/lib/supabase/storage-client";
+import {
+  compressAndUploadOnboardingImage,
+  isDataUrl,
+  stripDataUrl,
+  stripDataUrlsFromArray,
+} from "@/lib/images/compress-and-upload";
 import { getPricingPlans } from "@/lib/supabase/pricing";
 import { ChipCombobox } from "@/components/ui/chip-combobox";
 import { PhoneInput } from "@/components/ui/phone-input";
@@ -499,11 +505,26 @@ export default function ProviderOnboarding() {
     }
   };
 
+  /**
+   * §Provider-launch (2026-05): keep the draft payload tiny by guaranteeing
+   * `thumbnail_url`/`avatar_url`/`gallery` are public storage URLs (never
+   * base64 `data:` strings). The Photos step uploads on pick, but legacy
+   * drafts hydrated from sessionStorage might still contain inline images.
+   */
+  const buildSerializableFormData = (): Partial<OnboardingData> => {
+    const sanitized: Partial<OnboardingData> = { ...formData };
+    sanitized.thumbnail_url = stripDataUrl(formData.thumbnail_url);
+    sanitized.avatar_url = stripDataUrl(formData.avatar_url);
+    sanitized.gallery = stripDataUrlsFromArray(formData.gallery);
+    return sanitized;
+  };
+
   const saveDraft = async () => {
     try {
       setIsSavingDraft(true);
+      const safeDraft = buildSerializableFormData();
       await fetcher.post("/api/provider/onboarding/draft", {
-        draft_data: formData,
+        draft_data: safeDraft,
         current_step: currentStep,
       });
     } catch (error) {
@@ -512,11 +533,17 @@ export default function ProviderOnboarding() {
         try {
           sessionStorage.setItem(
             ONBOARDING_DRAFT_STORAGE_KEY,
-            JSON.stringify({ draft_data: formData, current_step: currentStep })
+            JSON.stringify({ draft_data: buildSerializableFormData(), current_step: currentStep })
           );
         } catch {
           // Ignore storage errors
         }
+      } else if (error instanceof FetchError && error.status === 413) {
+        // Almost impossible after the data-URL sanitizer above, but surface a
+        // clear message if a future step ever stuffs huge content into draft.
+        toast.error(
+          "Your draft is too large to auto-save. Please re-upload any large photos and try again.",
+        );
       }
     } finally {
       setIsSavingDraft(false);
@@ -723,8 +750,25 @@ export default function ProviderOnboarding() {
         setCurrentStep(8);
         return;
       }
+      // §Provider-launch (2026-05): hard-stop if any photo URL is still an
+      // inline base64 `data:` blob (would otherwise produce the same 413
+      // FUNCTION_PAYLOAD_TOO_LARGE the user reported on Submit & Launch).
+      if (
+        isDataUrl(formData.thumbnail_url) ||
+        isDataUrl(formData.avatar_url) ||
+        (formData.gallery || []).some((url) => isDataUrl(url))
+      ) {
+        toast.error(
+          "Some photos didn't finish uploading. Please re-upload them on the Photos step before submitting.",
+        );
+        setCurrentStep(8);
+        return;
+      }
 
       // Submit onboarding data
+      const safeThumbnail = stripDataUrl(formData.thumbnail_url);
+      const safeAvatar = stripDataUrl(formData.avatar_url);
+      const safeGallery = stripDataUrlsFromArray(formData.gallery);
       const onboardingData = {
         // New fields
         team_size: formData.team_size,
@@ -759,9 +803,9 @@ export default function ProviderOnboarding() {
         operating_hours: formData.operating_hours || {},
         services: formData.services || [],
         // New fields for public homepage optimization
-        thumbnail_url: formData.thumbnail_url || null,
-        avatar_url: formData.avatar_url || null,
-        gallery: formData.gallery || [],
+        thumbnail_url: safeThumbnail || null,
+        avatar_url: safeAvatar || null,
+        gallery: safeGallery,
         years_in_business: formData.years_in_business || null,
         accepts_custom_requests: formData.accepts_custom_requests ?? true,
         response_rate: formData.response_rate || 100,
@@ -873,6 +917,18 @@ export default function ProviderOnboarding() {
           code: error.code,
           details: error.details,
         });
+
+        // §Provider-launch (2026-05): translate Vercel's raw FUNCTION_PAYLOAD_TOO_LARGE
+        // (413) into something actionable. Surfaces when, despite the data-URL
+        // guards above, the payload is still too big (e.g. an upstream proxy
+        // limit or a corrupted draft).
+        if (error.status === 413) {
+          toast.error(
+            "Your submission is too large. Please re-upload any large photos on the Photos step and try again.",
+          );
+          setCurrentStep(8);
+          return;
+        }
 
         // Try to extract validation errors from the details
         if (error.details && Array.isArray(error.details)) {
@@ -1780,87 +1836,161 @@ function Step8Photos({
   const [avatarPreview, setAvatarPreview] = useState<string | null>(data.avatar_url || null);
   const [galleryFiles, setGalleryFiles] = useState<File[]>([]);
   const [galleryPreviews, setGalleryPreviews] = useState<string[]>(data.gallery || []);
+  // §Provider-launch (2026-05): uploads run on pick (not on submit) so the
+  // draft + final POST only ever carry public storage URLs. Track per-slot
+  // uploading state so the UI can disable buttons + show a spinner.
+  const [uploadingThumbnail, setUploadingThumbnail] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [uploadingGallery, setUploadingGallery] = useState(false);
   const thumbnailInputRef = useRef<HTMLInputElement>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
 
-  const handleThumbnailSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  const validateImageInput = (file: File): boolean => {
     if (!validateFileType(file, IMAGE_CONSTRAINTS.allowedTypes)) {
       toast.error("Invalid file type. Please upload a JPEG, PNG, or WebP image.");
-      return;
+      return false;
     }
-
     if (!validateFileSize(file, IMAGE_CONSTRAINTS.maxSizeBytes)) {
       toast.error("File too large. Maximum size is 5MB.");
-      return;
+      return false;
     }
+    return true;
+  };
+
+  const handleThumbnailSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!validateImageInput(file)) return;
 
     setThumbnailFile(file);
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const dataUrl = reader.result as string;
-      setThumbnailPreview(dataUrl);
-      updateData({ thumbnail_url: dataUrl });
-    };
-    reader.readAsDataURL(file);
+    // Show a quick local preview via ObjectURL while the upload runs.
+    const previewUrl = URL.createObjectURL(file);
+    setThumbnailPreview(previewUrl);
+    setUploadingThumbnail(true);
+    try {
+      const url = await compressAndUploadOnboardingImage(file, {
+        folder: "provider-onboarding/thumbnails",
+      });
+      updateData({ thumbnail_url: url });
+      setThumbnailPreview(url);
+    } catch (err) {
+      const message =
+        err instanceof FetchError
+          ? err.status === 413
+            ? "That image is too large to upload. Please pick a smaller photo."
+            : err.message || "Upload failed. Please try again."
+          : "Upload failed. Please try again.";
+      toast.error(message);
+      setThumbnailPreview(data.thumbnail_url || null);
+      setThumbnailFile(null);
+    } finally {
+      URL.revokeObjectURL(previewUrl);
+      setUploadingThumbnail(false);
+      if (thumbnailInputRef.current) thumbnailInputRef.current.value = "";
+    }
   };
 
-  const handleAvatarSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!validateFileType(file, IMAGE_CONSTRAINTS.allowedTypes)) {
-      toast.error("Invalid file type. Please upload a JPEG, PNG, or WebP image.");
-      return;
-    }
-    if (!validateFileSize(file, IMAGE_CONSTRAINTS.maxSizeBytes)) {
-      toast.error("File too large. Maximum size is 5MB.");
-      return;
-    }
+    if (!validateImageInput(file)) return;
+
     setAvatarFile(file);
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const dataUrl = reader.result as string;
-      setAvatarPreview(dataUrl);
-      updateData({ avatar_url: dataUrl });
-    };
-    reader.readAsDataURL(file);
+    const previewUrl = URL.createObjectURL(file);
+    setAvatarPreview(previewUrl);
+    setUploadingAvatar(true);
+    try {
+      const url = await compressAndUploadOnboardingImage(file, {
+        folder: "provider-onboarding/avatars",
+      });
+      updateData({ avatar_url: url });
+      setAvatarPreview(url);
+    } catch (err) {
+      const message =
+        err instanceof FetchError
+          ? err.status === 413
+            ? "That image is too large to upload. Please pick a smaller photo."
+            : err.message || "Upload failed. Please try again."
+          : "Upload failed. Please try again.";
+      toast.error(message);
+      setAvatarPreview(data.avatar_url || null);
+      setAvatarFile(null);
+    } finally {
+      URL.revokeObjectURL(previewUrl);
+      setUploadingAvatar(false);
+      if (avatarInputRef.current) avatarInputRef.current.value = "";
+    }
   };
 
-  const handleGallerySelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleGallerySelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
 
     const validFiles: File[] = [];
     for (const file of files) {
-      if (!validateFileType(file, IMAGE_CONSTRAINTS.allowedTypes)) {
-        toast.error(`${file.name}: Invalid file type`);
-        continue;
-      }
-      if (!validateFileSize(file, IMAGE_CONSTRAINTS.maxSizeBytes)) {
-        toast.error(`${file.name}: File too large (max 5MB)`);
-        continue;
-      }
-      validFiles.push(file);
+      if (validateImageInput(file)) validFiles.push(file);
     }
-
     if (validFiles.length === 0) return;
 
-    setGalleryFiles([...galleryFiles, ...validFiles]);
-    validFiles.forEach((file) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setGalleryPreviews((prev) => [...prev, reader.result as string]);
-      };
-      reader.readAsDataURL(file);
-    });
+    setGalleryFiles((prev) => [...prev, ...validFiles]);
+    const tempPreviews = validFiles.map((file) => URL.createObjectURL(file));
+    setGalleryPreviews((prev) => [...prev, ...tempPreviews]);
+    setUploadingGallery(true);
+    try {
+      const uploaded = await Promise.all(
+        validFiles.map(async (file) => {
+          try {
+            return await compressAndUploadOnboardingImage(file, {
+              folder: "provider-onboarding/gallery",
+            });
+          } catch {
+            return null;
+          }
+        }),
+      );
+      const successUrls = uploaded.filter((u): u is string => typeof u === "string" && u.length > 0);
+      if (successUrls.length === 0) {
+        toast.error("None of the gallery photos could be uploaded. Please try again.");
+        // Roll back temp previews/files on total failure.
+        setGalleryPreviews((prev) => prev.filter((p) => !tempPreviews.includes(p)));
+        setGalleryFiles((prev) => prev.filter((f) => !validFiles.includes(f)));
+        return;
+      }
+      // Replace temp object URLs with the public URLs (preserving order).
+      setGalleryPreviews((prev) => {
+        const next = [...prev];
+        let cursor = 0;
+        for (let i = 0; i < next.length; i++) {
+          if (tempPreviews.includes(next[i])) {
+            const replacement = uploaded[cursor++];
+            next[i] = typeof replacement === "string" ? replacement : next[i];
+          }
+        }
+        return next.filter((url) => !url.startsWith("blob:"));
+      });
+      updateData({ gallery: [...(data.gallery || []), ...successUrls] });
+      if (successUrls.length < validFiles.length) {
+        toast.error(
+          `${validFiles.length - successUrls.length} photo${validFiles.length - successUrls.length === 1 ? "" : "s"} failed to upload. The rest were saved.`,
+        );
+      }
+    } finally {
+      tempPreviews.forEach((url) => URL.revokeObjectURL(url));
+      setUploadingGallery(false);
+      if (galleryInputRef.current) galleryInputRef.current.value = "";
+    }
   };
 
   const removeGalleryImage = (index: number) => {
+    const targetPreview = galleryPreviews[index];
     const newPreviews = galleryPreviews.filter((_, i) => i !== index);
     const newFiles = galleryFiles.filter((_, i) => i !== index);
+    // Also drop the URL from the persisted form data.
+    const currentGallery = data.gallery || [];
+    if (targetPreview) {
+      updateData({ gallery: currentGallery.filter((url) => url !== targetPreview) });
+    }
     setGalleryPreviews(newPreviews);
     setGalleryFiles(newFiles);
   };
@@ -1969,13 +2099,26 @@ function Step8Photos({
               onChange={handleThumbnailSelect}
               className="hidden"
               id="thumbnail-upload"
+              disabled={uploadingThumbnail}
             />
             <Label
               htmlFor="thumbnail-upload"
-              className="cursor-pointer inline-flex items-center justify-center px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              className={cn(
+                "cursor-pointer inline-flex items-center justify-center px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors",
+                uploadingThumbnail && "pointer-events-none opacity-60",
+              )}
+              aria-busy={uploadingThumbnail}
             >
-              <Upload className="w-4 h-4 mr-2" />
-              {thumbnailPreview ? "Change Thumbnail" : "Upload Thumbnail"}
+              {uploadingThumbnail ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Upload className="w-4 h-4 mr-2" />
+              )}
+              {uploadingThumbnail
+                ? "Uploading…"
+                : thumbnailPreview
+                  ? "Change Thumbnail"
+                  : "Upload Thumbnail"}
             </Label>
             {thumbnailFile && (
               <p className="text-xs text-gray-600 mt-2">
@@ -2034,13 +2177,26 @@ function Step8Photos({
               onChange={handleAvatarSelect}
               className="hidden"
               id="avatar-upload"
+              disabled={uploadingAvatar}
             />
             <Label
               htmlFor="avatar-upload"
-              className="cursor-pointer inline-flex items-center justify-center px-4 py-2 border border-indigo-200 rounded-lg hover:bg-indigo-50 transition-colors text-indigo-700"
+              className={cn(
+                "cursor-pointer inline-flex items-center justify-center px-4 py-2 border border-indigo-200 rounded-lg hover:bg-indigo-50 transition-colors text-indigo-700",
+                uploadingAvatar && "pointer-events-none opacity-60",
+              )}
+              aria-busy={uploadingAvatar}
             >
-              <Upload className="w-4 h-4 mr-2" />
-              {avatarPreview ? "Change profile image" : "Upload profile image"}
+              {uploadingAvatar ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Upload className="w-4 h-4 mr-2" />
+              )}
+              {uploadingAvatar
+                ? "Uploading…"
+                : avatarPreview
+                  ? "Change profile image"
+                  : "Upload profile image"}
             </Label>
             {avatarFile && (
               <p className="text-xs text-gray-600 mt-2">
@@ -2073,13 +2229,22 @@ function Step8Photos({
           onChange={handleGallerySelect}
           className="hidden"
           id="gallery-upload"
+          disabled={uploadingGallery}
         />
         <Label
           htmlFor="gallery-upload"
-          className="cursor-pointer inline-flex items-center justify-center px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors mb-4"
+          className={cn(
+            "cursor-pointer inline-flex items-center justify-center px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors mb-4",
+            uploadingGallery && "pointer-events-none opacity-60",
+          )}
+          aria-busy={uploadingGallery}
         >
-          <Upload className="w-4 h-4 mr-2" />
-          Add Portfolio Images
+          {uploadingGallery ? (
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+          ) : (
+            <Upload className="w-4 h-4 mr-2" />
+          )}
+          {uploadingGallery ? "Uploading…" : "Add Portfolio Images"}
         </Label>
 
         {galleryPreviews.length > 0 && (
@@ -2109,11 +2274,10 @@ function Step8Photos({
           </div>
         )}
 
-        {galleryFiles.length > 0 && (
+        {(data.gallery?.length ?? 0) > 0 && (
           <div className="mt-4 p-3 bg-gray-50 rounded-lg">
             <p className="text-xs text-gray-600">
-              {galleryFiles.length} image{galleryFiles.length !== 1 ? "s" : ""} ready to upload
-              after onboarding
+              {(data.gallery?.length ?? 0)} photo{(data.gallery?.length ?? 0) !== 1 ? "s" : ""} uploaded
             </p>
           </div>
         )}

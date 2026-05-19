@@ -35,6 +35,8 @@ import {
   normalizeSupabaseAuthPhone,
   normalizeSupabaseSmsOtpToken,
   isCompleteOtpForLength,
+  isCompleteSupabaseSmsOtp,
+  SUPABASE_AUTH_OTP_LENGTH,
   SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS,
   SUPABASE_SMS_OTP_RESEND_COOLDOWN_SECONDS,
 } from "@/lib/supabase-sms-otp";
@@ -158,6 +160,8 @@ export default function LoginScreen() {
     signInWithOAuth,
     signInWithEmail,
     signUpWithEmail,
+    verifySignupEmailOtp,
+    resendSignupConfirmationEmail,
   } = useAuth();
 
   const { bundle: configBundle } = useConfigBundle();
@@ -209,6 +213,13 @@ export default function LoginScreen() {
   const [emailOtpSent, setEmailOtpSent] = useState(false);
   const [emailOtpCode, setEmailOtpCode] = useState("");
   const [pendingEmailOtp, setPendingEmailOtp] = useState("");
+  /** After password signup when Supabase requires confirmation — shows inline OTP step. */
+  const [awaitingSignupVerification, setAwaitingSignupVerification] = useState(false);
+  const [signupOtpCode, setSignupOtpCode] = useState("");
+  const [verifyingSignupOtp, setVerifyingSignupOtp] = useState(false);
+  const [resendingSignupOtp, setResendingSignupOtp] = useState(false);
+  const [signupOtpResendCooldown, setSignupOtpResendCooldown] = useState(0);
+  const [signupOtpError, setSignupOtpError] = useState<string | null>(null);
   const [socialAuth, setSocialAuth] = useState<{ google: boolean; apple: boolean }>({
     google: true,
     apple: true,
@@ -233,6 +244,15 @@ export default function LoginScreen() {
     const id = setInterval(() => setEmailOtpResendIn((s) => (s > 0 ? s - 1 : 0)), 1000);
     return () => clearInterval(id);
   }, [emailOtpResendIn]);
+
+  useEffect(() => {
+    if (signupOtpResendCooldown <= 0) return;
+    const id = setInterval(
+      () => setSignupOtpResendCooldown((s) => (s > 0 ? s - 1 : 0)),
+      1000,
+    );
+    return () => clearInterval(id);
+  }, [signupOtpResendCooldown]);
 
   useEffect(() => {
     getSocialAuthConfig().then(setSocialAuth).catch(() => {
@@ -546,9 +566,14 @@ export default function LoginScreen() {
         return;
       }
       if (result.requiresConfirmation) {
-        setIsSignup(false);
         if (isSignup) trackSignUp("email");
-        Alert.alert(al("checkEmailTitle"), al("checkEmailBody"), [{ text: t("common.ok") }]);
+        // §QA 2026-05: replace the dead-end "check your email link" alert with an
+        // inline OTP verification step (numeric code from the Supabase "Confirm signup"
+        // template). Keep `isSignup` true so the back/edit affordances stay accurate.
+        setSignupOtpCode("");
+        setSignupOtpError(null);
+        setSignupOtpResendCooldown(SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS);
+        setAwaitingSignupVerification(true);
         return;
       }
       if (isSignup) trackSignUp("email");
@@ -568,6 +593,46 @@ export default function LoginScreen() {
     }
   }
 
+  async function handleVerifySignupOtp(codeOverride?: string) {
+    const token = normalizeSupabaseSmsOtpToken(codeOverride ?? signupOtpCode);
+    if (!isCompleteSupabaseSmsOtp(token)) return;
+    setVerifyingSignupOtp(true);
+    setSignupOtpError(null);
+    try {
+      const { error } = await verifySignupEmailOtp(email.trim(), token);
+      if (error) {
+        setSignupOtpError(error.message);
+        return;
+      }
+      await applyPendingSignupPreferences();
+      logLoginSuccessBreadcrumb("email_signup");
+      await navigateAfterNewCustomerSignup(params.return_to);
+    } catch (e) {
+      setSignupOtpError(e instanceof Error ? e.message : al("genericErrorBody"));
+    } finally {
+      setVerifyingSignupOtp(false);
+    }
+  }
+
+  async function handleResendSignupOtp() {
+    if (signupOtpResendCooldown > 0 || resendingSignupOtp) return;
+    setResendingSignupOtp(true);
+    setSignupOtpError(null);
+    try {
+      const { error } = await resendSignupConfirmationEmail(email.trim());
+      if (error) {
+        setSignupOtpError(error.message);
+        return;
+      }
+      setSignupOtpCode("");
+      setSignupOtpResendCooldown(SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS);
+    } catch (e) {
+      setSignupOtpError(e instanceof Error ? e.message : al("genericErrorBody"));
+    } finally {
+      setResendingSignupOtp(false);
+    }
+  }
+
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const formNarrow = isTablet || Platform.OS === "web";
   const formStyle = {
@@ -581,6 +646,146 @@ export default function LoginScreen() {
     paddingVertical: 48,
     ...(formNarrow ? { alignItems: "center" as const } : {}),
   };
+
+  if (awaitingSignupVerification) {
+    return (
+      <SafeAreaView edges={["top", "left", "right"]} style={{ flex: 1, backgroundColor: Colors.white }}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={scrollContentStyle}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={formStyle}>
+              <View
+                style={{
+                  borderWidth: 1,
+                  borderColor: "#A7F3D0",
+                  backgroundColor: "#ECFDF5",
+                  borderRadius: 16,
+                  padding: 20,
+                }}
+              >
+                <View
+                  style={{
+                    alignSelf: "center",
+                    width: 52,
+                    height: 52,
+                    borderRadius: 26,
+                    backgroundColor: "#D1FAE5",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    marginBottom: 14,
+                  }}
+                >
+                  <Ionicons name="checkmark-circle" size={28} color="#059669" />
+                </View>
+                <Text style={{ textAlign: "center", fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 6 }}>
+                  Verify your email
+                </Text>
+                <Text style={{ textAlign: "center", fontSize: 13, color: "#4B5563", marginBottom: 4 }}>
+                  We sent a {SUPABASE_AUTH_OTP_LENGTH}-digit verification code to:
+                </Text>
+                <Text style={{ textAlign: "center", fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 16 }}>
+                  {email.trim()}
+                </Text>
+
+                <OtpDigitRow
+                  value={signupOtpCode}
+                  onChange={(v) => {
+                    setSignupOtpCode(v);
+                    if (signupOtpError) setSignupOtpError(null);
+                  }}
+                  onComplete={(code) => {
+                    if (!verifyingSignupOtp && isCompleteSupabaseSmsOtp(code)) {
+                      void handleVerifySignupOtp(code);
+                    }
+                  }}
+                  disabled={verifyingSignupOtp}
+                  autoFocus
+                  accessibilityLabelPrefix="Signup verification code"
+                />
+
+                {signupOtpError ? (
+                  <Text style={{ marginTop: 12, textAlign: "center", fontSize: 12, color: "#EF4444" }}>
+                    {signupOtpError}
+                  </Text>
+                ) : null}
+
+                <TouchableOpacity
+                  onPress={() => void handleVerifySignupOtp()}
+                  disabled={verifyingSignupOtp || !isCompleteSupabaseSmsOtp(signupOtpCode)}
+                  style={{
+                    marginTop: 16,
+                    backgroundColor: PRIMARY,
+                    borderRadius: RADIUS_BUTTON,
+                    paddingVertical: 14,
+                    alignItems: "center",
+                    opacity: verifyingSignupOtp || !isCompleteSupabaseSmsOtp(signupOtpCode) ? 0.6 : 1,
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Verify and continue"
+                >
+                  {verifyingSignupOtp ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={{ color: "#fff", fontSize: 15, fontWeight: "700" }}>Verify & continue</Text>
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => void handleResendSignupOtp()}
+                  disabled={resendingSignupOtp || signupOtpResendCooldown > 0}
+                  style={{
+                    marginTop: 10,
+                    backgroundColor: "#fff",
+                    borderRadius: RADIUS_BUTTON,
+                    borderWidth: 1,
+                    borderColor: "#A7F3D0",
+                    paddingVertical: 12,
+                    alignItems: "center",
+                    opacity: resendingSignupOtp || signupOtpResendCooldown > 0 ? 0.6 : 1,
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Resend verification code"
+                >
+                  {resendingSignupOtp ? (
+                    <ActivityIndicator color={PRIMARY} />
+                  ) : signupOtpResendCooldown > 0 ? (
+                    <Text style={{ color: "#374151", fontSize: 14, fontWeight: "600" }}>
+                      Resend code in {signupOtpResendCooldown}s
+                    </Text>
+                  ) : (
+                    <Text style={{ color: "#374151", fontSize: 14, fontWeight: "600" }}>
+                      Resend verification code
+                    </Text>
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => {
+                    setAwaitingSignupVerification(false);
+                    setSignupOtpCode("");
+                    setSignupOtpError(null);
+                  }}
+                  style={{ marginTop: 14, alignItems: "center" }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Go back to edit signup details"
+                >
+                  <Text style={{ color: "#6B7280", fontSize: 13 }}>Wrong email? Go back and edit</Text>
+                </TouchableOpacity>
+              </View>
+
+              <Text style={{ fontSize: 11, color: "#9CA3AF", textAlign: "center", marginTop: 14 }}>
+                No code in your inbox? The Supabase &quot;Confirm signup&quot; template must include {"{{ .Token }}"}.
+              </Text>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView
