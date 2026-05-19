@@ -842,15 +842,18 @@ export default function BookingFlow() {
   useEffect(() => {
     const node = actionBarRef.current;
     if (!node || typeof ResizeObserver === "undefined") return;
-    const apply = (height: number) => {
+    const apply = () => {
+      const height = node.getBoundingClientRect().height;
       document.documentElement.style.setProperty(
         "--booking-action-bar-h",
         `${Math.ceil(height)}px`,
       );
     };
-    apply(node.getBoundingClientRect().height);
+    apply();
     const ro = new ResizeObserver((entries) => {
-      for (const entry of entries) apply(entry.contentRect.height);
+      for (const entry of entries) {
+        if (entry.target === node) apply();
+      }
     });
     ro.observe(node);
     return () => {

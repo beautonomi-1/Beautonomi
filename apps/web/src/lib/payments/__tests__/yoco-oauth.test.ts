@@ -100,6 +100,67 @@ describe("resolveOauthApp", () => {
   });
 });
 
+describe("DEFAULT_YOCO_SCOPES", () => {
+  /**
+   * §Yoco-OAuth audit 2026-05: Yoco's consent screen rejects unknown scopes
+   * (https://developer.yoco.com/docs/api/authentication/scopes). Lock in the
+   * exact scope set we ship so a future "let's just add another scope" PR
+   * cannot silently re-introduce an undocumented token and break the flow.
+   */
+  it("only requests scopes that exist in Yoco's published catalog", async () => {
+    const { DEFAULT_YOCO_SCOPES } = await loadOauth();
+    const requested = DEFAULT_YOCO_SCOPES.split(/\s+/).filter(Boolean);
+    const ALLOWED = new Set([
+      "openid",
+      "offline_access",
+      "profile",
+      "application/webhooks:read",
+      "application/webhooks:write",
+      "business/capital_advances:read",
+      "business/capital_offers:read",
+      "business/catalogue:read",
+      "business/locations:read",
+      "business/orders:read",
+      "business/orders:write",
+      "business/payouts:read",
+      "business/webpos:read",
+      "business/webpos:write",
+      "business/webhooks:read",
+      "business/webhooks:write",
+    ]);
+    const invalid = requested.filter((s) => !ALLOWED.has(s));
+    expect(invalid).toEqual([]);
+  });
+
+  it("requests the minimum scopes Beautonomi calls today", async () => {
+    const { DEFAULT_YOCO_SCOPES } = await loadOauth();
+    const requested = DEFAULT_YOCO_SCOPES.split(/\s+/).filter(Boolean);
+    for (const required of [
+      "openid",
+      "offline_access",
+      "business/webpos:read",
+      "business/webpos:write",
+      "application/webhooks:write",
+    ]) {
+      expect(requested).toContain(required);
+    }
+  });
+
+  it("does NOT request scopes Yoco's docs no longer publish", async () => {
+    const { DEFAULT_YOCO_SCOPES } = await loadOauth();
+    const requested = DEFAULT_YOCO_SCOPES.split(/\s+/).filter(Boolean);
+    for (const deprecated of [
+      "business/payments:read",
+      "business/payments:write",
+      "business/refunds:read",
+      "business/refunds:write",
+      "business/webhooks:write",
+    ]) {
+      expect(requested).not.toContain(deprecated);
+    }
+  });
+});
+
 describe("buildAuthorizeUrl", () => {
   it("encodes scope + state + client_id and points at the right host", async () => {
     const { buildAuthorizeUrl } = await loadOauth();

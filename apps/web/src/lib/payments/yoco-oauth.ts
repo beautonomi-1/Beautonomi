@@ -36,17 +36,33 @@ import {
 /** Window (ms) before `expires_at` at which we proactively refresh. */
 const REFRESH_LEAD_MS = 5 * 60 * 1000;
 
-/** Default scopes; can be overridden per tenant via tenant_yoco_oauth_apps.default_scopes. */
+/**
+ * Default OAuth scopes requested from Yoco.
+ *
+ * §Yoco-OAuth 2026-05 audit: aligned with the current published Yoco scope
+ * catalog (https://developer.yoco.com/docs/api/authentication/scopes). Scopes
+ * we previously requested but that Yoco no longer documents (`business/payments:*`,
+ * `business/refunds:*`, `business/webhooks:*`) are dropped — Yoco's consent screen
+ * rejects unknown scopes, so requesting them would fail the entire authorize call.
+ *
+ * Required for what Beautonomi actually invokes today:
+ *   - `openid`                  — surfaces `user_id`, `business_ids` in id_token
+ *   - `offline_access`          — required to receive a refresh_token
+ *   - `business/webpos:read`    — `GET /v1/webpos/{id}` probe + payment fetch
+ *   - `business/webpos:write`   — `POST /v1/webpos/` + `/v1/webpos/{id}/payments`
+ *   - `application/webhooks:write` — `POST /v1/webhooks/subscriptions/` auto-reg
+ *
+ * Read-only reporting scopes left in for the existing reconciliation report
+ * and future read paths (`business/orders:read`, `business/payouts:read`).
+ *
+ * Can be overridden per tenant via `tenant_yoco_oauth_apps.default_scopes`.
+ */
 export const DEFAULT_YOCO_SCOPES = [
   "openid",
   "offline_access",
   "business/webpos:read",
   "business/webpos:write",
-  "business/payments:read",
-  "business/payments:write",
-  "business/webhooks:write",
-  "business/refunds:read",
-  "business/refunds:write",
+  "application/webhooks:write",
   "business/orders:read",
   "business/payouts:read",
 ].join(" ");

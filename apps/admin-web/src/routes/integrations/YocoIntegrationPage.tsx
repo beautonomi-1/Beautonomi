@@ -247,9 +247,20 @@ export function YocoIntegrationPage() {
                 </code>
                 . Request scopes including{" "}
                 <code className="rounded bg-gray-100 px-1 text-xs">
-                  openid offline_access business/webpos:read business/webpos:write business/payments:read
+                  openid offline_access business/webpos:read business/webpos:write application/webhooks:write
                 </code>{" "}
-                (and webhooks write if you rely on auto-subscription).
+                (plus <code className="rounded bg-gray-100 px-1 text-xs">business/orders:read</code> and{" "}
+                <code className="rounded bg-gray-100 px-1 text-xs">business/payouts:read</code> for the reconciliation
+                report). Only request scopes listed in the{" "}
+                <a
+                  href="https://developer.yoco.com/docs/api/authentication/scopes"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-primary underline"
+                >
+                  published Yoco scope catalog
+                </a>{" "}
+                — unknown scopes break the consent flow.
               </li>
               <li>
                 <strong>Platform default:</strong> set Vercel / server env{" "}
@@ -303,7 +314,7 @@ VALUES
     '<from_yoco>',
     '<from_yoco>',
     'https://<tenant-app-host>/api/provider/yoco/oauth/callback',
-    'openid offline_access business/webpos:read business/webpos:write business/payments:read business/webhooks:write',
+    'openid offline_access business/webpos:read business/webpos:write application/webhooks:write business/orders:read business/payouts:read',
     true
   );
 -- Repeat for environment = 'sandbox' if this tenant uses Yoco sandbox.`}

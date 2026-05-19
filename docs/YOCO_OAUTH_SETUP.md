@@ -43,13 +43,16 @@ You need this once per environment (sandbox + live) for the **platform-default**
    - **Live**: `https://app.beautonomi.com/api/provider/yoco/oauth/callback`
    - **Sandbox / staging**: `https://staging.beautonomi.com/api/provider/yoco/oauth/callback`
    - (Each white-label tenant brand: `https://<tenant>.example.com/api/provider/yoco/oauth/callback`)
-3. Request the scopes Beautonomi needs:
+3. Request the scopes Beautonomi needs (validated against the published
+   [Yoco scope catalog](https://developer.yoco.com/docs/api/authentication/scopes)
+   — requesting a scope Yoco does not publish causes the consent flow to fail):
    - `openid`
    - `offline_access` (required for the refresh token)
    - `business/webpos:read`
    - `business/webpos:write`
-   - `business/payments:read`
-   - `business/webhooks:write` (so we can auto-register webhook subscriptions on callback)
+   - `application/webhooks:write` (so we can auto-register webhook subscriptions on callback)
+   - `business/orders:read` (used by the reconciliation report)
+   - `business/payouts:read` (used by the reconciliation report)
 
 Yoco will return the app credentials over a secure channel. Treat `client_secret` like any other production secret.
 
@@ -81,8 +84,13 @@ Add the same variables to the GitHub Actions / preview-deploy secret store for C
 If you want to change which scopes are requested without redeploying, set `default_scopes` in the `tenant_yoco_oauth_apps` row (see §4). Otherwise the resolver uses the hard-coded default:
 
 ```
-openid offline_access business/webpos:read business/webpos:write business/payments:read business/webhooks:write
+openid offline_access business/webpos:read business/webpos:write application/webhooks:write business/orders:read business/payouts:read
 ```
+
+The default only includes scopes Yoco currently publishes
+([reference](https://developer.yoco.com/docs/api/authentication/scopes)). If
+you add scopes here that Yoco does not publish, the `/oauth2/authorize` call
+fails before the provider can grant consent.
 
 ### 3.3 Apply migrations
 
@@ -120,7 +128,7 @@ VALUES
    'tenant-client-id-from-yoco',
    'tenant-client-secret-from-yoco',
    'https://bella.example.com/api/provider/yoco/oauth/callback',
-   'openid offline_access business/webpos:read business/webpos:write business/payments:read',
+   'openid offline_access business/webpos:read business/webpos:write application/webhooks:write business/orders:read business/payouts:read',
    true);
 ```
 
@@ -318,3 +326,4 @@ LIMIT 1;
 | Date | Author | Change |
 |---|---|---|
 | 2026-05-17 | Engineering | Initial document. Yoco OAuth 2.0 introduction, env vars, per-tenant overrides, provider connect UX (web + mobile), rollout / rollback, token lifecycle, webhooks, troubleshooting. |
+| 2026-05-19 | Engineering | §Yoco-OAuth audit. Re-aligned `DEFAULT_YOCO_SCOPES` and the per-tenant default with the [published Yoco scope catalog](https://developer.yoco.com/docs/api/authentication/scopes): dropped the unpublished `business/payments:*`, `business/refunds:*`, and `business/webhooks:*` tokens; webhook auto-registration now uses `application/webhooks:write`. Migration 614 repairs existing `tenant_yoco_oauth_apps.default_scopes` rows so the authorize URL stops being rejected by Yoco for unknown scopes. |
