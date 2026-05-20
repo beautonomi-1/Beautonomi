@@ -544,6 +544,10 @@ export default function AdsSettingsScreen() {
         if (provisioned.state === "provisioned") {
           const copy = adsSuccessCopy(provisioned.campaign, tenantCurrency);
           setPaymentOutcome({ phase: "provisioned", campaignId, ...copy });
+          router.push({
+            pathname: "/(app)/(tabs)/more/settings/ads-payment-success",
+            params: { campaign_id: campaignId, title: copy.title, body: copy.body },
+          });
         } else {
           const copy = adsPendingCopy();
           setPaymentOutcome({ phase: "pending", campaignId, ...copy });
@@ -560,7 +564,7 @@ export default function AdsSettingsScreen() {
         void loadAll();
       }, 1500);
     },
-    [adsPaystackCheckout, loadAll, tenantCurrency],
+    [adsPaystackCheckout, loadAll, router, tenantCurrency],
   );
 
   useEffect(() => {

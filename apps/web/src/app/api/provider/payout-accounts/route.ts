@@ -2,6 +2,7 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   requireRoleInApi,
   getProviderIdForUser,
@@ -20,9 +21,17 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
 import { z } from "zod";
 
+// §payout-account-fix 2026-05: Paystack `/transferrecipient` accepts `nuban`,
+// `ghipss`, `mobile_money`, and `basa`. For South African providers (the
+// primary market today), Paystack uses the `basa` type. We accept any of the
+// documented values so the client can pick the correct one per country, and
+// fall back to `nuban` when not specified.
+const PAYSTACK_RECIPIENT_TYPES = ["nuban", "basa", "ghipss", "mobile_money"] as const;
+type PaystackRecipientType = (typeof PAYSTACK_RECIPIENT_TYPES)[number];
+
 const createAccountSchema = z.object({
-  type: z.enum(["nuban"]),
-  account_number: z.string().min(8).max(15),
+  type: z.enum(PAYSTACK_RECIPIENT_TYPES).default("nuban"),
+  account_number: z.string().min(8).max(20),
   bank_code: z.string().min(1),
   account_name: z.string().min(1),
   currency: z.string().min(1).optional(),
@@ -34,22 +43,43 @@ const createAccountSchema = z.object({
 });
 
 /**
+ * Recipient type heuristic for countries where Paystack expects something other than
+ * `nuban` (the default). South Africa uses `basa`. Other countries fall back to the
+ * client-provided type or `nuban` so behavior remains backward compatible.
+ */
+function resolveRecipientType(
+  requested: PaystackRecipientType,
+  country: string | undefined,
+): PaystackRecipientType {
+  const iso = (country || "").trim().toUpperCase();
+  if (iso === "ZA") return "basa";
+  if (iso === "GH") return requested === "mobile_money" ? "mobile_money" : "ghipss";
+  return requested;
+}
+
+/**
  * GET /api/provider/payout-accounts
- * 
- * List provider's payout accounts (bank accounts)
+ *
+ * List provider's payout accounts (bank accounts).
+ *
+ * §payout-account-fix 2026-05: read with the service-role admin client so the
+ * RLS gap on `provider_payout_accounts` (only SELECT for providers, INSERT/UPDATE/DELETE
+ * superadmin-only) never causes empty lists for legitimate provider users. The
+ * route still enforces auth via `requireRoleInApi` + provider/tenant ownership.
  */
 export async function GET(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
-    const supabase = await getSupabaseServer(request);
+    const sessionSupabase = await getSupabaseServer(request);
     const tenantId = await resolveTenantIdWithZaFallback(request);
-    const providerId = await getProviderIdForUser(user.id, supabase);
+    const providerId = await getProviderIdForUser(user.id, sessionSupabase);
 
     if (!providerId) {
       return notFoundResponse("Provider not found");
     }
 
-    const { data: provRow } = await supabase
+    const admin = getSupabaseAdmin();
+    const { data: provRow } = await admin
       .from("providers")
       .select("tenant_id")
       .eq("id", providerId)
@@ -67,7 +97,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const { data: accounts, error } = await supabase
+    const { data: accounts, error } = await admin
       .from("provider_payout_accounts")
       .select("*")
       .eq("provider_id", providerId)
@@ -87,22 +117,30 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/provider/payout-accounts
- * 
- * Add a new bank account for payouts
- * Creates a Paystack transfer recipient and stores it
+ *
+ * Add a new bank account for payouts.
+ * Creates a Paystack transfer recipient and stores it in `provider_payout_accounts`.
+ *
+ * §payout-account-fix 2026-05: previously failed with a generic "Failed to add
+ * payout account" because the user-scoped Supabase client could not INSERT into
+ * `provider_payout_accounts` (RLS only grants providers SELECT). Now we use the
+ * admin client for the INSERT after enforcing auth + provider ownership + tenant
+ * isolation. Error responses are also more specific so the UI can surface the
+ * exact failure (validation, Paystack verify, Paystack recipient, or DB save).
  */
 export async function POST(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
-    const supabase = await getSupabaseServer(request);
+    const sessionSupabase = await getSupabaseServer(request);
     const tenantId = await resolveTenantIdWithZaFallback(request);
-    const providerId = await getProviderIdForUser(user.id, supabase);
+    const providerId = await getProviderIdForUser(user.id, sessionSupabase);
 
     if (!providerId) {
       return notFoundResponse("Provider not found");
     }
 
-    const { data: provRow } = await supabase
+    const admin = getSupabaseAdmin();
+    const { data: provRow } = await admin
       .from("providers")
       .select("tenant_id")
       .eq("id", providerId)
@@ -125,7 +163,7 @@ export async function POST(request: NextRequest) {
 
     if (!validationResult.success) {
       return errorResponse(
-        "Validation failed",
+        "Please check the bank account details and try again.",
         "VALIDATION_ERROR",
         400,
         validationResult.error.issues.map((issue) => ({
@@ -135,15 +173,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { account_number, bank_code, account_name, type, currency, country, verified_account_name, description, email } = validationResult.data;
+    const {
+      account_number,
+      bank_code,
+      account_name,
+      type,
+      currency,
+      country,
+      verified_account_name,
+      description,
+      email,
+    } = validationResult.data;
 
     const tenantRegion = await getTenantRegionConfig(tenantId);
     const fallbackCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
     const resolvedCurrency = currency?.trim() || fallbackCurrency;
+    const resolvedType = resolveRecipientType(type, country);
 
-    // Superadmin-controlled: skip Paystack verify when platform setting is on (saves ZAR 3 in SA; if transfer fails, provider uploads bank confirmation letter).
+    // Superadmin-controlled: skip Paystack verify when platform setting is on.
     let skipVerify = false;
-    const { data: tenantPlatformRow } = await (supabase as any)
+    const { data: tenantPlatformRow } = await (admin as any)
       .from("platform_settings")
       .select("settings")
       .eq("is_active", true)
@@ -154,7 +203,7 @@ export async function POST(request: NextRequest) {
     if ((tenantPlatformRow?.settings as any)?.paystack?.skip_payout_account_verification === true) {
       skipVerify = true;
     } else {
-      const { data: globalPlatformRow } = await (supabase as any)
+      const { data: globalPlatformRow } = await (admin as any)
         .from("platform_settings")
         .select("settings")
         .eq("is_active", true)
@@ -162,73 +211,93 @@ export async function POST(request: NextRequest) {
         .order("updated_at", { ascending: false })
         .limit(1)
         .maybeSingle();
-      skipVerify = (globalPlatformRow?.settings as any)?.paystack?.skip_payout_account_verification === true;
+      skipVerify =
+        (globalPlatformRow?.settings as any)?.paystack?.skip_payout_account_verification === true;
     }
 
-    // Resolve display name: skip verify (superadmin setting), use pre-verified name, or call Paystack verify
+    // Resolve display name: skip verify (superadmin setting), use pre-verified name, or call Paystack verify.
     let resolvedName: string;
     if (skipVerify) {
       resolvedName = account_name.trim();
     } else if (verified_account_name?.trim()) {
       resolvedName = verified_account_name.trim();
     } else {
-      const verifyResult = await verifyAccount(
-        { account_number, bank_code },
-        { tenantId }
-      );
-      if (!verifyResult.status || !verifyResult.data?.account_name) {
-        return errorResponse(
-          verifyResult.message || "Invalid bank account. Please check the account number and bank.",
-          "ACCOUNT_VERIFICATION_FAILED",
-          400
+      try {
+        const verifyResult = await verifyAccount(
+          { account_number, bank_code },
+          { tenantId }
         );
+        if (!verifyResult.status || !verifyResult.data?.account_name) {
+          return errorResponse(
+            verifyResult.message ||
+              "Paystack could not verify this account. Double-check the bank and account number.",
+            "ACCOUNT_VERIFICATION_FAILED",
+            400
+          );
+        }
+        resolvedName = verifyResult.data.account_name;
+      } catch (verifyError) {
+        const message =
+          verifyError instanceof Error
+            ? verifyError.message
+            : "Paystack account verification failed";
+        return errorResponse(message, "ACCOUNT_VERIFICATION_FAILED", 400);
       }
-      resolvedName = verifyResult.data.account_name;
     }
 
-    // Create transfer recipient in Paystack (use resolved name for exact match)
-    const paystackRecipient = await createTransferRecipient({
-      type: type as "nuban",
-      name: resolvedName,
-      account_number,
-      bank_code,
-      currency: resolvedCurrency,
-      description: description || `Payout account for ${resolvedName}`,
-      email: email || undefined,
-      metadata: {
-        provider_id: providerId,
-        added_by: user.id,
-      },
-    }, { tenantId });
+    // Create transfer recipient in Paystack (use resolved name for exact match).
+    let paystackRecipient;
+    try {
+      paystackRecipient = await createTransferRecipient(
+        {
+          type: resolvedType as "nuban",
+          name: resolvedName,
+          account_number,
+          bank_code,
+          currency: resolvedCurrency,
+          description: description || `Payout account for ${resolvedName}`,
+          email: email || undefined,
+          metadata: {
+            provider_id: providerId,
+            added_by: user.id,
+          },
+        },
+        { tenantId }
+      );
+    } catch (paystackError) {
+      const message =
+        paystackError instanceof Error
+          ? paystackError.message
+          : "Paystack rejected the transfer recipient request.";
+      return errorResponse(message, "PAYSTACK_ERROR", 400);
+    }
 
     if (!paystackRecipient.data) {
       return errorResponse(
-        paystackRecipient.message || "Failed to create transfer recipient",
+        paystackRecipient.message || "Failed to create Paystack transfer recipient.",
         "PAYSTACK_ERROR",
-        500
+        502
       );
     }
 
-    // Extract account details from Paystack response (align with DB schema)
     const details = (paystackRecipient.data as any)?.details;
     const accountNumberLast4 = account_number.slice(-4);
 
-    // First account for this provider becomes primary
-    const { data: existingAccounts } = await supabase
+    // First active account for this provider becomes primary.
+    const { data: existingAccounts } = await admin
       .from("provider_payout_accounts")
       .select("id")
       .eq("provider_id", providerId)
       .is("deleted_at", null);
     const isFirstAccount = !existingAccounts?.length;
 
-    // Store in database - all columns must match provider_payout_accounts schema
-    const { data: savedAccount, error: saveError } = await supabase
+    const { data: savedAccount, error: saveError } = await admin
       .from("provider_payout_accounts")
       .insert({
         provider_id: providerId,
         recipient_code: paystackRecipient.data.recipient_code,
         recipient_id: paystackRecipient.data.id ?? null,
-        type: paystackRecipient.data.type || "nuban",
+        type: paystackRecipient.data.type || resolvedType,
         account_number_last4: accountNumberLast4,
         account_name: details?.account_name || resolvedName || account_name,
         bank_code: details?.bank_code || bank_code,
@@ -246,13 +315,19 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (saveError) {
-      // If save fails, try to delete the Paystack recipient
+      // If we managed to create the Paystack recipient but failed to persist
+      // it locally, roll the recipient back so we don't leak orphan recipients.
       try {
         await deleteTransferRecipient(paystackRecipient.data.recipient_code, { tenantId });
       } catch (deleteError) {
-        console.error("Failed to cleanup Paystack recipient:", deleteError);
+        console.error("Failed to cleanup orphaned Paystack recipient:", deleteError);
       }
-      throw saveError;
+      return errorResponse(
+        "We saved your bank with Paystack but couldn't store it locally. Please try again or contact support.",
+        "DB_SAVE_FAILED",
+        500,
+        process.env.NODE_ENV === "development" ? { details: saveError.message } : undefined,
+      );
     }
 
     return successResponse(savedAccount);

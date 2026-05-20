@@ -139,6 +139,8 @@ export async function POST(request: NextRequest) {
       .single();
     if (createError) throw createError;
 
+    let attachmentWarning: string | null = null;
+    let attachmentsSavedCount = 0;
     if (body.image_urls.length > 0) {
       const attachments = body.image_urls.map((url) => ({
         request_id: (created as any).id,
@@ -150,11 +152,15 @@ export async function POST(request: NextRequest) {
         .insert(attachments);
       if (attachmentsError) {
         console.error("Failed to insert attachments:", attachmentsError);
-        // Continue even if attachments fail
+        attachmentWarning =
+          "Your request was sent, but we could not attach the inspiration photos. Try sending them in chat.";
+      } else {
+        attachmentsSavedCount = attachments.length;
       }
     }
 
     let conversationId: string | null = null;
+    let messageWarning: string | null = null;
     // Also send via messages: create/get a customer<->provider conversation and post a message (best-effort)
     try {
       const { data: existingConv } = await supabase
@@ -215,7 +221,8 @@ export async function POST(request: NextRequest) {
           });
         if (messageError) {
           console.error("Failed to insert message:", messageError);
-          // Continue even if message fails
+          messageWarning =
+            "We saved your request, but couldn't post it in your chat with the provider. Open the request from My Requests to follow up.";
         } else {
           // Update conversation metadata
           const { data: currentConv } = await supabase
@@ -236,8 +243,12 @@ export async function POST(request: NextRequest) {
             .eq("id", convId);
         }
       }
-    } catch {
-      // ignore messaging failures
+    } catch (msgErr) {
+      console.warn("[me/custom-requests] messaging hookup failed:", msgErr);
+      if (!messageWarning) {
+        messageWarning =
+          "We saved your request, but couldn't post it in your chat with the provider. Open the request from My Requests to follow up.";
+      }
     }
 
     // Notify provider owner (best-effort)
@@ -339,6 +350,9 @@ export async function POST(request: NextRequest) {
 
     const response = created as Record<string, unknown>;
     if (conversationId) response.conversation_id = conversationId;
+    if (attachmentWarning) response.attachment_warning = attachmentWarning;
+    if (body.image_urls.length > 0) response.attachments_saved = attachmentsSavedCount;
+    if (messageWarning) response.message_warning = messageWarning;
     return successResponse(response);
   } catch (error) {
     return handleApiError(error, "Failed to create custom request");

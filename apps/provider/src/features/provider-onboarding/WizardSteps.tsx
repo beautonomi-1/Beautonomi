@@ -1,4 +1,4 @@
-import { type ComponentProps, useEffect, useRef, useState } from "react";
+import { type ComponentProps, useEffect, useMemo, useRef, useState } from "react";
 import * as Location from "expo-location";
 import {
   View,
@@ -107,7 +107,7 @@ function Step1TeamSize() {
               });
             }}
             style={twStyle(
-              `rounded-[1.5rem] border p-5 flex-row items-center gap-4 ${sel ? "border-slate-900 bg-slate-900/5 shadow-sm" : "border-slate-100 bg-white shadow-sm"}`
+              `rounded-[1.5rem] border p-5 flex-row items-center gap-4 ${sel ? "border-primary bg-primary/10 shadow-sm" : "border-slate-100 bg-white shadow-sm"}`
             )}
             accessibilityRole="button"
             accessibilityLabel={o.title}
@@ -115,7 +115,7 @@ function Step1TeamSize() {
           >
             <View
               style={twStyle(
-                `h-12 w-12 items-center justify-center rounded-full ${sel ? "bg-slate-900" : "bg-slate-50"}`
+                `h-12 w-12 items-center justify-center rounded-full ${sel ? "bg-primary" : "bg-slate-50"}`
               )}
             >
               <Ionicons name={o.icon} size={22} color={sel ? "#fff" : "#64748b"} />
@@ -131,7 +131,7 @@ function Step1TeamSize() {
               <Text style={twStyle("mt-1 text-[14px] text-slate-500")}>{o.sub}</Text>
             </View>
             {sel ? (
-              <Ionicons name="checkmark-circle" size={24} color="#0f172a" />
+              <Ionicons name="checkmark-circle" size={24} color={Colors.primary} />
             ) : (
               <View style={twStyle("h-6 w-6 rounded-full border-2 border-slate-200")} />
             )}
@@ -307,6 +307,8 @@ function Step2Identity() {
             style={twStyle(
               "flex-row items-center gap-1 rounded-xl border border-gray-200 bg-gray-50 px-3 py-3.5"
             )}
+            accessibilityRole="button"
+            accessibilityLabel="Change country code"
           >
             <Text style={twStyle("font-medium text-gray-800")}>
               {countryCode.startsWith("+") ? countryCode : `+${countryCode}`}
@@ -352,6 +354,8 @@ function Step2Identity() {
                     setCountryModal(false);
                     setCountrySearch("");
                   }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Use country code ${c.label} ${c.code}`}
                 >
                   <Text style={twStyle("text-xl")}>{c.flag}</Text>
                   <Text style={twStyle("flex-1 text-base text-gray-900")}>{c.label}</Text>
@@ -362,6 +366,8 @@ function Step2Identity() {
             <TouchableOpacity
               onPress={() => setCountryModal(false)}
               style={twStyle("items-center rounded-2xl bg-gray-100 py-3.5")}
+              accessibilityRole="button"
+              accessibilityLabel="Close country code picker"
             >
               <Text style={twStyle("font-semibold text-gray-700")}>Close</Text>
             </TouchableOpacity>
@@ -373,8 +379,11 @@ function Step2Identity() {
             onPress={sendCode}
             disabled={sending || resendCooldown > 0}
             style={twStyle(
-              `mt-3 flex-row items-center justify-center gap-2 rounded-xl py-3.5 ${sending || resendCooldown > 0 ? "bg-gray-200" : "bg-gray-900"}`
+              `mt-3 flex-row items-center justify-center gap-2 rounded-xl py-3.5 ${sending || resendCooldown > 0 ? "bg-gray-200" : "bg-primary"}`
             )}
+            accessibilityRole="button"
+            accessibilityLabel={codeSent ? "Resend verification code" : "Send verification code"}
+            accessibilityState={{ disabled: sending || resendCooldown > 0 }}
           >
             <Ionicons
               name={codeSent ? "refresh-outline" : "send-outline"}
@@ -424,6 +433,9 @@ function Step2Identity() {
               twStyle("flex-row items-center justify-center gap-2 rounded-xl py-3.5"),
               { backgroundColor: Colors.primary, opacity: verifying ? 0.7 : 1 },
             ]}
+            accessibilityRole="button"
+            accessibilityLabel="Verify phone"
+            accessibilityState={{ disabled: verifying }}
           >
             {verifying ? (
               <ActivityIndicator color="#fff" />
@@ -552,7 +564,7 @@ function Step3Business() {
                   updateFormData({ business_type: t.id });
                 }}
                 style={twStyle(
-                  `rounded-[1.5rem] border p-5 flex-row items-center gap-4 transition-all duration-300 ${sel ? "border-slate-900 bg-slate-900/5 shadow-sm" : "border-slate-100 bg-white shadow-sm"}`
+                  `rounded-[1.5rem] border p-5 flex-row items-center gap-4 transition-all duration-300 ${sel ? "border-primary bg-primary/10 shadow-sm" : "border-slate-100 bg-white shadow-sm"}`
                 )}
                 accessibilityRole="button"
                 accessibilityLabel={t.label}
@@ -560,7 +572,7 @@ function Step3Business() {
               >
                 <View
                   style={twStyle(
-                    `h-12 w-12 items-center justify-center rounded-full ${sel ? "bg-slate-900" : "bg-slate-50"}`
+                    `h-12 w-12 items-center justify-center rounded-full ${sel ? "bg-primary" : "bg-slate-50"}`
                   )}
                 >
                   <Ionicons name={t.icon} size={22} color={sel ? "#fff" : "#64748b"} />
@@ -576,7 +588,7 @@ function Step3Business() {
                   <Text style={twStyle("mt-1 text-[14px] text-slate-500")}>{t.sub}</Text>
                 </View>
                 {sel ? (
-                  <Ionicons name="checkmark-circle" size={24} color="#0f172a" />
+                  <Ionicons name="checkmark-circle" size={24} color={Colors.primary} />
                 ) : (
                   <View style={twStyle("h-6 w-6 rounded-full border-2 border-slate-200")} />
                 )}
@@ -657,14 +669,14 @@ function Step4Payment() {
                   updateFormData({ yoco_machine: o.id });
                 }}
                 style={twStyle(
-                  `rounded-[1.5rem] border p-5 flex-row items-center gap-4 transition-all duration-300 ${sel ? "border-slate-900 bg-slate-900/5 shadow-sm" : "border-slate-100 bg-white shadow-sm"}`
+                  `rounded-[1.5rem] border p-5 flex-row items-center gap-4 transition-all duration-300 ${sel ? "border-primary bg-primary/10 shadow-sm" : "border-slate-100 bg-white shadow-sm"}`
                 )}
                 accessibilityRole="button"
                 accessibilityLabel={o.t}
               >
                 <View
                   style={twStyle(
-                    `h-12 w-12 items-center justify-center rounded-full ${sel ? "bg-slate-900" : "bg-slate-50"}`
+                    `h-12 w-12 items-center justify-center rounded-full ${sel ? "bg-primary" : "bg-slate-50"}`
                   )}
                 >
                   <Ionicons name={o.icon} size={22} color={sel ? "#fff" : "#64748b"} />
@@ -680,7 +692,7 @@ function Step4Payment() {
                   <Text style={twStyle("mt-1 text-[14px] text-slate-500")}>{o.sub}</Text>
                 </View>
                 {sel ? (
-                  <Ionicons name="checkmark-circle" size={24} color="#0f172a" />
+                  <Ionicons name="checkmark-circle" size={24} color={Colors.primary} />
                 ) : (
                   <View style={twStyle("h-6 w-6 rounded-full border-2 border-slate-200")} />
                 )}
@@ -722,7 +734,7 @@ function Step4Payment() {
                 vat_number: v ? formData.vat_number : undefined,
               })
             }
-            trackColor={{ false: "#e2e8f0", true: "#0f172a" }}
+            trackColor={{ false: "#e2e8f0", true: Colors.primary }}
           />
         </View>
         {formData.is_vat_registered ? (
@@ -822,7 +834,7 @@ function Step5Software() {
     (async () => {
       try {
         const res = await api.get<
-          Array<{ id: string; name: string; slug: string; display_order?: number }>
+          { id: string; name: string; slug: string; display_order?: number }[]
         >("/api/public/previous-software-options");
         if (!active) return;
         const list = Array.isArray(res.data) ? res.data : [];
@@ -897,13 +909,13 @@ function Step5Software() {
                 key={s.id}
                 onPress={() => handleSelect(s.id)}
                 style={twStyle(
-                  `flex-row items-center gap-2 rounded-full border px-4 py-3 transition-all duration-300 ${sel ? "border-slate-900 bg-slate-900/5 shadow-sm" : "border-slate-200 bg-white"}`
+                  `flex-row items-center gap-2 rounded-full border px-4 py-3 transition-all duration-300 ${sel ? "border-primary bg-primary/10 shadow-sm" : "border-slate-200 bg-white"}`
                 )}
                 accessibilityRole="button"
                 accessibilityLabel={s.label}
                 accessibilityState={{ selected: sel }}
               >
-                <Ionicons name={s.icon} size={16} color={sel ? "#0f172a" : "#64748b"} />
+                <Ionicons name={s.icon} size={16} color={sel ? Colors.primary : "#64748b"} />
                 <Text
                   style={twStyle(
                     `text-[15px] font-semibold ${sel ? "text-slate-900" : "text-slate-700"}`
@@ -911,7 +923,7 @@ function Step5Software() {
                 >
                   {s.label}
                 </Text>
-                {sel ? <Ionicons name="checkmark-circle" size={16} color="#0f172a" /> : null}
+                {sel ? <Ionicons name="checkmark-circle" size={16} color={Colors.primary} /> : null}
               </TouchableOpacity>
             );
           })}
@@ -1025,12 +1037,15 @@ function Step6Payroll() {
                 key={o.id}
                 onPress={() => updateFormData({ payroll_type: o.id })}
                 style={twStyle(
-                  `rounded-[1.5rem] border p-5 flex-row items-center gap-4 transition-all duration-300 ${sel ? "border-slate-900 bg-slate-900/5 shadow-sm" : "border-slate-100 bg-white shadow-sm"}`
+                  `rounded-[1.5rem] border p-5 flex-row items-center gap-4 transition-all duration-300 ${sel ? "border-primary bg-primary/10 shadow-sm" : "border-slate-100 bg-white shadow-sm"}`
                 )}
+                accessibilityRole="button"
+                accessibilityLabel={o.label}
+                accessibilityState={{ selected: sel }}
               >
                 <View
                   style={twStyle(
-                    `h-12 w-12 items-center justify-center rounded-full ${sel ? "bg-slate-900" : "bg-slate-50"}`
+                    `h-12 w-12 items-center justify-center rounded-full ${sel ? "bg-primary" : "bg-slate-50"}`
                   )}
                 >
                   <Ionicons name={o.icon} size={22} color={sel ? "#fff" : "#64748b"} />
@@ -1046,7 +1061,7 @@ function Step6Payroll() {
                   <Text style={twStyle("mt-1 text-[14px] text-slate-500")}>{o.sub}</Text>
                 </View>
                 {sel ? (
-                  <Ionicons name="checkmark-circle" size={24} color="#0f172a" />
+                  <Ionicons name="checkmark-circle" size={24} color={Colors.primary} />
                 ) : (
                   <View style={twStyle("h-6 w-6 rounded-full border-2 border-slate-200")} />
                 )}
@@ -1200,7 +1215,7 @@ function Step7Location() {
           onPress={() => void handleUseCurrentLocation()}
           disabled={locating}
           style={twStyle(
-            `rounded-full border px-4 py-2.5 flex-row items-center gap-2 transition-all duration-300 ${locating ? "border-slate-200 bg-slate-100" : "border-slate-900 bg-slate-900 shadow-sm"}`
+            `rounded-full border px-4 py-2.5 flex-row items-center gap-2 transition-all duration-300 ${locating ? "border-slate-200 bg-slate-100" : "border-primary bg-primary shadow-sm"}`
           )}
           accessibilityRole="button"
           accessibilityLabel="Use current location"
@@ -1295,6 +1310,38 @@ function Step7Location() {
 
 // ─── Step 8: Photos ───────────────────────────────────────────────────────────
 
+// §provider-onboarding-photos 2026-05: client-side guardrails mirror
+// `/api/upload` server limits (5MB image-only). Without these, large gallery
+// selections silently failed after the multi-MB upload completed, which both
+// wasted bandwidth and broke the "select 4+ photos" path the user reported.
+const ONBOARDING_UPLOAD_MAX_BYTES = 5 * 1024 * 1024;
+const ONBOARDING_ALLOWED_MIME = new Set([
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+]);
+const ONBOARDING_GALLERY_LIMIT = 12;
+
+function inferMime(asset: { mimeType?: string | null; fileName?: string | null }): string {
+  const mime = (asset.mimeType || "").toLowerCase().split(";")[0]?.trim();
+  if (mime && ONBOARDING_ALLOWED_MIME.has(mime)) return mime;
+  const ext = (asset.fileName || "").toLowerCase().split(".").pop();
+  switch (ext) {
+    case "png":
+      return "image/png";
+    case "webp":
+      return "image/webp";
+    case "gif":
+      return "image/gif";
+    case "jpg":
+    case "jpeg":
+    default:
+      return "image/jpeg";
+  }
+}
+
 async function uploadOnboardingImage(
   uri: string,
   mime: string,
@@ -1316,6 +1363,9 @@ function Step8Photos() {
   const [uploading, setUploading] = useState<{ thumb: boolean; avatar: boolean; gallery: boolean }>(
     { thumb: false, avatar: false, gallery: false }
   );
+  const [galleryProgress, setGalleryProgress] = useState<{ done: number; total: number } | null>(
+    null,
+  );
 
   const pick = async (kind: "thumb" | "avatar" | "gallery") => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -1324,56 +1374,116 @@ function Step8Photos() {
       return;
     }
     const isGallery = kind === "gallery";
+    const currentGallery = formData.gallery || [];
+    const remainingSlots = isGallery
+      ? Math.max(0, ONBOARDING_GALLERY_LIMIT - currentGallery.length)
+      : 1;
+    if (isGallery && remainingSlots <= 0) {
+      Alert.alert(
+        "Gallery full",
+        `You can upload up to ${ONBOARDING_GALLERY_LIMIT} gallery photos in onboarding. Remove a photo to add more.`,
+      );
+      return;
+    }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: !isGallery,
-      // Gallery supports multi-select; thumb/avatar are crop-and-replace.
       allowsMultipleSelection: isGallery,
-      selectionLimit: isGallery ? 10 : 1,
+      selectionLimit: isGallery ? remainingSlots : 1,
       quality: 0.85,
     });
     if (result.canceled || !result.assets?.length) return;
+
+    // Pre-validate everything client-side so we never start the upload on
+    // assets we know the server will reject (saves 5MB+ wasted bandwidth and
+    // surfaces the failure immediately).
+    const validAssets: typeof result.assets = [];
+    const rejected: string[] = [];
+    for (const a of result.assets) {
+      const mime = inferMime({ mimeType: a.mimeType, fileName: a.fileName });
+      if (!ONBOARDING_ALLOWED_MIME.has(mime)) {
+        rejected.push(`${a.fileName || "Image"}: unsupported type`);
+        continue;
+      }
+      const size = (a as { fileSize?: number }).fileSize;
+      if (typeof size === "number" && size > ONBOARDING_UPLOAD_MAX_BYTES) {
+        rejected.push(`${a.fileName || "Image"}: larger than 5MB`);
+        continue;
+      }
+      validAssets.push(a);
+    }
+    if (rejected.length > 0 && validAssets.length === 0) {
+      Alert.alert("Couldn't add these photos", rejected.join("\n"));
+      return;
+    }
+    if (rejected.length > 0) {
+      Alert.alert("Some photos were skipped", rejected.join("\n"));
+    }
+    if (validAssets.length === 0) return;
+
     setUploading((p) => ({ ...p, [kind]: true }));
     try {
       if (!isGallery) {
-        const a = result.assets[0];
+        const a = validAssets[0];
         const url = await uploadOnboardingImage(
           a.uri,
-          a.mimeType || "image/jpeg",
-          a.fileName || `img-${Date.now()}.jpg`
+          inferMime({ mimeType: a.mimeType, fileName: a.fileName }),
+          a.fileName || `img-${Date.now()}.jpg`,
         );
         if (!url) {
-          Alert.alert("Upload failed", "Try again.");
+          Alert.alert("Upload failed", "Couldn't upload the photo. Please try again.");
           return;
         }
         if (kind === "thumb") updateFormData({ thumbnail_url: url });
         else updateFormData({ avatar_url: url });
       } else {
-        // Upload selected gallery images in parallel; keep partial successes.
-        const uploads = await Promise.all(
-          result.assets.map((a) =>
-            uploadOnboardingImage(
-              a.uri,
-              a.mimeType || "image/jpeg",
-              a.fileName || `img-${Date.now()}.jpg`
-            )
-          )
-        );
-        const newUrls = uploads.filter((u): u is string => !!u);
+        // §provider-onboarding-photos 2026-05: previous parallel `Promise.all`
+        // over up to 10 multi-MB images was unreliable on mobile networks and
+        // broke when the device throttled requests. Sequential uploads keep
+        // memory and bandwidth predictable, surface partial failures cleanly,
+        // and let us show "X of Y" progress instead of a frozen spinner.
+        const baseGallery = formData.gallery || [];
+        const newUrls: string[] = [];
+        const failed: string[] = [];
+        setGalleryProgress({ done: 0, total: validAssets.length });
+        for (let i = 0; i < validAssets.length; i++) {
+          const a = validAssets[i];
+          const url = await uploadOnboardingImage(
+            a.uri,
+            inferMime({ mimeType: a.mimeType, fileName: a.fileName }),
+            a.fileName || `img-${Date.now()}-${i}.jpg`,
+          );
+          if (url) {
+            newUrls.push(url);
+            // §provider-onboarding-photos 2026-05: append each successful
+            // upload immediately so a mid-batch crash/cancel doesn't lose
+            // finished work. Recompute from the captured base so we never
+            // duplicate the running list across iterations.
+            updateFormData({ gallery: [...baseGallery, ...newUrls] });
+          } else {
+            failed.push(a.fileName || `Image ${i + 1}`);
+          }
+          setGalleryProgress({ done: i + 1, total: validAssets.length });
+        }
         if (newUrls.length === 0) {
-          Alert.alert("Upload failed", "None of the photos could be uploaded. Try again.");
+          Alert.alert(
+            "Upload failed",
+            "None of the photos could be uploaded. Check your connection and try again.",
+          );
           return;
         }
-        updateFormData({ gallery: [...(formData.gallery || []), ...newUrls] });
-        if (newUrls.length < result.assets.length) {
+        if (failed.length > 0) {
           Alert.alert(
             "Some uploads failed",
-            `${result.assets.length - newUrls.length} of ${result.assets.length} photo${result.assets.length === 1 ? "" : "s"} could not be uploaded.`
+            `${failed.length} of ${validAssets.length} photo${
+              validAssets.length === 1 ? "" : "s"
+            } could not be uploaded:\n${failed.join("\n")}`,
           );
         }
       }
     } finally {
       setUploading((p) => ({ ...p, [kind]: false }));
+      setGalleryProgress(null);
     }
   };
 
@@ -1421,7 +1531,7 @@ function Step8Photos() {
           onPress={() => pick(kind)}
           disabled={uploading[kind]}
           style={twStyle(
-            `flex-1 flex-row items-center justify-center gap-2 rounded-full py-3.5 transition-all duration-300 ${uploading[kind] ? "bg-slate-100" : url ? "bg-slate-900 shadow-sm" : "bg-slate-900 shadow-sm"}`
+            `flex-1 flex-row items-center justify-center gap-2 rounded-full py-3.5 transition-all duration-300 ${uploading[kind] ? "bg-slate-100" : "bg-primary shadow-sm"}`
           )}
           accessibilityRole="button"
           accessibilityLabel={url ? `Replace ${title}` : `Upload ${title}`}
@@ -1482,26 +1592,47 @@ function Step8Photos() {
           <View style={twStyle("flex-1 pr-2")}>
             <Text style={twStyle("text-[17px] font-semibold text-slate-900")}>Gallery</Text>
             <Text style={twStyle("mt-1 text-[14px] text-slate-500")}>
-              {gallery.length > 0
-                ? `${gallery.length} photo${gallery.length === 1 ? "" : "s"} added`
-                : "Portfolio-style work photos"}
+              {galleryProgress
+                ? `Uploading ${galleryProgress.done} of ${galleryProgress.total}…`
+                : gallery.length > 0
+                  ? `${gallery.length} of ${ONBOARDING_GALLERY_LIMIT} photos added`
+                  : `Portfolio-style work photos · up to ${ONBOARDING_GALLERY_LIMIT}`}
             </Text>
           </View>
           <TouchableOpacity
             onPress={() => pick("gallery")}
-            disabled={uploading.gallery}
+            disabled={uploading.gallery || gallery.length >= ONBOARDING_GALLERY_LIMIT}
             style={twStyle(
-              `flex-row items-center gap-2 rounded-full px-4 py-3 transition-all duration-300 ${uploading.gallery ? "bg-slate-100" : "bg-slate-900 shadow-sm"}`
+              `flex-row items-center gap-2 rounded-full px-4 py-3 transition-all duration-300 ${
+                uploading.gallery || gallery.length >= ONBOARDING_GALLERY_LIMIT
+                  ? "bg-slate-100"
+                  : "bg-primary shadow-sm"
+              }`
             )}
             accessibilityRole="button"
             accessibilityLabel="Add gallery photo"
+            accessibilityState={{
+              disabled: uploading.gallery || gallery.length >= ONBOARDING_GALLERY_LIMIT,
+            }}
           >
             {uploading.gallery ? (
               <ActivityIndicator color="#64748b" size="small" />
             ) : (
               <>
-                <Ionicons name="add" size={18} color="#fff" />
-                <Text style={twStyle("text-[15px] font-semibold text-white")}>Add</Text>
+                <Ionicons
+                  name="add"
+                  size={18}
+                  color={gallery.length >= ONBOARDING_GALLERY_LIMIT ? "#94a3b8" : "#fff"}
+                />
+                <Text
+                  style={twStyle(
+                    `text-[15px] font-semibold ${
+                      gallery.length >= ONBOARDING_GALLERY_LIMIT ? "text-slate-400" : "text-white"
+                    }`,
+                  )}
+                >
+                  {gallery.length >= ONBOARDING_GALLERY_LIMIT ? "Full" : "Add"}
+                </Text>
               </>
             )}
           </TouchableOpacity>
@@ -1672,12 +1803,12 @@ function Step9Zones() {
             <TouchableOpacity
               onPress={() => toggle(item.id)}
               style={twStyle(
-                `rounded-[1.5rem] border p-5 flex-row items-center gap-4 transition-all duration-300 ${on ? "border-slate-900 bg-slate-50 shadow-sm" : "border-slate-200 bg-white"}`
+                `rounded-[1.5rem] border p-5 flex-row items-center gap-4 transition-all duration-300 ${on ? "border-primary bg-primary/10 shadow-sm" : "border-slate-200 bg-white"}`
               )}
             >
               <View
                 style={twStyle(
-                  `h-10 w-10 items-center justify-center rounded-full ${on ? "bg-slate-900" : "bg-slate-100"}`
+                  `h-10 w-10 items-center justify-center rounded-full ${on ? "bg-primary" : "bg-slate-100"}`
                 )}
               >
                 <Ionicons name="location-outline" size={20} color={on ? "#fff" : "#64748b"} />
@@ -1697,7 +1828,7 @@ function Step9Zones() {
                 ) : null}
               </View>
               {on ? (
-                <Ionicons name="checkmark-circle" size={24} color="#0f172a" />
+                <Ionicons name="checkmark-circle" size={24} color={Colors.primary} />
               ) : (
                 <View style={twStyle("h-6 w-6 rounded-full border-2 border-slate-200")} />
               )}
@@ -1751,7 +1882,7 @@ function Step10Categories() {
           Choose all that apply — you can change these later.
         </Text>
         {selectedCount > 0 ? (
-          <View style={twStyle("rounded-full bg-slate-900 px-3 py-1")}>
+          <View style={twStyle("rounded-full bg-primary px-3 py-1")}>
             <Text style={twStyle("text-[12px] font-bold text-white")}>{selectedCount}</Text>
           </View>
         ) : null}
@@ -1770,27 +1901,44 @@ function Step10Categories() {
             <TouchableOpacity
               onPress={() => toggle(item.id)}
               style={twStyle(
-                `mb-3 flex-1 rounded-[1.5rem] border p-4 transition-all duration-300 ${on ? "border-slate-900 bg-slate-50 shadow-sm" : "border-slate-200 bg-white shadow-sm"}`
+                `mb-3 flex-1 rounded-[1.5rem] border p-4 transition-all duration-300 ${on ? "border-primary bg-primary/10 shadow-sm" : "border-slate-200 bg-white shadow-sm"}`
               )}
               accessibilityRole="button"
               accessibilityLabel={item.name}
               accessibilityState={{ selected: on }}
             >
               <View
-                style={twStyle(
-                  `mb-3 h-12 w-12 items-center justify-center rounded-full ${on ? "bg-slate-900" : "bg-slate-100"}`
-                )}
+                style={[
+                  twStyle(
+                    `mb-3 h-16 w-16 items-center justify-center rounded-2xl border ${on ? "border-primary bg-white" : "border-slate-100 bg-slate-50"}`
+                  ),
+                  {
+                    // Global category artwork is often detailed / non-square.
+                    // Give it room and never tint it, otherwise RN can flatten
+                    // or visually crop the icon on Android/iOS.
+                    overflow: "visible",
+                  },
+                ]}
               >
                 {iconUri ? (
                   <Image
                     source={{ uri: iconUri }}
-                    style={{ width: 24, height: 24, tintColor: on ? "#ffffff" : undefined }}
+                    style={{ width: 46, height: 46 }}
                     resizeMode="contain"
                     accessibilityIgnoresInvertColors
                   />
                 ) : (
-                  <Ionicons name="pricetag-outline" size={20} color={on ? "#ffffff" : "#64748b"} />
+                  <Ionicons name="pricetag-outline" size={26} color={on ? Colors.primary : "#64748b"} />
                 )}
+                {on ? (
+                  <View
+                    style={twStyle(
+                      "absolute -right-1 -top-1 h-5 w-5 items-center justify-center rounded-full bg-primary"
+                    )}
+                  >
+                    <Ionicons name="checkmark" size={13} color="#ffffff" />
+                  </View>
+                ) : null}
               </View>
               <Text
                 style={twStyle(
@@ -1802,8 +1950,8 @@ function Step10Categories() {
               </Text>
               {on ? (
                 <View style={twStyle("mt-2 flex-row items-center gap-1.5")}>
-                  <Ionicons name="checkmark-circle" size={14} color="#0f172a" />
-                  <Text style={twStyle("text-[12px] font-semibold text-slate-900")}>Selected</Text>
+                  <Ionicons name="checkmark-circle" size={14} color={Colors.primary} />
+                  <Text style={twStyle("text-[12px] font-semibold text-primary")}>Selected</Text>
                 </View>
               ) : null}
             </TouchableOpacity>
@@ -1815,6 +1963,25 @@ function Step10Categories() {
 }
 
 // ─── Step 11: Services ───────────────────────────────────────────────────────
+
+type ServiceTypeOption = { value: string; label: string };
+
+const SERVICE_TYPE_OPTIONS: ServiceTypeOption[] = [
+  { value: "basic", label: "Basic" },
+  { value: "addon", label: "Add-on" },
+  { value: "package", label: "Package" },
+];
+
+const AVAILABILITY_OPTIONS: ServiceTypeOption[] = [
+  { value: "everyone", label: "Everyone" },
+  { value: "women", label: "Women" },
+  { value: "men", label: "Men" },
+];
+
+const TAX_RATE_OPTIONS: ServiceTypeOption[] = [
+  { value: "0", label: "No tax" },
+  { value: "15", label: "15% VAT" },
+];
 
 function Step11Services() {
   const { formData, updateFormData } = useOnboardingWizard();
@@ -1834,8 +2001,24 @@ function Step11Services() {
   const [addonDuration, setAddonDuration] = useState("");
   const [addonDescription, setAddonDescription] = useState("");
   const [draftAddons, setDraftAddons] = useState<NonNullable<OnboardingService["addons"]>>([]);
+  // §provider-onboarding-2026-05: Catalog-parity advanced fields. These ride
+  // through to `/api/provider/onboarding` so providers don't have to revisit
+  // every service in the catalog after going live.
+  const [serviceType, setServiceType] = useState<string>("basic");
+  const [pricingName, setPricingName] = useState("");
+  const [aftercareDescription, setAftercareDescription] = useState("");
+  const [availableFor, setAvailableFor] = useState<string>("everyone");
+  const [onlineBookable, setOnlineBookable] = useState(true);
+  const [atHomeRadius, setAtHomeRadius] = useState("");
+  const [atHomePriceAdj, setAtHomePriceAdj] = useState("0");
+  const [taxRate, setTaxRate] = useState("0");
+  const [extraTimeEnabled, setExtraTimeEnabled] = useState(false);
+  const [extraTimeDuration, setExtraTimeDuration] = useState("15");
   const services = formData.services || [];
-  const selectedCategoryIds = formData.global_category_ids || [];
+  const selectedCategoryIds = useMemo(
+    () => formData.global_category_ids || [],
+    [formData.global_category_ids],
+  );
   const selectedCategories = allCats.filter((cat) => selectedCategoryIds.includes(cat.id));
   const categoryNameById = new Map(selectedCategories.map((cat) => [cat.id, cat.name]));
 
@@ -1913,6 +2096,10 @@ function Step11Services() {
       Alert.alert("Service", "Choose at least one availability option: salon or at-home.");
       return;
     }
+    const parsedRadius = parseFloat(atHomeRadius);
+    const parsedAdj = parseFloat(atHomePriceAdj);
+    const parsedTax = parseFloat(taxRate);
+    const parsedExtraDur = parseInt(extraTimeDuration, 10);
     const s: OnboardingService = {
       title: title.trim(),
       category_id: categoryId,
@@ -1922,6 +2109,23 @@ function Step11Services() {
       currency: tenantCurrency,
       supports_at_home: supportsAtHome,
       supports_at_salon: supportsAtSalon,
+      service_type: serviceType || "basic",
+      pricing_name: pricingName.trim() || undefined,
+      aftercare_description: aftercareDescription.trim() || undefined,
+      service_available_for: availableFor || "everyone",
+      online_booking_enabled: onlineBookable,
+      at_home_radius_km:
+        supportsAtHome && Number.isFinite(parsedRadius) && parsedRadius > 0
+          ? parsedRadius
+          : undefined,
+      at_home_price_adjustment:
+        supportsAtHome && Number.isFinite(parsedAdj) ? parsedAdj : 0,
+      tax_rate: Number.isFinite(parsedTax) ? parsedTax : 0,
+      extra_time_enabled: extraTimeEnabled,
+      extra_time_duration:
+        extraTimeEnabled && Number.isFinite(parsedExtraDur) && parsedExtraDur > 0
+          ? parsedExtraDur
+          : 0,
       addons: draftAddons.length ? draftAddons : [],
     };
     updateFormData({ services: [...services, s] });
@@ -1933,6 +2137,16 @@ function Step11Services() {
     setSupportsAtSalon(formData.business_type !== "mobile");
     setSupportsAtHome(formData.business_type !== "salon");
     setDraftAddons([]);
+    setServiceType("basic");
+    setPricingName("");
+    setAftercareDescription("");
+    setAvailableFor("everyone");
+    setOnlineBookable(true);
+    setAtHomeRadius("");
+    setAtHomePriceAdj("0");
+    setTaxRate("0");
+    setExtraTimeEnabled(false);
+    setExtraTimeDuration("15");
   };
 
   const remove = (i: number) => {
@@ -2017,7 +2231,7 @@ function Step11Services() {
                   key={cat.id}
                   onPress={() => setCategoryId(cat.id)}
                   style={twStyle(
-                    `rounded-full border px-4 py-2 transition-all duration-300 ${selected ? "border-slate-900 bg-slate-900 shadow-sm" : "border-slate-200 bg-slate-50"}`
+                    `rounded-full border px-4 py-2 transition-all duration-300 ${selected ? "border-primary bg-primary shadow-sm" : "border-slate-200 bg-slate-50"}`
                   )}
                 >
                   <Text
@@ -2074,9 +2288,13 @@ function Step11Services() {
           style={twStyle(
             "flex-row items-center justify-between rounded-[1.5rem] border border-slate-200 bg-slate-50 px-5 py-4"
           )}
+          accessibilityRole="button"
+          accessibilityLabel={
+            showAdvanced ? "Hide advanced service settings" : "Show advanced service settings"
+          }
         >
           <Text style={twStyle("text-[15px] font-semibold text-slate-700")}>
-            Description, availability & add-ons
+            Advanced service settings
           </Text>
           <Ionicons name={showAdvanced ? "chevron-up" : "chevron-down"} size={20} color="#64748b" />
         </TouchableOpacity>
@@ -2092,7 +2310,93 @@ function Step11Services() {
               numberOfLines={3}
               placeholderTextColor="#94a3b8"
             />
+
+            <View style={twStyle("rounded-[1.5rem] border border-slate-200 bg-white p-4 gap-3")}>
+              <Text style={twStyle("text-[13px] font-semibold uppercase tracking-wide text-slate-500")}>
+                Service type
+              </Text>
+              <View style={twStyle("flex-row flex-wrap gap-2")}>
+                {SERVICE_TYPE_OPTIONS.map((opt) => {
+                  const selected = serviceType === opt.value;
+                  return (
+                    <TouchableOpacity
+                      key={opt.value}
+                      onPress={() => setServiceType(opt.value)}
+                      style={twStyle(
+                        `rounded-full border px-4 py-2 ${selected ? "border-primary bg-primary" : "border-slate-200 bg-white"}`
+                      )}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Service type ${opt.label}`}
+                      accessibilityState={{ selected }}
+                    >
+                      <Text
+                        style={twStyle(
+                          `text-[14px] font-medium ${selected ? "text-white" : "text-slate-700"}`
+                        )}
+                      >
+                        {opt.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              <TextInput
+                value={pricingName}
+                onChangeText={setPricingName}
+                placeholder="Pricing label (e.g. Standard, Hour 1)"
+                style={twStyle(inputCls)}
+                placeholderTextColor="#94a3b8"
+              />
+            </View>
+
+            <View style={twStyle("rounded-[1.5rem] border border-slate-200 bg-white p-4 gap-3")}>
+              <Text style={twStyle("text-[13px] font-semibold uppercase tracking-wide text-slate-500")}>
+                Available for
+              </Text>
+              <View style={twStyle("flex-row flex-wrap gap-2")}>
+                {AVAILABILITY_OPTIONS.map((opt) => {
+                  const selected = availableFor === opt.value;
+                  return (
+                    <TouchableOpacity
+                      key={opt.value}
+                      onPress={() => setAvailableFor(opt.value)}
+                      style={twStyle(
+                        `rounded-full border px-4 py-2 ${selected ? "border-primary bg-primary" : "border-slate-200 bg-white"}`
+                      )}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Available for ${opt.label}`}
+                      accessibilityState={{ selected }}
+                    >
+                      <Text
+                        style={twStyle(
+                          `text-[14px] font-medium ${selected ? "text-white" : "text-slate-700"}`
+                        )}
+                      >
+                        {opt.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+
             <View style={twStyle("rounded-[1.5rem] border border-slate-200 bg-white p-4 gap-4")}>
+              <View style={twStyle("flex-row items-center justify-between")}>
+                <View style={twStyle("flex-1 pr-3")}>
+                  <Text style={twStyle("text-[15px] font-medium text-slate-800")}>
+                    Online bookings
+                  </Text>
+                  <Text style={twStyle("mt-0.5 text-[12px] text-slate-500")}>
+                    Allow customers to book this service from your app or web profile.
+                  </Text>
+                </View>
+                <Switch
+                  value={onlineBookable}
+                  onValueChange={setOnlineBookable}
+                  trackColor={{ false: "#cbd5e1", true: Colors.primary }}
+                  accessibilityLabel="Online booking enabled"
+                />
+              </View>
               <View style={twStyle("flex-row items-center justify-between")}>
                 <Text style={twStyle("text-[15px] font-medium text-slate-800")}>
                   Available at salon
@@ -2100,7 +2404,7 @@ function Step11Services() {
                 <Switch
                   value={supportsAtSalon}
                   onValueChange={setSupportsAtSalon}
-                  trackColor={{ false: "#cbd5e1", true: "#0f172a" }}
+                  trackColor={{ false: "#cbd5e1", true: Colors.primary }}
                 />
               </View>
               <View style={twStyle("flex-row items-center justify-between")}>
@@ -2110,9 +2414,104 @@ function Step11Services() {
                 <Switch
                   value={supportsAtHome}
                   onValueChange={setSupportsAtHome}
-                  trackColor={{ false: "#cbd5e1", true: "#0f172a" }}
+                  trackColor={{ false: "#cbd5e1", true: Colors.primary }}
                 />
               </View>
+              {supportsAtHome ? (
+                <View style={twStyle("flex-row gap-3")}>
+                  <TextInput
+                    value={atHomeRadius}
+                    onChangeText={setAtHomeRadius}
+                    placeholder="Travel radius km"
+                    keyboardType="decimal-pad"
+                    style={twStyle(`${inputCls} flex-1`)}
+                    placeholderTextColor="#94a3b8"
+                  />
+                  <TextInput
+                    value={atHomePriceAdj}
+                    onChangeText={setAtHomePriceAdj}
+                    placeholder={`+${tenantCurrency}`}
+                    keyboardType="decimal-pad"
+                    style={twStyle(`${inputCls} w-32`)}
+                    placeholderTextColor="#94a3b8"
+                  />
+                </View>
+              ) : null}
+            </View>
+
+            <View style={twStyle("rounded-[1.5rem] border border-slate-200 bg-white p-4 gap-3")}>
+              <Text style={twStyle("text-[13px] font-semibold uppercase tracking-wide text-slate-500")}>
+                Tax rate
+              </Text>
+              <View style={twStyle("flex-row flex-wrap gap-2")}>
+                {TAX_RATE_OPTIONS.map((opt) => {
+                  const selected = taxRate === opt.value;
+                  return (
+                    <TouchableOpacity
+                      key={opt.value}
+                      onPress={() => setTaxRate(opt.value)}
+                      style={twStyle(
+                        `rounded-full border px-4 py-2 ${selected ? "border-primary bg-primary" : "border-slate-200 bg-white"}`
+                      )}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Tax rate ${opt.label}`}
+                      accessibilityState={{ selected }}
+                    >
+                      <Text
+                        style={twStyle(
+                          `text-[14px] font-medium ${selected ? "text-white" : "text-slate-700"}`
+                        )}
+                      >
+                        {opt.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+
+            <View style={twStyle("rounded-[1.5rem] border border-slate-200 bg-white p-4 gap-3")}>
+              <View style={twStyle("flex-row items-center justify-between")}>
+                <View style={twStyle("flex-1 pr-3")}>
+                  <Text style={twStyle("text-[15px] font-medium text-slate-800")}>
+                    Reserve extra time
+                  </Text>
+                  <Text style={twStyle("mt-0.5 text-[12px] text-slate-500")}>
+                    Block the calendar after this service for cleanup, transition, or buffer.
+                  </Text>
+                </View>
+                <Switch
+                  value={extraTimeEnabled}
+                  onValueChange={setExtraTimeEnabled}
+                  trackColor={{ false: "#cbd5e1", true: Colors.primary }}
+                  accessibilityLabel="Reserve extra time"
+                />
+              </View>
+              {extraTimeEnabled ? (
+                <TextInput
+                  value={extraTimeDuration}
+                  onChangeText={setExtraTimeDuration}
+                  placeholder="Buffer (min)"
+                  keyboardType="number-pad"
+                  style={twStyle(inputCls)}
+                  placeholderTextColor="#94a3b8"
+                />
+              ) : null}
+            </View>
+
+            <View style={twStyle("rounded-[1.5rem] border border-slate-200 bg-white p-4 gap-3")}>
+              <Text style={twStyle("text-[13px] font-semibold uppercase tracking-wide text-slate-500")}>
+                Aftercare notes (optional)
+              </Text>
+              <TextInput
+                value={aftercareDescription}
+                onChangeText={setAftercareDescription}
+                placeholder="Sent to customers after the booking is complete"
+                style={twStyle(`${inputCls} min-h-[88px] pt-4`)}
+                multiline
+                numberOfLines={3}
+                placeholderTextColor="#94a3b8"
+              />
             </View>
 
             <View style={twStyle("rounded-[1.5rem] border border-slate-200 bg-white p-4 gap-3")}>
@@ -2177,11 +2576,11 @@ function Step11Services() {
               <TouchableOpacity
                 onPress={addAddon}
                 style={twStyle(
-                  "flex-row items-center justify-center gap-2 rounded-[1.5rem] border-2 border-slate-900 bg-white py-3.5 mt-1"
+                  "flex-row items-center justify-center gap-2 rounded-[1.5rem] border-2 border-primary bg-white py-3.5 mt-1"
                 )}
               >
-                <Ionicons name="add" size={18} color="#0f172a" />
-                <Text style={twStyle("text-[15px] font-semibold text-slate-900")}>Add add-on</Text>
+                <Ionicons name="add" size={18} color={Colors.primary} />
+                <Text style={twStyle("text-[15px] font-semibold text-primary")}>Add add-on</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -2191,7 +2590,7 @@ function Step11Services() {
       <TouchableOpacity
         onPress={add}
         style={twStyle(
-          "flex-row items-center justify-center gap-2 rounded-full bg-slate-900 py-4 shadow-sm"
+          "flex-row items-center justify-center gap-2 rounded-full bg-primary py-4 shadow-sm"
         )}
       >
         <Ionicons name="add-circle-outline" size={22} color="#fff" />
@@ -2214,14 +2613,26 @@ const DAYS = [
 ] as const;
 const DAY_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 
+type HoursPickerState = {
+  day: string;
+  field: "open" | "close";
+  time: string;
+};
+
+function minutesFromTime(time: string): number {
+  const [h, m] = time.split(":");
+  return Number(h ?? 0) * 60 + Number(m ?? 0);
+}
+
 function Step12Hours() {
   const { formData, updateFormData } = useOnboardingWizard();
   const oh = formData.operating_hours || {};
   const isFreelancer = formData.business_type === "mobile" || formData.team_size === "freelancer";
 
-  const [showPicker, setShowPicker] = useState<"open" | "close" | null>(null);
-  const [pickerDay, setPickerDay] = useState<string | null>(null);
-  const [pickerTime, setPickerTime] = useState<string>("09:00");
+  // §provider-onboarding-hours 2026-05: single picker state record so we
+  // never read stale `pickerDay/showPicker` after Android dismisses the
+  // native dialog and resets them in the same JS tick.
+  const [picker, setPicker] = useState<HoursPickerState | null>(null);
 
   useEffect(() => {
     if (
@@ -2250,15 +2661,69 @@ function Step12Hours() {
     updateFormData({ operating_hours: { ...oh, [day]: { ...cur, ...patch } } });
   };
 
-  const handleTimeChange = (_: unknown, d?: Date) => {
-    if (Platform.OS !== "ios") {
-      setShowPicker(null);
-      setPickerDay(null);
+  const toggleDay = (day: string) => {
+    Haptics.selectionAsync();
+    const cur = oh[day] || { open: "09:00", close: "18:00", closed: false };
+    setDay(day, { closed: !cur.closed });
+  };
+
+  const openPicker = (day: string, field: "open" | "close") => {
+    const cur = oh[day] || { open: "09:00", close: "18:00", closed: false };
+    const fallback = field === "open" ? "09:00" : "18:00";
+    const time = (field === "open" ? cur.open : cur.close) || fallback;
+    Haptics.selectionAsync();
+    setPicker({ day, field, time });
+  };
+
+  const handleTimeChange = (
+    event: { type?: string } | unknown,
+    d?: Date,
+  ) => {
+    const current = picker;
+    const eventType = (event as { type?: string } | undefined)?.type;
+    // On Android, the picker fires once and then must be dismissed by us.
+    // On iOS the spinner stays open until the user taps "Done", but we want
+    // a Done button on the parent overlay; close on dismiss either way.
+    if (Platform.OS !== "ios" || eventType === "dismissed") {
+      setPicker(null);
     }
-    if (d && pickerDay && showPicker) {
-      const timeStr = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-      setDay(pickerDay, { [showPicker]: timeStr });
-      setPickerTime(timeStr);
+    if (!d || !current || eventType === "dismissed") return;
+
+    const timeStr = `${String(d.getHours()).padStart(2, "0")}:${String(
+      d.getMinutes(),
+    ).padStart(2, "0")}`;
+
+    // §provider-onboarding-hours 2026-05: prevent inverted ranges so providers
+    // don't end up with a saved "open after close" schedule that silently
+    // breaks bookings later.
+    const cur = oh[current.day] || { open: "09:00", close: "18:00", closed: false };
+    if (current.field === "open") {
+      const closeMins = minutesFromTime(cur.close || "18:00");
+      const newMins = minutesFromTime(timeStr);
+      if (newMins >= closeMins) {
+        Alert.alert(
+          "Opening time too late",
+          "Opening time must be earlier than closing time.",
+        );
+        return;
+      }
+      setDay(current.day, { open: timeStr });
+    } else {
+      const openMins = minutesFromTime(cur.open || "09:00");
+      const newMins = minutesFromTime(timeStr);
+      if (newMins <= openMins) {
+        Alert.alert(
+          "Closing time too early",
+          "Closing time must be later than opening time.",
+        );
+        return;
+      }
+      setDay(current.day, { close: timeStr });
+    }
+
+    // On iOS we keep the spinner state in sync with the latest selection.
+    if (Platform.OS === "ios") {
+      setPicker((prev) => (prev ? { ...prev, time: timeStr } : prev));
     }
   };
 
@@ -2267,9 +2732,8 @@ function Step12Hours() {
     const newHours: typeof oh = {};
     for (const day of DAYS) newHours[day] = { ...src };
     updateFormData({ operating_hours: newHours });
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
-
-  const openDays = DAYS.filter((d) => !oh[d]?.closed);
 
   return (
     <View style={twStyle("gap-3")}>
@@ -2290,36 +2754,39 @@ function Step12Hours() {
           )}
         >
           {isFreelancer
-            ? "We've started you on broad weekday hours (8 am–8 pm). Tweak them to match how you actually work."
-            : "Clients can only book slots within these hours. Set individual staff schedules in Settings later."}
+            ? "We've started you on broad weekday hours (8 am–8 pm). Tap a day to toggle open/closed, then set times."
+            : "Clients can only book slots within these hours. Tap a day to toggle it, then set the times."}
         </Text>
       </View>
 
-      {/* Quick summary chips */}
-      {openDays.length > 0 ? (
-        <View style={twStyle("flex-row flex-wrap gap-1.5 mb-2")}>
-          {DAYS.map((day, i) => {
-            const h = oh[day];
-            const open = h && !h.closed;
-            return (
-              <View
-                key={day}
+      {/* Quick summary chips — tappable to toggle open/closed for fast setup */}
+      <View style={twStyle("flex-row flex-wrap gap-1.5 mb-2")}>
+        {DAYS.map((day, i) => {
+          const h = oh[day];
+          const open = !!(h && !h.closed);
+          return (
+            <TouchableOpacity
+              key={day}
+              onPress={() => toggleDay(day)}
+              accessibilityRole="button"
+              accessibilityLabel={`Toggle ${day} ${open ? "closed" : "open"}`}
+              accessibilityState={{ selected: open }}
+              activeOpacity={0.7}
+              style={twStyle(
+                `rounded-full px-3 py-1.5 ${open ? "bg-primary shadow-sm" : "bg-slate-100"}`,
+              )}
+            >
+              <Text
                 style={twStyle(
-                  `rounded-full px-3 py-1.5 transition-all duration-300 ${open ? "bg-slate-900 shadow-sm" : "bg-slate-100"}`
+                  `text-[13px] font-semibold ${open ? "text-white" : "text-slate-500"}`,
                 )}
               >
-                <Text
-                  style={twStyle(
-                    `text-[13px] font-semibold ${open ? "text-white" : "text-slate-500"}`
-                  )}
-                >
-                  {DAY_SHORT[i]}
-                </Text>
-              </View>
-            );
-          })}
-        </View>
-      ) : null}
+                {DAY_SHORT[i]}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
 
       {DAYS.map((day) => {
         const h = oh[day] || { open: "09:00", close: "18:00", closed: false };
@@ -2329,12 +2796,33 @@ function Step12Hours() {
             style={twStyle("rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm")}
           >
             <View style={twStyle("flex-row items-center justify-between")}>
-              <Text style={twStyle("text-[17px] font-semibold capitalize text-slate-900")}>
-                {day}
-              </Text>
+              <TouchableOpacity
+                onPress={() => toggleDay(day)}
+                accessibilityRole="button"
+                accessibilityLabel={`Toggle ${day} ${h.closed ? "open" : "closed"}`}
+                accessibilityState={{ selected: !h.closed }}
+                activeOpacity={0.7}
+                style={twStyle("flex-1 pr-3")}
+              >
+                <Text style={twStyle("text-[17px] font-semibold capitalize text-slate-900")}>
+                  {day}
+                </Text>
+                <Text
+                  style={twStyle(
+                    `mt-1 text-[12px] font-medium ${h.closed ? "text-slate-400" : "text-emerald-600"}`,
+                  )}
+                >
+                  Tap to {h.closed ? "open this day" : "mark closed"}
+                </Text>
+              </TouchableOpacity>
               <View style={twStyle("flex-row items-center gap-3")}>
                 {!h.closed ? (
-                  <TouchableOpacity onPress={() => copyToAll(day)} style={twStyle("px-2 py-1")}>
+                  <TouchableOpacity
+                    onPress={() => copyToAll(day)}
+                    style={twStyle("px-2 py-1")}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Copy ${day} hours to all days`}
+                  >
                     <Text style={twStyle("text-[13px] font-semibold text-slate-500")}>
                       Copy all
                     </Text>
@@ -2350,21 +2838,20 @@ function Step12Hours() {
                 <Switch
                   value={!h.closed}
                   onValueChange={(v) => setDay(day, { closed: !v })}
-                  trackColor={{ false: "#cbd5e1", true: "#0f172a" }}
+                  trackColor={{ false: "#cbd5e1", true: Colors.primary }}
+                  accessibilityLabel={`${day} open switch`}
                 />
               </View>
             </View>
             {!h.closed ? (
               <View style={twStyle("mt-4 flex-row gap-3")}>
                 <TouchableOpacity
-                  onPress={() => {
-                    setPickerDay(day);
-                    setShowPicker("open");
-                    setPickerTime(h.open || "09:00");
-                  }}
+                  onPress={() => openPicker(day, "open")}
                   style={twStyle(
                     "flex-1 flex-row items-center justify-center gap-2 rounded-[1rem] border border-slate-200 bg-slate-50 py-3"
                   )}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Set opening time for ${day}, currently ${h.open || "09:00"}`}
                 >
                   <Ionicons name="time-outline" size={18} color="#64748b" />
                   <Text style={twStyle("text-[16px] font-semibold text-slate-900")}>
@@ -2375,14 +2862,12 @@ function Step12Hours() {
                   <Text style={twStyle("text-[15px] font-medium text-slate-400")}>to</Text>
                 </View>
                 <TouchableOpacity
-                  onPress={() => {
-                    setPickerDay(day);
-                    setShowPicker("close");
-                    setPickerTime(h.close || "18:00");
-                  }}
+                  onPress={() => openPicker(day, "close")}
                   style={twStyle(
                     "flex-1 flex-row items-center justify-center gap-2 rounded-[1rem] border border-slate-200 bg-slate-50 py-3"
                   )}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Set closing time for ${day}, currently ${h.close || "18:00"}`}
                 >
                   <Ionicons name="time-outline" size={18} color="#64748b" />
                   <Text style={twStyle("text-[16px] font-semibold text-slate-900")}>
@@ -2395,14 +2880,29 @@ function Step12Hours() {
         );
       })}
 
-      {showPicker && pickerDay && (
-        <DateTimePicker
-          value={new Date(`2000-01-01T${pickerTime}:00`)}
-          mode="time"
-          display={Platform.OS === "ios" ? "spinner" : "default"}
-          onChange={handleTimeChange}
-        />
-      )}
+      {picker ? (
+        <>
+          <DateTimePicker
+            value={new Date(`2000-01-01T${picker.time}:00`)}
+            mode="time"
+            is24Hour={false}
+            display={Platform.OS === "ios" ? "spinner" : "default"}
+            onChange={handleTimeChange}
+          />
+          {Platform.OS === "ios" ? (
+            <TouchableOpacity
+              onPress={() => setPicker(null)}
+              style={twStyle(
+                "mt-3 items-center rounded-full bg-primary py-3.5"
+              )}
+              accessibilityRole="button"
+              accessibilityLabel="Done picking time"
+            >
+              <Text style={twStyle("text-[15px] font-semibold text-white")}>Done</Text>
+            </TouchableOpacity>
+          ) : null}
+        </>
+      ) : null}
     </View>
   );
 }
@@ -2804,8 +3304,16 @@ function Step14Plan() {
           : raw && typeof raw === "object" && Array.isArray((raw as { plans?: PlanRow[] }).plans)
             ? (raw as { plans: PlanRow[] }).plans
             : [];
-        // Sort: popular first, then preserve backend order
-        const list = [...unsorted].sort((a, b) => (b.is_popular ? 1 : 0) - (a.is_popular ? 1 : 0));
+        // §provider-onboarding-plan-order 2026-05: providers asked us to
+        // surface the Free plan first so anyone who just wants to ship can
+        // confirm-and-go without a card. We pin free plans to the top and
+        // otherwise preserve the backend's curated ordering.
+        const list = [...unsorted].sort((a, b) => {
+          const aFree = a.is_free ? 1 : 0;
+          const bFree = b.is_free ? 1 : 0;
+          if (aFree !== bFree) return bFree - aFree;
+          return 0;
+        });
         setPlans(list);
 
         if (list.length === 0) {
@@ -2815,10 +3323,15 @@ function Step14Plan() {
             selected_plan_name: undefined,
           });
         } else if (!initialPlanId.current?.trim()) {
-          const popular = list.find((p) => p.is_popular) ?? list[0];
+          // Default selection: prefer the first Free plan so providers can
+          // launch immediately. Fall back to the popular plan, then the first
+          // returned plan.
+          const free = list.find((p) => p.is_free);
+          const popular = list.find((p) => p.is_popular);
+          const chosen = free ?? popular ?? list[0];
           updateFormData({
-            selected_plan_id: popular.id,
-            selected_plan_name: popular.name,
+            selected_plan_id: chosen.id,
+            selected_plan_name: chosen.name,
             no_plans_available: false,
           });
         } else {

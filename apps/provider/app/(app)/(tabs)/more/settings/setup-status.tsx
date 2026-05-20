@@ -64,17 +64,33 @@ export default function SetupStatusScreen() {
 
   function openStep(step: SetupStep) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (step.native_route) {
-      router.push(step.native_route as never);
+    // §provider-onboarding-2026-05: guard router.push against a stale or
+    // broken native_route from the server. Without this, a single 404-ish
+    // route would surface a hard error toast instead of letting providers
+    // continue setup via the wizard fallback.
+    const pushSafely = (target: string) => {
+      try {
+        router.push(target as never);
+      } catch (err) {
+        console.warn("Setup step navigation failed:", err);
+        try {
+          router.push(
+            `/(app)/onboarding/wizard?focus=${encodeURIComponent(step.id)}` as never,
+          );
+        } catch {
+          router.push("/(app)/onboarding/wizard" as never);
+        }
+      }
+    };
+    if (step.native_route && step.native_route.startsWith("/(app)/")) {
+      pushSafely(step.native_route);
       return;
     }
     // §provider-setup-seamless-ux 2026-05: defer to the wizard with a `focus`
     // hint so the provider lands on the right step instead of restarting from
     // step 1. Server should always return a native_route for known step ids,
     // but this guarantees the deep link still works for new/unknown ids.
-    router.push(
-      `/(app)/onboarding/wizard?focus=${encodeURIComponent(step.id)}` as never,
-    );
+    pushSafely(`/(app)/onboarding/wizard?focus=${encodeURIComponent(step.id)}`);
   }
 
   if (loading && !status) {

@@ -186,8 +186,8 @@ const PartnerHeroMobile: React.FC<PartnerHeroMobileProps> = ({
 
   return (
     <div className="md:hidden">
-      {/* Hero Image Section — uniform 16:9 landscape crop */}
-      <div className="relative w-full aspect-video overflow-hidden bg-gray-100">
+      {/* Hero Image Section — uniform 4:5 portrait crop */}
+      <div className="relative w-full aspect-[4/5] overflow-hidden bg-gray-100">
         {/* Back Button - Top Left */}
         <Link
           href="/"

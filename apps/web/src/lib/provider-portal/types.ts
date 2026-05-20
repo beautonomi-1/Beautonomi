@@ -415,11 +415,15 @@ export interface YocoDevice {
   id: string;
   name: string;
   device_id: string; // Yoco Web POS device ID
-  location_id?: string;
+  serial_number?: string;
+  device_type?: "web_pos" | "card_machine" | "virtual_checkout";
+  credential_mode?: "web_pos" | "virtual_checkout";
+  location_id?: string | null;
   location_name?: string;
   is_active: boolean;
   created_date: string;
   last_used?: string;
+  last_used_at?: string | null;
   total_transactions?: number;
   total_amount?: number;
 }
@@ -439,6 +443,12 @@ export interface YocoPayment {
   error_message?: string;
   /** Receipt URL from Yoco when available (for customer proof) */
   receipt_url?: string;
+  /** `virtual_checkout` returns a Yoco-hosted payment page instead of terminal polling. */
+  credential_mode?: "web_pos" | "virtual_checkout";
+  /** Hosted Checkout URL returned by Yoco for virtual checkout devices. */
+  checkout_url?: string;
+  /** Payload to encode as a QR code; currently the same as `checkout_url`. */
+  qr_payload?: string;
 }
 
 export interface YocoIntegration {

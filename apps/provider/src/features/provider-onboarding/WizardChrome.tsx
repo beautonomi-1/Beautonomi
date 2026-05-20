@@ -96,8 +96,8 @@ export function WizardChrome() {
           <View style={twStyle("mb-3 flex-row items-center justify-between")}>
             <View style={twStyle("flex-row items-center gap-2")}>
               {milestoneLabel ? (
-                <View style={twStyle("rounded-full bg-slate-100 px-3 py-1")}>
-                  <Text style={twStyle("text-[12px] font-bold uppercase tracking-wider text-slate-700")}>
+                <View style={twStyle("rounded-full bg-primary/10 px-3 py-1")}>
+                  <Text style={twStyle("text-[12px] font-bold uppercase tracking-wider text-primary")}>
                     {milestoneLabel}
                   </Text>
                 </View>
@@ -141,13 +141,13 @@ export function WizardChrome() {
                   ]}
                 >
                   {done ? (
-                    <View style={twStyle("h-full w-full rounded-full bg-slate-900")} />
+                    <View style={twStyle("h-full w-full rounded-full bg-primary")} />
                   ) : active ? (
                     <View style={twStyle("h-full w-full overflow-hidden rounded-full bg-slate-200")}>
                       {/* Proportional fill within the active milestone */}
                       <View
                         style={[
-                          twStyle("h-full rounded-full bg-slate-900"),
+                          twStyle("h-full rounded-full bg-primary"),
                           {
                             width: `${Math.min(100, progressPct * milestoneCount - i * 100)}%`,
                           },
@@ -209,7 +209,7 @@ export function WizardChrome() {
               <TouchableOpacity
                 onPress={skipForward}
                 style={twStyle(
-                  "flex-1 rounded-full border-2 border-slate-200 bg-white py-4 items-center justify-center transition-all duration-300",
+                  "flex-1 rounded-full border-2 border-primary/20 bg-white py-4 items-center justify-center transition-all duration-300",
                 )}
                 accessibilityRole="button"
                 accessibilityLabel="Skip this step"
@@ -224,7 +224,7 @@ export function WizardChrome() {
                 twStyle(
                   `flex-row items-center justify-center gap-2 rounded-full py-4 transition-all duration-300 ${canSkipCurrent && !isLast ? "flex-1" : "flex-[2]"}`,
                 ),
-                { backgroundColor: "#0f172a", opacity: isSubmitting ? 0.7 : 1 },
+                { backgroundColor: Colors.primary, opacity: isSubmitting ? 0.7 : 1 },
                 !isSubmitting ? Shadows.cardSmall : undefined,
               ]}
               accessibilityRole="button"

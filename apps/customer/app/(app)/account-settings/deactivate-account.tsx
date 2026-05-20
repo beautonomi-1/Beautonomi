@@ -2,7 +2,7 @@
  * Self-service account deactivation (App Store / Play parity with web).
  * POST /api/me/deactivate, then sign out → login with deactivated messaging.
  */
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -22,6 +22,13 @@ import { ScreenFrame } from "@/components/ScreenFrame";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { Colors } from "@/constants/colors";
 import { getApiErrorMessage } from "@/lib/api-error";
+import { supabase } from "@/lib/supabase/client";
+
+type AuthSecurityState = {
+  has_password: boolean;
+  has_mailable_email: boolean;
+  has_phone: boolean;
+};
 
 export default function DeactivateAccountScreen() {
   useScreenTracking("Deactivate account");
@@ -37,13 +44,41 @@ export default function DeactivateAccountScreen() {
   const router = useRouter();
   const { signOut } = useAuth();
   const [password, setPassword] = useState("");
+  const [verificationNonce, setVerificationNonce] = useState("");
+  const [authSecurity, setAuthSecurity] = useState<AuthSecurityState | null>(null);
   const [reason, setReason] = useState("");
   const [loading, setLoading] = useState(false);
+  const [requestingNonce, setRequestingNonce] = useState(false);
+  const hasPassword = authSecurity?.has_password !== false;
+  const canVerifyWithCode = Boolean(
+    authSecurity == null ||
+      authSecurity.has_password ||
+      authSecurity.has_mailable_email ||
+      authSecurity.has_phone,
+  );
+
+  useEffect(() => {
+    let alive = true;
+    api.get<{ auth_security?: AuthSecurityState | null }>("/api/me/profile")
+      .then((res) => {
+        if (!alive || res.error) return;
+        setAuthSecurity((res.data as { auth_security?: AuthSecurityState | null } | undefined)?.auth_security ?? null);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const handleDeactivate = useCallback(async () => {
     const pwd = password.trim();
-    if (!pwd) {
+    const nonce = verificationNonce.trim();
+    if (hasPassword && !pwd) {
       Alert.alert(da("requiredPasswordTitle"), da("requiredPasswordBody"));
+      return;
+    }
+    if (!hasPassword && !nonce) {
+      Alert.alert(errTitle, "Enter the verification code to deactivate your account.");
       return;
     }
 
@@ -63,7 +98,8 @@ export default function DeactivateAccountScreen() {
             setLoading(true);
             try {
               const res = (await api.post<unknown>("/api/me/deactivate", {
-                password: pwd,
+                password: hasPassword ? pwd : undefined,
+                verificationNonce: hasPassword ? undefined : nonce,
                 reason: reason.trim() || null,
               })) as { error?: { message?: string } };
               if (res.error) {
@@ -81,7 +117,24 @@ export default function DeactivateAccountScreen() {
         },
       ],
     );
-  }, [password, reason, signOut, router, da, errTitle, t]);
+  }, [password, verificationNonce, hasPassword, reason, signOut, router, da, errTitle, t]);
+
+  const requestVerificationCode = useCallback(async () => {
+    if (!canVerifyWithCode) {
+      Alert.alert(errTitle, "Add and verify an email or phone number before deactivating this account.");
+      return;
+    }
+    setRequestingNonce(true);
+    try {
+      const { error } = await supabase.auth.reauthenticate();
+      if (error) throw error;
+      Alert.alert("Code sent", "Enter the verification code below to confirm deactivation.");
+    } catch (e) {
+      Alert.alert(errTitle, getApiErrorMessage(e, "Failed to send verification code."));
+    } finally {
+      setRequestingNonce(false);
+    }
+  }, [canVerifyWithCode, errTitle]);
 
   return (
     <KeyboardAvoidingView
@@ -103,26 +156,42 @@ export default function DeactivateAccountScreen() {
           <Text style={{ fontSize: 14, color: "#92400e", lineHeight: 20 }}>{da("infoBanner")}</Text>
         </View>
 
-          <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 6 }}>{da("passwordLabel")}</Text>
-          <TextInput
-            style={{
-              borderRadius: 12,
-              borderWidth: 1,
-              borderColor: Colors.gray[300],
-              backgroundColor: Colors.white,
-              paddingHorizontal: 16,
-              paddingVertical: 12,
-              fontSize: 16,
-              color: Colors.gray[900],
-            }}
-            placeholder="Enter your password"
-            placeholderTextColor={Colors.gray[400]}
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
+          {hasPassword ? (
+            <>
+              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 6 }}>{da("passwordLabel")}</Text>
+              <TextInput
+                style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[300], backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
+                placeholder="Enter your password"
+                placeholderTextColor={Colors.gray[400]}
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </>
+          ) : (
+            <View>
+              <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 8 }}>Confirm with a one-time verification code.</Text>
+              <TouchableOpacity
+                onPress={requestVerificationCode}
+                disabled={requestingNonce || !canVerifyWithCode}
+                style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[300], backgroundColor: Colors.white, paddingVertical: 12, alignItems: "center", marginBottom: 10 }}
+              >
+                <Text style={{ color: Colors.gray[900], fontWeight: "600" }}>{requestingNonce ? "Sending..." : "Send verification code"}</Text>
+              </TouchableOpacity>
+              <TextInput
+                style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[300], backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
+                placeholder="Enter code"
+                placeholderTextColor={Colors.gray[400]}
+                value={verificationNonce}
+                onChangeText={(value) => setVerificationNonce(value.replace(/\D/g, ""))}
+                keyboardType="number-pad"
+                autoComplete="sms-otp"
+                textContentType="oneTimeCode"
+              />
+            </View>
+          )}
 
           <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginTop: 16, marginBottom: 6 }}>
             {da("reasonLabel")}

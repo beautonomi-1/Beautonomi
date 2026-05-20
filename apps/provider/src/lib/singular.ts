@@ -78,7 +78,13 @@ export function buildProviderRoute(params: SingularLinkParams): { pathname: stri
       : { pathname: "/(app)/(tabs)/bookings" };
   }
   if (screen === "group-bookings" || screen === "group_bookings" || path === "group-bookings") {
-    const open_group_id = q.id ?? q.group_booking_id ?? q.open_group_id ?? "";
+    // §Group-booking-audit 2026-05: prefer `group_booking_id` / `open_group_id`
+    // over the generic `id` query param because notification deep links and
+    // bookings calendar rows pass a normal booking id under `id`. Falling back
+    // to `id` last keeps legacy share links working but stops the screen from
+    // trying to fetch a group booking with a participant booking id (which
+    // returns 404).
+    const open_group_id = q.group_booking_id ?? q.open_group_id ?? q.id ?? "";
     return open_group_id
       ? { pathname: "/(app)/(tabs)/more/group-bookings", params: { open_group_id } }
       : { pathname: "/(app)/(tabs)/more/group-bookings" };
@@ -103,6 +109,15 @@ export function buildProviderRoute(params: SingularLinkParams): { pathname: stri
   }
   if (screen === "more" || path === "more") {
     return { pathname: "/(app)/(tabs)/more" };
+  }
+  if (
+    screen === "ads" ||
+    screen === "paid-ads" ||
+    screen === "paid_ads" ||
+    path === "settings/ads" ||
+    path === "ads"
+  ) {
+    return { pathname: "/(app)/(tabs)/more/settings/ads" };
   }
   return null;
 }

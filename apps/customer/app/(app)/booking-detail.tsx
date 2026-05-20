@@ -1914,6 +1914,16 @@ export default function BookingDetailScreen() {
             <View style={{ marginBottom: 8, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: Colors.gray[200] }}>
               <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Group booking</Text>
               <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{booking.group_booking_ref}</Text>
+              {booking.group_booking_id ? (
+                <TouchableOpacity
+                  onPress={() => router.push({ pathname: "/(app)/group-booking-detail", params: { id: booking.group_booking_id } })}
+                  style={{ marginTop: 8, alignSelf: "flex-start", borderRadius: 10, borderWidth: 1, borderColor: Colors.gray[300], paddingHorizontal: 12, paddingVertical: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="View group booking details"
+                >
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[900] }}>View group details</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
           )}
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>

@@ -104,6 +104,7 @@ interface PayoutAccount {
   account_number_last4: string;
   bank_name: string | null;
   active: boolean;
+  is_primary?: boolean;
 }
 
 interface Bank {
@@ -208,7 +209,14 @@ export default function ProviderFinance() {
       const response = await fetcher.get<{ data: PayoutAccount[] }>("/api/provider/payout-accounts");
       const accts = response.data || [];
       setPayoutAccounts(accts);
-      if (accts.length > 0 && !selectedBankId) setSelectedBankId(accts[0].id);
+      if (accts.length > 0 && !selectedBankId) {
+        // Prefer the primary active account; fall back to the first active.
+        const primary =
+          accts.find((a) => a.is_primary && a.active) ||
+          accts.find((a) => a.active) ||
+          accts[0];
+        setSelectedBankId(primary.id);
+      }
     } catch (err) {
       console.warn("Failed to load payout accounts:", err);
     }
@@ -217,8 +225,17 @@ export default function ProviderFinance() {
   const loadBanks = async (country: string) => {
     try {
       setIsLoadingBanks(true);
-      const response = await fetcher.get<{ data: Bank[] }>(`/api/public/banks?country=${encodeURIComponent(country)}`);
-      setBanks(response.data || []);
+      // §payout-account-fix 2026-05: use the authenticated provider banks
+      // endpoint so we get the verification-enabled Paystack list (matches the
+      // mobile flow) rather than the broader public list.
+      const response = await fetcher.get<{ data: { banks: Bank[] } | Bank[] }>(
+        `/api/provider/payout-accounts/banks?country=${encodeURIComponent(country)}`
+      );
+      const payload = response.data as any;
+      const banksList: Bank[] = Array.isArray(payload)
+        ? payload
+        : payload?.banks ?? [];
+      setBanks(banksList);
     } catch (err) {
       console.warn("Failed to load banks:", err);
       toast.error("Failed to load bank list");
@@ -241,6 +258,10 @@ export default function ProviderFinance() {
   const handleVerifyBankAccount = async () => {
     if (!bankForm.account_number.trim() || !bankForm.bank_code) {
       toast.error("Enter an account number and select a bank first.");
+      return;
+    }
+    if (bankForm.account_number.trim().length < 8 || bankForm.account_number.trim().length > 20) {
+      toast.error("Account number must be 8-20 digits.");
       return;
     }
     try {
@@ -270,10 +291,17 @@ export default function ProviderFinance() {
       toast.error("Account number, bank, and account name are required.");
       return;
     }
+    if (bankForm.account_number.trim().length < 8 || bankForm.account_number.trim().length > 20) {
+      toast.error("Account number must be 8-20 digits.");
+      return;
+    }
     try {
       setIsSavingBank(true);
+      const selectedBank = banks.find((b) => b.code === bankForm.bank_code);
+      const recipientType =
+        selectedBank?.type || (bankForm.country === "ZA" ? "basa" : "nuban");
       const response = await fetcher.post<{ data: PayoutAccount }>("/api/provider/payout-accounts", {
-        type: "nuban",
+        type: recipientType,
         country: bankForm.country,
         account_number: bankForm.account_number.trim(),
         bank_code: bankForm.bank_code,
@@ -522,9 +550,11 @@ export default function ProviderFinance() {
                           onChange={(e) => setSelectedBankId(e.target.value)}
                         >
                           {payoutAccounts.map((a) => (
-                            <option key={a.id} value={a.id}>
+                            <option key={a.id} value={a.id} disabled={!a.active}>
                               {a.account_name} ****{a.account_number_last4}
                               {a.bank_name ? ` (${a.bank_name})` : ""}
+                              {a.is_primary ? " — Primary" : ""}
+                              {!a.active ? " — Inactive" : ""}
                             </option>
                           ))}
                         </select>
@@ -580,6 +610,7 @@ export default function ProviderFinance() {
                                 setBankForm((prev) => ({ ...prev, account_number: e.target.value.replace(/\D/g, "") }));
                                 setVerifiedAccountName(null);
                               }}
+                              maxLength={20}
                               placeholder="Enter bank account number"
                             />
                           </div>
@@ -594,7 +625,13 @@ export default function ProviderFinance() {
                           <Label>Account holder name</Label>
                           <Input
                             value={bankForm.account_name}
-                            onChange={(e) => setBankForm((prev) => ({ ...prev, account_name: e.target.value }))}
+                            onChange={(e) => {
+                              const next = e.target.value;
+                              setBankForm((prev) => ({ ...prev, account_name: next }));
+                              if (verifiedAccountName && next.trim() !== verifiedAccountName.trim()) {
+                                setVerifiedAccountName(null);
+                              }
+                            }}
                             placeholder="Account holder name"
                           />
                           {verifiedAccountName && (

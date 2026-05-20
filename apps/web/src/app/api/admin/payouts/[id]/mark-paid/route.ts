@@ -10,6 +10,17 @@ import { formatCurrency } from "@/lib/utils";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { enforcePeriodLock } from "@/lib/finance/period-lock";
 
+function getPaystackTransferStatus(response: unknown): string | null {
+  if (!response || typeof response !== "object") return null;
+  const record = response as Record<string, unknown>;
+  const nested = record.data;
+  if (nested && typeof nested === "object") {
+    const status = (nested as Record<string, unknown>).status;
+    if (typeof status === "string") return status;
+  }
+  return typeof record.status === "string" ? record.status : null;
+}
+
 /**
  * POST /api/admin/payouts/[id]/mark-paid
  * 
@@ -66,6 +77,7 @@ export async function POST(
       net_amount?: number;
       payout_number?: string;
       currency?: string | null;
+      payout_provider_response?: unknown;
     };
     const payoutData = payout as PayoutRow;
     const payoutCurrency = payoutData.currency?.trim() || LAST_RESORT_CURRENCY;
@@ -116,6 +128,20 @@ export async function POST(
           },
         },
         { status: 400 }
+      );
+    }
+
+    if (getPaystackTransferStatus(payoutData.payout_provider_response) === "otp") {
+      return NextResponse.json(
+        {
+          data: null,
+          error: {
+            message:
+              "This Paystack transfer is still waiting for OTP finalization. Finalize the transfer before marking the payout as paid.",
+            code: "TRANSFER_OTP_REQUIRED",
+          },
+        },
+        { status: 409 }
       );
     }
 

@@ -25,11 +25,14 @@ export const SETUP_STATUS_ID_TO_WIZARD_STEP: Record<string, number> = {
   services: 11,
   // Operating hours → wizard "Hours"
   availability: 12,
-  // Yoco terminal + accepted methods → wizard "Payment setup"
+  // Yoco terminal → wizard "Payment setup"
   payment: 4,
-  "payment-methods": 4,
-  // Payout bank account isn't a wizard step — fall through to Plan/Review.
-  payout: 13,
+  // §provider-onboarding-2026-05: `payment-methods` and `payout` are now
+  // handled exclusively by their native screens (returned via the server's
+  // `native_route` field). Intentionally omitted here so we never land
+  // providers on a misleading wizard step (which previously mapped both to
+  // unrelated screens 4/13) when their native route is unavailable; the
+  // checklist UI now falls back to the onboarding wizard root instead.
   // Identity verification is post-onboarding admin flow; nearest wizard
   // surface is "Your identity" so the provider can confirm details first.
   "identity-verification": 2,

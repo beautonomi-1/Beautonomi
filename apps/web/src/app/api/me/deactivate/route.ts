@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, handleApiError, successResponse } from "@/lib/supabase/api-helpers";
-import { verifyCurrentPasswordForUser } from "@/lib/auth/verify-current-password";
+import { verifySensitiveActionForUser } from "@/lib/auth/verify-sensitive-action";
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,20 +16,23 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
 
-    const { password, reason } = body;
+    const { password, reason, verificationNonce } = body;
 
-    if (!password) {
+    if (!password && !verificationNonce) {
       return NextResponse.json(
-        { error: "Password is required to deactivate your account" },
+        { error: "Password or verification code is required to deactivate your account" },
         { status: 400 }
       );
     }
 
-    const passwordOk = await verifyCurrentPasswordForUser(supabase, authUser, password);
+    const verified = await verifySensitiveActionForUser(supabase, authUser, {
+      password,
+      nonce: verificationNonce,
+    });
 
-    if (!passwordOk) {
+    if (!verified) {
       return NextResponse.json(
-        { error: "Password is incorrect" },
+        { error: password ? "Password is incorrect" : "Verification code is invalid or expired" },
         { status: 401 }
       );
     }

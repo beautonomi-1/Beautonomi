@@ -51,20 +51,33 @@ export async function GET(request: NextRequest) {
 
     // Calculate completion for each item
     const isCustomer = user.role === "customer";
+    // Email from auth.users (covers OAuth, email-password and email-OTP signups)
+    const authEmail =
+      (authUser as { email?: string | null } | null)?.email?.trim() || null;
+    // Only gate on email verification when the account actually HAS an email to verify.
+    // Phone-only (SMS OTP) signups never set an email address; marking email as
+    // required=true for them would permanently block them at the profile-completion
+    // gate on every cold start since they can never satisfy the check.
+    const hasEmail = !!(userData.email || authEmail);
+
     const checklistItems = [
       {
         id: "photo",
         label: "Add profile photo",
         timeEstimate: "30 sec",
         completed: !!userData.avatar_url,
-        required: isCustomer,
+        // Photo is skippable in the onboarding wizard (step 2). Making it a required
+        // gate item would redirect users to personal-info on every cold start after
+        // they skipped it — a confusing loop with no clear recovery path.
+        required: false,
       },
       {
         id: "email",
         label: "Verify email",
         timeEstimate: "1 min",
         completed: emailVerified,
-        required: true,
+        // Only required when the account has an email address to verify.
+        required: hasEmail,
       },
       {
         id: "preferred_name",

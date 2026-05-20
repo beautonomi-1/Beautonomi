@@ -47,6 +47,28 @@ export async function POST(
       return forbiddenResponse("You do not have access to this group booking");
     }
 
+    // Fetch the participant first to guard against double check-in rewriting
+    // an already-recorded timestamp (idempotent: return existing state if
+    // already checked in rather than silently overwriting the original time).
+    const { data: existing, error: fetchError } = await admin
+      .from("booking_participants")
+      .select("id, booking_id, checked_in_at")
+      .eq("id", participantId)
+      .eq("group_booking_id", id)
+      .maybeSingle();
+
+    if (fetchError) throw fetchError;
+    if (!existing) return notFoundResponse("Participant not found");
+
+    if (existing.checked_in_at) {
+      return successResponse({
+        success: true,
+        message: "Participant already checked in",
+        checked_in_at: existing.checked_in_at,
+        participant: existing,
+      });
+    }
+
     const now = new Date().toISOString();
     const { data: participant, error } = await admin
       .from("booking_participants")
@@ -56,6 +78,7 @@ export async function POST(
       })
       .eq("id", participantId)
       .eq("group_booking_id", id)
+      .is("checked_in_at", null)
       .select("id, booking_id, checked_in_at")
       .maybeSingle();
 
@@ -63,6 +86,10 @@ export async function POST(
       return notFoundResponse("Participant not found");
     }
 
+    // §Group-booking-audit 2026-05: the participant_participants row is the
+    // source of truth for check-in. Treat both the linked booking sync and
+    // the parent group status update as best-effort so a transient bookings
+    // failure (e.g. RLS or a stale child row) cannot reverse the check-in.
     if (participant.booking_id) {
       const { error: bookingError } = await admin
         .from("bookings")
@@ -76,7 +103,10 @@ export async function POST(
         .eq("provider_id", group.provider_id)
         .not("status", "in", "(cancelled,no_show)");
       if (bookingError) {
-        throw bookingError;
+        console.warn(
+          "[provider group check-in] linked booking update failed (continuing):",
+          bookingError
+        );
       }
     }
 
@@ -87,7 +117,10 @@ export async function POST(
       .eq("provider_id", group.provider_id)
       .not("status", "in", "(completed,cancelled)");
     if (statusError) {
-      throw statusError;
+      console.warn(
+        "[provider group check-in] group status update failed (continuing):",
+        statusError
+      );
     }
 
     return successResponse({

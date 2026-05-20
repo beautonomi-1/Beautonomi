@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, successResponse, handleApiError, getProviderIdForUser } from "@/lib/supabase/api-helpers";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { slackNotifyVerificationNeedsReview } from "@/lib/integrations/slack/ops-triggers";
+import { resolveSumsubConfig } from "@/lib/verification/sumsub-token";
 
 /**
  * GET /api/me/verification
@@ -33,15 +34,15 @@ export async function GET(request: NextRequest) {
 
     if (verificationsError) throw verificationsError;
 
-    // Check if SumSub is configured for this environment (admin client — no RLS)
-    const adminClient = getSupabaseAdmin();
+    // Check if SumSub is configured for this environment and tenant.
     const { searchParams } = new URL(request.url);
     const env = searchParams.get("environment") ?? "production";
-    const { data: sumsubConfig } = await adminClient
-      .from("sumsub_integration_config")
-      .select("enabled, app_token_secret, secret_key_secret")
-      .eq("environment", env)
-      .maybeSingle();
+    const tenantId = await resolveTenantIdWithZaFallback(request);
+    const sumsubConfig = await resolveSumsubConfig(
+      env,
+      tenantId,
+      "enabled, app_token_secret, secret_key_secret, tenant_id",
+    );
 
     const sumsubAvailable = Boolean(
       sumsubConfig?.enabled &&

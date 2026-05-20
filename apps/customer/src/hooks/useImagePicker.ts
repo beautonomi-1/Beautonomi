@@ -13,6 +13,8 @@ export interface PickImageResult {
   fileName?: string;
   /** From expo-image-picker asset when available (helps uploads set correct Content-Type). */
   mimeType?: string;
+  /** Asset byte size when expo-image-picker exposes it; lets callers block oversized uploads pre-flight. */
+  fileSize?: number;
 }
 
 export function useImagePicker() {
@@ -47,6 +49,7 @@ export function useImagePicker() {
         height: asset.height,
         fileName: asset.fileName ?? `image-${Date.now()}.jpg`,
         mimeType: asset.mimeType ?? undefined,
+        fileSize: typeof asset.fileSize === "number" ? asset.fileSize : undefined,
       };
     } catch (e) {
       setError(e instanceof Error ? e.message : i18n.t("customer.mobile.components.imagePicker.failedPickImage"));
@@ -83,6 +86,7 @@ export function useImagePicker() {
         height: asset.height,
         fileName: asset.fileName ?? `camera-${Date.now()}.jpg`,
         mimeType: asset.mimeType ?? undefined,
+        fileSize: typeof asset.fileSize === "number" ? asset.fileSize : undefined,
       };
     } catch (e) {
       setError(e instanceof Error ? e.message : i18n.t("customer.mobile.components.imagePicker.failedTakePhoto"));

@@ -83,7 +83,9 @@ export default function YocoDevicesScreen() {
   // Yoco API key form
   const [apiKey, setApiKey] = useState("");
   const [secretKey, setSecretKey] = useState("");
+  const [webhookSecret, setWebhookSecret] = useState("");
   const [showSecretKey, setShowSecretKey] = useState(false);
+  const [showWebhookSecret, setShowWebhookSecret] = useState(false);
   const [connecting, setConnecting] = useState(false);
 
   const resetForm = useCallback(() => {
@@ -172,20 +174,22 @@ export default function YocoDevicesScreen() {
   }
 
   async function handleConnect() {
-    if (!apiKey.trim() || !secretKey.trim()) {
-      Alert.alert("Required", "Both API key and secret key are required.");
+    if (!secretKey.trim()) {
+      Alert.alert("Required", "Yoco secret key is required for hosted checkout.");
       return;
     }
     setConnecting(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const ok = await connect(apiKey.trim(), secretKey.trim());
+    const ok = await connect(apiKey.trim() || undefined, secretKey.trim(), webhookSecret.trim() || undefined);
     setConnecting(false);
     if (ok) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setShowConnectSheet(false);
       setApiKey("");
       setSecretKey("");
+      setWebhookSecret("");
       setShowSecretKey(false);
+      setShowWebhookSecret(false);
     }
   }
 
@@ -663,20 +667,20 @@ export default function YocoDevicesScreen() {
             <Text style={twStyle("text-xs text-blue-700")}>
               1) Sign in to Yoco dashboard.{"\n"}
               2) Open API credentials / developer settings.{"\n"}
-              3) Copy your live public key and live secret key into these fields.
+              3) Copy your live secret key. Add the webhook secret too if you use hosted checkout.
             </Text>
           </View>
         ) : null}
 
         <View style={twStyle("mb-2 rounded-xl bg-blue-50 p-3")}>
           <Text style={twStyle("text-xs text-blue-700")}>
-            Use your Yoco API credentials for Web POS. Dashboard menus can change, so open Yoco docs from your portal if
-            you cannot find the keys quickly.
+            The secret key enables Yoco hosted checkout links and QR payments. Web POS card terminals still require
+            the Connect Yoco OAuth button above.
           </Text>
         </View>
 
         <View style={twStyle("mb-4")}>
-          <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Public Key *</Text>
+          <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Public Key (optional)</Text>
           <TextInput
             style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900")}
             value={apiKey}
@@ -687,7 +691,7 @@ export default function YocoDevicesScreen() {
             autoCorrect={false}
             accessibilityLabel="Yoco API key"
           />
-          <Text style={twStyle("mt-1 text-xs text-gray-500")}>Use your live public key for production.</Text>
+          <Text style={twStyle("mt-1 text-xs text-gray-500")}>Stored for reference. Hosted checkout only needs the secret key.</Text>
         </View>
 
         <View style={twStyle("mb-6")}>
@@ -717,14 +721,46 @@ export default function YocoDevicesScreen() {
               />
             </TouchableOpacity>
           </View>
-          <Text style={twStyle("mt-1 text-xs text-gray-500")}>Used for secure server-side Web POS requests.</Text>
+          <Text style={twStyle("mt-1 text-xs text-gray-500")}>Used server-side to create Yoco hosted checkout links.</Text>
+        </View>
+
+        <View style={twStyle("mb-6")}>
+          <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Webhook Secret (recommended)</Text>
+          <View style={twStyle("flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-4 py-1.5")}>
+            <TextInput
+              style={twStyle("flex-1 py-3 text-sm text-gray-900")}
+              value={webhookSecret}
+              onChangeText={setWebhookSecret}
+              placeholder="whsec_..."
+              placeholderTextColor="#9ca3af"
+              autoCapitalize="none"
+              autoCorrect={false}
+              secureTextEntry={!showWebhookSecret}
+              accessibilityLabel="Yoco webhook secret"
+            />
+            <TouchableOpacity
+              onPress={() => setShowWebhookSecret((v) => !v)}
+              style={twStyle("min-h-[44px] min-w-[44px] items-center justify-center")}
+              accessibilityRole="button"
+              accessibilityLabel={showWebhookSecret ? "Hide webhook secret" : "Show webhook secret"}
+            >
+              <Ionicons
+                name={showWebhookSecret ? "eye-off-outline" : "eye-outline"}
+                size={20}
+                color="#6b7280"
+              />
+            </TouchableOpacity>
+          </View>
+          <Text style={twStyle("mt-1 text-xs text-gray-500")}>
+            Lets Beautonomi verify Yoco payment webhooks and mark hosted checkout payments as paid automatically.
+          </Text>
         </View>
 
         <ActionButton
           label={connecting ? "Connecting…" : "Connect"}
           onPress={handleConnect}
           loading={connecting}
-          disabled={!apiKey.trim() || !secretKey.trim()}
+          disabled={!secretKey.trim()}
           fullWidth
         />
       </BottomSheet>

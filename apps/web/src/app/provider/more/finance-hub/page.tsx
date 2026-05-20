@@ -57,6 +57,7 @@ interface PayoutAccount {
   account_number_last4: string;
   bank_name: string | null;
   active: boolean;
+  is_primary?: boolean;
   created_at: string;
 }
 
@@ -101,8 +102,10 @@ export default function FinanceHubPage() {
       const accts = accountsRes.data || [];
       setAccounts(accts);
       setPayouts(payoutsRes.data || []);
-      if (accts.length > 0 && !selectedBankId) {
-        setSelectedBankId(accts[0].id);
+      const activeAccounts = accts.filter((account) => account.active);
+      if (activeAccounts.length > 0 && !selectedBankId) {
+        const preferred = activeAccounts.find((account) => account.is_primary) ?? activeAccounts[0];
+        setSelectedBankId(preferred.id);
       }
     } catch (err) {
       const msg = err instanceof FetchError ? err.message : "Failed to load finance data";
@@ -117,7 +120,10 @@ export default function FinanceHubPage() {
     loadData();
   }, []);
 
-  const primaryAccount = accounts.find((a) => a.active) ?? accounts[0];
+  const activeAccounts = accounts.filter((account) => account.active);
+  const primaryAccount =
+    activeAccounts.find((account) => account.is_primary) ??
+    activeAccounts[0];
   const availableBalance = earnings?.available_balance ?? 0;
   const pendingPayouts = earnings?.pending_payouts ?? 0;
   const minimumPayout = earnings?.minimum_payout_amount ?? 100;
@@ -136,17 +142,20 @@ export default function FinanceHubPage() {
       toast.error("Insufficient balance for this payout");
       return;
     }
-    if (accounts.length === 0) {
+    if (activeAccounts.length === 0) {
       toast.error("Add a bank account first in Settings → Payout Accounts");
       return;
     }
+    const selectedAccount =
+      activeAccounts.find((account) => account.id === selectedBankId) ??
+      primaryAccount;
 
     try {
       setIsRequestingPayout(true);
       await fetcher.post("/api/provider/payouts", {
         amount,
         notes: payoutNotes || undefined,
-        bank_account_id: selectedBankId || primaryAccount?.id || undefined,
+        bank_account_id: selectedAccount?.id,
       });
       toast.success("Payout request submitted");
       setShowPayoutDialog(false);
@@ -224,7 +233,7 @@ export default function FinanceHubPage() {
               <Button
                 className="bg-[#FF0077] hover:bg-[#D60565]"
                 onClick={() => setShowPayoutDialog(true)}
-                disabled={availableBalance <= 0 || accounts.length === 0}
+                disabled={availableBalance <= 0 || activeAccounts.length === 0}
               >
                 <ArrowUpRight className="w-4 h-4 mr-2" />
                 Request Payout
@@ -269,9 +278,9 @@ export default function FinanceHubPage() {
                   Primary
                 </span>
               </div>
-              {accounts.length > 1 && (
+              {activeAccounts.length > 1 && (
                 <p className="text-xs text-gray-500 mt-2">
-                  You have {accounts.length} bank accounts. You can choose which to use when requesting a payout.
+                  You have {activeAccounts.length} active bank accounts. You can choose which to use when requesting a payout.
                 </p>
               )}
               <Button variant="outline" size="sm" className="mt-4" asChild>
@@ -380,18 +389,22 @@ export default function FinanceHubPage() {
                 <p className="text-sm text-red-600 mt-1">Amount exceeds available balance</p>
               )}
             </div>
-            {accounts.length > 1 && (
+            {activeAccounts.length > 1 && (
               <div>
                 <Label>Pay out to</Label>
                 <Select
-                  value={selectedBankId || primaryAccount?.id}
+                  value={
+                    activeAccounts.some((account) => account.id === selectedBankId)
+                      ? selectedBankId
+                      : primaryAccount?.id
+                  }
                   onValueChange={setSelectedBankId}
                 >
                   <SelectTrigger className="mt-1">
                     <SelectValue placeholder="Select account" />
                   </SelectTrigger>
                   <SelectContent>
-                    {accounts.map((a) => (
+                    {activeAccounts.map((a) => (
                       <SelectItem key={a.id} value={a.id}>
                         {a.account_name} ****{a.account_number_last4}
                         {a.bank_name ? ` (${a.bank_name})` : ""}

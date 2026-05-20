@@ -191,12 +191,28 @@ interface AvailableSlotsApiResponse {
 
 const STATUS_FILTERS = [
   { label: "All", value: "all" },
+  { label: "Pending", value: "pending" },
   { label: "Confirmed", value: "confirmed" },
   { label: "Booked", value: "booked" },
   { label: "In progress", value: "started" },
   { label: "Completed", value: "completed" },
   { label: "Cancelled", value: "cancelled" },
 ];
+
+/** Human-readable label for a raw group booking status. */
+function groupStatusLabel(status: string): string {
+  switch (status) {
+    case "pending": return "Pending";
+    case "confirmed": return "Confirmed";
+    case "booked": return "Booked";
+    case "started": return "In progress";
+    case "in_progress": return "In progress";
+    case "completed": return "Completed";
+    case "cancelled": return "Cancelled";
+    case "waiting": return "Waiting";
+    default: return status.charAt(0).toUpperCase() + status.slice(1).replace(/_/g, " ");
+  }
+}
 
 const GROUP_PAGE_LIMIT = 50;
 
@@ -464,6 +480,8 @@ export default function GroupBookingsScreen() {
   // `selectedGroup` (which we do so the detail sheet closes under the edit
   // sheet on iOS).
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+  /** How many participants are already in the group being edited — used to enforce the lower-bound on capacity. */
+  const [editingGroupCurrentCount, setEditingGroupCurrentCount] = useState(0);
   const [editForm, setEditForm] = useState({
     date: "",
     time: "",
@@ -726,8 +744,16 @@ export default function GroupBookingsScreen() {
   }, [groups, selectedGroup]);
 
   useEffect(() => {
-    const openId = typeof params.open_group_id === "string" ? params.open_group_id : "";
+    const openId = typeof params.open_group_id === "string" ? params.open_group_id.trim() : "";
     if (!openId) return;
+    // §Group-booking-audit 2026-05: ignore obviously non-uuid ids so we never
+    // hammer the API with `/api/provider/group-bookings/undefined` or shape
+    // strings coming from misrouted notifications.
+    const uuidLike = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidLike.test(openId)) {
+      openGroupFetchRef.current = null;
+      return;
+    }
     const group = groups.find((g) => g.id === openId);
     if (group) {
       setSelectedGroup(group);
@@ -741,11 +767,14 @@ export default function GroupBookingsScreen() {
       const payload = res.data?.data ?? res.data?.group ?? res.data;
       const fetched = Array.isArray(payload) ? null : payload;
       if (res.error || !fetched?.id) {
+        // §Group-booking-audit 2026-05: only alert once per id so a missing
+        // group from a stale deep link does not pop the alert on every
+        // re-render of the screen.
         Alert.alert(
           "Group booking not found",
           "This group booking could not be opened. It may be archived, filtered out, or unavailable."
         );
-        openGroupFetchRef.current = null;
+        openGroupFetchRef.current = openId; // keep set so we don't refetch
         return;
       }
       setExtraGroups((prev) =>
@@ -880,13 +909,19 @@ export default function GroupBookingsScreen() {
   }, [groups, groupData]);
 
   async function handleCancel(group: GroupBooking) {
+    if (!group.id) {
+      Alert.alert("Error", "Group booking has no id yet — refresh and try again.");
+      return;
+    }
     Alert.alert("Cancel Group Booking", "This will cancel the entire group session.", [
       { text: "Keep", style: "cancel" },
       {
         text: "Cancel Booking",
         style: "destructive",
         onPress: async () => {
-          const { error } = await cancelGroup(`/api/provider/group-bookings/${group.id}`);
+          const { error } = await cancelGroup(
+            `/api/provider/group-bookings/${encodeURIComponent(group.id)}`
+          );
           if (error) Alert.alert("Error", error);
           else {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -899,20 +934,29 @@ export default function GroupBookingsScreen() {
   }
 
   async function handleStatusChange(group: GroupBooking, newStatus: string) {
+    if (!group.id) {
+      Alert.alert("Error", "Group booking has no id yet — refresh and try again.");
+      return;
+    }
+    // §Group-booking-audit 2026-05: route "cancelled" through the dedicated
+    // DELETE endpoint instead of a non-existent `cancel_service` action so the
+    // app never gets stuck on the API returning UNSUPPORTED_ACTION.
+    if (newStatus === "cancelled") {
+      await handleCancel(group);
+      return;
+    }
     const action =
       newStatus === "started"
         ? "start_service"
         : newStatus === "completed"
           ? "complete_service"
-          : newStatus === "cancelled"
-            ? "cancel_service"
-            : "";
+          : "";
     if (!action) {
       Alert.alert("Error", "Unsupported status transition.");
       return;
     }
     const { error } = await postGroupAction(
-      `/api/provider/group-bookings/${group.id}?action=${action}`,
+      `/api/provider/group-bookings/${encodeURIComponent(group.id)}?action=${action}`,
       {}
     );
     if (error) {
@@ -928,14 +972,25 @@ export default function GroupBookingsScreen() {
     group: GroupBooking,
     paymentMethod: "cash" | "card" | "bank_transfer" | "other" | "yoco"
   ) {
+    if (!group.id) {
+      Alert.alert("Error", "Group booking has no id yet — refresh and try again.");
+      return;
+    }
     const { error } = await postGroupAction(
-      `/api/provider/group-bookings/${group.id}?action=mark_paid`,
+      `/api/provider/group-bookings/${encodeURIComponent(group.id)}?action=mark_paid`,
       {
         payment_method: paymentMethod,
       }
     );
     if (error) {
-      Alert.alert("Payment not recorded", error);
+      // §Group-booking-audit 2026-05: surface NOT_INVOICED separately from
+      // generic payment failures so providers know participants still need
+      // bookings before marking the session paid.
+      const isNotInvoiced = /not.*invoiced|no.*invoice/i.test(error);
+      Alert.alert(
+        isNotInvoiced ? "Participants not invoiced yet" : "Payment not recorded",
+        error
+      );
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -958,6 +1013,7 @@ export default function GroupBookingsScreen() {
       originalPackageId: pkgId,
     });
     setEditOriginalSlot({ date: editDate, time: editTime, duration: editDuration });
+    setEditingGroupCurrentCount(group.current_participants ?? 0);
     // B9: capture the id BEFORE clearing selectedGroup so the PATCH has a
     // real target even after the detail sheet closes.
     setEditingGroupId(group.id);
@@ -1342,7 +1398,7 @@ export default function GroupBookingsScreen() {
     }
 
     const linkRes = await addParticipant(
-      `/api/provider/group-bookings/${args.groupId}/participants`,
+      `/api/provider/group-bookings/${encodeURIComponent(args.groupId)}/participants`,
       {
         booking_id: createdBookingId,
         participant_name: args.participant.name.trim(),
@@ -1449,11 +1505,10 @@ export default function GroupBookingsScreen() {
       Alert.alert("Invalid duration", "Duration must be greater than 0 minutes.");
       return;
     }
-    const maxParticipants = Number(createForm.maxParticipants);
-    if (!Number.isFinite(maxParticipants) || maxParticipants <= 0) {
-      Alert.alert("Invalid max participants", "Max participants must be greater than 0.");
-      return;
-    }
+    const maxParticipants = Math.max(
+      Math.max(1, createParticipants.length),
+      Number(createForm.maxParticipants) || 10,
+    );
     if (!createForm.serviceId) {
       Alert.alert(
         "Service required",
@@ -1534,11 +1589,10 @@ export default function GroupBookingsScreen() {
       Alert.alert("Invalid duration", "Duration must be greater than 0 minutes.");
       return;
     }
-    const maxParticipants = Number(createForm.maxParticipants);
-    if (!Number.isFinite(maxParticipants) || maxParticipants <= 0) {
-      Alert.alert("Invalid max participants", "Max participants must be greater than 0.");
-      return;
-    }
+    const maxParticipants = Math.max(
+      Math.max(1, createParticipants.length),
+      Number(createForm.maxParticipants) || 10,
+    );
     if (!createForm.serviceId) {
       Alert.alert(
         "Service required",
@@ -1715,6 +1769,12 @@ export default function GroupBookingsScreen() {
     }
 
     const groupRef = createdGroup?.ref_number || createdGroup?.data?.ref_number || null;
+    // §Group-booking-audit 2026-05: track whether participant bookings + links
+    // all succeeded before we attempt any follow-up actions (mark_paid, open).
+    // Without this guard the previous code would catch errors and roll the
+    // group back, but a stale createdGroupId could still leak to actions that
+    // expected the group to exist.
+    let participantsSucceeded = false;
     try {
       const createdBookings = await Promise.all(
         participantsToCreate.map(async (participant, idx) => {
@@ -1757,48 +1817,15 @@ export default function GroupBookingsScreen() {
       if (createdBookings.length === 0) {
         throw new Error("Could not add participants to the group.");
       }
-
-      // §Group-booking-audit 2026-05 (auto mark_paid): when the provider
-      // chose a money-received method in the review sheet (cash / card /
-      // yoco) immediately settle the participant bookings so the receipt
-      // is "paid" and the calendar dashboard accounts for the revenue.
-      // payment_link is intentionally not auto-marked — the provider sends
-      // it per participant from the participant detail action.
-      const methodToMark =
-        createPaymentMethod === "cash"
-          ? "cash"
-          : createPaymentMethod === "card"
-            ? "card"
-            : createPaymentMethod === "yoco_pos"
-              ? "yoco"
-              : null;
-      if (methodToMark) {
-        const paymentResult = await postGroupAction(
-          `/api/provider/group-bookings/${createdGroupId}?action=mark_paid`,
-          { payment_method: methodToMark }
-        );
-        if (paymentResult.error) {
-          // Group is created and visible; surface the payment problem so the
-          // provider can mark-paid manually from the detail sheet.
-          Alert.alert(
-            "Group created — payment not recorded",
-            `The group session was created, but recording the payment as ${methodToMark} failed: ${paymentResult.error}. Open the group to mark it paid manually.`
-          );
-        }
-      }
-
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      // Close the review sheet first so the create sheet's onClose can fire
-      // cleanly when we close it below.
-      setShowCreateReview(false);
-      setShowCreate(false);
-      InteractionManager.runAfterInteractions(() => {
-        void refresh();
-      });
+      participantsSucceeded = true;
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Could not add all participants.";
+      // §Group-booking-audit 2026-05: close the review sheet immediately so
+      // the rollback alert isn't stacked behind a modal that intercepts taps,
+      // and so the create form is interactive when the user retries.
+      setShowCreateReview(false);
       const { error: deleteErr } = await cancelGroup(
-        `/api/provider/group-bookings/${createdGroupId}`
+        `/api/provider/group-bookings/${encodeURIComponent(createdGroupId)}`
       );
       if (deleteErr) {
         Alert.alert(
@@ -1808,11 +1835,44 @@ export default function GroupBookingsScreen() {
       } else {
         Alert.alert("Group creation failed", msg);
       }
-      // Drop back to the create form so the user can fix and retry — leaving
-      // the review sheet open would block taps on the underlying form.
-      setShowCreateReview(false);
       refresh();
+      return;
     }
+
+    // §Group-booking-audit 2026-05 (auto mark_paid): only attempt to mark
+    // paid AFTER every participant booking + link succeeded. If we hit this
+    // branch but the user chose pay-later, we skip cleanly.
+    const methodToMark =
+      participantsSucceeded && createPaymentMethod === "cash"
+        ? "cash"
+        : participantsSucceeded && createPaymentMethod === "card"
+          ? "card"
+          : participantsSucceeded && createPaymentMethod === "yoco_pos"
+            ? "yoco"
+            : null;
+    if (methodToMark) {
+      const paymentResult = await postGroupAction(
+        `/api/provider/group-bookings/${encodeURIComponent(createdGroupId)}?action=mark_paid`,
+        { payment_method: methodToMark }
+      );
+      if (paymentResult.error) {
+        // Group is created and visible; surface the payment problem so the
+        // provider can mark-paid manually from the detail sheet.
+        Alert.alert(
+          "Group created — payment not recorded",
+          `The group session was created, but recording the payment as ${methodToMark} failed: ${paymentResult.error}. Open the group to mark it paid manually.`
+        );
+      }
+    }
+
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    // Close the review sheet first so the create sheet's onClose can fire
+    // cleanly when we close it below.
+    setShowCreateReview(false);
+    setShowCreate(false);
+    InteractionManager.runAfterInteractions(() => {
+      void refresh();
+    });
   }
 
   async function applyCreateAddress(parsed: {
@@ -1960,6 +2020,16 @@ export default function GroupBookingsScreen() {
       Alert.alert("Required", "Participant name is required");
       return;
     }
+    if (
+      selectedGroup.max_participants != null &&
+      (selectedGroup.current_participants ?? 0) >= selectedGroup.max_participants
+    ) {
+      Alert.alert(
+        "Session full",
+        `This session is at its capacity of ${selectedGroup.max_participants}. Edit the session to increase the limit before adding more participants.`
+      );
+      return;
+    }
     const phoneErr = validateE164Phone(participantForm.phone);
     if (phoneErr) {
       Alert.alert("Invalid phone", phoneErr);
@@ -2018,13 +2088,13 @@ export default function GroupBookingsScreen() {
   }
 
   async function handleCheckIn(participant: Participant) {
-    if (!selectedGroup) return;
+    if (!selectedGroup?.id || !participant?.id) return;
     const { error } = await checkInParticipant(
-      `/api/provider/group-bookings/${selectedGroup.id}/participants/${participant.id}/check-in`,
+      `/api/provider/group-bookings/${encodeURIComponent(selectedGroup.id)}/participants/${encodeURIComponent(participant.id)}/check-in`,
       {}
     );
     if (error) {
-      Alert.alert("Error", error);
+      Alert.alert("Check-in failed", error);
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -2032,13 +2102,13 @@ export default function GroupBookingsScreen() {
   }
 
   async function handleCheckOut(participant: Participant) {
-    if (!selectedGroup) return;
+    if (!selectedGroup?.id || !participant?.id) return;
     const { error } = await checkOutParticipant(
-      `/api/provider/group-bookings/${selectedGroup.id}/participants/${participant.id}/check-out`,
+      `/api/provider/group-bookings/${encodeURIComponent(selectedGroup.id)}/participants/${encodeURIComponent(participant.id)}/check-out`,
       {}
     );
     if (error) {
-      Alert.alert("Error", error);
+      Alert.alert("Check-out failed", error);
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -2160,8 +2230,9 @@ export default function GroupBookingsScreen() {
         text: "Remove",
         style: "destructive",
         onPress: async () => {
+          if (!selectedGroup?.id || !participant?.id) return;
           const { error } = await removeParticipant(
-            `/api/provider/group-bookings/${selectedGroup.id}/participants/${participant.id}`
+            `/api/provider/group-bookings/${encodeURIComponent(selectedGroup.id)}/participants/${encodeURIComponent(participant.id)}`
           );
           if (error) Alert.alert("Error", error);
           else refresh();
@@ -2327,8 +2398,8 @@ export default function GroupBookingsScreen() {
                             "Group Session"}
                         </Text>
                         <View style={twStyle(`rounded-full px-2 py-0.5 ${ss.bg}`)}>
-                          <Text style={twStyle(`text-[10px] font-medium capitalize ${ss.text}`)}>
-                            {group.status}
+                          <Text style={twStyle(`text-[10px] font-medium ${ss.text}`)}>
+                            {groupStatusLabel(group.status)}
                           </Text>
                         </View>
                       </View>
@@ -2360,7 +2431,9 @@ export default function GroupBookingsScreen() {
                           <Text style={twStyle("text-xs text-gray-500")}>
                             {group.current_participants ?? 0}
                             {group.max_participants ? `/${group.max_participants}` : ""}{" "}
-                            participants
+                            {group.max_participants && (group.current_participants ?? 0) >= group.max_participants
+                              ? "· Full"
+                              : "participants"}
                           </Text>
                         </View>
                       </View>
@@ -2405,10 +2478,10 @@ export default function GroupBookingsScreen() {
               >
                 <Text
                   style={twStyle(
-                    `text-xs font-medium capitalize ${statusStyle(selectedGroup.status).text}`
+                    `text-xs font-medium ${statusStyle(selectedGroup.status).text}`
                   )}
                 >
-                  {selectedGroup.status}
+                  {groupStatusLabel(selectedGroup.status)}
                 </Text>
               </View>
             </View>
@@ -2452,10 +2525,26 @@ export default function GroupBookingsScreen() {
               )}
               <View style={twStyle("flex-row justify-between mb-1")}>
                 <Text style={twStyle("text-sm text-gray-500")}>Participants</Text>
-                <Text style={twStyle("text-sm text-gray-700")}>
-                  {selectedGroup.current_participants ?? 0}
-                  {selectedGroup.max_participants ? ` / ${selectedGroup.max_participants}` : ""}
-                </Text>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <Text style={twStyle("text-sm text-gray-700")}>
+                    {selectedGroup.current_participants ?? 0}
+                    {selectedGroup.max_participants ? ` / ${selectedGroup.max_participants}` : ""}
+                  </Text>
+                  {selectedGroup.max_participants != null && (selectedGroup.current_participants ?? 0) >= selectedGroup.max_participants && (
+                    <View style={{ backgroundColor: "#fef2f2", borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2 }}>
+                      <Text style={{ fontSize: 10, color: "#dc2626", fontWeight: "600" }}>Full</Text>
+                    </View>
+                  )}
+                  {selectedGroup.max_participants != null &&
+                    (selectedGroup.current_participants ?? 0) < selectedGroup.max_participants &&
+                    selectedGroup.max_participants - (selectedGroup.current_participants ?? 0) <= 2 && (
+                    <View style={{ backgroundColor: "#fffbeb", borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2 }}>
+                      <Text style={{ fontSize: 10, color: "#d97706", fontWeight: "600" }}>
+                        {selectedGroup.max_participants - (selectedGroup.current_participants ?? 0)} left
+                      </Text>
+                    </View>
+                  )}
+                </View>
               </View>
               <View style={twStyle("mt-1 border-t border-gray-200 pt-2 flex-row justify-between")}>
                 <Text style={twStyle("text-base font-bold text-gray-900")}>Total</Text>
@@ -2477,20 +2566,38 @@ export default function GroupBookingsScreen() {
                 <Text style={twStyle("text-xs font-semibold uppercase text-gray-400")}>
                   Participants
                 </Text>
-                {selectedGroup.status !== "completed" && selectedGroup.status !== "cancelled" && (
-                  <TouchableOpacity
-                    style={[twStyle("flex-row items-center"), { marginRight: 4 }]}
-                    onPress={openAddParticipant}
-                  >
-                    <Ionicons
-                      name="add-circle-outline"
-                      size={16}
-                      color="#6366f1"
-                      style={{ marginRight: 4 }}
-                    />
-                    <Text style={twStyle("text-xs font-medium text-indigo-600")}>Add</Text>
-                  </TouchableOpacity>
-                )}
+                {selectedGroup.status !== "completed" && selectedGroup.status !== "cancelled" && (() => {
+                  const atCap = selectedGroup.max_participants != null &&
+                    (selectedGroup.current_participants ?? 0) >= selectedGroup.max_participants;
+                  return (
+                    <TouchableOpacity
+                      style={[
+                        twStyle("flex-row items-center"),
+                        { marginRight: 4, opacity: atCap ? 0.4 : 1 },
+                      ]}
+                      onPress={() => {
+                        if (atCap) {
+                          Alert.alert(
+                            "Session full",
+                            `This session has reached its capacity of ${selectedGroup.max_participants} participants. Edit the session to increase the limit first.`
+                          );
+                          return;
+                        }
+                        openAddParticipant();
+                      }}
+                    >
+                      <Ionicons
+                        name={atCap ? "lock-closed-outline" : "add-circle-outline"}
+                        size={16}
+                        color={atCap ? "#9ca3af" : "#6366f1"}
+                        style={{ marginRight: 4 }}
+                      />
+                      <Text style={twStyle(`text-xs font-medium ${atCap ? "text-gray-400" : "text-indigo-600"}`)}>
+                        {atCap ? "Full" : "Add"}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })()}
               </View>
 
               {(selectedGroup.participants ?? []).length === 0 ? (
@@ -2751,33 +2858,36 @@ export default function GroupBookingsScreen() {
 
             {/* Actions */}
             {selectedGroup.status !== "completed" && selectedGroup.status !== "cancelled" && (
-              <View style={twStyle("flex-row")}>
+              <View style={[twStyle("flex-row"), { opacity: groupActionLoading ? 0.5 : 1 }]}>
                 <TouchableOpacity
                   style={[
                     twStyle("flex-1 items-center rounded-lg bg-indigo-50 py-2.5"),
                     { marginRight: 8 },
                   ]}
+                  disabled={groupActionLoading}
                   onPress={() => openEdit(selectedGroup)}
                 >
                   <Text style={twStyle("text-sm font-medium text-indigo-700")}>Edit</Text>
                 </TouchableOpacity>
-                {selectedGroup.status === "confirmed" && (
+                {(selectedGroup.status === "confirmed" || selectedGroup.status === "booked" || selectedGroup.status === "waiting") && (
                   <TouchableOpacity
                     style={[
                       twStyle("flex-1 items-center rounded-lg bg-green-50 py-2.5"),
                       { marginRight: 8 },
                     ]}
+                    disabled={groupActionLoading}
                     onPress={() => handleStatusChange(selectedGroup, "started")}
                   >
                     <Text style={twStyle("text-sm font-medium text-green-700")}>Start</Text>
                   </TouchableOpacity>
                 )}
-                {selectedGroup.status === "started" && (
+                {(selectedGroup.status === "started" || selectedGroup.status === "in_progress") && (
                   <TouchableOpacity
                     style={[
                       twStyle("flex-1 items-center rounded-lg bg-green-50 py-2.5"),
                       { marginRight: 8 },
                     ]}
+                    disabled={groupActionLoading}
                     onPress={() => handleStatusChange(selectedGroup, "completed")}
                   >
                     <Text style={twStyle("text-sm font-medium text-green-700")}>Complete</Text>
@@ -2788,35 +2898,40 @@ export default function GroupBookingsScreen() {
                     twStyle("flex-1 items-center rounded-lg bg-red-50 py-2.5"),
                     { marginRight: 8 },
                   ]}
+                  disabled={groupActionLoading}
                   onPress={() => handleCancel(selectedGroup)}
                 >
                   <Text style={twStyle("text-sm font-medium text-red-700")}>Cancel</Text>
                 </TouchableOpacity>
               </View>
             )}
-            <View style={twStyle("mt-2")}>
-              <Text style={twStyle("mb-2 text-xs font-medium text-gray-500")}>Record payment</Text>
-              <View style={twStyle("flex-row flex-wrap")}>
-                {(["cash", "card", "yoco", "bank_transfer"] as const).map((method) => (
-                  <TouchableOpacity
-                    key={method}
-                    style={twStyle(
-                      "mb-2 mr-2 rounded-full border border-gray-200 bg-white px-3 py-1.5"
-                    )}
-                    disabled={groupActionLoading}
-                    onPress={() => handleRecordGroupPayment(selectedGroup, method)}
-                  >
-                    <Text style={twStyle("text-xs font-medium text-gray-700")}>
-                      {method === "bank_transfer"
-                        ? "Bank transfer"
-                        : method === "yoco"
-                          ? "Yoco"
-                          : method[0].toUpperCase() + method.slice(1)}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+            {/* Record payment — only for non-terminal sessions */}
+            {selectedGroup.status !== "cancelled" && (
+              <View style={twStyle("mt-2")}>
+                <Text style={twStyle("mb-2 text-xs font-medium text-gray-500")}>Record payment</Text>
+                <View style={twStyle("flex-row flex-wrap")}>
+                  {(["cash", "card", "yoco", "bank_transfer"] as const).map((method) => (
+                    <TouchableOpacity
+                      key={method}
+                      style={[
+                        twStyle("mb-2 mr-2 rounded-full border border-gray-200 bg-white px-3 py-1.5"),
+                        { opacity: groupActionLoading ? 0.5 : 1 },
+                      ]}
+                      disabled={groupActionLoading}
+                      onPress={() => handleRecordGroupPayment(selectedGroup, method)}
+                    >
+                      <Text style={twStyle("text-xs font-medium text-gray-700")}>
+                        {method === "bank_transfer"
+                          ? "Bank transfer"
+                          : method === "yoco"
+                            ? "Yoco"
+                            : method[0].toUpperCase() + method.slice(1)}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
               </View>
-            </View>
+            )}
           </View>
         )}
       </BottomSheet>
@@ -3004,19 +3119,71 @@ export default function GroupBookingsScreen() {
               />
             </View>
             <View style={twStyle("flex-1")}>
-              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-                Max Participants
-              </Text>
-              <TextInput
-                style={twStyle(
-                  "rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+              {/* Capacity label + current-count hint */}
+              <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4, gap: 4 }}>
+                <Text style={twStyle("text-sm font-medium text-gray-700")}>Capacity</Text>
+                {editingGroupCurrentCount > 0 && (
+                  <Text style={{ fontSize: 11, color: "#6b7280" }}>
+                    ({editingGroupCurrentCount} now)
+                  </Text>
                 )}
-                value={editForm.maxParticipants}
-                onChangeText={(t) => setEditForm((p) => ({ ...p, maxParticipants: t }))}
-                keyboardType="number-pad"
-                placeholder="No limit"
-                placeholderTextColor="#9ca3af"
-              />
+              </View>
+              {/* Stepper */}
+              <View style={{
+                flexDirection: "row",
+                alignItems: "center",
+                borderWidth: 1,
+                borderColor: "#e5e7eb",
+                borderRadius: 12,
+                overflow: "hidden",
+                backgroundColor: "#f9fafb",
+              }}>
+                <TouchableOpacity
+                  onPress={() => {
+                    const current = Number(editForm.maxParticipants) || editingGroupCurrentCount || 1;
+                    const next = Math.max(Math.max(1, editingGroupCurrentCount), current - 1);
+                    setEditForm((p) => ({ ...p, maxParticipants: String(next) }));
+                    Haptics.selectionAsync().catch(() => {});
+                  }}
+                  style={{ paddingHorizontal: 14, paddingVertical: 12 }}
+                  accessibilityLabel="Decrease capacity"
+                >
+                  <Text style={{ fontSize: 18, color: "#374151", fontWeight: "500" }}>−</Text>
+                </TouchableOpacity>
+                <TextInput
+                  style={{ flex: 1, textAlign: "center", fontSize: 16, fontWeight: "600", color: "#111827", paddingVertical: 10 }}
+                  value={editForm.maxParticipants}
+                  onChangeText={(t) => {
+                    const n = parseInt(t);
+                    if (!t) { setEditForm((p) => ({ ...p, maxParticipants: "" })); return; }
+                    if (Number.isFinite(n) && n >= 1) setEditForm((p) => ({ ...p, maxParticipants: String(Math.max(Math.max(1, editingGroupCurrentCount), n)) }));
+                  }}
+                  keyboardType="number-pad"
+                  placeholder={String(Math.max(10, editingGroupCurrentCount))}
+                  placeholderTextColor="#9ca3af"
+                />
+                <TouchableOpacity
+                  onPress={() => {
+                    const current = Number(editForm.maxParticipants) || editingGroupCurrentCount || 1;
+                    setEditForm((p) => ({ ...p, maxParticipants: String(Math.min(200, current + 1)) }));
+                    Haptics.selectionAsync().catch(() => {});
+                  }}
+                  style={{ paddingHorizontal: 14, paddingVertical: 12 }}
+                  accessibilityLabel="Increase capacity"
+                >
+                  <Text style={{ fontSize: 18, color: "#374151", fontWeight: "500" }}>+</Text>
+                </TouchableOpacity>
+              </View>
+              {/* Lower-bound warning */}
+              {editForm.maxParticipants !== "" &&
+                Number(editForm.maxParticipants) < editingGroupCurrentCount && (
+                <Text style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>
+                  Cannot be less than current participants ({editingGroupCurrentCount})
+                </Text>
+              )}
+              <Text style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>
+                Blocks adding participants beyond this number.
+              </Text>
             </View>
           </View>
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Notes</Text>
@@ -3843,19 +4010,57 @@ export default function GroupBookingsScreen() {
               />
             </View>
             <View style={twStyle("flex-1")}>
-              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-                Max Participants *
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Capacity</Text>
+              {/* Stepper */}
+              <View style={{
+                flexDirection: "row",
+                alignItems: "center",
+                borderWidth: 1,
+                borderColor: "#e5e7eb",
+                borderRadius: 12,
+                overflow: "hidden",
+                backgroundColor: "#f9fafb",
+              }}>
+                <TouchableOpacity
+                  onPress={() => {
+                    const current = Number(createForm.maxParticipants) || 10;
+                    const minAllowed = Math.max(1, createParticipants.length);
+                    setCreateForm((p) => ({ ...p, maxParticipants: String(Math.max(minAllowed, current - 1)) }));
+                    Haptics.selectionAsync().catch(() => {});
+                  }}
+                  style={{ paddingHorizontal: 14, paddingVertical: 12 }}
+                  accessibilityLabel="Decrease capacity"
+                >
+                  <Text style={{ fontSize: 18, color: "#374151", fontWeight: "500" }}>−</Text>
+                </TouchableOpacity>
+                <TextInput
+                  style={{ flex: 1, textAlign: "center", fontSize: 16, fontWeight: "600", color: "#111827", paddingVertical: 10 }}
+                  value={createForm.maxParticipants}
+                  onChangeText={(t) => {
+                    const n = parseInt(t);
+                    const minAllowed = Math.max(1, createParticipants.length);
+                    if (!t) { setCreateForm((p) => ({ ...p, maxParticipants: "" })); return; }
+                    if (Number.isFinite(n) && n >= 1) setCreateForm((p) => ({ ...p, maxParticipants: String(Math.max(minAllowed, n)) }));
+                  }}
+                  keyboardType="number-pad"
+                  placeholder="10"
+                  placeholderTextColor="#9ca3af"
+                />
+                <TouchableOpacity
+                  onPress={() => {
+                    const current = Number(createForm.maxParticipants) || 10;
+                    setCreateForm((p) => ({ ...p, maxParticipants: String(Math.min(200, current + 1)) }));
+                    Haptics.selectionAsync().catch(() => {});
+                  }}
+                  style={{ paddingHorizontal: 14, paddingVertical: 12 }}
+                  accessibilityLabel="Increase capacity"
+                >
+                  <Text style={{ fontSize: 18, color: "#374151", fontWeight: "500" }}>+</Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>
+                Max people for this session.
               </Text>
-              <TextInput
-                style={twStyle(
-                  "rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
-                )}
-                value={createForm.maxParticipants}
-                onChangeText={(t) => setCreateForm((p) => ({ ...p, maxParticipants: t }))}
-                keyboardType="number-pad"
-                placeholder="10"
-                placeholderTextColor="#9ca3af"
-              />
             </View>
           </View>
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Notes</Text>
@@ -4139,21 +4344,35 @@ export default function GroupBookingsScreen() {
                     multiline
                   />
                   {/* Add another participant inline after the last row */}
-                  {isLast && (
-                    <TouchableOpacity
-                      onPress={addCreateParticipantRow}
-                      style={twStyle(
-                        "mt-3 flex-row items-center justify-center rounded-xl border border-dashed border-purple-200 py-2"
-                      )}
-                      accessibilityRole="button"
-                      accessibilityLabel="Add another participant"
-                    >
-                      <Ionicons name="add" size={14} color="#7c3aed" />
-                      <Text style={twStyle("ml-1 text-xs font-semibold text-purple-700")}>
-                        Add another participant
-                      </Text>
-                    </TouchableOpacity>
-                  )}
+                  {isLast && (() => {
+                    const cap = Number(createForm.maxParticipants) || 200;
+                    const filledRows = createParticipants.filter(
+                      (p) => p.name.trim() || p.phone.trim() || p.email.trim()
+                    ).length;
+                    const atCap = filledRows >= cap;
+                    return atCap ? (
+                      <View style={twStyle("mt-3 flex-row items-center justify-center rounded-xl border border-dashed border-gray-200 py-2")}>
+                        <Ionicons name="lock-closed-outline" size={13} color="#9ca3af" />
+                        <Text style={twStyle("ml-1 text-xs text-gray-400")}>
+                          Capacity reached ({cap}). Increase to add more.
+                        </Text>
+                      </View>
+                    ) : (
+                      <TouchableOpacity
+                        onPress={addCreateParticipantRow}
+                        style={twStyle(
+                          "mt-3 flex-row items-center justify-center rounded-xl border border-dashed border-purple-200 py-2"
+                        )}
+                        accessibilityRole="button"
+                        accessibilityLabel="Add another participant"
+                      >
+                        <Ionicons name="add" size={14} color="#7c3aed" />
+                        <Text style={twStyle("ml-1 text-xs font-semibold text-purple-700")}>
+                          Add another participant
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })()}
                 </View>
               );
             })}
@@ -4248,6 +4467,21 @@ export default function GroupBookingsScreen() {
                       : loc?.name || "Salon"}
                   </Text>
                 </View>
+
+                {/* Capacity summary row */}
+                {(() => {
+                  const cap = Number(createForm.maxParticipants) || 10;
+                  const count = participantsList.length;
+                  const remaining = cap - count;
+                  return (
+                    <View style={twStyle("mb-1 flex-row items-center justify-between")}>
+                      <Text style={twStyle("text-sm text-gray-600")}>Capacity</Text>
+                      <Text style={twStyle("text-sm font-semibold text-gray-900")}>
+                        {count} of {cap}{remaining > 0 ? ` · ${remaining} spot${remaining !== 1 ? "s" : ""} open` : " · Full"}
+                      </Text>
+                    </View>
+                  );
+                })()}
 
                 <Text
                   style={twStyle(

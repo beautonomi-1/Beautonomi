@@ -100,6 +100,14 @@ export function navigateFromProviderNotification(router: Router, n: ProviderNoti
   const dbStatus = String(data.db_status ?? data.status ?? "").toLowerCase();
   const linkLc = link.toLowerCase();
   const nTypeLc = (n.type ?? "").toLowerCase();
+  if (
+    nTypeLc === "ads_payment_confirmed" ||
+    linkLc.includes("/provider/settings/ads") ||
+    linkLc.includes("settings/ads")
+  ) {
+    router.push("/(app)/(tabs)/more/settings/ads" as never);
+    return;
+  }
   const pendingBooking =
     dbStatus === "pending" ||
     nTypeLc.includes("pending") ||

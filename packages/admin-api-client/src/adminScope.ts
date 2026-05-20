@@ -10,6 +10,7 @@ export const ADMIN_SCOPE_TENANT_STORAGE_KEY = "admin_scope_tenant_id";
 export const SCOPED_ADMIN_PATH_PREFIXES: readonly string[] = [
   "/api/admin/settings",
   "/api/admin/integrations/paystack",
+  "/api/admin/integrations/yoco",
   "/api/admin/content",
   "/api/admin/email-templates",
   "/api/admin/sms-templates",

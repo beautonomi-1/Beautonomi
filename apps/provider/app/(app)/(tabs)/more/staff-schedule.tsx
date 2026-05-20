@@ -646,6 +646,40 @@ export default function StaffScheduleScreen() {
     [scheduledShifts],
   );
 
+  /**
+   * Inherited hours per weekday name for the visible week. We surface
+   * location-fallback rows from `/api/provider/shifts` so days without an
+   * explicit `staff_schedules` entry still show the effective hours that
+   * customers will see when booking. Rows are read-only here — providers
+   * create a real schedule row to override them.
+   */
+  const inheritedByDay = useMemo(() => {
+    const map = new Map<string, { start_time: string; end_time: string; source: "schedule" | "location" }>();
+    for (const shift of scheduledShifts ?? []) {
+      if (shift.source !== "location" && shift.source !== "schedule") continue;
+      // Build a stable day name from the YYYY-MM-DD anchor without timezone drift.
+      const [yStr, mStr, dStr] = shift.date.split("-");
+      const y = Number(yStr);
+      const m = Number(mStr);
+      const d = Number(dStr);
+      if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) continue;
+      const localDate = new Date(y, m - 1, d, 12, 0, 0, 0);
+      const dayName = DAYS[(localDate.getDay() + 6) % 7];
+      if (!dayName) continue;
+      // Prefer `schedule` over `location` if both exist for the same day.
+      const existing = map.get(dayName);
+      if (existing && existing.source === "schedule") continue;
+      map.set(dayName, {
+        start_time: shift.start_time,
+        end_time: shift.end_time,
+        source: shift.source,
+      });
+    }
+    return map;
+  }, [scheduledShifts]);
+
+  const hasInheritedHours = inheritedByDay.size > 0;
+
   /* ── Render ── */
   return (
     <ScreenContainer scrollable={false}>
@@ -1008,6 +1042,16 @@ export default function StaffScheduleScreen() {
         </View>
       ) : (
         <View style={{ gap: 8 }}>
+          {hasInheritedHours ? (
+            <View
+              style={twStyle("mb-1 flex-row items-start rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3")}
+            >
+              <Ionicons name="information-circle" size={16} color="#047857" style={{ marginTop: 1 }} />
+              <Text style={twStyle("ml-2 flex-1 text-xs leading-5 text-emerald-900")}>
+                Days marked &ldquo;Inherited&rdquo; follow your location operating hours. Customers can still book those days. Add a weekly shift to set custom hours for this staff member.
+              </Text>
+            </View>
+          ) : null}
           {DAYS.map((day) => {
             const dayShifts = shiftsByDay.get(day) ?? [];
             const hasShifts = dayShifts.length > 0;
@@ -1114,6 +1158,39 @@ export default function StaffScheduleScreen() {
                       </View>
                     </View>
                   ))
+                ) : inheritedByDay.has(day) ? (
+                  (() => {
+                    const inherited = inheritedByDay.get(day)!;
+                    const isLocation = inherited.source === "location";
+                    return (
+                      <View
+                        style={twStyle("flex-row items-center px-4 py-3")}
+                        accessibilityLabel={`${day} inherited ${isLocation ? "location" : "schedule"} hours ${formatTimeLabel(inherited.start_time)} to ${formatTimeLabel(inherited.end_time)}`}
+                      >
+                        <View style={twStyle("mr-3 h-8 w-1 rounded-full bg-emerald-300")} />
+                        <View style={twStyle("flex-1")}>
+                          <View style={twStyle("flex-row items-center")}>
+                            <Ionicons
+                              name="business-outline"
+                              size={14}
+                              color="#059669"
+                            />
+                            <Text style={twStyle("ml-1.5 text-sm font-medium text-gray-900")}>
+                              {formatTimeLabel(inherited.start_time)} – {formatTimeLabel(inherited.end_time)}
+                            </Text>
+                          </View>
+                          <Text style={twStyle("mt-0.5 text-[10px] font-medium text-emerald-700")}>
+                            {isLocation
+                              ? "Inherited from location operating hours"
+                              : "Inherited from weekly schedule"}
+                          </Text>
+                          <Text style={twStyle("mt-0.5 text-[10px] text-gray-400")}>
+                            Add a weekly shift to override this for {selectedStaff?.name ?? "this staff member"}.
+                          </Text>
+                        </View>
+                      </View>
+                    );
+                  })()
                 ) : (
                   <View style={twStyle("px-4 py-3")}>
                     <Text style={twStyle("text-sm italic text-gray-400")}>

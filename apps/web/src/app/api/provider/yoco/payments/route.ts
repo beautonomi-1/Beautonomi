@@ -137,7 +137,7 @@ export async function POST(request: Request) {
     // Get Yoco device
     const { data: device } = await supabase
       .from("provider_yoco_devices")
-      .select("id, name, yoco_device_id, is_active, credential_mode")
+      .select("id, name, yoco_device_id, is_active, credential_mode, total_transactions, total_amount")
       .eq("id", validationResult.data.device_id)
       .eq("provider_id", providerId)
       .single();
@@ -731,7 +731,7 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!usingLegacyTerminal && deviceRow?.id) {
+    if (!usingLegacyTerminal && deviceRow?.id && initialStatus === "successful") {
       await supabase
         .from("provider_yoco_devices")
         .update({

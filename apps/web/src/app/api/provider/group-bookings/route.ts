@@ -19,6 +19,7 @@ import {
   groupProductLineTotal,
   validateAndPriceGroupPackage,
 } from "@/lib/bookings/group-booking-package-pricing";
+import { evaluateGroupCapacity, normalizeGroupCapacity } from "@/lib/bookings/group-capacity";
 import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
 import { computeCatalogPackageServiceDiscount } from "@beautonomi/utils";
 
@@ -92,7 +93,7 @@ export async function GET(request: NextRequest) {
       }
 
       if (search) {
-        query = query.or(`ref_number.ilike.%${search}%`);
+        query = query.or(`ref_number.ilike.%${search}%,title.ilike.%${search}%`);
       }
 
       query = query.range(offset, offset + limit - 1);
@@ -381,6 +382,14 @@ export async function POST(request: NextRequest) {
     }
     const normalizedProducts = Array.isArray(products) ? products : [];
     const normalizedParticipants = Array.isArray(participants) ? participants : [];
+    const normalizedMaxParticipants = normalizeGroupCapacity(max_participants, 10);
+    const capacityCheck = evaluateGroupCapacity({
+      maxParticipants: normalizedMaxParticipants,
+      currentParticipants: normalizedParticipants.length,
+    });
+    if (capacityCheck.ok === false) {
+      return errorResponse(capacityCheck.message, capacityCheck.code, 400);
+    }
     const serverTravelFee = location_type === "at_home" ? Math.max(0, Number(travel_fee || 0)) : 0;
     const participantTotal = normalizedParticipants.reduce(
       (sum: number, p: any) => sum + Math.max(0, Number(p.price || 0)),
@@ -491,7 +500,7 @@ export async function POST(request: NextRequest) {
         travel_fee: serverTravelFee,
         products: normalizedProducts,
         total_price: serverTotalPrice,
-        max_participants: max_participants || 10,
+        max_participants: normalizedMaxParticipants,
         duration_minutes: duration_minutes || 60,
         notes: notes || null,
         status: "confirmed",

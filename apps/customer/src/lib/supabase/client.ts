@@ -40,6 +40,10 @@ export const supabase: SupabaseClient = hasEnv
         autoRefreshToken: true,
         persistSession: true,
         detectSessionInUrl: false,
+        // Keep customer auth isolated from any other Supabase client that may
+        // run in the same browser/native storage. Supabase supports multiple
+        // active sessions per user; this prevents accidental local overwrites.
+        storageKey: "beautonomi-customer-auth",
       },
     })
   : createStubClient();

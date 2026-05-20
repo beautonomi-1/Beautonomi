@@ -39,6 +39,8 @@ interface BankOption {
   name: string;
   country: string;
   currency: string;
+  /** Paystack recipient type for this bank (e.g. "basa" for ZA, "nuban" for NG). */
+  type?: string;
 }
 
 const SUPPORTED_COUNTRIES = [
@@ -103,8 +105,8 @@ export default function PayoutAccountsScreen() {
   async function handleVerify() {
     const accountNumber = form.account_number.trim();
     const bankCode = form.bank_code.trim();
-    if (accountNumber.length < 8 || accountNumber.length > 15) {
-      Alert.alert("Invalid", "Account number must be 8–15 digits");
+    if (accountNumber.length < 8 || accountNumber.length > 20) {
+      Alert.alert("Invalid", "Account number must be 8–20 digits");
       return;
     }
     if (!bankCode) {
@@ -134,17 +136,28 @@ export default function PayoutAccountsScreen() {
   }
 
   async function handleAdd() {
+    const accountNumber = form.account_number.trim();
     if (
-      !form.account_number.trim() ||
+      !accountNumber ||
       !form.bank_code.trim() ||
       !form.account_name.trim()
     ) {
       Alert.alert("Required", "Please fill in all fields. You can verify the account first to auto-fill the name.");
       return;
     }
+    if (accountNumber.length < 8 || accountNumber.length > 20 || !/^\d+$/.test(accountNumber)) {
+      Alert.alert("Invalid", "Account number must be 8-20 digits.");
+      return;
+    }
+    const selectedBank = banks.find((b) => b.code === form.bank_code);
+    // §payout-account-fix 2026-05: pass through the bank-provided recipient type
+    // so Paystack receives the right value (e.g. "basa" for ZA). Server still
+    // normalizes per country as a safety net.
+    const recipientType =
+      selectedBank?.type || (form.country === "ZA" ? "basa" : "nuban");
     const payload = {
-      type: "nuban" as const,
-      account_number: form.account_number.trim(),
+      type: recipientType,
+      account_number: accountNumber,
       bank_code: form.bank_code.trim(),
       account_name: form.account_name.trim(),
       currency: form.currency,
@@ -193,10 +206,12 @@ export default function PayoutAccountsScreen() {
   }
 
   function handleDelete(account: PayoutAccount) {
-    if (primaryAccount?.id === account.id) {
+    const otherActiveCount =
+      accounts?.filter((candidate) => candidate.id !== account.id && candidate.active).length ?? 0;
+    if (primaryAccount?.id === account.id && otherActiveCount === 0) {
       Alert.alert(
         "Cannot Delete",
-        "Set another account as primary before deleting this one"
+        "Add or activate another payout account before deleting the current primary account."
       );
       return;
     }
@@ -363,30 +378,15 @@ onPress={() => {
           renderItem={({ item: account }: { item: PayoutAccount }) => {
             const isPrimary = primaryAccount?.id === account.id;
             return (
-            <TouchableOpacity
+            // §payout-account-fix 2026-05: the row no longer doubles as a
+            // "Set primary" hit area — that caused the delete trash and the
+            // active toggle to also flip the primary account. Tapping anywhere
+            // open the action sheet; primary, active, and delete each have an
+            // explicit control.
+            <View
               style={twStyle(`rounded-xl border bg-white p-4 ${
                 isPrimary ? "border-indigo-200" : "border-gray-100"
               }`)}
-              onPress={() => handleSetPrimary(account)}
-              onLongPress={() =>
-                Alert.alert(account.account_name, undefined, [
-                  { text: "Cancel", style: "cancel" },
-                  {
-                    text: "Set as Primary",
-                    onPress: () => handleSetPrimary(account),
-                  },
-                  {
-                    text: account.active ? "Deactivate" : "Activate",
-                    onPress: () => handleToggleActive(account),
-                  },
-                  {
-                    text: "Delete",
-                    style: "destructive",
-                    onPress: () => handleDelete(account),
-                  },
-                ])
-              }
-              activeOpacity={0.7}
             >
               <View style={twStyle("flex-row items-center")}>
                 <View
@@ -401,7 +401,7 @@ onPress={() => {
                   />
                 </View>
                 <View style={twStyle("ml-3 flex-1")}>
-                  <View style={twStyle("flex-row items-center")}>
+                  <View style={twStyle("flex-row items-center flex-wrap")}>
                     <Text style={[twStyle("text-sm font-semibold text-gray-900"), { marginRight: 8 }]}>
                       {account.account_name}
                     </Text>
@@ -432,7 +432,12 @@ onPress={() => {
                       {account.active ? "Active" : "Inactive"}
                     </Text>
                   </View>
-                  <TouchableOpacity onPress={() => handleDelete(account)}>
+                  <TouchableOpacity
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove ${account.account_name}`}
+                    onPress={() => handleDelete(account)}
+                    hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+                  >
                     <Ionicons
                       name="trash-outline"
                       size={18}
@@ -441,7 +446,37 @@ onPress={() => {
                   </TouchableOpacity>
                 </View>
               </View>
-            </TouchableOpacity>
+
+              {/* Explicit action row (no longer hidden behind a row tap). */}
+              <View style={[twStyle("mt-3 flex-row items-center"), { gap: 8 }]}>
+                {!isPrimary && account.active && (
+                  <TouchableOpacity
+                    accessibilityRole="button"
+                    accessibilityLabel="Set as primary payout account"
+                    style={twStyle(
+                      "flex-1 items-center justify-center rounded-xl border border-indigo-200 bg-indigo-50 py-2"
+                    )}
+                    onPress={() => handleSetPrimary(account)}
+                  >
+                    <Text style={twStyle("text-xs font-semibold text-indigo-700")}>
+                      Set as primary
+                    </Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel={account.active ? "Deactivate account" : "Activate account"}
+                  style={twStyle(
+                    "flex-1 items-center justify-center rounded-xl border border-gray-200 bg-gray-50 py-2"
+                  )}
+                  onPress={() => handleToggleActive(account)}
+                >
+                  <Text style={twStyle("text-xs font-semibold text-gray-700")}>
+                    {account.active ? "Deactivate" : "Activate"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
             );
           }}
         />
@@ -527,13 +562,13 @@ onPress={() => {
           )}
 
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-            Account Number * (8–15 digits)
+            Account Number * (8–20 digits)
           </Text>
           <TextInput
             style={twStyle("mb-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.account_number}
             onChangeText={(t) => {
-              setForm((p) => ({ ...p, account_number: t.replace(/\D/g, "").slice(0, 15) }));
+              setForm((p) => ({ ...p, account_number: t.replace(/\D/g, "").slice(0, 20) }));
               resetVerifyState();
             }}
             placeholder="Digits only"
@@ -578,7 +613,12 @@ onPress={() => {
           <TextInput
             style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.account_name}
-            onChangeText={(t) => setForm((p) => ({ ...p, account_name: t }))}
+            onChangeText={(t) => {
+              setForm((p) => ({ ...p, account_name: t }));
+              if (verifiedName && t.trim() !== verifiedName.trim()) {
+                setVerifiedName(null);
+              }
+            }}
             placeholder="Full name as on account"
             placeholderTextColor="#9ca3af"
           />

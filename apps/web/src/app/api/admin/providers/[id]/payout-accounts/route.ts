@@ -16,14 +16,28 @@ import {
 import { z } from "zod";
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const PAYSTACK_RECIPIENT_TYPES = ["nuban", "basa", "ghipss", "mobile_money"] as const;
+type PaystackRecipientType = (typeof PAYSTACK_RECIPIENT_TYPES)[number];
 
 const adminCreateAccountSchema = z.object({
   bank_code: z.string().min(1),
-  account_number: z.string().min(8).max(15),
+  account_number: z.string().min(8).max(20),
   account_name: z.string().min(1),
   account_type: z.string().optional(),
+  recipient_type: z.enum(PAYSTACK_RECIPIENT_TYPES).optional(),
   currency: z.string().min(1).default("ZAR"),
 });
+
+function resolveRecipientType(
+  requested: PaystackRecipientType | undefined,
+  currency: string,
+): PaystackRecipientType {
+  if (requested) return requested;
+  const code = currency.trim().toUpperCase();
+  if (code === "ZAR") return "basa";
+  if (code === "GHS") return "ghipss";
+  return "nuban";
+}
 
 /**
  * GET /api/admin/providers/[id]/payout-accounts
@@ -130,11 +144,12 @@ export async function POST(
       );
     }
 
-    const { bank_code, account_number, account_name, account_type, currency } = validation.data;
+    const { bank_code, account_number, account_name, account_type, recipient_type, currency } = validation.data;
+    const resolvedRecipientType = resolveRecipientType(recipient_type, currency);
 
     const paystackRecipient = await createTransferRecipient(
       {
-        type: "nuban",
+        type: resolvedRecipientType as "nuban",
         name: account_name,
         account_number,
         bank_code,
@@ -169,7 +184,7 @@ export async function POST(
         provider_id: providerId,
         recipient_code: paystackRecipient.data.recipient_code,
         recipient_id: paystackRecipient.data.id ?? null,
-        type: account_type || paystackRecipient.data.type || "nuban",
+        type: paystackRecipient.data.type || resolvedRecipientType,
         account_number_last4: accountNumberLast4,
         account_name: details?.account_name || account_name,
         bank_code: details?.bank_code || bank_code,
@@ -180,6 +195,7 @@ export async function POST(
         metadata: {
           paystack_response: paystackRecipient.data,
           added_by_admin: user.id,
+          account_type: account_type ?? null,
         },
       })
       .select()

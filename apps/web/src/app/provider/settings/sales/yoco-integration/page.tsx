@@ -598,7 +598,7 @@ export default function YocoIntegrationPage() {
                   </div>
 
                   <div>
-                    <Label htmlFor="public_key">Public Key</Label>
+                    <Label htmlFor="public_key">Public Key (optional)</Label>
                     <Input
                       id="public_key"
                       type="text"
@@ -612,7 +612,7 @@ export default function YocoIntegrationPage() {
                   </div>
 
                   <div>
-                    <Label htmlFor="webhook_secret">Webhook Secret (Optional)</Label>
+                    <Label htmlFor="webhook_secret">Webhook Secret (recommended)</Label>
                     <Input
                       id="webhook_secret"
                       type="password"
@@ -623,6 +623,9 @@ export default function YocoIntegrationPage() {
                       }
                       className="mt-1"
                     />
+                    <p className="mt-1 text-xs text-gray-500">
+                      Required for automatic hosted checkout completion. Use the signing secret from your Yoco Checkout webhook.
+                    </p>
                   </div>
 
                   <div className="flex gap-3">

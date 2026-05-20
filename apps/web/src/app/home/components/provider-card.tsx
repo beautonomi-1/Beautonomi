@@ -11,9 +11,8 @@ import LoginModal from "@/components/global/login-modal";
 import { toast } from "sonner";
 import { formatProviderDescriptionForCard } from "@beautonomi/utils";
 import {
-  WEB_PROVIDER_IMAGE_FALLBACK,
   providerAvatarImage,
-  providerHeroImage,
+  providerHeroImageCandidates,
 } from "@/lib/provider-images";
 
 interface ProviderCardProps {
@@ -59,12 +58,18 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
   // initials instead of hitting a missing placeholder image. The previous
   // hardcoded `/images/placeholder-provider.jpg` did not exist in `public/`,
   // which spammed Next/Image 404s for any provider missing a thumbnail.
-  const thumbnailUrl = providerHeroImage(provider);
+  const heroCandidates = React.useMemo(
+    () => providerHeroImageCandidates(provider),
+    [provider.thumbnail_url, provider.avatar_url],
+  );
+  const thumbnailUrl = heroCandidates[0];
   const avatarUrl = providerAvatarImage(provider);
+  const [avatarBroken, setAvatarBroken] = React.useState(false);
   const [thumbnailSrc, setThumbnailSrc] = React.useState<string>(thumbnailUrl);
   React.useEffect(() => {
     setThumbnailSrc(thumbnailUrl);
-  }, [thumbnailUrl]);
+    setAvatarBroken(false);
+  }, [thumbnailUrl, avatarUrl]);
   const providerInitial = provider.business_name.charAt(0).toUpperCase();
   const businessName = provider.business_name.trim() || "Provider";
   const cardDescription = formatProviderDescriptionForCard(provider.description);
@@ -191,12 +196,12 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
             priority
             className="object-cover group-hover:scale-105 transition-transform duration-300"
             onError={() => {
-              // Only swap to the bundled fallback once. Re-pointing the DOM
-              // node's `src` directly fights Next/Image's optimised loader
-              // and previously kept retrying the missing JPG.
-              if (thumbnailSrc !== WEB_PROVIDER_IMAGE_FALLBACK) {
-                setThumbnailSrc(WEB_PROVIDER_IMAGE_FALLBACK);
-              }
+              // Try thumbnail → avatar → bundled fallback. A few providers
+              // have stale `thumbnail_url` values while their `avatar_url`
+              // still loads fine (matching the customer app card).
+              const currentIndex = heroCandidates.indexOf(thumbnailSrc);
+              const nextSrc = heroCandidates[currentIndex + 1];
+              if (nextSrc) setThumbnailSrc(nextSrc);
             }}
           />
           
@@ -261,16 +266,14 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
           {/* Business avatar (face of the business) - Bottom Left */}
           <div className="absolute bottom-2 left-2 md:bottom-3 md:left-3" aria-hidden>
             <div className="relative w-10 h-10 md:w-12 md:h-12 rounded-full border-2 border-white overflow-hidden bg-gray-200">
-              {avatarUrl ? (
+              {avatarUrl && !avatarBroken ? (
                 <Image
                   src={avatarUrl}
                   alt=""
                   fill
                   sizes="48px"
                   className="object-cover"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).style.display = "none";
-                  }}
+                  onError={() => setAvatarBroken(true)}
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center bg-gray-300">

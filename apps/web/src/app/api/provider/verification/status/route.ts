@@ -9,6 +9,7 @@
 import { NextRequest } from "next/server";
 import { requireRoleInApi, successResponse, errorResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { resolveSumsubConfig } from "@/lib/verification/sumsub-token";
 
 export async function GET(request: NextRequest) {
   try {
@@ -17,13 +18,42 @@ export async function GET(request: NextRequest) {
 
     // Resolve provider id
     let providerId: string | null = null;
-    const { data: byOwner } = await supabase.from("providers").select("id").eq("user_id", user.id).limit(1).maybeSingle();
-    if (byOwner) providerId = byOwner.id;
+    let providerOwnerUserId: string | null = null;
+    let providerTenantId: string | null = null;
+    let providerIsVerified = false;
+    const { data: byOwner } = await supabase
+      .from("providers")
+      .select("id, user_id, tenant_id, is_verified")
+      .eq("user_id", user.id)
+      .limit(1)
+      .maybeSingle();
+    if (byOwner) {
+      providerId = byOwner.id;
+      providerOwnerUserId = (byOwner as { user_id?: string | null }).user_id ?? user.id;
+      providerTenantId = (byOwner as { tenant_id?: string | null }).tenant_id ?? null;
+      providerIsVerified = (byOwner as { is_verified?: boolean | null }).is_verified === true;
+    }
     else {
       const { data: staff } = await supabase.from("provider_staff").select("provider_id").eq("user_id", user.id).limit(1).maybeSingle();
       if (staff?.provider_id) providerId = staff.provider_id;
     }
     if (!providerId) return errorResponse("Provider not found", "NOT_FOUND", 404);
+
+    if (!providerOwnerUserId || !byOwner) {
+      const { data: providerRow } = await supabase
+        .from("providers")
+        .select("user_id, tenant_id, is_verified")
+        .eq("id", providerId)
+        .maybeSingle();
+      providerOwnerUserId =
+        (providerRow as { user_id?: string | null } | null)?.user_id ?? user.id;
+      providerTenantId =
+        (providerRow as { tenant_id?: string | null } | null)?.tenant_id ?? providerTenantId;
+      providerIsVerified =
+        (providerRow as { is_verified?: boolean | null } | null)?.is_verified === true;
+    }
+
+    const identityUserId = providerOwnerUserId ?? user.id;
 
     // Sumsub verification status (KYC table)
     const { data: kycRow, error: kycError } = await supabase
@@ -37,19 +67,25 @@ export async function GET(request: NextRequest) {
     const { data: manualRow } = await supabase
       .from("user_verifications")
       .select("id, status, document_type, submitted_at")
-      .eq("user_id", user.id)
+      .eq("user_id", identityUserId)
       .order("submitted_at", { ascending: false })
       .limit(1)
+      .maybeSingle();
+
+    const { data: identityUser } = await supabase
+      .from("users")
+      .select("identity_verified, identity_verification_status")
+      .eq("id", identityUserId)
       .maybeSingle();
 
     // Check if SumSub is configured and enabled
     const { searchParams } = new URL(request.url);
     const env = searchParams.get("environment") ?? "production";
-    const { data: sumsubConfig } = await supabase
-      .from("sumsub_integration_config")
-      .select("enabled, app_token_secret, secret_key_secret")
-      .eq("environment", env)
-      .maybeSingle();
+    const sumsubConfig = await resolveSumsubConfig(
+      env,
+      providerTenantId,
+      "enabled, app_token_secret, secret_key_secret, tenant_id",
+    );
 
     const sumsubAvailable = Boolean(
       sumsubConfig?.enabled &&
@@ -57,13 +93,37 @@ export async function GET(request: NextRequest) {
       sumsubConfig?.secret_key_secret
     );
 
-    // Derive a combined status: if KYC table says approved, that's authoritative.
-    // Otherwise fall back to manual doc status if submitted.
+    // Derive a combined status from every provider verification surface:
+    // Sumsub KYC, manual admin review, user identity flag, and public badge.
+    // Approval should win because any approved path means the provider is
+    // verified; rejection/reset should clear stale approved UI.
     const kycStatus = kycRow?.status ?? "pending";
+    const manualStatus = manualRow?.status ?? null;
+    const identityStatus =
+      (identityUser as { identity_verification_status?: string | null } | null)
+        ?.identity_verification_status ?? null;
+    const identityVerified =
+      (identityUser as { identity_verified?: boolean | null } | null)
+        ?.identity_verified === true;
     let effectiveStatus = kycStatus;
 
-    // If manual doc has been submitted and KYC is still pending, surface "in_progress"
-    if (kycStatus === "pending" && manualRow?.status === "pending") {
+    if (
+      kycStatus === "approved" ||
+      manualStatus === "approved" ||
+      identityStatus === "approved" ||
+      identityVerified ||
+      providerIsVerified
+    ) {
+      effectiveStatus = "approved";
+    } else if (
+      kycStatus === "rejected" ||
+      manualStatus === "rejected" ||
+      identityStatus === "rejected"
+    ) {
+      effectiveStatus = "rejected";
+    } else if (kycStatus === "reset" || identityStatus === "reset") {
+      effectiveStatus = "reset";
+    } else if (kycStatus === "in_progress" || manualStatus === "pending") {
       effectiveStatus = "in_progress";
     }
 

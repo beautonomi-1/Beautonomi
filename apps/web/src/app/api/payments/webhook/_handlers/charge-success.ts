@@ -207,7 +207,10 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
     }
     // Non-booking flows (gift cards, subscriptions, etc.)
     if (metadata?.custom_offer_id) {
-      await handleCustomOfferSuccess({ reference, metadata, amount, fees, customer }, supabase);
+      await handleCustomOfferSuccess(
+        { reference, metadata, amount, fees, customer, authorization },
+        supabase,
+      );
       return;
     }
     if (metadata?.wallet_topup_id) {
@@ -1494,7 +1497,14 @@ async function processFailedPayment(data: PaystackChargeData, supabase: Supabase
  * wallet + gift card cover the entire collectable).
  */
 async function handleCustomOfferSuccess(
-  payload: { reference: string; metadata: any; amount?: number; fees?: number; customer?: any },
+  payload: {
+    reference: string;
+    metadata: any;
+    amount?: number;
+    fees?: number;
+    customer?: any;
+    authorization?: any;
+  },
   _supabase: SupabaseClient,
 ) {
   const offerId = payload.metadata?.custom_offer_id as string | undefined;
@@ -1515,6 +1525,45 @@ async function handleCustomOfferSuccess(
       reference: payload.reference,
       reason: result.reason,
     });
+  }
+
+  // §custom-offer-save-card 2026-05: mirror the booking-success path — when
+  // the customer opted into card saving for the new-card (hosted) checkout
+  // flow, tokenize the returned authorization so the card shows up in their
+  // saved payment methods on the next checkout. Safe to run regardless of
+  // finalize outcome: the user was charged, and the card is reusable.
+  const metadata = payload.metadata ?? {};
+  const authorization = payload.authorization ?? null;
+  const customer = payload.customer ?? null;
+  const saveCardRequested =
+    metadata?.save_card === true ||
+    metadata?.save_card === "true" ||
+    String(metadata?.save_card ?? "").toLowerCase() === "true";
+  if (
+    saveCardRequested &&
+    authorization?.authorization_code &&
+    authorization?.reusable &&
+    customer?.email &&
+    metadata?.customer_id
+  ) {
+    try {
+      await savePaystackAuthorization({
+        userId: String(metadata.customer_id),
+        email: customer.email,
+        authorizationCode: authorization.authorization_code,
+        lastFour: authorization.last4,
+        expiryMonth: parseInt(authorization.exp_month || "0"),
+        expiryYear: parseInt(authorization.exp_year || "0"),
+        cardBrand: authorization.brand || authorization.card_type || "unknown",
+        isDefault:
+          metadata?.set_as_default === true ||
+          metadata?.set_as_default === "true" ||
+          String(metadata?.set_as_default ?? "").toLowerCase() === "true",
+        supabase: adminSupabase,
+      });
+    } catch (saveError) {
+      console.error("[handleCustomOfferSuccess] saving payment method failed:", saveError);
+    }
   }
 }
 

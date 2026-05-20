@@ -138,12 +138,22 @@ export default function TabsLayout() {
   }, []);
 
   // Realtime badge updates across dashboard/bookings/chats/more counters.
+  // §provider-nav-counts-realtime 2026-05: previous topic name was static
+  // (`provider-nav-counts:${providerId}`), so when React re-mounted this
+  // effect (Strict Mode, fast refresh, tab remount) the Supabase realtime
+  // client reused the already-subscribed channel and threw
+  // "tried to add postgres_changes callbacks after subscribe()". A
+  // per-mount counter guarantees a fresh channel topic every effect cycle,
+  // and the cleanup removes the old channel so we don't leak listeners.
+  const navChannelGen = useRef(0);
   useEffect(() => {
     const providerId = provider?.id;
     if (!providerId) return;
+    navChannelGen.current += 1;
+    const gen = navChannelGen.current;
     let debounce: ReturnType<typeof setTimeout> | undefined;
     const channel = supabase
-      .channel(`provider-nav-counts:${providerId}`)
+      .channel(`provider-nav-counts:${providerId}:${gen}`)
       .on(
         "postgres_changes",
         {

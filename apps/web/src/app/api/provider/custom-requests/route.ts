@@ -14,6 +14,17 @@ export async function GET(request: NextRequest) {
     if (!providerId) return successResponse([]);
 
     const locationId = request.nextUrl.searchParams.get("location_id");
+    const nowIso = new Date().toISOString();
+
+    // Keep the inbox honest even if the scheduled cron has not run yet.
+    // Providers should not see stale "pending" requests as actionable after
+    // their customer-facing expiry time has passed.
+    await supabase
+      .from("custom_requests")
+      .update({ status: "expired", updated_at: nowIso })
+      .eq("provider_id", providerId)
+      .in("status", ["pending", "offered"])
+      .lt("expires_at", nowIso);
 
     const { data, error } = await supabase
       .from("custom_requests")

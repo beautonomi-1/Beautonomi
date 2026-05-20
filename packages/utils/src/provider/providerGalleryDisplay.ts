@@ -1,8 +1,8 @@
 /**
- * Customer-facing provider gallery frames: uniform landscape crop regardless of
- * source image orientation (portrait uploads are center-cropped like major marketplaces).
+ * Customer-facing provider gallery frames: uniform 4:5 portrait crop regardless of
+ * source image orientation (landscape uploads are center-cropped like Instagram/Pinterest).
  */
-export const PROVIDER_GALLERY_ASPECT_RATIO = 16 / 9;
+export const PROVIDER_GALLERY_ASPECT_RATIO = 4 / 5;
 
 /** CSS object-position for web (`object-cover` companion). */
 export const PROVIDER_GALLERY_OBJECT_POSITION = "center 40%";
@@ -13,7 +13,7 @@ export const PROVIDER_GALLERY_CONTENT_POSITION = {
   left: "50%",
 } as const;
 
-/** Pixel height for a gallery frame at a given width (16:9). */
+/** Pixel height for a gallery frame at a given width (4:5 portrait). */
 export function providerGalleryFrameHeight(
   width: number,
   aspectRatio: number = PROVIDER_GALLERY_ASPECT_RATIO

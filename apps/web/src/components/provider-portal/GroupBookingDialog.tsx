@@ -32,7 +32,9 @@ import {
 import {
   CalendarIcon, Plus, X, User, Home, Building2, Users, Tag,
   StickyNote, MapPin, Search, Package, ShoppingBag, Loader2, ChevronDown,
+  Info, Lock, Minus,
 } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import type {
@@ -788,6 +790,14 @@ export function GroupBookingDialog({
       return;
     }
 
+    if (participants.length > formData.max_participants) {
+      toast.error(
+        `Too many participants. You have ${participants.length} but the session capacity is ${formData.max_participants}. Increase the limit in the Session Capacity section.`
+      );
+      setCreateStep("form");
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -842,7 +852,7 @@ export function GroupBookingDialog({
         service_id: formData.service_id || undefined,
         staff_id: formData.team_member_id || undefined,
         location_id: formData.location_type === "at_salon" ? (formData.location_id || undefined) : undefined,
-        max_participants: formData.max_participants || participants.length + 5,
+        max_participants: Math.max(formData.max_participants, participants.length, 1),
         duration_minutes: totalDuration,
         notes: formData.notes || undefined,
         // §Group-booking-audit 2026-05: forward the review-screen toggle so
@@ -1318,10 +1328,33 @@ export function GroupBookingDialog({
                 <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
                   <Users className="w-4 h-4 text-gray-400" />Participants
                   <Badge variant="outline" className="text-[10px] h-5 px-1.5">{participants.length}</Badge>
+                  {participants.length >= formData.max_participants && (
+                    <Badge variant="destructive" className="text-[10px] h-5 px-1.5">Full</Badge>
+                  )}
                 </div>
-                <Button type="button" variant="outline" size="sm" onClick={handleAddParticipant} className="h-8 text-xs">
-                  <Plus className="w-3.5 h-3.5 mr-1" />Add
-                </Button>
+                <TooltipProvider delayDuration={150}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={handleAddParticipant}
+                          disabled={participants.length >= formData.max_participants}
+                          className="h-8 text-xs"
+                        >
+                          <Plus className="w-3.5 h-3.5 mr-1" />Add
+                        </Button>
+                      </span>
+                    </TooltipTrigger>
+                    {participants.length >= formData.max_participants && (
+                      <TooltipContent side="left" className="text-xs">
+                        Session is at capacity ({formData.max_participants}). Increase the limit in the Session Capacity section below.
+                      </TooltipContent>
+                    )}
+                  </Tooltip>
+                </TooltipProvider>
               </div>
               <p className="text-xs text-gray-500">
                 Search for an existing client or enter details manually. One row per person — service, add-ons and price flow into the group total and accounting.
@@ -1522,7 +1555,7 @@ export function GroupBookingDialog({
                                 <span className="text-[10px] text-gray-400">(+{formatMoney(participant.addons.reduce((s, a) => s + a.price, 0))})</span>
                               )}
                             </div>
-                            {isLastParticipant && (
+                            {isLastParticipant && participants.length < formData.max_participants && (
                               <Button
                                 type="button"
                                 variant="outline"
@@ -1541,6 +1574,133 @@ export function GroupBookingDialog({
                 )}
               </div>
             </div>
+
+            <Separator />
+
+            {/* ─── Session capacity ────────────────────────────────── */}
+            {(() => {
+              const currentCount = participants.length;
+              const cap = formData.max_participants;
+              const filledPct = cap > 0 ? Math.round((currentCount / cap) * 100) : 0;
+              const atCapacity = currentCount >= cap;
+              const nearCapacity = !atCapacity && currentCount >= cap - 1 && cap > 1;
+
+              return (
+                <TooltipProvider delayDuration={200}>
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                      <Lock className="w-4 h-4 text-gray-400" />
+                      Session Capacity
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Info className="w-3.5 h-3.5 text-gray-400 cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent side="right" className="max-w-[240px] text-xs leading-relaxed">
+                          The maximum number of participants allowed in this session.
+                          Adding more participants will be blocked once this limit is reached.
+                          Set higher than your initial list to leave room for walk-ins.
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      {/* Stepper */}
+                      <div className="flex items-center gap-0 border border-gray-200 rounded-lg overflow-hidden">
+                        <button
+                          type="button"
+                          aria-label="Decrease capacity"
+                          disabled={cap <= Math.max(1, currentCount)}
+                          className="h-9 w-9 flex items-center justify-center text-gray-500 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                          onClick={() =>
+                            setFormData(prev => ({
+                              ...prev,
+                              max_participants: Math.max(Math.max(1, currentCount), prev.max_participants - 1),
+                            }))
+                          }
+                        >
+                          <Minus className="w-3.5 h-3.5" />
+                        </button>
+                        <input
+                          type="number"
+                          aria-label="Session capacity"
+                          value={formData.max_participants}
+                          min={Math.max(1, currentCount)}
+                          max={200}
+                          onChange={e => {
+                            const v = parseInt(e.target.value);
+                            if (Number.isFinite(v) && v >= 1) {
+                              setFormData(prev => ({
+                                ...prev,
+                                max_participants: Math.max(Math.max(1, currentCount), v),
+                              }));
+                            }
+                          }}
+                          className="h-9 w-14 text-center text-sm font-semibold border-x border-gray-200 focus:outline-none focus:ring-1 focus:ring-primary/50 bg-white"
+                        />
+                        <button
+                          type="button"
+                          aria-label="Increase capacity"
+                          disabled={cap >= 200}
+                          className="h-9 w-9 flex items-center justify-center text-gray-500 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                          onClick={() =>
+                            setFormData(prev => ({
+                              ...prev,
+                              max_participants: Math.min(200, prev.max_participants + 1),
+                            }))
+                          }
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      {/* Live status pill */}
+                      {currentCount > 0 && (
+                        <div className={cn(
+                          "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium",
+                          atCapacity
+                            ? "bg-red-50 text-red-700 border border-red-200"
+                            : nearCapacity
+                            ? "bg-amber-50 text-amber-700 border border-amber-200"
+                            : "bg-green-50 text-green-700 border border-green-200",
+                        )}>
+                          <span>{currentCount} / {cap} spots filled</span>
+                          {atCapacity && <span>· Full</span>}
+                          {nearCapacity && <span>· 1 left</span>}
+                          {!atCapacity && !nearCapacity && cap - currentCount > 1 && (
+                            <span>· {cap - currentCount} remaining</span>
+                          )}
+                        </div>
+                      )}
+
+                      {currentCount === 0 && (
+                        <p className="text-xs text-gray-400">
+                          {cap} spot{cap !== 1 ? "s" : ""} available once you add participants.
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Progress bar — only meaningful once there are participants */}
+                    {currentCount > 0 && (
+                      <div className="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
+                        <div
+                          className={cn(
+                            "h-full rounded-full transition-all duration-300",
+                            atCapacity ? "bg-red-500" : nearCapacity ? "bg-amber-400" : "bg-green-500",
+                          )}
+                          style={{ width: `${Math.min(100, filledPct)}%` }}
+                        />
+                      </div>
+                    )}
+
+                    {atCapacity && (
+                      <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-1.5">
+                        Session is at capacity. Increase the limit above before adding more participants.
+                      </p>
+                    )}
+                  </div>
+                </TooltipProvider>
+              );
+            })()}
 
             <Separator />
 
@@ -1701,8 +1861,19 @@ export function GroupBookingDialog({
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-gray-600">Participants</span>
-                  <span className="font-semibold text-gray-900">{participants.length}</span>
+                  <span className="font-semibold text-gray-900">
+                    {participants.length}
+                    {" "}
+                    <span className="text-xs font-normal text-gray-400">
+                      of {formData.max_participants} max
+                    </span>
+                  </span>
                 </div>
+                {formData.max_participants - participants.length > 0 && (
+                  <p className="text-xs text-gray-400">
+                    {formData.max_participants - participants.length} spot{formData.max_participants - participants.length !== 1 ? "s" : ""} still available after booking — you can add walk-ins later.
+                  </p>
+                )}
                 <div className="flex items-center justify-between border-t border-gray-100 pt-2 mt-2">
                   <span className="text-base font-bold text-gray-900">Total</span>
                   <span className="text-base font-extrabold text-gray-900">{formatMoney(pricing.totalAmount)}</span>

@@ -325,6 +325,7 @@ export async function createBookingRecord(
           service_id: primaryServiceId,
           service_name: primaryServiceName,
           duration_minutes: primaryDurationMinutes || null,
+          customer_id: v.customerId,
         },
         ...guestParticipants.map((p: any) => {
           const guestServiceIds: string[] = (p.service_ids ?? p.serviceIds ?? []) as string[];
@@ -376,7 +377,7 @@ export async function createBookingRecord(
         const { sendGroupBookingNotifications } = await import(
           "@/lib/bookings/group-booking-notifications"
         );
-        await sendGroupBookingNotifications(supabase, booking.id, groupBooking.id);
+        await sendGroupBookingNotifications(adminSupabase, booking.id, groupBooking.id);
       } catch (notifError) {
         console.error("Failed to send group booking notifications:", notifError);
       }

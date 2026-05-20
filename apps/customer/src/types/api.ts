@@ -216,6 +216,7 @@ export interface Booking {
   provider_name?: string;
   /** When true, this booking is part of a group; group_booking_ref is the shared ref (e.g. GB-xxx). */
   is_group_booking?: boolean;
+  group_booking_id?: string | null;
   group_booking_ref?: string | null;
   /** Booking channel: "online" | "walk_in" | "provider" | "group_booking" | null */
   booking_source?: string | null;

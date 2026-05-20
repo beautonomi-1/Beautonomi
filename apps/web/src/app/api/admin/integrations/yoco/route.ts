@@ -4,9 +4,13 @@ import {
   requireRoleInApi,
   successResponse,
   handleApiError,
+  errorResponse,
 } from "@/lib/supabase/api-helpers";
 import { resolveAdminTenantContext } from "@/lib/tenant/scoped-overrides";
 import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
+import { writeAuditLog } from "@/lib/audit/audit";
+import { DEFAULT_YOCO_SCOPES } from "@/lib/payments/yoco-oauth";
+import { z } from "zod";
 
 function maskClientId(v: string | null | undefined): string | null {
   if (!v || typeof v !== "string") return null;
@@ -17,6 +21,21 @@ function maskClientId(v: string | null | undefined): string | null {
 
 type YocoEnv = "live" | "sandbox";
 
+const yocoPatchSchema = z.object({
+  environment: z.enum(["live", "sandbox"]),
+  client_id: z.string().optional(),
+  client_secret: z.string().optional(),
+  /** Empty string ⇒ "keep existing value". Non-empty must be a valid URL. */
+  redirect_uri: z
+    .string()
+    .optional()
+    .refine((v) => !v || z.string().url().safeParse(v).success, {
+      message: "redirect_uri must be a valid URL",
+    }),
+  default_scopes: z.string().optional(),
+  is_enabled: z.boolean().optional(),
+});
+
 async function fetchOauthAppRow(
   supabase: ReturnType<typeof getSupabaseAdmin>,
   env: YocoEnv,
@@ -25,47 +44,62 @@ async function fetchOauthAppRow(
   source: "tenant" | "global";
   masked_client_id: string | null;
   redirect_uri: string | null;
+  default_scopes: string | null;
+  has_client_secret: boolean;
   is_enabled: boolean;
+  updated_at: string | null;
 } | null> {
   if (scopeTenantId) {
     const { data: tenantRow, error: te } = await (supabase
       .from("tenant_yoco_oauth_apps") as any)
-      .select("client_id, redirect_uri, is_enabled")
+      .select("client_id, client_secret, redirect_uri, default_scopes, is_enabled, updated_at")
       .eq("tenant_id", scopeTenantId)
       .eq("environment", env)
       .maybeSingle();
     if (!te && tenantRow && typeof tenantRow === "object") {
       const r = tenantRow as {
         client_id?: string;
+        client_secret?: string;
         redirect_uri?: string;
+        default_scopes?: string;
         is_enabled?: boolean;
+        updated_at?: string | null;
       };
       return {
         source: "tenant",
         masked_client_id: maskClientId(r.client_id),
         redirect_uri: r.redirect_uri?.trim() || null,
+        default_scopes: r.default_scopes?.trim() || null,
+        has_client_secret: !!r.client_secret?.trim(),
         is_enabled: r.is_enabled !== false,
+        updated_at: r.updated_at ?? null,
       };
     }
   }
 
   const { data: globalRow, error: ge } = await (supabase
     .from("tenant_yoco_oauth_apps") as any)
-    .select("client_id, redirect_uri, is_enabled")
+    .select("client_id, client_secret, redirect_uri, default_scopes, is_enabled, updated_at")
     .is("tenant_id", null)
     .eq("environment", env)
     .maybeSingle();
   if (ge || !globalRow || typeof globalRow !== "object") return null;
   const g = globalRow as {
     client_id?: string;
+    client_secret?: string;
     redirect_uri?: string;
+    default_scopes?: string;
     is_enabled?: boolean;
+    updated_at?: string | null;
   };
   return {
     source: "global",
     masked_client_id: maskClientId(g.client_id),
     redirect_uri: g.redirect_uri?.trim() || null,
+    default_scopes: g.default_scopes?.trim() || null,
+    has_client_secret: !!g.client_secret?.trim(),
     is_enabled: g.is_enabled !== false,
+    updated_at: g.updated_at ?? null,
   };
 }
 
@@ -168,5 +202,109 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     return handleApiError(error, "Failed to fetch Yoco integration status");
+  }
+}
+
+/**
+ * PATCH /api/admin/integrations/yoco
+ *
+ * Upserts a platform/global or tenant-scoped Yoco OAuth app row. Secrets are
+ * write-only: full client_secret is accepted but never returned by GET.
+ */
+export async function PATCH(request: NextRequest) {
+  try {
+    const { user } = await requireRoleInApi(["superadmin"], request);
+    const body = await request.json();
+    const { currentTenantId, requestedScope } = await resolveAdminTenantContext(
+      request,
+      body as Record<string, unknown>,
+      (user as { role?: string }).role ?? null,
+    );
+    const scopeTenantId =
+      requestedScope.scope === "global" ? null : requestedScope.tenantId ?? currentTenantId;
+
+    const parsed = yocoPatchSchema.safeParse(body);
+    if (!parsed.success) {
+      return errorResponse(
+        parsed.error.issues.map((issue) => issue.message).join(", "),
+        "VALIDATION_ERROR",
+        400,
+      );
+    }
+
+    const supabase = getSupabaseAdmin();
+    let existingQuery = (supabase.from("tenant_yoco_oauth_apps") as any)
+      .select("id, client_id, client_secret, redirect_uri, default_scopes, is_enabled")
+      .eq("environment", parsed.data.environment);
+    existingQuery =
+      scopeTenantId == null ? existingQuery.is("tenant_id", null) : existingQuery.eq("tenant_id", scopeTenantId);
+    const { data: existing, error: existingError } = await existingQuery.maybeSingle();
+    if (existingError) throw existingError;
+
+    const existingRow =
+      (existing as {
+        id?: string;
+        client_id?: string | null;
+        client_secret?: string | null;
+        redirect_uri?: string | null;
+        default_scopes?: string | null;
+        is_enabled?: boolean | null;
+      } | null) ?? null;
+
+    const clientId = parsed.data.client_id?.trim() || existingRow?.client_id?.trim() || "";
+    const clientSecret = parsed.data.client_secret?.trim() || existingRow?.client_secret?.trim() || "";
+    const redirectUri = parsed.data.redirect_uri?.trim() || existingRow?.redirect_uri?.trim() || "";
+    const defaultScopes =
+      parsed.data.default_scopes?.trim() || existingRow?.default_scopes?.trim() || DEFAULT_YOCO_SCOPES;
+
+    if (!clientId || !clientSecret || !redirectUri) {
+      return errorResponse(
+        "Client ID, client secret, and redirect URI are required when creating or completing a Yoco OAuth app row.",
+        "VALIDATION_ERROR",
+        400,
+      );
+    }
+
+    const payload = {
+      tenant_id: scopeTenantId,
+      environment: parsed.data.environment,
+      client_id: clientId,
+      client_secret: clientSecret,
+      redirect_uri: redirectUri,
+      default_scopes: defaultScopes,
+      is_enabled: parsed.data.is_enabled ?? existingRow?.is_enabled ?? true,
+      updated_at: new Date().toISOString(),
+    };
+
+    let opError: unknown;
+    if (existingRow?.id) {
+      const { error } = await (supabase.from("tenant_yoco_oauth_apps") as any)
+        .update(payload)
+        .eq("id", existingRow.id);
+      opError = error;
+    } else {
+      const { error } = await (supabase.from("tenant_yoco_oauth_apps") as any)
+        .insert(payload);
+      opError = error;
+    }
+    if (opError) throw opError;
+
+    await writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: (user as { role?: string }).role ?? "superadmin",
+      action: "admin.integrations.yoco.oauth_app.updated",
+      entity_type: "tenant_yoco_oauth_apps",
+      entity_id: existingRow?.id ?? null,
+      metadata: {
+        scope: requestedScope.scope,
+        tenant_id: scopeTenantId,
+        environment: parsed.data.environment,
+        fields_updated: Object.keys(parsed.data).filter((key) => key !== "scope" && key !== "tenant_id"),
+      },
+    });
+
+    return successResponse({ message: "Yoco OAuth app configuration updated" });
+  } catch (error) {
+    return handleApiError(error, "Failed to update Yoco integration configuration");
   }
 }

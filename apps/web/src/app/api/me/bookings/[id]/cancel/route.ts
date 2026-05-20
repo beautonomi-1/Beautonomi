@@ -29,11 +29,13 @@ export async function POST(
     const supabase = await getSupabaseServer(request);
     const adminSupabase = getSupabaseAdmin();
 
-    // Load booking (include version + pricing for cancellation fee / total validation trigger)
+    // Load booking (include version + pricing for cancellation fee / total validation trigger).
+    // group_booking_id is included so we can recalculate the group total when a
+    // non-primary participant cancels their own booking.
     const { data: booking, error: bookingError } = await supabase
       .from('bookings')
       .select(
-        'id, provider_id, location_type, scheduled_at, created_at, status, customer_id, version, booking_number, subtotal, discount_amount, tax_amount, service_fee_amount, travel_fee, tip_amount, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, currency, cancellation_fee, customer_package_entitlement_id, loyalty_points_used, loyalty_points_redeemed'
+        'id, provider_id, location_type, scheduled_at, created_at, status, customer_id, version, booking_number, subtotal, discount_amount, tax_amount, service_fee_amount, travel_fee, tip_amount, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, currency, cancellation_fee, customer_package_entitlement_id, loyalty_points_used, loyalty_points_redeemed, group_booking_id'
       )
       .eq('id', bookingId)
       .single();
@@ -276,12 +278,14 @@ export async function POST(
       console.error("Failed to create audit log entry:", auditError);
     }
 
-    // Check if this is a group booking
+    // Check if this is the primary-contact booking for a group.
+    // Use maybeSingle() so a missing row returns null instead of an error
+    // (single() throws PGRST116 "0 rows" when no group exists for this booking).
     const { data: groupBookingData } = await supabase
       .from('group_bookings')
       .select('id, status')
       .eq('primary_contact_booking_id', bookingId)
-      .single();
+      .maybeSingle();
 
     const isGroupBooking = !!groupBookingData;
 
@@ -299,6 +303,25 @@ export async function POST(
       cancelledBy: 'customer',
       refundInfo,
     });
+
+    // §Group-booking-qa 2026-05: when a non-primary participant cancels their
+    // individual booking the group continues but its total_price becomes stale
+    // (it still included the cancelled participant's service price). Recalculate
+    // best-effort using the admin client (RLS would block participant reads).
+    const nonPrimaryGroupId =
+      !isGroupBooking && (booking as { group_booking_id?: string | null }).group_booking_id
+        ? (booking as { group_booking_id: string }).group_booking_id
+        : null;
+    if (nonPrimaryGroupId) {
+      try {
+        const { tryRecalculateGroupBookingTotal } = await import(
+          '@/lib/bookings/recalculate-group-total'
+        );
+        await tryRecalculateGroupBookingTotal(adminSupabase, nonPrimaryGroupId);
+      } catch (recalcErr) {
+        console.warn('[cancel] non-primary group total recalculation failed:', recalcErr);
+      }
+    }
 
     // If group booking, cancel entire group and notify all participants
     if (isGroupBooking && groupBookingData) {

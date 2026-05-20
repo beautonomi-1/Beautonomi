@@ -5,12 +5,12 @@ import {
 } from "./providerGalleryDisplay";
 
 describe("providerGalleryDisplay", () => {
-  it("uses 16:9 landscape aspect ratio", () => {
-    expect(PROVIDER_GALLERY_ASPECT_RATIO).toBeCloseTo(16 / 9, 5);
+  it("uses 4:5 portrait aspect ratio", () => {
+    expect(PROVIDER_GALLERY_ASPECT_RATIO).toBeCloseTo(4 / 5, 5);
   });
 
   it("computes frame height from width", () => {
-    expect(providerGalleryFrameHeight(320)).toBe(180);
+    expect(providerGalleryFrameHeight(320)).toBe(400);
     expect(providerGalleryFrameHeight(0)).toBe(0);
   });
 });

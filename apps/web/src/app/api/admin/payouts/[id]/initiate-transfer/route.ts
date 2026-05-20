@@ -138,6 +138,18 @@ export async function POST(
     };
 
     const paystack = await createTransfer(transferRequest, { tenantId });
+    if (!paystack.status || !paystack.data?.transfer_code) {
+      return NextResponse.json(
+        {
+          data: null,
+          error: {
+            message: paystack.message || "Paystack did not initiate the transfer.",
+            code: "PAYSTACK_TRANSFER_FAILED",
+          },
+        },
+        { status: 400 }
+      );
+    }
 
     // Update payout to record transfer details + mark as processing
     const { data: updatedPayout, error: updateErr } = await supabase

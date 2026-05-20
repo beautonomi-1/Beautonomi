@@ -32,6 +32,14 @@ import {
 } from "@/lib/supabase-sms-otp";
 
 type PhoneStep = "enter_phone" | "enter_otp" | null;
+type AuthSecurityState = {
+  has_password: boolean;
+  has_mailable_email: boolean;
+  has_phone: boolean;
+  email_is_placeholder: boolean;
+  password_changed_at: string | null;
+  policy: { minimum_password_length: number };
+};
 
 const COUNTRY_CODES = [
   { code: "+27", label: "ZA +27" },
@@ -55,7 +63,7 @@ export default function SettingsLoginAndSecurityScreen() {
 
   const biometric = useBiometricAuth();
 
-  const [profile, setProfile] = useState<{ email?: string; phone?: string; email_change_pending?: boolean } | null>(null);
+  const [profile, setProfile] = useState<{ email?: string; phone?: string; email_change_pending?: boolean; auth_security?: AuthSecurityState | null } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -84,7 +92,7 @@ export default function SettingsLoginAndSecurityScreen() {
       setError(null);
     }
     try {
-      const res = await api.get<{ email?: string; phone?: string; email_change_pending?: boolean }>("/api/me/profile");
+      const res = await api.get<{ email?: string; phone?: string; email_change_pending?: boolean; auth_security?: AuthSecurityState | null }>("/api/me/profile");
       if (res.error) {
         if (!quiet) setError(res.error.message || "Failed to load profile");
       } else {
@@ -578,14 +586,20 @@ export default function SettingsLoginAndSecurityScreen() {
                 alignItems: "center",
               }}
               accessibilityRole="button"
-              accessibilityLabel="Change password"
+              accessibilityLabel={profile?.auth_security?.has_password === false ? "Set password" : "Change password"}
             >
               <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: "#F3F4F6", alignItems: "center", justifyContent: "center", marginRight: 12 }}>
                 <Ionicons name="lock-closed-outline" size={18} color={Colors.gray[600]} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 15, fontWeight: "500", color: Colors.gray[900] }}>Change password</Text>
-                <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 1 }}>Update your account password</Text>
+                <Text style={{ fontSize: 15, fontWeight: "500", color: Colors.gray[900] }}>
+                  {profile?.auth_security?.has_password === false ? "Set password" : "Change password"}
+                </Text>
+                <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 1 }}>
+                  {profile?.auth_security?.has_password === false
+                    ? "Add password sign-in to your account"
+                    : "Update your account password"}
+                </Text>
               </View>
               <Ionicons name="chevron-forward" size={18} color={Colors.gray[400]} />
             </TouchableOpacity>

@@ -8,6 +8,7 @@ import { NextRequest } from "next/server";
 import { successResponse, errorResponse } from "@/lib/supabase/api-helpers";
 import { verifyEmbedRefreshToken } from "@/lib/verification/sumsub-embed-refresh";
 import { getSumsubAccessToken } from "@/lib/verification/sumsub-token";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 export async function GET(request: NextRequest) {
   try {
@@ -22,7 +23,13 @@ export async function GET(request: NextRequest) {
       return errorResponse("Invalid or expired refresh token", "UNAUTHORIZED", 401);
     }
 
-    const { token } = await getSumsubAccessToken(parsed.entityId, parsed.environment);
+    const { data: providerRow } = await getSupabaseAdmin()
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", parsed.entityId)
+      .maybeSingle();
+    const tenantId = (providerRow as { tenant_id?: string | null } | null)?.tenant_id ?? null;
+    const { token } = await getSumsubAccessToken(parsed.entityId, parsed.environment, tenantId);
     if (!token) {
       return errorResponse("Failed to get new token", "SUMSUB_ERROR", 502);
     }

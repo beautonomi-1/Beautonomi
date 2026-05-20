@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, TextInput, Alert } from "react-native";
 import { useRouter } from "expo-router";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { useAuth } from "@/providers/AuthProvider";
+import { supabase } from "@/lib/supabase/client";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
@@ -19,20 +20,41 @@ interface AccountStatus {
   provider_id?: string;
 }
 
+type AuthSecurityState = {
+  has_password: boolean;
+  has_mailable_email: boolean;
+  has_phone: boolean;
+};
+
 export default function DeleteAccountInfoScreen() {
   const router = useRouter();
   const { signOut } = useAuth();
   const { data: status, loading, error, refresh } = useApi<AccountStatus>("/api/me/account-status");
+  const { data: profile } = useApi<{ auth_security?: AuthSecurityState | null }>("/api/me/profile");
   const { execute: deleteAccount, loading: deleting } = useApiMutation("post");
   const [password, setPassword] = useState("");
+  const [verificationNonce, setVerificationNonce] = useState("");
+  const [requestingNonce, setRequestingNonce] = useState(false);
   const [reason, setReason] = useState("");
   const [confirmText, setConfirmText] = useState("");
   const DELETE_PHRASE = "DELETE";
   const confirmOk = confirmText.trim().toUpperCase() === DELETE_PHRASE;
+  const authSecurity = profile?.auth_security ?? null;
+  const hasPassword = authSecurity?.has_password !== false;
+  const canVerifyWithCode = Boolean(
+    authSecurity == null ||
+      authSecurity.has_password ||
+      authSecurity.has_mailable_email ||
+      authSecurity.has_phone,
+  );
 
   const handleDeleteAccount = async () => {
-    if (!password.trim()) {
+    if (hasPassword && !password.trim()) {
       Alert.alert("Password required", "Enter your password to confirm account deletion.");
+      return;
+    }
+    if (!hasPassword && !verificationNonce.trim()) {
+      Alert.alert("Verification required", "Enter the verification code to confirm account deletion.");
       return;
     }
     if (!confirmOk) {
@@ -49,7 +71,8 @@ export default function DeleteAccountInfoScreen() {
           style: "destructive",
           onPress: async () => {
             const { error: deleteError } = await deleteAccount("/api/me/delete-account", {
-              password: password.trim(),
+              password: hasPassword ? password.trim() : undefined,
+              verificationNonce: hasPassword ? undefined : verificationNonce.trim(),
               reason: reason.trim() || "Deleted from mobile app",
             });
             if (deleteError) {
@@ -63,6 +86,23 @@ export default function DeleteAccountInfoScreen() {
         },
       ]
     );
+  };
+
+  const requestVerificationCode = async () => {
+    if (!canVerifyWithCode) {
+      Alert.alert("Add contact method", "Add and verify an email or phone number before deleting this account.");
+      return;
+    }
+    setRequestingNonce(true);
+    try {
+      const { error: reauthError } = await supabase.auth.reauthenticate();
+      if (reauthError) throw reauthError;
+      Alert.alert("Code sent", "Enter the verification code below to confirm deletion.");
+    } catch (e) {
+      Alert.alert("Could not send code", e instanceof Error ? e.message : "Please try again.");
+    } finally {
+      setRequestingNonce(false);
+    }
   };
 
   if (loading && status == null) {
@@ -120,16 +160,41 @@ export default function DeleteAccountInfoScreen() {
         </Text>
 
         <View style={twStyle("mt-5 rounded-xl border border-gray-200 bg-white p-4")}>
-          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Current password</Text>
-          <TextInput
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            autoCapitalize="none"
-            placeholder="Enter password"
-            placeholderTextColor="#9ca3af"
-            style={twStyle("mb-3 rounded-lg border border-gray-200 px-3 py-2.5 text-gray-900")}
-          />
+          {hasPassword ? (
+            <>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Current password</Text>
+              <TextInput
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry
+                autoCapitalize="none"
+                placeholder="Enter password"
+                placeholderTextColor="#9ca3af"
+                style={twStyle("mb-3 rounded-lg border border-gray-200 px-3 py-2.5 text-gray-900")}
+              />
+            </>
+          ) : (
+            <View style={twStyle("mb-3")}>
+              <Text style={twStyle("mb-2 text-sm text-gray-600")}>Confirm with a one-time verification code.</Text>
+              <TouchableOpacity
+                onPress={requestVerificationCode}
+                disabled={requestingNonce || !canVerifyWithCode}
+                style={twStyle("mb-2 rounded-lg border border-gray-200 bg-white px-3 py-3")}
+              >
+                <Text style={twStyle("text-center font-semibold text-gray-900")}>{requestingNonce ? "Sending..." : "Send verification code"}</Text>
+              </TouchableOpacity>
+              <TextInput
+                value={verificationNonce}
+                onChangeText={(value) => setVerificationNonce(value.replace(/\D/g, ""))}
+                keyboardType="number-pad"
+                autoComplete="sms-otp"
+                textContentType="oneTimeCode"
+                placeholder="Enter code"
+                placeholderTextColor="#9ca3af"
+                style={twStyle("rounded-lg border border-gray-200 px-3 py-2.5 text-gray-900")}
+              />
+            </View>
+          )}
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Reason (optional)</Text>
           <TextInput
             value={reason}
@@ -155,7 +220,7 @@ export default function DeleteAccountInfoScreen() {
             )}
           />
           <Text style={twStyle("mt-2 text-xs text-gray-500")}>
-            Same safeguards as the website. If you use only social or phone sign-in, set a password on the web first.
+            Same safeguards as the website. Passwordless accounts can confirm with a one-time verification code.
           </Text>
         </View>
 
@@ -163,18 +228,18 @@ export default function DeleteAccountInfoScreen() {
           onPress={handleDeleteAccount}
           style={twStyle(
             `mt-6 rounded-xl border py-4 px-4 ${
-              deleting || !password.trim() || !confirmOk
+              deleting || (hasPassword ? !password.trim() : !verificationNonce.trim()) || !confirmOk
                 ? "border-gray-200 bg-gray-100"
                 : "border-red-300 bg-red-50"
             }`
           )}
           activeOpacity={0.7}
-          disabled={deleting || !password.trim() || !confirmOk}
+          disabled={deleting || (hasPassword ? !password.trim() : !verificationNonce.trim()) || !confirmOk}
         >
           <Text
             style={twStyle(
               `text-center font-semibold ${
-                deleting || !password.trim() || !confirmOk ? "text-gray-400" : "text-red-700"
+                deleting || (hasPassword ? !password.trim() : !verificationNonce.trim()) || !confirmOk ? "text-gray-400" : "text-red-700"
               }`
             )}
           >

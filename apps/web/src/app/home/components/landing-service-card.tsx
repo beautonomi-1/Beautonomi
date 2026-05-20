@@ -57,6 +57,10 @@ const LandingServiceCard: React.FC<ServiceCardProps> = ({
             fill
             className="object-cover group-hover:scale-105 transition-transform duration-300"
             onError={() => {
+              if (providerImage && heroSrc !== providerImage) {
+                setHeroSrc(providerImage);
+                return;
+              }
               if (heroSrc !== WEB_PROVIDER_IMAGE_FALLBACK) {
                 setHeroSrc(WEB_PROVIDER_IMAGE_FALLBACK);
               }

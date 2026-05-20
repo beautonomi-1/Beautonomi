@@ -9,11 +9,12 @@ import {
 import { verifyAccount } from "@/lib/payments/paystack-complete";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
 import { z } from "zod";
 
 const verifySchema = z.object({
-  account_number: z.string().min(8).max(15),
+  account_number: z.string().min(8).max(20),
   bank_code: z.string().min(1),
 });
 
@@ -32,7 +33,10 @@ export async function POST(request: NextRequest) {
     if (!providerId) {
       return errorResponse("Provider not found", "NOT_FOUND", 404);
     }
-    const { data: provRow } = await supabase
+    // §payout-account-fix 2026-05: admin client for the tenant lookup so this
+    // works for staff whose RLS view of `providers` may be limited.
+    const admin = getSupabaseAdmin();
+    const { data: provRow } = await admin
       .from("providers")
       .select("tenant_id")
       .eq("id", providerId)

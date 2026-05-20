@@ -50,7 +50,8 @@ const REFRESH_LEAD_MS = 5 * 60 * 1000;
  *   - `offline_access`          — required to receive a refresh_token
  *   - `business/webpos:read`    — `GET /v1/webpos/{id}` probe + payment fetch
  *   - `business/webpos:write`   — `POST /v1/webpos/` + `/v1/webpos/{id}/payments`
- *   - `application/webhooks:write` — `POST /v1/webhooks/subscriptions/` auto-reg
+ *   - `application/webhooks:read` / `application/webhooks:write`
+ *                                 — `POST /v1/webhooks/subscriptions/` auto-reg
  *
  * Read-only reporting scopes left in for the existing reconciliation report
  * and future read paths (`business/orders:read`, `business/payouts:read`).
@@ -62,6 +63,7 @@ export const DEFAULT_YOCO_SCOPES = [
   "offline_access",
   "business/webpos:read",
   "business/webpos:write",
+  "application/webhooks:read",
   "application/webhooks:write",
   "business/orders:read",
   "business/payouts:read",

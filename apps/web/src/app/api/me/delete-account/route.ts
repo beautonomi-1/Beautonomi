@@ -3,6 +3,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, handleApiError, successResponse } from "@/lib/supabase/api-helpers";
 import { purgeUserMessageAttachmentFiles } from "@/lib/account/purge-user-message-files";
+import { verifySensitiveActionForUser } from "@/lib/auth/verify-sensitive-action";
 
 /**
  * POST /api/me/delete-account
@@ -19,19 +20,30 @@ export async function POST(request: NextRequest) {
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
-    const { password, reason } = body;
+    const { password, reason, verificationNonce } = body;
 
-    if (!password) {
-      return NextResponse.json({ error: "Password is required to delete your account" }, { status: 400 });
+    if (!password && !verificationNonce) {
+      return NextResponse.json({ error: "Password or verification code is required to delete your account" }, { status: 400 });
     }
 
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: user.email!,
-      password: password,
+    const {
+      data: { user: authUser },
+    } = await supabase.auth.getUser();
+
+    if (!authUser) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
+
+    const verified = await verifySensitiveActionForUser(supabase, authUser, {
+      password,
+      nonce: verificationNonce,
     });
 
-    if (signInError) {
-      return NextResponse.json({ error: "Password is incorrect" }, { status: 401 });
+    if (!verified) {
+      return NextResponse.json(
+        { error: password ? "Password is incorrect" : "Verification code is invalid or expired" },
+        { status: 401 },
+      );
     }
 
     const admin = getSupabaseAdmin();

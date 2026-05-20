@@ -42,6 +42,29 @@ const onboardingProfileImages = {
   avatar_url: "https://example.com/avatar.jpg",
 };
 
+/**
+ * Supabase Storage bucket mock used by every test in this suite.
+ *
+ * The route calls:
+ *   const { data: uploadData, error } = await supabaseAdmin.storage.from(bucket).upload(path, blob)
+ *   const { data: { publicUrl } } = supabaseAdmin.storage.from(bucket).getPublicUrl(uploadData.path)
+ *
+ * Both methods must return the correct shape or destructuring will throw.
+ */
+function makeStorageMock() {
+  return {
+    from: vi.fn((bucket: string) => ({
+      upload: vi.fn(async (path: string) => ({
+        data: { path: `${bucket}/${path}` },
+        error: null,
+      })),
+      getPublicUrl: vi.fn((path: string) => ({
+        data: { publicUrl: `https://storage.example.com/${bucket}/${path}` },
+      })),
+    })),
+  };
+}
+
 describe("POST /api/provider/onboarding", () => {
   beforeEach(() => {
     vi.resetModules();
@@ -73,12 +96,7 @@ describe("POST /api/provider/onboarding", () => {
     const zoneSelectionInsertPayloads: Array<Array<Record<string, unknown>>> = [];
 
     const mockSupabaseAdmin = {
-      storage: {
-        from: vi.fn(() => ({
-          upload: vi.fn(),
-          getPublicUrl: vi.fn(),
-        })),
-      },
+      storage: makeStorageMock(),
       from: vi.fn((table: string) => {
         if (table === "providers") {
           const filters: Record<string, unknown> = {};
@@ -258,6 +276,19 @@ describe("POST /api/provider/onboarding", () => {
           };
         }
 
+        if (table === "provider_staff") {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+                })),
+              })),
+            })),
+            insert: vi.fn(async () => ({ error: null })),
+          };
+        }
+
         throw new Error(`Unexpected table: ${table}`);
       }),
       rpc: vi.fn(async () => ({ data: null, error: { message: "does not exist" } })),
@@ -314,12 +345,7 @@ describe("POST /api/provider/onboarding", () => {
     const providerCategoryInsertPayloads: Array<Record<string, unknown>> = [];
 
     const mockSupabaseAdmin = {
-      storage: {
-        from: vi.fn(() => ({
-          upload: vi.fn(),
-          getPublicUrl: vi.fn(),
-        })),
-      },
+      storage: makeStorageMock(),
       from: vi.fn((table: string) => {
         if (table === "providers") {
           let insertPayload: Record<string, unknown> | null = null;
@@ -525,6 +551,19 @@ describe("POST /api/provider/onboarding", () => {
           };
         }
 
+        if (table === "provider_staff") {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+                })),
+              })),
+            })),
+            insert: vi.fn(async () => ({ error: null })),
+          };
+        }
+
         throw new Error(`Unexpected table: ${table}`);
       }),
       rpc: vi.fn(async () => ({ data: null, error: { message: "does not exist" } })),
@@ -619,9 +658,7 @@ describe("POST /api/provider/onboarding", () => {
       });
 
     const mockSupabaseAdmin = {
-      storage: {
-        from: vi.fn(() => ({ upload: vi.fn(), getPublicUrl: vi.fn() })),
-      },
+      storage: makeStorageMock(),
       from: vi.fn((table: string) => {
         if (table === "providers") {
           let insertPayload: Record<string, unknown> | null = null;
@@ -743,6 +780,18 @@ describe("POST /api/provider/onboarding", () => {
             })),
           };
         }
+        if (table === "provider_staff") {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+                })),
+              })),
+            })),
+            insert: vi.fn(async () => ({ error: null })),
+          };
+        }
         throw new Error(`Unexpected table: ${table}`);
       }),
       rpc: vi.fn(async () => ({ data: null, error: { message: "does not exist" } })),
@@ -816,9 +865,7 @@ describe("POST /api/provider/onboarding", () => {
     const subscriptionInserts: Array<Record<string, unknown>> = [];
 
     const mockSupabaseAdmin = {
-      storage: {
-        from: vi.fn(() => ({ upload: vi.fn(), getPublicUrl: vi.fn() })),
-      },
+      storage: makeStorageMock(),
       from: vi.fn((table: string) => {
         if (table === "providers") {
           let insertPayload: Record<string, unknown> | null = null;
@@ -930,6 +977,19 @@ describe("POST /api/provider/onboarding", () => {
                 })),
               })),
             })),
+          };
+        }
+        if (table === "provider_staff") {
+          // Salon owner staff creation (migration 618 RPC fallback path)
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+                })),
+              })),
+            })),
+            insert: vi.fn(async () => ({ error: null })),
           };
         }
         throw new Error(`Unexpected table: ${table}`);

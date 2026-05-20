@@ -62,6 +62,9 @@ function handleNotificationRoute(data: Record<string, unknown>) {
       data.on_demand_request_id ?? data.id ?? "",
     );
     const productOrderId = String(data.product_order_id ?? data.order_id ?? "").trim();
+    const actionUrl = String(data.action_url ?? data.link ?? data.url ?? data.deep_link ?? "").trim();
+    const actionUrlLc = actionUrl.toLowerCase();
+    const typeLc = type.toLowerCase();
     const broadcastDeepLink =
       typeof data.url === "string"
         ? data.url.trim()
@@ -80,6 +83,15 @@ function handleNotificationRoute(data: Record<string, unknown>) {
       } else {
         router.push("/(app)/announcements" as never);
       }
+      return;
+    }
+
+    if (
+      typeLc === "ads_payment_confirmed" ||
+      actionUrlLc.includes("/provider/settings/ads") ||
+      actionUrlLc.includes("settings/ads")
+    ) {
+      router.push("/(app)/(tabs)/more/settings/ads" as never);
       return;
     }
 

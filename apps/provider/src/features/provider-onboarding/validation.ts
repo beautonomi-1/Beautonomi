@@ -66,6 +66,14 @@ export function validateStep(
         if (!service?.supports_at_home && !service?.supports_at_salon) {
           errors.push(`${label}: select at least one availability option`);
         }
+        if (service?.extra_time_enabled) {
+          if (!Number.isFinite(service?.extra_time_duration) || Number(service?.extra_time_duration) <= 0) {
+            errors.push(`${label}: extra time duration must be greater than 0`);
+          }
+        }
+        if (service?.at_home_radius_km != null && !Number.isFinite(service.at_home_radius_km)) {
+          errors.push(`${label}: at-home radius must be a number`);
+        }
         const addons = service?.addons || [];
         for (let j = 0; j < addons.length; j++) {
           const addon = addons[j];

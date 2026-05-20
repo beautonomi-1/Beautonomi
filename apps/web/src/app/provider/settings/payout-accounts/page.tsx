@@ -47,6 +47,7 @@ interface BankAccount {
   bank_code: string;
   currency: string;
   active: boolean;
+  is_primary: boolean;
   created_at: string;
 }
 
@@ -81,8 +82,16 @@ export default function PayoutAccountsPage() {
   const loadBanks = useCallback(async (country: string) => {
     try {
       setIsLoadingBanks(true);
-      const response = await fetcher.get<{ data: Bank[] }>(`/api/public/banks?country=${encodeURIComponent(country)}`);
-      setBanks(response.data || []);
+      // §payout-account-fix 2026-05: use the authenticated provider banks
+      // endpoint (which requests Paystack `enabled_for_verification=true` for
+      // ZA) so the dropdown matches what `/verify` and the recipient API
+      // accept. Mobile already uses this endpoint.
+      const response = await fetcher.get<{ data: { banks: Bank[] } | Bank[] }>(
+        `/api/provider/payout-accounts/banks?country=${encodeURIComponent(country)}`
+      );
+      const payload = response.data as any;
+      const banksList: Bank[] = Array.isArray(payload) ? payload : payload?.banks ?? [];
+      setBanks(banksList);
     } catch (err) {
       console.error("Error loading banks:", err);
       toast.error("Failed to load bank list");
@@ -124,8 +133,8 @@ export default function PayoutAccountsPage() {
 
     if (!formData.account_number.trim()) {
       errors.account_number = "Account number is required";
-    } else if (formData.account_number.length < 8 || formData.account_number.length > 15) {
-      errors.account_number = "Account number must be between 8 and 15 digits";
+    } else if (formData.account_number.length < 8 || formData.account_number.length > 20) {
+      errors.account_number = "Account number must be between 8 and 20 digits";
     } else if (!/^\d+$/.test(formData.account_number)) {
       errors.account_number = "Account number must contain only digits";
     }
@@ -161,8 +170,8 @@ export default function PayoutAccountsPage() {
       });
       return;
     }
-    if (formData.account_number.length < 8 || formData.account_number.length > 15) {
-      setFormErrors({ ...formErrors, account_number: "Account number must be 8-15 digits" });
+    if (formData.account_number.length < 8 || formData.account_number.length > 20) {
+      setFormErrors({ ...formErrors, account_number: "Account number must be 8-20 digits" });
       return;
     }
     try {
@@ -199,8 +208,13 @@ export default function PayoutAccountsPage() {
     try {
       setIsSubmitting(true);
       const currency = getCurrencyForCountry(formData.country);
+      const selectedBank = banks.find((b) => b.code === formData.bank_code);
+      // §payout-account-fix 2026-05: forward the bank-provided recipient type so
+      // the server doesn't have to guess (e.g. `basa` for ZA, `nuban` for NG).
+      // The server still normalizes per country as a safety net.
+      const recipientType = selectedBank?.type || (formData.country === "ZA" ? "basa" : "nuban");
       await fetcher.post<{ data: BankAccount }>("/api/provider/payout-accounts", {
-        type: "nuban",
+        type: recipientType,
         country: formData.country,
         account_number: formData.account_number,
         bank_code: formData.bank_code,
@@ -259,6 +273,18 @@ export default function PayoutAccountsPage() {
       loadAccounts();
     } catch {
       toast.error("Failed to update bank account");
+    }
+  };
+
+  const handleSetPrimary = async (id: string) => {
+    try {
+      await fetcher.patch(`/api/provider/payout-accounts/${id}`, { is_primary: true });
+      invalidateSetupStatusCache();
+      toast.success("Primary payout account updated");
+      loadAccounts();
+    } catch (err) {
+      const msg = err instanceof FetchError ? err.message : "Failed to set primary account";
+      toast.error(msg);
     }
   };
 
@@ -348,8 +374,13 @@ export default function PayoutAccountsPage() {
                       <div className="flex items-center gap-2 mb-2">
                         <Building2 className="w-5 h-5 text-gray-400" />
                         <div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <p className="font-medium text-sm">{account.account_name}</p>
+                            {account.is_primary && (
+                              <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300">
+                                Primary
+                              </Badge>
+                            )}
                             {account.active ? (
                               <Badge variant="outline" className="bg-green-100 text-green-800 border-green-300">
                                 <CheckCircle2 className="w-3 h-3 mr-1" />
@@ -371,6 +402,15 @@ export default function PayoutAccountsPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
+                      {!account.is_primary && account.active && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleSetPrimary(account.id)}
+                        >
+                          Set Primary
+                        </Button>
+                      )}
                       {!account.active && (
                         <Button
                           size="sm"
@@ -384,6 +424,12 @@ export default function PayoutAccountsPage() {
                         size="sm"
                         variant="ghost"
                         onClick={() => handleDelete(account.id)}
+                        disabled={account.is_primary && accounts.length === 1}
+                        title={
+                          account.is_primary && accounts.length === 1
+                            ? "Add another account before removing your only payout account"
+                            : undefined
+                        }
                       >
                         <Trash2 className="w-4 h-4 text-red-500" />
                       </Button>
@@ -491,13 +537,13 @@ export default function PayoutAccountsPage() {
                 }}
                 placeholder="Enter account number"
                 className="mt-1"
-                maxLength={15}
+                maxLength={20}
               />
               {formErrors.account_number && (
                 <p className="text-xs text-red-600 mt-1">{formErrors.account_number}</p>
               )}
               <p className="text-xs text-gray-500 mt-1">
-                Enter your bank account number (8-15 digits)
+                Enter your bank account number (8-20 digits)
               </p>
               <Button
                 type="button"
@@ -537,8 +583,15 @@ export default function PayoutAccountsPage() {
                 type="text"
                 value={formData.account_name}
                 onChange={(e) => {
-                  setFormData({ ...formData, account_name: e.target.value });
+                  const next = e.target.value;
+                  setFormData({ ...formData, account_name: next });
                   setFormErrors({ ...formErrors, account_name: "" });
+                  // §payout-account-fix 2026-05: clear stale verified name when
+                  // user manually edits the field so we never submit a verified
+                  // name that no longer matches what the user can see.
+                  if (verifiedAccountName && next.trim() !== verifiedAccountName.trim()) {
+                    setVerifiedAccountName(null);
+                  }
                 }}
                 placeholder="Enter account holder name"
                 className="mt-1"

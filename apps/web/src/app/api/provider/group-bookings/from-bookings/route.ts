@@ -61,6 +61,19 @@ export async function POST(request: NextRequest) {
     const scheduledAt = bookings[0]?.scheduled_at || new Date().toISOString();
     const packageIds = [...new Set(bookings.map((b) => b.package_id).filter(Boolean))];
     const sharedPackageId = packageIds.length === 1 ? packageIds[0] : null;
+
+    // Detect scheduling divergence so callers can surface a warning in the UI.
+    // Using the first booking's scheduled_at as the group anchor is correct for
+    // the typical "batch-group same-time bookings" case; warn when any booking
+    // differs by more than 30 minutes.
+    const anchorMs = new Date(scheduledAt).getTime();
+    const divergentIds = bookings
+      .filter((b) => {
+        if (!b.scheduled_at) return false;
+        return Math.abs(new Date(b.scheduled_at).getTime() - anchorMs) > 30 * 60 * 1000;
+      })
+      .map((b) => b.id);
+
     const refNumber = await generateGroupBookingRef(admin);
 
     const { data: group, error: gErr } = await admin
@@ -72,6 +85,7 @@ export async function POST(request: NextRequest) {
         scheduled_at: scheduledAt,
         status: "confirmed",
         package_id: sharedPackageId,
+        max_participants: Math.max(10, bookings.length),
       })
       .select("*")
       .single();
@@ -80,31 +94,37 @@ export async function POST(request: NextRequest) {
       throw gErr || new Error("Failed to create group");
     }
 
-    for (let i = 0; i < bookings.length; i++) {
-      const b = bookings[i]!;
-      const { error: pErr } = await admin.from("booking_participants").insert({
-        booking_id: b.id,
-        group_booking_id: group.id,
-        participant_name: b.customer_name || `Guest ${i + 1}`,
-        participant_email: b.customer_email,
-        participant_phone: b.customer_phone,
-        is_primary_contact: i === 0,
-      });
-      if (pErr) {
-        throw pErr;
-      }
-      const { error: uErr } = await admin
-        .from("bookings")
-        .update({
+    // Link participants one at a time. On any failure roll back the group row
+    // so providers are never left with a partially-created group they cannot
+    // manage — mirrors the same rollback pattern in POST /api/provider/group-bookings.
+    try {
+      for (let i = 0; i < bookings.length; i++) {
+        const b = bookings[i]!;
+        const { error: pErr } = await admin.from("booking_participants").insert({
+          booking_id: b.id,
           group_booking_id: group.id,
-          is_group_booking: true,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", b.id)
-        .eq("provider_id", providerId);
-      if (uErr) {
-        throw uErr;
+          participant_name: b.customer_name || `Guest ${i + 1}`,
+          participant_email: b.customer_email,
+          participant_phone: b.customer_phone,
+          is_primary_contact: i === 0,
+        });
+        if (pErr) throw pErr;
+
+        const { error: uErr } = await admin
+          .from("bookings")
+          .update({
+            group_booking_id: group.id,
+            is_group_booking: true,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", b.id)
+          .eq("provider_id", providerId);
+        if (uErr) throw uErr;
       }
+    } catch (linkErr) {
+      // Rollback: delete the orphaned group row before surfacing the error.
+      await admin.from("group_bookings").delete().eq("id", group.id);
+      throw linkErr;
     }
 
     const { data: full } = await admin
@@ -115,7 +135,21 @@ export async function POST(request: NextRequest) {
       .eq("id", group.id)
       .single();
 
-    return successResponse(full || group);
+    return successResponse({
+      ...(full || group),
+      ...(divergentIds.length > 0
+        ? {
+            warnings: [
+              {
+                code: "TIME_DIVERGENCE",
+                message:
+                  "Some bookings have scheduled times that differ from the group anchor by more than 30 minutes. Verify the group schedule before proceeding.",
+                divergent_booking_ids: divergentIds,
+              },
+            ],
+          }
+        : {}),
+    });
   } catch (error) {
     return handleApiError(error, "Failed to create group from bookings");
   }

@@ -148,9 +148,10 @@ const baseApi = createApiClient({
 });
 
 /**
- * True when the error clearly indicates the session is expired/revoked (not a network/config issue).
- * We must NOT sign out on transient errors (network down, wrong APP_URL, etc.) — that would cause
- * the login loop where the user is immediately redirected back to the login screen after signing in.
+ * True when the error clearly indicates this local session is expired/revoked
+ * (not a network/config issue). Supabase supports the same user being signed
+ * in on multiple devices, so never treat generic auth wording as a reason to
+ * clear this device's session.
  */
 function isSessionInvalidError(error: { message?: string } | null): boolean {
   if (!error?.message) return false;
@@ -168,14 +169,20 @@ function isSessionInvalidError(error: { message?: string } | null): boolean {
   ) {
     return false;
   }
+  const invalidSessionMarkers = [
+    "expired",
+    "invalid",
+    "revoked",
+    "not found",
+    "missing",
+    "malformed",
+    "already used",
+    "jwt expired",
+    "refresh token",
+  ];
   return (
-    msg.includes("refresh") ||
-    msg.includes("session") ||
-    msg.includes("token") ||
-    msg.includes("expired") ||
-    msg.includes("invalid") ||
-    msg.includes("revoked") ||
-    msg.includes("not found")
+    invalidSessionMarkers.some((marker) => msg.includes(marker)) &&
+    (msg.includes("session") || msg.includes("token") || msg.includes("jwt"))
   );
 }
 

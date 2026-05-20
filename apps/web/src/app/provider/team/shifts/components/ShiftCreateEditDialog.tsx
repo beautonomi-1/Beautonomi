@@ -71,10 +71,12 @@ export function ShiftCreateEditDialog({
   });
 
   const isScheduleOverride = shift?.source === "schedule";
+  const isLocationOverride = shift?.source === "location";
+  const isInheritedOverride = isScheduleOverride || isLocationOverride;
 
   useEffect(() => {
     queueMicrotask(() => {
-      if (shift && !isScheduleOverride) {
+      if (shift && !isInheritedOverride) {
         const recurringPattern = shift.recurring_pattern || {};
         const isRepeating = shift.is_recurring || false;
         const isAlternating = recurringPattern.type === "alternating" || false;
@@ -105,7 +107,7 @@ export function ShiftCreateEditDialog({
         });
       }
     });
-  }, [shift, member, date, open, isScheduleOverride]);
+  }, [shift, member, date, open, isInheritedOverride]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -123,14 +125,18 @@ export function ShiftCreateEditDialog({
       <DialogContent className="max-w-[95vw] sm:max-w-2xl max-h-[95vh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle className="text-base sm:text-lg font-semibold">
-            {isScheduleOverride
+            {isLocationOverride
+              ? "Override Location Operating Hours"
+              : isScheduleOverride
               ? "Override Weekly Schedule"
               : shift
               ? "Edit Shift"
               : "Add Shift"}
           </DialogTitle>
           <p className="text-xs sm:text-sm text-gray-500 mt-1">
-            {isScheduleOverride
+            {isLocationOverride
+              ? "Create a date-specific shift that overrides the inherited location operating hours for this day"
+              : isScheduleOverride
               ? "Create a date-specific shift that overrides the weekly schedule for this day"
               : shift
               ? "Update shift details and schedule"
@@ -380,7 +386,7 @@ export function ShiftCreateEditDialog({
             >
               {isSaving
                 ? "Saving..."
-                : isScheduleOverride
+                : isInheritedOverride
                 ? "Create Override"
                 : shift
                 ? "Update Shift"

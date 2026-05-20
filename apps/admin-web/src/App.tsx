@@ -100,6 +100,7 @@ export default function App() {
           <Route path="support-tickets/:id" element={<P.SupportTicketDetailPage />} />
           <Route path="bookings" element={<P.BookingsPage />} />
           <Route path="bookings/:id" element={<P.BookingDetailPage />} />
+          <Route path="group-bookings" element={<P.GroupBookingsPage />} />
           <Route path="disputes" element={<P.DisputesPage />} />
           <Route path="providers/distance-settings" element={<P.ProviderDistanceSettingsPage />} />
           <Route path="providers/:id" element={<P.ProviderDetailPage />} />

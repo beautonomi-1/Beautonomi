@@ -140,6 +140,7 @@ describe("DEFAULT_YOCO_SCOPES", () => {
       "offline_access",
       "business/webpos:read",
       "business/webpos:write",
+      "application/webhooks:read",
       "application/webhooks:write",
     ]) {
       expect(requested).toContain(required);

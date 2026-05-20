@@ -22,6 +22,32 @@ import {
   slackNotifyVerificationRejected,
 } from "@/lib/integrations/slack/ops-triggers";
 import { syncProviderVerificationState } from "@/lib/verification/sync-provider-verification";
+import { resolveSumsubConfig } from "@/lib/verification/sumsub-token";
+
+async function resolveTenantIdForExternalUserId(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  externalUserId: string,
+): Promise<string | null> {
+  if (externalUserId.startsWith("user:")) {
+    const userId = externalUserId.slice("user:".length);
+    if (!userId) return null;
+    const { data: userRow } = await supabase
+      .from("users")
+      .select("preferred_home_tenant_id")
+      .eq("id", userId)
+      .maybeSingle();
+    return (userRow as { preferred_home_tenant_id?: string | null } | null)?.preferred_home_tenant_id ?? null;
+  }
+  if (externalUserId) {
+    const { data: providerRow } = await supabase
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", externalUserId)
+      .maybeSingle();
+    return (providerRow as { tenant_id?: string | null } | null)?.tenant_id ?? null;
+  }
+  return null;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -33,13 +59,21 @@ export async function POST(request: NextRequest) {
     const env = request.headers.get("x-sumsub-env") || "production";
 
     const supabase = getSupabaseAdmin();
+    const unverifiedPayload = JSON.parse(rawBody) as {
+      externalUserId?: string;
+    };
+    const tenantIdForConfig = await resolveTenantIdForExternalUserId(
+      supabase,
+      unverifiedPayload.externalUserId ?? "",
+    );
 
-    // Verify webhook signature when secret is configured
-    const { data: config } = await supabase
-      .from("sumsub_integration_config")
-      .select("webhook_secret_secret")
-      .eq("environment", env)
-      .maybeSingle();
+    // Verify webhook signature when secret is configured. Tenant-scoped config
+    // wins, then global config, matching the admin control-plane save flow.
+    const config = await resolveSumsubConfig(
+      env,
+      tenantIdForConfig,
+      "webhook_secret_secret, tenant_id",
+    );
 
     const secret = config?.webhook_secret_secret as string | undefined;
     if (!secret) {
@@ -54,7 +88,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
     }
 
-    const payload = JSON.parse(rawBody) as {
+    const payload = unverifiedPayload as {
       applicantId?: string;
       externalUserId?: string;
       reviewStatus?: string;

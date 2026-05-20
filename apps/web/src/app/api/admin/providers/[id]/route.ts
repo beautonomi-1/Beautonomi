@@ -92,7 +92,7 @@ export async function GET(
 
     const { data: yocoOauthToken } = await (supabase
       .from("provider_yoco_oauth_tokens") as any)
-      .select("id")
+      .select("id, expires_at, refresh_expires_at, last_refreshed_at, last_refresh_error, business_id, business_name, user_email")
       .eq("provider_id", providerId)
       .eq("environment", integEnv)
       .maybeSingle();
@@ -126,6 +126,15 @@ export async function GET(
     const hasLegacyTerminal = legacy.some((t: { active?: boolean }) => t.active !== false);
     const activeWebDevices = devices.filter((d: { is_active?: boolean }) => d.is_active !== false);
     const hasOauthToken = Boolean(yocoOauthToken);
+    const oauthTokenRow = yocoOauthToken as {
+      expires_at?: string | null;
+      refresh_expires_at?: string | null;
+      last_refreshed_at?: string | null;
+      last_refresh_error?: string | null;
+      business_id?: string | null;
+      business_name?: string | null;
+      user_email?: string | null;
+    } | null;
     const hasRealWebPosDevice = activeWebDevices.some(
       (d: { yoco_device_id?: string | null }) =>
         !String(d.yoco_device_id ?? "").startsWith("virtual:"),
@@ -145,6 +154,18 @@ export async function GET(
                 : "none",
             environment: integEnv,
             oauth_token_present: hasOauthToken,
+            oauth_token:
+              hasOauthToken && oauthTokenRow
+                ? {
+                    expires_at: oauthTokenRow.expires_at ?? null,
+                    refresh_expires_at: oauthTokenRow.refresh_expires_at ?? null,
+                    last_refreshed_at: oauthTokenRow.last_refreshed_at ?? null,
+                    last_refresh_error: oauthTokenRow.last_refresh_error ?? null,
+                    business_id: oauthTokenRow.business_id ?? null,
+                    business_name: oauthTokenRow.business_name ?? null,
+                    user_email: oauthTokenRow.user_email ?? null,
+                  }
+                : null,
           }
         : null,
       web_pos_devices: devices,

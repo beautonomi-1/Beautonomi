@@ -11,7 +11,46 @@ import {
  *
  * Uploads inspiration photos for custom service requests to Supabase Storage.
  * Returns the public URLs that can be used in the custom request.
+ *
+ * §custom-request-upload-hardening 2026-05: the mobile picker often supplies
+ * filenames without extensions (e.g. iOS sometimes returns "image.jpg" but
+ * also bare "image" depending on asset type). Derive the file extension from
+ * the validated MIME type so storage objects always have a sensible suffix
+ * and the public URL is browser-renderable.
  */
+const ALLOWED_TYPES = [
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+] as const;
+const MAX_FILES = 6;
+const MAX_BYTES_PER_FILE = 5 * 1024 * 1024;
+
+function extensionFromMime(mime: string, fallback: string): string {
+  switch (mime.toLowerCase()) {
+    case "image/jpeg":
+    case "image/jpg":
+      return "jpg";
+    case "image/png":
+      return "png";
+    case "image/webp":
+      return "webp";
+    case "image/gif":
+      return "gif";
+    default:
+      return fallback;
+  }
+}
+
+function safeFilename(file: File): string {
+  const raw = (file.name || "").trim();
+  if (!raw) return "upload";
+  // Strip any path separators that some platforms include.
+  return raw.replace(/[\\/]+/g, "_");
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(["customer", "superadmin"], request);
@@ -24,27 +63,32 @@ export async function POST(request: NextRequest) {
       return errorResponse("No files provided", "VALIDATION_ERROR", 400);
     }
 
-    if (files.length > 6) {
-      return errorResponse("Maximum 6 files allowed", "VALIDATION_ERROR", 400);
+    if (files.length > MAX_FILES) {
+      return errorResponse(`Maximum ${MAX_FILES} files allowed`, "VALIDATION_ERROR", 400);
     }
 
-    // Validate file types and sizes
-    const allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"];
-    const maxSize = 5 * 1024 * 1024; // 5MB per file
-
     for (const file of files) {
-      if (!allowedTypes.includes(file.type)) {
+      const displayName = safeFilename(file);
+      if (!file.size || file.size === 0) {
         return errorResponse(
-          `Invalid file type: ${file.name}. Allowed types: JPEG, PNG, WebP, GIF`,
+          `File is empty: ${displayName}. Pick a valid image and try again.`,
           "VALIDATION_ERROR",
-          400
+          400,
         );
       }
-      if (file.size > maxSize) {
+      const mime = (file.type || "").toLowerCase();
+      if (!ALLOWED_TYPES.includes(mime as (typeof ALLOWED_TYPES)[number])) {
         return errorResponse(
-          `File too large: ${file.name}. Maximum size is 5MB`,
-          "VALIDATION_ERROR",
-          400
+          `Invalid file type: ${displayName}. Allowed types: JPEG, PNG, WebP, GIF`,
+          "UNSUPPORTED_FILE_TYPE",
+          400,
+        );
+      }
+      if (file.size > MAX_BYTES_PER_FILE) {
+        return errorResponse(
+          `File too large: ${displayName}. Maximum size is 5MB.`,
+          "FILE_TOO_LARGE",
+          400,
         );
       }
     }
@@ -62,32 +106,38 @@ export async function POST(request: NextRequest) {
       if (!bucketExists) {
         const { error: createError } = await storageClient.storage.createBucket(bucketName, {
           public: true,
-          fileSizeLimit: 5242880, // 5MB
-          allowedMimeTypes: allowedTypes,
+          fileSizeLimit: MAX_BYTES_PER_FILE,
+          allowedMimeTypes: [...ALLOWED_TYPES],
         });
 
         if (createError) {
           const msg = createError.message || "";
           if (!/already exists|duplicate/i.test(msg)) {
             console.error("[custom-requests/upload] createBucket:", createError);
-            throw new Error(
-              `Storage bucket "${bucketName}" is missing and could not be created. Create it in Supabase Dashboard > Storage, or set SUPABASE_SERVICE_ROLE_KEY for server uploads.`
+            return errorResponse(
+              `Photo storage isn't ready yet. Please try again later or contact support if this keeps happening.`,
+              "STORAGE_UNAVAILABLE",
+              503,
             );
           }
         }
       }
     }
 
-    // Upload files to Supabase Storage
     // Storage path: custom-request-attachments/{user_id}/{timestamp}-{index}-{random}.{ext}
     const uploadedUrls: string[] = [];
+    const failedFiles: { name: string; reason: string }[] = [];
     const timestamp = Date.now();
     const userId = user.id;
     let firstUploadError: string | null = null;
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
-      const fileExt = file.name.split(".").pop() || "jpg";
+      const displayName = safeFilename(file);
+      const fileExtFromName = displayName.includes(".")
+        ? displayName.split(".").pop()?.toLowerCase()
+        : undefined;
+      const fileExt = extensionFromMime(file.type, fileExtFromName || "jpg");
       const fileName = `${userId}/${timestamp}-${i}-${Math.random().toString(36).substring(7)}.${fileExt}`;
 
       const arrayBuffer = await file.arrayBuffer();
@@ -102,10 +152,10 @@ export async function POST(request: NextRequest) {
         });
 
       if (uploadError) {
-        console.error(`Failed to upload file ${file.name}:`, uploadError);
-        if (!firstUploadError) {
-          firstUploadError = (uploadError as { message?: string }).message || String(uploadError);
-        }
+        console.error(`Failed to upload file ${displayName}:`, uploadError);
+        const msg = (uploadError as { message?: string }).message || String(uploadError);
+        failedFiles.push({ name: displayName, reason: msg });
+        if (!firstUploadError) firstUploadError = msg;
         continue;
       }
 
@@ -115,6 +165,8 @@ export async function POST(request: NextRequest) {
 
       if (publicUrl) {
         uploadedUrls.push(publicUrl);
+      } else {
+        failedFiles.push({ name: displayName, reason: "Storage did not return a public URL" });
       }
     }
 
@@ -128,9 +180,15 @@ export async function POST(request: NextRequest) {
       return errorResponse(`Failed to upload any files${hint}`, "UPLOAD_ERROR", 500);
     }
 
+    // §partial-success: 207-style response inside our standard envelope so the
+    // mobile app can show "X uploaded, Y failed" rather than silently dropping
+    // photos.
     return successResponse({
       urls: uploadedUrls,
       count: uploadedUrls.length,
+      requested: files.length,
+      failed: failedFiles,
+      partial: failedFiles.length > 0,
     });
   } catch (error) {
     return handleApiError(error, "Failed to upload files");

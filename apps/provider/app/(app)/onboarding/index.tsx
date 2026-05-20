@@ -70,21 +70,37 @@ export default function OnboardingHubScreen() {
     router.replace("/(app)/(tabs)/dashboard" as never);
   };
 
-  // §provider-setup-seamless-ux 2026-05: clicking a "Still needed" item now
-  // routes directly to the targeted screen (via server-returned native_route)
-  // so providers can fix a single field without restarting the 14-step wizard.
-  // When no dedicated native screen exists, deep-link into the wizard with
-  // `?focus=<id>` so the user lands on the closest matching step (mapped in
-  // `setupStepMap.ts`) rather than at step 1.
+  // §provider-setup-seamless-ux 2026-05: clicking a step now routes directly
+  // to the targeted screen (via server-returned native_route) so providers
+  // can fix a single field without restarting the wizard. When no dedicated
+  // native screen exists, deep-link into the wizard with `?focus=<id>` so
+  // the user lands on the closest matching step rather than at step 1.
+  //
+  // §provider-onboarding-2026-05: wrap router.push in a defensive try/catch
+  // so a malformed/stale `native_route` from the server (e.g. a route that
+  // was renamed without bumping the API) never throws and locks the
+  // checklist UI — we silently fall back to the wizard instead.
   const openStep = (step: SetupStep) => {
     hapticLight();
+    const pushSafely = (target: string) => {
+      try {
+        router.push(target as never);
+      } catch (err) {
+        console.warn("Setup step navigation failed, falling back to wizard:", err);
+        try {
+          router.push(
+            `/(app)/onboarding/wizard?focus=${encodeURIComponent(step.id)}` as never,
+          );
+        } catch {
+          router.push("/(app)/onboarding/wizard" as never);
+        }
+      }
+    };
     if (step.native_route && step.native_route.startsWith("/(app)/")) {
-      router.push(step.native_route as never);
+      pushSafely(step.native_route);
       return;
     }
-    router.push(
-      `/(app)/onboarding/wizard?focus=${encodeURIComponent(step.id)}` as never,
-    );
+    pushSafely(`/(app)/onboarding/wizard?focus=${encodeURIComponent(step.id)}`);
   };
 
   // Refresh on focus so completing a step elsewhere updates the hub immediately.
@@ -119,7 +135,7 @@ export default function OnboardingHubScreen() {
     <ScreenContainer noPadding edges={["top"]} reserveTabBarSpace={false}>
       <View style={[{ flex: 1 }, tabletCenter]}>
         <LinearGradient
-          colors={["#f8fafc", "#ffffff", "#ffffff"]}
+          colors={[Colors.primaryLight, "#ffffff", "#ffffff"]}
           locations={[0, 0.45, 1]}
           style={{
             paddingHorizontal: screenPadding,
@@ -161,15 +177,15 @@ export default function OnboardingHubScreen() {
               <Ionicons
                 name={isComplete ? "checkmark-circle" : "sparkles"}
                 size={36}
-                color={isComplete ? "#10b981" : "#0f172a"}
+                color={isComplete ? "#10b981" : Colors.primary}
               />
             </View>
             <View
               style={twStyle(
-                "mb-3 rounded-full border border-slate-200 bg-slate-50 px-3 py-1",
+                "mb-3 rounded-full border border-primary/20 bg-primary/10 px-3 py-1",
               )}
             >
-              <Text style={twStyle("text-[12px] font-semibold text-slate-700")}>
+              <Text style={twStyle("text-[12px] font-semibold text-primary")}>
                 {isComplete ? "Ready to work" : "Guided setup · about 10–15 min"}
               </Text>
             </View>
@@ -198,8 +214,8 @@ export default function OnboardingHubScreen() {
                 <Text style={twStyle("text-[14px] font-semibold text-slate-800")}>
                   {completedRequired} of {requiredSteps.length} required
                 </Text>
-                <View style={twStyle("rounded-full bg-slate-900/10 px-3 py-1")}>
-                  <Text style={twStyle("text-[12px] font-bold text-slate-900")}>{pct}%</Text>
+                <View style={twStyle("rounded-full bg-primary/10 px-3 py-1")}>
+                  <Text style={twStyle("text-[12px] font-bold text-primary")}>{pct}%</Text>
                 </View>
               </View>
               <View style={twStyle("h-3 w-full overflow-hidden rounded-full bg-slate-100")}>
@@ -209,7 +225,7 @@ export default function OnboardingHubScreen() {
                     {
                       width: `${pct}%`,
                       minWidth: pct > 0 ? 6 : 0,
-                      backgroundColor: "#0f172a",
+                      backgroundColor: Colors.primary,
                     },
                   ]}
                 />
@@ -217,7 +233,7 @@ export default function OnboardingHubScreen() {
             </View>
           )}
 
-          {!isComplete && pendingRequired.length > 0 && (
+          {!isComplete && requiredSteps.length > 0 && (
             <View
               style={[
                 twStyle("mb-5 rounded-[1.5rem] border border-slate-100 bg-white p-5"),
@@ -225,14 +241,18 @@ export default function OnboardingHubScreen() {
               ]}
             >
               <View style={twStyle("mb-4 flex-row items-center gap-2")}>
-                <Ionicons name="flash-outline" size={16} color="#0f172a" />
+                <Ionicons name="flash-outline" size={16} color={Colors.primary} />
                 <Text
                   style={twStyle("text-[12px] font-bold uppercase tracking-wider text-slate-500")}
                 >
                   Required to go live
                 </Text>
               </View>
-              {pendingRequired.map((s, idx) => (
+              {/* §provider-onboarding-2026-05: render ALL required steps with
+                  per-row state (done vs pending). Previously only pending
+                  rows were rendered, so providers had no visual confirmation
+                  that the work they finished elsewhere counted. */}
+              {requiredSteps.map((s, idx) => (
                 <TouchableOpacity
                   key={s.id}
                   onPress={() => openStep(s)}
@@ -241,19 +261,36 @@ export default function OnboardingHubScreen() {
                     `flex-row items-center gap-4 py-3.5 ${idx === 0 ? "" : "border-t border-slate-50"}`,
                   )}
                   accessibilityRole="button"
-                  accessibilityLabel={`Open ${s.title}`}
+                  accessibilityLabel={`${s.completed ? "Completed" : "Open"} ${s.title}`}
+                  accessibilityState={{ selected: s.completed }}
                 >
                   <View
                     style={twStyle(
-                      "h-10 w-10 items-center justify-center rounded-full bg-slate-50",
+                      `h-10 w-10 items-center justify-center rounded-full ${
+                        s.completed ? "bg-emerald-50" : "bg-primary/10"
+                      }`,
                     )}
                   >
-                    <Text style={twStyle("text-[15px] font-bold text-slate-900")}>{idx + 1}</Text>
+                    {s.completed ? (
+                      <Ionicons name="checkmark" size={20} color="#10b981" />
+                    ) : (
+                      <Text style={twStyle("text-[15px] font-bold text-primary")}>{idx + 1}</Text>
+                    )}
                   </View>
-                  <Text style={twStyle("flex-1 text-[16px] font-semibold text-slate-900")}>
+                  <Text
+                    style={twStyle(
+                      `flex-1 text-[16px] font-semibold ${
+                        s.completed ? "text-slate-500" : "text-slate-900"
+                      }`,
+                    )}
+                  >
                     {s.title}
                   </Text>
-                  <Ionicons name="chevron-forward" size={20} color="#94a3b8" />
+                  <Ionicons
+                    name="chevron-forward"
+                    size={20}
+                    color={s.completed ? "#cbd5e1" : "#94a3b8"}
+                  />
                 </TouchableOpacity>
               ))}
             </View>
@@ -267,7 +304,7 @@ export default function OnboardingHubScreen() {
               ]}
             >
               <View style={twStyle("mb-4 flex-row items-center gap-2")}>
-                <Ionicons name="star-outline" size={16} color="#64748b" />
+                <Ionicons name="star-outline" size={16} color={Colors.primary} />
                 <Text
                   style={twStyle("text-[12px] font-bold uppercase tracking-wider text-slate-500")}
                 >
@@ -287,10 +324,10 @@ export default function OnboardingHubScreen() {
                 >
                   <View
                     style={twStyle(
-                      "h-10 w-10 items-center justify-center rounded-full bg-slate-50",
+                      "h-10 w-10 items-center justify-center rounded-full bg-primary/10",
                     )}
                   >
-                    <Ionicons name="add" size={18} color="#475569" />
+                    <Ionicons name="add" size={18} color={Colors.primary} />
                   </View>
                   <Text style={twStyle("flex-1 text-[16px] font-medium text-slate-800")}>{s.title}</Text>
                   <Ionicons name="chevron-forward" size={18} color="#cbd5e1" />
@@ -303,7 +340,7 @@ export default function OnboardingHubScreen() {
             <TouchableOpacity
               onPress={startNativeWizard}
               style={[
-                twStyle("mb-4 items-center rounded-full bg-slate-900 py-4.5"),
+                twStyle("mb-4 items-center rounded-full bg-primary py-4.5"),
                 Shadows.card,
               ]}
               activeOpacity={0.88}
@@ -341,7 +378,7 @@ export default function OnboardingHubScreen() {
           {isComplete ? (
             <TouchableOpacity
               onPress={goToApp}
-              style={twStyle("items-center rounded-full bg-slate-900 py-4.5 shadow-sm")}
+              style={twStyle("items-center rounded-full bg-primary py-4.5 shadow-sm")}
               activeOpacity={0.88}
               accessibilityLabel="Go to dashboard"
               accessibilityRole="button"

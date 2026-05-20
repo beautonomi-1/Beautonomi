@@ -92,20 +92,46 @@ export async function POST(
       .single();
     if (providerErr) throw providerErr;
 
-    // Create provider location if address data exists
+    // Create provider location if address data exists.
+    // The draft stores address keys as `line1`/`line2` (matching the self-serve
+    // onboarding schema).  `working_hours` is stored directly on the location
+    // row as JSONB — there is no separate `provider_operating_hours` table.
     const address = draftData.address as Record<string, unknown> | undefined;
-    if (address?.address_line1) {
+    // Normalise Format-B operating hours ({day:{open,close,closed}}) into the
+    // canonical Format-A shape ({day:{is_open,open_time,close_time}}) so the
+    // mobile and web readers both display it correctly.
+    const rawHours = draftData.operating_hours as
+      | Record<string, { open?: string; close?: string; closed?: boolean; is_open?: boolean; open_time?: string; close_time?: string }>
+      | undefined;
+    const workingHours: Record<string, unknown> | undefined = rawHours
+      ? Object.fromEntries(
+          Object.entries(rawHours).map(([day, h]) => [
+            day,
+            {
+              is_open: h.is_open !== undefined ? h.is_open : h.closed !== true,
+              open_time: h.open_time ?? h.open ?? "09:00",
+              close_time: h.close_time ?? h.close ?? "17:00",
+              breaks: [],
+            },
+          ])
+        )
+      : undefined;
+
+    const addressLine1 = (address?.line1 ?? address?.address_line1) as string | undefined;
+    if (addressLine1) {
       const { error: locErr } = await supabase.from("provider_locations").insert({
         provider_id: provider.id,
         name: "Main",
-        address_line1: address.address_line1,
-        address_line2: address.address_line2 || null,
-        city: address.city || null,
-        state: address.state || null,
-        postal_code: address.postal_code || null,
-        country: address.country || null,
-        latitude: address.latitude || null,
-        longitude: address.longitude || null,
+        address_line1: addressLine1,
+        address_line2: (address?.line2 ?? address?.address_line2) as string | null || null,
+        city: address?.city as string | null || null,
+        state: address?.state as string | null || null,
+        postal_code: address?.postal_code as string | null || null,
+        country: address?.country as string | null || null,
+        latitude: address?.latitude as number | null || null,
+        longitude: address?.longitude as number | null || null,
+        working_hours: workingHours ?? null,
+        is_active: true,
         is_primary: true,
       });
       if (locErr) throw locErr;
@@ -140,20 +166,43 @@ export async function POST(
       if (svcErr) throw svcErr;
     }
 
-    const hours = draftData.operating_hours as Record<
-      string,
-      { open: string; close: string; is_open: boolean }
-    > | undefined;
-    if (hours) {
-      const dayRows = Object.entries(hours).map(([day, h]) => ({
-        provider_id: provider.id,
-        day_of_week: day,
-        open_time: h.open || "09:00",
-        close_time: h.close || "17:00",
-        is_open: h.is_open !== false,
-      }));
-      const { error: hoursErr } = await supabase.from("provider_operating_hours").insert(dayRows);
-      if (hoursErr) throw hoursErr;
+    // Ensure the owner has a provider_staff row so the mobile staff-schedule
+    // screen and shift calendar have a bookable member.  Prefer the generic RPC
+    // (migration 618); fall back to an inline upsert if not yet deployed.
+    try {
+      const { error: ownerStaffErr } = await supabase.rpc(
+        "ensure_provider_owner_staff",
+        { p_provider_id: provider.id }
+      );
+      if (ownerStaffErr &&
+        !ownerStaffErr.message?.includes("function") &&
+        !ownerStaffErr.message?.includes("does not exist")) {
+        console.error("ensure_provider_owner_staff RPC error (admin submit):", ownerStaffErr);
+      }
+      if (ownerStaffErr) {
+        // Inline fallback
+        const { data: existingOwnerStaff } = await supabase
+          .from("provider_staff")
+          .select("id")
+          .eq("provider_id", provider.id)
+          .eq("user_id", userId)
+          .maybeSingle();
+        if (!existingOwnerStaff) {
+          await supabase.from("provider_staff").insert({
+            provider_id: provider.id,
+            user_id: userId,
+            name: businessName,
+            email: typeof targetUser.email === "string" ? targetUser.email : null,
+            phone: typeof targetUser.phone === "string" ? targetUser.phone : null,
+            role: "owner",
+            is_active: true,
+            mobile_ready: (draftData.business_type as string) === "mobile",
+          });
+        }
+      }
+    } catch (staffErr) {
+      console.error("Error creating owner staff (admin submit):", staffErr);
+      // Non-fatal — staff can be created through team management UI
     }
 
     const { error: trackErr } = await supabase

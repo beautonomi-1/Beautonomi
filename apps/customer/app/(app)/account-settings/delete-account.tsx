@@ -22,6 +22,7 @@ import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { Colors } from "@/constants/colors";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { useTranslation } from "@beautonomi/i18n";
+import { supabase } from "@/lib/supabase/client";
 
 const DELETE_PHRASE = "DELETE";
 
@@ -32,6 +33,12 @@ interface AccountStatus {
   is_suspended?: boolean;
   suspension_reason?: string | null;
 }
+
+type AuthSecurityState = {
+  has_password: boolean;
+  has_mailable_email: boolean;
+  has_phone: boolean;
+};
 
 export default function DeleteAccountScreen() {
   useScreenTracking("Delete account");
@@ -48,15 +55,29 @@ export default function DeleteAccountScreen() {
   const [status, setStatus] = useState<AccountStatus | null>(null);
   const [statusLoading, setStatusLoading] = useState(true);
   const [password, setPassword] = useState("");
+  const [verificationNonce, setVerificationNonce] = useState("");
+  const [authSecurity, setAuthSecurity] = useState<AuthSecurityState | null>(null);
   const [reason, setReason] = useState("");
   const [confirmText, setConfirmText] = useState("");
   const [loading, setLoading] = useState(false);
+  const [requestingNonce, setRequestingNonce] = useState(false);
+  const hasPassword = authSecurity?.has_password !== false;
+  const canVerifyWithCode = Boolean(
+    authSecurity == null ||
+      authSecurity.has_password ||
+      authSecurity.has_mailable_email ||
+      authSecurity.has_phone,
+  );
 
   const loadStatus = useCallback(async () => {
     setStatusLoading(true);
     try {
       const res = await api.get<AccountStatus>("/api/me/account-status");
       if (!res.error && res.data) setStatus(res.data);
+      const profile = await api.get<{ auth_security?: AuthSecurityState | null }>("/api/me/profile");
+      if (!profile.error) {
+        setAuthSecurity((profile.data as { auth_security?: AuthSecurityState | null } | undefined)?.auth_security ?? null);
+      }
     } catch {
       setStatus(null);
     } finally {
@@ -71,8 +92,12 @@ export default function DeleteAccountScreen() {
   const confirmOk = confirmText.trim().toUpperCase() === DELETE_PHRASE;
 
   const handleDelete = useCallback(async () => {
-    if (!password.trim()) {
+    if (hasPassword && !password.trim()) {
       Alert.alert(da("passwordRequiredTitle"), da("passwordRequiredBody"));
+      return;
+    }
+    if (!hasPassword && !verificationNonce.trim()) {
+      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), "Enter the verification code to delete your account.");
       return;
     }
     if (!confirmOk) {
@@ -93,7 +118,8 @@ export default function DeleteAccountScreen() {
           setLoading(true);
           try {
             const res = (await api.post<unknown>("/api/me/delete-account", {
-              password: password.trim(),
+              password: hasPassword ? password.trim() : undefined,
+              verificationNonce: hasPassword ? undefined : verificationNonce.trim(),
               reason: reason.trim() || null,
             })) as { error?: { message?: string } };
             if (res.error) {
@@ -116,7 +142,24 @@ export default function DeleteAccountScreen() {
         },
       ],
     );
-  }, [password, reason, confirmOk, signOut, router, da, t]);
+  }, [password, verificationNonce, hasPassword, reason, confirmOk, signOut, router, da, t]);
+
+  const requestVerificationCode = useCallback(async () => {
+    if (!canVerifyWithCode) {
+      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), "Add and verify an email or phone number before deleting this account.");
+      return;
+    }
+    setRequestingNonce(true);
+    try {
+      const { error } = await supabase.auth.reauthenticate();
+      if (error) throw error;
+      Alert.alert("Code sent", "Enter the verification code below to confirm deletion.");
+    } catch (e) {
+      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), getApiErrorMessage(e, da("deleteFailed")));
+    } finally {
+      setRequestingNonce(false);
+    }
+  }, [canVerifyWithCode, da, t]);
 
   return (
     <KeyboardAvoidingView
@@ -180,26 +223,42 @@ export default function DeleteAccountScreen() {
             </Text>
           </View>
 
-          <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 6 }}>Password</Text>
-          <TextInput
-            style={{
-              borderRadius: 12,
-              borderWidth: 1,
-              borderColor: Colors.gray[300],
-              backgroundColor: Colors.white,
-              paddingHorizontal: 16,
-              paddingVertical: 12,
-              fontSize: 16,
-              color: Colors.gray[900],
-            }}
-            placeholder="Enter your password"
-            placeholderTextColor={Colors.gray[400]}
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
+          {hasPassword ? (
+            <>
+              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 6 }}>Password</Text>
+              <TextInput
+                style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[300], backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
+                placeholder="Enter your password"
+                placeholderTextColor={Colors.gray[400]}
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </>
+          ) : (
+            <View>
+              <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 8 }}>Confirm with a one-time verification code.</Text>
+              <TouchableOpacity
+                onPress={requestVerificationCode}
+                disabled={requestingNonce || !canVerifyWithCode}
+                style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[300], backgroundColor: Colors.white, paddingVertical: 12, alignItems: "center", marginBottom: 10 }}
+              >
+                <Text style={{ color: Colors.gray[900], fontWeight: "600" }}>{requestingNonce ? "Sending..." : "Send verification code"}</Text>
+              </TouchableOpacity>
+              <TextInput
+                style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[300], backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
+                placeholder="Enter code"
+                placeholderTextColor={Colors.gray[400]}
+                value={verificationNonce}
+                onChangeText={(value) => setVerificationNonce(value.replace(/\D/g, ""))}
+                keyboardType="number-pad"
+                autoComplete="sms-otp"
+                textContentType="oneTimeCode"
+              />
+            </View>
+          )}
 
           <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginTop: 16, marginBottom: 6 }}>
             Reason (optional)
@@ -247,16 +306,15 @@ export default function DeleteAccountScreen() {
           />
 
           <Text style={{ fontSize: 13, color: Colors.gray[500], marginTop: 12, lineHeight: 18 }}>
-            Same requirement as the website: you need a password on your account. If you use only phone or social
-            sign-in, set a password on the web first.
+            Same safeguards as the website. Passwordless accounts can confirm with a one-time verification code.
           </Text>
 
           <TouchableOpacity
             onPress={() => void handleDelete()}
-            disabled={loading || !password.trim() || !confirmOk}
+            disabled={loading || (hasPassword ? !password.trim() : !verificationNonce.trim()) || !confirmOk}
             style={{
               marginTop: 24,
-              backgroundColor: loading || !password.trim() || !confirmOk ? Colors.gray[300] : "#b91c1c",
+              backgroundColor: loading || (hasPassword ? !password.trim() : !verificationNonce.trim()) || !confirmOk ? Colors.gray[300] : "#b91c1c",
               paddingVertical: 14,
               borderRadius: 12,
               alignItems: "center",

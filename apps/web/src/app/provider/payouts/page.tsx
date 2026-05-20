@@ -73,6 +73,7 @@ export default function ProviderPayoutsCenter() {
   const { format: fmt } = useReportCurrency();
   const { hasPermission } = usePermissions();
   const canRequestPayout = hasPermission("process_payments");
+  const activeAccounts = accounts.filter((account) => account.active);
 
   useEffect(() => {
     const load = async () => {
@@ -91,8 +92,9 @@ export default function ProviderPayoutsCenter() {
         if (accountsRes.status === "fulfilled") {
           const list = Array.isArray(accountsRes.value.data) ? accountsRes.value.data : [];
           setAccounts(list);
-          if (list.length > 0) {
-            const preferred = list.find((account) => account.is_primary) ?? list[0];
+          const activeList = list.filter((account) => account.active);
+          if (activeList.length > 0) {
+            const preferred = activeList.find((account) => account.is_primary) ?? activeList[0];
             setSelectedAccountId((current) => current || preferred.id);
           }
         }
@@ -119,8 +121,9 @@ export default function ProviderPayoutsCenter() {
     if (accountsRes.status === "fulfilled") {
       const list = Array.isArray(accountsRes.value.data) ? accountsRes.value.data : [];
       setAccounts(list);
-      if (list.length > 0) {
-        const preferred = list.find((account) => account.is_primary) ?? list[0];
+      const activeList = list.filter((account) => account.active);
+      if (activeList.length > 0) {
+        const preferred = activeList.find((account) => account.is_primary) ?? activeList[0];
         setSelectedAccountId((current) => current || preferred.id);
       }
     }
@@ -145,16 +148,17 @@ export default function ProviderPayoutsCenter() {
       toast.error('Payout requests need the "Process payments" permission');
       return;
     }
-    if (accounts.length === 0) {
+    if (activeAccounts.length === 0) {
       toast.error("Add a payout account first");
       return;
     }
+    const selectedAccount = activeAccounts.find((account) => account.id === selectedAccountId) ?? activeAccounts[0];
     try {
       setIsRequesting(true);
       await fetcher.post("/api/provider/payouts", {
         amount,
         notes: payoutNotes.trim() || null,
-        bank_account_id: selectedAccountId || accounts[0]?.id,
+        bank_account_id: selectedAccount.id,
       });
       toast.success("Payout request submitted");
       setShowRequestDialog(false);
@@ -378,15 +382,19 @@ export default function ProviderPayoutsCenter() {
                   placeholder="Enter amount"
                 />
               </div>
-              {accounts.length > 0 ? (
+              {activeAccounts.length > 0 ? (
                 <div>
                   <Label>Pay out to</Label>
                   <select
                     className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-                    value={selectedAccountId || accounts[0]?.id}
+                    value={
+                      activeAccounts.some((account) => account.id === selectedAccountId)
+                        ? selectedAccountId
+                        : activeAccounts[0]?.id
+                    }
                     onChange={(event) => setSelectedAccountId(event.target.value)}
                   >
-                    {accounts.map((account) => (
+                    {activeAccounts.map((account) => (
                       <option key={account.id} value={account.id}>
                         {account.account_name} ****{account.account_number_last4}
                         {account.bank_name ? ` (${account.bank_name})` : ""}
@@ -424,7 +432,7 @@ export default function ProviderPayoutsCenter() {
                 disabled={
                   isRequesting ||
                   !canRequestPayout ||
-                  accounts.length === 0 ||
+                  activeAccounts.length === 0 ||
                   !payoutAmount ||
                   Number(payoutAmount) < (earnings?.minimum_payout_amount ?? 100) ||
                   Number(payoutAmount) > (earnings?.available_balance ?? 0)
