@@ -245,7 +245,7 @@ const PartnerHeroMobile: React.FC<PartnerHeroMobileProps> = ({
         />
 
         {/* Avatar on gallery (bottom-left) — keeps name row below unobstructed */}
-        <div className="absolute bottom-4 left-4 z-20">
+        <div className="absolute bottom-5 left-4 z-30">
           <div className="relative h-[72px] w-[72px] shrink-0">
             <div className="relative h-full w-full overflow-hidden rounded-full border-[3px] border-white bg-gray-200 shadow-xl ring-1 ring-black/10">
               {thumbnail_url ? (
@@ -396,7 +396,10 @@ const PartnerHeroMobile: React.FC<PartnerHeroMobileProps> = ({
               <div className="flex items-center gap-1.5">
                 <div className="flex items-center">
                   {[...Array(5)].map((_, i) => (
-                    <Star key={i} className="h-4 w-4 fill-black text-black" />
+                    <Star
+                      key={i}
+                      className={`h-4 w-4 ${i < Math.round(rating) ? "fill-black text-black" : "fill-none text-gray-300"}`}
+                    />
                   ))}
                 </div>
                 <span className="text-base font-semibold text-gray-900">
@@ -420,8 +423,7 @@ const PartnerHeroMobile: React.FC<PartnerHeroMobileProps> = ({
           <div className="flex flex-col items-center flex-1">
             <MapPin className="h-5 w-5 text-gray-500 mb-1.5" />
             <span className="text-xs text-gray-600 mb-0.5">Distance</span>
-            <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-gray-900">
-              <MapPin className="h-3.5 w-3.5 text-gray-500" aria-hidden />
+            <span className="text-sm font-semibold text-gray-900">
               {distance_km ? `${distance_km.toFixed(1)} km` : "—"}
             </span>
           </div>

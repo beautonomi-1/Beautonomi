@@ -139,6 +139,7 @@ export default function ProviderFinance() {
   const [isVerifyingBank, setIsVerifyingBank] = useState(false);
   const [isSavingBank, setIsSavingBank] = useState(false);
   const [verifiedAccountName, setVerifiedAccountName] = useState<string | null>(null);
+  const [showVerifyAccountButton, setShowVerifyAccountButton] = useState(true);
   const [bankForm, setBankForm] = useState({
     country: "ZA",
     account_number: "",
@@ -155,6 +156,16 @@ export default function ProviderFinance() {
     loadFinanceData();
     loadPayouts();
     loadPayoutAccounts();
+    void (async () => {
+      try {
+        const res = await fetcher.get<{
+          data: { show_verify_account_button?: boolean };
+        }>("/api/provider/payout-accounts/options");
+        setShowVerifyAccountButton(res.data?.show_verify_account_button !== false);
+      } catch {
+        setShowVerifyAccountButton(true);
+      }
+    })();
   }, [dateRange, selectedLocationId]);
 
   useEffect(() => {
@@ -601,7 +612,13 @@ export default function ProviderFinance() {
                             </select>
                           </div>
                         </div>
-                        <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+                        <div
+                          className={
+                            showVerifyAccountButton
+                              ? "grid gap-3 sm:grid-cols-[1fr_auto]"
+                              : "grid gap-3"
+                          }
+                        >
                           <div>
                             <Label>Account number</Label>
                             <Input
@@ -614,12 +631,23 @@ export default function ProviderFinance() {
                               placeholder="Enter bank account number"
                             />
                           </div>
-                          <div className="flex items-end">
-                            <Button type="button" variant="outline" onClick={handleVerifyBankAccount} disabled={isVerifyingBank}>
-                              {isVerifyingBank ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
-                              Verify
-                            </Button>
-                          </div>
+                          {showVerifyAccountButton ? (
+                            <div className="flex items-end">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={handleVerifyBankAccount}
+                                disabled={isVerifyingBank}
+                              >
+                                {isVerifyingBank ? (
+                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                ) : (
+                                  <CheckCircle2 className="mr-2 h-4 w-4" />
+                                )}
+                                Verify
+                              </Button>
+                            </div>
+                          ) : null}
                         </div>
                         <div>
                           <Label>Account holder name</Label>

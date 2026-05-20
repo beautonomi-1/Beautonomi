@@ -336,17 +336,28 @@ export function PayoutsPage() {
                       Finalize OTP
                     </button>
                   ) : null}
-                  {!transferCode ? (
+                  {/* Show Mark failed when:
+                      (a) no transfer yet — no Paystack entry to reconcile
+                      (b) transfer exists but Paystack already failed/reversed it
+                      (c) transfer is stuck in OTP state (admin override) */}
+                  {!transferCode ||
+                  paystackStatus === "failed" ||
+                  paystackStatus === "reversed" ||
+                  needsOtp ? (
                     <button
                       type="button"
                       className="min-h-11 touch-manipulation text-left text-sm font-semibold text-gray-900 underline disabled:opacity-50"
                       disabled={busyThis}
                       onClick={() => {
                         setReason("");
-                        setModal({ kind: "mark_failed", id });
+                        setModal({
+                          kind: "mark_failed",
+                          id,
+                          transferCode: transferCode || undefined,
+                        });
                       }}
                     >
-                      Mark failed
+                      {needsOtp ? "Abandon OTP" : "Mark failed"}
                     </button>
                   ) : null}
                 </>
@@ -496,7 +507,9 @@ export function PayoutsPage() {
                   ? `Enter the OTP Paystack sent for transfer ${modal?.transferCode ?? "this payout"}.`
                   : modal?.kind === "reject"
                     ? "A reason is required."
-                    : "A failure reason is required."
+                    : modal?.kind === "mark_failed" && modal.transferCode
+                      ? "This transfer has a Paystack transfer code. Only use this if Paystack has already failed/reversed it, or you are intentionally abandoning a stuck OTP. Provide a reason."
+                      : "A failure reason is required."
         }
         footer={
           <>

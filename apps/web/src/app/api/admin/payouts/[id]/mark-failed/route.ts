@@ -131,17 +131,23 @@ export async function POST(
     }
 
     const transferStatus = getPaystackTransferStatus(payoutData.payout_provider_response);
+    // Block mark-failed only when a transfer is actively in-flight (pending/success).
+    // Allow it when:
+    //   - no transfer_code: nothing was sent to Paystack
+    //   - status is "failed" / "reversed": Paystack already rejected it
+    //   - status is "otp": transfer is stuck waiting for OTP — admin override escape hatch
     if (
       payoutData.transfer_code &&
       transferStatus !== "failed" &&
-      transferStatus !== "reversed"
+      transferStatus !== "reversed" &&
+      transferStatus !== "otp"
     ) {
       return NextResponse.json(
         {
           data: null,
           error: {
             message:
-              "A Paystack transfer has already been initiated for this payout. Wait for Paystack to fail/reverse it, or reconcile it manually before marking it failed.",
+              "A Paystack transfer is actively in flight for this payout. Wait for Paystack to settle, fail, or reverse it before marking it failed here.",
             code: "TRANSFER_IN_FLIGHT",
           },
         },

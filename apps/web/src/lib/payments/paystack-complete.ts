@@ -183,7 +183,8 @@ export interface Customer {
 
 // Transfer Recipients
 export interface CreateTransferRecipientRequest {
-  type: "nuban" | "basa" | "mobile_money" | "barter";
+  // Valid Paystack recipient types per https://paystack.com/docs/api/transfer-recipient/
+  type: "nuban" | "basa" | "mobile_money" | "ghipss";
   name: string;
   account_number: string;
   bank_code: string;

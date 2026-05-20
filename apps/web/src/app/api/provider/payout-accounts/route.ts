@@ -20,6 +20,7 @@ import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
 import { z } from "zod";
+import { getEffectiveSkipPayoutAccountVerification } from "@/lib/payments/payout-account-verification-settings";
 
 // §payout-account-fix 2026-05: Paystack `/transferrecipient` accepts `nuban`,
 // `ghipss`, `mobile_money`, and `basa`. For South African providers (the
@@ -190,30 +191,7 @@ export async function POST(request: NextRequest) {
     const resolvedCurrency = currency?.trim() || fallbackCurrency;
     const resolvedType = resolveRecipientType(type, country);
 
-    // Superadmin-controlled: skip Paystack verify when platform setting is on.
-    let skipVerify = false;
-    const { data: tenantPlatformRow } = await (admin as any)
-      .from("platform_settings")
-      .select("settings")
-      .eq("is_active", true)
-      .eq("tenant_id", tenantId)
-      .order("updated_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if ((tenantPlatformRow?.settings as any)?.paystack?.skip_payout_account_verification === true) {
-      skipVerify = true;
-    } else {
-      const { data: globalPlatformRow } = await (admin as any)
-        .from("platform_settings")
-        .select("settings")
-        .eq("is_active", true)
-        .is("tenant_id", null)
-        .order("updated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      skipVerify =
-        (globalPlatformRow?.settings as any)?.paystack?.skip_payout_account_verification === true;
-    }
+    const { skip: skipVerify } = await getEffectiveSkipPayoutAccountVerification(admin, tenantId);
 
     // Resolve display name: skip verify (superadmin setting), use pre-verified name, or call Paystack verify.
     let resolvedName: string;

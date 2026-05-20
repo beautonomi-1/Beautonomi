@@ -78,6 +78,8 @@ export default function PayoutAccountsPage() {
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [isVerifying, setIsVerifying] = useState(false);
   const [verifiedAccountName, setVerifiedAccountName] = useState<string | null>(null);
+  const [verifyError, setVerifyError] = useState<string | null>(null);
+  const [showVerifyAccountButton, setShowVerifyAccountButton] = useState(true);
 
   const loadBanks = useCallback(async (country: string) => {
     try {
@@ -120,6 +122,16 @@ export default function PayoutAccountsPage() {
 
   useEffect(() => {
     loadAccounts();
+    void (async () => {
+      try {
+        const res = await fetcher.get<{
+          data: { show_verify_account_button?: boolean };
+        }>("/api/provider/payout-accounts/options");
+        setShowVerifyAccountButton(res.data?.show_verify_account_button !== false);
+      } catch {
+        setShowVerifyAccountButton(true);
+      }
+    })();
   }, []);
 
   useEffect(() => {
@@ -177,6 +189,7 @@ export default function PayoutAccountsPage() {
     try {
       setIsVerifying(true);
       setVerifiedAccountName(null);
+      setVerifyError(null);
       const response = await fetcher.post<{ data: { account_name: string } }>(
         "/api/provider/payout-accounts/verify",
         {
@@ -189,12 +202,14 @@ export default function PayoutAccountsPage() {
         setFormData((prev) => ({ ...prev, account_name: name }));
         setVerifiedAccountName(name);
         setFormErrors((prev) => ({ ...prev, account_name: "" }));
-        toast.success("Account verified");
+        toast.success("Account verified — name auto-filled");
       }
     } catch (err: any) {
       const msg =
-        err instanceof FetchError ? err.message : err?.details?.[0]?.message || "Verification failed";
-      toast.error(msg);
+        err instanceof FetchError
+          ? err.message
+          : err?.details?.[0]?.message || "Verification unavailable for this bank";
+      setVerifyError(msg);
     } finally {
       setIsVerifying(false);
     }
@@ -238,6 +253,7 @@ export default function PayoutAccountsPage() {
       });
       setFormErrors({});
       setVerifiedAccountName(null);
+      setVerifyError(null);
       loadAccounts();
     } catch (err: any) {
       const errorMessage =
@@ -448,7 +464,9 @@ export default function PayoutAccountsPage() {
           <DialogHeader>
             <DialogTitle>Add Bank Account</DialogTitle>
             <DialogDescription>
-              Add a bank account to receive payouts. Your account will be verified with Paystack.
+              {showVerifyAccountButton
+                ? "Add a bank account to receive payouts. Optionally verify your account number to auto-fill the account name."
+                : "Add a bank account to receive payouts. Enter the account holder name exactly as it appears on your bank statement."}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -466,6 +484,7 @@ export default function PayoutAccountsPage() {
                   }));
                   setFormErrors((prev) => ({ ...prev, country: "", bank_code: "" }));
                   setVerifiedAccountName(null);
+                  setVerifyError(null);
                 }}
               >
                 <SelectTrigger className="mt-1">
@@ -502,6 +521,7 @@ export default function PayoutAccountsPage() {
                     setFormData((prev) => ({ ...prev, bank_code: value }));
                     setFormErrors((prev) => ({ ...prev, bank_code: "" }));
                     setVerifiedAccountName(null);
+                    setVerifyError(null);
                   }}
                 >
                   <SelectTrigger className="mt-1">
@@ -534,6 +554,7 @@ export default function PayoutAccountsPage() {
                   setFormData({ ...formData, account_number: value });
                   setFormErrors({ ...formErrors, account_number: "" });
                   setVerifiedAccountName(null);
+                  setVerifyError(null);
                 }}
                 placeholder="Enter account number"
                 className="mt-1"
@@ -545,33 +566,43 @@ export default function PayoutAccountsPage() {
               <p className="text-xs text-gray-500 mt-1">
                 Enter your bank account number (8-20 digits)
               </p>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="mt-2"
-                onClick={handleVerifyAccount}
-                disabled={
-                  isVerifying ||
-                  !formData.account_number ||
-                  formData.account_number.length < 8 ||
-                  !formData.bank_code
-                }
-              >
-                {isVerifying ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Verifying...
-                  </>
-                ) : verifiedAccountName ? (
-                  <>
-                    <CheckCircle2 className="w-4 h-4 mr-2 text-green-600" />
-                    Verified
-                  </>
-                ) : (
-                  "Verify Account"
-                )}
-              </Button>
+              {showVerifyAccountButton ? (
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="mt-2"
+                    onClick={handleVerifyAccount}
+                    disabled={
+                      isVerifying ||
+                      !formData.account_number ||
+                      formData.account_number.length < 8 ||
+                      !formData.bank_code
+                    }
+                  >
+                    {isVerifying ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Verifying...
+                      </>
+                    ) : verifiedAccountName ? (
+                      <>
+                        <CheckCircle2 className="w-4 h-4 mr-2 text-green-600" />
+                        Verified
+                      </>
+                    ) : (
+                      "Verify Account (optional)"
+                    )}
+                  </Button>
+                  {verifyError && (
+                    <p className="text-xs text-amber-700 mt-1.5 flex items-start gap-1">
+                      <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                      {verifyError}. You can still enter your account name manually below.
+                    </p>
+                  )}
+                </>
+              ) : null}
             </div>
 
             <div>
@@ -640,8 +671,10 @@ export default function PayoutAccountsPage() {
             <Alert className="bg-blue-50 border-blue-200">
               <AlertCircle className="w-4 h-4 text-blue-600" />
               <AlertDescription className="text-blue-800 text-sm">
-                Your account will be verified with Paystack. Make sure the account name matches
-                exactly as it appears on your bank statement.
+                Make sure the account name matches exactly as it appears on your bank statement.
+                {showVerifyAccountButton
+                  ? " Account verification is optional — if it's unavailable for your bank, enter the name manually."
+                  : null}
               </AlertDescription>
             </Alert>
           </div>
@@ -660,6 +693,7 @@ export default function PayoutAccountsPage() {
                 });
                 setFormErrors({});
                 setVerifiedAccountName(null);
+                setVerifyError(null);
               }}
               className="w-full sm:w-auto"
             >

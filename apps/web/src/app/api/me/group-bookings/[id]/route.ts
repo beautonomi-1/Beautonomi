@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireAuthInApi } from "@/lib/supabase/api-helpers";
+import { errorResponse, handleApiError, requireAuthInApi } from "@/lib/supabase/api-helpers";
+import { ME_GROUP_DETAIL_SELECT } from "@/lib/bookings/group-booking-postgrest";
 
 function normalizeGroupBookingId(rawId: string): string {
   return rawId.startsWith("group:") ? rawId.slice("group:".length) : rawId;
@@ -24,46 +25,41 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const id = normalizeGroupBookingId(rawId);
     const admin = getSupabaseAdmin();
 
+    const { data: existence, error: existenceError } = await admin
+      .from("group_bookings")
+      .select("id")
+      .eq("id", id)
+      .maybeSingle();
+    if (existenceError) {
+      console.error("[me group GET] existence check failed:", existenceError);
+      return errorResponse(
+        "Failed to load group booking",
+        "GROUP_BOOKING_FETCH_FAILED",
+        500,
+        { db: existenceError.message ?? null }
+      );
+    }
+    if (!existence) {
+      return NextResponse.json(
+        { data: null, error: { message: "Group booking not found", code: "NOT_FOUND" } },
+        { status: 404 }
+      );
+    }
+
     const { data: group, error } = await admin
       .from("group_bookings")
-      .select(
-        `
-        *,
-        provider:providers(id, business_name, slug, phone, email, timezone),
-        location:provider_locations(id, name, address_line1, address_line2, city, country),
-        service_packages:package_id(id, name),
-        booking_participants(
-          id,
-          booking_id,
-          customer_id,
-          participant_name,
-          participant_email,
-          participant_phone,
-          is_primary_contact,
-          service_name,
-          price,
-          duration_minutes,
-          checked_in_at,
-          checked_out_at
-        ),
-        bookings:bookings(
-          id,
-          booking_number,
-          customer_id,
-          status,
-          scheduled_at,
-          total_amount,
-          total_paid,
-          total_refunded,
-          payment_status
-        )
-      `
-      )
+      .select(ME_GROUP_DETAIL_SELECT)
       .eq("id", id)
       .maybeSingle();
 
     if (error || !group) {
-      return NextResponse.json({ data: null, error: { message: "Group booking not found", code: "NOT_FOUND" } }, { status: 404 });
+      console.error("[me group GET] detail select failed:", error);
+      return errorResponse(
+        "Group booking exists but its detail view could not be loaded. Please refresh and try again.",
+        "GROUP_BOOKING_DETAIL_FAILED",
+        500,
+        { db: error?.message ?? null }
+      );
     }
 
     const participants = Array.isArray((group as any).booking_participants)
@@ -127,7 +123,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       },
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to load group booking";
-    return NextResponse.json({ data: null, error: { message, code: "GROUP_BOOKING_LOAD_FAILED" } }, { status: 500 });
+    return handleApiError(error, "Failed to load group booking");
   }
 }

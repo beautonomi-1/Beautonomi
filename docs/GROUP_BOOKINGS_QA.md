@@ -43,6 +43,8 @@ This document is the test plan for group bookings across all surfaces.
 | `/api/admin/group-bookings` | GET | admin providers/ops | Tenant-scoped admin list via provider tenant |
 | `/api/admin/group-bookings/[id]` | GET, PATCH, POST, DELETE | admin providers/ops | Admin detail, notes/status edits, start/complete/cancel |
 
+**PostgREST:** Child bookings on `group_bookings` must use `bookings!bookings_group_booking_id_fkey` (never bare `bookings:bookings`) — see `apps/web/src/lib/bookings/group-booking-postgrest.ts`.
+
 ### Group lifecycle actions (`POST /api/provider/group-bookings/[id]?action=`)
 
 | Action | Transitions | Notes |

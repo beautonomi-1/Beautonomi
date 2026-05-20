@@ -66,6 +66,11 @@ export default function PayoutAccountsScreen() {
   const { data: accounts, loading, error: accountsError, refresh } = useApi<PayoutAccount[]>(
     "/api/provider/payout-accounts"
   );
+  const { data: payoutUiOptions } = useApi<{ show_verify_account_button: boolean }>(
+    "/api/provider/payout-accounts/options",
+    { staleTimeMs: 60_000 },
+  );
+  const showVerifyAccountButton = payoutUiOptions?.show_verify_account_button !== false;
   const { data: banksData, loading: banksLoading, refresh: refreshBanks } = useApi<{
     banks: BankOption[];
     country: string;
@@ -142,7 +147,12 @@ export default function PayoutAccountsScreen() {
       !form.bank_code.trim() ||
       !form.account_name.trim()
     ) {
-      Alert.alert("Required", "Please fill in all fields. You can verify the account first to auto-fill the name.");
+      Alert.alert(
+        "Required",
+        showVerifyAccountButton
+          ? "Please fill in all fields. You can verify the account first to auto-fill the name."
+          : "Please fill in all fields, including the account holder name.",
+      );
       return;
     }
     if (accountNumber.length < 8 || accountNumber.length > 20 || !/^\d+$/.test(accountNumber)) {
@@ -342,7 +352,9 @@ onPress={() => {
             Add your payout account
           </Text>
           <Text style={twStyle("mt-2 text-center text-sm leading-5 text-gray-500")}>
-            Verify your bank details with Paystack so finance can pay platform-held earnings to the right account.
+            {showVerifyAccountButton
+              ? "Add your bank account so finance can pay platform-held earnings to the right account. You can verify with Paystack or enter the account name manually."
+              : "Add your bank account so finance can pay platform-held earnings to the right account. Enter the account holder name as on your statement."}
           </Text>
           <TouchableOpacity
             style={twStyle("mt-6 flex-row items-center justify-center rounded-2xl bg-gray-900 px-6 py-3")}
@@ -575,37 +587,43 @@ onPress={() => {
             placeholderTextColor="#9ca3af"
             keyboardType="number-pad"
           />
-          <TouchableOpacity
-            style={twStyle("mb-3 flex-row items-center justify-center rounded-xl border border-indigo-200 bg-indigo-50 py-2.5")}
-            onPress={handleVerify}
-            disabled={
-              form.account_number.trim().length < 8 ||
-              !form.bank_code ||
-              verifying
-            }
-          >
-            {verifying ? (
-              <Text style={twStyle("text-sm font-medium text-indigo-700")}>Verifying…</Text>
-            ) : (
-              <>
-                <Ionicons name="shield-checkmark-outline" size={18} color="#6366f1" />
-                <Text style={twStyle("ml-2 text-sm font-medium text-indigo-700")}>
-                  Verify with Paystack (auto-fill name)
-                </Text>
-              </>
-            )}
-          </TouchableOpacity>
-          {verifiedName && (
-            <View style={twStyle("mb-3 rounded-xl border border-green-200 bg-green-50 p-3")}>
-              <Text style={twStyle("text-xs font-medium text-green-800")}>Verified account name</Text>
-              <Text style={twStyle("text-sm font-medium text-green-900")}>{verifiedName}</Text>
-            </View>
-          )}
-          {verifyError && (
-            <View style={twStyle("mb-3 rounded-xl border border-red-200 bg-red-50 p-3")}>
-              <Text style={twStyle("text-sm text-red-700")}>{verifyError}</Text>
-            </View>
-          )}
+          {showVerifyAccountButton ? (
+            <>
+              <TouchableOpacity
+                style={twStyle("mb-3 flex-row items-center justify-center rounded-xl border border-indigo-200 bg-indigo-50 py-2.5")}
+                onPress={handleVerify}
+                disabled={
+                  form.account_number.trim().length < 8 ||
+                  !form.bank_code ||
+                  verifying
+                }
+              >
+                {verifying ? (
+                  <Text style={twStyle("text-sm font-medium text-indigo-700")}>Verifying…</Text>
+                ) : (
+                  <>
+                    <Ionicons name="shield-checkmark-outline" size={18} color="#6366f1" />
+                    <Text style={twStyle("ml-2 text-sm font-medium text-indigo-700")}>
+                      Verify account (optional — auto-fills name)
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+              {verifiedName && (
+                <View style={twStyle("mb-3 rounded-xl border border-green-200 bg-green-50 p-3")}>
+                  <Text style={twStyle("text-xs font-medium text-green-800")}>Verified account name</Text>
+                  <Text style={twStyle("text-sm font-medium text-green-900")}>{verifiedName}</Text>
+                </View>
+              )}
+              {verifyError && (
+                <View style={twStyle("mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3")}>
+                  <Text style={twStyle("text-xs font-semibold text-amber-800 mb-0.5")}>Verification unavailable</Text>
+                  <Text style={twStyle("text-sm text-amber-700")}>{verifyError}</Text>
+                  <Text style={twStyle("text-xs text-amber-600 mt-1")}>You can still enter your account name manually below.</Text>
+                </View>
+              )}
+            </>
+          ) : null}
 
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
             Account Holder Name *
@@ -631,7 +649,9 @@ onPress={() => {
           />
 
           <Text style={twStyle("mt-3 text-center text-xs text-gray-400")}>
-            Uses Paystack: verify then create transfer recipient. Stored securely.
+            {showVerifyAccountButton
+              ? "Verification is optional — you can enter your account name manually. Account details are stored securely."
+              : "Enter your account holder name as it appears on your bank statement. Account details are stored securely."}
           </Text>
         </View>
       </BottomSheet>

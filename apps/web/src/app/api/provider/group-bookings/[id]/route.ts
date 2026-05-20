@@ -24,6 +24,11 @@ import {
 } from "@/lib/bookings/group-booking-package-pricing";
 import { evaluateGroupCapacity, normalizeGroupCapacity } from "@/lib/bookings/group-capacity";
 import { computeWalletGiftCoverageOutstanding } from "@/lib/bookings/provider-booking-finance";
+import {
+  PROVIDER_GROUP_DETAIL_SELECT,
+  PROVIDER_GROUP_DETAIL_SELECT_FALLBACK,
+  PROVIDER_CHILD_BOOKINGS_SELECT,
+} from "@/lib/bookings/group-booking-postgrest";
 
 function normalizeGroupBookingId(rawId: string): string {
   return rawId.startsWith("group:") ? rawId.slice("group:".length) : rawId;
@@ -71,41 +76,48 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return notFoundResponse("Group booking not found");
     }
 
-    const { data: groupBooking, error } = await admin
+    let { data: groupBooking, error } = await admin
       .from("group_bookings")
-      .select(
-        `
-        *,
-        bookings:bookings(
-          id, booking_number, ref_number, status, scheduled_at, total_amount,
-          total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status, tip_amount,
-          additional_charges(amount,status),
-          customer:users!bookings_customer_id_fkey(id, full_name, email, phone, avatar_url)
-        ),
-        service_packages:package_id(id, name),
-        booking_participants(
-          id, booking_id, participant_name, participant_email, participant_phone,
-          is_primary_contact, service_id, service_name, price, duration_minutes, addons,
-          checked_in_at, checked_out_at
-        )
-      `
-      )
+      .select(PROVIDER_GROUP_DETAIL_SELECT)
       .eq("id", id)
       .eq("provider_id", providerId)
       .single();
 
     if (error || !groupBooking) {
-      // §Group-booking-audit 2026-05: the row exists (existence check above
-      // passed) so this is almost always a missing column / FK alias in the
-      // rich select on older databases. Log and return a useful error rather
-      // than a misleading 404 that makes mobile think the group disappeared.
-      console.error("[provider group GET] rich select failed:", error);
-      return errorResponse(
-        "Group booking exists but its detail view could not be assembled. Please refresh and try again.",
-        "GROUP_BOOKING_DETAIL_FAILED",
-        500,
-        { db: error?.message ?? null }
+      // §Group-booking-resilience 2026-05: the row exists (existence check
+      // passed) so the rich select failed — most likely a PostgREST FK-hint
+      // mismatch caused by ambiguity between the two FK paths to `bookings`
+      // (primary_contact_booking_id vs group_booking_id). Attempt the fallback
+      // select that omits the child-bookings embed and fetches them separately.
+      console.error(
+        "[provider group GET] rich select failed, trying fallback",
+        { code: error?.code, message: error?.message, hint: (error as any)?.hint }
       );
+
+      const { data: fallbackGroup, error: fallbackError } = await admin
+        .from("group_bookings")
+        .select(PROVIDER_GROUP_DETAIL_SELECT_FALLBACK)
+        .eq("id", id)
+        .eq("provider_id", providerId)
+        .single();
+
+      if (fallbackError || !fallbackGroup) {
+        console.error("[provider group GET] fallback select also failed:", fallbackError);
+        return errorResponse(
+          "Group booking exists but its detail view could not be assembled. Please refresh and try again.",
+          "GROUP_BOOKING_DETAIL_FAILED",
+          500,
+          { db: error?.message ?? null, fallback: fallbackError?.message ?? null }
+        );
+      }
+
+      // Fetch child bookings separately to avoid the FK-hint ambiguity.
+      const { data: childBookings } = await admin
+        .from("bookings")
+        .select(PROVIDER_CHILD_BOOKINGS_SELECT)
+        .eq("group_booking_id", id);
+
+      groupBooking = { ...(fallbackGroup as any), bookings: childBookings ?? [] };
     }
 
     const pkg = Array.isArray((groupBooking as any).service_packages)

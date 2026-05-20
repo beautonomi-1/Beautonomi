@@ -26,6 +26,10 @@ interface PaystackConfig {
   updated_at?: string;
   inherited_from_global?: boolean;
   secrets_scope?: "global" | "tenant";
+  /** When true, provider web/app hide Paystack verify and enter account name manually. */
+  skip_payout_account_verification?: boolean;
+  show_verify_account_button?: boolean;
+  skip_setting_inherited_from_global?: boolean;
   env: { has_env_secret_key: boolean; has_env_public_key: boolean };
 }
 
@@ -47,12 +51,28 @@ export function PaystackConfigPage() {
   });
 
   const saveMut = useMutation({
-    mutationFn: (body: Record<string, string>) =>
+    mutationFn: (body: Record<string, string | boolean>) =>
       adminApi.patchJson("/api/admin/integrations/paystack", body),
     onSuccess: () => {
       adminToast.success("Paystack keys saved");
       setShowForm(false);
       setForm(BLANK);
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.paystackConfig() });
+    },
+    onError: (e: Error) => adminToast.error(e.message),
+  });
+
+  const verifyUiMut = useMutation({
+    mutationFn: (hideVerify: boolean) =>
+      adminApi.patchJson("/api/admin/integrations/paystack", {
+        skip_payout_account_verification: hideVerify,
+      }),
+    onSuccess: (_data, hideVerify) => {
+      adminToast.success(
+        hideVerify
+          ? "Verify account button hidden on provider web & app"
+          : "Verify account button shown on provider web & app",
+      );
       void qc.invalidateQueries({ queryKey: adminQueryKeys.paystackConfig() });
     },
     onError: (e: Error) => adminToast.error(e.message),
@@ -93,7 +113,12 @@ export function PaystackConfigPage() {
         description="Manage Paystack API keys for payment processing. Keys are stored encrypted and never returned in full."
       />
 
-      <AdminMutationAlert errors={[saveMut.error instanceof Error ? saveMut.error : null]} />
+      <AdminMutationAlert
+        errors={[
+          saveMut.error instanceof Error ? saveMut.error : null,
+          verifyUiMut.error instanceof Error ? verifyUiMut.error : null,
+        ]}
+      />
 
       {/* Status */}
       <AdminPanel>
@@ -213,6 +238,40 @@ export function PaystackConfigPage() {
           {d.configured ? "Update keys" : "Configure keys"}
         </button>
       )}
+
+      <AdminPanel>
+        <h3 className="mb-1 text-sm font-semibold text-gray-900">Provider bank account setup</h3>
+        <p className="mb-4 text-sm text-gray-600">
+          Control whether providers see the Paystack &quot;Verify account&quot; button when adding a payout bank
+          account on web and mobile. When hidden, they enter the account holder name manually (recommended when
+          Paystack bank resolve fails for your market).
+        </p>
+        {d.skip_setting_inherited_from_global ? (
+          <p className="mb-3 text-xs text-blue-800 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2">
+            This market inherits the setting from the <strong>global</strong> platform default. Toggle below to
+            set a market-specific override.
+          </p>
+        ) : null}
+        <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
+          <input
+            type="checkbox"
+            className="mt-1 h-4 w-4 rounded border-gray-300"
+            checked={d.skip_payout_account_verification === true}
+            disabled={verifyUiMut.isPending}
+            onChange={(e) => verifyUiMut.mutate(e.target.checked)}
+          />
+          <span>
+            <span className="block text-sm font-medium text-gray-900">
+              Hide verify account button
+            </span>
+            <span className="mt-0.5 block text-xs text-gray-500">
+              {d.skip_payout_account_verification
+                ? "Providers only enter bank details and account name — no Paystack verify step."
+                : "Providers can optionally verify with Paystack to auto-fill the account holder name."}
+            </span>
+          </span>
+        </label>
+      </AdminPanel>
 
       <AdminPanel>
         <h3 className="mb-2 text-sm font-semibold text-gray-900">How it works</h3>
