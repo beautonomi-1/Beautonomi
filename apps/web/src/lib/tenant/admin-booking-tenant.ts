@@ -43,7 +43,7 @@ export async function fetchBookingInAdminTenant<T extends string>(
       ),
     };
   }
-  return { booking: data as Record<string, unknown> };
+  return { booking: data as unknown as Record<string, unknown> };
 }
 
 /**
@@ -78,5 +78,5 @@ export async function fetchProviderInAdminTenant<T extends string>(
       ),
     };
   }
-  return { provider: data as Record<string, unknown> };
+  return { provider: data as unknown as Record<string, unknown> };
 }

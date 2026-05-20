@@ -221,8 +221,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       packageDiscount: 0,
     });
 
+    const groupPayload = groupBooking as unknown as Record<string, unknown>;
     return successResponse({
-      ...groupBooking,
+      ...groupPayload,
       total_price:
         linkedParticipantInvoiceTotal > 0
           ? Math.max(
