@@ -36,6 +36,7 @@ import { StaticMapImage } from "@/components/ui/StaticMapImage";
 import { reverseGeocodeCoordinates } from "@/lib/reverse-geocode-address";
 import { getCachedConfigBundle } from "@/lib/config-bundle";
 import { twStyle } from "@/lib/twStyle";
+import { ensureForegroundLocationPermission } from "@/lib/native-permissions";
 import { countryFilterIso2FromStorage } from "@beautonomi/utils";
 
 function tenantCountryFallback(): string {
@@ -205,9 +206,11 @@ export default function EditLocationScreen() {
     if (locating) return;
     setLocating(true);
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") {
-        Alert.alert("Location permission", "Allow location access to place a map pin from your current position.");
+      const allowed = await ensureForegroundLocationPermission({
+        title: "Location permission",
+        message: "Allow location access to place a map pin from your current position.",
+      });
+      if (!allowed) {
         return;
       }
       const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });

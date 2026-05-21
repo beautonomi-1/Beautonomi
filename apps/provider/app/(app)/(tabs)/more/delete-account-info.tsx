@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { View, Text, TouchableOpacity, TextInput, Alert } from "react-native";
+import { View, Text, TouchableOpacity, TextInput, Alert, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { useAuth } from "@/providers/AuthProvider";
@@ -9,6 +9,12 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { twStyle } from "@/lib/twStyle";
+import {
+  canVerifySensitiveActionWithCode,
+  isAuthSecurityLoaded,
+  sensitiveActionSubmitReady,
+  userHasPassword,
+} from "@beautonomi/utils";
 
 interface AccountStatus {
   is_deactivated?: boolean;
@@ -40,15 +46,15 @@ export default function DeleteAccountInfoScreen() {
   const DELETE_PHRASE = "DELETE";
   const confirmOk = confirmText.trim().toUpperCase() === DELETE_PHRASE;
   const authSecurity = profile?.auth_security ?? null;
-  const hasPassword = authSecurity?.has_password !== false;
-  const canVerifyWithCode = Boolean(
-    authSecurity == null ||
-      authSecurity.has_password ||
-      authSecurity.has_mailable_email ||
-      authSecurity.has_phone,
-  );
+  const authSecurityLoaded = isAuthSecurityLoaded(authSecurity);
+  const hasPassword = userHasPassword(authSecurity);
+  const canVerifyWithCode = canVerifySensitiveActionWithCode(authSecurity);
 
   const handleDeleteAccount = async () => {
+    if (!authSecurityLoaded) {
+      Alert.alert("Please wait", "Still loading account security settings. Please try again.");
+      return;
+    }
     if (hasPassword && !password.trim()) {
       Alert.alert("Password required", "Enter your password to confirm account deletion.");
       return;
@@ -156,11 +162,16 @@ export default function DeleteAccountInfoScreen() {
           Permanently delete your account and associated personal data directly from the app.
         </Text>
         <Text style={twStyle("mt-4 text-sm text-gray-500")}>
-          Confirm your password to continue. This action cannot be undone.
+          Confirm with your password or a one-time verification code. This action cannot be undone.
         </Text>
 
         <View style={twStyle("mt-5 rounded-xl border border-gray-200 bg-white p-4")}>
-          {hasPassword ? (
+          {!authSecurityLoaded ? (
+            <View style={twStyle("items-center py-4")}>
+              <ActivityIndicator color="#6b7280" />
+              <Text style={twStyle("mt-2 text-sm text-gray-600")}>Loading verification options…</Text>
+            </View>
+          ) : hasPassword ? (
             <>
               <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Current password</Text>
               <TextInput
@@ -228,18 +239,28 @@ export default function DeleteAccountInfoScreen() {
           onPress={handleDeleteAccount}
           style={twStyle(
             `mt-6 rounded-xl border py-4 px-4 ${
-              deleting || (hasPassword ? !password.trim() : !verificationNonce.trim()) || !confirmOk
+              deleting ||
+              !confirmOk ||
+              !sensitiveActionSubmitReady(authSecurity, { password, verificationNonce })
                 ? "border-gray-200 bg-gray-100"
                 : "border-red-300 bg-red-50"
             }`
           )}
           activeOpacity={0.7}
-          disabled={deleting || (hasPassword ? !password.trim() : !verificationNonce.trim()) || !confirmOk}
+          disabled={
+            deleting ||
+            !confirmOk ||
+            !sensitiveActionSubmitReady(authSecurity, { password, verificationNonce })
+          }
         >
           <Text
             style={twStyle(
               `text-center font-semibold ${
-                deleting || (hasPassword ? !password.trim() : !verificationNonce.trim()) || !confirmOk ? "text-gray-400" : "text-red-700"
+                deleting ||
+                !confirmOk ||
+                !sensitiveActionSubmitReady(authSecurity, { password, verificationNonce })
+                  ? "text-gray-400"
+                  : "text-red-700"
               }`
             )}
           >

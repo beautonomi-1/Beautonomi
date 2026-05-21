@@ -2,8 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, handleApiError, successResponse } from "@/lib/supabase/api-helpers";
-import { purgeUserMessageAttachmentFiles } from "@/lib/account/purge-user-message-files";
+import { purgePlatformUserAccountFully } from "@/lib/account/purge-platform-user";
 import { verifySensitiveActionForUser } from "@/lib/auth/verify-sensitive-action";
+import {
+  parseSensitiveActionCredentials,
+  resolveAuthSecurityForUser,
+  validateSensitiveActionCredentials,
+} from "@/lib/auth/validate-sensitive-action-input";
 
 /**
  * POST /api/me/delete-account
@@ -19,12 +24,8 @@ export async function POST(request: NextRequest) {
     );
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
-
-    const { password, reason, verificationNonce } = body;
-
-    if (!password && !verificationNonce) {
-      return NextResponse.json({ error: "Password or verification code is required to delete your account" }, { status: 400 });
-    }
+    const { password, verificationNonce } = parseSensitiveActionCredentials(body);
+    const reason = typeof body?.reason === "string" ? body.reason : null;
 
     const {
       data: { user: authUser },
@@ -34,14 +35,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const authSecurity = await resolveAuthSecurityForUser(supabase, authUser);
+    const validation = validateSensitiveActionCredentials(authSecurity, { password, verificationNonce }, "delete your account");
+    if (validation.ok === false) {
+      return NextResponse.json({ error: validation.message }, { status: validation.status });
+    }
+
     const verified = await verifySensitiveActionForUser(supabase, authUser, {
-      password,
-      nonce: verificationNonce,
+      password: password || null,
+      nonce: verificationNonce || null,
     });
 
     if (!verified) {
       return NextResponse.json(
-        { error: password ? "Password is incorrect" : "Verification code is invalid or expired" },
+        {
+          error: password
+            ? "Password is incorrect"
+            : "Verification code is invalid or expired",
+        },
         { status: 401 },
       );
     }
@@ -61,15 +72,17 @@ export async function POST(request: NextRequest) {
       throw updateError;
     }
 
-    await purgeUserMessageAttachmentFiles(admin, user.id);
-
-    const { error: deleteAuthError } = await admin.auth.admin.deleteUser(user.id);
-
-    if (deleteAuthError) {
-      console.error("Failed to delete user from auth:", deleteAuthError);
+    const purgeResult = await purgePlatformUserAccountFully(admin, user.id);
+    if (purgeResult.ok === false) {
+      console.error("Account deletion purge failed:", purgeResult.message, purgeResult.code);
       return NextResponse.json(
-        { error: "Could not complete account deletion. Please contact support." },
-        { status: 500 }
+        {
+          error:
+            purgeResult.code === "AUTH_DELETE_DATABASE_ERROR"
+              ? "Could not complete account deletion because related records are still linked. Please contact support."
+              : purgeResult.message || "Could not complete account deletion. Please contact support.",
+        },
+        { status: 500 },
       );
     }
 

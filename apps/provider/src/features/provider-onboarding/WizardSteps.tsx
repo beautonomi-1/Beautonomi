@@ -50,6 +50,10 @@ import { Colors } from "@/constants/colors";
 import { APP_URL } from "@/config/public-env";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
+import {
+  ensureForegroundLocationPermission,
+  launchImageLibraryWithPermission,
+} from "@/lib/native-permissions";
 import { useOnboardingWizard } from "./OnboardingWizardContext";
 import { coerceOwnerPhoneToE164ForForm, isValidOwnerPhoneE164 } from "./onboarding-phone";
 import { DEFAULT_COUNTRY_NAME } from "./state";
@@ -1125,12 +1129,11 @@ function Step7Location() {
     if (locating) return;
     setLocating(true);
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") {
-        Alert.alert(
-          "Location",
-          "Allow location access to set your address from your current position."
-        );
+      const allowed = await ensureForegroundLocationPermission({
+        title: "Location",
+        message: "Allow location access to set your address from your current position.",
+      });
+      if (!allowed) {
         return;
       }
       const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
@@ -1368,11 +1371,6 @@ function Step8Photos() {
   );
 
   const pick = async (kind: "thumb" | "avatar" | "gallery") => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert("Permission", "Allow photo access to upload.");
-      return;
-    }
     const isGallery = kind === "gallery";
     const currentGallery = formData.gallery || [];
     const remainingSlots = isGallery
@@ -1385,13 +1383,20 @@ function Step8Photos() {
       );
       return;
     }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: !isGallery,
-      allowsMultipleSelection: isGallery,
-      selectionLimit: isGallery ? remainingSlots : 1,
-      quality: 0.85,
-    });
+    const result = await launchImageLibraryWithPermission(
+      {
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: !isGallery,
+        allowsMultipleSelection: isGallery,
+        selectionLimit: isGallery ? remainingSlots : 1,
+        quality: 0.85,
+      },
+      {
+        title: "Permission",
+        message: "Allow photo access to upload.",
+      },
+    );
+    if (!result) return;
     if (result.canceled || !result.assets?.length) return;
 
     // Pre-validate everything client-side so we never start the upload on

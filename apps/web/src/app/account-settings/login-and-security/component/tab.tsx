@@ -222,14 +222,12 @@ const LoginAccount = ({
     }
   };
 
-  const hasPassword = authSecurity?.has_password !== false;
+  const authSecurityLoaded = authSecurity != null;
+  const hasPassword = authSecurity?.has_password === true;
   const isSettingFirstPassword = authSecurity?.has_password === false;
   const minimumPasswordLength = authSecurity?.policy.minimum_password_length ?? 8;
-  const canVerifyPasswordAction = Boolean(
-    authSecurity == null ||
-      authSecurity.has_password ||
-      authSecurity.has_mailable_email ||
-      authSecurity.has_phone,
+  const canVerifyWithCode = Boolean(
+    authSecurity?.has_mailable_email || authSecurity?.has_phone,
   );
 
   const handlePasswordUpdate = async (e: React.FormEvent) => {
@@ -293,7 +291,7 @@ const LoginAccount = ({
   };
 
   const handleRequestPasswordNonce = async () => {
-    if (!canVerifyPasswordAction) {
+    if (!canVerifyWithCode) {
       toast.error("Add a verified email or phone number before setting a password.");
       return;
     }
@@ -386,6 +384,10 @@ const LoginAccount = ({
   };
 
   const handleDeactivate = async () => {
+    if (!authSecurityLoaded) {
+      toast.error("Still loading account security settings. Please try again.");
+      return;
+    }
     if (hasPassword && !deactivateData.password) {
       toast.error("Password is required to deactivate your account");
       return;
@@ -413,7 +415,7 @@ const LoginAccount = ({
   };
 
   const handleRequestDeactivateNonce = async () => {
-    if (!canVerifyPasswordAction) {
+    if (!canVerifyWithCode) {
       toast.error("Add a verified email or phone number before deactivating this account.");
       return;
     }
@@ -527,7 +529,7 @@ const LoginAccount = ({
                           <p className="text-sm text-gray-700">
                             This account uses one-time codes or social login. Send a verification code to your verified email or phone, then choose a password.
                           </p>
-                          {!canVerifyPasswordAction && (
+                          {!canVerifyWithCode && (
                             <p className="mt-2 text-sm text-red-600">
                               Add and verify an email or phone number before setting a password.
                             </p>
@@ -553,7 +555,7 @@ const LoginAccount = ({
                               type="button"
                               variant="outline"
                               onClick={handleRequestPasswordNonce}
-                              disabled={isRequestingPasswordNonce || !canVerifyPasswordAction}
+                              disabled={isRequestingPasswordNonce || !canVerifyWithCode}
                             >
                               {isRequestingPasswordNonce ? "Sending..." : "Send code"}
                             </Button>
@@ -945,7 +947,9 @@ const LoginAccount = ({
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            {hasPassword ? (
+            {!authSecurityLoaded ? (
+              <p className="text-sm text-gray-600">Loading verification options…</p>
+            ) : hasPassword ? (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Enter your password to confirm
@@ -986,7 +990,7 @@ const LoginAccount = ({
                     type="button"
                     variant="outline"
                     onClick={handleRequestDeactivateNonce}
-                    disabled={isRequestingDeactivateNonce || !canVerifyPasswordAction}
+                    disabled={isRequestingDeactivateNonce || !canVerifyWithCode}
                   >
                     {isRequestingDeactivateNonce ? "Sending..." : "Send code"}
                   </Button>
@@ -1032,7 +1036,11 @@ const LoginAccount = ({
             <button
               type="button"
               onClick={handleDeactivate}
-              disabled={isDeactivating || (hasPassword ? !deactivateData.password : !deactivateData.verificationNonce.trim())}
+              disabled={
+                isDeactivating ||
+                !authSecurityLoaded ||
+                (hasPassword ? !deactivateData.password : !deactivateData.verificationNonce.trim())
+              }
               className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isDeactivating ? "Deactivating..." : "Deactivate Account"}

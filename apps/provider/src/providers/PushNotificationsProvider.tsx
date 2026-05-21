@@ -538,7 +538,7 @@ function usePushRegistration() {
 
         if (gate.phase === "complete") {
           const earlySub = await OneSignal.User.pushSubscription.getIdAsync();
-          if (gate.fromRestore || !earlySub) {
+          if (gate.fromRestore && !earlySub) {
             await OneSignal.Notifications.requestPermission(false);
           }
         }

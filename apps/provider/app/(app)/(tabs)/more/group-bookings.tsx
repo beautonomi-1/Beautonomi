@@ -49,6 +49,7 @@ import { pushInAppBrowser } from "@/lib/in-app-web";
 import { StaticMapImage } from "@/components/ui/StaticMapImage";
 import { reverseGeocodeCoordinates } from "@/lib/reverse-geocode-address";
 import { webApiTenantHeaders } from "@/config/public-env";
+import { ensureForegroundLocationPermission } from "@/lib/native-permissions";
 import { supabase } from "@/lib/supabase/client";
 import { countryFilterIso2FromStorage } from "@beautonomi/utils";
 import { normalizeProductsList } from "@/lib/unpack-provider-api";
@@ -1977,9 +1978,11 @@ export default function GroupBookingsScreen() {
     if (createLocatingHome) return;
     setCreateLocatingHome(true);
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") {
-        Alert.alert("Location permission", "Allow location to fill the address.");
+      const allowed = await ensureForegroundLocationPermission({
+        title: "Location permission",
+        message: "Allow location to fill the address.",
+      });
+      if (!allowed) {
         return;
       }
       const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });

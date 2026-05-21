@@ -1,9 +1,11 @@
 /**
  * Hook for user location – used for "Nearest" providers on Home.
  */
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Platform } from "react-native";
 import * as Location from "expo-location";
+import { ensureForegroundLocationPermission } from "@/lib/native-permissions";
+import { useNativePermissionsOnboardingGate } from "@/providers/NativePermissionsOnboardingProvider";
 
 export interface Coords {
   latitude: number;
@@ -11,12 +13,17 @@ export interface Coords {
 }
 
 export function useLocation() {
+  const { gate } = useNativePermissionsOnboardingGate();
   const [coords, setCoords] = useState<Coords | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const getLocation = useCallback(() => {
     if (Platform.OS === "web") {
+      setLoading(false);
+      return;
+    }
+    if (gate.phase !== "complete") {
       setLoading(false);
       return;
     }
@@ -25,14 +32,12 @@ export function useLocation() {
 
     (async () => {
       try {
-        let { status } = await Location.getForegroundPermissionsAsync();
+        const allowed = await ensureForegroundLocationPermission({
+          title: "Location permission",
+          message: "Allow location access to show nearby professionals and travel times.",
+        });
         if (cancelled) return;
-        if (status !== "granted") {
-          const req = await Location.requestForegroundPermissionsAsync();
-          status = req.status;
-        }
-        if (cancelled) return;
-        if (status !== "granted") {
+        if (!allowed) {
           setError("Location permission denied");
           setLoading(false);
           return;
@@ -57,7 +62,9 @@ export function useLocation() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [gate.phase]);
+
+  useEffect(() => getLocation(), [getLocation]);
 
   return { coords, error, loading };
 }

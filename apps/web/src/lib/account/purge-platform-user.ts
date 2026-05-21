@@ -5,6 +5,18 @@ export type PurgeUserSuccess = { ok: true; storage_attachments_removed: number }
 
 export type PurgeUserResult = PurgeUserSuccess | { ok: false; message: string; code?: string };
 
+function authDeleteErrorCode(error: unknown): string | undefined {
+  const code = (error as { code?: unknown } | null)?.code;
+  if (typeof code === "string" && code.trim()) return code;
+
+  const message = String((error as { message?: unknown } | null)?.message ?? "").toLowerCase();
+  if (message.includes("database error deleting user")) {
+    return "AUTH_DELETE_DATABASE_ERROR";
+  }
+
+  return undefined;
+}
+
 /**
  * DB-side cleanup for FKs that still use NO ACTION toward users/auth (see migration 440).
  * Must run before auth.admin.deleteUser while the user id still exists for lookups.
@@ -37,7 +49,11 @@ export async function purgePlatformUserAccountFully(
 
   const { error: delError } = await admin.auth.admin.deleteUser(userId);
   if (delError) {
-    return { ok: false, message: delError.message };
+    return {
+      ok: false,
+      message: delError.message,
+      code: authDeleteErrorCode(delError),
+    };
   }
   return { ok: true, storage_attachments_removed };
 }

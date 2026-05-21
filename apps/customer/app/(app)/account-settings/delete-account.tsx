@@ -23,6 +23,12 @@ import { Colors } from "@/constants/colors";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { useTranslation } from "@beautonomi/i18n";
 import { supabase } from "@/lib/supabase/client";
+import {
+  canVerifySensitiveActionWithCode,
+  isAuthSecurityLoaded,
+  sensitiveActionSubmitReady,
+  userHasPassword,
+} from "@beautonomi/utils";
 
 const DELETE_PHRASE = "DELETE";
 
@@ -61,13 +67,9 @@ export default function DeleteAccountScreen() {
   const [confirmText, setConfirmText] = useState("");
   const [loading, setLoading] = useState(false);
   const [requestingNonce, setRequestingNonce] = useState(false);
-  const hasPassword = authSecurity?.has_password !== false;
-  const canVerifyWithCode = Boolean(
-    authSecurity == null ||
-      authSecurity.has_password ||
-      authSecurity.has_mailable_email ||
-      authSecurity.has_phone,
-  );
+  const authSecurityLoaded = isAuthSecurityLoaded(authSecurity);
+  const hasPassword = userHasPassword(authSecurity);
+  const canVerifyWithCode = canVerifySensitiveActionWithCode(authSecurity);
 
   const loadStatus = useCallback(async () => {
     setStatusLoading(true);
@@ -92,6 +94,10 @@ export default function DeleteAccountScreen() {
   const confirmOk = confirmText.trim().toUpperCase() === DELETE_PHRASE;
 
   const handleDelete = useCallback(async () => {
+    if (!authSecurityLoaded) {
+      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), "Still loading account security settings. Please try again.");
+      return;
+    }
     if (hasPassword && !password.trim()) {
       Alert.alert(da("passwordRequiredTitle"), da("passwordRequiredBody"));
       return;
@@ -223,7 +229,12 @@ export default function DeleteAccountScreen() {
             </Text>
           </View>
 
-          {hasPassword ? (
+          {!authSecurityLoaded ? (
+            <View style={{ paddingVertical: 12, alignItems: "center" }}>
+              <ActivityIndicator color={Colors.gray[600]} />
+              <Text style={{ marginTop: 8, fontSize: 14, color: Colors.gray[600] }}>Loading verification options…</Text>
+            </View>
+          ) : hasPassword ? (
             <>
               <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 6 }}>Password</Text>
               <TextInput
@@ -311,10 +322,19 @@ export default function DeleteAccountScreen() {
 
           <TouchableOpacity
             onPress={() => void handleDelete()}
-            disabled={loading || (hasPassword ? !password.trim() : !verificationNonce.trim()) || !confirmOk}
+            disabled={
+              loading ||
+              !confirmOk ||
+              !sensitiveActionSubmitReady(authSecurity, { password, verificationNonce })
+            }
             style={{
               marginTop: 24,
-              backgroundColor: loading || (hasPassword ? !password.trim() : !verificationNonce.trim()) || !confirmOk ? Colors.gray[300] : "#b91c1c",
+              backgroundColor:
+                loading ||
+                !confirmOk ||
+                !sensitiveActionSubmitReady(authSecurity, { password, verificationNonce })
+                  ? Colors.gray[300]
+                  : "#b91c1c",
               paddingVertical: 14,
               borderRadius: 12,
               alignItems: "center",

@@ -6,18 +6,27 @@ import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Modal, Platform, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import * as Location from "expo-location";
-import * as ImagePicker from "expo-image-picker";
 import { useAuth } from "@/providers/AuthProvider";
 import { useNativePermissionsOnboardingGate } from "@/providers/NativePermissionsOnboardingProvider";
 import { Colors } from "@/constants/colors";
+import {
+  ensureForegroundLocationPermission,
+  ensureMediaLibraryPermission,
+  showPermissionRecoveryAlert,
+} from "@/lib/native-permissions";
 
 const STEPS = ["welcome", "notifications", "location", "photos"] as const;
 
 async function requestOneSignalPush(): Promise<void> {
   try {
     const { OneSignal } = await import("react-native-onesignal");
-    await OneSignal.Notifications.requestPermission(true);
+    const accepted = await OneSignal.Notifications.requestPermission(true);
+    if (accepted === false) {
+      await showPermissionRecoveryAlert({
+        title: "Notifications are off",
+        message: "Turn on notifications in Settings to receive bookings, messages, payout updates, and urgent alerts.",
+      });
+    }
   } catch {
     // Expo Go / missing native module
   }
@@ -63,7 +72,10 @@ export function NativePermissionsOnboarding() {
   const onEnableLocation = useCallback(async () => {
     setBusy(true);
     try {
-      await Location.requestForegroundPermissionsAsync();
+      await ensureForegroundLocationPermission({
+        title: "Location permission",
+        message: "Allow location access while using the app for journey, arrival, and at-home service features.",
+      });
     } finally {
       setBusy(false);
       goNext();
@@ -77,7 +89,10 @@ export function NativePermissionsOnboarding() {
       // time the user taps "Take photo" so Apple's review guideline (request
       // permission only when needed) is satisfied and the user understands
       // exactly which feature is asking.
-      await ImagePicker.requestMediaLibraryPermissionsAsync();
+      await ensureMediaLibraryPermission({
+        title: "Photo library access",
+        message: "Allow photo access for catalogue images, profile photos, and documenting work.",
+      });
     } finally {
       setBusy(false);
       await finish();
@@ -205,7 +220,7 @@ export function NativePermissionsOnboarding() {
               <Ionicons name="images-outline" size={28} color={Colors.primary} />
             </View>
             <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900], marginBottom: 12 }}>
-              Photos &amp; camera
+              Photos
             </Text>
             <Text style={{ fontSize: 16, lineHeight: 24, color: Colors.gray[600] }}>
               Optional: for catalogue images, profile photos, and documenting work when your workflow requires it.
@@ -306,12 +321,12 @@ export function NativePermissionsOnboarding() {
                   alignItems: "center",
                 }}
                 accessibilityRole="button"
-                accessibilityLabel="Allow photos and camera"
+                accessibilityLabel="Allow photo access"
               >
                 {busy ? (
                   <ActivityIndicator color={Colors.white} />
                 ) : (
-                  <Text style={{ color: Colors.white, fontSize: 17, fontWeight: "600" }}>Allow photos &amp; camera</Text>
+                  <Text style={{ color: Colors.white, fontSize: 17, fontWeight: "600" }}>Allow photo access</Text>
                 )}
               </TouchableOpacity>
               <TouchableOpacity

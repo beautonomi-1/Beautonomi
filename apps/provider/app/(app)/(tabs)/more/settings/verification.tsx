@@ -17,7 +17,6 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
-import * as ImagePicker from "expo-image-picker";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi } from "@/hooks/useApi";
@@ -27,6 +26,7 @@ import { getApiErrorMessage } from "@/lib/api-error";
 import { appendFormDataFileNative } from "@beautonomi/utils";
 import { getWebProviderBaseUrl } from "@/lib/web-url";
 import { pushInAppBrowser } from "@/lib/in-app-web";
+import { launchImageLibraryWithPermission } from "@/lib/native-permissions";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
@@ -141,16 +141,18 @@ export default function VerificationScreen() {
   // ─── Manual upload ───────────────────────────────────────────────────────
   const pickDocument = async () => {
     try {
-      const { status: perm } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (perm !== "granted") {
-        Alert.alert("Permission needed", "Allow access to photos to upload your document.");
-        return;
-      }
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ["images"],
-        allowsEditing: false,
-        quality: 0.9,
-      });
+      const result = await launchImageLibraryWithPermission(
+        {
+          mediaTypes: ["images"],
+          allowsEditing: false,
+          quality: 0.9,
+        },
+        {
+          title: "Permission needed",
+          message: "Allow access to photos to upload your document.",
+        },
+      );
+      if (!result) return;
       if (result.canceled) return;
       const asset = result.assets[0];
       setSelectedFile({ uri: asset.uri, fileName: asset.fileName ?? `verification-${Date.now()}.jpg` });

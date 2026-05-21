@@ -56,6 +56,10 @@ import { AddressMapPinModal } from "@/components/AddressMapPinModal";
 import { StaticMapImage } from "@/components/ui/StaticMapImage";
 import { reverseGeocodeCoordinates } from "@/lib/reverse-geocode-address";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import {
+  ensureForegroundLocationPermission,
+  launchImageLibraryWithPermission,
+} from "@/lib/native-permissions";
 
 const IMAGE_CONSTRAINTS = { maxSizeBytes: 2 * 1024 * 1024 }; // 2MB
 const PRIMARY = Colors.primary;
@@ -164,12 +168,11 @@ export default function ProfileScreen() {
     if (locating) return;
     setLocating(true);
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") {
-        Alert.alert(
-          "Location permission",
-          "Allow location access to place a pin from your current position.",
-        );
+      const allowed = await ensureForegroundLocationPermission({
+        title: "Location permission",
+        message: "Allow location access to place a pin from your current position.",
+      });
+      if (!allowed) {
         return;
       }
       const loc = await Location.getCurrentPositionAsync({
@@ -359,18 +362,20 @@ export default function ProfileScreen() {
   }, [phoneCountryCode, phoneNational]);
 
   const uploadAvatar = useCallback(async () => {
-    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permissionResult.granted) {
-      Alert.alert("Permission needed", "Allow access to your photos to change your profile picture.");
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
-      base64: false,
-    });
+    const result = await launchImageLibraryWithPermission(
+      {
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+        base64: false,
+      },
+      {
+        title: "Permission needed",
+        message: "Allow access to your photos to change your profile picture.",
+      },
+    );
+    if (!result) return;
     if (result.canceled || !result.assets?.[0]) return;
     const asset = result.assets[0];
     if (asset.fileSize && asset.fileSize > IMAGE_CONSTRAINTS.maxSizeBytes) {

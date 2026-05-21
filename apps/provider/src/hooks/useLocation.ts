@@ -2,9 +2,11 @@
  * useLocation – get user's current GPS coordinates.
  * Requests foreground permission and returns coordinates.
  */
-import { useState, useEffect } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { Platform } from "react-native";
 import * as Location from "expo-location";
+import { ensureForegroundLocationPermission } from "@/lib/native-permissions";
+import { useNativePermissionsOnboardingGate } from "@/providers/NativePermissionsOnboardingProvider";
 
 interface LocationData {
   latitude: number;
@@ -19,12 +21,17 @@ interface UseLocationResult {
 }
 
 export function useLocation(): UseLocationResult {
+  const { gate } = useNativePermissionsOnboardingGate();
   const [coords, setCoords] = useState<LocationData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  async function getLocation() {
+  const getLocation = useCallback(async () => {
     if (Platform.OS === "web") {
+      setLoading(false);
+      return;
+    }
+    if (gate.phase !== "complete") {
       setLoading(false);
       return;
     }
@@ -33,12 +40,11 @@ export function useLocation(): UseLocationResult {
     setError(null);
 
     try {
-      let { status } = await Location.getForegroundPermissionsAsync();
-      if (status !== "granted") {
-        const req = await Location.requestForegroundPermissionsAsync();
-        status = req.status;
-      }
-      if (status !== "granted") {
+      const allowed = await ensureForegroundLocationPermission({
+        title: "Location permission",
+        message: "Allow location access to use nearby, journey, and address features.",
+      });
+      if (!allowed) {
         setError("Location permission denied");
         setLoading(false);
         return;
@@ -57,11 +63,11 @@ export function useLocation(): UseLocationResult {
     } finally {
       setLoading(false);
     }
-  }
+  }, [gate.phase]);
 
   useEffect(() => {
     getLocation();
-  }, []);
+  }, [getLocation]);
 
   return { coords, loading, error, refresh: getLocation };
 }

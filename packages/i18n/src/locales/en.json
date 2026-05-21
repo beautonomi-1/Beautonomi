@@ -1975,7 +1975,8 @@
           "infoBanner": "Deactivating disables your account. Your data is kept. You can reactivate by signing in again; we will restore access when your deactivation was self-initiated.",
           "passwordLabel": "Password",
           "reasonLabel": "Reason (optional)",
-          "footerHint": "Password confirmation matches the web app: your account email must have a password set. If you only use phone or social sign-in, set a password on the website first, or use the web app to deactivate.",
+          "footerHint": "Password accounts confirm with your current password. Accounts that sign in with email or phone codes will be asked for a one-time verification code instead.",
+          "loadFailed": "Could not load account security settings.",
           "submitLabel": "Deactivate account",
           "submitA11y": "Deactivate account"
         },

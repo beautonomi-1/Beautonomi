@@ -16,7 +16,6 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Video, ResizeMode } from "expo-av";
 import * as Haptics from "expo-haptics";
-import * as ImagePicker from "expo-image-picker";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
 import { api } from "@/lib/api-client";
@@ -33,6 +32,10 @@ import { Image, type ImageStyle as ExpoImageStyle } from "expo-image";
 import { getWebProviderBaseUrl } from "@/lib/web-url";
 import { pushInAppBrowser } from "@/lib/in-app-web";
 import { tabScreenScrollBottomPadding } from "@/constants/layout";
+import {
+  launchCameraWithPermission,
+  launchImageLibraryWithPermission,
+} from "@/lib/native-permissions";
 
 interface ExplorePost {
   id: string;
@@ -456,17 +459,19 @@ export default function ExplorePostsScreen() {
   ]);
 
   const pickMediaForEdit = useCallback(async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert("Permission needed", "Allow access to your photos to add media to your post.");
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images", "videos"],
-      allowsMultipleSelection: true,
-      quality: 0.9,
-      videoMaxDuration: 60,
-    });
+    const result = await launchImageLibraryWithPermission(
+      {
+        mediaTypes: ["images", "videos"],
+        allowsMultipleSelection: true,
+        quality: 0.9,
+        videoMaxDuration: 60,
+      },
+      {
+        title: "Permission needed",
+        message: "Allow access to your photos to add media to your post.",
+      },
+    );
+    if (!result) return;
     if (result.canceled) return;
     const newAssets: PickedAsset[] = result.assets.map((a) => ({
       uri: a.uri,
@@ -484,16 +489,18 @@ export default function ExplorePostsScreen() {
   }, [editRemoteUrls.length]);
 
   const pickFromCameraForEdit = useCallback(async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert("Permission needed", "Allow camera access to capture photos or videos for your post.");
-      return;
-    }
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ["images", "videos"],
-      quality: 0.9,
-      videoMaxDuration: 60,
-    });
+    const result = await launchCameraWithPermission(
+      {
+        mediaTypes: ["images", "videos"],
+        quality: 0.9,
+        videoMaxDuration: 60,
+      },
+      {
+        title: "Permission needed",
+        message: "Allow camera access to capture photos or videos for your post.",
+      },
+    );
+    if (!result) return;
     if (result.canceled || !result.assets?.[0]) return;
     const a = result.assets[0];
     const asset: PickedAsset = {
@@ -531,17 +538,19 @@ export default function ExplorePostsScreen() {
   }, []);
 
   const pickMedia = useCallback(async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert("Permission needed", "Allow access to your photos to add media to your post.");
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images", "videos"],
-      allowsMultipleSelection: true,
-      quality: 0.9,
-      videoMaxDuration: 60,
-    });
+    const result = await launchImageLibraryWithPermission(
+      {
+        mediaTypes: ["images", "videos"],
+        allowsMultipleSelection: true,
+        quality: 0.9,
+        videoMaxDuration: 60,
+      },
+      {
+        title: "Permission needed",
+        message: "Allow access to your photos to add media to your post.",
+      },
+    );
+    if (!result) return;
     if (result.canceled) return;
     const newAssets: PickedAsset[] = result.assets.map((a) => ({
       uri: a.uri,
@@ -552,16 +561,18 @@ export default function ExplorePostsScreen() {
   }, []);
 
   const pickFromCamera = useCallback(async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert("Permission needed", "Allow camera access to capture photos or videos for your post.");
-      return;
-    }
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ["images", "videos"],
-      quality: 0.9,
-      videoMaxDuration: 60,
-    });
+    const result = await launchCameraWithPermission(
+      {
+        mediaTypes: ["images", "videos"],
+        quality: 0.9,
+        videoMaxDuration: 60,
+      },
+      {
+        title: "Permission needed",
+        message: "Allow camera access to capture photos or videos for your post.",
+      },
+    );
+    if (!result) return;
     if (result.canceled || !result.assets?.[0]) return;
     const a = result.assets[0];
     setSelectedAssets((prev) =>

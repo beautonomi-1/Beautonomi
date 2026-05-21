@@ -43,18 +43,18 @@ How account **deactivation** and **deletion** are managed by **super admins** an
 
 ### Deactivation (user)
 
-- **Web:** Account settings → Login & security → **Deactivate** (password + optional reason).  
-  - Calls `POST /api/me/deactivate` (password required).  
+- **Web:** Account settings → Login & security → **Deactivate** (password or OTP verification code + optional reason).  
+  - Calls `POST /api/me/deactivate` (password if the account has one; otherwise Supabase `reauthenticate` OTP).  
   - Backend sets `users.deactivated_at`, then **signs out** the user (Supabase `signOut`).  
   - The backend does **not** ban the Supabase auth user for self-service deactivation (only `users.deactivated_at` is set).  
   - **Reactivation:** To allow “reactivate by logging in”, you can add a `deactivated_by` flag (`'user' | 'admin'`) and, on next successful login, clear `deactivated_at` when `deactivated_by === 'user'`; otherwise the **AccountStatusGuard** will keep signing the user out when it sees `is_deactivated`. Alternatively, provide a “Reactivate account” link (e.g. in email) or support flow that clears `deactivated_at`.
 
-- **Provider app:** Settings → Account → **Deactivate account** → in-app screen (password, optional reason, confirmation).  
+- **Provider app:** Settings → Account → **Deactivate account** → in-app screen (password or OTP code, optional reason, confirmation).  
   - Calls same `POST /api/me/deactivate`.  
   - On success, app **signs out** and redirects to login.  
   - Styled as **destructive** (red) in the Account list.
 
-- **Customer app (Expo):** Uses the same **`AccountStatusGuard`** as the provider app (see §3). **Self-service deactivation** is in **Account → Login & security → Deactivate account** (password + optional reason), calling `POST /api/me/deactivate`, then sign-out → login with deactivated messaging. Same API and behaviour as web.
+- **Customer app (Expo):** Uses the same **`AccountStatusGuard`** as the provider app (see §3). **Self-service deactivation** is in **Account → Login & security → Deactivate account** (password or OTP code + optional reason), calling `POST /api/me/deactivate`, then sign-out → login with deactivated messaging. Same API and behaviour as web.
 
 ### Deletion (user)
 

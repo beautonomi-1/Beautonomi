@@ -23,6 +23,12 @@ import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { Colors } from "@/constants/colors";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { supabase } from "@/lib/supabase/client";
+import {
+  canVerifySensitiveActionWithCode,
+  isAuthSecurityLoaded,
+  sensitiveActionSubmitReady,
+  userHasPassword,
+} from "@beautonomi/utils";
 
 type AuthSecurityState = {
   has_password: boolean;
@@ -49,22 +55,26 @@ export default function DeactivateAccountScreen() {
   const [reason, setReason] = useState("");
   const [loading, setLoading] = useState(false);
   const [requestingNonce, setRequestingNonce] = useState(false);
-  const hasPassword = authSecurity?.has_password !== false;
-  const canVerifyWithCode = Boolean(
-    authSecurity == null ||
-      authSecurity.has_password ||
-      authSecurity.has_mailable_email ||
-      authSecurity.has_phone,
-  );
+  const [profileLoadError, setProfileLoadError] = useState<string | null>(null);
+  const authSecurityLoaded = isAuthSecurityLoaded(authSecurity);
+  const hasPassword = userHasPassword(authSecurity);
+  const canVerifyWithCode = canVerifySensitiveActionWithCode(authSecurity);
 
   useEffect(() => {
     let alive = true;
     api.get<{ auth_security?: AuthSecurityState | null }>("/api/me/profile")
       .then((res) => {
-        if (!alive || res.error) return;
+        if (!alive) return;
+        if (res.error) {
+          setProfileLoadError(res.error.message ?? da("loadFailed"));
+          return;
+        }
+        setProfileLoadError(null);
         setAuthSecurity((res.data as { auth_security?: AuthSecurityState | null } | undefined)?.auth_security ?? null);
       })
-      .catch(() => {});
+      .catch((e) => {
+        if (alive) setProfileLoadError(getApiErrorMessage(e, da("loadFailed")));
+      });
     return () => {
       alive = false;
     };
@@ -73,6 +83,10 @@ export default function DeactivateAccountScreen() {
   const handleDeactivate = useCallback(async () => {
     const pwd = password.trim();
     const nonce = verificationNonce.trim();
+    if (!authSecurityLoaded) {
+      Alert.alert(errTitle, "Still loading account security settings. Please try again.");
+      return;
+    }
     if (hasPassword && !pwd) {
       Alert.alert(da("requiredPasswordTitle"), da("requiredPasswordBody"));
       return;
@@ -117,7 +131,7 @@ export default function DeactivateAccountScreen() {
         },
       ],
     );
-  }, [password, verificationNonce, hasPassword, reason, signOut, router, da, errTitle, t]);
+  }, [password, verificationNonce, hasPassword, authSecurityLoaded, reason, signOut, router, da, errTitle, t]);
 
   const requestVerificationCode = useCallback(async () => {
     if (!canVerifyWithCode) {
@@ -156,7 +170,16 @@ export default function DeactivateAccountScreen() {
           <Text style={{ fontSize: 14, color: "#92400e", lineHeight: 20 }}>{da("infoBanner")}</Text>
         </View>
 
-          {hasPassword ? (
+          {profileLoadError ? (
+            <Text style={{ fontSize: 14, color: Colors.error, marginBottom: 12 }}>{profileLoadError}</Text>
+          ) : null}
+
+          {!authSecurityLoaded ? (
+            <View style={{ paddingVertical: 12, alignItems: "center" }}>
+              <ActivityIndicator color={Colors.gray[600]} />
+              <Text style={{ marginTop: 8, fontSize: 14, color: Colors.gray[600] }}>Loading verification options…</Text>
+            </View>
+          ) : hasPassword ? (
             <>
               <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 6 }}>{da("passwordLabel")}</Text>
               <TextInput
@@ -220,7 +243,13 @@ export default function DeactivateAccountScreen() {
 
           <TouchableOpacity
             onPress={() => void handleDeactivate()}
-            disabled={loading}
+            disabled={
+              loading ||
+              !sensitiveActionSubmitReady(authSecurity, {
+                password,
+                verificationNonce,
+              })
+            }
             style={{
               marginTop: 24,
               backgroundColor: "#dc2626",

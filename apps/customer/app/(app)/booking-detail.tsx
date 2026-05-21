@@ -37,6 +37,7 @@ import * as FileSystem from "expo-file-system/legacy";
 import * as Clipboard from "expo-clipboard";
 import * as Calendar from "expo-calendar";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { showPermissionRecoveryAlert } from "@/lib/native-permissions";
 import {
   ARRIVAL_PIN_CUSTOMER_HEADING,
   ARRIVAL_PIN_CUSTOMER_SUBTITLE,
@@ -887,8 +888,23 @@ export default function BookingDetailScreen() {
       setNativeCalLoading(true);
       try {
         const { status } = await Calendar.requestCalendarPermissionsAsync();
-        if (status !== "granted") {
-          Alert.alert(bd("calendarAccessTitle"), bd("calendarAccessBody"));
+        let calendarAllowed = status === "granted";
+        if (!calendarAllowed) {
+          calendarAllowed = await showPermissionRecoveryAlert(
+            {
+              title: bd("calendarAccessTitle"),
+              message: bd("calendarAccessBody"),
+            },
+            {
+              canAskAgain: true,
+              retry: async () => {
+                const retry = await Calendar.requestCalendarPermissionsAsync();
+                return retry.status === "granted";
+              },
+            },
+          );
+        }
+        if (!calendarAllowed) {
           return;
         }
         let calendarId: string | null = null;

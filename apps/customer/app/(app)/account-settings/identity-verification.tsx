@@ -22,7 +22,6 @@ import {
   AppState,
 } from "react-native";
 import { useFocusEffect } from "expo-router";
-import * as ImagePicker from "expo-image-picker";
 import * as Linking from "expo-linking";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "@/lib/api-client";
@@ -33,6 +32,7 @@ import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { Colors } from "@/constants/colors";
 import { RADIUS_CARD, RADIUS_INPUT, RADIUS_BUTTON } from "@/constants/layout";
 import { haptic } from "@/lib/haptics";
+import { launchImageLibraryWithPermission } from "@/lib/native-permissions";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { getBackendUrl } from "@/config/public-env";
 
@@ -205,16 +205,18 @@ export default function IdentityVerificationScreen() {
   // ─── Manual upload ───────────────────────────────────────────────────────
   const pickDocument = async () => {
     try {
-      const { status: perm } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (perm !== "granted") {
-        Alert.alert(iv("photoPermissionTitle"), iv("photoPermissionBody"));
-        return;
-      }
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ["images"],
-        allowsEditing: false,
-        quality: 0.9,
-      });
+      const result = await launchImageLibraryWithPermission(
+        {
+          mediaTypes: ["images"],
+          allowsEditing: false,
+          quality: 0.9,
+        },
+        {
+          title: iv("photoPermissionTitle"),
+          message: iv("photoPermissionBody"),
+        },
+      );
+      if (!result) return;
       if (result.canceled) return;
       const asset = result.assets[0];
       setSelectedFile({

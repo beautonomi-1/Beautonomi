@@ -31,7 +31,6 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { Avatar } from "@/components/ui/Avatar";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { SafetyPanicButton } from "@/components/SafetyPanicButton";
-import * as ImagePicker from "expo-image-picker";
 import { APP_URL, webApiTenantHeaders } from "@/config/public-env";
 import { pushInAppBrowser } from "@/lib/in-app-web";
 import { ArrivalQrScannerModal } from "@/components/ArrivalQrScannerModal";
@@ -57,6 +56,10 @@ import {
   PROVIDER_SALON_CHECKIN_EXCELLENCE_NUDGE,
   PROVIDER_SALON_VISIT_FLOW_EXPLAINER,
 } from "@beautonomi/utils";
+import {
+  ensureForegroundLocationPermission,
+  launchImageLibraryWithPermission,
+} from "@/lib/native-permissions";
 import { buildSaleItemsFromBookingDetail } from "@/lib/build-sale-items-from-booking";
 import {
   dbTargetToPatchStatusField,
@@ -874,11 +877,18 @@ export default function BookingDetailScreen() {
 
   async function handleUploadConsentDocument(formId: string) {
     try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ["images"],
-        allowsEditing: false,
-        quality: 0.8,
-      });
+      const result = await launchImageLibraryWithPermission(
+        {
+          mediaTypes: ["images"],
+          allowsEditing: false,
+          quality: 0.8,
+        },
+        {
+          title: "Permission needed",
+          message: "Allow photo library access to upload the consent document.",
+        },
+      );
+      if (!result) return;
       if (result.canceled || !result.assets?.[0]) return;
 
       setUploadingConsentFormId(formId);
@@ -951,12 +961,7 @@ export default function BookingDetailScreen() {
       try {
         if (locationPermissionDeniedRef.current) return;
         const currentPerm = await Location.getForegroundPermissionsAsync();
-        let status = currentPerm.status;
-        if (status !== "granted" && currentPerm.canAskAgain) {
-          const req = await Location.requestForegroundPermissionsAsync();
-          status = req.status;
-        }
-        if (status !== "granted") {
+        if (currentPerm.status !== "granted") {
           locationPermissionDeniedRef.current = true;
           return;
         }
@@ -1855,6 +1860,21 @@ export default function BookingDetailScreen() {
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const body: Record<string, unknown> = {};
+    let journeyLocation: Location.LocationObject | null = null;
+    try {
+      const allowed = await ensureForegroundLocationPermission({
+        title: "Location permission",
+        message: "Allow location access while using the app so clients can see journey and arrival updates. If you skip, the journey will continue without live location updates.",
+      });
+      if (allowed) {
+        const loc = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        journeyLocation = loc;
+      }
+    } catch {
+      // Continue without live location if permission or GPS lookup fails.
+    }
     if (etaMinutes != null && etaMinutes > 0) {
       body.estimated_arrival = new Date(Date.now() + etaMinutes * 60 * 1000).toISOString();
     }
@@ -1862,6 +1882,13 @@ export default function BookingDetailScreen() {
     if (res.error) {
       Alert.alert("Error", res.error);
       return;
+    }
+    if (journeyLocation) {
+      await api.post(`/api/provider/bookings/${id}/location`, {
+        latitude: journeyLocation.coords.latitude,
+        longitude: journeyLocation.coords.longitude,
+        accuracy: journeyLocation.coords.accuracy ?? undefined,
+      });
     }
     await refresh();
   };
@@ -1875,8 +1902,11 @@ export default function BookingDetailScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const body: Record<string, unknown> = {};
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status === "granted") {
+      const allowed = await ensureForegroundLocationPermission({
+        title: "Location permission",
+        message: "Allow location access to include your arrival position.",
+      });
+      if (allowed) {
         const loc = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.Balanced,
         });

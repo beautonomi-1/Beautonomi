@@ -12,6 +12,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   TouchableOpacity,
+  ActivityIndicator,
 } from "react-native";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
@@ -23,6 +24,12 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { Colors } from "@/constants/colors";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { supabase } from "@/lib/supabase/client";
+import {
+  canVerifySensitiveActionWithCode,
+  isAuthSecurityLoaded,
+  sensitiveActionSubmitReady,
+  userHasPassword,
+} from "@beautonomi/utils";
 
 type AuthSecurityState = {
   has_password: boolean;
@@ -39,22 +46,26 @@ export default function SettingsDeactivateAccountScreen() {
   const [reason, setReason] = useState("");
   const [loading, setLoading] = useState(false);
   const [requestingNonce, setRequestingNonce] = useState(false);
-  const hasPassword = authSecurity?.has_password !== false;
-  const canVerifyWithCode = Boolean(
-    authSecurity == null ||
-      authSecurity.has_password ||
-      authSecurity.has_mailable_email ||
-      authSecurity.has_phone,
-  );
+  const [profileLoadError, setProfileLoadError] = useState<string | null>(null);
+  const authSecurityLoaded = isAuthSecurityLoaded(authSecurity);
+  const hasPassword = userHasPassword(authSecurity);
+  const canVerifyWithCode = canVerifySensitiveActionWithCode(authSecurity);
 
   useEffect(() => {
     let alive = true;
     api.get<{ auth_security?: AuthSecurityState | null }>("/api/me/profile")
       .then((res) => {
-        if (!alive || res.error) return;
+        if (!alive) return;
+        if (res.error) {
+          setProfileLoadError(res.error.message ?? "Could not load account settings.");
+          return;
+        }
+        setProfileLoadError(null);
         setAuthSecurity((res.data as { auth_security?: AuthSecurityState | null } | undefined)?.auth_security ?? null);
       })
-      .catch(() => {});
+      .catch((e) => {
+        if (alive) setProfileLoadError(getApiErrorMessage(e, "Could not load account settings."));
+      });
     return () => {
       alive = false;
     };
@@ -63,6 +74,10 @@ export default function SettingsDeactivateAccountScreen() {
   const handleDeactivate = useCallback(async () => {
     const pwd = password.trim();
     const nonce = verificationNonce.trim();
+    if (!authSecurityLoaded) {
+      Alert.alert("Required", "Still loading account security settings. Please try again.");
+      return;
+    }
     if (hasPassword && !pwd) {
       Alert.alert("Required", "Please enter your password to deactivate.");
       return;
@@ -108,7 +123,7 @@ export default function SettingsDeactivateAccountScreen() {
         },
       ]
     );
-  }, [password, verificationNonce, hasPassword, reason, signOut, router]);
+  }, [password, verificationNonce, hasPassword, authSecurityLoaded, reason, signOut, router]);
 
   const requestVerificationCode = useCallback(async () => {
     if (!canVerifyWithCode) {
@@ -149,8 +164,16 @@ export default function SettingsDeactivateAccountScreen() {
                 Deactivating disables your account. Your data is kept. You can reactivate anytime by logging in again or opening the reactivate page in the web app.
               </Text>
             </View>
+            {profileLoadError ? (
+              <Text style={{ marginBottom: 12, fontSize: 14, color: "#dc2626" }}>{profileLoadError}</Text>
+            ) : null}
             <View style={{ marginBottom: 12 }}>
-              {hasPassword ? (
+              {!authSecurityLoaded ? (
+                <View style={{ alignItems: "center", paddingVertical: 12 }}>
+                  <ActivityIndicator color={Colors.gray[600]} />
+                  <Text style={{ marginTop: 8, fontSize: 14, color: Colors.gray[600] }}>Loading verification options…</Text>
+                </View>
+              ) : hasPassword ? (
                 <>
                   <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Password</Text>
                   <TextInput
@@ -202,7 +225,13 @@ export default function SettingsDeactivateAccountScreen() {
                 label={loading ? "Deactivating…" : "Deactivate account"}
                 onPress={handleDeactivate}
                 fullWidth
-                disabled={loading}
+                disabled={
+                  loading ||
+                  !sensitiveActionSubmitReady(authSecurity, {
+                    password,
+                    verificationNonce,
+                  })
+                }
               />
             </View>
           </View>

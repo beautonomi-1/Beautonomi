@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  AppState,
   Modal,
   Platform,
   Text,
@@ -11,6 +12,7 @@ import { CameraView, useCameraPermissions, type BarcodeScanningResult } from "ex
 import { Ionicons } from "@expo/vector-icons";
 import { twStyle } from "@/lib/twStyle";
 import { isArrivalQrPayloadString } from "@/lib/arrival-qr-payload";
+import { openAppSettings } from "@/lib/native-permissions";
 
 type Props = {
   visible: boolean;
@@ -20,7 +22,7 @@ type Props = {
 };
 
 export function ArrivalQrScannerModal({ visible, onClose, onValidScan }: Props) {
-  const [permission, requestPermission] = useCameraPermissions();
+  const [permission, requestPermission, getPermission] = useCameraPermissions();
   const [cameraReady, setCameraReady] = useState(false);
   const [suppressScan, setSuppressScan] = useState(false);
 
@@ -28,8 +30,16 @@ export function ArrivalQrScannerModal({ visible, onClose, onValidScan }: Props) 
     if (!visible) {
       setSuppressScan(false);
       setCameraReady(false);
+      return;
     }
-  }, [visible]);
+    void getPermission();
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        void getPermission();
+      }
+    });
+    return () => sub.remove();
+  }, [getPermission, visible]);
 
   const handleBarcode = useCallback(
     (result: BarcodeScanningResult) => {
@@ -85,14 +95,23 @@ export function ArrivalQrScannerModal({ visible, onClose, onValidScan }: Props) 
           <View style={twStyle("flex-1 justify-center px-6")}>
             <Text style={twStyle("text-white text-center mb-4")}>
               Camera access is needed to scan the customer&apos;s arrival QR code.
+              You can close this scanner and enter the arrival code manually.
             </Text>
             <TouchableOpacity
-              onPress={() => void requestPermission()}
+              onPress={() => {
+                if (permission?.canAskAgain === false) {
+                  void openAppSettings();
+                  return;
+                }
+                void requestPermission();
+              }}
               style={twStyle("bg-primary py-3 rounded-xl items-center")}
               accessibilityRole="button"
-              accessibilityLabel="Allow camera"
+              accessibilityLabel={permission?.canAskAgain === false ? "Open settings for camera access" : "Allow camera"}
             >
-              <Text style={twStyle("text-white font-semibold")}>Allow camera</Text>
+              <Text style={twStyle("text-white font-semibold")}>
+                {permission?.canAskAgain === false ? "Open Settings" : "Allow camera"}
+              </Text>
             </TouchableOpacity>
           </View>
         ) : (
