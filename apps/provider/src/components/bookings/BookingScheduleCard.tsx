@@ -273,56 +273,67 @@ export function BookingScheduleCard({
 
             <View style={twStyle("my-3 h-px bg-gray-100")} />
 
-            <View style={twStyle("flex-row items-center gap-2")}>
-              {booking.total_amount != null && booking.total_amount > 0 ? (
-                <Text style={twStyle("text-sm font-extrabold text-gray-950")}>
-                  {formatCurrency(booking.total_amount, currency)}
-                </Text>
-              ) : null}
-              {payment && paymentStyle ? (
-                <View style={[twStyle("rounded-full px-2 py-1"), { backgroundColor: paymentStyle.bg }]}>
-                  <Text style={[twStyle("text-[11px] font-bold"), { color: paymentStyle.text }]}>{payment.label}</Text>
-                </View>
-              ) : null}
-              {visibleTraits.map((trait) => (
-                <View key={trait.label} style={twStyle("flex-row items-center gap-1 rounded-full bg-gray-100 px-2 py-1")}>
-                  <Ionicons name={trait.icon} size={11} color="#6b7280" />
-                  <Text style={twStyle("text-[11px] font-semibold text-gray-500")}>{trait.label}</Text>
-                </View>
-              ))}
-              {overflowCount > 0 ? (
-                <View style={twStyle("rounded-full bg-gray-100 px-2 py-1")}>
-                  <Text style={twStyle("text-[11px] font-bold text-gray-500")}>+{overflowCount}</Text>
-                </View>
-              ) : null}
-              <View style={{ flex: 1 }} />
-              {cta ? (
-                <TouchableOpacity
-                  onPress={() => {
-                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                    void onApplyStatus(booking.id, cta, `${cta.label} saved`);
-                  }}
-                  disabled={pendingIds.has(booking.id)}
-                  style={[
-                    twStyle("min-h-[36px] flex-row items-center justify-center rounded-full px-3.5"),
-                    { backgroundColor: Colors.primary, minWidth: 108 },
-                    pendingIds.has(booking.id) ? { opacity: 0.7 } : null,
-                  ]}
-                  accessibilityRole="button"
-                  accessibilityLabel={cta.label}
-                >
-                  {pendingIds.has(booking.id) ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <>
-                      <Text style={twStyle("text-xs font-extrabold text-white")}>{cta.label}</Text>
-                      <Ionicons name="arrow-forward" size={13} color="#fff" style={{ marginLeft: 4 }} />
-                    </>
-                  )}
-                </TouchableOpacity>
-              ) : booking.booking_number ? (
-                <Text style={twStyle("text-xs font-semibold text-gray-400")}>#{booking.booking_number}</Text>
-              ) : null}
+            <View style={twStyle("gap-2")}>
+              <View style={twStyle("flex-row flex-wrap items-center gap-2")}>
+                {booking.total_amount != null && booking.total_amount > 0 ? (
+                  <Text style={twStyle("text-sm font-extrabold text-gray-950")}>
+                    {formatCurrency(booking.total_amount, currency)}
+                  </Text>
+                ) : null}
+                {payment && paymentStyle ? (
+                  <View style={[twStyle("rounded-full px-2 py-1"), { backgroundColor: paymentStyle.bg }]}>
+                    <Text style={[twStyle("text-[11px] font-bold"), { color: paymentStyle.text }]}>{payment.label}</Text>
+                  </View>
+                ) : null}
+                {visibleTraits.map((trait) => (
+                  <View key={trait.label} style={twStyle("flex-row items-center gap-1 rounded-full bg-gray-100 px-2 py-1")}>
+                    <Ionicons name={trait.icon} size={11} color="#6b7280" />
+                    <Text style={twStyle("text-[11px] font-semibold text-gray-500")}>{trait.label}</Text>
+                  </View>
+                ))}
+                {overflowCount > 0 ? (
+                  <View style={twStyle("rounded-full bg-gray-100 px-2 py-1")}>
+                    <Text style={twStyle("text-[11px] font-bold text-gray-500")}>+{overflowCount}</Text>
+                  </View>
+                ) : null}
+              </View>
+
+              <View style={twStyle("flex-row justify-end")}>
+                {cta ? (
+                  <TouchableOpacity
+                    onPress={() => {
+                      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                      void onApplyStatus(booking.id, cta, `${cta.label} saved`);
+                    }}
+                    disabled={pendingIds.has(booking.id)}
+                    style={[
+                      twStyle("min-h-[36px] flex-row items-center justify-center rounded-full px-3.5"),
+                      { backgroundColor: Colors.primary, minWidth: 96, maxWidth: "100%", flexShrink: 1 },
+                      pendingIds.has(booking.id) ? { opacity: 0.7 } : null,
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel={cta.label}
+                  >
+                    {pendingIds.has(booking.id) ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <>
+                        <Text
+                          style={twStyle("text-xs font-extrabold text-white")}
+                          numberOfLines={1}
+                          adjustsFontSizeToFit
+                          minimumFontScale={0.85}
+                        >
+                          {cta.label}
+                        </Text>
+                        <Ionicons name="arrow-forward" size={13} color="#fff" style={{ marginLeft: 4 }} />
+                      </>
+                    )}
+                  </TouchableOpacity>
+                ) : booking.booking_number ? (
+                  <Text style={twStyle("text-xs font-semibold text-gray-400")}>#{booking.booking_number}</Text>
+                ) : null}
+              </View>
             </View>
           </View>
         </View>

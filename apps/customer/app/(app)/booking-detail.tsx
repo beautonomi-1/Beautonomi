@@ -37,6 +37,7 @@ import * as FileSystem from "expo-file-system/legacy";
 import * as Clipboard from "expo-clipboard";
 import * as Calendar from "expo-calendar";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { showPermissionRecoveryAlert } from "@/lib/native-permissions";
 import {
   ARRIVAL_PIN_CUSTOMER_HEADING,
   ARRIVAL_PIN_CUSTOMER_SUBTITLE,
@@ -887,8 +888,23 @@ export default function BookingDetailScreen() {
       setNativeCalLoading(true);
       try {
         const { status } = await Calendar.requestCalendarPermissionsAsync();
-        if (status !== "granted") {
-          Alert.alert(bd("calendarAccessTitle"), bd("calendarAccessBody"));
+        let calendarAllowed = status === "granted";
+        if (!calendarAllowed) {
+          calendarAllowed = await showPermissionRecoveryAlert(
+            {
+              title: bd("calendarAccessTitle"),
+              message: bd("calendarAccessBody"),
+            },
+            {
+              canAskAgain: true,
+              retry: async () => {
+                const retry = await Calendar.requestCalendarPermissionsAsync();
+                return retry.status === "granted";
+              },
+            },
+          );
+        }
+        if (!calendarAllowed) {
           return;
         }
         let calendarId: string | null = null;
@@ -1914,6 +1930,16 @@ export default function BookingDetailScreen() {
             <View style={{ marginBottom: 8, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: Colors.gray[200] }}>
               <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Group booking</Text>
               <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{booking.group_booking_ref}</Text>
+              {booking.group_booking_id ? (
+                <TouchableOpacity
+                  onPress={() => router.push({ pathname: "/(app)/group-booking-detail", params: { id: booking.group_booking_id } })}
+                  style={{ marginTop: 8, alignSelf: "flex-start", borderRadius: 10, borderWidth: 1, borderColor: Colors.gray[300], paddingHorizontal: 12, paddingVertical: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="View group booking details"
+                >
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[900] }}>View group details</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
           )}
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>

@@ -25,6 +25,10 @@ type PayoutRow = Record<string, unknown> & {
   status?: string;
   amount?: number;
   currency?: string;
+  transfer_code?: string | null;
+  payout_provider_response?:
+    | { data?: { status?: string | null } | null; status?: string | null }
+    | null;
   provider?: { business_name?: string } | null;
 };
 
@@ -49,7 +53,26 @@ type PayoutsEnvelope = {
   };
 };
 
-type ModalState = { kind: "reject" | "mark_failed" | "approve" | "mark_paid" | "transfer"; id: string; providerName?: string } | null;
+type ModalState =
+  | {
+      kind: "reject" | "mark_failed" | "approve" | "mark_paid" | "transfer" | "finalize_transfer";
+      id: string;
+      providerName?: string;
+      transferCode?: string;
+    }
+  | null;
+
+type TransferActionResult = {
+  payout?: PayoutRow;
+  transfer?: {
+    transfer_code?: string;
+    status?: string;
+  };
+};
+
+function getPaystackTransferStatus(response: PayoutRow["payout_provider_response"]): string | null {
+  return response?.data?.status ?? response?.status ?? null;
+}
 
 export function PayoutsPage() {
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_FINANCE, "Finance access is required.");
@@ -60,6 +83,7 @@ export function PayoutsPage() {
   const status = sp.get("status") || "all";
   const [modal, setModal] = useState<ModalState>(null);
   const [reason, setReason] = useState("");
+  const [transferOtp, setTransferOtp] = useState("");
 
   const filters = useMemo(() => ({ page, status }), [page, status]);
 
@@ -125,10 +149,31 @@ export function PayoutsPage() {
   });
 
   const transferMut = useMutation({
-    mutationFn: (id: string) => adminApi.postJson(`/api/admin/payouts/${id}/initiate-transfer`, {}),
+    mutationFn: (id: string) =>
+      adminApi.postJson<TransferActionResult>(`/api/admin/payouts/${id}/initiate-transfer`, {}),
+    onSuccess: (result, id) => {
+      invalidate();
+      const transfer = result?.transfer;
+      if (transfer?.status === "otp" && transfer.transfer_code) {
+        setTransferOtp("");
+        setModal({ kind: "finalize_transfer", id, transferCode: transfer.transfer_code });
+        adminToast.info("Transfer initiated. Enter the Paystack OTP to finalize it.");
+        return;
+      }
+      setModal(null);
+      adminToast.success("Transfer initiated");
+    },
+    onError: (e: Error) => adminToast.error(e.message),
+  });
+
+  const finalizeTransferMut = useMutation({
+    mutationFn: ({ id, otp }: { id: string; otp: string }) =>
+      adminApi.postJson<TransferActionResult>(`/api/admin/payouts/${id}/finalize-transfer`, { otp }),
     onSuccess: () => {
       invalidate();
-      adminToast.success("Transfer initiated");
+      setModal(null);
+      setTransferOtp("");
+      adminToast.success("Transfer finalized");
     },
     onError: (e: Error) => adminToast.error(e.message),
   });
@@ -149,6 +194,7 @@ export function PayoutsPage() {
   function closeModal() {
     setModal(null);
     setReason("");
+    setTransferOtp("");
   }
 
   function submitModal() {
@@ -164,7 +210,12 @@ export function PayoutsPage() {
     }
     if (modal.kind === "transfer") {
       transferMut.mutate(modal.id);
-      setModal(null);
+      return;
+    }
+    if (modal.kind === "finalize_transfer") {
+      const otp = transferOtp.trim();
+      if (!otp) return;
+      finalizeTransferMut.mutate({ id: modal.id, otp });
       return;
     }
     const text = reason.trim();
@@ -200,11 +251,15 @@ export function PayoutsPage() {
         cell: (r) => {
           const id = String(r.id ?? "");
           const st = String(r.status ?? "");
+          const transferCode = typeof r.transfer_code === "string" ? r.transfer_code : "";
+          const paystackStatus = getPaystackTransferStatus(r.payout_provider_response);
+          const needsOtp = Boolean(transferCode && paystackStatus === "otp");
           const providerName = (r.provider as { business_name?: string } | null)?.business_name;
           const busyThis =
             approveMut.isPending ||
             markPaidMut.isPending ||
             transferMut.isPending ||
+            finalizeTransferMut.isPending ||
             ((rejectMut.isPending || markFailedMut.isPending) && modal?.id === id);
           return (
             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
@@ -236,39 +291,75 @@ export function PayoutsPage() {
               ) : null}
               {st === "processing" ? (
                 <>
-                  <button
-                    type="button"
-                    className="min-h-11 touch-manipulation text-left text-sm font-semibold text-gray-900 underline disabled:opacity-50"
-                    disabled={markPaidMut.isPending || busyThis}
-                    onClick={() => {
-                      setReason("");
-                      setModal({ kind: "mark_paid", id, providerName: providerName || undefined });
-                    }}
-                  >
-                    Mark paid
-                  </button>
-                  <button
-                    type="button"
-                    className="min-h-11 touch-manipulation text-left text-sm font-semibold text-gray-900 underline disabled:opacity-50"
-                    disabled={transferMut.isPending || busyThis}
-                    onClick={() => {
-                      setReason("");
-                      setModal({ kind: "transfer", id, providerName: providerName || undefined });
-                    }}
-                  >
-                    Transfer
-                  </button>
-                  <button
-                    type="button"
-                    className="min-h-11 touch-manipulation text-left text-sm font-semibold text-gray-900 underline disabled:opacity-50"
-                    disabled={busyThis}
-                    onClick={() => {
-                      setReason("");
-                      setModal({ kind: "mark_failed", id });
-                    }}
-                  >
-                    Mark failed
-                  </button>
+                  {!needsOtp ? (
+                    <button
+                      type="button"
+                      className="min-h-11 touch-manipulation text-left text-sm font-semibold text-gray-900 underline disabled:opacity-50"
+                      disabled={markPaidMut.isPending || busyThis}
+                      onClick={() => {
+                        setReason("");
+                        setModal({ kind: "mark_paid", id, providerName: providerName || undefined });
+                      }}
+                    >
+                      Mark paid
+                    </button>
+                  ) : null}
+                  {!transferCode ? (
+                    <button
+                      type="button"
+                      className="min-h-11 touch-manipulation text-left text-sm font-semibold text-gray-900 underline disabled:opacity-50"
+                      disabled={transferMut.isPending || busyThis}
+                      onClick={() => {
+                        setReason("");
+                        setModal({ kind: "transfer", id, providerName: providerName || undefined });
+                      }}
+                    >
+                      Transfer
+                    </button>
+                  ) : null}
+                  {needsOtp ? (
+                    <button
+                      type="button"
+                      className="min-h-11 touch-manipulation text-left text-sm font-semibold text-gray-900 underline disabled:opacity-50"
+                      disabled={finalizeTransferMut.isPending || busyThis}
+                      onClick={() => {
+                        setReason("");
+                        setTransferOtp("");
+                        setModal({
+                          kind: "finalize_transfer",
+                          id,
+                          providerName: providerName || undefined,
+                          transferCode,
+                        });
+                      }}
+                    >
+                      Finalize OTP
+                    </button>
+                  ) : null}
+                  {/* Show Mark failed when:
+                      (a) no transfer yet — no Paystack entry to reconcile
+                      (b) transfer exists but Paystack already failed/reversed it
+                      (c) transfer is stuck in OTP state (admin override) */}
+                  {!transferCode ||
+                  paystackStatus === "failed" ||
+                  paystackStatus === "reversed" ||
+                  needsOtp ? (
+                    <button
+                      type="button"
+                      className="min-h-11 touch-manipulation text-left text-sm font-semibold text-gray-900 underline disabled:opacity-50"
+                      disabled={busyThis}
+                      onClick={() => {
+                        setReason("");
+                        setModal({
+                          kind: "mark_failed",
+                          id,
+                          transferCode: transferCode || undefined,
+                        });
+                      }}
+                    >
+                      {needsOtp ? "Abandon OTP" : "Mark failed"}
+                    </button>
+                  ) : null}
                 </>
               ) : null}
               {!["pending", "processing"].includes(st) ? <span className="text-gray-400">—</span> : null}
@@ -281,6 +372,7 @@ export function PayoutsPage() {
       approveMut,
       markPaidMut,
       transferMut,
+      finalizeTransferMut,
       rejectMut,
       markFailedMut,
       modal?.id,
@@ -306,10 +398,17 @@ export function PayoutsPage() {
   }
 
   const tabs = ["all", "pending", "processing", "completed", "failed"] as const;
-  const modalBusy = approveMut.isPending || rejectMut.isPending || markFailedMut.isPending || markPaidMut.isPending || transferMut.isPending;
+  const modalBusy =
+    approveMut.isPending ||
+    rejectMut.isPending ||
+    markFailedMut.isPending ||
+    markPaidMut.isPending ||
+    transferMut.isPending ||
+    finalizeTransferMut.isPending;
   const isApproveModal = modal?.kind === "approve";
   const isMarkPaidModal = modal?.kind === "mark_paid";
   const isTransferModal = modal?.kind === "transfer";
+  const isFinalizeTransferModal = modal?.kind === "finalize_transfer";
   const isConfirmationOnlyModal = isApproveModal || isMarkPaidModal || isTransferModal;
 
   return (
@@ -391,9 +490,11 @@ export function PayoutsPage() {
               ? "Confirm payout paid"
               : isTransferModal
                 ? "Confirm payout transfer"
-                : modal?.kind === "reject"
-                  ? "Reject payout"
-                  : "Mark payout failed"
+                : isFinalizeTransferModal
+                  ? "Finalize Paystack transfer"
+                  : modal?.kind === "reject"
+                    ? "Reject payout"
+                    : "Mark payout failed"
         }
         description={
           isApproveModal
@@ -402,9 +503,13 @@ export function PayoutsPage() {
               ? `Mark payout for ${modal?.providerName ?? "this provider"} as paid? Use this only after settlement is confirmed.`
               : isTransferModal
                 ? `Initiate transfer for ${modal?.providerName ?? "this provider"}? This may trigger a real provider payout.`
-                : modal?.kind === "reject"
-                  ? "A reason is required."
-                  : "A failure reason is required."
+                : isFinalizeTransferModal
+                  ? `Enter the OTP Paystack sent for transfer ${modal?.transferCode ?? "this payout"}.`
+                  : modal?.kind === "reject"
+                    ? "A reason is required."
+                    : modal?.kind === "mark_failed" && modal.transferCode
+                      ? "This transfer has a Paystack transfer code. Only use this if Paystack has already failed/reversed it, or you are intentionally abandoning a stuck OTP. Provide a reason."
+                      : "A failure reason is required."
         }
         footer={
           <>
@@ -414,10 +519,24 @@ export function PayoutsPage() {
             <button
               type="button"
               className="inline-flex min-h-11 min-w-[5.5rem] items-center justify-center rounded-xl bg-gray-900 px-4 text-sm font-medium text-white disabled:opacity-50"
-              disabled={modalBusy || (!isConfirmationOnlyModal && !reason.trim())}
+              disabled={
+                modalBusy ||
+                (!isConfirmationOnlyModal &&
+                  !isFinalizeTransferModal &&
+                  !reason.trim()) ||
+                (isFinalizeTransferModal && !transferOtp.trim())
+              }
               onClick={() => submitModal()}
             >
-              {isApproveModal ? "Approve" : isMarkPaidModal ? "Mark paid" : isTransferModal ? "Transfer" : "Submit"}
+              {isApproveModal
+                ? "Approve"
+                : isMarkPaidModal
+                  ? "Mark paid"
+                  : isTransferModal
+                    ? "Transfer"
+                    : isFinalizeTransferModal
+                      ? "Finalize"
+                      : "Submit"}
             </button>
           </>
         }
@@ -430,6 +549,20 @@ export function PayoutsPage() {
                 ? "This records the payout as paid in admin operations. Confirm the external payment has settled before continuing."
                 : "This starts the transfer flow for the payout. Confirm provider banking details and amount before continuing."}
           </p>
+        ) : isFinalizeTransferModal ? (
+          <label className="block text-sm">
+            <span className="text-gray-700">Paystack OTP</span>
+            <input
+              className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-3 text-sm tracking-widest shadow-inner"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              value={transferOtp}
+              onChange={(e) => setTransferOtp(e.target.value.replace(/[^\d]/g, ""))}
+              maxLength={12}
+              placeholder="000000"
+              autoFocus
+            />
+          </label>
         ) : (
           <textarea
             className="min-h-[120px] w-full rounded-xl border border-gray-300 p-3 text-sm shadow-inner"

@@ -29,6 +29,7 @@ import { trackSupportTicketDetailView, trackSupportTicketReply } from "@/lib/ana
 import { labelForSupportTicketCategory } from "@/lib/supportTicketCategoryPresets";
 import { appendFormDataFileNative } from "@beautonomi/utils";
 import { invalidateSupportTicketsListCache } from "@/lib/api-response-cache";
+import { launchImageLibraryWithPermission } from "@/lib/native-permissions";
 
 type Message = {
   id: string;
@@ -215,10 +216,17 @@ export default function SupportTicketDetailScreen() {
     if (!id || uploadingAttachment || pendingAttachments.length >= 6) return;
     setUploadingAttachment(true);
     try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        quality: 0.85,
-      });
+      const result = await launchImageLibraryWithPermission(
+        {
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          quality: 0.85,
+        },
+        {
+          title: "Permission needed",
+          message: "Allow photo library access to attach images.",
+        },
+      );
+      if (!result) return;
       if (result.canceled || !result.assets?.[0]) return;
       const asset = result.assets[0];
       const formData = new FormData();

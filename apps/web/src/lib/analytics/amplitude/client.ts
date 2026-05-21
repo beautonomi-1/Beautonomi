@@ -19,8 +19,14 @@ let lastEnableSessionReplay: boolean | undefined = undefined;
  */
 export function hardResetAmplitudeBrowser(): void {
   if (isInitialized || pluginPipeline) {
+    // amplitude.reset() emits a spurious "Cannot unregister the default
+    // instance" warning in SDK v2 because the default named instance is
+    // protected from unregistration in Amplitude's InstanceManager.  We use
+    // setUserId(undefined) instead, which clears the current identity without
+    // triggering the unregister path, achieving the same effect for our use
+    // case (clearing user context before re-init with a new replay policy).
     try {
-      amplitude.reset();
+      amplitude.setUserId(undefined);
     } catch {
       /* ignore */
     }
@@ -83,7 +89,22 @@ export async function initAmplitude(
         config.sampling_rate != null && config.sampling_rate >= 0 && config.sampling_rate <= 1
           ? config.sampling_rate
           : 0.01;
-      amplitude.add(sessionReplayPlugin({ sampleRate }));
+      // Defer session replay plugin initialization until after the page is
+      // interactive.  The plugin eagerly injects <link rel="preload"> tags for
+      // its recording-engine workers as soon as it is added to the Amplitude
+      // instance.  When initialized synchronously during page load those
+      // preloads fire before the browser has consumed them, producing dozens of
+      // "preloaded using link preload but not used within a few seconds" console
+      // warnings.  Delaying to requestIdleCallback / setTimeout(2 s) moves the
+      // preloads outside the browser's load-event tracking window.
+      const scheduleReplay = () => {
+        amplitude.add(sessionReplayPlugin({ sampleRate }));
+      };
+      if (typeof window !== "undefined" && typeof (window as any).requestIdleCallback === "function") {
+        (window as any).requestIdleCallback(scheduleReplay, { timeout: 4000 });
+      } else {
+        setTimeout(scheduleReplay, 2000);
+      }
     }
 
     pluginPipeline = new PluginPipeline(context);

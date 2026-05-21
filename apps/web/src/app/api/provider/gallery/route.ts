@@ -210,34 +210,59 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Get current gallery
-    const { data: provider, error: fetchError } = await supabase
-      .from("providers")
-      .select("gallery")
-      .eq("id", providerId)
-      .single();
+    // §provider-gallery-race 2026-05: prefer the atomic RPC introduced in
+    // migration 615 so two parallel uploads can never overwrite each other's
+    // appended URL. We fall back to the read-modify-write path only when the
+    // RPC doesn't exist (older DBs without the migration applied), and even
+    // then guard against the most common races by re-reading the gallery
+    // right before writing.
+    const supabaseAdmin = getSupabaseAdmin();
+    type AppendRpcRow = { url: string; position: number; gallery_length: number };
+    let position: number | null = null;
 
-    if (fetchError) {
-      throw fetchError;
-    }
+    const rpcRes = await supabaseAdmin.rpc("append_provider_gallery", {
+      p_provider_id: providerId,
+      p_url: url,
+      p_apply_as: applyAs,
+    });
 
-    const currentGallery: string[] = provider.gallery || [];
-    const updatedGallery = [...currentGallery, url];
-
-    const updateRow: Record<string, unknown> = { gallery: updatedGallery };
-    if (applyAs === "thumbnail") updateRow.thumbnail_url = url;
-    if (applyAs === "avatar") updateRow.avatar_url = url;
-
-    const { error } = await supabase.from("providers").update(updateRow).eq("id", providerId).select("gallery").single();
-
-    if (error) {
-      throw error;
+    const rpcError = rpcRes.error;
+    if (!rpcError) {
+      const rows = (rpcRes.data ?? []) as AppendRpcRow[];
+      const first = Array.isArray(rows) ? rows[0] : (rows as unknown as AppendRpcRow);
+      position = typeof first?.position === "number" ? first.position : null;
+    } else {
+      // 42883 = undefined_function (migration 615 not applied yet).
+      const code = (rpcError as { code?: string }).code;
+      if (code && code !== "42883") {
+        throw rpcError;
+      }
+      // Fallback: best-effort serialized append for legacy environments.
+      const { data: provider, error: fetchError } = await supabase
+        .from("providers")
+        .select("gallery")
+        .eq("id", providerId)
+        .single();
+      if (fetchError) throw fetchError;
+      const currentGallery: string[] = provider.gallery || [];
+      const updatedGallery = [...currentGallery, url];
+      const updateRow: Record<string, unknown> = { gallery: updatedGallery };
+      if (applyAs === "thumbnail") updateRow.thumbnail_url = url;
+      if (applyAs === "avatar") updateRow.avatar_url = url;
+      const { error } = await supabase
+        .from("providers")
+        .update(updateRow)
+        .eq("id", providerId)
+        .select("gallery")
+        .single();
+      if (error) throw error;
+      position = updatedGallery.length - 1;
     }
 
     return successResponse(
       {
         url,
-        position: updatedGallery.length - 1,
+        position: position ?? 0,
       },
       201
     );

@@ -297,6 +297,10 @@ export default function BookingsScreen() {
 
   const onBookingPress = useCallback(
     (b: Booking) => {
+      if (b.is_group_booking && b.group_booking_id) {
+        router.push({ pathname: "/(app)/group-booking-detail", params: { id: b.group_booking_id } });
+        return;
+      }
       router.push({ pathname: "/(app)/booking-detail", params: { id: b.id } });
     },
     []

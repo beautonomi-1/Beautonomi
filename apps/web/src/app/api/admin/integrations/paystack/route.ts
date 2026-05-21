@@ -9,11 +9,18 @@ import {
 import { writeAuditLog } from "@/lib/audit/audit";
 import { resolveAdminTenantContext } from "@/lib/tenant/scoped-overrides";
 import { z } from "zod";
+import {
+  getEffectiveSkipPayoutAccountVerification,
+  getSkipPayoutAccountVerificationOnScope,
+  setSkipPayoutAccountVerificationForScope,
+} from "@/lib/payments/payout-account-verification-settings";
 
 const patchSchema = z.object({
   paystack_secret_key: z.string().optional(),
   paystack_public_key: z.string().optional(),
   paystack_webhook_secret: z.string().optional(),
+  /** When true, hide Paystack verify on provider bank setup and skip server-side resolve. */
+  skip_payout_account_verification: z.boolean().optional(),
 });
 
 function maskKey(v: string | null | undefined): string | null {
@@ -82,6 +89,19 @@ export async function GET(request: NextRequest) {
       has_env_public_key: !!process.env.PAYSTACK_PUBLIC_KEY,
     };
 
+    let skip_payout_account_verification = false;
+    let skip_setting_inherited_from_global = false;
+    if (scopeTenantId != null) {
+      const effective = await getEffectiveSkipPayoutAccountVerification(supabase, scopeTenantId);
+      skip_payout_account_verification = effective.skip;
+      skip_setting_inherited_from_global = effective.source === "global";
+    } else {
+      skip_payout_account_verification = await getSkipPayoutAccountVerificationOnScope(
+        supabase,
+        null,
+      );
+    }
+
     const dbConfigured = hasPaystackKeysInRow(
       data as { paystack_secret_key?: string | null; paystack_public_key?: string | null }
     );
@@ -96,6 +116,9 @@ export async function GET(request: NextRequest) {
         has_webhook_secret: false,
         inherited_from_global: false,
         secrets_scope: scopeTenantId == null ? "global" : "tenant",
+        skip_payout_account_verification,
+        show_verify_account_button: !skip_payout_account_verification,
+        skip_setting_inherited_from_global,
         env,
       });
     }
@@ -109,6 +132,9 @@ export async function GET(request: NextRequest) {
       updated_at: data.updated_at,
       inherited_from_global,
       secrets_scope: inherited_from_global ? "global" : scopeTenantId == null ? "global" : "tenant",
+      skip_payout_account_verification,
+      show_verify_account_button: !skip_payout_account_verification,
+      skip_setting_inherited_from_global,
       env,
     });
   } catch (error) {
@@ -154,11 +180,32 @@ export async function PATCH(request: NextRequest) {
       updates.paystack_webhook_secret = parsed.data.paystack_webhook_secret?.trim() || null;
     }
 
-    if (Object.keys(updates).length === 0) {
-      return errorResponse("No fields to update", "VALIDATION_ERROR", 400);
+    const supabase = getSupabaseAdmin();
+
+    if ("skip_payout_account_verification" in parsed.data) {
+      await setSkipPayoutAccountVerificationForScope(
+        supabase,
+        scopeTenantId,
+        parsed.data.skip_payout_account_verification === true,
+      );
     }
 
-    const supabase = getSupabaseAdmin();
+    if (Object.keys(updates).length === 0) {
+      if ("skip_payout_account_verification" in parsed.data) {
+        await writeAuditLog({
+          actor_user_id: user.id,
+          actor_role: (user as { role?: string }).role ?? "superadmin",
+          action: "admin.integrations.paystack.payout_verify_ui.updated",
+          entity_type: "platform_settings",
+          metadata: {
+            skip_payout_account_verification: parsed.data.skip_payout_account_verification,
+            scope: scopeTenantId == null ? "global" : "tenant",
+          },
+        });
+        return successResponse({ message: "Paystack payout UI settings updated" });
+      }
+      return errorResponse("No fields to update", "VALIDATION_ERROR", 400);
+    }
 
     let existingQuery = (supabase.from("platform_secrets") as any)
       .select("id")

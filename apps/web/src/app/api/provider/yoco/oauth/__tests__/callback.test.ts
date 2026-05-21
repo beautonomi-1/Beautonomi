@@ -151,9 +151,9 @@ describe("GET /api/provider/yoco/oauth/callback", () => {
       return makeStateLookup(null);
     });
 
-    // The webhook subscription fetch may or may not be called; stub it to fail
-    // gracefully so we still take the happy path.
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 500 }));
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ id: "wh_123", secret: "sec_123" }), { status: 201 }),
+    );
 
     const { GET } = await import("../callback/route");
     const res = await GET(
@@ -165,5 +165,16 @@ describe("GET /api/provider/yoco/oauth/callback", () => {
     );
     expect(res.status).toBe(303);
     expect(res.headers.get("location") || "").toContain("yoco_connected=1");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.yoco.com/v1/webhooks/subscriptions/",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          name: "beautonomi-default",
+          notification_url: "https://app/api/provider/yoco/webhook",
+          event_types: ["payment.created", "payment.refunded"],
+        }),
+      }),
+    );
   });
 });

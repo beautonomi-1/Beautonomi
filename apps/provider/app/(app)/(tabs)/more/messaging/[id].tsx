@@ -41,6 +41,10 @@ import * as DocumentPicker from "expo-document-picker";
 import { api } from "@/lib/api-client";
 import { appendFormDataFileNative } from "@beautonomi/utils";
 import { pushInAppBrowser } from "@/lib/in-app-web";
+import {
+  launchCameraWithPermission,
+  launchImageLibraryWithPermission,
+} from "@/lib/native-permissions";
 
 interface CustomOfferAttachment {
   type: "custom_offer";
@@ -429,15 +433,18 @@ export default function ChatScreen() {
     if (!conversationId || sending || uploading) return;
 
     const choosePhotoLibrary = async () => {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== "granted") {
-        Alert.alert("Permission needed", "Allow photo library access to attach images.");
-        return;
-      }
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        quality: 0.85,
-      });
+      const result = await launchImageLibraryWithPermission(
+        {
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          quality: 0.85,
+        },
+        {
+          title: "Permission needed",
+          message: "Allow photo library access to attach images.",
+        },
+        { defer: true },
+      );
+      if (!result) return;
       if (result.canceled || !result.assets?.[0]) return;
       const asset = result.assets[0];
       await uploadNativeFile({
@@ -448,15 +455,18 @@ export default function ChatScreen() {
     };
 
     const chooseVideoLibrary = async () => {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== "granted") {
-        Alert.alert("Permission needed", "Allow photo library access to attach videos.");
-        return;
-      }
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Videos,
-        videoQuality: ImagePicker.UIImagePickerControllerQualityType.Medium,
-      });
+      const result = await launchImageLibraryWithPermission(
+        {
+          mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+          videoQuality: ImagePicker.UIImagePickerControllerQualityType.Medium,
+        },
+        {
+          title: "Permission needed",
+          message: "Allow photo library access to attach videos.",
+        },
+        { defer: true },
+      );
+      if (!result) return;
       if (result.canceled || !result.assets?.[0]) return;
       const asset = result.assets[0];
       const mime =
@@ -470,15 +480,18 @@ export default function ChatScreen() {
     };
 
     const chooseCameraPhoto = async () => {
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      if (status !== "granted") {
-        Alert.alert("Permission needed", "Allow camera access to take a photo.");
-        return;
-      }
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        quality: 0.85,
-      });
+      const result = await launchCameraWithPermission(
+        {
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          quality: 0.85,
+        },
+        {
+          title: "Permission needed",
+          message: "Allow camera access to take a photo.",
+        },
+        { defer: true },
+      );
+      if (!result) return;
       if (result.canceled || !result.assets?.[0]) return;
       const asset = result.assets[0];
       await uploadNativeFile({
@@ -489,16 +502,19 @@ export default function ChatScreen() {
     };
 
     const chooseCameraVideo = async () => {
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      if (status !== "granted") {
-        Alert.alert("Permission needed", "Allow camera access to record a video.");
-        return;
-      }
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Videos,
-        videoMaxDuration: 120,
-        videoQuality: ImagePicker.UIImagePickerControllerQualityType.Medium,
-      });
+      const result = await launchCameraWithPermission(
+        {
+          mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+          videoMaxDuration: 120,
+          videoQuality: ImagePicker.UIImagePickerControllerQualityType.Medium,
+        },
+        {
+          title: "Permission needed",
+          message: "Allow camera access to record a video.",
+        },
+        { defer: true },
+      );
+      if (!result) return;
       if (result.canceled || !result.assets?.[0]) return;
       const asset = result.assets[0];
       await uploadNativeFile({

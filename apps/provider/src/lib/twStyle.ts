@@ -322,15 +322,46 @@ const PALETTE: Record<string, Record<string, string>> = {
 };
 
 const PALETTE_RE =
-  /^(text|bg|border)(?:t|b|l|r)?-(red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|slate|zinc|stone)-(\d{2,3})$/;
+  /^(text|bg|border)(?:t|b|l|r)?-(red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|slate|zinc|stone)-(\d{2,3})(?:\/(\d+))?$/;
+
+function withOpacity(hex: string, opacityPercent?: string): string {
+  if (!opacityPercent) return hex;
+  const pct = Math.max(0, Math.min(100, parseInt(opacityPercent, 10)));
+  const raw = hex.replace("#", "");
+  if (raw.length !== 6 || Number.isNaN(pct)) return hex;
+  const r = parseInt(raw.slice(0, 2), 16);
+  const g = parseInt(raw.slice(2, 4), 16);
+  const b = parseInt(raw.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${pct / 100})`;
+}
+
+function parseCssLength(value: string): number | string {
+  if (value.endsWith("rem")) {
+    const rem = parseFloat(value.slice(0, -3));
+    return Number.isNaN(rem) ? value : rem * 16;
+  }
+  if (value.endsWith("px")) {
+    const px = parseFloat(value.slice(0, -2));
+    return Number.isNaN(px) ? value : px;
+  }
+  const n = parseFloat(value);
+  return Number.isNaN(n) ? value : n;
+}
 
 /** Resolve a Tailwind-style colour class against the standard palette. */
+function resolvePrimaryColor(cls: string): string | null {
+  const m = cls.match(/^(text|bg|border)(?:t|b|l|r)?-primary(?:\/(\d+))?$/);
+  if (!m) return null;
+  return withOpacity(PRIMARY, m[2]);
+}
+
 function resolvePaletteColor(cls: string): string | null {
   const m = cls.match(PALETTE_RE);
   if (!m) return null;
   const shades = PALETTE[m[2]];
   if (!shades) return null;
-  return shades[m[3]] ?? null;
+  const hex = shades[m[3]];
+  return hex ? withOpacity(hex, m[4]) : null;
 }
 
 function parsePx(value: string): number {
@@ -349,7 +380,10 @@ SPACE["2.5"] = 10;
 SPACE["3.5"] = 14;
 
 function getSpace(key: string): number {
-  return SPACE[key] ?? parsePx(key) ?? 0;
+  if (SPACE[key] !== undefined) return SPACE[key];
+  const numeric = Number(key);
+  if (Number.isFinite(numeric)) return numeric * 4;
+  return parsePx(key) ?? 0;
 }
 
 /** Build a single style object from a class string. Supports static classes only; for conditional classes use twStyle(`base ${cond ? 'a' : 'b'}`). */
@@ -376,6 +410,12 @@ export function twStyle(classNames: string): ViewStyle & TextStyle {
 
     // Flex
     if (c === "flex-1") { style.flex = 1; continue; }
+    if (c.match(/^flex-\[(.+)\]$/)) {
+      const raw = c.replace(/^flex-\[|\]$/g, "");
+      const flexValue = Number(raw);
+      if (Number.isFinite(flexValue)) style.flex = flexValue;
+      continue;
+    }
     if (c === "flex-row") { style.flexDirection = "row"; continue; }
     if (c === "flex-col") { style.flexDirection = "column"; continue; }
     if (c === "flex-wrap") { style.flexWrap = "wrap"; continue; }
@@ -440,6 +480,7 @@ export function twStyle(classNames: string): ViewStyle & TextStyle {
       continue;
     }
     if (c === "w-full") { style.width = "100%"; continue; }
+    if (c === "max-w-sm") { style.maxWidth = 384; continue; }
     if (c === "min-w-0") { style.minWidth = 0; continue; }
 
     // Position
@@ -489,6 +530,26 @@ export function twStyle(classNames: string): ViewStyle & TextStyle {
         if (!style.borderColor) style.borderColor = direct;
         continue;
       }
+      const primary = resolvePrimaryColor(c);
+      if (primary) {
+        if (
+          style.borderWidth === undefined &&
+          style.borderTopWidth === undefined &&
+          style.borderBottomWidth === undefined &&
+          style.borderLeftWidth === undefined &&
+          style.borderRightWidth === undefined
+        ) {
+          style.borderWidth = 1;
+        }
+        if (!style.borderColor) {
+          if (c.startsWith("border-t-")) style.borderTopColor = primary;
+          else if (c.startsWith("border-b-")) style.borderBottomColor = primary;
+          else if (c.startsWith("border-l-")) style.borderLeftColor = primary;
+          else if (c.startsWith("border-r-")) style.borderRightColor = primary;
+          else style.borderColor = primary;
+        }
+        continue;
+      }
       const palette = resolvePaletteColor(c);
       if (palette) {
         if (
@@ -527,6 +588,10 @@ export function twStyle(classNames: string): ViewStyle & TextStyle {
     } else if (c === "rounded-t-2xl") {
       style.borderTopLeftRadius = 16;
       style.borderTopRightRadius = 16;
+    } else if (c.match(/^rounded-\[(.+)\]$/)) {
+      const value = c.replace(/^rounded-\[|\]$/g, "");
+      const radius = parseCssLength(value);
+      if (typeof radius === "number") style.borderRadius = radius;
     } else if (c.match(/^rounded-/)) {
       const rMatch = c.match(/rounded-(\d+)/);
       if (rMatch) style.borderRadius = getSpace(rMatch[1]);
@@ -537,6 +602,11 @@ export function twStyle(classNames: string): ViewStyle & TextStyle {
       const textColor = COLOR_MAP[c];
       if (textColor) {
         style.color = textColor;
+        continue;
+      }
+      const primary = resolvePrimaryColor(c);
+      if (primary) {
+        style.color = primary;
         continue;
       }
       const palette = resolvePaletteColor(c);
@@ -557,6 +627,11 @@ export function twStyle(classNames: string): ViewStyle & TextStyle {
       const bgColor = COLOR_MAP[c];
       if (bgColor) {
         style.backgroundColor = bgColor;
+        continue;
+      }
+      const primary = resolvePrimaryColor(c);
+      if (primary) {
+        style.backgroundColor = primary;
         continue;
       }
       const grayKey = c.replace("bg-gray-", "");
@@ -592,6 +667,15 @@ export function twStyle(classNames: string): ViewStyle & TextStyle {
       const val = c.replace(/^tracking-\[|\]$/g, "");
       const n = val.endsWith("px") ? parsePx(val) : parseFloat(val);
       if (!Number.isNaN(n)) style.letterSpacing = n;
+    }
+    if (c === "leading-relaxed") style.lineHeight = 24;
+    else if (c.match(/^leading-\[(.+)\]$/)) {
+      const val = c.replace(/^leading-\[|\]$/g, "");
+      const lineHeight = parseCssLength(val);
+      if (typeof lineHeight === "number") style.lineHeight = lineHeight;
+    } else if (c.match(/^leading-(\d+)$/)) {
+      const n = parseFloat(c.replace("leading-", ""));
+      if (Number.isFinite(n)) style.lineHeight = n * 4;
     }
 
     // Shadow (RN: shadowColor, shadowOffset, shadowOpacity, shadowRadius)

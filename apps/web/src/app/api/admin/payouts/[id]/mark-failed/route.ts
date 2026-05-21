@@ -14,6 +14,17 @@ const markFailedSchema = z.object({
   failure_reason: z.string().min(1, "Failure reason is required"),
 });
 
+function getPaystackTransferStatus(response: unknown): string | null {
+  if (!response || typeof response !== "object") return null;
+  const record = response as Record<string, unknown>;
+  const nested = record.data;
+  if (nested && typeof nested === "object") {
+    const status = (nested as Record<string, unknown>).status;
+    if (typeof status === "string") return status;
+  }
+  return typeof record.status === "string" ? record.status : null;
+}
+
 /**
  * POST /api/admin/payouts/[id]/mark-failed
  * 
@@ -79,7 +90,14 @@ export async function POST(
       );
     }
 
-    type PayoutRow = { status: string; provider_id: string; amount: number; currency?: string | null };
+    type PayoutRow = {
+      status: string;
+      provider_id: string;
+      amount: number;
+      currency?: string | null;
+      transfer_code?: string | null;
+      payout_provider_response?: unknown;
+    };
     const payoutData = payout as PayoutRow;
     const payoutCurrency = payoutData.currency?.trim() || LAST_RESORT_CURRENCY;
     const amountFormatted = formatCurrency(Number(payoutData.amount), payoutCurrency);
@@ -109,6 +127,31 @@ export async function POST(
           },
         },
         { status: 400 }
+      );
+    }
+
+    const transferStatus = getPaystackTransferStatus(payoutData.payout_provider_response);
+    // Block mark-failed only when a transfer is actively in-flight (pending/success).
+    // Allow it when:
+    //   - no transfer_code: nothing was sent to Paystack
+    //   - status is "failed" / "reversed": Paystack already rejected it
+    //   - status is "otp": transfer is stuck waiting for OTP — admin override escape hatch
+    if (
+      payoutData.transfer_code &&
+      transferStatus !== "failed" &&
+      transferStatus !== "reversed" &&
+      transferStatus !== "otp"
+    ) {
+      return NextResponse.json(
+        {
+          data: null,
+          error: {
+            message:
+              "A Paystack transfer is actively in flight for this payout. Wait for Paystack to settle, fail, or reverse it before marking it failed here.",
+            code: "TRANSFER_IN_FLIGHT",
+          },
+        },
+        { status: 409 }
       );
     }
 

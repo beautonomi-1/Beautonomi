@@ -18,7 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { CreditCard, Loader2, CheckCircle2, XCircle } from "lucide-react";
+import { CreditCard, Loader2, CheckCircle2, XCircle, ExternalLink, QrCode } from "lucide-react";
 import { toast } from "sonner";
 import { Money } from "./Money";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
@@ -155,6 +155,17 @@ export function YocoPaymentDialog({
         },
       });
 
+      const isVirtualCheckout =
+        payment.credential_mode === "virtual_checkout" || Boolean(payment.checkout_url);
+
+      // Hosted checkout has no terminal status to poll here. The webhook marks
+      // the booking/sale paid after the customer completes Yoco's page.
+      if (isVirtualCheckout) {
+        setPaymentResult(payment);
+        toast.success("Yoco checkout link created. Ask the customer to pay from the link.");
+        return;
+      }
+
       // If pending, poll until success/fail or timeout (same behavior as provider app)
       if (payment.status === "pending" && payment.id) {
         const deadline = Date.now() + POLL_TIMEOUT_MS;
@@ -211,7 +222,31 @@ export function YocoPaymentDialog({
 
         {paymentResult ? (
           <div className="space-y-4 py-4">
-            {paymentResult.status === "successful" ? (
+            {(paymentResult.credential_mode === "virtual_checkout" || paymentResult.checkout_url) && paymentResult.checkout_url ? (
+              <Alert className="bg-blue-50 border-blue-200">
+                <QrCode className="h-4 w-4 text-blue-600" />
+                <AlertDescription className="text-blue-900">
+                  <div className="font-semibold mb-1">Yoco Checkout Ready</div>
+                  <div className="text-sm space-y-2">
+                    <div>
+                      Open this hosted checkout link or share it with the customer. The booking or sale updates automatically after Yoco sends the payment webhook.
+                    </div>
+                    <a
+                      href={paymentResult.checkout_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-blue-700 hover:underline font-medium"
+                    >
+                      Open Yoco checkout
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
+                    <div className="break-all rounded-md bg-white/70 p-2 text-xs text-blue-800">
+                      {paymentResult.checkout_url}
+                    </div>
+                  </div>
+                </AlertDescription>
+              </Alert>
+            ) : paymentResult.status === "successful" ? (
               <Alert className="bg-green-50 border-green-200">
                 <CheckCircle2 className="h-4 w-4 text-green-600" />
                 <AlertDescription className="text-green-800">
@@ -265,6 +300,9 @@ export function YocoPaymentDialog({
                       const dLoc = (device as { location_id?: string | null }).location_id ?? null;
                       const matchesBookingLocation = bookingLocationId && dLoc === bookingLocationId;
                       const isPortable = dLoc == null;
+                      const isVirtualCheckout =
+                        device.credential_mode === "virtual_checkout" ||
+                        device.device_type === "virtual_checkout";
                       return (
                         <SelectItem key={device.id} value={device.id}>
                           {device.name}
@@ -278,6 +316,7 @@ export function YocoPaymentDialog({
                             : isPortable
                               ? "  •  portable"
                               : ""}
+                          {isVirtualCheckout ? "  •  hosted checkout" : ""}
                         </SelectItem>
                       );
                     })}
@@ -368,6 +407,13 @@ export function YocoPaymentDialog({
                   <div className="flex justify-between">
                     <span className="text-gray-600">Location:</span>
                     <span>{selectedDevice.location_name}</span>
+                  </div>
+                )}
+                {(selectedDevice.credential_mode === "virtual_checkout" ||
+                  selectedDevice.device_type === "virtual_checkout") && (
+                  <div className="flex justify-between text-blue-700">
+                    <span>Payment flow:</span>
+                    <span className="font-medium">Hosted checkout link</span>
                   </div>
                 )}
                 {/* §Yoco-synergy 2026-05: surface the same Last used / total

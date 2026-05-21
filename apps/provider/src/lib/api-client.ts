@@ -188,14 +188,24 @@ function isSessionInvalidError(error: { message?: string } | null): boolean {
   ) {
     return false;
   }
+  // Supabase allows one user to have active sessions on multiple devices. Only
+  // clear this device when GoTrue clearly says this refresh token/session is
+  // unusable. Generic words like "refresh", "session", or "token" alone are
+  // too broad and can log users out for transient or server-side auth noise.
+  const invalidSessionMarkers = [
+    "expired",
+    "invalid",
+    "revoked",
+    "not found",
+    "missing",
+    "malformed",
+    "already used",
+    "jwt expired",
+    "refresh token",
+  ];
   return (
-    msg.includes("refresh") ||
-    msg.includes("session") ||
-    msg.includes("token") ||
-    msg.includes("expired") ||
-    msg.includes("invalid") ||
-    msg.includes("revoked") ||
-    msg.includes("not found")
+    invalidSessionMarkers.some((marker) => msg.includes(marker)) &&
+    (msg.includes("session") || msg.includes("token") || msg.includes("jwt"))
   );
 }
 

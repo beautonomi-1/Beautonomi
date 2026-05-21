@@ -392,12 +392,51 @@ export function OnboardingWizardProvider({ children, initialStep }: OnboardingWi
         (isFreePlan
           ? "Your free plan is active and your profile is live."
           : "Your provider profile is ready.");
+
+      // §provider-onboarding-2026-05: after the wizard completes, ping
+      // setup-status to see whether any *required* checklist rows are still
+      // missing (payouts, identity verification, payment methods, etc.).
+      // When they are, route to the setup hub so the provider can finish the
+      // remaining items, instead of the old behavior of always sending them
+      // to the dashboard where the same red banners would greet them.
       const goDashboard = () => {
         router.replace("/(app)/(tabs)/dashboard" as never);
       };
-      Alert.alert(isFreePlan ? "You're on the free plan" : "You're live", welcomeMsg, [
-        { text: "Go to dashboard", onPress: goDashboard },
-      ]);
+      const goSetupHub = () => {
+        router.replace("/(app)/onboarding" as never);
+      };
+
+      let requiredOutstanding = 0;
+      try {
+        const statusRes = await api.get<{
+          isComplete?: boolean;
+          steps?: { required?: boolean; completed?: boolean }[];
+        }>("/api/provider/setup-status");
+        if (!statusRes.error && statusRes.data && Array.isArray(statusRes.data.steps)) {
+          requiredOutstanding = statusRes.data.steps.filter(
+            (s) => s?.required && !s?.completed,
+          ).length;
+        }
+      } catch {
+        // network error fetching status -> behave like nothing remains
+      }
+
+      if (requiredOutstanding > 0) {
+        Alert.alert(
+          isFreePlan ? "You're on the free plan" : "You're live",
+          `${welcomeMsg}\n\n${requiredOutstanding} required step${
+            requiredOutstanding === 1 ? "" : "s"
+          } left before you can take bookings.`,
+          [
+            { text: "Finish setup", onPress: goSetupHub },
+            { text: "Skip for now", style: "cancel", onPress: goDashboard },
+          ],
+        );
+      } else {
+        Alert.alert(isFreePlan ? "You're on the free plan" : "You're live", welcomeMsg, [
+          { text: "Go to dashboard", onPress: goDashboard },
+        ]);
+      }
     } catch (e) {
       Alert.alert("Error", e instanceof Error ? e.message : "Submit failed.");
     } finally {

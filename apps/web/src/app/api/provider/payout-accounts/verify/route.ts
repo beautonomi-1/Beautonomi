@@ -9,11 +9,13 @@ import {
 import { verifyAccount } from "@/lib/payments/paystack-complete";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
+import { getEffectiveSkipPayoutAccountVerification } from "@/lib/payments/payout-account-verification-settings";
 import { z } from "zod";
 
 const verifySchema = z.object({
-  account_number: z.string().min(8).max(15),
+  account_number: z.string().min(8).max(20),
   bank_code: z.string().min(1),
 });
 
@@ -32,7 +34,10 @@ export async function POST(request: NextRequest) {
     if (!providerId) {
       return errorResponse("Provider not found", "NOT_FOUND", 404);
     }
-    const { data: provRow } = await supabase
+    // §payout-account-fix 2026-05: admin client for the tenant lookup so this
+    // works for staff whose RLS view of `providers` may be limited.
+    const admin = getSupabaseAdmin();
+    const { data: provRow } = await admin
       .from("providers")
       .select("tenant_id")
       .eq("id", providerId)
@@ -67,14 +72,32 @@ export async function POST(request: NextRequest) {
 
     const { account_number, bank_code } = validationResult.data;
 
-    const result = await verifyAccount({
-      account_number,
-      bank_code,
-    }, { tenantId });
+    const { skip: skipVerify } = await getEffectiveSkipPayoutAccountVerification(admin, tenantId);
+    if (skipVerify) {
+      return errorResponse(
+        "Account verification is disabled for this market. Enter the account holder name manually.",
+        "VERIFICATION_DISABLED",
+        403,
+      );
+    }
+
+    let result;
+    try {
+      result = await verifyAccount({ account_number, bank_code }, { tenantId });
+    } catch (paystackErr: any) {
+      // Paystack throws a plain Error (with .message set to the API message)
+      // when the HTTP response is non-2xx.  Surface that as a 400 so the
+      // client gets a readable explanation rather than a generic 500.
+      const msg: string =
+        paystackErr?.message ||
+        "Account verification is unavailable. Please enter your account holder name manually.";
+      return errorResponse(msg, "PAYSTACK_ERROR", 400);
+    }
 
     if (!result.status || !result.data) {
       return errorResponse(
-        result.message || "Account verification failed",
+        result.message ||
+          "Account could not be verified. Please enter your account holder name manually.",
         "PAYSTACK_ERROR",
         400
       );

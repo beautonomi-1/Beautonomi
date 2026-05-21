@@ -208,7 +208,9 @@ export default function GroupBookingsPage() {
       }
     } catch (error) {
       console.error("Failed to record group payment:", error);
-      toast.error("Failed to record payment");
+      const msg =
+        error instanceof Error ? error.message : "Failed to record payment";
+      toast.error(msg);
     }
   };
 
@@ -872,31 +874,47 @@ function GroupBookingDetailPanel({
             </p>
           )}
         </div>
-        {!isFinal && participants.length > 0 && (
-          <div className="rounded-xl border border-gray-200 p-3">
-            <p className="text-xs text-gray-500 mb-2">
-              Record payment method for remaining linked participant invoices
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" onClick={() => onRecordPayment(booking.id, "cash")}>
-                <DollarSign className="w-4 h-4 mr-1" />
-                Cash
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => onRecordPayment(booking.id, "card")}>
-                Card
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => onRecordPayment(booking.id, "yoco")}>
-                Yoco
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => onRecordPayment(booking.id, "bank_transfer")}>
-                Bank transfer
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => onRecordPayment(booking.id, "other")}>
-                Other
-              </Button>
+        {!isFinal && participants.length > 0 && (() => {
+          const hasLinkedBookings = participants.some(p => p.booking_id);
+          if (!hasLinkedBookings) {
+            return (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                <p className="font-medium mb-1">Payment recording unavailable</p>
+                <p className="text-xs text-amber-700">
+                  No individual booking records are linked to this session's participants.
+                  Payment is recorded against individual participant bookings — open the
+                  session, add each participant via "Add participant", and create their
+                  booking before marking the group as paid.
+                </p>
+              </div>
+            );
+          }
+          return (
+            <div className="rounded-xl border border-gray-200 p-3">
+              <p className="text-xs text-gray-500 mb-2">
+                Record payment method for remaining linked participant invoices
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" size="sm" onClick={() => onRecordPayment(booking.id, "cash")}>
+                  <DollarSign className="w-4 h-4 mr-1" />
+                  Cash
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => onRecordPayment(booking.id, "card")}>
+                  Card
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => onRecordPayment(booking.id, "yoco")}>
+                  Yoco
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => onRecordPayment(booking.id, "bank_transfer")}>
+                  Bank transfer
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => onRecordPayment(booking.id, "other")}>
+                  Other
+                </Button>
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
         {groupProducts.length > 0 && (
           <div className="rounded-xl border border-gray-200 p-3">
             <p className="text-xs text-gray-500 mb-2">Products in this group booking</p>

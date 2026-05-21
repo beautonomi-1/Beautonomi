@@ -33,6 +33,14 @@ import {
 } from "@/lib/supabase-sms-otp";
 
 type PhoneStep = "enter_phone" | "enter_otp" | null;
+type AuthSecurityState = {
+  has_password: boolean;
+  has_mailable_email: boolean;
+  has_phone: boolean;
+  email_is_placeholder: boolean;
+  password_changed_at: string | null;
+  policy: { minimum_password_length: number };
+};
 
 export default function LoginAndSecurityScreen() {
   const { t } = useTranslation();
@@ -51,7 +59,9 @@ export default function LoginAndSecurityScreen() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordNonce, setPasswordNonce] = useState("");
   const [updating, setUpdating] = useState(false);
+  const [requestingPasswordNonce, setRequestingPasswordNonce] = useState(false);
 
   const [newEmail, setNewEmail] = useState("");
   const [emailSending, setEmailSending] = useState(false);
@@ -66,6 +76,15 @@ export default function LoginAndSecurityScreen() {
   const [phoneVerifying, setPhoneVerifying] = useState(false);
 
   const biometric = useBiometricAuth();
+  const authSecurity = (profile as { auth_security?: AuthSecurityState | null } | null)?.auth_security ?? null;
+  const isSettingFirstPassword = authSecurity?.has_password === false;
+  const minimumPasswordLength = authSecurity?.policy?.minimum_password_length ?? 8;
+  const canVerifyPasswordAction = Boolean(
+    authSecurity == null ||
+      authSecurity.has_password ||
+      authSecurity.has_mailable_email ||
+      authSecurity.has_phone,
+  );
 
   const load = useCallback(async () => {
     const quiet = canUseQuietRefresh.current;
@@ -101,12 +120,16 @@ export default function LoginAndSecurityScreen() {
   );
 
   const updatePassword = async () => {
-    if (!currentPassword?.trim()) {
+    if (!isSettingFirstPassword && !currentPassword?.trim()) {
       Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), ls("enterCurrentPassword"));
       return;
     }
-    if (!password || password.length < 8) {
-      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), ls("passwordMinLength"));
+    if (isSettingFirstPassword && !passwordNonce.trim()) {
+      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), "Enter the verification code before setting a password.");
+      return;
+    }
+    if (!password || password.length < minimumPasswordLength) {
+      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), `Password must be at least ${minimumPasswordLength} characters long.`);
       return;
     }
     if (password !== confirmPassword) {
@@ -116,21 +139,45 @@ export default function LoginAndSecurityScreen() {
     setUpdating(true);
     try {
       const res = await api.put<any>("/api/me/password", {
-        currentPassword: currentPassword.trim(),
+        mode: isSettingFirstPassword ? "set" : "change",
+        currentPassword: isSettingFirstPassword ? undefined : currentPassword.trim(),
+        nonce: isSettingFirstPassword ? passwordNonce.trim() : undefined,
         newPassword: password,
       });
       if (res.error) {
         Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), res.error.message ?? ls("updatePasswordFailed"));
       } else {
-        Alert.alert(ls("passwordUpdatedTitle"), ls("passwordUpdatedBody"));
+        Alert.alert(
+          isSettingFirstPassword ? "Password set" : ls("passwordUpdatedTitle"),
+          isSettingFirstPassword ? "You can now sign in with your password as well as one-time codes." : ls("passwordUpdatedBody"),
+        );
         setCurrentPassword("");
         setPassword("");
         setConfirmPassword("");
+        setPasswordNonce("");
+        void load();
       }
     } catch (e) {
       Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), getApiErrorMessage(e, ls("updateFailed")));
     } finally {
       setUpdating(false);
+    }
+  };
+
+  const requestPasswordNonce = async () => {
+    if (!canVerifyPasswordAction) {
+      Alert.alert("Add contact method", "Add and verify an email or phone number before setting a password.");
+      return;
+    }
+    setRequestingPasswordNonce(true);
+    try {
+      const { error } = await supabase.auth.reauthenticate();
+      if (error) throw error;
+      Alert.alert("Code sent", "Enter the verification code below to set your password.");
+    } catch (e) {
+      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), getApiErrorMessage(e, "Failed to send verification code."));
+    } finally {
+      setRequestingPasswordNonce(false);
     }
   };
 
@@ -478,28 +525,90 @@ export default function LoginAndSecurityScreen() {
             {/* Password */}
             <View style={{ marginTop: 28 }}>
               <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900], marginBottom: 12 }}>
-                Change password
+                {isSettingFirstPassword ? "Set password" : "Change password"}
               </Text>
-              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>
-                Current password
-              </Text>
-              <TextInput
-                style={{
-                  borderRadius: 12,
-                  borderWidth: 1,
-                  borderColor: Colors.gray[300],
-                  backgroundColor: Colors.white,
-                  paddingHorizontal: 16,
-                  paddingVertical: 12,
-                  fontSize: 16,
-                  color: Colors.gray[900],
-                }}
-                value={currentPassword}
-                onChangeText={setCurrentPassword}
-                placeholder="••••••••"
-                placeholderTextColor={Colors.gray[400]}
-                secureTextEntry
-              />
+              {isSettingFirstPassword ? (
+                <View style={{ borderRadius: 12, backgroundColor: "#EEF2FF", padding: 12, marginBottom: 16 }}>
+                  <Text style={{ fontSize: 14, color: Colors.gray[700], lineHeight: 20 }}>
+                    Your account uses one-time codes or social login. Send a verification code, then choose a password.
+                  </Text>
+                  {!canVerifyPasswordAction ? (
+                    <Text style={{ marginTop: 8, fontSize: 13, color: "#b91c1c" }}>
+                      Add and verify an email or phone number before setting a password.
+                    </Text>
+                  ) : null}
+                  <TouchableOpacity
+                    onPress={requestPasswordNonce}
+                    disabled={requestingPasswordNonce || !canVerifyPasswordAction}
+                    style={{
+                      backgroundColor: Colors.white,
+                      paddingVertical: 12,
+                      borderRadius: 12,
+                      alignItems: "center",
+                      marginTop: 12,
+                      borderWidth: 1,
+                      borderColor: Colors.gray[300],
+                    }}
+                  >
+                    <Text style={{ color: Colors.gray[900], fontWeight: "600" }}>
+                      {requestingPasswordNonce ? "Sending..." : "Send verification code"}
+                    </Text>
+                  </TouchableOpacity>
+                  <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4, marginTop: 12 }}>
+                    Verification code
+                  </Text>
+                  <TextInput
+                    style={{
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor: Colors.gray[300],
+                      backgroundColor: Colors.white,
+                      paddingHorizontal: 16,
+                      paddingVertical: 12,
+                      fontSize: 16,
+                      color: Colors.gray[900],
+                    }}
+                    value={passwordNonce}
+                    onChangeText={(value) => setPasswordNonce(value.replace(/\D/g, ""))}
+                    placeholder="Enter code"
+                    placeholderTextColor={Colors.gray[400]}
+                    keyboardType="number-pad"
+                    autoComplete="sms-otp"
+                    textContentType="oneTimeCode"
+                  />
+                </View>
+              ) : (
+                <>
+                  <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>
+                    Current password
+                  </Text>
+                  <TextInput
+                    style={{
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor: Colors.gray[300],
+                      backgroundColor: Colors.white,
+                      paddingHorizontal: 16,
+                      paddingVertical: 12,
+                      fontSize: 16,
+                      color: Colors.gray[900],
+                    }}
+                    value={currentPassword}
+                    onChangeText={setCurrentPassword}
+                    placeholder="••••••••"
+                    placeholderTextColor={Colors.gray[400]}
+                    secureTextEntry
+                  />
+                  <TouchableOpacity
+                    onPress={() => router.push("/(auth)/forgot-password")}
+                    style={{ marginTop: 8 }}
+                    accessibilityRole="link"
+                    accessibilityLabel="Forgot password"
+                  >
+                    <Text style={{ color: Colors.primary, fontWeight: "600" }}>Forgot password?</Text>
+                  </TouchableOpacity>
+                </>
+              )}
               <View style={{ marginTop: 16 }}>
                 <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>
                   New password
@@ -517,7 +626,7 @@ export default function LoginAndSecurityScreen() {
                   }}
                   value={password}
                   onChangeText={setPassword}
-                  placeholder="At least 8 characters"
+                  placeholder={`At least ${minimumPasswordLength} characters`}
                   placeholderTextColor={Colors.gray[400]}
                   secureTextEntry
                 />
@@ -556,7 +665,7 @@ export default function LoginAndSecurityScreen() {
                 }}
               >
                 <Text style={{ color: Colors.white, fontWeight: "600" }}>
-                  {updating ? "Updating..." : "Update password"}
+                  {updating ? (isSettingFirstPassword ? "Setting..." : "Updating...") : (isSettingFirstPassword ? "Set password" : "Update password")}
                 </Text>
               </TouchableOpacity>
             </View>

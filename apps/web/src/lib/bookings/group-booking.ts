@@ -58,7 +58,9 @@ export interface GroupParticipantInput {
 }
 
 /**
- * Create a group booking and link individual bookings
+ * Create a group booking and link individual bookings.
+ * Rolls back the group row if linking participants fails so callers are never
+ * left with an orphaned group that has no participants.
  */
 export async function createGroupBooking(
   supabase: SupabaseClient,
@@ -67,7 +69,6 @@ export async function createGroupBooking(
   bookingIds: string[],
   participants: GroupParticipantInput[]
 ): Promise<GroupBooking> {
-  // Get scheduled_at from primary booking
   const { data: primaryBooking, error: bookingError } = await supabase
     .from('bookings')
     .select('scheduled_at')
@@ -78,55 +79,35 @@ export async function createGroupBooking(
     throw new Error('Primary booking not found');
   }
 
-  // Generate reference number
-  const { data: refNumber, error: refError } = await supabase.rpc('generate_group_booking_ref');
+  const { data: refNumberRaw } = await supabase.rpc('generate_group_booking_ref');
+  const refNumber =
+    typeof refNumberRaw === 'string' && refNumberRaw.trim()
+      ? refNumberRaw.trim()
+      : `GB-${Date.now().toString().slice(-10)}`;
 
-  if (refError) {
-    // Fallback if RPC doesn't exist
-    const fallbackRef = `GB-${Date.now().toString().slice(-10)}`;
-    
-    // Create group booking
-    const { data: groupBooking, error: createError } = await supabase
-      .from('group_bookings')
-      .insert({
-        provider_id: providerId,
-        primary_contact_booking_id: primaryBookingId,
-        ref_number: fallbackRef,
-        scheduled_at: primaryBooking.scheduled_at,
-        status: 'confirmed',
-      })
-      .select()
-      .single();
-
-    if (createError) {
-      throw createError;
-    }
-
-    // Link participants
-    await linkBookingsToGroup(supabase, groupBooking.id, participants);
-
-    return groupBooking as GroupBooking;
-  }
-
-  // Create group booking with generated ref
   const { data: groupBooking, error: createError } = await supabase
     .from('group_bookings')
     .insert({
       provider_id: providerId,
       primary_contact_booking_id: primaryBookingId,
-      ref_number: refNumber as string,
+      ref_number: refNumber,
       scheduled_at: primaryBooking.scheduled_at,
       status: 'confirmed',
     })
     .select()
     .single();
 
-  if (createError) {
-    throw createError;
+  if (createError || !groupBooking) {
+    throw createError ?? new Error('Failed to create group booking');
   }
 
-  // Link participants
-  await linkBookingsToGroup(supabase, groupBooking.id, participants);
+  try {
+    await linkBookingsToGroup(supabase, groupBooking.id, participants);
+  } catch (linkError) {
+    // Roll back the orphaned group row before surfacing the error.
+    await supabase.from('group_bookings').delete().eq('id', groupBooking.id);
+    throw linkError;
+  }
 
   return groupBooking as GroupBooking;
 }
@@ -163,12 +144,14 @@ export async function linkBookingsToGroup(
 }
 
 /**
- * Get group booking with all linked bookings
+ * Get group booking with all linked bookings and participants.
+ * Uses maybeSingle() so a missing group returns null without logging a
+ * Supabase PGRST116 "no rows" error.
  */
 export async function getGroupBooking(
   supabase: SupabaseClient,
   groupBookingId: string
-): Promise<GroupBooking & { bookings: any[]; participants: BookingParticipant[] } | null> {
+): Promise<(GroupBooking & { bookings: any[]; participants: BookingParticipant[] }) | null> {
   const { data: groupBooking, error } = await supabase
     .from('group_bookings')
     .select(`
@@ -179,14 +162,17 @@ export async function getGroupBooking(
       )
     `)
     .eq('id', groupBookingId)
-    .single();
+    .maybeSingle();
 
   if (error || !groupBooking) {
     return null;
   }
 
   const participants = (groupBooking.booking_participants || []) as BookingParticipant[];
-  const bookings = participants.map((p: any) => p.bookings).filter(Boolean);
+  const bookings = participants
+    .map((p: any) => p.bookings)
+    .filter(Boolean)
+    .flat();
 
   return {
     ...(groupBooking as GroupBooking),
@@ -196,7 +182,8 @@ export async function getGroupBooking(
 }
 
 /**
- * Check if user is primary contact for a group booking
+ * Check if a user is the primary contact for a group booking.
+ * Uses maybeSingle() to avoid PGRST116 errors when the group does not exist.
  */
 export async function isPrimaryContact(
   supabase: SupabaseClient,
@@ -212,7 +199,7 @@ export async function isPrimaryContact(
       )
     `)
     .eq('id', groupBookingId)
-    .single();
+    .maybeSingle();
 
   if (error || !data) {
     return false;
@@ -223,58 +210,90 @@ export async function isPrimaryContact(
 }
 
 /**
- * Reschedule entire group booking
- * Only primary contact can do this
+ * Reschedule an entire group booking, preserving per-booking time offsets.
+ *
+ * The function:
+ *   1. Fetches the current group scheduled_at + all linked child bookings.
+ *   2. Computes the delta between old and new group times.
+ *   3. Shifts each child booking and its booking_services by that delta.
+ *   4. Updates the group_bookings row last.
+ *
+ * §Group-booking-qa 2026-05: the previous implementation selected
+ * `bookings!inner(scheduled_at, booking_services(*))` without `id`, so
+ * `booking.id` was always `undefined` and every `.eq('id', undefined)` call
+ * was silently a no-op.  Child bookings were never rescheduled — only the
+ * group row itself was updated.  Fixed by fetching `id` from the embed and
+ * using `participant.booking_id` as an additional safety net.
  */
 export async function rescheduleGroupBooking(
   supabase: SupabaseClient,
   groupBookingId: string,
   newScheduledAt: Date
 ): Promise<void> {
-  // Get all bookings in the group
-  const { data: participants, error: participantsError } = await supabase
-    .from('booking_participants')
-    .select('booking_id, bookings!inner(scheduled_at, booking_services(*))')
-    .eq('group_booking_id', groupBookingId);
+  // Single query: group scheduled_at + all child booking data we need.
+  const { data: group, error: groupError } = await supabase
+    .from('group_bookings')
+    .select(`
+      scheduled_at,
+      booking_participants (
+        booking_id,
+        bookings (
+          id,
+          scheduled_at,
+          booking_services (
+            id,
+            scheduled_start_at,
+            scheduled_end_at
+          )
+        )
+      )
+    `)
+    .eq('id', groupBookingId)
+    .maybeSingle();
 
-  if (participantsError || !participants) {
-    throw new Error('Failed to load group booking participants');
-  }
-
-  // Calculate time offset from original scheduled time
-  const groupBooking = await getGroupBooking(supabase, groupBookingId);
-  if (!groupBooking) {
+  if (groupError || !group) {
     throw new Error('Group booking not found');
   }
 
-  const originalScheduledAt = new Date(groupBooking.scheduled_at);
-  const timeOffset = newScheduledAt.getTime() - originalScheduledAt.getTime();
+  const originalScheduledAt = new Date((group as any).scheduled_at);
+  const timeOffsetMs = newScheduledAt.getTime() - originalScheduledAt.getTime();
+  const now = new Date().toISOString();
 
-  // Update each booking's scheduled_at
+  const participants = ((group as any).booking_participants ?? []) as Array<{
+    booking_id: string | null;
+    bookings: {
+      id: string;
+      scheduled_at: string;
+      booking_services: Array<{
+        id: string;
+        scheduled_start_at: string;
+        scheduled_end_at: string;
+      }>;
+    } | null;
+  }>;
+
   for (const participant of participants) {
-    const booking = (participant as any).bookings;
-    if (!booking) continue;
+    const booking = participant.bookings;
+    // Use the bookings embed id; fall back to booking_id on the participant row.
+    const bookingId = booking?.id ?? participant.booking_id;
+    if (!bookingId) continue;
 
-    const originalBookingTime = new Date(booking.scheduled_at);
-    const newBookingTime = new Date(originalBookingTime.getTime() + timeOffset);
+    const originalBookingTime = new Date(
+      booking?.scheduled_at ?? (group as any).scheduled_at
+    );
+    const newBookingTime = new Date(originalBookingTime.getTime() + timeOffsetMs);
 
-    // Update booking
     await supabase
       .from('bookings')
-      .update({
-        scheduled_at: newBookingTime.toISOString(),
-      })
-      .eq('id', booking.id);
+      .update({ scheduled_at: newBookingTime.toISOString(), updated_at: now })
+      .eq('id', bookingId);
 
-    // Update booking_services
-    const services = booking.booking_services || [];
-    for (const service of services) {
+    for (const service of booking?.booking_services ?? []) {
       const originalStart = new Date(service.scheduled_start_at);
       const originalEnd = new Date(service.scheduled_end_at);
-      const duration = originalEnd.getTime() - originalStart.getTime();
-
-      const newStart = new Date(originalStart.getTime() + timeOffset);
-      const newEnd = new Date(newStart.getTime() + duration);
+      const durationMs = originalEnd.getTime() - originalStart.getTime();
+      const newStart = new Date(originalStart.getTime() + timeOffsetMs);
+      const newEnd = new Date(newStart.getTime() + durationMs);
 
       await supabase
         .from('booking_services')
@@ -286,11 +305,8 @@ export async function rescheduleGroupBooking(
     }
   }
 
-  // Update group booking scheduled_at
   await supabase
     .from('group_bookings')
-    .update({
-      scheduled_at: newScheduledAt.toISOString(),
-    })
+    .update({ scheduled_at: newScheduledAt.toISOString(), updated_at: now })
     .eq('id', groupBookingId);
 }

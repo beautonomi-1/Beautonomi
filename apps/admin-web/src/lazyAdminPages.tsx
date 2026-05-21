@@ -25,6 +25,9 @@ export const BookingsPage = lazy(() =>
 export const BookingDetailPage = lazy(() =>
   import("@/routes/bookings/BookingDetailPage").then((m) => ({ default: m.BookingDetailPage }))
 );
+export const GroupBookingsPage = lazy(() =>
+  import("@/routes/bookings/GroupBookingsPage").then((m) => ({ default: m.GroupBookingsPage }))
+);
 export const DisputesPage = lazy(() =>
   import("@/routes/DisputesPage").then((m) => ({ default: m.DisputesPage }))
 );

@@ -29,6 +29,7 @@ import { useTabContentPaddingBottom } from "@/hooks/useTabContentPaddingBottom";
 import { Colors, Shadows } from "@/constants/colors";
 import { Skeleton } from "@/components/Skeleton";
 import { useTranslation } from "@beautonomi/i18n";
+import { ensureForegroundLocationPermission } from "@/lib/native-permissions";
 
 const GAP = 10;
 
@@ -592,9 +593,12 @@ export default function ExploreScreen() {
       if (key === "nearby") {
         setNearbyLoading(true);
         try {
-          const { getCurrentPositionAsync, requestForegroundPermissionsAsync } = await import("expo-location");
-          const { status } = await requestForegroundPermissionsAsync();
-          if (status !== "granted") {
+          const { getCurrentPositionAsync } = await import("expo-location");
+          const allowed = await ensureForegroundLocationPermission({
+            title: tx("locationUnavailableTitle"),
+            message: tx("locationUnavailableBodySettings"),
+          });
+          if (!allowed) {
             const res = await api.get<{ data?: { latitude?: number; longitude?: number } }>("/api/public/ip-geolocation");
             if (res.error) {
               Alert.alert(tx("locationUnavailableTitle"), tx("locationUnavailableBody"));

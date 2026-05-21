@@ -250,22 +250,21 @@ export default function MoreScreen() {
   const incompleteOptionalCount = completionItems.filter(
     (s) => !s.required && !s.completed,
   ).length;
-  // Required steps first (in the order returned by the API), then any
-  // optional rows still pending. Drop the arbitrary "first 6" cap so the
-  // user can see every outstanding required task without leaving the More
-  // tab — with an overflow hint when many steps remain.
-  const orderedIncompleteSteps = [
-    ...completionItems.filter((s) => s.required && !s.completed),
+  // Required steps first (including completed rows with checkmarks), then any
+  // optional rows still pending. This makes the "Complete your business
+  // profile" card feel like a checklist instead of only an error list.
+  const orderedCompletionSteps = [
+    ...completionItems.filter((s) => s.required),
     ...completionItems.filter((s) => !s.required && !s.completed),
   ];
   const COMPLETION_ITEM_DISPLAY_LIMIT = 10;
-  const completionStepsToRender = orderedIncompleteSteps.slice(
+  const completionStepsToRender = orderedCompletionSteps.slice(
     0,
     COMPLETION_ITEM_DISPLAY_LIMIT,
   );
   const completionOverflowCount = Math.max(
     0,
-    orderedIncompleteSteps.length - completionStepsToRender.length,
+    orderedCompletionSteps.length - completionStepsToRender.length,
   );
   const showCompletionError = !completionLoading && !!completionError && !completionData;
   const availablePayout = Number(financeSummary?.earnings?.available_balance ?? 0);
@@ -772,11 +771,17 @@ export default function MoreScreen() {
                   {completionStepsToRender.length > 0 && (
                     <View style={{ marginTop: 12 }}>
                       {completionStepsToRender.map((step, idx) => {
-                        const mandatoryMissing = step.required;
-                        const iconName = mandatoryMissing
-                          ? "alert-circle"
-                          : "ellipse-outline";
-                        const iconColor = mandatoryMissing ? "#ef4444" : "#9ca3af";
+                        const missingRequired = step.required && !step.completed;
+                        const iconName = step.completed
+                          ? "checkmark-circle"
+                          : missingRequired
+                            ? "alert-circle"
+                            : "ellipse-outline";
+                        const iconColor = step.completed
+                          ? "#16a34a"
+                          : missingRequired
+                            ? "#ef4444"
+                            : "#9ca3af";
                         const route = getStepNativeRoute(step);
                         return (
                           <TouchableOpacity
@@ -788,7 +793,7 @@ export default function MoreScreen() {
                             }}
                             style={{ flexDirection: "row", alignItems: "center", marginTop: idx === 0 ? 0 : 10 }}
                             accessibilityRole="button"
-                            accessibilityLabel={`${completionItemLabel(step)}${mandatoryMissing ? ", required" : ", optional"}`}
+                            accessibilityLabel={`${completionItemLabel(step)}${step.completed ? ", completed" : step.required ? ", required" : ", optional"}`}
                           >
                             <Ionicons
                               name={iconName as keyof typeof Ionicons.glyphMap}
@@ -797,12 +802,35 @@ export default function MoreScreen() {
                               style={{ marginRight: 10 }}
                             />
                             <Text
-                              style={{ flex: 1, fontSize: 14, color: mandatoryMissing ? "#b91c1c" : "#6b7280" }}
+                              style={{
+                                flex: 1,
+                                fontSize: 14,
+                                color: step.completed
+                                  ? "#166534"
+                                  : missingRequired
+                                    ? "#b91c1c"
+                                    : "#6b7280",
+                                fontWeight: step.completed ? "600" : "400",
+                              }}
                               numberOfLines={1}
                             >
                               {completionItemLabel(step)}
                             </Text>
-                            {!mandatoryMissing ? (
+                            {step.completed ? (
+                              <View
+                                style={{
+                                  marginLeft: 8,
+                                  paddingHorizontal: 6,
+                                  paddingVertical: 2,
+                                  borderRadius: 9999,
+                                  backgroundColor: "#dcfce7",
+                                }}
+                              >
+                                <Text style={{ fontSize: 10, fontWeight: "700", color: "#166534" }}>
+                                  Done
+                                </Text>
+                              </View>
+                            ) : !step.required ? (
                               <View
                                 style={{
                                   marginLeft: 8,

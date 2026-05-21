@@ -1,3 +1,10 @@
+export type { AuthSecuritySnapshot } from "./auth/sensitive-action-ui";
+export {
+  canVerifySensitiveActionWithCode,
+  isAuthSecurityLoaded,
+  sensitiveActionSubmitReady,
+  userHasPassword,
+} from "./auth/sensitive-action-ui";
 export {
   coerceSelectedDate,
   formatBusinessDayYYYYMMDD,

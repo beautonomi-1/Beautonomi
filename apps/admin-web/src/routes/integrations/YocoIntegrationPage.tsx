@@ -1,16 +1,20 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { AlertTriangle, BookOpen, CheckCircle2, ExternalLink, Info, Shield } from "lucide-react";
+import { AlertTriangle, BookOpen, CheckCircle2, ExternalLink, Info, Key, Shield } from "lucide-react";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useSuperadminPage } from "@/hooks/useSuperadminPage";
 import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
+import { adminToolbarButtonClass } from "@/lib/adminUi";
+import { adminToast } from "@/lib/adminToast";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
+import { AdminMutationAlert } from "@/components/admin/AdminMutationAlert";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 
 /** GET /api/admin/integrations/yoco — client unwraps `data` from successResponse. */
@@ -37,13 +41,19 @@ interface YocoAdminStatus {
       source: "tenant" | "global";
       masked_client_id: string | null;
       redirect_uri: string | null;
+      default_scopes: string | null;
+      has_client_secret: boolean;
       is_enabled: boolean;
+      updated_at: string | null;
     } | null;
     sandbox: {
       source: "tenant" | "global";
       masked_client_id: string | null;
       redirect_uri: string | null;
+      default_scopes: string | null;
+      has_client_secret: boolean;
       is_enabled: boolean;
+      updated_at: string | null;
     } | null;
   };
   resolution_notes: {
@@ -52,15 +62,184 @@ interface YocoAdminStatus {
   };
 }
 
+type YocoEnv = "live" | "sandbox";
+type YocoAppStatus = NonNullable<YocoAdminStatus["tenant_yoco_oauth_apps"][YocoEnv]>;
+
+const DEFAULT_SCOPES =
+  "openid offline_access business/webpos:read business/webpos:write application/webhooks:read application/webhooks:write business/orders:read business/payouts:read";
+
+type YocoOauthForm = {
+  client_id: string;
+  client_secret: string;
+  redirect_uri: string;
+  default_scopes: string;
+  is_enabled: boolean;
+};
+
+function YocoOauthAppEditor({
+  env,
+  app,
+  onSave,
+  saving,
+}: {
+  env: YocoEnv;
+  app: YocoAppStatus | null;
+  onSave: (env: YocoEnv, form: YocoOauthForm) => void;
+  saving: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState<YocoOauthForm>({
+    client_id: "",
+    client_secret: "",
+    redirect_uri: app?.redirect_uri ?? "",
+    default_scopes: app?.default_scopes ?? DEFAULT_SCOPES,
+    is_enabled: app?.is_enabled ?? true,
+  });
+
+  const configured = Boolean(app?.masked_client_id && app?.has_client_secret && app?.redirect_uri);
+
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-700">{env} OAuth app</h3>
+          <p className="mt-1 text-sm text-gray-600">
+            {configured
+              ? `${app?.source ?? "global"} row configured · client ${app?.masked_client_id ?? "—"}`
+              : "No complete DB OAuth app row. Runtime may fall back to server env vars."}
+          </p>
+          {app?.updated_at ? (
+            <p className="mt-1 text-xs text-gray-500">Updated {new Date(app.updated_at).toLocaleString()}</p>
+          ) : null}
+        </div>
+        <button
+          type="button"
+          className={adminToolbarButtonClass(false) + " inline-flex items-center gap-2"}
+          onClick={() => {
+            setForm({
+              client_id: "",
+              client_secret: "",
+              redirect_uri: app?.redirect_uri ?? "",
+              default_scopes: app?.default_scopes ?? DEFAULT_SCOPES,
+              is_enabled: app?.is_enabled ?? true,
+            });
+            setOpen((v) => !v);
+          }}
+        >
+          <Key className="h-4 w-4" />
+          {configured ? "Edit app" : "Configure app"}
+        </button>
+      </div>
+      {app?.default_scopes ? (
+        <p className="mt-3 break-all rounded-lg bg-gray-50 p-2 text-xs text-gray-600">
+          <span className="font-medium text-gray-800">Scopes:</span> {app.default_scopes}
+        </p>
+      ) : null}
+      {open ? (
+        <div className="mt-4 space-y-4 border-t border-gray-100 pt-4">
+          <p className="text-xs text-gray-500">
+            Leave client ID or secret blank to keep the current value. Redirect URI and scopes are shown because they
+            are operational config, not secrets.
+          </p>
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={form.is_enabled}
+              onChange={(event) => setForm((f) => ({ ...f, is_enabled: event.target.checked }))}
+            />
+            Enabled for OAuth resolution
+          </label>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Client ID</label>
+              <input
+                className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 font-mono text-sm"
+                value={form.client_id}
+                placeholder={app?.masked_client_id ?? "Yoco client ID"}
+                onChange={(event) => setForm((f) => ({ ...f, client_id: event.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Client secret</label>
+              <input
+                type="password"
+                autoComplete="off"
+                className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 font-mono text-sm"
+                value={form.client_secret}
+                placeholder={app?.has_client_secret ? "Set (hidden)" : "Yoco client secret"}
+                onChange={(event) => setForm((f) => ({ ...f, client_secret: event.target.value }))}
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Redirect URI</label>
+            <input
+              className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 font-mono text-sm"
+              value={form.redirect_uri}
+              placeholder="https://app.example.com/api/provider/yoco/oauth/callback"
+              onChange={(event) => setForm((f) => ({ ...f, redirect_uri: event.target.value }))}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Default scopes</label>
+            <textarea
+              className="mt-1 min-h-[84px] w-full rounded-lg border border-gray-200 px-3 py-2 font-mono text-sm"
+              value={form.default_scopes}
+              onChange={(event) => setForm((f) => ({ ...f, default_scopes: event.target.value }))}
+            />
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              className={adminToolbarButtonClass(saving)}
+              disabled={saving}
+              onClick={() => onSave(env, form)}
+            >
+              {saving ? "Saving..." : "Save OAuth app"}
+            </button>
+            <button
+              type="button"
+              className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              onClick={() => setOpen(false)}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function YocoIntegrationPage() {
   useAdminDocumentTitle("Yoco Web POS (OAuth)");
   const { allowed, denied } = useSuperadminPage("Yoco platform configuration is superadmin-only.");
   void allowed;
+  const qc = useQueryClient();
 
   const q = useQuery({
     queryKey: adminQueryKeys.yocoIntegrationStatus(),
     queryFn: () =>
       adminApi.getJson<YocoAdminStatus>("/api/admin/integrations/yoco", { timeoutMs: 30_000 }),
+  });
+
+  const saveOauthApp = useMutation({
+    mutationFn: ({ env, form }: { env: YocoEnv; form: YocoOauthForm }) => {
+      const body: Record<string, unknown> = {
+        environment: env,
+        is_enabled: form.is_enabled,
+        default_scopes: form.default_scopes.trim(),
+      };
+      if (form.client_id.trim()) body.client_id = form.client_id.trim();
+      if (form.client_secret.trim()) body.client_secret = form.client_secret.trim();
+      if (form.redirect_uri.trim()) body.redirect_uri = form.redirect_uri.trim();
+      return adminApi.patchJson("/api/admin/integrations/yoco", body);
+    },
+    onSuccess: async () => {
+      adminToast.success("Yoco OAuth app saved");
+      await qc.invalidateQueries({ queryKey: adminQueryKeys.yocoIntegrationStatus() });
+    },
+    onError: (error: Error) => adminToast.error(error.message),
   });
 
   if (denied) return denied;
@@ -95,6 +274,7 @@ export function YocoIntegrationPage() {
         title="Yoco Web POS & OAuth"
         description="How Beautonomi authenticates Yoco card terminals (api.yoco.com) vs hosted checkout (payments.yoco.com). Superadmin setup for your market or a white-label tenant."
       />
+      <AdminMutationAlert errors={[saveOauthApp.error instanceof Error ? saveOauthApp.error : null]} />
 
       <AdminPanel>
         <div className="flex items-start gap-3">
@@ -109,6 +289,28 @@ export function YocoIntegrationPage() {
               platform defaults only.
             </p>
           </div>
+        </div>
+      </AdminPanel>
+
+      <AdminPanel>
+        <h2 className="text-base font-semibold text-gray-900">OAuth app configuration</h2>
+        <p className="mt-1 text-sm text-gray-600">
+          Manage the OAuth apps used by provider <em>Connect Yoco</em>. Tenant scoped rows override global rows; if no
+          row exists, runtime falls back to server environment variables.
+        </p>
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <YocoOauthAppEditor
+            env="live"
+            app={d.tenant_yoco_oauth_apps.live}
+            saving={saveOauthApp.isPending}
+            onSave={(env, form) => saveOauthApp.mutate({ env, form })}
+          />
+          <YocoOauthAppEditor
+            env="sandbox"
+            app={d.tenant_yoco_oauth_apps.sandbox}
+            saving={saveOauthApp.isPending}
+            onSave={(env, form) => saveOauthApp.mutate({ env, form })}
+          />
         </div>
       </AdminPanel>
 
@@ -167,6 +369,15 @@ export function YocoIntegrationPage() {
                       </>
                     ) : null}{" "}
                     · {d.tenant_yoco_oauth_apps.live.is_enabled ? "enabled" : "disabled"}
+                    {d.tenant_yoco_oauth_apps.live.default_scopes ? (
+                      <>
+                        {" "}
+                        · scopes{" "}
+                        <code className="break-all rounded bg-gray-100 px-1 text-xs">
+                          {d.tenant_yoco_oauth_apps.live.default_scopes}
+                        </code>
+                      </>
+                    ) : null}
                   </>
                 ) : (
                   <span className="text-gray-500">No row — falls back to env vars if set</span>
@@ -186,6 +397,15 @@ export function YocoIntegrationPage() {
                         · redirect{" "}
                         <code className="break-all rounded bg-gray-100 px-1 text-xs">
                           {d.tenant_yoco_oauth_apps.sandbox.redirect_uri}
+                        </code>
+                      </>
+                    ) : null}
+                    {d.tenant_yoco_oauth_apps.sandbox.default_scopes ? (
+                      <>
+                        {" "}
+                        · scopes{" "}
+                        <code className="break-all rounded bg-gray-100 px-1 text-xs">
+                          {d.tenant_yoco_oauth_apps.sandbox.default_scopes}
                         </code>
                       </>
                     ) : null}
@@ -247,7 +467,7 @@ export function YocoIntegrationPage() {
                 </code>
                 . Request scopes including{" "}
                 <code className="rounded bg-gray-100 px-1 text-xs">
-                  openid offline_access business/webpos:read business/webpos:write application/webhooks:write
+                  openid offline_access business/webpos:read business/webpos:write application/webhooks:read application/webhooks:write
                 </code>{" "}
                 (plus <code className="rounded bg-gray-100 px-1 text-xs">business/orders:read</code> and{" "}
                 <code className="rounded bg-gray-100 px-1 text-xs">business/payouts:read</code> for the reconciliation
@@ -314,7 +534,7 @@ VALUES
     '<from_yoco>',
     '<from_yoco>',
     'https://<tenant-app-host>/api/provider/yoco/oauth/callback',
-    'openid offline_access business/webpos:read business/webpos:write application/webhooks:write business/orders:read business/payouts:read',
+    'openid offline_access business/webpos:read business/webpos:write application/webhooks:read application/webhooks:write business/orders:read business/payouts:read',
     true
   );
 -- Repeat for environment = 'sandbox' if this tenant uses Yoco sandbox.`}

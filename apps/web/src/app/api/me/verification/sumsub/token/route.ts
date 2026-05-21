@@ -10,6 +10,7 @@ import { NextRequest } from "next/server";
 import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { getSumsubAccessToken } from "@/lib/verification/sumsub-token";
 import { createEmbedRefreshToken } from "@/lib/verification/sumsub-embed-refresh";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 
 function parseEnv(s: string | null): string {
   const ENVS = ["production", "staging", "development"];
@@ -26,12 +27,13 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const environment = parseEnv(searchParams.get("environment"));
+    const tenantId = await resolveTenantIdWithZaFallback(request);
 
     // Use "user:{user.id}" as the SumSub externalUserId so the webhook can
     // distinguish customer applicants from provider ones.
     const sumsubUserId = `user:${user.id}`;
 
-    const { token, levelName } = await getSumsubAccessToken(sumsubUserId, environment);
+    const { token, levelName } = await getSumsubAccessToken(sumsubUserId, environment, tenantId);
     if (!token) {
       return errorResponse(
         "Verification is not available yet. Please upload your document manually for now.",

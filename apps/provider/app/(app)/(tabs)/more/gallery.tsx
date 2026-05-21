@@ -10,8 +10,6 @@ import {
   TextInput,
   Modal,
   ActivityIndicator,
-  InteractionManager,
-  Platform,
   Pressable,
 } from "react-native";
 import { useRouter } from "expo-router";
@@ -27,6 +25,11 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { twStyle } from "@/lib/twStyle";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
+import {
+  launchCameraWithPermission,
+  launchImageLibraryWithPermission,
+  runAfterNativeUiSettles,
+} from "@/lib/native-permissions";
 
 type GalleryItem = { id: string; url: string; position: number };
 type GalleryResponse = { items?: GalleryItem[]; thumbnailUrl?: string | null; avatarUrl?: string | null };
@@ -34,19 +37,6 @@ type GalleryResponse = { items?: GalleryItem[]; thumbnailUrl?: string | null; av
 type AddMode = "choice" | "url";
 
 const PICKER_MEDIA = ImagePicker.MediaTypeOptions.Images;
-
-/** Android + RN Modal: launching the picker while the sheet is still mounted freezes or no-ops. */
-function runAfterModalFullyDismissed(fn: () => void) {
-  InteractionManager.runAfterInteractions(() => {
-    requestAnimationFrame(() => {
-      if (Platform.OS === "android") {
-        setTimeout(fn, 320);
-      } else {
-        fn();
-      }
-    });
-  });
-}
 
 function fileNameFromUri(uri: string): string {
   const last = uri.split("/").pop() || "photo.jpg";
@@ -140,26 +130,24 @@ export default function GalleryScreen() {
 
       const run = async () => {
         try {
-          const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-          if (!permission.granted) {
-            Alert.alert(
-              "Permission needed",
-              "Photo library access is needed to choose a photo. You can enable it in system settings."
-            );
-            return;
-          }
-
           // Multi-select is only enabled when adding to gallery; profile/listing
           // overrides apply to exactly one image so they stay single-select.
           const allowMulti = !applyAs;
-          const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: PICKER_MEDIA,
-            quality: 0.85,
-            base64: false,
-            allowsMultipleSelection: allowMulti,
-            selectionLimit: allowMulti ? 10 : 1,
-          });
+          const result = await launchImageLibraryWithPermission(
+            {
+              mediaTypes: PICKER_MEDIA,
+              quality: 0.85,
+              base64: false,
+              allowsMultipleSelection: allowMulti,
+              selectionLimit: allowMulti ? 10 : 1,
+            },
+            {
+              title: "Permission needed",
+              message: "Photo library access is needed to choose a photo. You can enable it in system settings.",
+            },
+          );
 
+          if (!result) return;
           if (result.canceled || !result.assets?.length) return;
 
           // Filter out files that are too large; warn once if any were skipped.
@@ -195,7 +183,7 @@ export default function GalleryScreen() {
       };
 
       if (deferAfterModal) {
-        runAfterModalFullyDismissed(() => {
+        void runAfterNativeUiSettles(() => {
           void run();
         });
       } else {
@@ -209,18 +197,19 @@ export default function GalleryScreen() {
     async (deferAfterModal: boolean) => {
       const run = async () => {
         try {
-          const permission = await ImagePicker.requestCameraPermissionsAsync();
-          if (!permission.granted) {
-            Alert.alert("Permission needed", "Camera access is needed to take a photo.");
-            return;
-          }
+          const result = await launchCameraWithPermission(
+            {
+              mediaTypes: PICKER_MEDIA,
+              quality: 0.85,
+              base64: false,
+            },
+            {
+              title: "Permission needed",
+              message: "Camera access is needed to take a photo.",
+            },
+          );
 
-          const result = await ImagePicker.launchCameraAsync({
-            mediaTypes: PICKER_MEDIA,
-            quality: 0.85,
-            base64: false,
-          });
-
+          if (!result) return;
           if (result.canceled || !result.assets?.[0]) return;
           const asset = result.assets[0];
 
@@ -235,7 +224,7 @@ export default function GalleryScreen() {
       };
 
       if (deferAfterModal) {
-        runAfterModalFullyDismissed(() => {
+        void runAfterNativeUiSettles(() => {
           void run();
         });
       } else {

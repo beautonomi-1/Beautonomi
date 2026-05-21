@@ -43,6 +43,7 @@ import { AddressMapPinModal } from "@/components/AddressMapPinModal";
 import { StaticMapImage } from "@/components/ui/StaticMapImage";
 import { reverseGeocodeCoordinates } from "@/lib/reverse-geocode-address";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { ensureForegroundLocationPermission } from "@/lib/native-permissions";
 import { useDefaultPhoneDial } from "@/hooks/useDefaultPhoneDial";
 import { Colors } from "@/constants/colors";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -862,12 +863,11 @@ export default function NewBookingScreen() {
     if (locatingClientAddress) return;
     setLocatingClientAddress(true);
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") {
-        Alert.alert(
-          "Location permission",
-          "Allow location to fill the client address from your current position.",
-        );
+      const allowed = await ensureForegroundLocationPermission({
+        title: "Location permission",
+        message: "Allow location to fill the client address from your current position.",
+      });
+      if (!allowed) {
         return;
       }
       const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });

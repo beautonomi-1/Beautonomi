@@ -3,7 +3,7 @@ import Image, { type ImageProps } from "next/image";
 import { PROVIDER_GALLERY_OBJECT_POSITION } from "@beautonomi/utils";
 
 const FRAME_CLASS =
-  "relative w-full aspect-video overflow-hidden bg-gray-100";
+  "relative w-full aspect-[4/5] overflow-hidden bg-gray-100";
 const IMAGE_CLASS = "object-cover";
 
 export type ProviderGalleryImageProps = {
@@ -17,7 +17,7 @@ export type ProviderGalleryImageProps = {
 };
 
 /**
- * Landscape gallery tile: fixed 16:9 frame, cover crop, center-weighted focus.
+ * Portrait gallery tile: fixed 4:5 frame, cover crop, center-weighted focus.
  */
 export function ProviderGalleryImage({
   src,

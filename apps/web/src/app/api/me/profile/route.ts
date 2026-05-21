@@ -10,6 +10,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { getMapboxService } from "@/lib/mapbox/mapbox";
 import { resolveIdentityVerificationDisplay } from "@/lib/verification/resolve-identity-verification-display";
+import { getUserAuthSecurityState } from "@/lib/auth/user-auth-security-state";
 import type { User } from "@/types/beautonomi";
 
 /**
@@ -134,6 +135,7 @@ type UserRow = {
   signup_source?: string | null;
   identity_verification_status?: string | null;
   password_changed_at?: string | null;
+  preferred_home_tenant_id?: string | null;
   [key: string]: unknown;
 };
 
@@ -174,6 +176,9 @@ export async function GET(request: NextRequest) {
         .eq("id", user.id);
       u.email = authUser.email;
     }
+    const authSecurity = authUser
+      ? await getUserAuthSecurityState(supabase, authUser, u)
+      : null;
 
     // Get default address, verification, and profile data in parallel for better performance
     const [addressResult, verificationResult, profileResult] = await Promise.allSettled([
@@ -215,7 +220,13 @@ export async function GET(request: NextRequest) {
       last_name,
       preferred_name: u.preferred_name ?? null,
       handle: u.handle ?? null,
-      email_verified: u.email_verified ?? false,
+      // Derive email_verified from both the users row and auth.users.email_confirmed_at.
+      // users.email_verified may lag when Supabase auth confirms the email (no trigger
+      // syncs it back automatically). profile-completion uses the same dual-source check.
+      email_verified:
+        u.email_verified ||
+        !!(authUser as { email_confirmed_at?: string | null } | null)?.email_confirmed_at ||
+        false,
       phone_verified: u.phone_verified ?? false,
       address: formatDefaultAddress(defaultAddress),
       emergency_contact: {
@@ -233,6 +244,7 @@ export async function GET(request: NextRequest) {
       privacy_settings: profileData?.privacy_settings || { services_booked_visible: false },
       business_preferences: profileData?.business_preferences || { email: null, enabled: false },
       password_changed_at: u.password_changed_at ?? null,
+      auth_security: authSecurity,
       email_change_pending: emailChangePending,
     };
 
@@ -604,16 +616,48 @@ export async function PATCH(request: NextRequest) {
 
     // Update email in auth: with “Secure email change”, Supabase emails both addresses;
     // the new email is applied only after the required confirmations. Do not write users.email until then.
+    //
+    // §provider-profile-auth-fix 2026-05: mobile clients (Expo provider/customer)
+    // hit this route through a Bearer-token-only Supabase client created in
+    // `getSupabaseServer`. `supabase.auth.updateUser` requires a *local* session
+    // in storage (it goes through `_useSession`), which a bearer-only client
+    // doesn't have, so it throws `AuthSessionMissingError("Auth session missing!")`.
+    // The provider profile UI always sent `email: profile.email` even when the
+    // address was the only change, which caused every Save to fail. We now:
+    //   1. Resolve the *current* auth email up front.
+    //   2. Only call `supabase.auth.updateUser` when the email actually changed.
+    //   3. Skip the auth call entirely when the candidate matches the current
+    //      address — the no-op is silently absorbed.
     let emailChangePending = false;
     if (body.email !== undefined) {
-      const { error: emailError } = await supabase.auth.updateUser({
-        email: body.email,
-      });
-      if (emailError) {
-        // Preserve AuthError.status so handleApiError can return 4xx (rate limits, weak email, etc.)
-        throw emailError;
+      const candidateEmail =
+        typeof body.email === "string" ? body.email.trim() : body.email;
+      const { data: { user: currentAuthUser } } = await supabase.auth.getUser();
+      const currentEmail = (currentAuthUser?.email ?? "").trim().toLowerCase();
+      const pendingNewEmail =
+        typeof (currentAuthUser as { new_email?: string | null } | null)?.new_email === "string"
+          ? ((currentAuthUser as { new_email?: string | null }).new_email ?? "").trim().toLowerCase()
+          : "";
+      const normalizedCandidate =
+        typeof candidateEmail === "string" ? candidateEmail.toLowerCase() : "";
+
+      const isSameAsCurrent =
+        normalizedCandidate === "" || normalizedCandidate === currentEmail;
+      const isAlreadyPending =
+        normalizedCandidate !== "" && normalizedCandidate === pendingNewEmail;
+
+      if (isAlreadyPending) {
+        emailChangePending = true;
+      } else if (!isSameAsCurrent) {
+        const { error: emailError } = await supabase.auth.updateUser({
+          email: candidateEmail,
+        });
+        if (emailError) {
+          // Preserve AuthError.status so handleApiError can return 4xx (rate limits, weak email, etc.)
+          throw emailError;
+        }
+        emailChangePending = true;
       }
-      emailChangePending = true;
       // Do not set updates.email – sync from auth after user confirms (see GET profile)
     }
 
@@ -692,7 +736,7 @@ export async function PATCH(request: NextRequest) {
         .select("*")
         .eq("user_id", user.id)
         .eq("is_default", true)
-        .single();
+        .maybeSingle();
 
       const { data: verification } = await supabase
         .from("user_verifications")
@@ -700,7 +744,7 @@ export async function PATCH(request: NextRequest) {
         .eq("user_id", user.id)
         .eq("status", "approved")
         .limit(1)
-        .single();
+        .maybeSingle();
 
       const u = userData as UserRow;
       const fullName = u.full_name || "";

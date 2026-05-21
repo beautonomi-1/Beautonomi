@@ -146,11 +146,20 @@ async function loadBookingForSync(
   supabase: SupabaseClient,
   bookingId: string
 ): Promise<{ booking: Record<string, unknown> | null; productsSelectFailed: boolean }> {
+  // §Provider-audit 2026-05 (product sync 42703 root cause): the `bookings`
+  // table never had `customer_name` / `customer_phone` columns — those are
+  // on `product_orders` (migration 240). Selecting them here threw 42703
+  // through every variant, then the "scalar fallback" (which also listed
+  // those columns) threw too, surfacing as
+  // `Failed to sync product order for this appointment (db:42703)` whenever
+  // a provider created a booking containing both services and products.
+  // The customer name/phone we actually want come from the embedded
+  // `customers:users` relation (`full_name`, `phone`).
   const selectVariants = [
     // Full select with explicit FK aliases (best path when migrations are current).
     `
       id, booking_number, provider_id, customer_id, tenant_id, location_id,
-      status, payment_status, currency, scheduled_at, customer_name, customer_phone,
+      status, payment_status, currency, scheduled_at,
       recurring_series_id,
       customers:users!bookings_customer_id_fkey(id, full_name, phone),
       booking_products(
@@ -162,7 +171,7 @@ async function loadBookingForSync(
     // infer the relationship by table name alone).
     `
       id, booking_number, provider_id, customer_id, tenant_id, location_id,
-      status, payment_status, currency, scheduled_at, customer_name, customer_phone,
+      status, payment_status, currency, scheduled_at,
       recurring_series_id,
       customers:users(id, full_name, phone),
       booking_products(
@@ -173,7 +182,7 @@ async function loadBookingForSync(
     // Drop `recurring_series_id` (added by migration 531) and the embedded `products`.
     `
       id, booking_number, provider_id, customer_id, tenant_id, location_id,
-      status, payment_status, currency, scheduled_at, customer_name, customer_phone,
+      status, payment_status, currency, scheduled_at,
       customers:users(id, full_name, phone),
       booking_products(
         id, product_id, product_variant_id, quantity, unit_price, total_price
@@ -183,7 +192,7 @@ async function loadBookingForSync(
     // booking still reads on very old databases.
     `
       id, booking_number, provider_id, customer_id, tenant_id, location_id,
-      status, payment_status, currency, scheduled_at, customer_name, customer_phone,
+      status, payment_status, currency, scheduled_at,
       customers:users(id, full_name, phone),
       booking_products(
         id, product_id, quantity, unit_price, total_price
@@ -212,12 +221,14 @@ async function loadBookingForSync(
 
   // Every embed variant failed — fall back to a scalar-only read and load the
   // line items separately so we never block a booking create on a stale schema.
+  // Truly scalar: no embeds and no columns that aren't guaranteed to exist on
+  // bookings (no customer_name/customer_phone — those live on product_orders).
   const { data: scalar, error: scalarError } = await supabase
     .from("bookings")
     .select(
       `
       id, booking_number, provider_id, customer_id, tenant_id, location_id,
-      status, payment_status, currency, scheduled_at, customer_name, customer_phone
+      status, payment_status, currency, scheduled_at
     `
     )
     .eq("id", bookingId)
@@ -385,13 +396,18 @@ export async function syncAppointmentProductOrder(
   };
 
   // Remove known-optional columns when a 42703 surfaces — keeps the sync
-  // working on older databases that don't yet have migrations 550/240/525
-  // (booking_id, order_source, customer_id nullable, etc.).
+  // working on older databases that don't yet have migrations 240/285/525/550
+  // (booking_id, order_source, customer_name/phone, platform_fee, etc.).
+  // §Provider-audit 2026-05: also strip `customer_name` / `customer_phone`
+  // so an env missing migration 240 on product_orders does not abort the
+  // booking with a 42703.
   const stripOptional = (payload: Record<string, unknown>): Record<string, unknown> => {
     const next = { ...payload };
     delete next.booking_id;
     delete next.order_source;
     delete next.platform_fee;
+    delete next.customer_name;
+    delete next.customer_phone;
     return next;
   };
 

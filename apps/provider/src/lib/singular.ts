@@ -78,7 +78,13 @@ export function buildProviderRoute(params: SingularLinkParams): { pathname: stri
       : { pathname: "/(app)/(tabs)/bookings" };
   }
   if (screen === "group-bookings" || screen === "group_bookings" || path === "group-bookings") {
-    const open_group_id = q.id ?? q.group_booking_id ?? q.open_group_id ?? "";
+    // §Group-booking-audit 2026-05: prefer `group_booking_id` / `open_group_id`
+    // over the generic `id` query param because notification deep links and
+    // bookings calendar rows pass a normal booking id under `id`. Falling back
+    // to `id` last keeps legacy share links working but stops the screen from
+    // trying to fetch a group booking with a participant booking id (which
+    // returns 404).
+    const open_group_id = q.group_booking_id ?? q.open_group_id ?? q.id ?? "";
     return open_group_id
       ? { pathname: "/(app)/(tabs)/more/group-bookings", params: { open_group_id } }
       : { pathname: "/(app)/(tabs)/more/group-bookings" };
@@ -103,6 +109,15 @@ export function buildProviderRoute(params: SingularLinkParams): { pathname: stri
   }
   if (screen === "more" || path === "more") {
     return { pathname: "/(app)/(tabs)/more" };
+  }
+  if (
+    screen === "ads" ||
+    screen === "paid-ads" ||
+    screen === "paid_ads" ||
+    path === "settings/ads" ||
+    path === "ads"
+  ) {
+    return { pathname: "/(app)/(tabs)/more/settings/ads" };
   }
   return null;
 }
@@ -137,25 +152,10 @@ function onSingularLink(params: SingularLinkParams) {
   }
 }
 
-async function requestIosAttBeforeAttribution(): Promise<void> {
-  if (Platform.OS !== "ios") return;
-  try {
-    const { getTrackingPermissionsAsync, requestTrackingPermissionsAsync } = await import(
-      "expo-tracking-transparency"
-    );
-    const { status } = await getTrackingPermissionsAsync();
-    if (status === "undetermined") {
-      await requestTrackingPermissionsAsync();
-    }
-  } catch {
-    // Expo Go / missing native module — Singular still initializes without IDFA until next launch
-  }
-}
-
 /**
  * Initialize Singular. Call once at app startup (root layout).
  * No-op on web or when key/secret missing.
- * On iOS, requests App Tracking Transparency before init when status is undetermined (store requirement with Singular).
+ * ATT is not requested at cold start; Singular initializes without IDFA unless the user grants tracking elsewhere.
  */
 export function initSingular() {
   if (Platform.OS === "web") return;
@@ -165,7 +165,6 @@ export function initSingular() {
   if (!apikey || !secret) return;
 
   void (async () => {
-    await requestIosAttBeforeAttribution();
     try {
       const config = new SingularConfig(apikey, secret).withSingularLink(onSingularLink);
       Singular.init(config);

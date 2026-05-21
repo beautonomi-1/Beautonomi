@@ -8,6 +8,7 @@ import {
   UserCheck,
   MessageCircle,
   Radio,
+  Smartphone,
 } from "lucide-react";
 import { useSuperadminPage } from "@/hooks/useSuperadminPage";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
@@ -51,6 +52,12 @@ const cards: { title: string; description: string; to: string; icon: typeof BarC
     description: "KYC verification",
     to: adminSpaTo("/admin/control-plane/integrations/sumsub"),
     icon: Shield,
+  },
+  {
+    title: "Yoco",
+    description: "OAuth Web POS and hosted-checkout support",
+    to: adminSpaTo("/admin/integrations/yoco"),
+    icon: Smartphone,
   },
   {
     title: "Aura",

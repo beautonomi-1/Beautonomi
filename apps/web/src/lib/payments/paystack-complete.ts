@@ -183,7 +183,8 @@ export interface Customer {
 
 // Transfer Recipients
 export interface CreateTransferRecipientRequest {
-  type: "nuban" | "basa" | "mobile_money" | "barter";
+  // Valid Paystack recipient types per https://paystack.com/docs/api/transfer-recipient/
+  type: "nuban" | "basa" | "mobile_money" | "ghipss";
   name: string;
   account_number: string;
   bank_code: string;
@@ -1610,6 +1611,13 @@ export async function listBanks(params?: {
   gateway?: string;
   type?: string;
   currency?: string;
+  /**
+   * §payout-account-fix 2026-05: Paystack flag that, combined with `country` or
+   * `currency`, returns only banks that support `bank/resolve` verification.
+   * Critical for South Africa where many display-only banks return verification
+   * failures otherwise.
+   */
+  enabled_for_verification?: boolean;
   tenantId?: string | null;
 }): Promise<PaystackResponse<unknown[]>> {
   const queryParams = new URLSearchParams();
@@ -1622,6 +1630,7 @@ export async function listBanks(params?: {
   if (params?.gateway) queryParams.append("gateway", params.gateway);
   if (params?.type) queryParams.append("type", params.type);
   if (params?.currency) queryParams.append("currency", params.currency);
+  if (params?.enabled_for_verification) queryParams.append("enabled_for_verification", "true");
 
   const query = queryParams.toString();
   return paystackRequest(`/bank${query ? `?${query}` : ""}`, {

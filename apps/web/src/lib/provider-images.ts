@@ -18,8 +18,10 @@
  *
  * Contract:
  *
- * - {@link providerHeroImage} always returns a string Next/Image can load
- *   (provider thumbnail → avatar → bundled SVG fallback under `public/`).
+ * - {@link providerHeroImageCandidates} returns the ordered image fallback
+ *   list for cards (provider thumbnail → avatar → bundled SVG fallback under
+ *   `public/`).
+ * - {@link providerHeroImage} returns the first candidate for initial render.
  * - {@link providerAvatarImage} returns `null` when no usable photo exists,
  *   so the card can render initials instead of triggering another image
  *   request for the placeholder.
@@ -52,6 +54,23 @@ function firstNonEmpty(...values: Array<string | null | undefined>): string | nu
  */
 export function providerHeroImage(provider: ProviderImageInput): string {
   return firstNonEmpty(provider.thumbnail_url, provider.avatar_url) ?? WEB_PROVIDER_IMAGE_FALLBACK;
+}
+
+/**
+ * Ordered hero image fallbacks for provider listing cards.
+ *
+ * The first item is the initial image. If it 404s, the card should try the
+ * next item before giving up to the bundled placeholder. This mirrors the
+ * customer app UX: providers with a broken/missing hero image can still show
+ * their uploaded avatar clearly.
+ */
+export function providerHeroImageCandidates(provider: ProviderImageInput): string[] {
+  const candidates = [
+    firstNonEmpty(provider.thumbnail_url),
+    firstNonEmpty(provider.avatar_url),
+    WEB_PROVIDER_IMAGE_FALLBACK,
+  ].filter((value): value is string => Boolean(value));
+  return [...new Set(candidates)];
 }
 
 /**

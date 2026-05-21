@@ -21,11 +21,23 @@ const COUNTRY_CURRENCY: Record<string, string> = {
 };
 
 /**
+ * Countries where Paystack supports the `enabled_for_verification` flag on
+ * `/bank`. Today this is South Africa; we request the verification-enabled
+ * subset there so the bank picker only shows banks Paystack can actually
+ * resolve.
+ */
+const VERIFICATION_FLAG_COUNTRIES = new Set(["ZA"]);
+
+/**
  * GET /api/provider/payout-accounts/banks
  *
- * List banks from Paystack for a given country (same Paystack API as web /api/public/banks).
- * Used by mobile and web to show bank dropdown when adding payout accounts.
- * Country: ISO code (ZA, NG, GH, KE) — converted to Paystack format internally.
+ * List banks from Paystack for a given country. Used by mobile and web to show
+ * the bank dropdown when adding payout accounts.
+ *
+ * §payout-account-fix 2026-05: requests verification-capable banks for South
+ * Africa so the bank picker matches what `bank/resolve` will accept, and now
+ * returns `type` per bank so the client can pass the right Paystack recipient
+ * type when creating transfer recipients.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -49,6 +61,7 @@ export async function GET(request: NextRequest) {
       country: paystackCountry,
       currency,
       perPage: 100,
+      enabled_for_verification: VERIFICATION_FLAG_COUNTRIES.has(isoCountry),
       tenantId,
     });
 
@@ -70,6 +83,9 @@ export async function GET(request: NextRequest) {
       name: b.name,
       country: isoCountry,
       currency: b.currency ?? currency,
+      // Surface Paystack's recipient type so the create-account form can send
+      // the correct `type` (`nuban`, `basa`, `ghipss`, `mobile_money`).
+      type: b.type || (isoCountry === "ZA" ? "basa" : "nuban"),
     }));
 
     return successResponse({ banks, country: isoCountry, currency });

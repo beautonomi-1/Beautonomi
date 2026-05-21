@@ -59,6 +59,15 @@ type ProviderDetail = Record<string, unknown> & {
       credential_mode?: "none" | "checkout" | "oauth";
       environment?: "sandbox" | "live";
       oauth_token_present?: boolean;
+      oauth_token?: {
+        expires_at?: string | null;
+        refresh_expires_at?: string | null;
+        last_refreshed_at?: string | null;
+        last_refresh_error?: string | null;
+        business_id?: string | null;
+        business_name?: string | null;
+        user_email?: string | null;
+      } | null;
     } | null;
     web_pos_devices?: Record<string, unknown>[];
     legacy_terminals?: Record<string, unknown>[];
@@ -143,7 +152,7 @@ export function ProviderDetailPage() {
     ADMIN_SECTION_PROVIDERS_OPERATIONS,
     "Providers & operations access is required."
   );
-  const { canAccess } = useAdminSession();
+  const { canAccess, bootstrap } = useAdminSession();
   const canOpenLifecycle = canAccess(ADMIN_SECTION_PROVIDER_OPS);
   const canOpenVerifications = canAccess(ADMIN_SECTION_USERS_TRUST);
 
@@ -158,6 +167,17 @@ export function ProviderDetailPage() {
   const [deductReason, setDeductReason] = useState("");
   const [showDeduct, setShowDeduct] = useState(false);
   const [showAddBankAccount, setShowAddBankAccount] = useState(false);
+  const [showYocoSupport, setShowYocoSupport] = useState(false);
+  const [yocoSupportForm, setYocoSupportForm] = useState({
+    environment: "live" as "live" | "sandbox",
+    is_enabled: true,
+    public_key: "",
+    secret_key: "",
+    webhook_secret: "",
+    credential_mode: "checkout" as "none" | "checkout" | "oauth",
+    clear_checkout_credentials: false,
+    reset_reconnect_banner: true,
+  });
 
   const q = useQuery({
     queryKey: adminQueryKeys.providers.detail(id),
@@ -211,6 +231,12 @@ export function ProviderDetailPage() {
       description: str(d.description),
       business_type: str(d.business_type),
     });
+    setYocoSupportForm((f) => ({
+      ...f,
+      environment: d.yoco_summary?.integration?.environment === "sandbox" ? "sandbox" : "live",
+      is_enabled: d.yoco_summary?.integration?.enabled ?? true,
+      credential_mode: d.yoco_summary?.integration?.credential_mode ?? "checkout",
+    }));
   }, [q.data]);
 
   const save = useMutation({
@@ -255,6 +281,46 @@ export function ProviderDetailPage() {
       adminToast.success(verified ? "Provider verified" : "Verification removed");
     },
     onError: (e: Error) => adminToast.error(`Failed to update verification: ${e.message}`),
+  });
+
+  const updateYocoSupport = useMutation({
+    mutationFn: () => {
+      const payload: Record<string, unknown> = {
+        environment: yocoSupportForm.environment,
+        is_enabled: yocoSupportForm.is_enabled,
+        credential_mode: yocoSupportForm.credential_mode,
+        clear_checkout_credentials: yocoSupportForm.clear_checkout_credentials,
+        reset_reconnect_banner: yocoSupportForm.reset_reconnect_banner,
+      };
+      if (yocoSupportForm.public_key.trim()) payload.public_key = yocoSupportForm.public_key.trim();
+      if (yocoSupportForm.secret_key.trim()) payload.secret_key = yocoSupportForm.secret_key.trim();
+      if (yocoSupportForm.webhook_secret.trim()) payload.webhook_secret = yocoSupportForm.webhook_secret.trim();
+      return adminApi.patchJson(`/api/admin/providers/${encodeURIComponent(providerCanonicalId || id)}/yoco`, payload);
+    },
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: adminQueryKeys.providers.detail(id) });
+      setYocoSupportForm((f) => ({
+        ...f,
+        public_key: "",
+        secret_key: "",
+        webhook_secret: "",
+        clear_checkout_credentials: false,
+      }));
+      adminToast.success("Provider Yoco settings updated");
+    },
+    onError: (e: Error) => adminToast.error(`Failed to update Yoco settings: ${e.message}`),
+  });
+
+  const disconnectYocoOauth = useMutation({
+    mutationFn: () =>
+      adminApi.postJson(`/api/admin/providers/${encodeURIComponent(providerCanonicalId || id)}/yoco`, {
+        action: "disconnect_oauth",
+      }),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: adminQueryKeys.providers.detail(id) });
+      adminToast.success("Yoco OAuth tokens disconnected");
+    },
+    onError: (e: Error) => adminToast.error(`Failed to disconnect Yoco OAuth: ${e.message}`),
   });
 
   if (denied) return denied;
@@ -403,6 +469,8 @@ export function ProviderDetailPage() {
         errors={[
           save.error instanceof Error ? save.error : null,
           payoutAccountsQ.error instanceof Error ? payoutAccountsQ.error : null,
+          updateYocoSupport.error instanceof Error ? updateYocoSupport.error : null,
+          disconnectYocoOauth.error instanceof Error ? disconnectYocoOauth.error : null,
         ]}
       />
 
@@ -705,12 +773,23 @@ export function ProviderDetailPage() {
               checkout-only.
             </p>
           </div>
-          <Link
-            to={adminSpaTo("/admin/integrations/yoco")}
-            className="shrink-0 text-sm font-medium text-primary underline"
-          >
-            Yoco setup (admin) →
-          </Link>
+          <div className="flex flex-wrap items-center gap-3">
+            <Link
+              to={adminSpaTo("/admin/integrations/yoco")}
+              className="shrink-0 text-sm font-medium text-primary underline"
+            >
+              Yoco setup (admin) →
+            </Link>
+            {bootstrap?.isSuperadmin ? (
+              <button
+                type="button"
+                className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                onClick={() => setShowYocoSupport((v) => !v)}
+              >
+                {showYocoSupport ? "Hide support controls" : "Support controls"}
+              </button>
+            ) : null}
+          </div>
         </div>
         <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
           <div>
@@ -742,6 +821,28 @@ export function ProviderDetailPage() {
           <div>
             <dt className="text-gray-500">OAuth token row (this env)</dt>
             <dd className="font-medium">{yoco?.integration?.oauth_token_present ? "Present" : "Not stored"}</dd>
+          </div>
+          <div>
+            <dt className="text-gray-500">OAuth business</dt>
+            <dd className="font-medium">
+              {yoco?.integration?.oauth_token?.business_name ||
+                yoco?.integration?.oauth_token?.business_id ||
+                "—"}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-gray-500">OAuth token expires</dt>
+            <dd className="font-medium">
+              {yoco?.integration?.oauth_token?.expires_at
+                ? new Date(String(yoco.integration.oauth_token.expires_at)).toLocaleString()
+                : "—"}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-gray-500">OAuth refresh error</dt>
+            <dd className={cn("font-medium", yoco?.integration?.oauth_token?.last_refresh_error ? "text-red-700" : "")}>
+              {yoco?.integration?.oauth_token?.last_refresh_error || "—"}
+            </dd>
           </div>
           <div>
             <dt className="text-gray-500">Has secret key (Checkout API)</dt>
@@ -784,6 +885,131 @@ export function ProviderDetailPage() {
             ) : null}
           </div>
         </dl>
+        {bootstrap?.isSuperadmin && showYocoSupport ? (
+          <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4">
+            <h3 className="text-sm font-semibold text-amber-950">Superadmin Yoco support controls</h3>
+            <p className="mt-1 text-sm text-amber-900">
+              Use this for audited support recovery. Providers should normally self-connect OAuth and paste hosted
+              checkout keys in their own settings.
+            </p>
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <label className="text-sm font-medium text-gray-700">
+                Environment
+                <select
+                  className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
+                  value={yocoSupportForm.environment}
+                  onChange={(event) =>
+                    setYocoSupportForm((f) => ({
+                      ...f,
+                      environment: event.target.value === "sandbox" ? "sandbox" : "live",
+                    }))
+                  }
+                >
+                  <option value="live">live</option>
+                  <option value="sandbox">sandbox</option>
+                </select>
+              </label>
+              <label className="text-sm font-medium text-gray-700">
+                Credential mode
+                <select
+                  className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
+                  value={yocoSupportForm.credential_mode}
+                  onChange={(event) =>
+                    setYocoSupportForm((f) => ({
+                      ...f,
+                      credential_mode: event.target.value as "none" | "checkout" | "oauth",
+                    }))
+                  }
+                >
+                  <option value="none">none</option>
+                  <option value="checkout">checkout (hosted checkout)</option>
+                  <option value="oauth">oauth (Web POS)</option>
+                </select>
+              </label>
+              <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={yocoSupportForm.is_enabled}
+                  onChange={(event) => setYocoSupportForm((f) => ({ ...f, is_enabled: event.target.checked }))}
+                />
+                Integration enabled
+              </label>
+              <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={yocoSupportForm.reset_reconnect_banner}
+                  onChange={(event) =>
+                    setYocoSupportForm((f) => ({ ...f, reset_reconnect_banner: event.target.checked }))
+                  }
+                />
+                Reset reconnect banner
+              </label>
+              <label className="text-sm font-medium text-gray-700">
+                Public key (optional)
+                <input
+                  className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 font-mono text-sm"
+                  value={yocoSupportForm.public_key}
+                  placeholder={yoco?.integration?.has_public_key ? "Set (hidden)" : "pk_live_..."}
+                  onChange={(event) => setYocoSupportForm((f) => ({ ...f, public_key: event.target.value }))}
+                />
+              </label>
+              <label className="text-sm font-medium text-gray-700">
+                Secret key for hosted checkout
+                <input
+                  type="password"
+                  autoComplete="off"
+                  className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 font-mono text-sm"
+                  value={yocoSupportForm.secret_key}
+                  placeholder={yoco?.integration?.has_secret_key ? "Set (hidden)" : "sk_live_..."}
+                  onChange={(event) => setYocoSupportForm((f) => ({ ...f, secret_key: event.target.value }))}
+                />
+              </label>
+              <label className="text-sm font-medium text-gray-700 md:col-span-2">
+                Webhook secret for hosted checkout
+                <input
+                  type="password"
+                  autoComplete="off"
+                  className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 font-mono text-sm"
+                  value={yocoSupportForm.webhook_secret}
+                  placeholder="whsec_..."
+                  onChange={(event) => setYocoSupportForm((f) => ({ ...f, webhook_secret: event.target.value }))}
+                />
+              </label>
+              <label className="flex items-center gap-2 text-sm font-medium text-red-800 md:col-span-2">
+                <input
+                  type="checkbox"
+                  checked={yocoSupportForm.clear_checkout_credentials}
+                  onChange={(event) =>
+                    setYocoSupportForm((f) => ({ ...f, clear_checkout_credentials: event.target.checked }))
+                  }
+                />
+                Clear hosted checkout credentials
+              </label>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-3">
+              <button
+                type="button"
+                className={adminToolbarButtonClass(updateYocoSupport.isPending)}
+                disabled={updateYocoSupport.isPending}
+                onClick={() => updateYocoSupport.mutate()}
+              >
+                {updateYocoSupport.isPending ? "Saving..." : "Save Yoco settings"}
+              </button>
+              <button
+                type="button"
+                className="rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+                disabled={disconnectYocoOauth.isPending || !yoco?.integration?.oauth_token_present}
+                onClick={() => {
+                  if (window.confirm("Disconnect this provider's Yoco OAuth tokens? They must reconnect for Web POS.")) {
+                    disconnectYocoOauth.mutate();
+                  }
+                }}
+              >
+                {disconnectYocoOauth.isPending ? "Disconnecting..." : "Disconnect OAuth tokens"}
+              </button>
+            </div>
+          </div>
+        ) : null}
         {Array.isArray(yoco?.web_pos_devices) && yoco!.web_pos_devices!.length > 0 ? (
           <div className="mt-6 overflow-x-auto">
             <table className="w-full min-w-[560px] border-collapse text-left text-sm">

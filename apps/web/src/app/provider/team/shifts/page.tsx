@@ -106,6 +106,10 @@ export default function ProviderShifts() {
       toast.error("Weekly schedule entries can only be edited in Staff Schedules");
       return;
     }
+    if (shift.source === "location") {
+      toast.error("This row inherits the location's operating hours. Add a date-specific shift to override it.");
+      return;
+    }
     try {
       await providerApi.deleteShift(shift.id);
       toast.success("Shift deleted");
@@ -140,7 +144,11 @@ export default function ProviderShifts() {
     }
 
     try {
-      if (selectedShift && selectedShift.source !== "schedule") {
+      if (
+        selectedShift &&
+        selectedShift.source !== "schedule" &&
+        selectedShift.source !== "location"
+      ) {
         await providerApi.updateShift(selectedShift.id, {
           date: formData.date,
           start_time: formData.startTime,
@@ -190,12 +198,15 @@ export default function ProviderShifts() {
           You can create split shifts (e.g. 08:00–12:00 and 14:00–18:00), one-off date overrides, or repeating shifts.
           Staff with <strong>Custom Work Hours</strong> disabled in their settings will use the location&apos;s operating hours instead.
         </p>
-        <div className="flex items-center gap-4 mt-2 text-xs text-indigo-700">
+        <div className="flex flex-wrap items-center gap-4 mt-2 text-xs text-indigo-700">
           <span className="inline-flex items-center gap-1">
             <span className="inline-block w-3 h-3 rounded bg-[#FF0077]/10 border border-[#FF0077]/20" /> Date-specific shift
           </span>
           <span className="inline-flex items-center gap-1">
             <span className="inline-block w-3 h-3 rounded bg-blue-50 border border-blue-200" /> Weekly schedule
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <span className="inline-block w-3 h-3 rounded bg-emerald-50 border border-emerald-200" /> Inherited from location operating hours
           </span>
           <span>Repeating shifts show on every matching future week until their end rule.</span>
         </div>
@@ -268,28 +279,44 @@ export default function ProviderShifts() {
                             <div className="flex flex-col items-center gap-1">
                               {dayShifts.map((shift) => {
                                 const isSchedule = shift.source === "schedule";
+                                const isLocation = shift.source === "location";
+                                const isInherited = isSchedule || isLocation;
+                                const badgeClass = isLocation
+                                  ? "bg-emerald-50 text-emerald-700 border-emerald-200 text-xs"
+                                  : isSchedule
+                                    ? "bg-blue-50 text-blue-700 border-blue-200 text-xs"
+                                    : "bg-[#FF0077]/10 text-[#FF0077] border-[#FF0077]/20 text-xs";
+                                const editTitle = isLocation
+                                  ? "Inherited from location operating hours — add a date-specific shift to override"
+                                  : isSchedule
+                                    ? "Override with date-specific shift"
+                                    : "Edit shift";
                                 return (
-                                  <div key={`${shift.id}-${shift.date}`} className="flex items-center justify-center gap-1">
-                                    <Badge
-                                      variant="outline"
-                                      className={
-                                        isSchedule
-                                          ? "bg-blue-50 text-blue-700 border-blue-200 text-xs"
-                                          : "bg-[#FF0077]/10 text-[#FF0077] border-[#FF0077]/20 text-xs"
-                                      }
-                                    >
+                                  <div
+                                    key={`${shift.id}-${shift.date}`}
+                                    className="flex items-center justify-center gap-1"
+                                    title={
+                                      isLocation
+                                        ? "Inherited from location operating hours"
+                                        : isSchedule
+                                          ? "Inherited from weekly schedule"
+                                          : undefined
+                                    }
+                                  >
+                                    <Badge variant="outline" className={badgeClass}>
                                       {shift.start_time} - {shift.end_time}
+                                      {isLocation ? " · Inherited" : ""}
                                     </Badge>
                                     <Button
                                       variant="ghost"
                                       size="icon"
                                       className="h-5 w-5"
                                       onClick={() => handleEditShift(shift)}
-                                      title={isSchedule ? "Override with date-specific shift" : "Edit shift"}
+                                      title={editTitle}
                                     >
                                       <Pencil className="w-3 h-3" />
                                     </Button>
-                                    {!isSchedule && (
+                                    {!isInherited && (
                                       <Button
                                         variant="ghost"
                                         size="icon"

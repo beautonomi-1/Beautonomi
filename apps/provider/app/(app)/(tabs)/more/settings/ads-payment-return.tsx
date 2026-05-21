@@ -56,6 +56,19 @@ export default function AdsPaymentReturnScreen() {
         params: query,
       });
     };
+    const navigateSuccess = () => {
+      const query: Record<string, string> = {
+        title: "Payment successful",
+        body: campaignId
+          ? "Your ad payment was confirmed. We are opening your live campaign now."
+          : "Your ad payment was confirmed. We are activating your campaign now.",
+      };
+      if (campaignId) query.campaign_id = campaignId;
+      router.replace({
+        pathname: "/(app)/(tabs)/more/settings/ads-payment-success",
+        params: query,
+      });
+    };
 
     if (cancelFlag === "1") {
       const t = setTimeout(() => {
@@ -85,7 +98,7 @@ export default function AdsPaymentReturnScreen() {
       const delay = verifyResult.status === "success" ? 700 : 1500;
       setTimeout(() => {
         if (aborted) return;
-        if (verifyResult.status === "success") navigateBack("payment_success");
+        if (verifyResult.status === "success") navigateSuccess();
         else if (verifyResult.status === "failed") navigateBack("payment_failed");
         else navigateBack("payment_pending");
       }, delay);

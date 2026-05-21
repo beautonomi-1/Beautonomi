@@ -215,7 +215,7 @@ export async function POST(request: NextRequest) {
     // Resolve payout account: use bank_account_id from body if valid, else primary (is_primary then latest)
     const { data: accounts } = await supabase
       .from("provider_payout_accounts")
-      .select("id, recipient_code, account_name, account_number_last4, bank_name")
+      .select("id, recipient_code, account_name, account_number_last4, bank_name, currency")
       .eq("provider_id", providerId)
       .eq("active", true)
       .is("deleted_at", null)
@@ -236,6 +236,14 @@ export async function POST(request: NextRequest) {
       : accountList[0];
     if (bank_account_id && !chosenAccount) {
       return errorResponse("Selected bank account not found or inactive.", "INVALID_ACCOUNT", 400);
+    }
+    const accountCurrency = (chosenAccount as { currency?: string | null } | undefined)?.currency?.trim().toUpperCase();
+    if (accountCurrency && accountCurrency !== payoutCurrency.trim().toUpperCase()) {
+      return errorResponse(
+        `Selected payout account currency (${accountCurrency}) does not match payout currency (${payoutCurrency}).`,
+        "CURRENCY_MISMATCH",
+        400,
+      );
     }
     const payoutAccountId = chosenAccount?.id ?? accountList[0].id;
 

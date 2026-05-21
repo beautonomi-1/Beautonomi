@@ -27,6 +27,42 @@ import { getApiErrorMessage } from "@/lib/api-error";
 type GlobalCategory = { id: string; name: string };
 type AvailabilitySlot = { start: string; end?: string; is_available?: boolean; staff_id?: string | null };
 
+/**
+ * §custom-request-mobile-upload 2026-05: keep the mobile rules in sync with
+ * the server validation in /api/me/custom-requests/upload so the user gets a
+ * fast, local error instead of a wasted multipart round-trip.
+ */
+const ALLOWED_IMAGE_MIME_TYPES: ReadonlyArray<string> = [
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+];
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const MAX_IMAGE_COUNT = 6;
+/** Matches the server zod schema (`duration_minutes` between 15 and 8h). */
+const MIN_DURATION_MINUTES = 15;
+const MAX_DURATION_MINUTES = 8 * 60;
+
+function inferMimeTypeFromName(name: string | undefined | null): string | null {
+  if (!name) return null;
+  const ext = name.split(".").pop()?.toLowerCase();
+  switch (ext) {
+    case "jpg":
+    case "jpeg":
+      return "image/jpeg";
+    case "png":
+      return "image/png";
+    case "webp":
+      return "image/webp";
+    case "gif":
+      return "image/gif";
+    default:
+      return null;
+  }
+}
+
 function dateKey(date: Date): string {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, "0");
@@ -96,6 +132,8 @@ export default function CustomRequestCreateScreen() {
   const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const dateOptions = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -151,41 +189,66 @@ export default function CustomRequestCreateScreen() {
     };
   }, [duration, locationType, preferredStartAt, provider_id, selectedDate]);
 
-  const addImage = async () => {
-    if (imageUrls.length >= 6) return;
+  const addImage = useCallback(async () => {
+    if (imageUrls.length >= MAX_IMAGE_COUNT) {
+      setUploadError(cr("uploadLimitReached"));
+      return;
+    }
+    setUploadError(null);
     setUploading(true);
     try {
       const result = await pickFromLibrary();
-      if (!result) {
-        setUploading(false);
+      if (!result) return;
+
+      const resolvedMime =
+        (result.mimeType && result.mimeType.toLowerCase()) ||
+        inferMimeTypeFromName(result.fileName) ||
+        "image/jpeg";
+
+      if (!ALLOWED_IMAGE_MIME_TYPES.includes(resolvedMime)) {
+        setUploadError(cr("uploadUnsupportedType"));
         return;
       }
+
+      if (typeof result.fileSize === "number" && result.fileSize > MAX_IMAGE_BYTES) {
+        setUploadError(cr("uploadTooLarge"));
+        return;
+      }
+
       const formData = new FormData();
       appendFormDataFileNative(formData, "files", {
         uri: result.uri,
         name: result.fileName || "image.jpg",
-        type: result.mimeType || "image/jpeg",
+        type: resolvedMime,
       });
-      const res = await api.fetch<{ urls?: string[] }>("/api/me/custom-requests/upload", {
+      const res = await api.fetch<{
+        urls?: string[];
+        partial?: boolean;
+        failed?: { name: string; reason: string }[];
+      }>("/api/me/custom-requests/upload", {
         method: "POST",
         body: formData,
       });
       if (res.error) {
-        Alert.alert(cr("uploadFailedTitle"), getApiErrorMessage(res.error, cr("uploadFailedFallback")));
+        setUploadError(getApiErrorMessage(res.error, cr("uploadFailedFallback")));
         return;
       }
-      const urls = (res.data as { urls?: string[] } | null)?.urls ?? [];
+      const payload = res.data ?? null;
+      const urls = payload?.urls ?? [];
       if (urls.length > 0) {
-        setImageUrls((prev) => [...prev, ...urls].slice(0, 6));
+        setImageUrls((prev) => [...prev, ...urls].slice(0, MAX_IMAGE_COUNT));
+        if (payload?.partial) {
+          setUploadError(cr("uploadPartialSuccess"));
+        }
       } else {
-        Alert.alert(cr("uploadProcessedTitle"), cr("uploadProcessedBody"));
+        setUploadError(cr("uploadProcessedBody"));
       }
-    } catch {
-      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), cr("uploadImageFailedBody"));
+    } catch (e) {
+      setUploadError(e instanceof Error ? e.message : cr("uploadImageFailedBody"));
     } finally {
       setUploading(false);
     }
-  };
+  }, [cr, imageUrls.length, pickFromLibrary]);
 
   const removeImage = (idx: number) => {
     setImageUrls((prev) => prev.filter((_, i) => i !== idx));
@@ -193,32 +256,70 @@ export default function CustomRequestCreateScreen() {
 
   const submit = async () => {
     if (!provider_id) {
+      setSubmitError(cr("providerMissingBody"));
       Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), cr("providerMissingBody"));
       return;
     }
     if (!user) return;
     const desc = description.trim();
     if (desc.length < 10) {
+      setSubmitError(cr("descriptionRequiredBody"));
       Alert.alert(cr("descriptionRequiredTitle"), cr("descriptionRequiredBody"));
       return;
     }
-    if (locationType === "at_home" && (!addressLine1.trim() || !addressCity.trim())) {
-      Alert.alert(
-        t("customer.mobile.screens.authLogin.errorTitle"),
-        "Please provide at least a street address and city for at-home services."
-      );
+
+    const parsedBudgetMin = budgetMin.trim() ? parseFloat(budgetMin) : null;
+    const parsedBudgetMax = budgetMax.trim() ? parseFloat(budgetMax) : null;
+    if (parsedBudgetMin != null && (!Number.isFinite(parsedBudgetMin) || parsedBudgetMin < 0)) {
+      setSubmitError(cr("budgetInvalid"));
+      Alert.alert(cr("budgetInvalidTitle"), cr("budgetInvalid"));
       return;
     }
+    if (parsedBudgetMax != null && (!Number.isFinite(parsedBudgetMax) || parsedBudgetMax < 0)) {
+      setSubmitError(cr("budgetInvalid"));
+      Alert.alert(cr("budgetInvalidTitle"), cr("budgetInvalid"));
+      return;
+    }
+    if (parsedBudgetMin != null && parsedBudgetMax != null && parsedBudgetMax < parsedBudgetMin) {
+      setSubmitError(cr("budgetMaxLessThanMin"));
+      Alert.alert(cr("budgetInvalidTitle"), cr("budgetMaxLessThanMin"));
+      return;
+    }
+
+    const parsedDuration = parseInt(duration, 10);
+    const durationMinutes = Number.isFinite(parsedDuration) && parsedDuration > 0 ? parsedDuration : 60;
+    if (durationMinutes < MIN_DURATION_MINUTES || durationMinutes > MAX_DURATION_MINUTES) {
+      const msg = cr("durationOutOfRange", {
+        min: MIN_DURATION_MINUTES,
+        max: MAX_DURATION_MINUTES,
+      });
+      setSubmitError(msg);
+      Alert.alert(cr("budgetInvalidTitle"), msg);
+      return;
+    }
+
+    if (locationType === "at_home" && (!addressLine1.trim() || !addressCity.trim())) {
+      const msg = cr("addressRequiredBody");
+      setSubmitError(msg);
+      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), msg);
+      return;
+    }
+
+    setSubmitError(null);
     setSubmitting(true);
     try {
-      const res = await api.post("/api/me/custom-requests", {
+      const res = await api.post<{
+        conversation_id?: string;
+        attachment_warning?: string;
+        message_warning?: string;
+      }>("/api/me/custom-requests", {
         provider_id,
         description: desc,
-        budget_min: budgetMin ? parseFloat(budgetMin) : null,
-        budget_max: budgetMax ? parseFloat(budgetMax) : null,
+        budget_min: parsedBudgetMin,
+        budget_max: parsedBudgetMax,
         service_category_id: serviceCategoryId,
         preferred_start_at: preferredStartAt,
-        duration_minutes: parseInt(duration, 10) || 60,
+        duration_minutes: durationMinutes,
         location_type: locationType,
         address_line1: locationType === "at_home" ? addressLine1 : undefined,
         address_line2: locationType === "at_home" ? addressLine2 : undefined,
@@ -228,33 +329,40 @@ export default function CustomRequestCreateScreen() {
         image_urls: imageUrls,
       });
       if (res.error) {
-        Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), res.error.message || cr("submitFailed"));
-      } else {
-        haptic.success();
-        const result = res.data as { conversation_id?: string } | null;
-        const conversationId = result?.conversation_id;
-        Alert.alert(
-          cr("submittedTitle"),
-          cr("submittedBody"),
-          [
-            {
-              text: conversationId ? cr("goToChat") : t("common.ok"),
-              onPress: () => {
-                if (conversationId) {
-                  router.replace({ pathname: "/(app)/chat", params: { id: conversationId } });
-                } else {
-                  router.back();
-                }
-              },
-            },
-            ...(conversationId
-              ? [{ text: cr("later"), style: "cancel" as const, onPress: () => router.back() }]
-              : []),
-          ],
-        );
+        const msg = getApiErrorMessage(res.error, cr("submitFailed"));
+        setSubmitError(msg);
+        Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), msg);
+        return;
       }
+      haptic.success();
+      const result = res.data ?? null;
+      const conversationId = result?.conversation_id;
+      const partialNotice = result?.attachment_warning
+        ? `\n\n${cr("submittedPartialImages")}`
+        : "";
+      Alert.alert(
+        cr("submittedTitle"),
+        `${cr("submittedBody")}${partialNotice}`,
+        [
+          {
+            text: conversationId ? cr("goToChat") : t("common.ok"),
+            onPress: () => {
+              if (conversationId) {
+                router.replace({ pathname: "/(app)/chat", params: { id: conversationId } });
+              } else {
+                router.back();
+              }
+            },
+          },
+          ...(conversationId
+            ? [{ text: cr("later"), style: "cancel" as const, onPress: () => router.back() }]
+            : []),
+        ],
+      );
     } catch (e) {
-      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), e instanceof Error ? e.message : cr("submitFailed"));
+      const msg = e instanceof Error ? e.message : cr("submitFailed");
+      setSubmitError(msg);
+      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), msg);
     } finally {
       setSubmitting(false);
     }
@@ -414,24 +522,112 @@ export default function CustomRequestCreateScreen() {
             })
           )}
         </View>
-        <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 16, marginBottom: 8 }}>{cr("inspirationPhotosLabel")}</Text>
+        <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 16, marginBottom: 4 }}>{cr("inspirationPhotosLabel")}</Text>
+        <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 8 }}>
+          {cr("inspirationPhotosHelper", { max: MAX_IMAGE_COUNT })}
+        </Text>
         <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
           {imageUrls.map((url, i) => (
             <View key={i} style={{ position: "relative", marginRight: 8, marginBottom: 8 }}>
               <Image source={{ uri: url }} style={{ width: 80, height: 80, borderRadius: 8 }} contentFit="cover" cachePolicy="memory-disk" transition={200} />
-              <Pressable onPress={() => removeImage(i)} style={{ position: "absolute", top: -4, right: -4, width: 20, height: 20, backgroundColor: "#EF4444", borderRadius: 10, alignItems: "center", justifyContent: "center" }}>
+              <Pressable
+                onPress={() => removeImage(i)}
+                accessibilityRole="button"
+                accessibilityLabel={cr("removePhotoA11y")}
+                style={{ position: "absolute", top: -4, right: -4, width: 20, height: 20, backgroundColor: "#EF4444", borderRadius: 10, alignItems: "center", justifyContent: "center" }}
+              >
                 <Text style={{ color: Colors.white, fontSize: 12 }}>×</Text>
               </Pressable>
             </View>
           ))}
-          {imageUrls.length < 6 && (
-            <TouchableOpacity onPress={addImage} disabled={uploading} style={{ width: 80, height: 80, borderRadius: 8, borderWidth: 2, borderStyle: "dashed", borderColor: Colors.gray[300], alignItems: "center", justifyContent: "center", marginRight: 8, marginBottom: 8 }}>
+          {imageUrls.length < MAX_IMAGE_COUNT && (
+            <TouchableOpacity
+              onPress={addImage}
+              disabled={uploading}
+              accessibilityRole="button"
+              accessibilityLabel={cr("addPhotoA11y")}
+              style={{ width: 80, height: 80, borderRadius: 8, borderWidth: 2, borderStyle: "dashed", borderColor: uploadError ? "#EF4444" : Colors.gray[300], alignItems: "center", justifyContent: "center", marginRight: 8, marginBottom: 8 }}
+            >
               {uploading ? <ActivityIndicator size="small" /> : <Text style={{ color: Colors.gray[500], fontSize: 24 }}>+</Text>}
             </TouchableOpacity>
           )}
         </View>
-        <TouchableOpacity onPress={submit} disabled={submitting} style={{ backgroundColor: Colors.primary, paddingVertical: 16, borderRadius: 12, alignItems: "center", marginTop: 24 }}>
-          {submitting ? <ActivityIndicator color={Colors.white} /> : <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 18 }}>{cr("submitCta")}</Text>}
+        {uploadError ? (
+          <View
+            style={{
+              marginTop: 4,
+              padding: 12,
+              borderRadius: 10,
+              backgroundColor: "#FEF2F2",
+              borderWidth: 1,
+              borderColor: "#FECACA",
+            }}
+          >
+            <Text style={{ color: "#B91C1C", fontSize: 13, marginBottom: 8 }}>{uploadError}</Text>
+            <View style={{ flexDirection: "row" }}>
+              <TouchableOpacity
+                onPress={addImage}
+                disabled={uploading || imageUrls.length >= MAX_IMAGE_COUNT}
+                accessibilityRole="button"
+                style={{
+                  paddingVertical: 8,
+                  paddingHorizontal: 12,
+                  borderRadius: 8,
+                  backgroundColor: Colors.primary,
+                  marginRight: 8,
+                  opacity: uploading || imageUrls.length >= MAX_IMAGE_COUNT ? 0.6 : 1,
+                }}
+              >
+                <Text style={{ color: Colors.white, fontSize: 12, fontWeight: "600" }}>
+                  {cr("retryUpload")}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setUploadError(null)}
+                accessibilityRole="button"
+                style={{
+                  paddingVertical: 8,
+                  paddingHorizontal: 12,
+                  borderRadius: 8,
+                  backgroundColor: "transparent",
+                  borderWidth: 1,
+                  borderColor: "#FECACA",
+                }}
+              >
+                <Text style={{ color: "#B91C1C", fontSize: 12, fontWeight: "600" }}>
+                  {cr("dismiss")}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : null}
+        {submitError ? (
+          <View
+            style={{
+              marginTop: 16,
+              padding: 12,
+              borderRadius: 10,
+              backgroundColor: "#FEF2F2",
+              borderWidth: 1,
+              borderColor: "#FECACA",
+            }}
+          >
+            <Text style={{ color: "#B91C1C", fontSize: 13 }}>{submitError}</Text>
+          </View>
+        ) : null}
+        <TouchableOpacity
+          onPress={submit}
+          disabled={submitting}
+          accessibilityRole="button"
+          style={{ backgroundColor: Colors.primary, paddingVertical: 16, borderRadius: 12, alignItems: "center", marginTop: 24, opacity: submitting ? 0.75 : 1 }}
+        >
+          {submitting ? (
+            <ActivityIndicator color={Colors.white} />
+          ) : (
+            <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 18 }}>
+              {submitError ? cr("retrySubmit") : cr("submitCta")}
+            </Text>
+          )}
         </TouchableOpacity>
       </ScrollView>
       </KeyboardAvoidingView>

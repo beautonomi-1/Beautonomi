@@ -133,12 +133,22 @@ export async function postCustomOfferAccept(
       use_wallet?: boolean;
       gift_card_code?: string;
       loyalty_points_to_redeem?: number;
+      /**
+       * §custom-offer-save-card 2026-05: opt-in to Paystack card tokenization
+       * for the hosted (new-card) flow. Mirrors booking checkout. Ignored when
+       * `payment_method_id` is present (saved-card path) — that path is already
+       * using a stored authorization.
+       */
+      save_card?: boolean;
+      set_as_default?: boolean;
     } = {};
     try {
       body = (await request.json()) || {};
     } catch {
       // no body
     }
+    const saveCardRequested = Boolean(body.save_card) && !body.payment_method_id;
+    const setAsDefault = Boolean(body.set_as_default) && saveCardRequested;
 
     const { data: offerRow, error: offerError } = await supabase
       .from("custom_offers")
@@ -245,6 +255,14 @@ export async function postCustomOfferAccept(
         return errorResponse("This offer has expired.", "OFFER_EXPIRED", 410);
       }
       return successResponse({ paymentUrl: offer.payment_url, alreadyAccepted: false });
+    }
+
+    if (offer.status === "payment_pending") {
+      return errorResponse(
+        "Payment is already being processed for this offer. Refresh in a moment before trying again.",
+        "PAYMENT_IN_PROGRESS",
+        409,
+      );
     }
 
     const adminSupabase = getSupabaseAdmin();
@@ -399,6 +417,13 @@ export async function postCustomOfferAccept(
       gift_card_code: giftCardCode,
       loyalty_points_used: loyaltyPointsRedeemed,
       loyalty_discount_amount: loyaltyDiscountAmount,
+      // §custom-offer-save-card: include customer + save_card flags so the
+      // Paystack `charge.success` webhook handler can tokenize the new card
+      // via `savePaystackAuthorization`. Only relevant on the hosted (new
+      // card) path; saved-card charges already use a stored authorization.
+      customer_id: user.id,
+      save_card: saveCardRequested,
+      set_as_default: setAsDefault,
     };
 
     // ── Debit wallet UPFRONT (mirrors booking checkout) ──────────────────────

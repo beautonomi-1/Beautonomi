@@ -30,6 +30,7 @@ import { APP_URL, withWebApiTenantHeaders } from "@/config/public-env";
 import { supabase } from "@/lib/supabase/client";
 import { twStyle } from "@/lib/twStyle";
 import { appendFormDataFileNative } from "@beautonomi/utils";
+import { launchImageLibraryWithPermission } from "@/lib/native-permissions";
 
 interface ServiceDetail {
   id: string;
@@ -229,21 +230,19 @@ export default function ServiceDetailScreen() {
     if (!editing) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-    const permResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permResult.granted) {
-      Alert.alert(
-        "Permission Required",
-        "Please allow access to your photo library to upload images."
-      );
-      return;
-    }
+    const result = await launchImageLibraryWithPermission(
+      {
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsMultipleSelection: false,
+        quality: 0.8,
+      },
+      {
+        title: "Permission Required",
+        message: "Please allow access to your photo library to upload images.",
+      },
+    );
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsMultipleSelection: false,
-      quality: 0.8,
-    });
-
+    if (!result) return;
     if (result.canceled || !result.assets?.[0]) return;
 
     const asset = result.assets[0];

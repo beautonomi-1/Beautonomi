@@ -119,7 +119,25 @@ export default function PaymentSettingsScreen() {
   } = useApi<PaymentsSettingsApi>("/api/provider/settings/payments");
   const { execute: saveSettings, loading: saving } = useApiMutation("patch");
   const { integration } = useYocoIntegration();
-  const yocoConnected = integration?.is_enabled && integration?.api_key_set;
+  const yocoCredentialMode = integration?.credential_mode ?? "none";
+  const yocoConnected =
+    integration?.is_enabled === true &&
+    (integration?.oauth_connected === true ||
+      yocoCredentialMode === "oauth" ||
+      yocoCredentialMode === "checkout" ||
+      integration?.api_key_set === true);
+  const yocoStatusLabel =
+    integration?.oauth_connected === true || yocoCredentialMode === "oauth"
+      ? "Web POS connected"
+      : yocoCredentialMode === "checkout"
+        ? "Checkout only"
+        : "Not connected";
+  const yocoSubtitle =
+    integration?.oauth_connected === true || yocoCredentialMode === "oauth"
+      ? "Card terminals and tap-to-pay"
+      : yocoCredentialMode === "checkout"
+        ? "Hosted checkout links and QR"
+        : "Card & tap-to-pay";
 
   const [form, setForm] = useState<PaymentSettings>(DEFAULT_SETTINGS);
   const [hasChanges, setHasChanges] = useState(false);
@@ -234,7 +252,7 @@ export default function PaymentSettingsScreen() {
               <Text style={twStyle("text-base font-semibold text-gray-900")}>
                 Yoco
               </Text>
-              <Text style={twStyle("text-xs text-gray-500")}>Card & tap-to-pay</Text>
+              <Text style={twStyle("text-xs text-gray-500")}>{yocoSubtitle}</Text>
             </View>
           </View>
           <View style={twStyle("flex-row items-center")}>
@@ -247,7 +265,7 @@ export default function PaymentSettingsScreen() {
               <Text
                 style={twStyle(`text-xs font-medium ${yocoConnected ? "text-green-700" : "text-gray-500"}`)}
               >
-                {yocoConnected ? "Connected" : "Not connected"}
+                {yocoStatusLabel}
               </Text>
             </View>
             <Ionicons name="chevron-forward" size={16} color="#9ca3af" />

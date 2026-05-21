@@ -179,7 +179,7 @@ function sanitizeReturnTo(value: string | null): string {
  * verification.
  *
  * Yoco's API:
- * https://yoco.docs.buildwithfern.com/api-reference/yoco-api/webhook-subscriptions/create-webhook-subscription
+ * https://yoco.docs.buildwithfern.com/api-reference/yoco-api/webhooks/create-webhook-subscription-v-1-webhooks-subscriptions-post
  */
 async function registerWebhookSubscription(args: {
   providerId: string;
@@ -204,8 +204,8 @@ async function registerWebhookSubscription(args: {
 
   const body = {
     name: "beautonomi-default",
-    url: args.callbackUrl,
-    eventTypes: ["payment.succeeded", "payment.failed", "payment.refunded"],
+    notification_url: args.callbackUrl,
+    event_types: ["payment.created", "payment.refunded"],
   };
 
   const res = await fetch(endpoints.createWebhookSub, {

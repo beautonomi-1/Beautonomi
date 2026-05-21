@@ -10,6 +10,7 @@ import {
   getDayInTz,
 } from "@/lib/dates/provider-tz";
 import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
+import { resolveLocationHoursDay } from "@/lib/availability/location-hours-fallback";
 import { z } from "zod";
 
 const createShiftSchema = z.object({
@@ -269,27 +270,24 @@ export async function GET(request: NextRequest) {
               is_synthetic: true,
             });
           } else if (locationHours) {
-            // Fallback: generate shift from location operating hours
-            const dayData = locationHours[dayKey];
-            if (dayData && typeof dayData === "object") {
-              const isClosed = dayData.closed === true || dayData.is_open === false;
-              if (!isClosed) {
-                const openTime = (dayData.open_time || dayData.open || "09:00").toString().substring(0, 5);
-                const closeTime = (dayData.close_time || dayData.close || "18:00").toString().substring(0, 5);
-                scheduleEntries.push({
-                  id: `location-${sid}-${dow}`,
-                  team_member_id: sid,
-                  team_member_name: "",
-                  date: dateStr,
-                  start_time: openTime,
-                  end_time: closeTime,
-                  notes: null,
-                  is_recurring: false,
-                  recurring_pattern: null,
-                  source: "location" as const,
-                  is_synthetic: true,
-                });
-              }
+            // Fallback: generate shift from location operating hours, accepting
+            // both Format A ({ is_open, open_time, close_time }) and Format B
+            // ({ open, close, closed }) saved shapes.
+            const resolved = resolveLocationHoursDay(locationHours[dayKey ?? ""]);
+            if (resolved) {
+              scheduleEntries.push({
+                id: `location-${sid}-${dow}`,
+                team_member_id: sid,
+                team_member_name: "",
+                date: dateStr,
+                start_time: resolved.start_time,
+                end_time: resolved.end_time,
+                notes: null,
+                is_recurring: false,
+                recurring_pattern: null,
+                source: "location" as const,
+                is_synthetic: true,
+              });
             }
           }
         }

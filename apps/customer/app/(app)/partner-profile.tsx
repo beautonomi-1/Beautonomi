@@ -1795,15 +1795,21 @@ export default function PartnerProfileScreen() {
                 showsHorizontalScrollIndicator={false}
                 onMomentumScrollEnd={onGalleryScroll}
                 keyExtractor={(_, i) => String(i)}
-                renderItem={({ item }) => (
-                  <Image
-                    source={{ uri: item }}
-                    style={{ width: screenWidth, height: heroHeight }}
-                    contentFit="cover"
-                    contentPosition={PROVIDER_GALLERY_CONTENT_POSITION}
-                    transition={300}
-                    cachePolicy="memory-disk"
-                  />
+                renderItem={({ item, index }) => (
+                  <Pressable
+                    onPress={() => { setGalleryViewerIndex(index); setGalleryViewerVisible(true); }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`View photo ${index + 1} of ${images.length} fullscreen`}
+                  >
+                    <Image
+                      source={{ uri: item }}
+                      style={{ width: screenWidth, height: heroHeight }}
+                      contentFit="cover"
+                      contentPosition={PROVIDER_GALLERY_CONTENT_POSITION}
+                      transition={300}
+                      cachePolicy="memory-disk"
+                    />
+                  </Pressable>
                 )}
               />
             ) : (
@@ -1816,7 +1822,7 @@ export default function PartnerProfileScreen() {
             <TouchableOpacity
               onPress={() => router.canGoBack() ? router.back() : router.replace("/(app)/(tabs)/home" as any)}
               style={{
-                position: "absolute", top: 48, left: 16, backgroundColor: "rgba(255,255,255,0.92)",
+                position: "absolute", top: Math.max(insets.top + 8, 48), left: 16, backgroundColor: "rgba(255,255,255,0.92)",
                 borderRadius: 999, width: 38, height: 38, alignItems: "center", justifyContent: "center",
                 ...Shadows.card,
               }}
@@ -1825,7 +1831,7 @@ export default function PartnerProfileScreen() {
             </TouchableOpacity>
 
             {/* Tags */}
-            <View style={{ position: "absolute", top: 92, left: 16, flexDirection: "row", flexWrap: "wrap" }}>
+            <View style={{ position: "absolute", top: Math.max(insets.top + 8, 48) + 46, left: 16, flexDirection: "row", flexWrap: "wrap" }}>
               {provider.is_verified && <View style={{ marginRight: 6, marginBottom: 6 }}><VerifiedTag /></View>}
               {provider.is_featured && <View style={{ marginRight: 6, marginBottom: 6 }}><Tag label="Featured" color="rgba(236,72,153,0.9)" /></View>}
               {provider.supports_house_calls && <View style={{ marginRight: 6, marginBottom: 6 }}><Tag label="House Calls" color="rgba(34,197,94,0.9)" /></View>}
@@ -1834,7 +1840,7 @@ export default function PartnerProfileScreen() {
             </View>
 
             {/* Action icons */}
-            <View style={{ position: "absolute", top: 48, right: 16, flexDirection: "row" }}>
+            <View style={{ position: "absolute", top: Math.max(insets.top + 8, 48), right: 16, flexDirection: "row" }}>
               <View style={{ marginRight: 8 }}><FloatingIcon name={isSaved ? "heart" : "heart-outline"} onPress={toggleWishlist} filled={isSaved} fillColor={Colors.primary} /></View>
               <View style={{ marginRight: 8 }}><FloatingIcon name="share-social-outline" onPress={handleShare} /></View>
               <View style={{ marginRight: 8 }}><FloatingIcon name="chatbubble-ellipses-outline" onPress={handleMessage} /></View>
@@ -1861,7 +1867,7 @@ export default function PartnerProfileScreen() {
               }}
               pointerEvents="none"
             />
-            <View style={{ position: "absolute", bottom: 16, left: 16, zIndex: 5 }}>
+            <View style={{ position: "absolute", bottom: 20, left: 16, zIndex: 10 }}>
               <View
                 style={{
                   width: 72,
@@ -1891,11 +1897,17 @@ export default function PartnerProfileScreen() {
               </View>
             </View>
 
-            {/* Photo counter */}
+            {/* Photo counter — tapping opens fullscreen gallery */}
             {images.length > 1 && (
-              <View style={{ position: "absolute", bottom: 16, right: 16, backgroundColor: "rgba(0,0,0,0.65)", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, zIndex: 5 }}>
+              <TouchableOpacity
+                onPress={() => { setGalleryViewerIndex(galleryIndex); setGalleryViewerVisible(true); }}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel={`Photo ${galleryIndex + 1} of ${images.length}. Tap to view all photos.`}
+                style={{ position: "absolute", bottom: 16, right: 16, backgroundColor: "rgba(0,0,0,0.65)", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, zIndex: 5 }}
+              >
                 <Text style={{ color: "#fff", fontSize: 11, fontWeight: "600" }}>{galleryIndex + 1}/{images.length}</Text>
-              </View>
+              </TouchableOpacity>
             )}
           </View>
 

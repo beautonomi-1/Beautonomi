@@ -2,7 +2,7 @@
  * Staff member detail – profile, quick actions (permissions, locations, schedule, etc.).
  * GET /api/provider/staff/[id], PATCH for inline edit, DELETE for removal.
  */
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -58,6 +58,36 @@ interface Shift {
   start_time: string | null;
   end_time: string | null;
   is_working?: boolean;
+}
+
+interface ScheduledShift {
+  id: string;
+  team_member_id: string;
+  date: string;
+  start_time: string;
+  end_time: string;
+  source?: "shift" | "schedule" | "location";
+  is_synthetic?: boolean;
+}
+
+const SCHEDULE_DAYS = [
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+  "Sunday",
+];
+
+function getWeekStartYmd(): string {
+  const today = new Date();
+  const dow = (today.getDay() + 6) % 7; // Mon=0
+  const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - dow);
+  const y = monday.getFullYear();
+  const m = String(monday.getMonth() + 1).padStart(2, "0");
+  const d = String(monday.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }
 
 interface DayOff {
@@ -165,6 +195,11 @@ export default function TeamMemberDetailScreen() {
     id ? `/api/provider/staff/${id}/shifts` : "",
     { enabled: !!id }
   );
+  const weekStartYmd = useMemo(() => getWeekStartYmd(), []);
+  const { data: scheduledShifts, refresh: refreshScheduledShifts } = useApi<ScheduledShift[]>(
+    id ? `/api/provider/shifts?week_start=${weekStartYmd}&staff_id=${id}` : "",
+    { enabled: !!id },
+  );
   const { data: daysOff, refresh: refreshDaysOff } = useApi<DayOff[]>(
     id ? `/api/provider/staff/${id}/days-off` : "",
     { enabled: !!id }
@@ -197,11 +232,65 @@ export default function TeamMemberDetailScreen() {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await Promise.all([refresh(), refreshShifts(), refreshDaysOff(), refreshBookings()]);
+      await Promise.all([
+        refresh(),
+        refreshShifts(),
+        refreshScheduledShifts(),
+        refreshDaysOff(),
+        refreshBookings(),
+      ]);
     } finally {
       setRefreshing(false);
     }
-  }, [refresh, refreshShifts, refreshDaysOff, refreshBookings]);
+  }, [refresh, refreshShifts, refreshScheduledShifts, refreshDaysOff, refreshBookings]);
+
+  /**
+   * Build a per-weekday combined view: real `staff_schedules` rows (custom
+   * weekly hours) take precedence; otherwise fall back to inherited
+   * location/schedule hours so providers see what customers will book.
+   */
+  const scheduleSnapshot = useMemo(() => {
+    type Row = {
+      day: string;
+      start_time: string;
+      end_time: string;
+      kind: "custom" | "inherited-location" | "inherited-schedule";
+    };
+    const customByDay = new Map<string, Row>();
+    for (const shift of shifts ?? []) {
+      if (shift.is_working === false) continue;
+      if (!shift.start_time || !shift.end_time) continue;
+      customByDay.set(shift.day_of_week, {
+        day: shift.day_of_week,
+        start_time: shift.start_time.substring(0, 5),
+        end_time: shift.end_time.substring(0, 5),
+        kind: "custom",
+      });
+    }
+    const inheritedByDay = new Map<string, Row>();
+    for (const shift of scheduledShifts ?? []) {
+      if (shift.source !== "location" && shift.source !== "schedule") continue;
+      const [yStr, mStr, dStr] = shift.date.split("-");
+      const y = Number(yStr);
+      const m = Number(mStr);
+      const d = Number(dStr);
+      if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) continue;
+      const localDate = new Date(y, m - 1, d, 12, 0, 0, 0);
+      const dayName = SCHEDULE_DAYS[(localDate.getDay() + 6) % 7];
+      if (!dayName) continue;
+      const existing = inheritedByDay.get(dayName);
+      if (existing && existing.kind === "inherited-schedule") continue;
+      inheritedByDay.set(dayName, {
+        day: dayName,
+        start_time: shift.start_time,
+        end_time: shift.end_time,
+        kind: shift.source === "location" ? "inherited-location" : "inherited-schedule",
+      });
+    }
+    return SCHEDULE_DAYS.map((day) => customByDay.get(day) ?? inheritedByDay.get(day) ?? null).filter(
+      (row): row is Row => row !== null,
+    );
+  }, [shifts, scheduledShifts]);
 
   const serviceNames = (services ?? [])
     .filter((svc) => member?.service_ids?.includes(svc.id))
@@ -547,14 +636,39 @@ export default function TeamMemberDetailScreen() {
             <Text style={twStyle("text-sm font-semibold text-gray-900")}>Schedule snapshot</Text>
             <Text style={twStyle("text-xs text-gray-500")}>{weeklyBookings} bookings this week</Text>
           </View>
-          {(shifts ?? []).filter((s) => s.is_working !== false && s.start_time && s.end_time).slice(0, 7).map((shift) => (
-            <View key={`${shift.day_of_week}-${shift.id ?? "default"}`} style={twStyle("mt-3 flex-row items-center")}>
-              <Text style={twStyle("w-24 text-sm font-medium text-gray-700")}>{shift.day_of_week}</Text>
-              <Text style={twStyle("text-sm text-gray-600")}>{shift.start_time} - {shift.end_time}</Text>
-            </View>
-          ))}
-          {(shifts ?? []).filter((s) => s.is_working !== false && s.start_time && s.end_time).length === 0 ? (
+          {scheduleSnapshot.length === 0 ? (
             <Text style={twStyle("mt-2 text-sm text-gray-500")}>No weekly shifts set yet.</Text>
+          ) : (
+            scheduleSnapshot.map((row) => (
+              <View
+                key={`${row.day}-${row.kind}`}
+                style={twStyle("mt-3 flex-row items-center")}
+              >
+                <Text style={twStyle("w-24 text-sm font-medium text-gray-700")}>{row.day}</Text>
+                <Text style={twStyle("text-sm text-gray-600")}>
+                  {row.start_time} - {row.end_time}
+                </Text>
+                {row.kind !== "custom" ? (
+                  <View
+                    style={twStyle("ml-2 rounded-full bg-emerald-50 px-2 py-0.5")}
+                    accessibilityLabel={
+                      row.kind === "inherited-location"
+                        ? "Inherited from location operating hours"
+                        : "Inherited from weekly schedule"
+                    }
+                  >
+                    <Text style={twStyle("text-[10px] font-semibold text-emerald-700")}>
+                      {row.kind === "inherited-location" ? "Inherited" : "Schedule"}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            ))
+          )}
+          {scheduleSnapshot.some((row) => row.kind !== "custom") ? (
+            <Text style={twStyle("mt-3 text-[11px] leading-4 text-emerald-700")}>
+              Inherited days follow your location operating hours. Add a weekly shift to set custom hours.
+            </Text>
           ) : null}
           <TouchableOpacity
             onPress={() => router.push(`/(app)/(tabs)/more/staff-schedule?staffId=${id}` as never)}

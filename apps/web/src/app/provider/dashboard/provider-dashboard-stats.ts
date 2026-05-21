@@ -31,6 +31,14 @@ export interface ProviderDashboardStats {
   lifetime_revenue: number;
 
   available_balance: number;
+  /** Sum of payout requests in pending/processing (reserved from available balance). */
+  pending_payout_queue?: number;
+  /** Days before new platform-held earnings become withdrawable (from platform settings). */
+  payout_hold_days?: number;
+  /** Ledger balance before clamping to zero for display. */
+  raw_payout_balance?: number;
+  has_negative_payout_balance?: boolean;
+  balance_owed_to_platform?: number;
   pending_payments_amount: number;
   pending_payments_count: number;
 

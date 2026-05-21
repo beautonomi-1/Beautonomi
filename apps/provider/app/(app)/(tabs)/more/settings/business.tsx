@@ -20,11 +20,11 @@ import { useRouter } from "expo-router";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import * as ImagePicker from "expo-image-picker";
 import { useTranslation } from "@beautonomi/i18n";
 import { useApi } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
 import { api } from "@/lib/api-client";
+import { launchImageLibraryWithPermission } from "@/lib/native-permissions";
 import { validateRequired, validateEmail } from "@/lib/validation";
 import {
   COUNTRY_CODES,
@@ -183,18 +183,20 @@ export default function BusinessDetailsScreen() {
 
   const pickLogo = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert("Permission needed", "Allow access to photos to choose a logo.");
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
-      base64: true,
-    });
+    const result = await launchImageLibraryWithPermission(
+      {
+        mediaTypes: ["images"],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+        base64: true,
+      },
+      {
+        title: "Permission needed",
+        message: "Allow access to photos to choose a logo.",
+      },
+    );
+    if (!result) return;
     if (result.canceled || !result.assets[0]) return;
     const asset = result.assets[0];
     const base64 = asset.base64;

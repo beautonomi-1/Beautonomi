@@ -113,9 +113,11 @@ export default function CustomOfferCheckoutScreen() {
   const { cards: savedCards, defaultCard, refresh: refreshSavedCards } = useSavedCards(!!user);
   const [useNewCard, setUseNewCard] = useState(true);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
+  const [saveCard, setSaveCard] = useState(true);
   const [useWallet, setUseWallet] = useState(false);
   const [giftCardCode, setGiftCardCode] = useState("");
   const [loyaltyPointsToRedeem, setLoyaltyPointsToRedeem] = useState("");
+  const [payError, setPayError] = useState<string | null>(null);
   const paystackHostedCheckout = useInAppPaystackCheckout();
 
   const currency = offer?.currency || getTenantDefaultCurrency();
@@ -243,8 +245,10 @@ export default function CustomOfferCheckoutScreen() {
       use_wallet?: boolean;
       gift_card_code?: string;
       loyalty_points_to_redeem?: number;
+      save_card?: boolean;
     }) => {
       if (!offerId) return;
+      setPayError(null);
       setProcessingPayment(true);
       setProcessingMessage(
         body.payment_method_id ? "Charging your card…" : "Opening secure payment…"
@@ -261,7 +265,9 @@ export default function CustomOfferCheckoutScreen() {
 
         if (res.error) {
           setProcessingPayment(false);
-          Alert.alert("Payment failed", getApiErrorMessage(res.error, "Could not start payment"));
+          const msg = getApiErrorMessage(res.error, "Could not start payment");
+          setPayError(msg);
+          Alert.alert("Payment failed", msg);
           return;
         }
 
@@ -305,7 +311,9 @@ export default function CustomOfferCheckoutScreen() {
         const url = data?.paymentUrl || data?.payment_url;
         if (!url) {
           setProcessingPayment(false);
-          Alert.alert("Payment failed", "No payment link returned from server.");
+          const msg = "No payment link returned from server. Please try again.";
+          setPayError(msg);
+          Alert.alert("Payment failed", msg);
           return;
         }
 
@@ -333,7 +341,15 @@ export default function CustomOfferCheckoutScreen() {
 
         if (pr.outcome === "cancel") {
           setProcessingPayment(false);
-          Alert.alert("Payment cancelled", "You cancelled the payment.");
+          setPayError("You cancelled the payment. Tap Pay to try again.");
+          return;
+        }
+
+        if (pr.outcome === "closed") {
+          setProcessingPayment(false);
+          setPayError(
+            "The payment window closed before we could confirm. If you completed payment, your booking will appear in a moment — otherwise tap Pay to try again."
+          );
           return;
         }
 
@@ -341,7 +357,7 @@ export default function CustomOfferCheckoutScreen() {
         if (pr.outcome === "success" && pr.url) {
           if (isCancelledPaystackUrl(pr.url)) {
             setProcessingPayment(false);
-            Alert.alert("Payment cancelled", "You cancelled the payment.");
+            setPayError("You cancelled the payment. Tap Pay to try again.");
             return;
           }
           reference = extractPaystackReferenceFromUrl(pr.url);
@@ -358,6 +374,10 @@ export default function CustomOfferCheckoutScreen() {
           await new Promise((r) => setTimeout(r, 1500));
           bookingId = await pollForBooking();
         }
+
+        // §custom-offer-save-card: refresh saved cards on success so a newly
+        // tokenized card shows up immediately in saved payment methods.
+        await refreshSavedCards().catch(() => {});
 
         setProcessingPayment(false);
         if (bookingId) {
@@ -388,7 +408,9 @@ export default function CustomOfferCheckoutScreen() {
         }
       } catch (e) {
         setProcessingPayment(false);
-        Alert.alert("Error", e instanceof Error ? e.message : "Payment failed");
+        const msg = e instanceof Error ? e.message : "Payment failed";
+        setPayError(msg);
+        Alert.alert("Error", msg);
       }
     },
     [
@@ -422,6 +444,8 @@ export default function CustomOfferCheckoutScreen() {
         }
       : {};
 
+    setPayError(null);
+
     if (!useNewCard && selectedCardId && savedCards.some((c) => c.id === selectedCardId)) {
       await runAcceptThenNavigate({
         payment_option: opt,
@@ -437,6 +461,10 @@ export default function CustomOfferCheckoutScreen() {
       payment_option: opt,
       ...(callbackUrl ? { callback_url: callbackUrl } : {}),
       ...splitTenderBody,
+      // §custom-offer-save-card: only opt into card tokenization when the
+      // customer is paying with a new card. Existing saved-card charges
+      // already use a stored authorization and must not re-save.
+      save_card: saveCard,
     });
   }, [
     offer,
@@ -452,6 +480,7 @@ export default function CustomOfferCheckoutScreen() {
     loyaltyPointsToRedeem,
     runAcceptThenNavigate,
     router,
+    saveCard,
   ]);
 
   const header = useMemo(
@@ -900,61 +929,63 @@ export default function CustomOfferCheckoutScreen() {
             </View>
           ) : null}
 
-          {savedCards.length > 0 ? (
-            <View
-              style={{ backgroundColor: "#fff", borderRadius: 14, padding: 16, marginBottom: 16 }}
-            >
-              <Text style={{ fontSize: 15, fontWeight: "700", color: "#111827", marginBottom: 12 }}>
-                Payment method
-              </Text>
-              {savedCards.map((c) => {
-                const active = !useNewCard && selectedCardId === c.id;
-                const expiry =
-                  c.expiry_label ??
-                  (c.expiry_month && c.expiry_year
-                    ? `${String(c.expiry_month).padStart(2, "0")}/${String(c.expiry_year).slice(-2)}`
-                    : null);
-                return (
-                  <TouchableOpacity
-                    key={c.id}
-                    onPress={() => {
-                      setSelectedCardId(c.id);
-                      setUseNewCard(false);
-                    }}
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      padding: 12,
-                      borderRadius: 10,
-                      borderWidth: 1.5,
-                      borderColor: active ? PRIMARY : "#E5E7EB",
-                      marginBottom: 8,
-                    }}
-                  >
-                    <Ionicons
-                      name="card-outline"
-                      size={20}
-                      color="#6B7280"
-                      style={{ marginRight: 10 }}
-                    />
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontWeight: "600", color: "#374151" }}>
-                        {c.card_type ?? "Card"} ··· {c.last4}
-                      </Text>
-                      {expiry ? (
-                        <Text style={{ fontSize: 11, color: "#9CA3AF", marginTop: 2 }}>
-                          Expires {expiry}
-                        </Text>
-                      ) : null}
-                    </View>
-                    {c.is_default ? (
-                      <Text style={{ fontSize: 11, color: PRIMARY, fontWeight: "700" }}>
-                        DEFAULT
+          <View
+            style={{ backgroundColor: "#fff", borderRadius: 14, padding: 16, marginBottom: 16 }}
+          >
+            <Text style={{ fontSize: 15, fontWeight: "700", color: "#111827", marginBottom: 12 }}>
+              Payment method
+            </Text>
+            {savedCards.map((c) => {
+              const active = !useNewCard && selectedCardId === c.id;
+              const expiry =
+                c.expiry_label ??
+                (c.expiry_month && c.expiry_year
+                  ? `${String(c.expiry_month).padStart(2, "0")}/${String(c.expiry_year).slice(-2)}`
+                  : null);
+              return (
+                <TouchableOpacity
+                  key={c.id}
+                  onPress={() => {
+                    setSelectedCardId(c.id);
+                    setUseNewCard(false);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Pay with saved ${c.card_type ?? "card"} ending ${c.last4}`}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    padding: 12,
+                    borderRadius: 10,
+                    borderWidth: 1.5,
+                    borderColor: active ? PRIMARY : "#E5E7EB",
+                    marginBottom: 8,
+                  }}
+                >
+                  <Ionicons
+                    name="card-outline"
+                    size={20}
+                    color="#6B7280"
+                    style={{ marginRight: 10 }}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontWeight: "600", color: "#374151" }}>
+                      {c.card_type ?? "Card"} ··· {c.last4}
+                    </Text>
+                    {expiry ? (
+                      <Text style={{ fontSize: 11, color: "#9CA3AF", marginTop: 2 }}>
+                        Expires {expiry}
                       </Text>
                     ) : null}
-                  </TouchableOpacity>
-                );
-              })}
+                  </View>
+                  {c.is_default ? (
+                    <Text style={{ fontSize: 11, color: PRIMARY, fontWeight: "700" }}>
+                      DEFAULT
+                    </Text>
+                  ) : null}
+                </TouchableOpacity>
+              );
+            })}
+            {savedCards.length > 0 ? (
               <TouchableOpacity
                 onPress={() => router.push("/account-settings/payments")}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -966,30 +997,81 @@ export default function CustomOfferCheckoutScreen() {
                   Manage saved cards
                 </Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => {
-                  setUseNewCard(true);
-                  setSelectedCardId(null);
-                }}
+            ) : null}
+            <TouchableOpacity
+              onPress={() => {
+                setUseNewCard(true);
+                setSelectedCardId(null);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Pay with a new card"
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                padding: 12,
+                borderRadius: 10,
+                borderWidth: 1.5,
+                borderColor: useNewCard ? PRIMARY : "#E5E7EB",
+                marginTop: savedCards.length > 0 ? 4 : 0,
+              }}
+            >
+              <Ionicons
+                name="globe-outline"
+                size={20}
+                color="#6B7280"
+                style={{ marginRight: 10 }}
+              />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontWeight: "600", color: "#374151" }}>
+                  {savedCards.length > 0
+                    ? "Pay with a new card (secure browser)"
+                    : "Pay with a new card"}
+                </Text>
+                <Text style={{ fontSize: 11, color: "#6B7280", marginTop: 2 }}>
+                  Opens a secure Paystack window. We never see your card details.
+                </Text>
+              </View>
+            </TouchableOpacity>
+            {useNewCard ? (
+              <View
                 style={{
+                  marginTop: 12,
                   flexDirection: "row",
                   alignItems: "center",
-                  padding: 12,
-                  borderRadius: 10,
-                  borderWidth: 1.5,
-                  borderColor: useNewCard ? PRIMARY : "#E5E7EB",
+                  justifyContent: "space-between",
+                  paddingHorizontal: 4,
                 }}
               >
-                <Ionicons
-                  name="globe-outline"
-                  size={20}
-                  color="#6B7280"
-                  style={{ marginRight: 10 }}
+                <View style={{ flex: 1, paddingRight: 12 }}>
+                  <Text style={{ fontWeight: "600", color: "#374151" }}>
+                    Save this card for next time
+                  </Text>
+                  <Text style={{ fontSize: 11, color: "#6B7280", marginTop: 2 }}>
+                    Pay one-tap on your next booking. We store a secure token, never the full card.
+                  </Text>
+                </View>
+                <Switch
+                  value={saveCard}
+                  onValueChange={setSaveCard}
+                  trackColor={{ false: "#E5E7EB", true: "rgba(255,0,119,0.35)" }}
+                  thumbColor={saveCard ? PRIMARY : "#F9FAFB"}
+                  accessibilityLabel="Save this card for next time"
                 />
-                <Text style={{ flex: 1, fontWeight: "600", color: "#374151" }}>
-                  Pay with a new card (secure browser)
-                </Text>
-              </TouchableOpacity>
+              </View>
+            ) : null}
+          </View>
+          {payError ? (
+            <View
+              style={{
+                backgroundColor: "#FEF2F2",
+                borderColor: "#FECACA",
+                borderWidth: 1,
+                borderRadius: 12,
+                padding: 12,
+                marginBottom: 16,
+              }}
+            >
+              <Text style={{ color: "#B91C1C", fontSize: 13 }}>{payError}</Text>
             </View>
           ) : null}
         </ScrollView>

@@ -95,4 +95,16 @@ describe("navigateFromProviderNotification", () => {
 
     expect(router.push).toHaveBeenCalledWith("/(app)/(tabs)/more/reports/packages");
   });
+
+  it("routes ads payment notifications to native ads settings", () => {
+    const router = { push: jest.fn() };
+
+    navigateFromProviderNotification(router as never, {
+      id: "notification-ads",
+      type: "ads_payment_confirmed",
+      link: "/provider/settings/ads",
+    });
+
+    expect(router.push).toHaveBeenCalledWith("/(app)/(tabs)/more/settings/ads");
+  });
 });

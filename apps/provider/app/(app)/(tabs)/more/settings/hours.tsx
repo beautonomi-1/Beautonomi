@@ -17,20 +17,13 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { twStyle } from "@/lib/twStyle";
-
-/* ─── types ─── */
-interface BreakTime {
-  start: string;
-  end: string;
-}
-
-interface DayHours {
-  day: string;
-  is_open: boolean;
-  open_time: string;
-  close_time: string;
-  breaks: BreakTime[];
-}
+import {
+  type DayHours,
+  type RawDayHours,
+  mapWorkingHoursToSchedule,
+  OPERATING_HOURS_DAYS,
+  scheduleToWorkingHours,
+} from "@/lib/operating-hours";
 
 interface TimePickerTarget {
   dayIndex: number;
@@ -39,15 +32,7 @@ interface TimePickerTarget {
 }
 
 /* ─── constants ─── */
-const DAYS = [
-  "Monday",
-  "Tuesday",
-  "Wednesday",
-  "Thursday",
-  "Friday",
-  "Saturday",
-  "Sunday",
-];
+const DAYS = OPERATING_HOURS_DAYS;
 
 function pad(n: number): string {
   return n.toString().padStart(2, "0");
@@ -71,13 +56,7 @@ function formatTimeLabel(t: string): string {
 
 /* ─── default schedule ─── */
 function defaultSchedule(): DayHours[] {
-  return DAYS.map((day) => ({
-    day,
-    is_open: true,
-    open_time: "08:00",
-    close_time: "18:00",
-    breaks: [],
-  }));
+  return mapWorkingHoursToSchedule(null, DAYS);
 }
 
 /* ─── types for API ─── */
@@ -86,34 +65,7 @@ interface LocationHours {
   locationName: string;
   isPrimary: boolean;
   isActive: boolean;
-  workingHours: Record<string, { is_open?: boolean; open_time?: string; close_time?: string; breaks?: BreakTime[] }>;
-}
-
-function locationHoursToSchedule(wh: LocationHours["workingHours"]): DayHours[] {
-  return DAYS.map((day) => {
-    const key = day.toLowerCase();
-    const dh = wh[key];
-    return {
-      day,
-      is_open: dh?.is_open ?? true,
-      open_time: dh?.open_time ?? "08:00",
-      close_time: dh?.close_time ?? "18:00",
-      breaks: dh?.breaks ?? [],
-    };
-  });
-}
-
-function scheduleToWorkingHours(sched: DayHours[]): Record<string, object> {
-  const result: Record<string, object> = {};
-  for (const d of sched) {
-    result[d.day.toLowerCase()] = {
-      is_open: d.is_open,
-      open_time: d.open_time,
-      close_time: d.close_time,
-      breaks: d.breaks,
-    };
-  }
-  return result;
+  workingHours: Record<string, RawDayHours>;
 }
 
 /* ─── Screen ─── */
@@ -139,7 +91,7 @@ export default function OperatingHoursScreen() {
       const primary = locations.find((l) => l.isPrimary) || locations[0];
       if (primary) {
         setSelectedLocationId(primary.locationId);
-        setSchedule(locationHoursToSchedule(primary.workingHours));
+        setSchedule(mapWorkingHoursToSchedule(primary.workingHours, DAYS));
       }
     }
   }, [locations]);
@@ -148,7 +100,7 @@ export default function OperatingHoursScreen() {
     const loc = locations?.find((l) => l.locationId === locId);
     if (loc) {
       setSelectedLocationId(locId);
-      setSchedule(locationHoursToSchedule(loc.workingHours));
+      setSchedule(mapWorkingHoursToSchedule(loc.workingHours, DAYS));
       setHasChanges(false);
     }
   }

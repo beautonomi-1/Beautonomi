@@ -3,6 +3,7 @@ import "server-only";
 import { createNextRequestFromHeaders } from "@/lib/server/create-next-request";
 import { GET as getProfile } from "@/app/api/me/profile/route";
 import { GET as getAccountSecurityCopy } from "@/app/api/public/account-security-copy/route";
+import type { UserAuthSecurityState } from "@/lib/auth/user-auth-security-state";
 
 export type AccountSecurityCopyPayload = {
   title: string;
@@ -16,6 +17,7 @@ export type LoginAndSecurityInitial = {
     email?: string | null;
     phone?: string | null;
     password_changed_at?: string | null;
+    auth_security?: UserAuthSecurityState | null;
   };
   securityCopy: AccountSecurityCopyPayload | null;
 };
@@ -26,7 +28,12 @@ export async function fetchLoginAndSecurityInitial(): Promise<LoginAndSecurityIn
   if (!resProfile.ok) return null;
 
   const pj = (await resProfile.json().catch(() => ({}))) as {
-    data?: { email?: string | null; phone?: string | null; password_changed_at?: string | null };
+    data?: {
+      email?: string | null;
+      phone?: string | null;
+      password_changed_at?: string | null;
+      auth_security?: UserAuthSecurityState | null;
+    };
   };
   const profile = pj.data;
   if (!profile || typeof profile !== "object") return null;
@@ -47,6 +54,7 @@ export async function fetchLoginAndSecurityInitial(): Promise<LoginAndSecurityIn
       email: profile.email ?? null,
       phone: profile.phone ?? null,
       password_changed_at: profile.password_changed_at ?? null,
+      auth_security: profile.auth_security ?? null,
     },
     securityCopy,
   };

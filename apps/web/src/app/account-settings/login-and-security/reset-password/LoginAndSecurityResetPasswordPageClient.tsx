@@ -5,6 +5,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Lock, CheckCircle2, AlertCircle, Eye, EyeOff } from "lucide-react";
 import { updatePassword } from "@/lib/supabase/auth";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import {
+  DEFAULT_PUBLIC_AUTH,
+  passwordMeetsPolicyRequirements,
+  type PublicAuthPolicy,
+} from "@/lib/config/auth-policy-public";
+import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +26,7 @@ export default function ResetPasswordPage() {
   const [verifyError, setVerifyError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [policy, setPolicy] = useState<PublicAuthPolicy>(DEFAULT_PUBLIC_AUTH);
 
   useEffect(() => {
     const supabase = getSupabaseClient();
@@ -59,6 +66,20 @@ export default function ResetPasswordPage() {
     return () => subscription.unsubscribe();
   }, [searchParams]);
 
+  useEffect(() => {
+    if (!isReady) return;
+    fetch("/api/me/profile", { credentials: "same-origin" })
+      .then(async (res) => {
+        if (!res.ok) return;
+        const json = await res.json().catch(() => null);
+        const nextPolicy = json?.data?.auth_security?.policy;
+        if (nextPolicy && typeof nextPolicy.minimum_password_length === "number") {
+          setPolicy(nextPolicy as PublicAuthPolicy);
+        }
+      })
+      .catch(() => {});
+  }, [isReady]);
+
   const passwordStrength = (pwd: string): { label: string; color: string; score: number } => {
     let score = 0;
     if (pwd.length >= 8) score++;
@@ -78,8 +99,12 @@ export default function ResetPasswordPage() {
     e.preventDefault();
     setError(null);
 
-    if (newPassword.length < 8) {
-      setError("Password must be at least 8 characters");
+    if (newPassword.length < policy.minimum_password_length) {
+      setError(`Password must be at least ${policy.minimum_password_length} characters`);
+      return;
+    }
+    if (!passwordMeetsPolicyRequirements(newPassword, policy.password_requirements)) {
+      setError("Password does not meet the required character mix for this platform");
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -90,6 +115,7 @@ export default function ResetPasswordPage() {
     setIsSubmitting(true);
     try {
       await updatePassword(newPassword);
+      await fetcher.post("/api/me/password/changed", {}).catch(() => {});
       setSuccess(true);
       toast.success("Password updated successfully");
       setTimeout(() => router.push("/"), 3000);
@@ -180,7 +206,7 @@ export default function ResetPasswordPage() {
                 type={showPassword ? "text" : "password"}
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="At least 8 characters"
+                placeholder={`At least ${policy.minimum_password_length} characters`}
                 className="pr-10"
                 required
               />

@@ -42,6 +42,8 @@ interface PayoutAccount {
   bank_name?: string;
   account_number?: string;
   account_number_last4?: string;
+  active?: boolean;
+  is_primary?: boolean;
 }
 
 /** GET /api/provider/team-access — `can_process_payments` matches POST /api/provider/payouts */
@@ -167,6 +169,17 @@ export function PayoutsContent() {
 
   const payouts: Payout[] = useMemo(() => (Array.isArray(payoutsList) ? payoutsList : []), [payoutsList]);
   const accounts: PayoutAccount[] = useMemo(() => (Array.isArray(accountsList) ? accountsList : []), [accountsList]);
+  const activeAccounts = useMemo(
+    () => accounts.filter((account) => account.active !== false),
+    [accounts],
+  );
+  const preferredAccount = useMemo(
+    () =>
+      activeAccounts.find((account) => account.id === bankAccountId) ??
+      activeAccounts.find((account) => account.is_primary) ??
+      activeAccounts[0],
+    [activeAccounts, bankAccountId],
+  );
   const availableBalance = financeData?.earnings?.available_balance ?? 0;
   const pendingPayouts = financeData?.earnings?.pending_payouts ?? 0;
   const minimumPayout = financeData?.earnings?.minimum_payout_amount ?? 100;
@@ -207,7 +220,7 @@ export function PayoutsContent() {
       );
       return;
     }
-    const selectedAccount = accounts.find((a) => a.id === bankAccountId) ?? accounts[0];
+    const selectedAccount = preferredAccount;
     if (!selectedAccount) {
       Alert.alert("Bank account required", "Add a payout account before requesting a payout.");
       return;
@@ -246,8 +259,7 @@ export function PayoutsContent() {
   }, [
     amount,
     notes,
-    bankAccountId,
-    accounts,
+    preferredAccount,
     postPayout,
     refresh,
     refreshFinance,
@@ -355,7 +367,7 @@ export function PayoutsContent() {
             {canRequestPayouts ? (
               <TouchableOpacity
                 onPress={() => {
-                  if (accounts.length === 0) {
+                  if (activeAccounts.length === 0) {
                     router.push("/(app)/(tabs)/more/settings/payout-accounts");
                     return;
                   }
@@ -365,7 +377,7 @@ export function PayoutsContent() {
               >
                 <Ionicons name="cash-outline" size={20} color="#fff" />
                 <Text style={twStyle("ml-2 font-medium text-white")}>
-                  {accounts.length === 0 ? "Add bank account" : "Request payout"}
+                  {activeAccounts.length === 0 ? "Add bank account" : "Request payout"}
                 </Text>
               </TouchableOpacity>
             ) : null}
@@ -384,7 +396,7 @@ export function PayoutsContent() {
                   );
                   return;
                 }
-                if (accounts.length === 0) {
+                if (activeAccounts.length === 0) {
                   router.push("/(app)/(tabs)/more/settings/payout-accounts");
                 } else {
                   setRequestOpen(true);
@@ -474,15 +486,15 @@ export function PayoutsContent() {
         <Text style={twStyle("mb-4 text-xs text-gray-500")}>
           {`Min ${defaultCurrency} ${Number(minimumPayout).toFixed(2)} · Available ${defaultCurrency} ${Number(availableBalance).toFixed(2)} · Pending ${defaultCurrency} ${Number(pendingPayouts).toFixed(2)}`}
         </Text>
-        {accounts.length > 0 ? (
+        {activeAccounts.length > 0 ? (
           <>
             <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Bank account</Text>
             <ScrollView style={twStyle("mb-4 max-h-32")} nestedScrollEnabled>
-              {accounts.map((a) => (
+              {activeAccounts.map((a) => (
                 <TouchableOpacity
                   key={a.id}
                   onPress={() => setBankAccountId(bankAccountId === a.id ? null : a.id)}
-                  style={twStyle(`mb-2 rounded-xl border px-4 py-3 ${bankAccountId === a.id ? "border-emerald-500 bg-emerald-50" : "border-gray-200 bg-gray-50"}`)}
+                  style={twStyle(`mb-2 rounded-xl border px-4 py-3 ${preferredAccount?.id === a.id ? "border-emerald-500 bg-emerald-50" : "border-gray-200 bg-gray-50"}`)}
                 >
                   <Text style={twStyle("font-medium text-gray-900")}>{a.account_name ?? "Bank account"}</Text>
                   {(a.account_number_last4 || a.account_number || a.bank_name) && (
@@ -522,7 +534,7 @@ export function PayoutsContent() {
           label={requesting ? "Submitting…" : "Request payout"}
           onPress={handleRequestPayout}
           loading={requesting}
-          disabled={accounts.length === 0}
+          disabled={activeAccounts.length === 0}
           fullWidth
         />
       </BottomSheet>

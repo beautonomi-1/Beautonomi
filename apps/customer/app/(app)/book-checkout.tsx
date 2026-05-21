@@ -985,6 +985,7 @@ export default function BookCheckoutScreen() {
   const [selectedAddonIds, setSelectedAddonIds] = useState<string[]>([]);
   const [isGroupBooking, setIsGroupBooking] = useState(false);
   const [groupBookingEnabled, setGroupBookingEnabled] = useState(false);
+  const [maxGroupSize, setMaxGroupSize] = useState(5);
   const [subscribeRecurring, setSubscribeRecurring] = useState(false);
   const [recurringFrequency, setRecurringFrequency] = useState<"weekly" | "biweekly" | "monthly">(
     "weekly"
@@ -1222,14 +1223,18 @@ export default function BookCheckoutScreen() {
   useEffect(() => {
     if (!effectiveProviderSlug) return;
     api
-      .get<{ enabled?: boolean; data?: { enabled?: boolean } }>(
+      .get<{ enabled?: boolean; maxGroupSize?: number; data?: { enabled?: boolean; maxGroupSize?: number } }>(
         `/api/public/providers/${encodeURIComponent(effectiveProviderSlug)}/group-booking-settings`
       )
       .then((res) => {
         const data = (res as any).data ?? res;
         setGroupBookingEnabled(!!data?.enabled);
+        setMaxGroupSize(Math.max(2, Number(data?.maxGroupSize ?? 5) || 5));
       })
-      .catch(() => setGroupBookingEnabled(false));
+      .catch(() => {
+        setGroupBookingEnabled(false);
+        setMaxGroupSize(5);
+      });
   }, [effectiveProviderSlug]);
 
   useEffect(() => {
@@ -2391,6 +2396,11 @@ export default function BookCheckoutScreen() {
       setError(t("checkout.groupParticipantRequired"));
       return;
     }
+    if (isGroupBooking && groupParticipants.filter((p) => p.name.trim()).length + 1 > maxGroupSize) {
+      haptic.error();
+      setError(`This provider allows groups of up to ${maxGroupSize} people including you.`);
+      return;
+    }
 
     consumeInFlightRef.current = true;
     setConsuming(true);
@@ -2449,6 +2459,13 @@ export default function BookCheckoutScreen() {
               notes: p.notes?.trim() || undefined,
             }))
         : [];
+      if (validParticipants.length + 1 > maxGroupSize) {
+        haptic.error();
+        setError(`This provider allows groups of up to ${maxGroupSize} people including you.`);
+        setConsuming(false);
+        consumeInFlightRef.current = false;
+        return;
+      }
       if (validParticipants.length > 0) {
         payload.is_group_booking = true;
         payload.group_participants = validParticipants;
@@ -3418,37 +3435,43 @@ export default function BookCheckoutScreen() {
                 </View>
                 {isGroupBooking && (
                   <>
-                    <TouchableOpacity
-                      onPress={() => {
-                        haptic.selection();
-                        setGroupParticipants((prev) => [
-                          ...prev,
-                          {
-                            id: `p-${Date.now()}`,
-                            name: "",
-                            phone: "",
-                            notes: "",
-                            service_ids: [...snapshotOfferingIds],
-                          },
-                        ]);
-                      }}
-                      style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        paddingVertical: 10,
-                        marginBottom: 8,
-                      }}
-                    >
-                      <Ionicons
-                        name="add-circle-outline"
-                        size={20}
-                        color={Colors.primary}
-                        style={{ marginRight: 8 }}
-                      />
-                      <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.primary }}>
-                        Add participant
-                      </Text>
-                    </TouchableOpacity>
+                    <Text style={{ fontSize: 12, color: "#6B7280", marginBottom: 8 }}>
+                      Add up to {Math.max(0, maxGroupSize - 1)} guest
+                      {Math.max(0, maxGroupSize - 1) === 1 ? "" : "s"}.
+                    </Text>
+                    {groupParticipants.length < Math.max(0, maxGroupSize - 1) && (
+                      <TouchableOpacity
+                        onPress={() => {
+                          haptic.selection();
+                          setGroupParticipants((prev) => [
+                            ...prev,
+                            {
+                              id: `p-${Date.now()}`,
+                              name: "",
+                              phone: "",
+                              notes: "",
+                              service_ids: [...snapshotOfferingIds],
+                            },
+                          ]);
+                        }}
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          paddingVertical: 10,
+                          marginBottom: 8,
+                        }}
+                      >
+                        <Ionicons
+                          name="add-circle-outline"
+                          size={20}
+                          color={Colors.primary}
+                          style={{ marginRight: 8 }}
+                        />
+                        <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.primary }}>
+                          Add participant
+                        </Text>
+                      </TouchableOpacity>
+                    )}
                     {groupParticipants.map((p) => {
                       const offeringId = (s: BookingServiceSnapshot) =>
                         s.offering_id ?? (s as { id?: string }).id;

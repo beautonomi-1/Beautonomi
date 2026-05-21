@@ -28,13 +28,35 @@ export interface OnboardingService {
   supports_at_home: boolean;
   supports_at_salon: boolean;
   category_id?: string;
-  addons?: Array<{
+  /** Service classification (basic, addon, package, variant). */
+  service_type?: string;
+  /** Pricing label shown to customers, e.g. "Standard", "Hour 1". */
+  pricing_name?: string;
+  /** Optional aftercare instructions sent to customers post-service. */
+  aftercare_description?: string;
+  /** Who this service is for: "everyone" | "women" | "men" | etc. */
+  service_available_for?: string;
+  /** Whether the service is bookable online (in-app/web). Default true. */
+  online_booking_enabled?: boolean;
+  /** Maximum travel radius (km) for at-home services. */
+  at_home_radius_km?: number;
+  /** Currency adjustment added to the base price for at-home requests. */
+  at_home_price_adjustment?: number;
+  /** Tax rate percent (0 = no tax). */
+  tax_rate?: number;
+  /** When true, extra buffer time is reserved on the calendar after the service. */
+  extra_time_enabled?: boolean;
+  /** Buffer duration in minutes when `extra_time_enabled` is true. */
+  extra_time_duration?: number;
+  /** Optional list of team-member IDs assigned to the service. */
+  team_member_ids?: string[];
+  addons?: {
     name: string;
     description?: string;
     price: number;
     currency?: string;
     duration_minutes?: number;
-  }>;
+  }[];
 }
 
 export interface OnboardingFormData {

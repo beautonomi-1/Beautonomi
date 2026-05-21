@@ -3,7 +3,7 @@
  * Native provider profile management.
  * Email/phone changes require Supabase verification (email link, phone OTP).
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -15,11 +15,13 @@ import {
   ActivityIndicator,
   Modal,
   FlatList,
+  useWindowDimensions,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import * as Haptics from "expo-haptics";
+import * as Location from "expo-location";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
 import { api } from "@/lib/api-client";
@@ -48,7 +50,16 @@ import { OtpDigitRow } from "@/components/OtpDigitRow";
 import { formatPhone } from "@/lib/format";
 import { useProvider } from "@/providers/ProviderContext";
 import { getApiErrorMessage } from "@/lib/api-error";
-import { appendFormDataFileNative } from "@beautonomi/utils";
+import { appendFormDataFileNative, countryFilterIso2FromStorage } from "@beautonomi/utils";
+import { AddressAutocomplete } from "@/components/ui/AddressAutocomplete";
+import { AddressMapPinModal } from "@/components/AddressMapPinModal";
+import { StaticMapImage } from "@/components/ui/StaticMapImage";
+import { reverseGeocodeCoordinates } from "@/lib/reverse-geocode-address";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import {
+  ensureForegroundLocationPermission,
+  launchImageLibraryWithPermission,
+} from "@/lib/native-permissions";
 
 const IMAGE_CONSTRAINTS = { maxSizeBytes: 2 * 1024 * 1024 }; // 2MB
 const PRIMARY = Colors.primary;
@@ -64,6 +75,8 @@ interface ProfileData {
     state?: string;
     postal_code?: string;
     country: string;
+    latitude?: number | null;
+    longitude?: number | null;
   } | null;
   plan?: string;
 }
@@ -73,6 +86,8 @@ export default function ProfileScreen() {
   const { role } = useProvider();
   const canManageSubscription = role === "provider_owner" || role === "superadmin";
   const { screenPadding } = useResponsive();
+  const { width: windowWidth } = useWindowDimensions();
+  const { bundle } = useConfigBundle();
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [plan, setPlan] = useState<string>("Free");
   const [loading, setLoading] = useState(true);
@@ -83,6 +98,8 @@ export default function ProfileScreen() {
   const [pendingPhoneE164, setPendingPhoneE164] = useState("");
   const [phoneOtpCode, setPhoneOtpCode] = useState("");
   const [sendingOtp, setSendingOtp] = useState(false);
+  const [locating, setLocating] = useState(false);
+  const [mapPinVisible, setMapPinVisible] = useState(false);
   const deviceDefaultDialRef = useRef(getDeviceDefaultCountryDial());
   const [phoneCountryCode, setPhoneCountryCode] = useState(() => deviceDefaultDialRef.current);
   const [phoneNational, setPhoneNational] = useState("");
@@ -93,6 +110,137 @@ export default function ProfileScreen() {
   const [savedPhoneForDisplay, setSavedPhoneForDisplay] = useState("");
   const [savedEmailForDisplay, setSavedEmailForDisplay] = useState("");
   const initialProfileRef = useRef<{ email: string; phone: string }>({ email: "", phone: "" });
+
+  const tenantCountryFallback = useCallback(
+    () => bundle?.meta?.tenant_region?.name?.trim() || "",
+    [bundle?.meta?.tenant_region?.name],
+  );
+
+  const pinInitialCoordinate = useMemo(() => {
+    const lat = profile?.address?.latitude;
+    const lng = profile?.address?.longitude;
+    if (lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng)) {
+      return { latitude: lat, longitude: lng };
+    }
+    return null;
+  }, [profile?.address?.latitude, profile?.address?.longitude]);
+
+  const applyResolvedAddress = useCallback(
+    (parts: {
+      address_line1?: string;
+      city?: string;
+      state?: string;
+      postal_code?: string;
+      country?: string;
+      latitude?: number | null;
+      longitude?: number | null;
+    }) => {
+      setProfile((p) => {
+        if (!p) return p;
+        const prev = p.address ?? {
+          line1: "",
+          city: "",
+          state: "",
+          postal_code: "",
+          country: "",
+          latitude: null,
+          longitude: null,
+        };
+        return {
+          ...p,
+          address: {
+            ...prev,
+            line1: parts.address_line1 ?? prev.line1,
+            city: parts.city ?? prev.city,
+            state: parts.state ?? prev.state,
+            postal_code: parts.postal_code ?? prev.postal_code,
+            country: (parts.country?.trim() || prev.country || tenantCountryFallback()) ?? "",
+            latitude: parts.latitude ?? null,
+            longitude: parts.longitude ?? null,
+          },
+        };
+      });
+    },
+    [tenantCountryFallback],
+  );
+
+  const handleUseCurrentLocation = useCallback(async () => {
+    if (locating) return;
+    setLocating(true);
+    try {
+      const allowed = await ensureForegroundLocationPermission({
+        title: "Location permission",
+        message: "Allow location access to place a pin from your current position.",
+      });
+      if (!allowed) {
+        return;
+      }
+      const loc = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Highest,
+      });
+      const lat = loc.coords.latitude;
+      const lng = loc.coords.longitude;
+      const defaultCountry =
+        profile?.address?.country?.trim() ||
+        tenantCountryFallback() ||
+        "South Africa";
+      const mapped = await reverseGeocodeCoordinates(lat, lng, defaultCountry);
+      if (mapped) {
+        applyResolvedAddress({
+          address_line1: mapped.address_line1 || profile?.address?.line1 || "Current location",
+          city: mapped.city || profile?.address?.city || "",
+          state: mapped.state || "",
+          postal_code: mapped.postal_code || "",
+          country: mapped.country || defaultCountry,
+          latitude: mapped.latitude,
+          longitude: mapped.longitude,
+        });
+      } else {
+        applyResolvedAddress({ latitude: lat, longitude: lng });
+      }
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    } catch (e) {
+      Alert.alert(
+        "Location error",
+        e instanceof Error ? e.message : "Could not fetch current location.",
+      );
+    } finally {
+      setLocating(false);
+    }
+  }, [
+    locating,
+    profile?.address?.country,
+    profile?.address?.line1,
+    profile?.address?.city,
+    tenantCountryFallback,
+    applyResolvedAddress,
+  ]);
+
+  const handleDropPinConfirm = useCallback(
+    async (lat: number, lng: number) => {
+      const defaultCountry =
+        profile?.address?.country?.trim() ||
+        tenantCountryFallback() ||
+        "South Africa";
+      const mapped = await reverseGeocodeCoordinates(lat, lng, defaultCountry);
+      if (mapped) {
+        applyResolvedAddress({
+          address_line1: mapped.address_line1,
+          city: mapped.city,
+          state: mapped.state,
+          postal_code: mapped.postal_code,
+          country: mapped.country,
+          latitude: mapped.latitude,
+          longitude: mapped.longitude,
+        });
+      } else {
+        applyResolvedAddress({ latitude: lat, longitude: lng });
+      }
+      setMapPinVisible(false);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    },
+    [profile?.address?.country, tenantCountryFallback, applyResolvedAddress],
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -141,8 +289,28 @@ export default function ProfileScreen() {
         address: (() => {
           const a = data.address as Record<string, unknown> | null | undefined;
           if (!a || typeof a !== "object") {
-            return { line1: "", city: "", state: "", postal_code: "", country: "" };
+            return {
+              line1: "",
+              city: "",
+              state: "",
+              postal_code: "",
+              country: "",
+              latitude: null,
+              longitude: null,
+            };
           }
+          const lat =
+            typeof a.latitude === "number"
+              ? a.latitude
+              : a.latitude != null && a.latitude !== ""
+                ? Number(a.latitude)
+                : null;
+          const lng =
+            typeof a.longitude === "number"
+              ? a.longitude
+              : a.longitude != null && a.longitude !== ""
+                ? Number(a.longitude)
+                : null;
           return {
             line1: (typeof a.line1 === "string" ? a.line1 : typeof a.street === "string" ? a.street : "") || "",
             line2: (typeof a.line2 === "string" ? a.line2 : typeof a.apt === "string" ? a.apt : "") || "",
@@ -151,6 +319,8 @@ export default function ProfileScreen() {
             postal_code:
               (typeof a.postal_code === "string" ? a.postal_code : typeof a.zip === "string" ? a.zip : "") || "",
             country: typeof a.country === "string" ? a.country : "",
+            latitude: lat != null && Number.isFinite(lat) ? lat : null,
+            longitude: lng != null && Number.isFinite(lng) ? lng : null,
           };
         })(),
         plan: planName,
@@ -192,18 +362,20 @@ export default function ProfileScreen() {
   }, [phoneCountryCode, phoneNational]);
 
   const uploadAvatar = useCallback(async () => {
-    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permissionResult.granted) {
-      Alert.alert("Permission needed", "Allow access to your photos to change your profile picture.");
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
-      base64: false,
-    });
+    const result = await launchImageLibraryWithPermission(
+      {
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+        base64: false,
+      },
+      {
+        title: "Permission needed",
+        message: "Allow access to your photos to change your profile picture.",
+      },
+    );
+    if (!result) return;
     if (result.canceled || !result.assets?.[0]) return;
     const asset = result.assets[0];
     if (asset.fileSize && asset.fileSize > IMAGE_CONSTRAINTS.maxSizeBytes) {
@@ -273,8 +445,18 @@ export default function ProfileScreen() {
 
     setSaving(true);
     try {
+      // §provider-profile-auth-fix 2026-05: only include `email` in the PATCH
+      // payload when the user actually changed it. Always sending the current
+      // email made the server call `supabase.auth.updateUser({ email })`,
+      // which throws "Auth session missing" on the bearer-token-only client
+      // even though the email wasn't being changed.
+      const trimmedEmail = (profile.email ?? "").trim();
+      const initialEmail = (initialProfileRef.current.email ?? "").trim();
+      const emailChanged =
+        trimmedEmail.length > 0 &&
+        trimmedEmail.toLowerCase() !== initialEmail.toLowerCase();
+
       const payload: Record<string, unknown> = {
-        email: profile.email,
         phone: newPhoneE164,
         address: profile.address
           ? {
@@ -284,9 +466,14 @@ export default function ProfileScreen() {
               state: profile.address.state,
               postal_code: profile.address.postal_code,
               country: profile.address.country,
+              latitude: profile.address.latitude ?? null,
+              longitude: profile.address.longitude ?? null,
             }
           : undefined,
       };
+      if (emailChanged) {
+        payload.email = trimmedEmail;
+      }
       const res = await api.patch<{
         data?: {
           email_change_pending?: boolean;
@@ -535,17 +722,148 @@ export default function ProfileScreen() {
             <View>
               <View>
                 <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>Address</Text>
-                <TextInput
+                <Text style={twStyle("mb-2 text-xs text-gray-500 leading-5")}>
+                  Search for an address to fill city, state, postal code and coordinates automatically, or type
+                  manually.
+                </Text>
+                <AddressAutocomplete
                   value={profile.address?.line1 ?? ""}
-                  onChangeText={(line1) =>
+                  onSelect={(addr) =>
+                    applyResolvedAddress({
+                      address_line1: addr.address_line1,
+                      city: addr.city,
+                      state: addr.state,
+                      postal_code: addr.postal_code,
+                      country: addr.country,
+                      latitude: addr.latitude,
+                      longitude: addr.longitude,
+                    })
+                  }
+                  onBlur={(text) =>
                     setProfile((p) =>
-                      p ? { ...p, address: { ...p.address!, line1 } } : p
+                      p
+                        ? {
+                            ...p,
+                            address: {
+                              ...(p.address ?? {
+                                line1: "",
+                                city: "",
+                                state: "",
+                                postal_code: "",
+                                country: "",
+                                latitude: null,
+                                longitude: null,
+                              }),
+                              line1: text,
+                            },
+                          }
+                        : p,
                     )
                   }
-                  placeholder="Street address"
-                  placeholderTextColor="#9ca3af"
-                  style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
+                  placeholder="Street address or search…"
+                  countryCode={
+                    countryFilterIso2FromStorage(profile.address?.country ?? "") ?? "ZA"
+                  }
+                  defaultCountryName={profile.address?.country?.trim() || undefined}
+                  proximity={
+                    profile.address?.latitude != null &&
+                    profile.address?.longitude != null &&
+                    !(profile.address.latitude === 0 && profile.address.longitude === 0)
+                      ? { latitude: profile.address.latitude, longitude: profile.address.longitude }
+                      : undefined
+                  }
                 />
+                <View
+                  style={{
+                    marginTop: 10,
+                    flexDirection: "row",
+                    flexWrap: "wrap",
+                    gap: 8,
+                  }}
+                >
+                  <TouchableOpacity
+                    onPress={() => {
+                      void handleUseCurrentLocation();
+                    }}
+                    disabled={locating}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      borderRadius: 999,
+                      borderWidth: 1,
+                      borderColor: "#bfdbfe",
+                      backgroundColor: "#eff6ff",
+                      paddingHorizontal: 12,
+                      paddingVertical: 7,
+                    }}
+                    accessibilityLabel="Use current location"
+                    accessibilityRole="button"
+                  >
+                    {locating ? (
+                      <ActivityIndicator size="small" color="#2563eb" />
+                    ) : (
+                      <Ionicons name="locate-outline" size={16} color="#2563eb" />
+                    )}
+                    <Text
+                      style={{
+                        marginLeft: 6,
+                        fontSize: 12,
+                        fontWeight: "600",
+                        color: "#1d4ed8",
+                      }}
+                    >
+                      {locating ? "Locating…" : "Current location"}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setMapPinVisible(true)}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      borderRadius: 999,
+                      borderWidth: 1,
+                      borderColor: "#e5e7eb",
+                      backgroundColor: "#ffffff",
+                      paddingHorizontal: 12,
+                      paddingVertical: 7,
+                    }}
+                    accessibilityLabel="Drop pin on map"
+                    accessibilityRole="button"
+                  >
+                    <Ionicons name="map-outline" size={16} color="#374151" />
+                    <Text
+                      style={{
+                        marginLeft: 6,
+                        fontSize: 12,
+                        fontWeight: "600",
+                        color: "#374151",
+                      }}
+                    >
+                      Drop pin on map
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                {profile.address?.latitude != null && profile.address?.longitude != null ? (
+                  <View style={{ marginTop: 12, overflow: "hidden", borderRadius: 16 }}>
+                    <StaticMapImage
+                      latitude={profile.address.latitude}
+                      longitude={profile.address.longitude}
+                      width={Math.min(windowWidth - 48, 400)}
+                      height={150}
+                      zoom={15}
+                    />
+                    <Text
+                      style={{
+                        marginTop: 6,
+                        fontSize: 12,
+                        color: "#6b7280",
+                        textAlign: "center",
+                      }}
+                    >
+                      Map preview
+                    </Text>
+                  </View>
+                ) : null}
               </View>
               <View style={{ marginTop: 12 }}>
                 <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>Country</Text>
@@ -561,7 +879,7 @@ export default function ProfileScreen() {
                   style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
                 />
               </View>
-              <View>
+              <View style={{ marginTop: 12 }}>
                 <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>State/Province</Text>
                 <TextInput
                   value={profile.address?.state ?? ""}
@@ -575,7 +893,7 @@ export default function ProfileScreen() {
                   style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
                 />
               </View>
-              <View>
+              <View style={{ marginTop: 12 }}>
                 <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>City</Text>
                 <TextInput
                   value={profile.address?.city ?? ""}
@@ -589,7 +907,7 @@ export default function ProfileScreen() {
                   style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
                 />
               </View>
-              <View>
+              <View style={{ marginTop: 12 }}>
                 <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>Zip/Postal Code</Text>
                 <TextInput
                   value={profile.address?.postal_code ?? ""}
@@ -813,6 +1131,15 @@ export default function ProfileScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      <AddressMapPinModal
+        visible={mapPinVisible}
+        onClose={() => setMapPinVisible(false)}
+        onPickCoordinates={(lat: number, lng: number) => {
+          void handleDropPinConfirm(lat, lng);
+        }}
+        initialCoordinate={pinInitialCoordinate}
+      />
     </ScreenContainer>
   );
 }

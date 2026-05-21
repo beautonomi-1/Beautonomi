@@ -32,6 +32,8 @@ import {
 import { OtpDigitInput } from "@/components/ui/otp-digit-input";
 import type { LoginAndSecurityInitial } from "../fetch-login-and-security-initial";
 
+type AuthSecurityState = NonNullable<LoginAndSecurityInitial["profile"]["auth_security"]>;
+
 function maskProfileEmail(email: string): string {
   const parts = email.split("@");
   return parts[0]?.length > 0 ? `${parts[0].substring(0, 1)}****@${parts[1] || ""}` : email;
@@ -67,7 +69,12 @@ const LoginAccount = ({
     currentPassword: "",
     newPassword: "",
     confirmPassword: "",
+    nonce: "",
   });
+  const [isRequestingPasswordNonce, setIsRequestingPasswordNonce] = useState(false);
+  const [authSecurity, setAuthSecurity] = useState<AuthSecurityState | null>(
+    () => initial?.profile?.auth_security ?? null,
+  );
   const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
   const [passwordLastUpdated, setPasswordLastUpdated] = useState<string | null>(
     () => initial?.profile?.password_changed_at ?? null,
@@ -75,9 +82,11 @@ const LoginAccount = ({
   const [showDeactivateDialog, setShowDeactivateDialog] = useState(false);
   const [deactivateData, setDeactivateData] = useState({
     password: "",
+    verificationNonce: "",
     reason: "",
   });
   const [isDeactivating, setIsDeactivating] = useState(false);
+  const [isRequestingDeactivateNonce, setIsRequestingDeactivateNonce] = useState(false);
   const [securityCopy, setSecurityCopy] = useState<{
     title: string;
     body: string;
@@ -128,8 +137,8 @@ const LoginAccount = ({
     }
     const loadProfile = async () => {
       try {
-        const res = await fetcher.get<{ data?: { email?: string; phone?: string } }>("/api/me/profile", { staleTimeMs: 30_000 });
-        const data = res?.data ?? (res as { email?: string; phone?: string });
+        const res = await fetcher.get<{ data?: { email?: string; phone?: string; auth_security?: AuthSecurityState | null } }>("/api/me/profile", { staleTimeMs: 30_000 });
+        const data = res?.data ?? (res as { email?: string; phone?: string; auth_security?: AuthSecurityState | null });
         const email = data?.email;
         const phone = data?.phone;
         if (email) {
@@ -137,6 +146,9 @@ const LoginAccount = ({
         }
         if (phone) {
           setProfilePhone(maskProfilePhone(phone));
+        }
+        if (data?.auth_security) {
+          setAuthSecurity(data.auth_security);
         }
       } catch {
         // ignore
@@ -161,12 +173,15 @@ const LoginAccount = ({
   const loadPasswordInfo = async () => {
     if (!user) return;
     try {
-      const response = await fetcher.get<{ data: { password_changed_at?: string | null } }>("/api/me/profile", { staleTimeMs: 30_000 });
+      const response = await fetcher.get<{ data: { password_changed_at?: string | null; auth_security?: AuthSecurityState | null } }>("/api/me/profile", { staleTimeMs: 0 });
       // Handle both response.data and direct response structure
-      const profileData = response.data ?? (response as { password_changed_at?: string | null });
+      const profileData = response.data ?? (response as { password_changed_at?: string | null; auth_security?: AuthSecurityState | null });
       const passwordChangedAt = profileData?.password_changed_at;
       if (passwordChangedAt) {
         setPasswordLastUpdated(passwordChangedAt);
+      }
+      if (profileData?.auth_security) {
+        setAuthSecurity(profileData.auth_security);
       }
     } catch (error) {
       console.error("Failed to load password info:", error);
@@ -202,20 +217,34 @@ const LoginAccount = ({
         currentPassword: "",
         newPassword: "",
         confirmPassword: "",
+        nonce: "",
       });
     }
   };
 
+  const authSecurityLoaded = authSecurity != null;
+  const hasPassword = authSecurity?.has_password === true;
+  const isSettingFirstPassword = authSecurity?.has_password === false;
+  const minimumPasswordLength = authSecurity?.policy.minimum_password_length ?? 8;
+  const canVerifyWithCode = Boolean(
+    authSecurity?.has_mailable_email || authSecurity?.has_phone,
+  );
+
   const handlePasswordUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!passwordData.currentPassword || !passwordData.newPassword || !passwordData.confirmPassword) {
+    if ((!isSettingFirstPassword && !passwordData.currentPassword) || !passwordData.newPassword || !passwordData.confirmPassword) {
       toast.error("All fields are required");
       return;
     }
 
-    if (passwordData.newPassword.length < 8) {
-      toast.error("New password must be at least 8 characters long");
+    if (isSettingFirstPassword && !passwordData.nonce.trim()) {
+      toast.error("Enter the verification code before setting a password");
+      return;
+    }
+
+    if (passwordData.newPassword.length < minimumPasswordLength) {
+      toast.error(`New password must be at least ${minimumPasswordLength} characters long`);
       return;
     }
 
@@ -227,17 +256,20 @@ const LoginAccount = ({
     try {
       setIsUpdatingPassword(true);
       await fetcher.put("/api/me/password", {
-        currentPassword: passwordData.currentPassword,
+        mode: isSettingFirstPassword ? "set" : "change",
+        currentPassword: isSettingFirstPassword ? undefined : passwordData.currentPassword,
+        nonce: isSettingFirstPassword ? passwordData.nonce.trim() : undefined,
         newPassword: passwordData.newPassword,
       });
-      toast.success("Password updated successfully");
+      toast.success(isSettingFirstPassword ? "Password set successfully" : "Password updated successfully");
       setShowPasswordUpdate(false);
       setPasswordData({
         currentPassword: "",
         newPassword: "",
         confirmPassword: "",
+        nonce: "",
       });
-      loadPasswordInfo();
+      void loadPasswordInfo();
     } catch (error: unknown) {
       toast.error(error instanceof Error ? error.message : "Failed to update password");
     } finally {
@@ -246,7 +278,7 @@ const LoginAccount = ({
   };
 
   const handleForgotPassword = async () => {
-    if (!user?.email) {
+    if (!user?.email || authSecurity?.email_is_placeholder) {
       toast.error("Email address not found");
       return;
     }
@@ -255,6 +287,24 @@ const LoginAccount = ({
       toast.success("Password reset email sent. Please check your inbox.");
     } catch (error: unknown) {
       toast.error(error instanceof Error ? error.message : "Failed to send password reset email");
+    }
+  };
+
+  const handleRequestPasswordNonce = async () => {
+    if (!canVerifyWithCode) {
+      toast.error("Add a verified email or phone number before setting a password.");
+      return;
+    }
+    setIsRequestingPasswordNonce(true);
+    try {
+      const supabase = getSupabaseClient();
+      const { error } = await supabase.auth.reauthenticate();
+      if (error) throw error;
+      toast.success("Verification code sent. Enter it below to set your password.");
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Failed to send verification code");
+    } finally {
+      setIsRequestingPasswordNonce(false);
     }
   };
 
@@ -334,15 +384,24 @@ const LoginAccount = ({
   };
 
   const handleDeactivate = async () => {
-    if (!deactivateData.password) {
+    if (!authSecurityLoaded) {
+      toast.error("Still loading account security settings. Please try again.");
+      return;
+    }
+    if (hasPassword && !deactivateData.password) {
       toast.error("Password is required to deactivate your account");
+      return;
+    }
+    if (!hasPassword && !deactivateData.verificationNonce.trim()) {
+      toast.error("Enter the verification code to deactivate your account");
       return;
     }
 
     try {
       setIsDeactivating(true);
       await fetcher.post("/api/me/deactivate", {
-        password: deactivateData.password,
+        password: hasPassword ? deactivateData.password : undefined,
+        verificationNonce: hasPassword ? undefined : deactivateData.verificationNonce.trim(),
         reason: deactivateData.reason || null,
       });
       toast.success("Account deactivated successfully");
@@ -352,6 +411,24 @@ const LoginAccount = ({
       toast.error(error instanceof Error ? error.message : "Failed to deactivate account");
     } finally {
       setIsDeactivating(false);
+    }
+  };
+
+  const handleRequestDeactivateNonce = async () => {
+    if (!canVerifyWithCode) {
+      toast.error("Add a verified email or phone number before deactivating this account.");
+      return;
+    }
+    setIsRequestingDeactivateNonce(true);
+    try {
+      const supabase = getSupabaseClient();
+      const { error } = await supabase.auth.reauthenticate();
+      if (error) throw error;
+      toast.success("Verification code sent. Enter it below to confirm deactivation.");
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Failed to send verification code");
+    } finally {
+      setIsRequestingDeactivateNonce(false);
     }
   };
 
@@ -427,7 +504,9 @@ const LoginAccount = ({
                   <div>
                     <h2 className="text-xl font-semibold tracking-tighter mb-2 text-gray-900">Password</h2>
                     <p className="text-sm text-gray-500 font-light">
-                      Last updated {formatDate(passwordLastUpdated)}
+                      {isSettingFirstPassword
+                        ? "No password set yet"
+                        : `Last updated ${formatDate(passwordLastUpdated)}`}
                     </p>
                   </div>
                   <Button
@@ -435,7 +514,7 @@ const LoginAccount = ({
                     onClick={handleUpdateClick}
                     className="text-primary border-primary hover:bg-primary hover:text-white"
                   >
-                    {showPasswordUpdate ? "Cancel" : "Update"}
+                    {showPasswordUpdate ? "Cancel" : hasPassword ? "Update" : "Set password"}
                   </Button>
                 </div>
 
@@ -445,28 +524,67 @@ const LoginAccount = ({
                     className="mt-6 pt-6 border-t border-white/40"
                   >
                     <form onSubmit={handlePasswordUpdate} className="flex flex-col space-y-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Current Password
-                        </label>
-                        <Input
-                          type="password"
-                          value={passwordData.currentPassword}
-                          onChange={(e) =>
-                            setPasswordData({ ...passwordData, currentPassword: e.target.value })
-                          }
-                          className="w-full backdrop-blur-sm bg-white/60 border-white/40"
-                          required
-                          placeholder="Enter your current password"
-                        />
-                        <button
-                          type="button"
-                          onClick={handleForgotPassword}
-                          className="text-primary hover:text-primary-hover underline text-sm font-medium mt-2 transition-colors"
-                        >
-                          Forgot password?
-                        </button>
-                      </div>
+                      {isSettingFirstPassword ? (
+                        <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
+                          <p className="text-sm text-gray-700">
+                            This account uses one-time codes or social login. Send a verification code to your verified email or phone, then choose a password.
+                          </p>
+                          {!canVerifyWithCode && (
+                            <p className="mt-2 text-sm text-red-600">
+                              Add and verify an email or phone number before setting a password.
+                            </p>
+                          )}
+                          <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
+                            <div className="flex-1">
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Verification code
+                              </label>
+                              <Input
+                                value={passwordData.nonce}
+                                onChange={(e) =>
+                                  setPasswordData({ ...passwordData, nonce: e.target.value.replace(/\D/g, "") })
+                                }
+                                className="w-full backdrop-blur-sm bg-white/60 border-white/40"
+                                inputMode="numeric"
+                                autoComplete="one-time-code"
+                                required
+                                placeholder="Enter code"
+                              />
+                            </div>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={handleRequestPasswordNonce}
+                              disabled={isRequestingPasswordNonce || !canVerifyWithCode}
+                            >
+                              {isRequestingPasswordNonce ? "Sending..." : "Send code"}
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Current Password
+                          </label>
+                          <Input
+                            type="password"
+                            value={passwordData.currentPassword}
+                            onChange={(e) =>
+                              setPasswordData({ ...passwordData, currentPassword: e.target.value })
+                            }
+                            className="w-full backdrop-blur-sm bg-white/60 border-white/40"
+                            required
+                            placeholder="Enter your current password"
+                          />
+                          <button
+                            type="button"
+                            onClick={handleForgotPassword}
+                            className="text-primary hover:text-primary-hover underline text-sm font-medium mt-2 transition-colors"
+                          >
+                            Forgot password?
+                          </button>
+                        </div>
+                      )}
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
                           New Password
@@ -479,10 +597,10 @@ const LoginAccount = ({
                           }
                           className="w-full backdrop-blur-sm bg-white/60 border-white/40"
                           required
-                          minLength={8}
-                          placeholder="Enter new password (min 8 characters)"
+                          minLength={minimumPasswordLength}
+                          placeholder={`Enter new password (min ${minimumPasswordLength} characters)`}
                         />
-                        <p className="text-xs text-gray-500 mt-1">Must be at least 8 characters long</p>
+                        <p className="text-xs text-gray-500 mt-1">Must be at least {minimumPasswordLength} characters long</p>
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -505,7 +623,9 @@ const LoginAccount = ({
                           disabled={isUpdatingPassword}
                           className="bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary text-white px-6 py-2.5 rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          {isUpdatingPassword ? "Updating..." : "Update Password"}
+                          {isUpdatingPassword
+                            ? isSettingFirstPassword ? "Setting..." : "Updating..."
+                            : isSettingFirstPassword ? "Set Password" : "Update Password"}
                         </button>
                       </div>
                     </form>
@@ -827,21 +947,56 @@ const LoginAccount = ({
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Enter your password to confirm
-              </label>
-              <Input
-                type="password"
-                value={deactivateData.password}
-                onChange={(e) =>
-                  setDeactivateData({ ...deactivateData, password: e.target.value })
-                }
-                placeholder="Your password"
-                required
-                className="backdrop-blur-sm bg-white/60 border-white/40"
-              />
-            </div>
+            {!authSecurityLoaded ? (
+              <p className="text-sm text-gray-600">Loading verification options…</p>
+            ) : hasPassword ? (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Enter your password to confirm
+                </label>
+                <Input
+                  type="password"
+                  value={deactivateData.password}
+                  onChange={(e) =>
+                    setDeactivateData({ ...deactivateData, password: e.target.value })
+                  }
+                  placeholder="Your password"
+                  required
+                  className="backdrop-blur-sm bg-white/60 border-white/40"
+                />
+              </div>
+            ) : (
+              <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
+                <p className="text-sm text-gray-700">
+                  Confirm this sensitive action with a one-time code.
+                </p>
+                <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
+                  <div className="flex-1">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Verification code
+                    </label>
+                    <Input
+                      value={deactivateData.verificationNonce}
+                      onChange={(e) =>
+                        setDeactivateData({ ...deactivateData, verificationNonce: e.target.value.replace(/\D/g, "") })
+                      }
+                      placeholder="Enter code"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      className="backdrop-blur-sm bg-white/60 border-white/40"
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleRequestDeactivateNonce}
+                    disabled={isRequestingDeactivateNonce || !canVerifyWithCode}
+                  >
+                    {isRequestingDeactivateNonce ? "Sending..." : "Send code"}
+                  </Button>
+                </div>
+              </div>
+            )}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Reason (optional)
@@ -872,7 +1027,7 @@ const LoginAccount = ({
               variant="outline"
               onClick={() => {
                 setShowDeactivateDialog(false);
-                setDeactivateData({ password: "", reason: "" });
+                setDeactivateData({ password: "", verificationNonce: "", reason: "" });
               }}
               className="border-gray-300 hover:bg-gray-50"
             >
@@ -881,7 +1036,11 @@ const LoginAccount = ({
             <button
               type="button"
               onClick={handleDeactivate}
-              disabled={isDeactivating || !deactivateData.password}
+              disabled={
+                isDeactivating ||
+                !authSecurityLoaded ||
+                (hasPassword ? !deactivateData.password : !deactivateData.verificationNonce.trim())
+              }
               className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isDeactivating ? "Deactivating..." : "Deactivate Account"}

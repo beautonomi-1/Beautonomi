@@ -22,7 +22,13 @@ import {
   groupProductLineTotal,
   validateAndPriceGroupPackage,
 } from "@/lib/bookings/group-booking-package-pricing";
+import { evaluateGroupCapacity, normalizeGroupCapacity } from "@/lib/bookings/group-capacity";
 import { computeWalletGiftCoverageOutstanding } from "@/lib/bookings/provider-booking-finance";
+import {
+  PROVIDER_GROUP_DETAIL_SELECT,
+  PROVIDER_GROUP_DETAIL_SELECT_FALLBACK,
+  PROVIDER_CHILD_BOOKINGS_SELECT,
+} from "@/lib/bookings/group-booking-postgrest";
 
 function normalizeGroupBookingId(rawId: string): string {
   return rawId.startsWith("group:") ? rawId.slice("group:".length) : rawId;
@@ -47,31 +53,71 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return notFoundResponse("Provider not found");
     }
 
-    const { data: groupBooking, error } = await admin
+    // §Group-booking-audit 2026-05: differentiate a truly missing group
+    // booking from an embed/select failure (which previously returned a
+    // misleading 404 "Group booking not found"). We first check the row
+    // exists with a minimal projection, then attempt the rich select.
+    const { data: existence, error: existenceError } = await admin
       .from("group_bookings")
-      .select(
-        `
-        *,
-        bookings:bookings(
-          id, booking_number, ref_number, status, scheduled_at, total_amount,
-          total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status, tip_amount,
-          additional_charges(amount,status),
-          customer:users!bookings_customer_id_fkey(id, full_name, email, phone, avatar_url)
-        ),
-        service_packages:package_id(id, name),
-        booking_participants(
-          id, booking_id, participant_name, participant_email, participant_phone,
-          is_primary_contact, service_id, service_name, price, duration_minutes, addons,
-          checked_in_at, checked_out_at
-        )
-      `
-      )
+      .select("id")
+      .eq("id", id)
+      .eq("provider_id", providerId)
+      .maybeSingle();
+    if (existenceError) {
+      console.error("[provider group GET] existence check failed:", existenceError);
+      return errorResponse(
+        "Failed to load group booking",
+        "GROUP_BOOKING_FETCH_FAILED",
+        500,
+        { db: existenceError.message ?? null }
+      );
+    }
+    if (!existence) {
+      return notFoundResponse("Group booking not found");
+    }
+
+    let { data: groupBooking, error } = await admin
+      .from("group_bookings")
+      .select(PROVIDER_GROUP_DETAIL_SELECT)
       .eq("id", id)
       .eq("provider_id", providerId)
       .single();
 
     if (error || !groupBooking) {
-      return notFoundResponse("Group booking not found");
+      // §Group-booking-resilience 2026-05: the row exists (existence check
+      // passed) so the rich select failed — most likely a PostgREST FK-hint
+      // mismatch caused by ambiguity between the two FK paths to `bookings`
+      // (primary_contact_booking_id vs group_booking_id). Attempt the fallback
+      // select that omits the child-bookings embed and fetches them separately.
+      console.error(
+        "[provider group GET] rich select failed, trying fallback",
+        { code: error?.code, message: error?.message, hint: (error as any)?.hint }
+      );
+
+      const { data: fallbackGroup, error: fallbackError } = await admin
+        .from("group_bookings")
+        .select(PROVIDER_GROUP_DETAIL_SELECT_FALLBACK)
+        .eq("id", id)
+        .eq("provider_id", providerId)
+        .single();
+
+      if (fallbackError || !fallbackGroup) {
+        console.error("[provider group GET] fallback select also failed:", fallbackError);
+        return errorResponse(
+          "Group booking exists but its detail view could not be assembled. Please refresh and try again.",
+          "GROUP_BOOKING_DETAIL_FAILED",
+          500,
+          { db: error?.message ?? null, fallback: fallbackError?.message ?? null }
+        );
+      }
+
+      // Fetch child bookings separately to avoid the FK-hint ambiguity.
+      const { data: childBookings } = await admin
+        .from("bookings")
+        .select(PROVIDER_CHILD_BOOKINGS_SELECT)
+        .eq("group_booking_id", id);
+
+      groupBooking = { ...(fallbackGroup as any), bookings: childBookings ?? [] };
     }
 
     const pkg = Array.isArray((groupBooking as any).service_packages)
@@ -175,8 +221,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       packageDiscount: 0,
     });
 
+    const groupPayload = groupBooking as unknown as Record<string, unknown>;
     return successResponse({
-      ...groupBooking,
+      ...groupPayload,
       total_price:
         linkedParticipantInvoiceTotal > 0
           ? Math.max(
@@ -243,6 +290,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const sanitized: Record<string, unknown> = { updated_at: new Date().toISOString() };
     for (const key of allowedFields) {
       if (key in body) sanitized[key] = body[key];
+    }
+    if ("max_participants" in sanitized) {
+      sanitized.max_participants = normalizeGroupCapacity(sanitized.max_participants);
     }
     if (sanitized.location_type === "at_home") {
       sanitized.location_id = null;
@@ -432,6 +482,25 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       });
     }
 
+    if ("max_participants" in sanitized) {
+      const { count, error: participantCountError } = await admin
+        .from("booking_participants")
+        .select("id", { count: "exact", head: true })
+        .eq("group_booking_id", id);
+      if (participantCountError) throw participantCountError;
+      const capacity = evaluateGroupCapacity({
+        maxParticipants: sanitized.max_participants,
+        currentParticipants: count ?? 0,
+      });
+      if (capacity.ok === false) {
+        return errorResponse(
+          `Capacity cannot be lower than the current participant count (${capacity.current}).`,
+          capacity.code,
+          400
+        );
+      }
+    }
+
     const shouldSyncChildBookings =
       "scheduled_at" in sanitized ||
       "staff_id" in sanitized ||
@@ -445,6 +514,20 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       "address_latitude" in sanitized ||
       "address_longitude" in sanitized ||
       "travel_fee" in sanitized;
+
+    // Capture the current scheduled_at before the update so we can include it
+    // in reschedule notifications after the child bookings are synced.
+    let originalScheduledAt: string | null = null;
+    if ("scheduled_at" in sanitized) {
+      const { data: pre } = await admin
+        .from("group_bookings")
+        .select("scheduled_at")
+        .eq("id", id)
+        .eq("provider_id", providerId)
+        .maybeSingle();
+      originalScheduledAt =
+        (pre as { scheduled_at?: string | null } | null)?.scheduled_at ?? null;
+    }
 
     const { data, error } = await admin
       .from("group_bookings")
@@ -463,6 +546,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       if ("scheduled_at" in sanitized) childUpdate.scheduled_at = sanitized.scheduled_at;
       if ("location_id" in sanitized) childUpdate.location_id = sanitized.location_id;
       if ("location_type" in sanitized) childUpdate.location_type = sanitized.location_type;
+      // §Group-booking-qa 2026-05: staff_id was omitted from the child sync
+      // list even though shouldSyncChildBookings fires when staff_id changes.
+      // Result: changing the assigned staff on a group left every child booking
+      // pointing at the old staff member, breaking the calendar and reports.
+      if ("staff_id" in sanitized) childUpdate.staff_id = sanitized.staff_id;
       for (const key of [
         "address_line1",
         "address_city",
@@ -505,6 +593,36 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
               )
             )
           );
+
+          // §Group-booking-qa 2026-05: send reschedule notifications to
+          // customers on every child booking whose time just changed. Best-
+          // effort — a notification failure must never block the PATCH response.
+          if (originalScheduledAt) {
+            try {
+              const { sendRescheduleNotification } = await import(
+                "@/lib/bookings/notifications"
+              );
+              const oldDt = new Date(originalScheduledAt);
+              const newDt = new Date(sanitized.scheduled_at as string);
+              await Promise.allSettled(
+                childIds.map((bId: string) =>
+                  sendRescheduleNotification(bId, oldDt, newDt).catch(
+                    (e: unknown) =>
+                      console.warn(
+                        "[provider group PATCH] reschedule notification failed for booking",
+                        bId,
+                        e
+                      )
+                  )
+                )
+              );
+            } catch (notifyErr) {
+              console.error(
+                "[provider group PATCH] reschedule notification dispatch failed:",
+                notifyErr
+              );
+            }
+          }
         }
       }
     }
@@ -553,6 +671,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const now = new Date().toISOString();
 
     if (action === "start_service") {
+      // §Group-booking-audit 2026-05: child booking updates are best-effort
+      // so groups created via the web portal (inline participants without
+      // booking_id) can still transition to "started". Without this guard,
+      // bookings table errors blocked the group from ever changing state.
       const { error: bookingsError } = await admin
         .from("bookings")
         .update({
@@ -563,18 +685,27 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         .eq("group_booking_id", id)
         .eq("provider_id", providerId)
         .in("status", ["confirmed", "waiting", "checked_in"]);
-      if (bookingsError) throw bookingsError;
-      const { data } = await admin
+      if (bookingsError) {
+        console.warn(
+          "[provider group start_service] child booking update failed (continuing):",
+          bookingsError
+        );
+      }
+      const { data, error: groupUpdateError } = await admin
         .from("group_bookings")
         .update({ status: "started", updated_at: now })
         .eq("id", id)
         .eq("provider_id", providerId)
         .select()
         .single();
+      if (groupUpdateError) throw groupUpdateError;
       return successResponse({ group_booking: data, message: "Group service started" });
     }
 
     if (action === "complete_service") {
+      // Include all non-terminal statuses so providers who skip individual
+      // check-ins (or call complete_service before start_service) don't leave
+      // child bookings stranded in confirmed/checked_in/in_progress forever.
       const { error: bookingsError } = await admin
         .from("bookings")
         .update({
@@ -585,8 +716,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         })
         .eq("group_booking_id", id)
         .eq("provider_id", providerId)
-        .in("status", ["in_progress"]);
-      if (bookingsError) throw bookingsError;
+        .in("status", ["in_progress", "confirmed", "waiting", "checked_in"]);
+      if (bookingsError) {
+        console.warn(
+          "[provider group complete_service] child booking update failed (continuing):",
+          bookingsError
+        );
+      }
       const { data, error } = await admin
         .from("group_bookings")
         .update({ status: "completed", updated_at: now })
@@ -675,6 +811,35 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         .filter(Boolean);
 
       if (rows.length === 0) {
+        // §Group-booking-audit 2026-05: distinguish three states the previous
+        // single ALREADY_PAID message hid:
+        //   • No child bookings at all (web inline participants, or mobile
+        //     flow that rolled back before linking) → NOT_INVOICED. Tell the
+        //     provider to add a participant booking first.
+        //   • Child bookings exist but each one is already settled → keep
+        //     ALREADY_PAID so the receipt UI shows the historical paid state.
+        const hasChildBookings = (bookings ?? []).length > 0;
+        if (!hasChildBookings) {
+          // Check for participants without booking_id so the error message is
+          // specific: portal/waitlist-style groups need a participant booking
+          // to invoice before payment can be recorded.
+          const { count: participantCount } = await admin
+            .from("booking_participants")
+            .select("id", { count: "exact", head: true })
+            .eq("group_booking_id", id);
+          if ((participantCount ?? 0) > 0) {
+            return errorResponse(
+              "Participants are not invoiced yet. Create a participant booking before marking the session paid.",
+              "NOT_INVOICED",
+              400
+            );
+          }
+          return errorResponse(
+            "Add at least one participant before recording payment.",
+            "NOT_INVOICED",
+            400
+          );
+        }
         return errorResponse("Group booking is already fully paid", "ALREADY_PAID", 400);
       }
 
@@ -796,6 +961,21 @@ export async function DELETE(
         );
       } catch (waitlistErr) {
         console.error("[provider group cancel] waitlist matching failed:", waitlistErr);
+      }
+
+      // Send cancellation notifications to the customer on each child booking.
+      // Best-effort: a notification failure must never block the cancel response.
+      try {
+        const { sendCancellationNotification } = await import("@/lib/bookings/notifications");
+        await Promise.allSettled(
+          groupBookings.map((b: { id: string }) =>
+            sendCancellationNotification(b.id, { cancelledBy: "provider" }).catch((e: unknown) =>
+              console.warn("[provider group cancel] notification failed for booking", b.id, e)
+            )
+          )
+        );
+      } catch (notifyErr) {
+        console.error("[provider group cancel] notification dispatch failed:", notifyErr);
       }
     }
 

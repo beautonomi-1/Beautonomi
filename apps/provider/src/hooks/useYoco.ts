@@ -4,7 +4,7 @@
  */
 import { useState, useEffect, useCallback } from "react";
 import { Alert, Linking } from "react-native";
-import { api, getApiBaseUrl } from "@/lib/api-client";
+import { api } from "@/lib/api-client";
 
 /* ─── Types ─── */
 
@@ -160,11 +160,15 @@ export function useYocoIntegration() {
   }, [load]);
 
   const connect = useCallback(
-    async (apiKey: string, secretKey: string) => {
+    async (apiKey: string | undefined, secretKey: string, webhookSecret?: string) => {
       try {
-        const res = await api.post<Record<string, unknown>>("/api/provider/yoco/integration", {
-          api_key: apiKey,
+        const body: Record<string, string> = {
           secret_key: secretKey,
+        };
+        if (apiKey?.trim()) body.api_key = apiKey.trim();
+        if (webhookSecret?.trim()) body.webhook_secret = webhookSecret.trim();
+        const res = await api.post<Record<string, unknown>>("/api/provider/yoco/integration", {
+          ...body,
         });
         if (res.error) {
           Alert.alert("Error", res.error.message || "Failed to connect Yoco");
@@ -197,27 +201,30 @@ export function useYocoIntegration() {
   }, [load]);
 
   /**
-   * §Yoco-OAuth 2026-05: launch the in-app browser at /oauth/authorize so the
-   * provider can sign in with Yoco. The web callback redirects to the
-   * Beautonomi settings page; the provider then taps "Return to app" or we
-   * detect their next foreground and refetch the integration status to flip
-   * the UI to "Connected".
-   *
-   * NB: we deliberately use Linking.openURL rather than WebBrowser/AuthSession
-   * here so the cookie session — needed by /oauth/authorize's requireRole —
-   * is the same one the provider already used to sign in on web. AuthSession
-   * runs in a sandboxed Safari/Custom Tab without those cookies.
+   * §Yoco-OAuth 2026-05: ask the API to mint a one-time OAuth state using the
+   * app's authenticated session, then open Yoco directly. This avoids relying
+   * on the system browser already having a Beautonomi web cookie.
    */
   const connectOauth = useCallback(async () => {
     try {
-      const base = (getApiBaseUrl() ?? "").replace(/\/$/, "");
-      if (!base) {
-        Alert.alert("Could not start Yoco connection", "Backend URL is not configured.");
+      const res = await api.post<{ authorize_url?: string }>(
+        "/api/provider/yoco/oauth/mobile-authorize",
+        {
+          return_to: "/provider/settings/sales/yoco-integration?from=app",
+        },
+      );
+      if (res.error) {
+        Alert.alert(
+          "Could not start Yoco connection",
+          res.error.message || "Please try again.",
+        );
         return false;
       }
-      const url = `${base}/api/provider/yoco/oauth/authorize?return_to=${encodeURIComponent(
-        "/provider/settings/sales/yoco-integration?from=app",
-      )}`;
+      const url = res.data?.authorize_url;
+      if (!url) {
+        Alert.alert("Could not start Yoco connection", "Yoco did not return a connection link.");
+        return false;
+      }
       const can = await Linking.canOpenURL(url);
       if (!can) {
         Alert.alert("Could not start Yoco connection", `URL not supported: ${url}`);

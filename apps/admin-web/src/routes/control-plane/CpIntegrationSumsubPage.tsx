@@ -83,6 +83,23 @@ export function CpIntegrationSumsubPage() {
       <CpBack to=".." label="Integrations" />
       <AdminPageHeader title="Sumsub" description="KYC — credentials are not shown after save." />
       <EnvSelect value={env} onChange={setEnv} />
+      <AdminPanel>
+        <div className="space-y-2 text-sm text-gray-700">
+          <p className="font-medium text-gray-900">Operational setup</p>
+          <p>
+            Register the Sumsub webhook URL{" "}
+            <code className="rounded bg-gray-100 px-1 text-xs">/api/webhooks/sumsub</code> and send{" "}
+            <code className="rounded bg-gray-100 px-1 text-xs">x-sumsub-env: {env}</code> when this is not production.
+            Sumsub uses <code className="rounded bg-gray-100 px-1 text-xs">X-App-Token</code> plus HMAC signatures; keep
+            app token, secret key, and webhook secret in sync with the selected environment.
+          </p>
+          <p>
+            Mobile/web embeds also require{" "}
+            <code className="rounded bg-gray-100 px-1 text-xs">SUMSUB_EMBED_REFRESH_SECRET</code> in the web app
+            environment so token refresh works after the initial SDK token expires.
+          </p>
+        </div>
+      </AdminPanel>
       {msg ? (
         <AdminPanel>
           <p className="text-sm text-gray-700">{msg}</p>

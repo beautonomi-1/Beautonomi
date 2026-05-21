@@ -6,6 +6,7 @@ import {
   notFoundResponse,
   handleApiError,
   forbiddenResponse,
+  errorResponse,
   userHasProviderAccessAdmin,
 } from "@/lib/supabase/api-helpers";
 
@@ -47,6 +48,35 @@ export async function POST(
       return forbiddenResponse("You do not have access to this group booking");
     }
 
+    // Fetch the participant first to enforce check-in-before-check-out ordering
+    // and to guard against double check-out resetting an already-recorded time.
+    const { data: existing, error: fetchError } = await admin
+      .from("booking_participants")
+      .select("id, booking_id, checked_in_at, checked_out_at")
+      .eq("id", participantId)
+      .eq("group_booking_id", id)
+      .maybeSingle();
+
+    if (fetchError) throw fetchError;
+    if (!existing) return notFoundResponse("Participant not found");
+
+    if (!existing.checked_in_at) {
+      return errorResponse(
+        "Participant has not been checked in yet. Check in before checking out.",
+        "NOT_CHECKED_IN",
+        400
+      );
+    }
+
+    if (existing.checked_out_at) {
+      return successResponse({
+        success: true,
+        message: "Participant already checked out",
+        checked_out_at: existing.checked_out_at,
+        participant: existing,
+      });
+    }
+
     const now = new Date().toISOString();
     const { data: participant, error } = await admin
       .from("booking_participants")
@@ -56,6 +86,7 @@ export async function POST(
       })
       .eq("id", participantId)
       .eq("group_booking_id", id)
+      .is("checked_out_at", null)
       .select("id, booking_id, checked_out_at")
       .maybeSingle();
 
@@ -63,6 +94,10 @@ export async function POST(
       return notFoundResponse("Participant not found");
     }
 
+    // §Group-booking-audit 2026-05: keep participant check-out authoritative
+    // even when the linked booking sync or the auto group-status promotion
+    // fail; previously a transient bookings/RLS error reverted the check-out
+    // entirely.
     if (participant.booking_id) {
       const { error: bookingError } = await admin
         .from("bookings")
@@ -76,7 +111,10 @@ export async function POST(
         .eq("provider_id", group.provider_id)
         .not("status", "in", "(cancelled,no_show)");
       if (bookingError) {
-        throw bookingError;
+        console.warn(
+          "[provider group check-out] linked booking update failed (continuing):",
+          bookingError
+        );
       }
     }
 
@@ -86,9 +124,11 @@ export async function POST(
       .eq("group_booking_id", id)
       .is("checked_out_at", null);
     if (remainingError) {
-      throw remainingError;
-    }
-    if (count === 0) {
+      console.warn(
+        "[provider group check-out] remaining participant count failed (continuing):",
+        remainingError
+      );
+    } else if (count === 0) {
       const { error: statusError } = await admin
         .from("group_bookings")
         .update({ status: "completed", updated_at: now })
@@ -96,7 +136,10 @@ export async function POST(
         .eq("provider_id", group.provider_id)
         .not("status", "in", "(cancelled)");
       if (statusError) {
-        throw statusError;
+        console.warn(
+          "[provider group check-out] group status update failed (continuing):",
+          statusError
+        );
       }
     }
 

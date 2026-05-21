@@ -355,7 +355,7 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
                 className="pointer-events-none absolute inset-x-0 bottom-0 z-[5] h-32 bg-gradient-to-t from-black/55 via-black/20 to-transparent"
                 aria-hidden
               />
-              <div className="absolute bottom-5 left-5 z-10 h-[88px] w-[88px] shrink-0">
+              <div className="pointer-events-none absolute bottom-5 left-5 z-10 h-[88px] w-[88px] shrink-0">
                 <div className="relative h-full w-full overflow-hidden rounded-full border-[3px] border-white bg-gray-200 shadow-xl ring-1 ring-black/10">
                   {thumbnail_url ? (
                     <Image
@@ -377,19 +377,29 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
             </Link>
           </div>
           <div className="grid grid-cols-2 gap-2">
-            {displayImages.slice(1, 5).map((image, index) => (
-              <Link
-                key={index}
-                href={slug ? `/partner-profile/gallery?slug=${encodeURIComponent(slug)}` : "/partner-profile/gallery"}
-                className="relative block group overflow-hidden squircle cursor-pointer group-hover:opacity-90 transition-opacity"
-              >
-                <ProviderGalleryImage
-                  src={resolveGallerySrc(image.src)}
-                  alt={image.alt}
-                  sizes="(min-width: 768px) 25vw, 50vw"
-                />
-              </Link>
-            ))}
+            {displayImages.slice(1, 5).map((image, index) => {
+              const isLast = index === 3;
+              return (
+                <Link
+                  key={index}
+                  href={slug ? `/partner-profile/gallery?slug=${encodeURIComponent(slug)}` : "/partner-profile/gallery"}
+                  className="relative block group overflow-hidden squircle cursor-pointer group-hover:opacity-90 transition-opacity"
+                >
+                  <ProviderGalleryImage
+                    src={resolveGallerySrc(image.src)}
+                    alt={image.alt}
+                    sizes="(min-width: 768px) 25vw, 50vw"
+                  />
+                  {isLast && displayImages.length > 5 && (
+                    <div className="absolute inset-0 bg-black/40 flex items-end justify-center pb-4">
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-gray-900 shadow-lg">
+                        Show all {displayImages.length} photos
+                      </span>
+                    </div>
+                  )}
+                </Link>
+              );
+            })}
           </div>
         </div>
 
@@ -466,7 +476,10 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
                   <div className="flex items-center gap-1.5">
                     <div className="flex items-center">
                       {[...Array(5)].map((_, i) => (
-                        <Star key={i} className="h-4 w-4 md:h-5 md:w-5 fill-black text-black" />
+                        <Star
+                          key={i}
+                          className={`h-4 w-4 md:h-5 md:w-5 ${i < Math.round(rating ?? 0) ? "fill-black text-black" : "fill-none text-gray-300"}`}
+                        />
                       ))}
                     </div>
                     <span className="text-lg md:text-xl font-semibold text-gray-900">
@@ -490,8 +503,7 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
               <div className="flex flex-col items-center flex-1">
                 <MapPin className="h-5 w-5 md:h-6 md:w-6 text-gray-500 mb-1.5" />
                 <span className="text-xs text-gray-600 mb-0.5">Distance</span>
-                <span className="inline-flex items-center gap-1.5 text-sm md:text-base font-semibold text-gray-900">
-                  <MapPin className="h-3.5 w-3.5 md:h-4 md:w-4 text-gray-500" aria-hidden />
+                <span className="text-sm md:text-base font-semibold text-gray-900">
                   {distance_km ? `${distance_km.toFixed(1)} km` : "—"}
                 </span>
               </div>

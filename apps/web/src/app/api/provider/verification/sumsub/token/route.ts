@@ -22,19 +22,30 @@ export async function GET(request: NextRequest) {
     const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
     const supabase = getSupabaseAdmin();
 
-    let provider: { id: string } | null = null;
-    const { data: byOwner } = await supabase.from("providers").select("id").eq("user_id", user.id).limit(1).maybeSingle();
+    let provider: { id: string; tenant_id?: string | null } | null = null;
+    const { data: byOwner } = await supabase.from("providers").select("id, tenant_id").eq("user_id", user.id).limit(1).maybeSingle();
     if (byOwner) provider = byOwner;
     else {
       const { data: staff } = await supabase.from("provider_staff").select("provider_id").eq("user_id", user.id).limit(1).maybeSingle();
-      if (staff?.provider_id) provider = { id: staff.provider_id };
+      if (staff?.provider_id) {
+        const { data: providerRow } = await supabase
+          .from("providers")
+          .select("id, tenant_id")
+          .eq("id", staff.provider_id)
+          .maybeSingle();
+        if (providerRow) provider = providerRow;
+      }
     }
     if (!provider) return errorResponse("Provider not found", "NOT_FOUND", 404);
 
     const { searchParams } = new URL(request.url);
     const environment = parseEnv(searchParams.get("environment"));
 
-    const { token, applicantId, levelName } = await getSumsubAccessToken(provider.id, environment);
+    const { token, applicantId, levelName } = await getSumsubAccessToken(
+      provider.id,
+      environment,
+      provider.tenant_id ?? null,
+    );
     if (!token) {
       return errorResponse("Failed to get verification token", "SUMSUB_ERROR", 502);
     }

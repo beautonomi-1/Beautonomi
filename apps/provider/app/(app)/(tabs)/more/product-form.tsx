@@ -27,6 +27,10 @@ import { ChipCombobox } from "@/components/ui/ChipCombobox";
 import { twStyle } from "@/lib/twStyle";
 import { appendFormDataFileNative } from "@beautonomi/utils";
 import { emitProviderProductsCatalogChanged } from "@/lib/provider-products-catalog-events";
+import {
+  launchCameraWithPermission,
+  launchImageLibraryWithPermission,
+} from "@/lib/native-permissions";
 
 interface ProductVariantRow {
   id?: string;
@@ -345,17 +349,19 @@ export default function ProductFormScreen() {
 
   const pickVariantImageFromLibrary = useCallback(
     async (rowIndex: number) => {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== "granted") {
-        Alert.alert("Permission needed", "Allow access to your photo library to add a variant image.");
-        return;
-      }
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
-      });
+      const result = await launchImageLibraryWithPermission(
+        {
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          allowsEditing: true,
+          aspect: [1, 1],
+          quality: 0.8,
+        },
+        {
+          title: "Permission needed",
+          message: "Allow access to your photo library to add a variant image.",
+        },
+      );
+      if (!result) return;
       if (result.canceled || !result.assets?.[0]) return;
       await uploadVariantImageAtIndex(rowIndex, result.assets[0]);
     },
@@ -363,32 +369,36 @@ export default function ProductFormScreen() {
   );
 
   const pickImageFromLibrary = useCallback(async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert("Permission needed", "Allow access to your photo library to add a product image.");
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
-    });
+    const result = await launchImageLibraryWithPermission(
+      {
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      },
+      {
+        title: "Permission needed",
+        message: "Allow access to your photo library to add a product image.",
+      },
+    );
+    if (!result) return;
     if (result.canceled || !result.assets?.[0]) return;
     await uploadImageAsset(result.assets[0]);
   }, [uploadImageAsset]);
 
   const takePhoto = useCallback(async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert("Permission needed", "Allow camera access to take a product photo.");
-      return;
-    }
-    const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
-    });
+    const result = await launchCameraWithPermission(
+      {
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      },
+      {
+        title: "Permission needed",
+        message: "Allow camera access to take a product photo.",
+      },
+    );
+    if (!result) return;
     if (result.canceled || !result.assets?.[0]) return;
     await uploadImageAsset(result.assets[0]);
   }, [uploadImageAsset]);

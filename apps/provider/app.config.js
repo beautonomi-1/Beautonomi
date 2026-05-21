@@ -37,7 +37,7 @@ const BASE_EXPO_CONFIG = {
   runtimeVersion: {
     policy: "appVersion",
   },
-  version: "1.0.41",
+  version: "1.0.42",
   orientation: "default",
   icon: "./assets/icon.png",
   userInterfaceStyle: "automatic",
@@ -102,14 +102,14 @@ const BASE_EXPO_CONFIG = {
         photosPermission:
           "Allow Beautonomi Provider to access photos for your catalogue, profile, and documentation.",
         cameraPermission:
-          "Allow Beautonomi Provider to use the camera for your catalogue, profile, and documentation.",
+          "Beautonomi Provider uses the camera to take photos or videos for your catalogue, profile, messages, and to scan arrival QR codes.",
       },
     ],
     [
       "expo-camera",
       {
         cameraPermission:
-          "Beautonomi Provider uses the camera to scan the customer's arrival QR code for at-home visits.",
+          "Beautonomi Provider uses the camera to take photos or videos for your catalogue, profile, messages, and to scan arrival QR codes.",
         recordAudioAndroid: false,
       },
     ],
@@ -140,10 +140,12 @@ const BASE_EXPO_CONFIG = {
     supportsTablet: true,
     bundleIdentifier: "com.beautonomi.partner",
     appleTeamId: "QW33CYPQX5",
-    buildNumber: "232",
+    buildNumber: "234",
     infoPlist: {
       UIBackgroundModes: ["remote-notification"],
       ITSAppUsesNonExemptEncryption: false,
+      NSMicrophoneUsageDescription:
+        "Beautonomi Provider may use the microphone when you choose to record a video for posts, messages, or work documentation.",
       // WrongAppScreen: Linking.canOpenURL("customer://") needs the scheme here.
       // Must match plugin `scheme` and apps/customer `scheme` + package com.beautonomi.
       LSApplicationQueriesSchemes: ["customer"],
@@ -169,9 +171,10 @@ const BASE_EXPO_CONFIG = {
     package: "com.beautonomi.partner",
     permissions: [
       "android.permission.POST_NOTIFICATIONS",
+      "android.permission.RECORD_AUDIO",
       "com.google.android.gms.permission.AD_ID",
     ],
-    versionCode: 234,
+    versionCode: 235,
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     softwareKeyboardLayoutMode: "resize",

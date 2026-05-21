@@ -1,10 +1,12 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { requireAdminSection, successResponse, errorResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog } from "@/lib/audit/audit";
+import { syncProviderVerificationState } from "@/lib/verification/sync-provider-verification";
 import { z } from "zod";
 
 const bulkActionSchema = z.object({
@@ -41,42 +43,70 @@ export async function POST(request: NextRequest) {
 
     const { provider_ids, action, reason } = validationResult.data;
 
-    let updateData: Record<string, unknown> = {};
     const results = { success: 0, failed: 0, errors: [] as string[] };
 
-    switch (action) {
-      case "approve":
-        updateData = { status: "active" };
-        break;
-      case "suspend":
-        updateData = { status: "suspended" };
-        break;
-      case "reject":
-        updateData = { status: "rejected" };
-        break;
-      case "verify":
-        updateData = { is_verified: true };
-        break;
-      case "unverify":
-        updateData = { is_verified: false };
-        break;
+    if (action === "verify" || action === "unverify") {
+      const admin = getSupabaseAdmin();
+      const { data: providers, error: providerError } = await admin
+        .from("providers")
+        .select("id, user_id")
+        .in("id", provider_ids)
+        .eq("tenant_id", tenantId);
+
+      if (providerError) throw providerError;
+
+      for (const provider of providers ?? []) {
+        const p = provider as { id: string; user_id?: string | null };
+        const syncResult = await syncProviderVerificationState(admin, {
+          providerId: p.id,
+          userId: p.user_id ?? null,
+          status: action === "verify" ? "approved" : "reset",
+          source: action === "verify" ? "manual_admin" : "admin_reset",
+          metadata: {
+            admin_bulk_action: action,
+            reviewed_by_user_id: user.id,
+            reason: reason ?? null,
+          },
+        });
+        if (syncResult.ok) {
+          results.success += 1;
+        } else {
+          results.failed += 1;
+          results.errors.push(`${p.id}: ${syncResult.errors.join("; ")}`);
+        }
+      }
+      results.failed += provider_ids.length - (providers?.length ?? 0);
+    } else {
+      let updateData: Record<string, unknown> = {};
+
+      switch (action) {
+        case "approve":
+          updateData = { status: "active" };
+          break;
+        case "suspend":
+          updateData = { status: "suspended" };
+          break;
+        case "reject":
+          updateData = { status: "rejected" };
+          break;
+      }
+
+      // Perform bulk update (only rows in this admin tenant)
+      const { data: updatedRows, error: updateError } = await supabase
+        .from("providers")
+        .update(updateData)
+        .in("id", provider_ids)
+        .eq("tenant_id", tenantId)
+        .select("id");
+
+      if (updateError) {
+        throw updateError;
+      }
+
+      const n = updatedRows?.length ?? 0;
+      results.success = n;
+      results.failed = provider_ids.length - n;
     }
-
-    // Perform bulk update (only rows in this admin tenant)
-    const { data: updatedRows, error: updateError } = await supabase
-      .from("providers")
-      .update(updateData)
-      .in("id", provider_ids)
-      .eq("tenant_id", tenantId)
-      .select("id");
-
-    if (updateError) {
-      throw updateError;
-    }
-
-    const n = updatedRows?.length ?? 0;
-    results.success = n;
-    results.failed = provider_ids.length - n;
 
     // Log audit trail
     await writeAuditLog({

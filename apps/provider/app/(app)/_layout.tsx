@@ -32,6 +32,7 @@ import {
 } from "@/lib/sentry";
 
 const SUBSCRIPTION_SUCCESS_DEEP_LINK = "provider://subscription/success";
+const ADS_SETTINGS_DEEP_LINK = "provider://settings/ads";
 
 export default function AppLayout() {
   const { session, loading } = useAuth();
@@ -51,6 +52,8 @@ export default function AppLayout() {
     const handleUrl = (url: string) => {
       if (url === SUBSCRIPTION_SUCCESS_DEEP_LINK || url.startsWith(SUBSCRIPTION_SUCCESS_DEEP_LINK + "?")) {
         router.replace("/(app)/(tabs)/more/settings/subscription" as never);
+      } else if (url === ADS_SETTINGS_DEEP_LINK || url.startsWith(ADS_SETTINGS_DEEP_LINK + "?")) {
+        router.replace("/(app)/(tabs)/more/settings/ads" as never);
       }
     };
     Linking.getInitialURL().then((url) => {

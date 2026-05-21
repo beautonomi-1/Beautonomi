@@ -9,6 +9,7 @@ import { ADMIN_SECTION_PROVIDERS_OPERATIONS, ADMIN_SECTION_PROVIDER_OPS } from "
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit/audit";
+import { syncProviderVerificationState } from "@/lib/verification/sync-provider-verification";
 
 /**
  * PATCH /api/admin/providers/[id]/verify
@@ -50,7 +51,7 @@ export async function PATCH(
     // Verify provider exists
     const { data: provider } = await supabase
       .from("providers")
-      .select("id")
+      .select("id, user_id, business_name")
       .eq("tenant_id", tenantId)
       .eq("id", id)
       .single();
@@ -59,20 +60,42 @@ export async function PATCH(
       return notFoundResponse("Provider not found");
     }
 
-    // Update verification status
-    const { data: updatedProvider, error: updateError } = await supabase
+    const providerRow = provider as {
+      id: string;
+      user_id?: string | null;
+      business_name?: string | null;
+    };
+
+    // Keep admin badge toggles in sync with provider KYC and user identity
+    // state. A direct `providers.is_verified` write caused the mobile
+    // verification screen, setup checklist, and marketplace badge to drift.
+    const syncResult = await syncProviderVerificationState(supabase, {
+      providerId: id,
+      userId: providerRow.user_id ?? null,
+      status: verified ? "approved" : "reset",
+      source: verified ? "manual_admin" : "admin_reset",
+      metadata: {
+        admin_provider_verify_toggle: true,
+        reviewed_by_user_id: user.id,
+      },
+    });
+
+    if (!syncResult.ok) {
+      return handleApiError(
+        new Error(syncResult.errors.join("; ") || "Verification sync failed"),
+        "Failed to update verification status",
+      );
+    }
+
+    const { data: updatedProvider, error: updatedFetchError } = await supabase
       .from("providers")
-      .update({
-        is_verified: verified,
-        updated_at: new Date().toISOString(),
-      })
+      .select()
       .eq("id", id)
       .eq("tenant_id", tenantId)
-      .select()
       .single();
 
-    if (updateError || !updatedProvider) {
-      return handleApiError(updateError, "Failed to update verification status");
+    if (updatedFetchError || !updatedProvider) {
+      return handleApiError(updatedFetchError, "Failed to fetch updated provider");
     }
 
     // Audit + notify provider owner user
@@ -87,22 +110,14 @@ export async function PATCH(
 
     try {
       const { sendToUser } = await import("@/lib/notifications/onesignal");
-      const { data: providerRow } = await supabase
-        .from("providers")
-        .select("user_id, business_name")
-        .eq("tenant_id", tenantId)
-        .eq("id", id)
-        .single();
-
-      const providerRowTyped = providerRow as { user_id?: string; business_name?: string } | null;
-      const providerUserId = providerRowTyped?.user_id;
+      const providerUserId = providerRow.user_id ?? null;
       if (providerUserId) {
         await sendToUser(
           providerUserId,
           {
             title: verified ? "Account Verified" : "Verification Updated",
             message: verified
-              ? `Your business ${providerRowTyped?.business_name ?? ""} has been verified.`
+              ? `Your business ${providerRow.business_name ?? ""} has been verified.`
               : `Your verification status has been updated.`,
             data: { type: "provider_verification", provider_id: id, verified },
             url: `/provider`,

@@ -27,17 +27,18 @@ function makeAdmin(opts: {
   return {
     from(table: string) {
       if (table === "sumsub_integration_config") {
-        return {
-          select: () => ({
-            eq: () => ({
-              maybeSingle: vi.fn().mockResolvedValue({
-                data: opts.webhookSecret
-                  ? { webhook_secret_secret: opts.webhookSecret }
-                  : null,
-                error: null,
-              }),
-            }),
+        const configQuery = {
+          eq: vi.fn(() => configQuery),
+          is: vi.fn(() => configQuery),
+          maybeSingle: vi.fn().mockResolvedValue({
+            data: opts.webhookSecret
+              ? { webhook_secret_secret: opts.webhookSecret }
+              : null,
+            error: null,
           }),
+        };
+        return {
+          select: () => configQuery,
         };
       }
       if (table === "providers") {

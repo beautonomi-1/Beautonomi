@@ -37,6 +37,42 @@ function normalizeSlug(value: string): string {
   return value.trim().toLowerCase().replace(/[^a-z0-9-]/g, "");
 }
 
+async function incrementExpressLinkUseCount(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  link: ExpressBookingLinkRow,
+): Promise<boolean> {
+  const rpc = (supabase as unknown as {
+    rpc?: (name: string, args: Record<string, unknown>) => Promise<{
+      data: unknown;
+      error: { message?: string; code?: string } | null;
+    }>;
+  }).rpc;
+
+  if (typeof rpc === "function") {
+    const { data, error } = await rpc("increment_express_booking_link_use", {
+      p_link_id: link.id,
+    });
+    if (!error) return data === true;
+
+    // Local test doubles and pre-migration environments may not have the RPC
+    // yet. Keep the route functional, but production should use the atomic path.
+    if (error.code !== "PGRST202" && error.code !== "42883") {
+      console.error("[express-link] atomic use_count increment failed", error);
+      return false;
+    }
+  }
+
+  if (!isUsableLink(link)) return false;
+  await supabase
+    .from("express_booking_links")
+    .update({
+      use_count: (link.use_count ?? 0) + 1,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", link.id);
+  return true;
+}
+
 /** Fallback when `providers.slug` is blank — matches booking slug expectations; UUID fallback resolves via public provider API. */
 function derivePublicProviderSlug(
   rawSlug: string | null | undefined,
@@ -187,14 +223,10 @@ export async function GET(
       provider.id as string,
     );
 
-    // Increment use_count (best-effort; don't fail the request if this fails)
-    await supabase
-      .from("express_booking_links")
-      .update({
-        use_count: (link.use_count ?? 0) + 1,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", link.id);
+    const useCountIncremented = await incrementExpressLinkUseCount(supabase, link);
+    if (!useCountIncremented) {
+      return notFoundResponse("This booking link has reached its usage limit");
+    }
 
     const prefill = sanitizeExpressPrefill((link as { prefill?: unknown }).prefill);
 

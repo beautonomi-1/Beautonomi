@@ -55,12 +55,19 @@ export async function handleTransferEvent(
 
   const payoutData = payout as any;
 
-  // Idempotency: if already terminal, don't flip
-  if (["completed", "failed"].includes(payoutData.status)) {
+  const isTransferSuccess = eventType === "transfer.success";
+  const isTransferFailure = eventType === "transfer.failed" || eventType === "transfer.reversed";
+
+  // Idempotency: matching terminal events are no-ops, but contradictory
+  // Paystack outcomes must still reconcile the local payout/ledger state.
+  if (
+    (payoutData.status === "completed" && isTransferSuccess) ||
+    (payoutData.status === "failed" && isTransferFailure)
+  ) {
     return NextResponse.json({ received: true });
   }
 
-  if (eventType === "transfer.success") {
+  if (isTransferSuccess) {
     // Write the payout ledger BEFORE marking the payout completed.
     // If the ledger write fails, the payout stays in processing so
     // getAvailablePayoutBalance won't under-count the reserve.
@@ -75,8 +82,8 @@ export async function handleTransferEvent(
       });
     } catch (ledgerErr) {
       console.error("Transfer success: failed to record payout ledger, leaving payout in processing:", ledgerErr);
-      // Don't mark completed — webhook will retry and the ledger write will succeed then.
-      return NextResponse.json({ received: false }, { status: 500 });
+      // Throw so the outer webhook router marks the event failed and Paystack retries it.
+      throw ledgerErr;
     }
 
     const updatePayload = {
@@ -89,9 +96,12 @@ export async function handleTransferEvent(
       transfer_code: transferCode || payoutData.transfer_code,
       transfer_id: data?.id || payoutData.transfer_id,
     };
-    await (supabase.from("payouts") as any)
+    const { error: updateError } = await (supabase.from("payouts") as any)
       .update(updatePayload)
       .eq("id", payoutData.id);
+    if (updateError) {
+      throw updateError;
+    }
 
     try {
       const { data: provider } = await supabase
@@ -135,10 +145,19 @@ export async function handleTransferEvent(
     return NextResponse.json({ received: true });
   }
 
-  if (eventType === "transfer.failed" || eventType === "transfer.reversed") {
+  if (isTransferFailure) {
     const failureReason =
       data?.reason || data?.message || data?.gateway_response || eventType;
-    await (supabase.from("payouts") as any)
+    if (payoutData.status === "completed") {
+      const { error: ledgerDeleteError } = await (supabase.from("finance_transactions") as any)
+        .delete()
+        .eq("payout_id", payoutData.id)
+        .eq("transaction_type", "payout");
+      if (ledgerDeleteError) {
+        throw ledgerDeleteError;
+      }
+    }
+    const { error: updateError } = await (supabase.from("payouts") as any)
       .update({
         status: "failed",
         failed_at: new Date().toISOString(),
@@ -151,6 +170,9 @@ export async function handleTransferEvent(
         transfer_id: data?.id || payoutData.transfer_id,
       })
       .eq("id", payoutData.id);
+    if (updateError) {
+      throw updateError;
+    }
 
     try {
       const { data: provider } = await supabase
@@ -196,7 +218,7 @@ export async function handleTransferEvent(
   }
 
   // Other transfer events: keep as processing but store latest provider response
-  await (supabase.from("payouts") as any)
+  const { error: updateError } = await (supabase.from("payouts") as any)
     .update({
       status: payoutData.status || "processing",
       payout_provider: "paystack",
@@ -207,6 +229,9 @@ export async function handleTransferEvent(
       transfer_id: data?.id || payoutData.transfer_id,
     })
     .eq("id", payoutData.id);
+  if (updateError) {
+    throw updateError;
+  }
 
   return NextResponse.json({ received: true });
 }

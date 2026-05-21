@@ -11,7 +11,7 @@ export default function PartnerProfileLoading() {
       <div className="h-[73px] md:h-[88px] border-b border-gray-100 bg-white shrink-0" />
       <div className="w-full max-w-full overflow-x-hidden max-w-[2340px] mx-auto px-4 md:px-8 lg:px-20 py-6 md:py-10 space-y-6">
         <div className="flex flex-col md:flex-row md:items-start gap-6">
-          <Skeleton className="h-48 w-full md:w-2/5 aspect-[4/3] rounded-xl shrink-0" />
+            <Skeleton className="w-full md:w-2/5 aspect-[4/5] rounded-xl shrink-0" />
           <div className="space-y-4 flex-1">
             <Skeleton className="h-8 w-3/4 max-w-md" />
             <Skeleton className="h-4 w-40" />

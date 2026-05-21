@@ -44,13 +44,61 @@ function normalizePaymentEvent(
   type: string,
 ): Record<string, unknown> {
   const lowered = String(type).toLowerCase();
-  if (lowered === "payment.succeeded" || lowered === "payment.created") {
+  if (lowered === "payment.succeeded") {
     return { ...body, status: body.status ?? "successful" };
+  }
+  if (lowered === "payment.created") {
+    return { ...body, status: body.status ?? "pending" };
   }
   if (lowered === "payment.failed") {
     return { ...body, status: body.status ?? "failed" };
   }
   return body;
+}
+
+function extractPaymentEventBody(event: Record<string, unknown>): Record<string, unknown> {
+  return (event.payload ?? event.data ?? {}) as Record<string, unknown>;
+}
+
+function extractProviderIdFromEvent(event: Record<string, unknown>): string | null {
+  const eventBody = extractPaymentEventBody(event);
+  const metadata = (eventBody.metadata ?? {}) as Record<string, unknown>;
+  return typeof metadata.provider_id === "string" && metadata.provider_id
+    ? metadata.provider_id
+    : null;
+}
+
+function signatureCandidates(signature: string): string[] {
+  const raw = signature.trim();
+  if (!raw) return [];
+  const candidates = new Set<string>([raw]);
+  if (raw.startsWith("sha256=")) candidates.add(raw.slice("sha256=".length));
+  for (const part of raw.split(",")) {
+    const idx = part.indexOf("=");
+    if (idx < 0) continue;
+    const key = part.slice(0, idx).trim();
+    const value = part.slice(idx + 1).trim();
+    if (value && ["v1", "signature", "sig", "s"].includes(key)) {
+      candidates.add(value);
+    }
+  }
+  return [...candidates].filter(Boolean);
+}
+
+function timingSafeStringEqual(a: string, b: string): boolean {
+  const aBuf = Buffer.from(a);
+  const bBuf = Buffer.from(b);
+  return aBuf.length === bBuf.length && crypto.timingSafeEqual(aBuf, bBuf);
+}
+
+function verifyYocoSignature(body: string, signature: string, secret: string): boolean {
+  const hexDigest = crypto.createHmac("sha256", secret).update(body).digest("hex");
+  const base64Digest = crypto.createHmac("sha256", secret).update(body).digest("base64");
+  return signatureCandidates(signature).some((candidate) =>
+    timingSafeStringEqual(candidate, hexDigest) ||
+    timingSafeStringEqual(candidate.toLowerCase(), hexDigest) ||
+    timingSafeStringEqual(candidate, base64Digest)
+  );
 }
 /**
  * POST /api/provider/yoco/webhook
@@ -70,13 +118,15 @@ function normalizePaymentEvent(
 export async function POST(request: Request) {
   try {
     const body = await request.text();
-    const signature = request.headers.get("x-yoco-signature");
+    const signature =
+      request.headers.get("x-yoco-signature") ??
+      request.headers.get("webhook-signature");
     const webhookId = request.headers.get("x-yoco-webhook-id");
 
-    if (!signature || !webhookId) {
-      console.error("Missing Yoco webhook signature or ID");
+    if (!signature) {
+      console.error("Missing Yoco webhook signature");
       return NextResponse.json(
-        { error: "Missing signature or webhook ID" },
+        { error: "Missing signature" },
         { status: 400 }
       );
     }
@@ -85,20 +135,54 @@ export async function POST(request: Request) {
     // Use service role after signature verification setup lookup so accounting writes are not blocked by RLS.
     const supabase = getSupabaseAdmin();
 
-    // Resolve webhook config (and secret) BEFORE parsing the payload — verify-then-parse is
-    // the correct security order so a malformed body never runs business logic.
-    const { data: webhookConfig } = await supabase
-      .from("provider_yoco_webhooks")
-      .select("webhook_secret, provider_id")
-      .eq("webhook_id", webhookId)
-      .single();
-
     type WebhookConfigRow = { webhook_secret?: string; provider_id?: string };
 
     let webhookSecret: string | undefined;
     let webhookProviderId: string | null = null;
+    let event: Record<string, unknown> | null = null;
 
-    if (!webhookConfig) {
+    if (webhookId) {
+      const { data: webhookConfig } = await supabase
+        .from("provider_yoco_webhooks")
+        .select("webhook_secret, provider_id")
+        .eq("webhook_id", webhookId)
+        .maybeSingle();
+      if (webhookConfig) {
+        const configRow = webhookConfig as WebhookConfigRow;
+        if (!configRow.webhook_secret) {
+          console.error("Yoco webhook secret is empty in database — rejecting");
+          return NextResponse.json(
+            { error: "Webhook secret not configured" },
+            { status: 503 },
+          );
+        }
+        webhookSecret = configRow.webhook_secret;
+        webhookProviderId = configRow.provider_id ?? null;
+      }
+    } else {
+      // Current Checkout API webhooks document a `webhook-signature` header but
+      // no webhook id. Parse only enough metadata to choose the provider secret;
+      // business logic still runs only after HMAC verification.
+      try {
+        event = JSON.parse(body) as Record<string, unknown>;
+      } catch {
+        return NextResponse.json({ error: "Invalid JSON payload" }, { status: 400 });
+      }
+      webhookProviderId = extractProviderIdFromEvent(event);
+      if (webhookProviderId) {
+        const { data: integrationConfig } = await supabase
+          .from("provider_yoco_integrations")
+          .select("webhook_secret")
+          .eq("provider_id", webhookProviderId)
+          .maybeSingle();
+        const integrationRow = integrationConfig as { webhook_secret?: string | null } | null;
+        if (integrationRow?.webhook_secret) {
+          webhookSecret = integrationRow.webhook_secret;
+        }
+      }
+    }
+
+    if (!webhookSecret) {
       webhookSecret = process.env.YOCO_WEBHOOK_SECRET;
       if (!webhookSecret) {
         console.error("No webhook secret configured for Yoco");
@@ -107,34 +191,21 @@ export async function POST(request: Request) {
           { status: 503 },
         );
       }
-    } else {
-      const configRow = webhookConfig as WebhookConfigRow;
-      if (!configRow.webhook_secret) {
-        console.error("Yoco webhook secret is empty in database — rejecting");
-        return NextResponse.json(
-          { error: "Webhook secret not configured" },
-          { status: 503 },
-        );
-      }
-      webhookSecret = configRow.webhook_secret;
-      webhookProviderId = configRow.provider_id ?? null;
     }
 
-    const hash = crypto.createHmac("sha256", webhookSecret).update(body).digest("hex");
-    const sigBuf = Buffer.from(signature, "hex");
-    const hashBuf = Buffer.from(hash, "hex");
-    if (sigBuf.length !== hashBuf.length || !crypto.timingSafeEqual(sigBuf, hashBuf)) {
+    if (!verifyYocoSignature(body, signature, webhookSecret)) {
       console.error("Invalid Yoco webhook signature");
       return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
     }
 
     // Signature verified — safe to parse body.
-    const event = JSON.parse(body);
+    event = event ?? (JSON.parse(body) as Record<string, unknown>);
+    webhookProviderId = webhookProviderId ?? extractProviderIdFromEvent(event);
 
     const { data: insertedEvent } = await supabase
       .from("provider_yoco_webhook_events")
       .insert({
-        webhook_id: webhookId,
+        webhook_id: webhookId ?? String(event.id ?? "checkout-api"),
         ...(webhookProviderId ? { provider_id: webhookProviderId } : {}),
         event_type: event.type,
         payload: event,
@@ -149,20 +220,20 @@ export async function POST(request: Request) {
 
     // Handle different event types
     try {
-      const { type, data, payload } = event;
+      const { type } = event;
       // §Yoco-OAuth 2026-05: Yoco's API-style webhooks
       // (https://yoco.docs.buildwithfern.com/api-reference/yoco-api/webhook-events)
       // nest the payment under `payload`, while the Checkout API uses `data`.
       // Accept both shapes so the same handler works for any subscription.
-      const eventBody = (payload ?? data ?? {}) as Record<string, unknown>;
+      const eventBody = extractPaymentEventBody(event);
 
-      switch (type) {
+      switch (String(type)) {
         case YOCO_WEBHOOK_EVENTS.PAYMENT_NOTIFICATION:
         case YOCO_WEBHOOK_EVENTS.PAYMENT_CREATED:
         case YOCO_WEBHOOK_EVENTS.PAYMENT_SUCCEEDED:
         case YOCO_WEBHOOK_EVENTS.PAYMENT_FAILED:
           await handlePaymentNotification(
-            normalizePaymentEvent(eventBody, type),
+            normalizePaymentEvent(eventBody, String(type)),
             supabase,
           );
           break;
@@ -239,7 +310,7 @@ async function handlePaymentNotification(
 
   const { data: yocoPaymentRow } = await supabase
     .from("provider_yoco_payments")
-    .select("sale_id")
+    .select("sale_id, status, device_id, amount, provider_id")
     .eq("yoco_payment_id", id)
     .maybeSingle();
 
@@ -255,7 +326,39 @@ async function handlePaymentNotification(
     console.error("Error updating payment status:", error);
   }
 
-  const saleId = ((metadata?.sale_id as string | undefined) ?? (yocoPaymentRow as { sale_id?: string | null } | null)?.sale_id ?? null);
+  const existingPayment = yocoPaymentRow as {
+    sale_id?: string | null;
+    status?: string | null;
+    device_id?: string | null;
+    amount?: number | null;
+    provider_id?: string | null;
+  } | null;
+  if (
+    status === "successful" &&
+    existingPayment?.status !== "successful" &&
+    existingPayment?.device_id &&
+    typeof existingPayment.amount === "number"
+  ) {
+    const providerId = existingPayment.provider_id ?? String(metadata.provider_id);
+    const { data: device } = await supabase
+      .from("provider_yoco_devices")
+      .select("total_transactions, total_amount")
+      .eq("id", existingPayment.device_id)
+      .eq("provider_id", providerId)
+      .maybeSingle();
+    const deviceRow = device as { total_transactions?: number | null; total_amount?: number | null } | null;
+    await supabase
+      .from("provider_yoco_devices")
+      .update({
+        last_used: new Date().toISOString(),
+        total_transactions: (deviceRow?.total_transactions ?? 0) + 1,
+        total_amount: (deviceRow?.total_amount ?? 0) + existingPayment.amount,
+      })
+      .eq("id", existingPayment.device_id)
+      .eq("provider_id", providerId);
+  }
+
+  const saleId = ((metadata?.sale_id as string | undefined) ?? existingPayment?.sale_id ?? null);
   if (status === "successful" && saleId) {
     const { data: saleBefore } = await supabase
       .from("sales")

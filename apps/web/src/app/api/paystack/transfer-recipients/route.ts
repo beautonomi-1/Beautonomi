@@ -127,7 +127,7 @@ export async function POST(request: Request) {
 
     // Create transfer recipient request
     const recipientRequest: CreateTransferRecipientRequest = {
-      type: type as "nuban" | "basa" | "mobile_money" | "barter",
+      type: type as CreateTransferRecipientRequest["type"],
       name,
       account_number,
       bank_code,

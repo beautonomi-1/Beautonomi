@@ -208,10 +208,10 @@ function usePushRegistration() {
         };
         OneSignal.User.pushSubscription.addEventListener("change", onPushSubscriptionChange);
 
-        // Ask for permission when user returned from a previous install, or when still unsubscribed (skipped onboarding).
+        // Preserve explicit onboarding skips. Only legacy restored installs get an automatic compatibility prompt.
         if (gate.phase === "complete") {
           const earlySub = await OneSignal.User.pushSubscription.getIdAsync();
-          if (gate.fromRestore || !earlySub) {
+          if (gate.fromRestore && !earlySub) {
             await OneSignal.Notifications.requestPermission(false);
           }
         }

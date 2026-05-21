@@ -5,19 +5,19 @@ import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { adminToast } from "@/lib/adminToast";
 
-type BankOption = { code: string; name: string };
+type BankOption = { code: string; name: string; type?: string };
 
 const SA_FALLBACK_BANKS: BankOption[] = [
-  { code: "632005", name: "Standard Bank" },
-  { code: "632001", name: "First National Bank (FNB)" },
-  { code: "632002", name: "Nedbank" },
-  { code: "632003", name: "Absa Bank" },
-  { code: "632004", name: "Capitec Bank" },
-  { code: "632006", name: "Investec Bank" },
-  { code: "632007", name: "African Bank" },
-  { code: "632008", name: "Bidvest Bank" },
-  { code: "632009", name: "Discovery Bank" },
-  { code: "632010", name: "TymeBank" },
+  { code: "632005", name: "Standard Bank", type: "basa" },
+  { code: "632001", name: "First National Bank (FNB)", type: "basa" },
+  { code: "632002", name: "Nedbank", type: "basa" },
+  { code: "632003", name: "Absa Bank", type: "basa" },
+  { code: "632004", name: "Capitec Bank", type: "basa" },
+  { code: "632006", name: "Investec Bank", type: "basa" },
+  { code: "632007", name: "African Bank", type: "basa" },
+  { code: "632008", name: "Bidvest Bank", type: "basa" },
+  { code: "632009", name: "Discovery Bank", type: "basa" },
+  { code: "632010", name: "TymeBank", type: "basa" },
 ];
 
 const ACCOUNT_TYPES = [
@@ -47,10 +47,10 @@ export function ProviderBankAccountModal({
     queryKey: ["admin", "banks"],
     queryFn: async () => {
       try {
-        const res = await adminApi.getRawJson<{ data: { banks: BankOption[] } }>(
+        const res = await adminApi.getRawJson<{ data: BankOption[] | { banks: BankOption[] } }>(
           "/api/public/banks?country=ZA"
         );
-        const banks = res?.data?.banks;
+        const banks = Array.isArray(res?.data) ? res.data : res?.data?.banks;
         return Array.isArray(banks) && banks.length > 0 ? banks : SA_FALLBACK_BANKS;
       } catch {
         return SA_FALLBACK_BANKS;
@@ -68,6 +68,7 @@ export function ProviderBankAccountModal({
       account_number: string;
       account_name: string;
       account_type: string;
+      recipient_type?: string;
       currency: string;
     }) =>
       adminApi.postJson(
@@ -90,7 +91,11 @@ export function ProviderBankAccountModal({
     onClose();
   }
 
-  const canSubmit = bankCode.trim().length > 0 && accountNumber.trim().length >= 8 && accountName.trim().length > 0;
+  const canSubmit =
+    bankCode.trim().length > 0 &&
+    accountNumber.trim().length >= 8 &&
+    accountNumber.trim().length <= 20 &&
+    accountName.trim().length > 0;
 
   return (
     <AdminModal
@@ -111,15 +116,17 @@ export function ProviderBankAccountModal({
             type="button"
             className="rounded-xl bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
             disabled={!canSubmit || addMutation.isPending}
-            onClick={() =>
+            onClick={() => {
+              const selectedBank = banks.find((bank) => bank.code === bankCode);
               addMutation.mutate({
                 bank_code: bankCode,
                 account_number: accountNumber.trim(),
                 account_name: accountName.trim(),
                 account_type: accountType,
+                recipient_type: selectedBank?.type ?? "basa",
                 currency,
-              })
-            }
+              });
+            }}
           >
             {addMutation.isPending ? "Adding…" : "Add account"}
           </button>
@@ -152,7 +159,7 @@ export function ProviderBankAccountModal({
             placeholder="e.g. 1234567890"
             value={accountNumber}
             onChange={(e) => setAccountNumber(e.target.value.replace(/\D/g, ""))}
-            maxLength={15}
+            maxLength={20}
           />
         </label>
 

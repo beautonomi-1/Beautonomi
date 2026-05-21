@@ -145,6 +145,42 @@ pnpm --filter @beautonomi/web vitest run src/app/api/provider/setup-status src/l
 
 ---
 
+## 7. Resolved edge-cases (previously flagged)
+
+### 7.1 Salon/team owner provider_staff row (migration 618)
+
+**Was**: `ensure_freelancer_setup` was only called for `business_type === "mobile"`. Salon/team
+providers completed onboarding with no `provider_staff` row for the owner, causing the mobile
+staff-schedule screen to show "No active team members" and the shift calendar to have nothing to
+display.
+
+**Fix** (§provider-owner-staff-2026-05):
+- `supabase/migrations/618_ensure_provider_owner_staff.sql` — new `ensure_provider_owner_staff`
+  RPC that upserts an owner `provider_staff` row for **any** business type. Sets
+  `mobile_ready = true` only for freelancers. Includes a one-time backfill for existing providers.
+- `apps/web/src/app/api/provider/onboarding/route.ts` — `else` branch after the mobile block
+  calls the new RPC (inline fallback if not yet deployed). Non-fatal; staff can always be added
+  through the team management UI.
+
+### 7.2 Admin-assisted onboarding writing to non-existent table (migration 618 + route fix)
+
+**Was**: `/api/admin/provider-ops/tracker/[userId]/submit` inserted operating hours into a
+`provider_operating_hours` table that has no migration and does not exist. It also used
+`address.address_line1` while the draft schema stores `address.line1`, so location creation
+silently skipped when submitting via admin assist. Additionally the Format-B `closed: true` flag
+was inverted.
+
+**Fix** (§provider-owner-staff-2026-05):
+- Removed the `provider_operating_hours` insert entirely.
+- Working hours are now written as `working_hours` JSONB directly on the `provider_locations`
+  row (matching the self-serve onboarding path), normalised to canonical Format-A shape on save.
+- Address field resolution now reads `address.line1` with `address.address_line1` as a backwards-
+  compatible fallback.
+- `closed: true` is now correctly mapped to `is_open: false`.
+- Owner staff row is created via `ensure_provider_owner_staff` RPC (same as self-serve above).
+
+---
+
 ## 7. References
 
 - Plan: [`provider-setup-seamless-ux.plan.md`](../.cursor/plans/provider-setup-seamless-ux.plan.md)

@@ -45,6 +45,11 @@ describe("adminScope", () => {
     expect(adminScopeGetAppliesToPathname("/api/admin/bootstrap")).toBe(false);
   });
 
+  it("adminScopeGetAppliesToPathname includes compliance purge-user for tenant scope", () => {
+    expect(adminScopeGetAppliesToPathname("/api/admin/compliance/purge-user")).toBe(true);
+    expect(isScopedAdminCustomizationPath("/api/admin/compliance/purge-user")).toBe(false);
+  });
+
   it("mergeAdminScopeIntoJsonBody is no-op for non-scoped routes", () => {
     const storage: Pick<Storage, "getItem"> = {
       getItem: () => "tenant",

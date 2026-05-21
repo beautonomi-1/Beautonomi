@@ -4,8 +4,18 @@ import type { NextResponse } from "next/server";
 
 type Err = { error: NextResponse };
 
+/** Ensure `tenant_id` is always included in a select string. */
+function withTenantId(select: string): string {
+  // Already present (exact column or as part of an embed)?
+  if (/\btenant_id\b/.test(select)) return select;
+  return `${select}, tenant_id`;
+}
+
 /**
  * Load a booking by id; 404 if missing, 403 TENANT_MISMATCH if tenant_id differs (admin Host context).
+ *
+ * NOTE: `tenant_id` is always appended to the select internally so the guard
+ * works even when the caller only asks for a subset of columns (e.g. `"id"`).
  */
 export async function fetchBookingInAdminTenant<T extends string>(
   supabase: SupabaseClient,
@@ -15,7 +25,7 @@ export async function fetchBookingInAdminTenant<T extends string>(
 ): Promise<{ booking: Record<string, unknown> } | Err> {
   const { data, error } = await supabase
     .from("bookings")
-    .select(select)
+    .select(withTenantId(select))
     .eq("id", bookingId)
     .maybeSingle();
 
@@ -33,11 +43,14 @@ export async function fetchBookingInAdminTenant<T extends string>(
       ),
     };
   }
-  return { booking: data as Record<string, unknown> };
+  return { booking: data as unknown as Record<string, unknown> };
 }
 
 /**
  * Load a provider by id; 404 if missing, 403 if tenant_id differs.
+ *
+ * NOTE: `tenant_id` is always appended to the select internally so the guard
+ * works even when the caller only asks for a subset of columns (e.g. `"id"`).
  */
 export async function fetchProviderInAdminTenant<T extends string>(
   supabase: SupabaseClient,
@@ -47,7 +60,7 @@ export async function fetchProviderInAdminTenant<T extends string>(
 ): Promise<{ provider: Record<string, unknown> } | Err> {
   const { data, error } = await supabase
     .from("providers")
-    .select(select)
+    .select(withTenantId(select))
     .eq("id", providerId)
     .maybeSingle();
 
@@ -65,5 +78,5 @@ export async function fetchProviderInAdminTenant<T extends string>(
       ),
     };
   }
-  return { provider: data as Record<string, unknown> };
+  return { provider: data as unknown as Record<string, unknown> };
 }

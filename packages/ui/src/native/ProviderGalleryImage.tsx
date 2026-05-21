@@ -16,7 +16,7 @@ export type ProviderGalleryImageProps = {
 };
 
 /**
- * Landscape gallery tile: fixed 16:9 frame, cover crop, center-weighted focus.
+ * Portrait gallery tile: fixed 4:5 frame, cover crop, center-weighted focus.
  */
 export function ProviderGalleryImage({
   uri,

@@ -103,6 +103,7 @@ export async function GET(
           if (yocoResponse.ok) {
             const yocoPayment = (await yocoResponse.json()) as { status?: string };
             if (yocoPayment.status && yocoPayment.status !== paymentData.status) {
+              const previousStatus = paymentData.status;
               await supabase
                 .from("provider_yoco_payments")
                 .update({
@@ -111,6 +112,29 @@ export async function GET(
                 })
                 .eq("id", id);
               paymentData.status = yocoPayment.status;
+              if (
+                yocoPayment.status === "successful" &&
+                previousStatus !== "successful" &&
+                typeof paymentData.device_id === "string" &&
+                typeof paymentData.amount === "number"
+              ) {
+                const { data: device } = await supabase
+                  .from("provider_yoco_devices")
+                  .select("total_transactions, total_amount")
+                  .eq("id", paymentData.device_id)
+                  .eq("provider_id", providerId)
+                  .maybeSingle();
+                const deviceRow = device as { total_transactions?: number | null; total_amount?: number | null } | null;
+                await supabase
+                  .from("provider_yoco_devices")
+                  .update({
+                    last_used: new Date().toISOString(),
+                    total_transactions: (deviceRow?.total_transactions ?? 0) + 1,
+                    total_amount: (deviceRow?.total_amount ?? 0) + paymentData.amount,
+                  })
+                  .eq("id", paymentData.device_id)
+                  .eq("provider_id", providerId);
+              }
             }
           }
         }
@@ -125,6 +149,10 @@ export async function GET(
     const metadata = (paymentData.metadata ?? {}) as Record<string, unknown>;
     const yocoResp = metadata.yoco_response as { receipt_url?: string; receiptUrl?: string } | undefined;
     const receiptUrl = (metadata.receipt_url as string | undefined) ?? yocoResp?.receipt_url ?? yocoResp?.receiptUrl;
+    const credentialMode =
+      metadata.credential_mode === "virtual_checkout" ? "virtual_checkout" : "web_pos";
+    const checkoutUrl = metadata.checkout_url as string | undefined;
+    const qrPayload = metadata.qr_payload as string | undefined;
 
     return NextResponse.json({
       data: {
@@ -141,6 +169,9 @@ export async function GET(
         metadata: paymentData.metadata,
         error_message: paymentData.error_message,
         receipt_url: receiptUrl ?? undefined,
+        credential_mode: credentialMode,
+        checkout_url: checkoutUrl ?? undefined,
+        qr_payload: qrPayload ?? undefined,
       },
       error: null,
     });

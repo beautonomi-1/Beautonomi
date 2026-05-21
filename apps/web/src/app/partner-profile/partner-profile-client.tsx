@@ -7,7 +7,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import Link from "next/link";
 
 const heroFallback = (
-  <div className="w-full h-[300px] md:h-[400px] bg-gray-100 animate-pulse" aria-hidden />
+  <div className="w-full aspect-[4/5] bg-gray-100 animate-pulse" aria-hidden />
 );
 const PartnerHeroMobile = dynamic(() => import("./components/partner-hero-mobile"), {
   loading: () => heroFallback,
