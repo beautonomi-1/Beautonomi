@@ -32,6 +32,7 @@ import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { formatCurrency } from "@/lib/utils";
 import type { ProviderDashboardStats } from "./provider-dashboard-stats";
+import { buildPayoutBalanceCardView } from "./payout-balance-card";
 
 const ICON_DOLLAR_5 = <DollarSign className="w-5 h-5" />;
 const ICON_HOME_5 = <Home className="w-5 h-5" />;
@@ -270,6 +271,15 @@ export function DashboardClient({
     return stats.active_bookings;
   }, [stats]);
 
+  const payoutBalanceCard = useMemo(() => {
+    if (!stats) return null;
+    return buildPayoutBalanceCardView(
+      stats,
+      (amount) => formatCurrency(amount, tenantCurrency),
+      { locationFiltered: Boolean(selectedLocationId) },
+    );
+  }, [stats, tenantCurrency, selectedLocationId]);
+
   // Show loading if provider is still loading or dashboard is loading
   // BUT: Don't show loading if we have cached stats (prevents flash of loading screen)
   // This makes the dashboard feel instant when returning to the tab
@@ -462,14 +472,16 @@ export function DashboardClient({
           color="purple"
           href="/provider/finance"
         />
-        <StatCard
-          title="Available Balance"
-          value={formatCurrency(stats.available_balance, tenantCurrency)}
-          subtitle="Ready to withdraw"
-          icon={ICON_DOLLAR_5}
-          color="blue"
-          href="/provider/finance"
-        />
+        {payoutBalanceCard ? (
+          <StatCard
+            title={payoutBalanceCard.title}
+            value={formatCurrency(payoutBalanceCard.value, tenantCurrency)}
+            subtitle={payoutBalanceCard.subtitle}
+            icon={ICON_DOLLAR_5}
+            color={payoutBalanceCard.color}
+            href={payoutBalanceCard.href}
+          />
+        ) : null}
         <StatCard
           title="Pending Payments"
           value={formatCurrency(stats.pending_payments_amount, tenantCurrency)}

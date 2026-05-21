@@ -862,8 +862,9 @@ export async function getProviderDashboardResponse(request: NextRequest) {
       lifetime_revenue: totalRevenue,
       
       // Financial status
-      available_balance: Math.max(0, availableBalance),
+      available_balance: availableBalance,
       pending_payout_queue: pendingPayoutsSum,
+      payout_hold_days: holdDays,
       pending_payments_amount: pendingPaymentsAmount,
       pending_payments_count: pendingPaymentsCount,
       

@@ -58,6 +58,61 @@ function resolveRecipientType(
   return requested;
 }
 
+type DbSaveError = {
+  code?: string | null;
+  message?: string | null;
+  details?: string | null;
+  hint?: string | null;
+};
+
+function getDbSaveErrorDetails(error: unknown): DbSaveError {
+  if (!error || typeof error !== "object") return {};
+  const record = error as Record<string, unknown>;
+  return {
+    code: typeof record.code === "string" ? record.code : null,
+    message: typeof record.message === "string" ? record.message : null,
+    details: typeof record.details === "string" ? record.details : null,
+    hint: typeof record.hint === "string" ? record.hint : null,
+  };
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  const details = getDbSaveErrorDetails(error);
+  const text = [details.message, details.details, details.hint].filter(Boolean).join(" ");
+  return details.code === "23505" || /duplicate key|unique constraint/i.test(text);
+}
+
+function isRecipientCodeUniqueViolation(error: unknown): boolean {
+  if (!isUniqueViolation(error)) return false;
+  const details = getDbSaveErrorDetails(error);
+  const text = [details.message, details.details, details.hint].filter(Boolean).join(" ");
+  return /recipient_code|provider_payout_accounts_recipient_code/i.test(text);
+}
+
+function dbSaveErrorResponseDetails(error: unknown) {
+  if (process.env.NODE_ENV !== "development") return undefined;
+  return { details: getDbSaveErrorDetails(error) };
+}
+
+/** Active payout row for this provider when Paystack recipient_code was already stored. */
+async function findActivePayoutAccountByRecipientCode(
+  admin: ReturnType<typeof getSupabaseAdmin>,
+  providerId: string,
+  recipientCode: string,
+) {
+  const { data, error } = await admin
+    .from("provider_payout_accounts")
+    .select("*")
+    .eq("recipient_code", recipientCode)
+    .eq("provider_id", providerId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data || typeof data !== "object" || Array.isArray(data)) return null;
+  if (!("id" in data) || !("provider_id" in data)) return null;
+  return data;
+}
+
 /**
  * GET /api/provider/payout-accounts
  *
@@ -268,12 +323,22 @@ export async function POST(request: NextRequest) {
       .eq("provider_id", providerId)
       .is("deleted_at", null);
     const isFirstAccount = !existingAccounts?.length;
+    const recipientCode = paystackRecipient.data.recipient_code;
+
+    const existingByRecipientCode = await findActivePayoutAccountByRecipientCode(
+      admin,
+      providerId,
+      recipientCode,
+    );
+    if (existingByRecipientCode) {
+      return successResponse(existingByRecipientCode);
+    }
 
     const { data: savedAccount, error: saveError } = await admin
       .from("provider_payout_accounts")
       .insert({
         provider_id: providerId,
-        recipient_code: paystackRecipient.data.recipient_code,
+        recipient_code: recipientCode,
         recipient_id: paystackRecipient.data.id ?? null,
         type: paystackRecipient.data.type || resolvedType,
         account_number_last4: accountNumberLast4,
@@ -293,10 +358,35 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (saveError) {
+      const dbErrorDetails = getDbSaveErrorDetails(saveError);
+      console.error("Failed to save Paystack payout recipient locally:", {
+        provider_id: providerId,
+        tenant_id: tenantId,
+        recipient_code: recipientCode,
+        db_error: dbErrorDetails,
+      });
+
+      if (isRecipientCodeUniqueViolation(saveError)) {
+        const existingRow = await findActivePayoutAccountByRecipientCode(
+          admin,
+          providerId,
+          recipientCode,
+        );
+        if (existingRow) {
+          return successResponse(existingRow);
+        }
+        return errorResponse(
+          "This payout account is already linked to another provider on the platform. Contact support if you believe this is a mistake.",
+          "PAYOUT_ACCOUNT_ALREADY_EXISTS",
+          409,
+          dbSaveErrorResponseDetails(saveError),
+        );
+      }
+
       // If we managed to create the Paystack recipient but failed to persist
       // it locally, roll the recipient back so we don't leak orphan recipients.
       try {
-        await deleteTransferRecipient(paystackRecipient.data.recipient_code, { tenantId });
+        await deleteTransferRecipient(recipientCode, { tenantId });
       } catch (deleteError) {
         console.error("Failed to cleanup orphaned Paystack recipient:", deleteError);
       }
@@ -304,7 +394,7 @@ export async function POST(request: NextRequest) {
         "We saved your bank with Paystack but couldn't store it locally. Please try again or contact support.",
         "DB_SAVE_FAILED",
         500,
-        process.env.NODE_ENV === "development" ? { details: saveError.message } : undefined,
+        dbSaveErrorResponseDetails(saveError),
       );
     }
 

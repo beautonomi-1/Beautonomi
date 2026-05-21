@@ -228,6 +228,7 @@ export default function PayoutAccountsPage() {
       // the server doesn't have to guess (e.g. `basa` for ZA, `nuban` for NG).
       // The server still normalizes per country as a safety net.
       const recipientType = selectedBank?.type || (formData.country === "ZA" ? "basa" : "nuban");
+      const accountNumberLast4 = formData.account_number.slice(-4);
       await fetcher.post<{ data: BankAccount }>("/api/provider/payout-accounts", {
         type: recipientType,
         country: formData.country,
@@ -256,6 +257,40 @@ export default function PayoutAccountsPage() {
       setVerifyError(null);
       loadAccounts();
     } catch (err: any) {
+      const accountNumberLast4 = formData.account_number.slice(-4);
+      const accountNameNorm = formData.account_name.trim().toLowerCase();
+      try {
+        const refreshed = await fetcher.get<{ data: BankAccount[] }>(
+          "/api/provider/payout-accounts",
+        );
+        const list = refreshed.data ?? [];
+        const alreadySaved = list.some(
+          (account) =>
+            account.account_number_last4 === accountNumberLast4 &&
+            account.account_name.trim().toLowerCase() === accountNameNorm,
+        );
+        if (alreadySaved) {
+          invalidateSetupStatusCache();
+          toast.success("Bank account is already saved. Your list has been refreshed.");
+          setShowAddDialog(false);
+          setFormData({
+            country: "ZA",
+            account_number: "",
+            bank_code: "",
+            account_name: "",
+            email: "",
+            description: "",
+          });
+          setFormErrors({});
+          setVerifiedAccountName(null);
+          setVerifyError(null);
+          loadAccounts();
+          return;
+        }
+      } catch {
+        // fall through to error toast
+      }
+
       const errorMessage =
         err instanceof FetchError
           ? err.message

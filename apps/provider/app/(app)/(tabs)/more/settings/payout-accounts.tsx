@@ -10,6 +10,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi, useApiPost, useApiMutation } from "@/hooks/useApi";
+import { api } from "@/lib/api-client";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { BottomSheet } from "@/components/ui/BottomSheet";
@@ -140,6 +141,37 @@ export default function PayoutAccountsScreen() {
     setVerifyError(null);
   }
 
+  const resetAddForm = useCallback(() => {
+    setForm({
+      country: "ZA",
+      currency: getTenantDefaultCurrency(),
+      account_number: "",
+      bank_code: "",
+      bank_name: "",
+      account_name: "",
+    });
+    resetVerifyState();
+  }, []);
+
+  const finishAddSuccess = useCallback(async () => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setShowAdd(false);
+    resetAddForm();
+    await refresh();
+  }, [refresh, resetAddForm]);
+
+  function payoutAccountMatchesForm(account: PayoutAccount, accountNumberLast4: string): boolean {
+    return (
+      account.account_number_last4 === accountNumberLast4 &&
+      account.account_name.trim().toLowerCase() === form.account_name.trim().toLowerCase()
+    );
+  }
+
+  async function refreshPayoutAccountsList(): Promise<PayoutAccount[]> {
+    const result = await api.get<PayoutAccount[]>("/api/provider/payout-accounts");
+    return result.data ?? [];
+  }
+
   async function handleAdd() {
     const accountNumber = form.account_number.trim();
     if (
@@ -174,23 +206,41 @@ export default function PayoutAccountsScreen() {
       country: form.country,
       ...(verifiedName ? { verified_account_name: verifiedName } : {}),
     };
-    const { error } = await addAccount(payload);
-    if (error) {
-      Alert.alert("Error", error);
+    const accountNumberLast4 = accountNumber.slice(-4);
+    const { error, errorCode } = await addAccount(payload);
+    if (!error) {
+      await finishAddSuccess();
       return;
     }
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    setShowAdd(false);
-    setForm({
-      country: "ZA",
-      currency: getTenantDefaultCurrency(),
-      account_number: "",
-      bank_code: "",
-      bank_name: "",
-      account_name: "",
-    });
-    resetVerifyState();
-    refresh();
+
+    const refreshedList = await refreshPayoutAccountsList();
+    await refresh();
+    const alreadySaved = refreshedList.some((account) =>
+      payoutAccountMatchesForm(account, accountNumberLast4),
+    );
+    if (alreadySaved) {
+      await finishAddSuccess();
+      Alert.alert(
+        "Account saved",
+        "Your bank account is already on file. We refreshed your payout accounts.",
+      );
+      return;
+    }
+
+    if (errorCode === "PAYOUT_ACCOUNT_ALREADY_EXISTS") {
+      Alert.alert(
+        "Already saved",
+        error ||
+          "This payout account is already linked. Pull down to refresh your list.",
+      );
+      return;
+    }
+
+    Alert.alert(
+      "Could not save account",
+      error ||
+        "We could not save your bank account locally. Pull down to refresh, then try again or contact support.",
+    );
   }
 
   async function handleSetPrimary(account: PayoutAccount) {

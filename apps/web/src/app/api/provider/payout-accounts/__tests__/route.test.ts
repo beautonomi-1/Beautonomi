@@ -9,6 +9,8 @@ import { createMockNextRequest, MOCK_USERS } from "@/__tests__/helpers/mock-supa
  *    message rather than a generic 500.
  *  - DB insert failure rolls back the Paystack transfer recipient so we don't
  *    leak orphan recipients.
+ *  - Duplicate Paystack recipient codes surface as a 409 without deleting the
+ *    already-stored recipient.
  */
 
 vi.mock("@/lib/supabase/api-helpers", async () => {
@@ -322,5 +324,80 @@ describe("POST /api/provider/payout-accounts", () => {
       "RCP_456",
       expect.objectContaining({ tenantId: TENANT_ID }),
     );
+  });
+
+  it("returns the existing row when the Paystack recipient code is already stored for this provider", async () => {
+    const {
+      verifyAccount,
+      createTransferRecipient,
+      deleteTransferRecipient,
+    } = await import("@/lib/payments/paystack-complete");
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+
+    vi.mocked(verifyAccount).mockResolvedValue({
+      status: true,
+      message: "ok",
+      data: { account_name: "Test Owner", account_number: "1234567890" },
+    } as any);
+    vi.mocked(createTransferRecipient).mockResolvedValue({
+      status: true,
+      message: "ok",
+      data: {
+        recipient_code: "RCP_DUPLICATE",
+        id: 84,
+        type: "basa",
+        currency: "ZAR",
+        active: true,
+        details: { account_name: "Test Owner", bank_code: "632005", bank_name: "Standard Bank" },
+      },
+    } as any);
+    vi.mocked(getSupabaseAdmin).mockReturnValue(
+      buildAdminMock({
+        providers: { select: { data: { tenant_id: TENANT_ID }, error: null } },
+        platform_settings: { select: { data: null, error: null } },
+        provider_payout_accounts: {
+          select: {
+            data: {
+              id: "acc-existing",
+              provider_id: PROVIDER_ID,
+              recipient_code: "RCP_DUPLICATE",
+              account_number_last4: "7890",
+              account_name: "Test Owner",
+              active: true,
+            },
+            error: null,
+          },
+          insert: {
+            data: null,
+            error: {
+              code: "23505",
+              message:
+                'duplicate key value violates unique constraint "provider_payout_accounts_recipient_code_key"',
+            },
+          },
+        },
+      }) as any,
+    );
+
+    const { POST } = await import("../route");
+    const response = await POST(
+      createMockNextRequest({
+        method: "POST",
+        url: "http://localhost/api/provider/payout-accounts",
+        body: {
+          type: "basa",
+          country: "ZA",
+          account_number: "1234567890",
+          bank_code: "632005",
+          account_name: "Test Owner",
+          currency: "ZAR",
+        },
+      }) as any,
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.data).toMatchObject({ id: "acc-existing", recipient_code: "RCP_DUPLICATE" });
+    expect(deleteTransferRecipient).not.toHaveBeenCalled();
   });
 });

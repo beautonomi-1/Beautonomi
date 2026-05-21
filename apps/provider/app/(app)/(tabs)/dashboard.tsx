@@ -46,6 +46,10 @@ interface DashboardMetrics {
   revenue_growth: number;
   lifetime_revenue: number;
   available_balance: number;
+  pending_payout_queue?: number;
+  payout_hold_days?: number;
+  has_negative_payout_balance?: boolean;
+  balance_owed_to_platform?: number;
   pending_payments_amount: number;
   completion_rate: number;
   no_show_rate: number;
@@ -585,6 +589,38 @@ export default function DashboardScreen() {
     }
   }, [dateRange]);
 
+  /** Platform-held payout balance (not filtered by dashboard date range). */
+  const payoutBalanceCard = useMemo(() => {
+    if (!m) {
+      return {
+        title: "Available to withdraw",
+        value: formatCurrency(0),
+        subtitle: "Platform-held balance",
+      };
+    }
+    const locationNote = selectedLocationId ? "All locations · " : "";
+    if (m.has_negative_payout_balance) {
+      return {
+        title: "Balance owed",
+        value: formatCurrency(m.balance_owed_to_platform ?? 0),
+        subtitle: `${locationNote}Owed to platform`,
+      };
+    }
+    const pendingQueue = Math.max(0, m.pending_payout_queue ?? 0);
+    const holdDays = Math.max(0, m.payout_hold_days ?? 0);
+    let subtitle = `${locationNote}Platform-held · not date-filtered`;
+    if (pendingQueue > 0.009) {
+      subtitle = `${locationNote}${formatCurrency(pendingQueue)} in payout queue`;
+    } else if (holdDays > 0) {
+      subtitle = `${locationNote}${holdDays}-day hold on new earnings`;
+    }
+    return {
+      title: "Available to withdraw",
+      value: formatCurrency(m.available_balance ?? 0),
+      subtitle,
+    };
+  }, [m, selectedLocationId]);
+
   const chartData: WeeklyRevenue[] = useMemo(
     () =>
       weeklyRevenue ??
@@ -850,14 +886,25 @@ export default function DashboardScreen() {
           />
         </View>
         <View style={{ width: statColumns === 4 ? "24%" : "48.5%", marginRight: 12, marginBottom: 12 }}>
-          <StatCard
-            title="Available to Withdraw"
-            value={formatCurrency(m?.available_balance ?? 0)}
-            icon="cash-outline"
-            iconColor="#f59e0b"
-            iconBg="bg-amber-50"
-            compact={!isTablet}
-          />
+          <TouchableOpacity
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel={`${payoutBalanceCard.title}, ${payoutBalanceCard.value}`}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push("/(app)/(tabs)/more/payouts" as never);
+            }}
+          >
+            <StatCard
+              title={payoutBalanceCard.title}
+              value={payoutBalanceCard.value}
+              subtitle={payoutBalanceCard.subtitle}
+              icon="cash-outline"
+              iconColor="#f59e0b"
+              iconBg="bg-amber-50"
+              compact={!isTablet}
+            />
+          </TouchableOpacity>
         </View>
         <View style={{ width: statColumns === 4 ? "24%" : "48.5%", marginBottom: 12 }}>
           <StatCard

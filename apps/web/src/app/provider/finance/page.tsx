@@ -328,6 +328,27 @@ export default function ProviderFinance() {
       const newId = response.data?.id;
       if (newId) setSelectedBankId(newId);
     } catch (err) {
+      const accountNumberLast4 = bankForm.account_number.trim().slice(-4);
+      const accountNameNorm = bankForm.account_name.trim().toLowerCase();
+      try {
+        const refreshed = await fetcher.get<{ data: PayoutAccount[] }>(
+          "/api/provider/payout-accounts",
+        );
+        const alreadySaved = (refreshed.data ?? []).some(
+          (account) =>
+            account.account_number_last4 === accountNumberLast4 &&
+            account.account_name.trim().toLowerCase() === accountNameNorm,
+        );
+        if (alreadySaved) {
+          toast.success("Bank account is already saved. Your list has been refreshed.");
+          resetBankForm();
+          setShowInlineBankForm(false);
+          await loadPayoutAccounts();
+          return;
+        }
+      } catch {
+        // fall through
+      }
       toast.error(err instanceof FetchError ? err.message : "Failed to add bank account");
     } finally {
       setIsSavingBank(false);
