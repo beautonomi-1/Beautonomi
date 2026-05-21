@@ -126,7 +126,7 @@
     "screenshots:doctor": "node tooling/screenshots/scripts/doctor.mjs"
   },
   "devDependencies": {
-    "@supabase/supabase-js": "^2.104.1",
+    "@supabase/supabase-js": "^2.106.0",
     "adm-zip": "^0.5.17",
     "turbo": "^2.9.6"
   }
