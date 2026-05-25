@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser } from "@/lib/supabase/api-helpers";
+import { requireYocoPlatformEnabledForProvider } from "@/lib/payments/yoco-feature-gate";
 import { z } from "zod";
 
 const updateDeviceSchema = z.object({
@@ -36,6 +37,8 @@ export async function GET(
         { status: 404 }
       );
     }
+    const yocoGate = await requireYocoPlatformEnabledForProvider(supabase, providerId);
+    if (yocoGate) return yocoGate;
 
     const { data: device, error } = await supabase
       .from("provider_yoco_devices")
@@ -174,6 +177,8 @@ export async function PUT(
         { status: 404 }
       );
     }
+    const yocoGate = await requireYocoPlatformEnabledForProvider(supabase, providerId);
+    if (yocoGate) return yocoGate;
 
     // §Yoco-synergy 2026-05: when the caller moves the device to a new
     // location, refresh the denormalised location_name on the same write so
@@ -316,6 +321,8 @@ export async function DELETE(
         { status: 404 }
       );
     }
+    const yocoGate = await requireYocoPlatformEnabledForProvider(supabase, providerId);
+    if (yocoGate) return yocoGate;
 
     const { data: modernDevice } = await supabase
       .from("provider_yoco_devices")

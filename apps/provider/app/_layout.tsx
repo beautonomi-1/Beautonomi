@@ -23,6 +23,7 @@ import {
   startRuntimeMarketHostLinkListener,
 } from "@/config/public-env";
 import { ScreenshotDeepLinkBootstrap } from "@/components/ScreenshotDeepLinkBootstrap";
+import { configureNativePushNotifications } from "@/lib/push-notifications-setup";
 
 // Initialize Sentry and Singular before anything renders; catch so a failure doesn't crash the app
 try {
@@ -32,6 +33,9 @@ try {
 try {
   initSingular();
 } catch {}
+if (Platform.OS !== "web") {
+  configureNativePushNotifications();
+}
 
 if (Platform.OS !== "web") {
   SplashScreen.preventAutoHideAsync();

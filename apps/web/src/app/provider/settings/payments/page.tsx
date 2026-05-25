@@ -7,6 +7,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 
 type PaymentSettingsResponse = {
   acceptCash: boolean;
@@ -19,6 +20,8 @@ type GiftCardSettingsResponse = {
 };
 
 export default function ProviderPaymentMethodsPage() {
+  const { bundle, isLoading: isConfigLoading } = useConfigBundle();
+  const yocoEnabled = bundle?.flags?.payment_yoco?.enabled === true;
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [acceptCash, setAcceptCash] = useState(false);
@@ -27,8 +30,9 @@ export default function ProviderPaymentMethodsPage() {
   const [giftCardsEnabled, setGiftCardsEnabled] = useState(false);
 
   useEffect(() => {
+    if (isConfigLoading) return;
     void loadSettings();
-  }, []);
+  }, [isConfigLoading, yocoEnabled]);
 
   const loadSettings = async () => {
     try {
@@ -38,7 +42,7 @@ export default function ProviderPaymentMethodsPage() {
       );
       const data = response.data;
       setAcceptCash(Boolean(data?.acceptCash));
-      setAcceptCard(Boolean(data?.acceptCard));
+      setAcceptCard(yocoEnabled && Boolean(data?.acceptCard));
       setAcceptOnline(Boolean(data?.acceptOnline));
 
       const giftCardResponse = await fetcher.get<{ data: GiftCardSettingsResponse }>(
@@ -63,7 +67,7 @@ export default function ProviderPaymentMethodsPage() {
       await Promise.all([
         fetcher.patch("/api/provider/settings/payments", {
           acceptCash,
-          acceptCard,
+          acceptCard: yocoEnabled ? acceptCard : false,
           acceptOnline,
         }),
         fetcher.patch("/api/provider/settings/sales/gift-cards", {
@@ -84,7 +88,7 @@ export default function ProviderPaymentMethodsPage() {
       subtitle="Choose how customers can pay your business"
       onSave={handleSave}
       saveLabel={isSaving ? "Saving..." : "Save Changes"}
-      saveDisabled={isSaving || isLoading}
+      saveDisabled={isSaving || isLoading || isConfigLoading}
       breadcrumbs={[
         { label: "Home", href: "/" },
         { label: "Provider", href: "/provider" },
@@ -93,33 +97,37 @@ export default function ProviderPaymentMethodsPage() {
       ]}
     >
       <SectionCard>
-        {isLoading ? (
+        {isLoading || isConfigLoading ? (
           <div className="py-8 text-center text-sm text-gray-500">Loading...</div>
         ) : (
           <div className="space-y-4">
-            <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3">
-              <p className="text-xs text-blue-800">
-                In-person card payments are processed through your Yoco terminal.
-              </p>
-              <a
-                href="/provider/settings/sales/yoco-devices"
-                className="mt-1 inline-block text-xs font-semibold text-blue-700 hover:text-blue-800 underline"
-              >
-                Manage Yoco terminals
-              </a>
-            </div>
+            {yocoEnabled && (
+              <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3">
+                <p className="text-xs text-blue-800">
+                  In-person card payments are processed through your Yoco terminal.
+                </p>
+                <a
+                  href="/provider/settings/sales/yoco-devices"
+                  className="mt-1 inline-block text-xs font-semibold text-blue-700 hover:text-blue-800 underline"
+                >
+                  Manage Yoco terminals
+                </a>
+              </div>
+            )}
             <MethodRow
               label="Cash"
               description="Accept cash at your business location."
               checked={acceptCash}
               onCheckedChange={setAcceptCash}
             />
-            <MethodRow
-              label="In-person Card (Yoco Terminal)"
-              description="Accept in-person card payments via Yoco terminal."
-              checked={acceptCard}
-              onCheckedChange={setAcceptCard}
-            />
+            {yocoEnabled && (
+              <MethodRow
+                label="In-person Card (Yoco Terminal)"
+                description="Accept in-person card payments via Yoco terminal."
+                checked={acceptCard}
+                onCheckedChange={setAcceptCard}
+              />
+            )}
             <MethodRow
               label="Online Payments"
               description="Accept online checkout payments."

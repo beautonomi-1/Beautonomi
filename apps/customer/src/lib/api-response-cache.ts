@@ -23,14 +23,14 @@ export function clearApiCache(): void {
   inflightRequests.clear();
 }
 
-/** Drop cached GETs for `/api/me/support-tickets` (any query). Use after CSAT or ticket mutations so list rows stay in sync. */
+/** Drop cached support-ticket GETs (any query). Use after CSAT or ticket mutations so list rows stay in sync. */
 export function invalidateSupportTicketsListCache(): void {
-  const needle = "/api/me/support-tickets";
+  const needles = ["/api/me/support-tickets", "/api/provider/support-tickets"];
   for (const key of responseCache.keys()) {
-    if (key.includes(needle)) responseCache.delete(key);
+    if (needles.some((needle) => key.includes(needle))) responseCache.delete(key);
   }
   for (const key of inflightRequests.keys()) {
-    if (key.includes(needle)) inflightRequests.delete(key);
+    if (needles.some((needle) => key.includes(needle))) inflightRequests.delete(key);
   }
 }
 

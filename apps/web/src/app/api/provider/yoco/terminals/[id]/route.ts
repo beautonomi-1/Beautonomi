@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getProviderIdForUser } from "@/lib/supabase/api-helpers";
+import { requireYocoPlatformEnabledForProvider } from "@/lib/payments/yoco-feature-gate";
 
 const DEPRECATION_HEADER =
   "Use /api/provider/yoco/devices and Sales → Yoco Integration. This endpoint proxies devices and may be removed in a future release.";
@@ -28,6 +29,8 @@ export async function GET(
         { status: 404 }
       );
     }
+    const yocoGate = await requireYocoPlatformEnabledForProvider(supabase, providerId);
+    if (yocoGate) return yocoGate;
 
     const { id } = await params;
     const { data: device, error } = await supabase

@@ -32,8 +32,11 @@ import { toast } from "sonner";
 import { Money } from "@/components/provider-portal/Money";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 
 export default function YocoDevicesPage() {
+  const { bundle, isLoading: isConfigLoading } = useConfigBundle();
+  const yocoEnabled = bundle?.flags?.payment_yoco?.enabled === true;
   const [devices, setDevices] = useState<YocoDevice[]>([]);
   const [salons, setSalons] = useState<Salon[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -43,13 +46,18 @@ export default function YocoDevicesPage() {
     name: "",
     location_id: "",
     is_active: true,
+    credential_mode: "web_pos" as "web_pos" | "virtual_checkout",
   });
 
   useEffect(() => {
     loadPageData();
-  }, []);
+  }, [yocoEnabled]);
 
   const loadPageData = async () => {
+    if (!yocoEnabled) {
+      setIsLoading(false);
+      return;
+    }
     try {
       setIsLoading(true);
       const [deviceData, salonData] = await Promise.all([
@@ -72,6 +80,7 @@ export default function YocoDevicesPage() {
       name: "",
       location_id: "",
       is_active: true,
+      credential_mode: "web_pos",
     });
     setIsDialogOpen(true);
   };
@@ -82,6 +91,7 @@ export default function YocoDevicesPage() {
       name: device.name,
       location_id: device.location_id || "",
       is_active: device.is_active,
+      credential_mode: device.credential_mode === "virtual_checkout" ? "virtual_checkout" : "web_pos",
     });
     setIsDialogOpen(true);
   };
@@ -106,6 +116,7 @@ export default function YocoDevicesPage() {
           name,
           location_id: locationId,
           is_active: formData.is_active,
+          credential_mode: formData.credential_mode,
         });
         toast.success("Device added successfully");
       }
@@ -141,7 +152,7 @@ export default function YocoDevicesPage() {
     }
   };
 
-  if (isLoading) {
+  if (isConfigLoading || isLoading) {
     return <LoadingTimeout loadingMessage="Loading devices..." />;
   }
 
@@ -152,6 +163,22 @@ export default function YocoDevicesPage() {
     { label: "Sales", href: "/provider/settings/sales/yoco-integration" },
     { label: "Yoco Devices" },
   ];
+
+  if (!yocoEnabled) {
+    return (
+      <SettingsDetailLayout title="Yoco Payment Devices" subtitle="Yoco is currently unavailable" breadcrumbs={breadcrumbs}>
+        <SectionCard>
+          <div className="py-8 text-center">
+            <CreditCard className="mx-auto mb-3 h-8 w-8 text-gray-400" />
+            <h2 className="text-base font-semibold text-gray-900">Yoco payments are disabled</h2>
+            <p className="mx-auto mt-2 max-w-md text-sm text-gray-600">
+              Yoco devices and hosted checkout are hidden because the platform has disabled Yoco for this market.
+            </p>
+          </div>
+        </SectionCard>
+      </SettingsDetailLayout>
+    );
+  }
 
   return (
     <SettingsDetailLayout title="Yoco Payment Devices" subtitle="Manage your Yoco Web POS devices" breadcrumbs={breadcrumbs}>
@@ -198,6 +225,31 @@ export default function YocoDevicesPage() {
                       className="mt-1 bg-muted"
                     />
                     <p className="text-xs text-gray-500 mt-1">Assigned by Yoco when the device was created</p>
+                  </div>
+                ) : null}
+                {!editingDevice ? (
+                  <div>
+                    <Label htmlFor="credential_mode">Device type</Label>
+                    <Select
+                      value={formData.credential_mode}
+                      onValueChange={(value) =>
+                        setFormData({
+                          ...formData,
+                          credential_mode: value === "virtual_checkout" ? "virtual_checkout" : "web_pos",
+                        })
+                      }
+                    >
+                      <SelectTrigger id="credential_mode" className="mt-1">
+                        <SelectValue placeholder="Choose device type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="web_pos">Physical Web POS terminal</SelectItem>
+                        <SelectItem value="virtual_checkout">Virtual checkout link / QR</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Virtual checkout uses your Yoco Checkout secret key and does not create a physical terminal.
+                    </p>
                   </div>
                 ) : null}
                 <div>

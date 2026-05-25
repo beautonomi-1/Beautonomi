@@ -8,6 +8,8 @@ import {
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { getPlatformSalesDefaults } from "@/lib/platform-sales-settings";
 import { locationHasOperatingHours } from "@/lib/provider/location-operating-hours";
+import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
+import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
 
 export interface SetupStatusStep {
   id: string;
@@ -45,7 +47,10 @@ export const NATIVE_ROUTE_BY_ID: Record<string, string> = {
   "profile-photo": "/(app)/(tabs)/more/gallery",
   services: "/(app)/(tabs)/more/catalogue",
   availability: "/(app)/(tabs)/more/settings/hours",
+  "travel-fees": "/(app)/(tabs)/more/settings/travel-fees",
   payment: "/(app)/(tabs)/more/settings/yoco-devices",
+  "paystack-terminal": "/(app)/(tabs)/more/paystack-terminal",
+  "paystack-terminal-assets": "/(app)/(tabs)/more/paystack-terminal",
   "payment-methods": "/(app)/(tabs)/more/settings/payments",
   payout: "/(app)/(tabs)/more/settings/payout-accounts",
   gallery: "/(app)/(tabs)/more/gallery",
@@ -197,9 +202,34 @@ export async function GET(request: NextRequest) {
     const hasGallery =
       Array.isArray(provider.gallery) && provider.gallery.length > 0;
 
-    const [servicesResult, yocoResult, bankAccountResult] = await Promise.all([
+    const [
+      servicesResult,
+      atHomeServicesResult,
+      travelFeeSettingsResult,
+      zoneSelectionsResult,
+      yocoResult,
+      paystackTerminalResult,
+      paystackTerminalReadyResult,
+      bankAccountResult,
+    ] = await Promise.all([
       supabaseAdmin
         .from("offerings")
+        .select("id", { count: "exact", head: true })
+        .eq("provider_id", providerId)
+        .eq("is_active", true),
+      supabaseAdmin
+        .from("offerings")
+        .select("id", { count: "exact", head: true })
+        .eq("provider_id", providerId)
+        .eq("is_active", true)
+        .eq("supports_at_home", true),
+      supabaseAdmin
+        .from("provider_travel_fee_settings")
+        .select("id", { count: "exact", head: true })
+        .eq("provider_id", providerId)
+        .eq("enabled", true),
+      supabaseAdmin
+        .from("provider_zone_selections")
         .select("id", { count: "exact", head: true })
         .eq("provider_id", providerId)
         .eq("is_active", true),
@@ -209,6 +239,19 @@ export async function GET(request: NextRequest) {
         .eq("provider_id", providerId)
         .eq("is_enabled", true),
       supabaseAdmin
+        .from("provider_paystack_virtual_terminals")
+        .select("id", { count: "exact", head: true })
+        .eq("provider_id", providerId)
+        .eq("active", true)
+        .is("deleted_at", null),
+      supabaseAdmin
+        .from("provider_paystack_virtual_terminals")
+        .select("id", { count: "exact", head: true })
+        .eq("provider_id", providerId)
+        .eq("active", true)
+        .eq("asset_status", "ready")
+        .is("deleted_at", null),
+      supabaseAdmin
         .from("provider_payout_accounts")
         .select("id", { count: "exact", head: true })
         .eq("provider_id", providerId)
@@ -216,10 +259,25 @@ export async function GET(request: NextRequest) {
     ]);
 
     const hasServices = (servicesResult.count ?? 0) > 0;
+    const hasAtHomeServices = (atHomeServicesResult.count ?? 0) > 0;
+    const needsTravelFees = isFreelancer || hasAtHomeServices;
+    const hasTravelFees =
+      (travelFeeSettingsResult.count ?? 0) > 0 ||
+      (zoneSelectionsResult.count ?? 0) > 0;
     const hasPaymentSetup = (yocoResult.count ?? 0) > 0;
+    const hasPaystackTerminalSetup = (paystackTerminalResult.count ?? 0) > 0;
+    const hasPaystackTerminalAssetsReady = (paystackTerminalReadyResult.count ?? 0) > 0;
     const hasPayoutSetup = (bankAccountResult.count ?? 0) > 0;
     const platformSalesDefaults = await getPlatformSalesDefaults();
     const effectiveGiftCardsEnabled = platformSalesDefaults.gift_cards_enabled ?? false;
+    const yocoEnabled = await isFeatureEnabledServer(
+      FEATURE_FLAG_KEYS.PAYMENT_YOCO,
+      (provider as { tenant_id?: string | null }).tenant_id ?? tenantId,
+    );
+    const paystackTerminalEnabled = await isFeatureEnabledServer(
+      FEATURE_FLAG_KEYS.PAYMENT_PAYSTACK_VIRTUAL_TERMINAL,
+      (provider as { tenant_id?: string | null }).tenant_id ?? tenantId,
+    );
 
     // §provider-setup-2026-05: payment methods step requires a real
     // configuration decision — at least one accept_* flag explicitly true.
@@ -227,7 +285,7 @@ export async function GET(request: NextRequest) {
     // provider visited the settings screen, hiding the configuration from
     // them and from the checklist progress signal.
     const acceptCash = provider.accept_cash === true;
-    const acceptCard = provider.accept_card === true;
+    const acceptCard = yocoEnabled && provider.accept_card === true;
     const acceptOnline = provider.accept_online === true;
     const hasPaymentMethods =
       acceptCash || acceptCard || acceptOnline || effectiveGiftCardsEnabled === true;
@@ -343,20 +401,61 @@ export async function GET(request: NextRequest) {
         required: true,
         link: "/provider/settings/operating-hours",
       },
-      {
-        id: "payment",
-        title: "Payment Processing",
-        description:
-          "Optional: connect Yoco for in-person card payments (not required if you only use cash or online)",
-        completed: hasPaymentSetup,
-        required: false,
-        link: "/provider/settings/sales/yoco-integration",
-      },
+      ...(needsTravelFees
+        ? [
+            {
+              id: "travel-fees",
+              title: "Travel Fees",
+              description:
+                "Confirm your house-call travel fee rules or accept the platform defaults",
+              completed: hasTravelFees,
+              required: true,
+              link: "/provider/settings/sales/travel-fees",
+            },
+          ]
+        : []),
+      ...(yocoEnabled
+        ? [
+            {
+              id: "payment",
+              title: "Payment Processing",
+              description:
+                "Optional: connect Yoco for in-person card payments (not required if you only use cash or online)",
+              completed: hasPaymentSetup,
+              required: false,
+              link: "/provider/settings/sales/yoco-integration",
+            },
+          ]
+        : []),
+      ...(paystackTerminalEnabled
+        ? [
+            {
+              id: "paystack-terminal",
+              title: "Paystack Terminal",
+              description:
+                "Optional: request a Paystack Terminal. Ops imports the Paystack-generated code and link before in-person collection is ready.",
+              completed: hasPaystackTerminalSetup,
+              required: false,
+              link: "/provider/settings/sales/paystack-terminal",
+            },
+            {
+              id: "paystack-terminal-assets",
+              title: "Paystack Terminal QR/Poster",
+              description:
+                "Optional: request Beautonomi-branded QR and counter poster assets for your terminal",
+              completed: hasPaystackTerminalAssetsReady,
+              required: false,
+              link: "/provider/settings/sales/paystack-terminal",
+            },
+          ]
+        : []),
       {
         id: "payment-methods",
         title: "Payment Methods",
         description:
-          "Choose accepted methods (cash, online, in-person card, and gift cards)",
+          yocoEnabled || paystackTerminalEnabled
+            ? "Choose accepted methods (cash, online, in-person payments, and gift cards)"
+            : "Choose accepted methods (cash, online, and gift cards)",
         completed: hasPaymentMethods,
         required: true,
         link: "/provider/settings/payments",

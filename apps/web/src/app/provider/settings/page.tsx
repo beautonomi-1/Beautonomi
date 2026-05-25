@@ -8,6 +8,7 @@ import { ChevronRight, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { fetcher } from "@/lib/http/fetcher";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 
 type SettingsItem = { title: string; description: string; href: string; isUpgrade?: boolean };
 
@@ -25,6 +26,7 @@ const settingsCategories: { id: string; title: string; description: string; item
       { title: "Billing details and invoices", description: "Manage billing and view invoices", href: "/provider/settings/billing" },
       { title: "Locations", description: "Manage your business locations", href: "/provider/settings/locations" },
       { title: "Operating Hours", description: "Set opening and closing times for your locations", href: "/provider/settings/operating-hours" },
+      { title: "House calls & travel", description: "Start with travel fees, then confirm radius and service zones", href: "/provider/settings/sales/travel-fees" },
       { title: "Distance Settings", description: "Configure service distance limits for house calls", href: "/provider/settings/distance" },
       { title: "Service Zones", description: "Service radius and at-home booking zones", href: "/provider/settings/service-zones" },
       { title: "Identity verification", description: "Verify your identity with Sumsub (KYC) for payouts", href: "/provider/settings/verification" },
@@ -73,11 +75,12 @@ const settingsCategories: { id: string; title: string; description: string; item
       { title: "Payout Accounts", description: "Manage bank accounts for receiving payouts", href: "/provider/settings/payout-accounts" },
       { title: "Subscription & plan", description: "Manage your Beautonomi plan, billing period, upgrades, renewals, and cancellations", href: "/provider/subscription" },
       { title: "Yoco Integration", description: "Connect and manage Yoco payment devices", href: "/provider/settings/sales/yoco-integration" },
+      { title: "Paystack Terminal", description: "Create QR/link terminals for in-person payments that settle through payouts", href: "/provider/settings/sales/paystack-terminal" },
       { title: "Receipt Sequencing", description: "Configure receipt numbering", href: "/provider/settings/sales/receipt-sequencing" },
       { title: "Receipt Template", description: "Customize receipt design", href: "/provider/settings/sales/receipt-template" },
       { title: "Taxes", description: "Set up tax rates", href: "/provider/settings/sales/taxes" },
-      { title: "Travel Fees", description: "Configure travel fees for at-home services", href: "/provider/settings/sales/travel-fees" },
-      { title: "Tips", description: "Manage tip settings", href: "/provider/settings/sales/tips" },
+      { title: "Travel Fees", description: "House-call travel fee rules and live fee preview", href: "/provider/settings/sales/travel-fees" },
+      { title: "Tips", description: "Tips are enabled by default; manage checkout tips and presets", href: "/provider/settings/sales/tips" },
       { title: "Tips Distribution", description: "Choose how tips are distributed between you and staff", href: "/provider/settings/tips/distribution" },
       { title: "Gift Cards", description: "Gift card settings", href: "/provider/settings/sales/gift-cards" },
       { title: "Upselling", description: "Upselling preferences", href: "/provider/settings/sales/upselling" },
@@ -128,6 +131,8 @@ const settingsCategories: { id: string; title: string; description: string; item
 export default function ProviderSettings() {
   const [businessType, setBusinessType] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const yocoEnabled = useFeatureFlag("payment_yoco");
+  const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
 
   useEffect(() => {
     loadProviderInfo();
@@ -255,6 +260,12 @@ export default function ProviderSettings() {
               <div className="space-y-2">
                 {category.items
                   .filter((item) => {
+                    if (!yocoEnabled && item.href.includes("/yoco")) {
+                      return false;
+                    }
+                    if (!paystackTerminalEnabled && item.href.includes("/paystack-terminal")) {
+                      return false;
+                    }
                     // Only show upgrade option for freelancers
                     if (item.isUpgrade) {
                       return businessType === "freelancer";

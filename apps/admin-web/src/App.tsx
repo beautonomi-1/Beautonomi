@@ -133,6 +133,7 @@ export default function App() {
           <Route path="provider-subscriptions" element={<P.ProviderSubscriptionsPage />} />
           <Route path="subscription-revenue" element={<P.SubscriptionMetricsPage />} />
           <Route path="wallet-reconciliation" element={<P.WalletReconciliationPage />} />
+          <Route path="paystack-terminal" element={<P.PaystackTerminalOperationsPage />} />
           <Route path="plans" element={<P.PlansListPage />} />
           <Route path="pricing-plans" element={<Navigate to="../plans" replace />} />
           <Route path="subscription-plans" element={<Navigate to="../plans" replace />} />

@@ -13,6 +13,7 @@ import {
 import { type YocoEnvironment, getDefaultYocoEnvironment } from "@/lib/payments/yoco";
 import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
 import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
+import { isYocoPlatformEnabledForProvider } from "@/lib/payments/yoco-feature-gate";
 
 /**
  * GET /api/provider/yoco/oauth/authorize
@@ -50,6 +51,10 @@ export async function GET(request: NextRequest) {
 
     // Prefer integration row's environment, then explicit query, then env var.
     const admin = getSupabaseAdmin();
+    const yocoEnabled = await isYocoPlatformEnabledForProvider(admin, providerId);
+    if (!yocoEnabled) {
+      return renderError("Yoco payments are disabled for your market.", returnTo, 403);
+    }
     const { data: integration } = await (admin.from("provider_yoco_integrations") as any)
       .select("environment, tenant_id")
       .eq("provider_id", providerId)

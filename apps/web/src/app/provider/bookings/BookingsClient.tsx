@@ -53,6 +53,11 @@ import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalPro
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useSupabaseRealtime } from "@/hooks/useSupabaseRealtime";
 import type { ProviderBookingListItem } from "./bookings-types";
+import {
+  buildProviderBookingActionModel,
+  type ProviderBookingAction,
+} from "@/lib/provider-booking/action-policy";
+import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 
 type BookingStatus = "all" | "pending" | "confirmed" | "in_progress" | "completed" | "cancelled" | "no_show";
 type DateRange = "today" | "week" | "month" | "all_time";
@@ -91,6 +96,7 @@ export function BookingsClient({
   const router = useRouter();
   const searchParams = useSearchParams();
   const { selectedLocationId, provider } = useProviderPortal();
+  const yocoEnabled = useFeatureFlag("payment_yoco");
 
   // View mode — §Hydration 2026-04: initial state MUST match server render
   // (always "table") to avoid React error #418. We rehydrate from
@@ -297,6 +303,20 @@ export function BookingsClient({
         return;
       }
 
+      if (newStatus === "start_journey") {
+        await fetcher.post(`/api/provider/bookings/${bookingId}/start-journey`, {});
+        toast.success("Journey started");
+        loadBookings();
+        return;
+      }
+
+      if (newStatus === "mark_arrived") {
+        await fetcher.post(`/api/provider/bookings/${bookingId}/arrive`, {});
+        toast.success("Arrival marked");
+        loadBookings();
+        return;
+      }
+
       const response = await fetcher.patch<{ booking: Booking; conflict?: boolean }>(
         `/api/provider/bookings/${bookingId}`,
         { status: newStatus, version },
@@ -335,6 +355,43 @@ export function BookingsClient({
         toast.error(`Failed to ${action} bookings`);
       }
     }
+  };
+
+  const primaryBookingAction = (booking: ProviderBookingListItem): ProviderBookingAction | null => {
+    const model = buildProviderBookingActionModel({
+      id: booking.id,
+      status: booking.status,
+      db_status: (booking as any).db_status,
+      payment_status: booking.payment_status,
+      scheduled_at: booking.scheduled_at,
+      location_type: booking.location_type,
+      location_id: booking.location_id,
+      current_stage: booking.current_stage,
+      arrival_otp_verified: (booking as any).arrival_otp_verified,
+      qr_code_verified: (booking as any).qr_code_verified,
+      arrival_otp_pending: (booking as any).arrival_otp_pending,
+      qr_arrival_pending: (booking as any).qr_arrival_pending,
+    });
+    return model.primaryAction;
+  };
+
+  const runPrimaryBookingAction = (booking: ProviderBookingListItem, action: ProviderBookingAction) => {
+    if (action.id === "start_journey") {
+      return handleStatusChange(booking.id, "start_journey", booking.version);
+    }
+    if (action.id === "mark_arrived") {
+      return handleStatusChange(booking.id, "mark_arrived", booking.version);
+    }
+    if (action.id === "start_service") {
+      return handleStatusChange(booking.id, "started", booking.version);
+    }
+    if (action.id === "complete_service") {
+      return handleStatusChange(booking.id, "completed", booking.version);
+    }
+    if (action.id === "check_in") {
+      return handleStatusChange(booking.id, "checked_in", booking.version);
+    }
+    return handleStatusChange(booking.id, action.dbTarget, booking.version);
   };
 
   // ─── Search & filter ───────────────────────────────────────────────────────
@@ -511,6 +568,7 @@ export function BookingsClient({
 
   // ─── Yoco ──────────────────────────────────────────────────────────────────
   const shouldShowPayButton = (b: ProviderBookingListItem) => {
+    if (!yocoEnabled) return false;
     const s = (b.status || "").toLowerCase();
     if (s === "cancelled" || s === "canceled") return false;
     const ps = ((b as any).payment_status || "").toLowerCase();
@@ -631,6 +689,7 @@ export function BookingsClient({
                     const name = b.customer_name || "Customer";
                     const palette = getAvatarPalette(name);
                     const isSel = selectedBookings.has(b.id);
+                    const primaryAction = primaryBookingAction(b);
                     return (
                       <TableRow
                         key={b.id}
@@ -709,41 +768,13 @@ export function BookingsClient({
                         </TableCell>
                         <TableCell className="py-3 text-right" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center justify-end gap-1">
-                            {b.status === "pending" && (
-                              <>
-                                <Button
-                                  size="sm"
-                                  onClick={() => handleStatusChange(b.id, "confirmed", b.version)}
-                                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] h-7 px-2.5"
-                                >
-                                  Confirm
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => handleStatusChange(b.id, "cancelled", b.version)}
-                                  className="text-[11px] h-7 px-2 text-gray-600 border-gray-200 hover:bg-gray-50"
-                                >
-                                  <XCircle className="w-3 h-3" />
-                                </Button>
-                              </>
-                            )}
-                            {b.status === "confirmed" && (
+                            {primaryAction && (
                               <Button
                                 size="sm"
-                                onClick={() => handleStatusChange(b.id, "started", b.version)}
+                                onClick={() => runPrimaryBookingAction(b, primaryAction)}
                                 className="bg-violet-600 hover:bg-violet-700 text-white text-[11px] h-7 px-2.5"
                               >
-                                Start
-                              </Button>
-                            )}
-                            {(b.status === "in_progress" || (b.status as string) === "started") && (
-                              <Button
-                                size="sm"
-                                onClick={() => handleStatusChange(b.id, "completed", b.version)}
-                                className="bg-blue-600 hover:bg-blue-700 text-white text-[11px] h-7 px-2.5"
-                              >
-                                Complete
+                                {primaryAction.label}
                               </Button>
                             )}
                             {shouldShowPayButton(b) && (
@@ -779,7 +810,9 @@ export function BookingsClient({
         ) : (
           /* Card view */
           <div className="space-y-3">
-            {paged.map((b) => (
+            {paged.map((b) => {
+              const primaryAction = primaryBookingAction(b);
+              return (
               <div
                 key={b.id}
                 className={`bg-white border rounded-xl p-4 sm:p-5 hover:shadow-md transition-all cursor-pointer ${selectedBookings.has(b.id) ? "ring-2 ring-primary" : ""}`}
@@ -850,24 +883,9 @@ export function BookingsClient({
                     <p className="font-bold text-lg"><Money amount={b.total_amount || 0} /></p>
                   </div>
                   <div className="flex gap-1.5">
-                    {b.status === "pending" && (
-                      <>
-                        <Button size="sm" onClick={() => handleStatusChange(b.id, "confirmed", b.version)} className="bg-green-600 hover:bg-green-700 text-white text-xs h-9">
-                          Confirm
-                        </Button>
-                        <Button size="sm" variant="destructive" onClick={() => handleStatusChange(b.id, "cancelled", b.version)} className="text-xs h-9">
-                          Cancel
-                        </Button>
-                      </>
-                    )}
-                    {b.status === "confirmed" && (
-                      <Button size="sm" onClick={() => handleStatusChange(b.id, "started", b.version)} className="bg-purple-600 hover:bg-purple-700 text-white text-xs h-9">
-                        Start
-                      </Button>
-                    )}
-                    {(b.status === "in_progress" || (b.status as string) === "started") && (
-                      <Button size="sm" onClick={() => handleStatusChange(b.id, "completed", b.version)} className="bg-blue-600 hover:bg-blue-700 text-white text-xs h-9">
-                        Complete
+                    {primaryAction && (
+                      <Button size="sm" onClick={() => runPrimaryBookingAction(b, primaryAction)} className="bg-purple-600 hover:bg-purple-700 text-white text-xs h-9">
+                        {primaryAction.label}
                       </Button>
                     )}
                     {shouldShowPayButton(b) && (
@@ -881,7 +899,8 @@ export function BookingsClient({
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
 

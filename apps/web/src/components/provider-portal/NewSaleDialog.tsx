@@ -168,16 +168,22 @@ export function NewSaleDialog({
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState("cash");
   const [activeTab, setActiveTab] = useState<"services" | "products">("services");
   const { enabled: giftCardsEnabled } = useFeatureFlag("gift_cards");
-  const visiblePaymentMethods = giftCardsEnabled
-    ? paymentMethods
-    : paymentMethods.filter((m) => m.id !== "gift_card");
+  const { enabled: yocoEnabled } = useFeatureFlag("payment_yoco");
+  const visiblePaymentMethods = paymentMethods.filter((m) => {
+    if (m.id === "gift_card") return giftCardsEnabled;
+    if (m.id === "yoco") return yocoEnabled;
+    return true;
+  });
 
-  // When gift cards are disabled, switch away from gift_card payment
+  // When feature-gated methods are disabled, switch back to cash.
   useEffect(() => {
-    if (!giftCardsEnabled && selectedPaymentMethod === "gift_card") {
+    if (
+      (!giftCardsEnabled && selectedPaymentMethod === "gift_card") ||
+      (!yocoEnabled && selectedPaymentMethod === "yoco")
+    ) {
       setSelectedPaymentMethod("cash");
     }
-  }, [giftCardsEnabled, selectedPaymentMethod]);
+  }, [giftCardsEnabled, yocoEnabled, selectedPaymentMethod]);
 
   // Client search
   const [clientSearchQuery, setClientSearchQuery] = useState("");

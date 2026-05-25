@@ -11,6 +11,7 @@ import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import { Plus, Trash2 } from "lucide-react";
+import Link from "next/link";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
@@ -31,6 +32,10 @@ interface TravelFeeSettings {
 }
 
 interface PlatformLimits {
+  default_rate_per_km?: number;
+  default_minimum_fee?: number;
+  default_maximum_fee?: number | null;
+  default_currency?: string;
   provider_min_rate_per_km: number;
   provider_max_rate_per_km: number;
   provider_min_minimum_fee: number;
@@ -57,6 +62,7 @@ export default function TravelFeesSettings() {
   const [platformLimits, setPlatformLimits] = useState<PlatformLimits | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [previewKm, setPreviewKm] = useState(10);
 
   useEffect(() => {
     const load = async () => {
@@ -76,6 +82,10 @@ export default function TravelFeesSettings() {
             "/api/provider/travel-fees/platform-limits"
           );
           setPlatformLimits({
+            default_rate_per_km: platformRes.data.default_rate_per_km ?? 8,
+            default_minimum_fee: platformRes.data.default_minimum_fee ?? 20,
+            default_maximum_fee: platformRes.data.default_maximum_fee ?? null,
+            default_currency: platformRes.data.default_currency ?? tenantCurrency,
             provider_min_rate_per_km: platformRes.data.provider_min_rate_per_km || 0,
             provider_max_rate_per_km: platformRes.data.provider_max_rate_per_km || 50,
             provider_min_minimum_fee: platformRes.data.provider_min_minimum_fee || 0,
@@ -89,6 +99,10 @@ export default function TravelFeesSettings() {
           // If platform limits can't be loaded, use defaults
           console.warn("Failed to load platform limits, using defaults:", platformError);
           setPlatformLimits({
+            default_rate_per_km: 8,
+            default_minimum_fee: 20,
+            default_maximum_fee: null,
+            default_currency: tenantCurrency,
             provider_min_rate_per_km: 0,
             provider_max_rate_per_km: 50,
             provider_min_minimum_fee: 0,
@@ -200,6 +214,35 @@ export default function TravelFeesSettings() {
     { label: "Travel Fees" },
   ];
 
+  const previewCurrency =
+    settings.use_platform_default
+      ? platformLimits?.default_currency || settings.currency || tenantCurrency
+      : settings.currency || tenantCurrency;
+
+  const previewFee = (() => {
+    if (!settings.enabled) return 0;
+    const km = Math.max(0, Number(previewKm) || 0);
+    const pricingModel = settings.use_platform_default
+      ? platformLimits?.pricing_model ?? "per_km"
+      : settings.pricing_model ?? "per_km";
+    const tiers = settings.use_platform_default ? platformLimits?.default_tiers : settings.tiers;
+    if (pricingModel === "tiered" && Array.isArray(tiers) && tiers.length > 0) {
+      const sorted = [...tiers].sort((a, b) => a.max_km - b.max_km);
+      return sorted.find((tier) => km <= tier.max_km)?.fee ?? sorted[sorted.length - 1].fee;
+    }
+    const rate = settings.use_platform_default
+      ? Number(platformLimits?.default_rate_per_km ?? 8)
+      : Number(settings.rate_per_km ?? platformLimits?.default_rate_per_km ?? 8);
+    const minimum = settings.use_platform_default
+      ? Number(platformLimits?.default_minimum_fee ?? 20)
+      : Number(settings.minimum_fee ?? platformLimits?.default_minimum_fee ?? 20);
+    const maximumRaw = settings.use_platform_default
+      ? platformLimits?.default_maximum_fee
+      : settings.maximum_fee;
+    const uncapped = minimum + km * rate;
+    return maximumRaw != null ? Math.min(uncapped, Number(maximumRaw)) : uncapped;
+  })();
+
   if (isLoading) {
     return (
       <SettingsDetailLayout
@@ -224,6 +267,41 @@ export default function TravelFeesSettings() {
       isSaving={isSaving}
       breadcrumbs={breadcrumbs}
     >
+      <SectionCard>
+        <div className="space-y-4">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900">House calls & travel setup</h2>
+            <p className="mt-1 text-sm text-gray-600">
+              Travel fees, service radius, and service zones work together. Set the fee rule here,
+              then confirm where you travel and which zones are available for at-home bookings.
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Link
+              href="/provider/settings/distance"
+              className="rounded-lg border border-gray-200 p-3 text-sm font-medium text-gray-800 hover:border-primary hover:text-primary"
+            >
+              Distance & radius
+              <span className="mt-1 block text-xs font-normal text-gray-500">How far you travel</span>
+            </Link>
+            <Link
+              href="/provider/settings/service-zones"
+              className="rounded-lg border border-gray-200 p-3 text-sm font-medium text-gray-800 hover:border-primary hover:text-primary"
+            >
+              Service zones
+              <span className="mt-1 block text-xs font-normal text-gray-500">Where at-home bookings are allowed</span>
+            </Link>
+            <Link
+              href="/provider/settings/appointment-activity/online-booking"
+              className="rounded-lg border border-gray-200 p-3 text-sm font-medium text-gray-800 hover:border-primary hover:text-primary"
+            >
+              Online booking rules
+              <span className="mt-1 block text-xs font-normal text-gray-500">Lead time and customer booking windows</span>
+            </Link>
+          </div>
+        </div>
+      </SectionCard>
+
       <SectionCard>
         <div className="space-y-6">
           <div className="flex items-center justify-between">
@@ -256,6 +334,36 @@ export default function TravelFeesSettings() {
                     setSettings({ ...settings, use_platform_default: checked === true })
                   }
                 />
+              </div>
+
+              <div className="rounded-xl border border-sky-100 bg-sky-50 p-4">
+                <div className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
+                  <div>
+                    <Label htmlFor="travel_fee_preview_km">Live travel-fee preview</Label>
+                    <p className="mt-1 text-sm text-sky-800">
+                      This estimate uses the same pricing model shown on this screen. Address validation still decides the real booking distance.
+                    </p>
+                  </div>
+                  <div className="flex items-end gap-3">
+                    <div>
+                      <Label htmlFor="travel_fee_preview_km" className="text-xs text-sky-900">
+                        Distance
+                      </Label>
+                      <Input
+                        id="travel_fee_preview_km"
+                        type="number"
+                        min={0}
+                        step={1}
+                        value={previewKm}
+                        onChange={(e) => setPreviewKm(Math.max(0, parseFloat(e.target.value) || 0))}
+                        className="mt-1 w-24 bg-white"
+                      />
+                    </div>
+                    <div className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-sky-900 shadow-sm">
+                      {previewKm} km → {previewCurrency} {previewFee.toFixed(2)}
+                    </div>
+                  </div>
+                </div>
               </div>
 
               {settings.use_platform_default && platformLimits?.default_tiers?.length && platformLimits?.pricing_model === "tiered" && (

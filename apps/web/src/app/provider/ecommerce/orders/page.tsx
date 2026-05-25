@@ -9,6 +9,7 @@ import type { YocoPayment } from "@/lib/provider-portal/types";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { YocoPaymentDialog } from "@/components/provider-portal/YocoPaymentDialog";
+import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import {
   ShoppingBag,
   ChevronLeft,
@@ -100,6 +101,7 @@ const STATUS_BADGE: Record<string, "default" | "destructive" | "outline" | "seco
 };
 
 export default function ProviderProductOrdersPage() {
+  const yocoEnabled = useFeatureFlag("payment_yoco");
   const searchParams = useSearchParams();
   const focusOrderId = searchParams.get("order")?.trim() ?? "";
   const highlightRef = useRef<HTMLDivElement | null>(null);
@@ -358,6 +360,7 @@ export default function ProviderProductOrdersPage() {
               const providerEarnings = Math.max(0, totalAmount - platformFee);
               const isAppointmentOrder = o.order_source === "appointment";
               const canCollectWithYoco =
+                yocoEnabled &&
                 o.payment_status !== "paid" &&
                 o.status !== "cancelled" &&
                 o.status !== "refunded";

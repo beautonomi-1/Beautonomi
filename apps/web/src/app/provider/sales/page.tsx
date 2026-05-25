@@ -20,9 +20,11 @@ import { SectionCard } from "@/components/provider/SectionCard";
 import type { YocoPayment } from "@/lib/provider-portal/types";
 import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
 import { ProtectedPage } from "@/components/provider/ProtectedPage";
+import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 
 function ProviderSalesContent() {
   const { selectedLocationId } = useProviderPortal();
+  const yocoEnabled = useFeatureFlag("payment_yoco");
   const [sales, setSales] = useState<Sale[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -273,15 +275,17 @@ function ProviderSalesContent() {
                     <TableCell>{sale.payment_method}</TableCell>
                     <TableCell>{sale.team_member_name || "-"}</TableCell>
                     <TableCell className="text-right">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleYocoPayment(sale)}
-                        className="gap-2"
-                      >
-                        <CreditCard className="w-3 h-3" />
-                        Pay
-                      </Button>
+                      {yocoEnabled && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleYocoPayment(sale)}
+                          className="gap-2"
+                        >
+                          <CreditCard className="w-3 h-3" />
+                          Pay
+                        </Button>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}

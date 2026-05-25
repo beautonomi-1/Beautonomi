@@ -72,6 +72,10 @@ export function isValidProviderBookingStatusTransition(
   return (allowed as readonly string[]).includes(to);
 }
 
+export function getAllowedProviderBookingStatusTargets(from: string): string[] {
+  return [...(PROVIDER_BOOKING_STATUS_TRANSITIONS[from as BookingStatus] ?? [])];
+}
+
 /**
  * Validate a transition with location-type context. Adds two rules on top of
  * the base transition graph:

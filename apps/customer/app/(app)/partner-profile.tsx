@@ -1867,7 +1867,7 @@ export default function PartnerProfileScreen() {
               }}
               pointerEvents="none"
             />
-            <View style={{ position: "absolute", bottom: 20, left: 16, zIndex: 10 }}>
+            <View style={{ position: "absolute", bottom: 28, left: 16, zIndex: 10 }}>
               <View
                 style={{
                   width: 72,
@@ -1904,7 +1904,7 @@ export default function PartnerProfileScreen() {
                 activeOpacity={0.8}
                 accessibilityRole="button"
                 accessibilityLabel={`Photo ${galleryIndex + 1} of ${images.length}. Tap to view all photos.`}
-                style={{ position: "absolute", bottom: 16, right: 16, backgroundColor: "rgba(0,0,0,0.65)", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, zIndex: 5 }}
+                style={{ position: "absolute", bottom: 24, right: 16, backgroundColor: "rgba(0,0,0,0.65)", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, zIndex: 5 }}
               >
                 <Text style={{ color: "#fff", fontSize: 11, fontWeight: "600" }}>{galleryIndex + 1}/{images.length}</Text>
               </TouchableOpacity>
@@ -1912,7 +1912,7 @@ export default function PartnerProfileScreen() {
           </View>
 
           {/* ═══════════ PROVIDER INFO CARD ═══════════ */}
-          <View style={{ backgroundColor: "#fff", borderTopLeftRadius: 24, borderTopRightRadius: 24, marginTop: -16, paddingTop: 16, paddingBottom: 4 }}>
+          <View style={{ backgroundColor: "#fff", borderTopLeftRadius: 24, borderTopRightRadius: 24, marginTop: -24, paddingTop: 16, paddingBottom: 4 }}>
 
             <View style={{ paddingHorizontal: contentPadding, paddingBottom: 4 }}>
               <Text style={{ fontSize: 22, fontWeight: "700", color: "#111827" }} numberOfLines={4}>

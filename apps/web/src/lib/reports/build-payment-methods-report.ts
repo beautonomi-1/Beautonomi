@@ -12,7 +12,14 @@ const ID_CHUNK = 150;
 
 export function isGatewayCardCaptureProvider(provider: string | null | undefined): boolean {
   const p = (provider || "").toLowerCase();
-  return p === "paystack" || p === "yoco" || p === "stripe" || p === "card";
+  return (
+    p === "paystack" ||
+    p === "paystack_terminal" ||
+    p === "paystack_virtual_terminal" ||
+    p === "yoco" ||
+    p === "stripe" ||
+    p === "card"
+  );
 }
 
 function isInternalWalletGiftSettlementProvider(provider: string | null | undefined): boolean {
@@ -29,6 +36,8 @@ export function humanizePaymentMethodKey(key: string): string {
   const k = key.toLowerCase();
   const map: Record<string, string> = {
     paystack: "Paystack",
+    paystack_terminal: "Paystack Terminal",
+    paystack_virtual_terminal: "Paystack Terminal",
     yoco: "Yoco",
     stripe: "Stripe",
     card: "Card (terminal)",

@@ -12,7 +12,7 @@ import {
 import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
 
 const markCollectedSchema = z.object({
-  payment_method: z.enum(["cash", "card_on_delivery", "yoco"]),
+  payment_method: z.enum(["cash", "card_on_delivery", "yoco", "paystack_terminal"]),
   reference: z.string().trim().max(200).optional(),
   idempotency_key: z.string().trim().max(200).optional(),
 });
@@ -44,6 +44,13 @@ export async function POST(
     const explicitReference = body.reference?.trim() || null;
     const idempotencyKey =
       body.idempotency_key?.trim() || request.headers.get("Idempotency-Key")?.trim() || null;
+    if (body.payment_method === "paystack_terminal") {
+      return errorResponse(
+        "Paystack Terminal order payments must be verified by Paystack and allocated from the terminal payment inbox.",
+        "PAYSTACK_TERMINAL_ALLOCATION_REQUIRED",
+        400,
+      );
+    }
     if (body.payment_method === "yoco" && !explicitReference) {
       return errorResponse(
         "Yoco collections require the terminal payment reference.",

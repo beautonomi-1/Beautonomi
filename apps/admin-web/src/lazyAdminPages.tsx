@@ -67,6 +67,11 @@ export const PlansListPage = lazy(() =>
 export const WalletReconciliationPage = lazy(() =>
   import("@/routes/finance/WalletReconciliationPage").then((m) => ({ default: m.WalletReconciliationPage }))
 );
+export const PaystackTerminalOperationsPage = lazy(() =>
+  import("@/routes/finance/PaystackTerminalOperationsPage").then((m) => ({
+    default: m.PaystackTerminalOperationsPage,
+  }))
+);
 export const PlatformFeesPage = lazy(() =>
   import("@/routes/settings/PlatformFeesPage").then((m) => ({ default: m.PlatformFeesPage }))
 );

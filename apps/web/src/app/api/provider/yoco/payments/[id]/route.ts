@@ -8,6 +8,7 @@ import {
   resolveProviderCredentialMode,
   YocoOAuthRequired,
 } from "@/lib/payments/yoco-oauth";
+import { requireYocoPlatformEnabledForProvider } from "@/lib/payments/yoco-feature-gate";
 
 /**
  * GET /api/provider/yoco/payments/[id]
@@ -43,6 +44,8 @@ export async function GET(
         { status: 404 }
       );
     }
+    const yocoGate = await requireYocoPlatformEnabledForProvider(supabase, providerId);
+    if (yocoGate) return yocoGate;
 
     // Get payment from database
     const { data: payment, error } = await supabase

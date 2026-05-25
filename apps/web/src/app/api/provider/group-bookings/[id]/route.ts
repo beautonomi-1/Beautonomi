@@ -741,6 +741,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }
 
       const paymentMethod = body.payment_method === "mobile" ? "other" : body.payment_method;
+      if (
+        paymentMethod === "paystack_terminal" ||
+        body.payment_provider === "paystack_terminal" ||
+        body.payment_provider === "paystack_virtual_terminal"
+      ) {
+        return errorResponse(
+          "Paystack Terminal group payments must be verified by Paystack and allocated from the terminal payment inbox.",
+          "PAYSTACK_TERMINAL_ALLOCATION_REQUIRED",
+          400
+        );
+      }
       if (!["cash", "card", "bank_transfer", "other", "yoco"].includes(paymentMethod)) {
         return errorResponse(
           "Valid payment_method is required (cash, card, bank_transfer, other, yoco)",

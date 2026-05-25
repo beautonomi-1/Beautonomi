@@ -7,6 +7,8 @@ import {
   YocoOAuthRequired,
 } from "@/lib/payments/yoco-oauth";
 import { getYocoEndpoints, type YocoEnvironment } from "@/lib/payments/yoco";
+import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
+import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
 
 /**
  * GET /api/provider/yoco/oauth/callback
@@ -74,6 +76,11 @@ export async function GET(request: NextRequest) {
   }
   if (Date.parse(stateRow.expires_at) < Date.now()) {
     return redirectWithFlag(origin, returnTo, "yoco_error", "state_expired_please_retry");
+  }
+
+  const yocoEnabled = await isFeatureEnabledServer(FEATURE_FLAG_KEYS.PAYMENT_YOCO, stateRow.tenant_id);
+  if (!yocoEnabled) {
+    return redirectWithFlag(origin, returnTo, "yoco_error", "yoco_disabled_by_platform");
   }
 
   const environment: YocoEnvironment = stateRow.environment === "sandbox" ? "sandbox" : "live";

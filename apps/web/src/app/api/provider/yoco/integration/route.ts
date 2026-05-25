@@ -9,6 +9,7 @@ import { verifyYocoConfig, type YocoEnvironment } from "@/lib/payments/yoco";
 import { resolveProviderCredentialMode } from "@/lib/payments/yoco-oauth";
 import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
 import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
+import { requireYocoPlatformEnabledForProvider } from "@/lib/payments/yoco-feature-gate";
 
 const updateIntegrationSchema = z.object({
   is_enabled: z.boolean().optional(),
@@ -47,6 +48,8 @@ export async function GET(request: NextRequest) {
         { status: 404 }
       );
     }
+    const yocoGate = await requireYocoPlatformEnabledForProvider(supabase, providerId);
+    if (yocoGate) return yocoGate;
 
     // Check subscription allows Yoco integration (for viewing, allow but show upgrade prompt)
     const yocoAccess = await checkYocoFeatureAccess(providerId, supabase);
@@ -250,6 +253,8 @@ export async function PUT(request: Request) {
         { status: 404 }
       );
     }
+    const yocoGate = await requireYocoPlatformEnabledForProvider(supabase, providerId);
+    if (yocoGate) return yocoGate;
 
     // Check subscription allows Yoco integration
     const yocoAccess = await checkYocoFeatureAccess(providerId, supabase);
@@ -459,6 +464,8 @@ export async function DELETE(request: NextRequest) {
         { status: 404 }
       );
     }
+    const yocoGate = await requireYocoPlatformEnabledForProvider(supabase, providerId);
+    if (yocoGate) return yocoGate;
 
     const { error } = await (supabase.from("provider_yoco_integrations") as any)
       .update({

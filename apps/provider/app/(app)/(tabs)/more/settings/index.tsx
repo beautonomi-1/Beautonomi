@@ -10,6 +10,7 @@ import { useBiometricAuth } from "@/hooks/useBiometricAuth";
 import { useTheme } from "@/providers/ThemeProvider";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { twStyle } from "@/lib/twStyle";
+import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 
 interface SetupStatus {
   isComplete: boolean;
@@ -36,6 +37,7 @@ const SETTINGS_SECTIONS: { title: string; items: SettingItem[] }[] = [
       { icon: "person-circle-outline", label: "Personal profile", subtitle: "Bio, headline & how customers see you", route: "/(app)/(tabs)/more/settings/personal-profile", color: "#ec4899" },
       { icon: "time-outline", label: "Operating Hours", subtitle: "Opening & closing times", route: "/(app)/(tabs)/more/settings/hours", color: "#3b82f6" },
       { icon: "location-outline", label: "Locations", subtitle: "Manage your locations", route: "/(app)/(tabs)/more/settings/locations", color: "#22c55e" },
+      { icon: "car-outline", label: "House calls & travel", subtitle: "Travel fees, radius and zones", route: "/(app)/(tabs)/more/settings/travel-fees", color: "#0891b2" },
       { icon: "navigate-outline", label: "Distance & radius", subtitle: "How far you travel for house calls", route: "/(app)/(tabs)/more/settings/distance-settings", color: "#0891b2" },
     ],
   },
@@ -59,12 +61,13 @@ const SETTINGS_SECTIONS: { title: string; items: SettingItem[] }[] = [
       { icon: "ribbon-outline", label: "Subscription", subtitle: "Plan, upgrade, cancel, renew", route: "/(app)/(tabs)/more/settings/subscription", color: "#8b5cf6" },
       { icon: "receipt-outline", label: "Billing & Invoices", subtitle: "Invoices, payment methods", route: "/(app)/(tabs)/more/settings/billing", color: "#6366f1" },
       { icon: "hardware-chip-outline", label: "Yoco Devices", subtitle: "Manage card terminals & Web POS", route: "/(app)/(tabs)/more/settings/yoco-devices", color: "#3b82f6" },
+      { icon: "qr-code-outline", label: "Paystack Terminal", subtitle: "QR/link in-person payments", route: "/(app)/(tabs)/more/paystack-terminal", color: "#16a34a" },
       { icon: "wallet-outline", label: "Payout Accounts", subtitle: "Bank accounts for payouts", route: "/(app)/(tabs)/more/settings/payout-accounts", color: "#22c55e" },
-      { icon: "pricetag-outline", label: "Sales Settings", subtitle: "Tips, taxes & receipts", route: "/(app)/(tabs)/more/settings/sales-settings", color: "#ec4899" },
+      { icon: "pricetag-outline", label: "Sales Settings", subtitle: "Tips on by default, taxes & receipts", route: "/(app)/(tabs)/more/settings/sales-settings", color: "#ec4899" },
       { icon: "calculator-outline", label: "Tax Configuration", subtitle: "VAT registration & tax rates", route: "/(app)/(tabs)/more/settings/tax-configuration", color: "#dc2626" },
       { icon: "document-outline", label: "Receipt Template", subtitle: "Customize receipts & numbering", route: "/(app)/(tabs)/more/settings/receipt-template", color: "#0d9488" },
       { icon: "gift-outline", label: "Gift Cards", subtitle: "Gift card settings", route: "/(app)/(tabs)/more/settings/gift-cards-settings", color: "#a855f7" },
-      { icon: "car-outline", label: "Travel Fees", subtitle: "At-home service charges", route: "/(app)/(tabs)/more/settings/travel-fees", color: "#0891b2" },
+      { icon: "car-outline", label: "Travel Fees", subtitle: "At-home fee rules and preview", route: "/(app)/(tabs)/more/settings/travel-fees", color: "#0891b2" },
       { icon: "map-outline", label: "Service Zones", subtitle: "Service area management", route: "/(app)/(tabs)/more/settings/service-zones", color: "#8b5cf6" },
     ],
   },
@@ -102,7 +105,7 @@ const SETTINGS_SECTIONS: { title: string; items: SettingItem[] }[] = [
   {
     title: "Tips",
     items: [
-      { icon: "cash-outline", label: "Tip Distribution", subtitle: "How tips are shared with staff", route: "/(app)/(tabs)/more/settings/tip-distribution", color: "#f59e0b" },
+      { icon: "cash-outline", label: "Tip Distribution", subtitle: "Solo keeps tips; salons can share with staff", route: "/(app)/(tabs)/more/settings/tip-distribution", color: "#f59e0b" },
     ],
   },
   {
@@ -167,6 +170,8 @@ export default function SettingsScreen() {
   const { isAvailable, biometricType, isEnabled, enable, disable } = useBiometricAuth();
   const { themeMode, setThemeMode } = useTheme();
   const { data: setupStatus } = useApi<SetupStatus>("/api/provider/setup-status");
+  const yocoEnabled = useFeatureFlag("payment_yoco");
+  const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
 
   const biometricLabel =
     biometricType === "face" ? "Face ID" :
@@ -213,17 +218,24 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         )}
 
-        {SETTINGS_SECTIONS.map((section) => (
+        {SETTINGS_SECTIONS.map((section) => {
+          const items = section.items.filter((item) => {
+            if (!yocoEnabled && item.route.includes("yoco")) return false;
+            if (!paystackTerminalEnabled && item.route.includes("paystack-terminal")) return false;
+            return true;
+          });
+          if (items.length === 0) return null;
+          return (
           <View key={section.title} style={twStyle("mb-4")}>
             <Text style={twStyle("mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400")}>
               {section.title}
             </Text>
             <View style={twStyle("rounded-2xl border border-gray-100 bg-white")}>
-              {section.items.map((item, idx) => (
+              {items.map((item, idx) => (
                 <TouchableOpacity
                   key={item.route || item.label}
                   style={twStyle(`min-h-[56px] flex-row items-center px-4 py-3.5 ${
-                    idx < section.items.length - 1 ? "border-b border-gray-50" : ""
+                    idx < items.length - 1 ? "border-b border-gray-50" : ""
                   }`)}
                   onPress={() => item.route && router.push(item.route as never)}
                 >
@@ -239,7 +251,8 @@ export default function SettingsScreen() {
               ))}
             </View>
           </View>
-        ))}
+          );
+        })}
 
         {/* Security */}
         {Platform.OS !== "web" && isAvailable && (

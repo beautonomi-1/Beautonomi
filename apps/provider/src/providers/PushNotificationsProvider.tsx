@@ -15,9 +15,17 @@ import type {
 } from "react-native-onesignal";
 import { useAuth } from "@/providers/AuthProvider";
 import { useNativePermissionsOnboardingGate } from "@/providers/NativePermissionsOnboardingProvider";
-import { ONE_SIGNAL_APP_ID } from "@/config/public-env";
 import { api } from "@/lib/api-client";
-import { getOneSignalAppId } from "@/lib/third-party-config";
+import {
+  clearPendingPushNotification,
+  ensureOneSignalInitialized,
+  enqueueOrRoutePushNotification,
+  flushPendingPushNotification,
+  getOneSignalSubscriptionId,
+  logoutOneSignal,
+  resolveOneSignalAppId,
+  setPushNavigationReady,
+} from "@/lib/onesignal-client";
 import { captureError, addBreadcrumb } from "@/lib/sentry";
 import { isTransientApiFailure } from "@/lib/api-error";
 
@@ -332,6 +340,11 @@ function handleNotificationRoute(data: Record<string, unknown>) {
         }
         break;
 
+      case "paystack_terminal_payment":
+      case "provider_paystack_terminal_payment":
+        router.push("/(app)/(tabs)/more/paystack-terminal" as never);
+        break;
+
       case "product_return_requested":
         router.push("/(app)/(tabs)/more/orders-hub?tab=returns" as never);
         break;
@@ -379,25 +392,31 @@ function usePushRegistration() {
     }
   }, [user?.id]);
 
-  // Fetch OneSignal app_id from backend
+  // Resolve OneSignal app id (superadmin config with env fallback).
   useEffect(() => {
     if (Platform.OS === "web" || !user) return;
 
     let cancelled = false;
-    (async () => {
-      try {
-        const fromApi = await getOneSignalAppId();
-        if (cancelled) return;
-        const id = fromApi || ONE_SIGNAL_APP_ID || "";
-        setAppId(id ? id : null);
-      } catch {
-        // Push optional — ignore config fetch failures
-      }
-    })();
+    void resolveOneSignalAppId().then((id) => {
+      if (!cancelled) setAppId(id);
+    });
     return () => {
       cancelled = true;
     };
   }, [user?.id]);
+
+  // Cold-start taps can fire before the authenticated router is mounted.
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    const ready = Boolean(user?.id) && gate.phase !== "loading";
+    setPushNavigationReady(ready);
+    if (ready) {
+      flushPendingPushNotification(handleNotificationRoute);
+    }
+    return () => {
+      if (!ready) setPushNavigationReady(false);
+    };
+  }, [user?.id, gate.phase]);
 
   // Initialize OneSignal and register device
   useEffect(() => {
@@ -455,18 +474,15 @@ function usePushRegistration() {
 
     const init = async () => {
       try {
-        const { OneSignal, LogLevel } = await import("react-native-onesignal");
+        const { OneSignal } = await import("react-native-onesignal");
         const retryTimeoutIds: ReturnType<typeof setTimeout>[] = [];
 
-        OneSignal.Debug.setLogLevel(LogLevel.None);
-        OneSignal.initialize(appId);
+        await ensureOneSignalInitialized(appId, user.id);
 
         const sessionKey = `${user.id}:${appId}`;
         const isFirstInitForSession = oneSignalInitKeyRef.current !== sessionKey;
         if (isFirstInitForSession) {
           oneSignalInitKeyRef.current = sessionKey;
-          // Must match Supabase users.id — server targets pushes via external_id / include_aliases.
-          OneSignal.login(user.id);
 
           OneSignal.Notifications.addEventListener(
             "click",
@@ -489,9 +505,9 @@ function usePushRegistration() {
                 ...(launchURL ? { url: launchURL, deep_link: launchURL } : {}),
               };
               if (Object.keys(merged).length > 0) {
-                handleNotificationRoute(merged);
+                enqueueOrRoutePushNotification(merged, handleNotificationRoute);
               } else {
-                router.push("/(app)/notifications");
+                enqueueOrRoutePushNotification({}, () => router.push("/(app)/notifications"));
               }
             },
           );
@@ -537,21 +553,20 @@ function usePushRegistration() {
         OneSignal.User.pushSubscription.addEventListener("change", onPushSubscriptionChange);
 
         if (gate.phase === "complete") {
-          const earlySub = await OneSignal.User.pushSubscription.getIdAsync();
+          const earlySub = await getOneSignalSubscriptionId();
           if (gate.fromRestore && !earlySub) {
             await OneSignal.Notifications.requestPermission(false);
           }
         }
 
-        const subId = await OneSignal.User.pushSubscription.getIdAsync();
+        const subId = await getOneSignalSubscriptionId();
         if (subId) {
           await registerWithBackend(subId, "initial_subscription");
         } else {
           SUBSCRIPTION_RETRY_DELAYS_MS.forEach((delay) => {
             const timeoutId = setTimeout(async () => {
             try {
-              const retryId =
-                await OneSignal.User.pushSubscription.getIdAsync();
+              const retryId = await getOneSignalSubscriptionId();
                 if (retryId) await registerWithBackend(retryId, `retry_${delay}`);
             } catch {
               // ignore
@@ -588,7 +603,7 @@ function usePushRegistration() {
       if (cancelled || registeredRef.current) return;
       try {
         const { OneSignal } = await import("react-native-onesignal");
-        const id = await OneSignal.User.pushSubscription.getIdAsync();
+        const id = await getOneSignalSubscriptionId();
         if (!id || cancelled || registeredRef.current) return;
         const platform = Platform.OS === "ios" ? "ios" : "android";
         const res = await api.post<{ registered?: boolean }>(
@@ -628,10 +643,17 @@ function useOneSignalLogout() {
     if (Platform.OS === "web") return;
 
     if (prevUserRef.current && !user) {
-      (async () => {
+      clearPendingPushNotification();
+      setPushNavigationReady(false);
+      void (async () => {
         try {
-          const { OneSignal } = await import("react-native-onesignal");
-          OneSignal.logout();
+          const playerId = await logoutOneSignal();
+          if (playerId) {
+            await api.fetch("/api/provider/devices", {
+              method: "DELETE",
+              body: { player_id: playerId },
+            });
+          }
         } catch {
           // OneSignal not available
         }

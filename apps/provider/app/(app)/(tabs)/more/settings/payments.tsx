@@ -21,6 +21,7 @@ import { useYocoIntegration } from "@/hooks/useYoco";
 import { twStyle } from "@/lib/twStyle";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { LAST_RESORT_CURRENCY } from "@beautonomi/utils";
+import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 
 /* ─── types ─── */
 interface PaymentSettings {
@@ -111,6 +112,8 @@ function ToggleRow({
 /* ─── screen ─── */
 export default function PaymentSettingsScreen() {
   const router = useRouter();
+  const yocoEnabled = useFeatureFlag("payment_yoco");
+  const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
   const {
     data: settings,
     loading,
@@ -151,9 +154,9 @@ export default function PaymentSettingsScreen() {
         tax_rate: raw.taxRatePercent ?? DEFAULT_SETTINGS.tax_rate,
         vat_registered: raw.isVatRegistered ?? DEFAULT_SETTINGS.vat_registered,
         vat_number: raw.vatNumber ?? DEFAULT_SETTINGS.vat_number,
-        yoco_connected: raw.yoco?.isEnabled ?? DEFAULT_SETTINGS.yoco_connected,
+        yoco_connected: yocoEnabled && (raw.yoco?.isEnabled ?? DEFAULT_SETTINGS.yoco_connected),
         accept_cash: raw.acceptCash ?? DEFAULT_SETTINGS.accept_cash,
-        accept_card: raw.acceptCard ?? DEFAULT_SETTINGS.accept_card,
+        accept_card: yocoEnabled && (raw.acceptCard ?? DEFAULT_SETTINGS.accept_card),
         accept_online: raw.acceptOnline ?? DEFAULT_SETTINGS.accept_online,
         receipt_auto_send: raw.receiptAutoSend ?? DEFAULT_SETTINGS.receipt_auto_send,
         tips_enabled: raw.tipsEnabled ?? DEFAULT_SETTINGS.tips_enabled,
@@ -162,7 +165,7 @@ export default function PaymentSettingsScreen() {
         tax_inclusive: raw.taxInclusive ?? DEFAULT_SETTINGS.tax_inclusive,
       });
     }
-  }, [settings]);
+  }, [settings, yocoEnabled]);
 
   function update<K extends keyof PaymentSettings>(
     key: K,
@@ -191,7 +194,7 @@ export default function PaymentSettingsScreen() {
       isVatRegistered: form.vat_registered,
       vatNumber: form.vat_number,
       acceptCash: form.accept_cash,
-      acceptCard: form.accept_card,
+      acceptCard: yocoEnabled ? form.accept_card : false,
       acceptOnline: form.accept_online,
       taxInclusive: form.tax_inclusive,
       tipsEnabled: form.tips_enabled,
@@ -235,48 +238,76 @@ export default function PaymentSettingsScreen() {
     <ScreenContainer>
       <ScreenHeader title="Payment Settings" showBack />
 
-      {/* ─── Yoco Integration ─── */}
-      <SectionHeader title="Payment Gateway" />
-      <TouchableOpacity
-        style={twStyle("rounded-2xl border border-gray-100 bg-white p-4")}
-        onPress={() => router.push("/(app)/(tabs)/more/settings/yoco-devices")}
-        accessibilityLabel="Yoco payment gateway — tap to manage"
-        accessibilityRole="button"
-      >
-        <View style={twStyle("flex-row items-center justify-between")}>
-          <View style={twStyle("flex-row items-center")}>
-            <View style={twStyle("h-10 w-10 items-center justify-center rounded-lg bg-blue-50")}>
-              <Ionicons name="card-outline" size={20} color="#3b82f6" />
-            </View>
-            <View style={twStyle("ml-3")}>
-              <Text style={twStyle("text-base font-semibold text-gray-900")}>
-                Yoco
-              </Text>
-              <Text style={twStyle("text-xs text-gray-500")}>{yocoSubtitle}</Text>
-            </View>
-          </View>
-          <View style={twStyle("flex-row items-center")}>
-            <View
-              style={twStyle(`mr-2 flex-row items-center rounded-full px-3 py-1 ${yocoConnected ? "bg-green-50" : "bg-gray-100"}`)}
+      {(yocoEnabled || paystackTerminalEnabled) && (
+        <>
+          {/* ─── Yoco Integration ─── */}
+          <SectionHeader title="Payment Gateway" />
+          {yocoEnabled && (
+            <TouchableOpacity
+              style={twStyle("rounded-2xl border border-gray-100 bg-white p-4")}
+              onPress={() => router.push("/(app)/(tabs)/more/settings/yoco-devices")}
+              accessibilityLabel="Yoco payment gateway — tap to manage"
+              accessibilityRole="button"
             >
-              <View
-                style={twStyle(`mr-1.5 h-2 w-2 rounded-full ${yocoConnected ? "bg-green-500" : "bg-gray-400"}`)}
-              />
-              <Text
-                style={twStyle(`text-xs font-medium ${yocoConnected ? "text-green-700" : "text-gray-500"}`)}
-              >
-                {yocoStatusLabel}
+              <View style={twStyle("flex-row items-center justify-between")}>
+                <View style={twStyle("flex-row items-center")}>
+                  <View style={twStyle("h-10 w-10 items-center justify-center rounded-lg bg-blue-50")}>
+                    <Ionicons name="card-outline" size={20} color="#3b82f6" />
+                  </View>
+                  <View style={twStyle("ml-3")}>
+                    <Text style={twStyle("text-base font-semibold text-gray-900")}>Yoco</Text>
+                    <Text style={twStyle("text-xs text-gray-500")}>{yocoSubtitle}</Text>
+                  </View>
+                </View>
+                <View style={twStyle("flex-row items-center")}>
+                  <View
+                    style={twStyle(`mr-2 flex-row items-center rounded-full px-3 py-1 ${yocoConnected ? "bg-green-50" : "bg-gray-100"}`)}
+                  >
+                    <View
+                      style={twStyle(`mr-1.5 h-2 w-2 rounded-full ${yocoConnected ? "bg-green-500" : "bg-gray-400"}`)}
+                    />
+                    <Text
+                      style={twStyle(`text-xs font-medium ${yocoConnected ? "text-green-700" : "text-gray-500"}`)}
+                    >
+                      {yocoStatusLabel}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+                </View>
+              </View>
+              {!yocoConnected && (
+                <Text style={twStyle("mt-2 text-xs text-indigo-600")}>
+                  Tap to connect your Yoco account →
+                </Text>
+              )}
+            </TouchableOpacity>
+          )}
+          {paystackTerminalEnabled && (
+            <TouchableOpacity
+              style={twStyle("mt-3 rounded-2xl border border-emerald-100 bg-white p-4")}
+              onPress={() => router.push("/(app)/(tabs)/more/paystack-terminal")}
+              accessibilityLabel="Paystack Terminal — tap to manage"
+              accessibilityRole="button"
+            >
+              <View style={twStyle("flex-row items-center justify-between")}>
+                <View style={twStyle("flex-row items-center flex-1")}>
+                  <View style={twStyle("h-10 w-10 items-center justify-center rounded-lg bg-emerald-50")}>
+                    <Ionicons name="qr-code-outline" size={20} color="#16a34a" />
+                  </View>
+                  <View style={twStyle("ml-3 flex-1")}>
+                    <Text style={twStyle("text-base font-semibold text-gray-900")}>Paystack Terminal</Text>
+                    <Text style={twStyle("text-xs text-gray-500")}>QR and link payments through Beautonomi payouts</Text>
+                  </View>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+              </View>
+              <Text style={twStyle("mt-2 text-xs text-emerald-700")}>
+                Code and link work immediately; branded QR/poster is prepared by Beautonomi Ops.
               </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
-          </View>
-        </View>
-        {!yocoConnected && (
-          <Text style={twStyle("mt-2 text-xs text-indigo-600")}>
-            Tap to connect your Yoco account →
-          </Text>
-        )}
-      </TouchableOpacity>
+            </TouchableOpacity>
+          )}
+        </>
+      )}
 
       {/* ─── Accepted Payment Methods ─── */}
       <SectionHeader title="Accepted Payment Methods" />
@@ -288,13 +319,15 @@ export default function PaymentSettingsScreen() {
           onValueChange={(v) => update("accept_cash", v)}
           accessibilityLabel="Toggle accept cash payments"
         />
-        <ToggleRow
-          label="Accept Card (Yoco)"
-          description="Accept card payments via Yoco terminal"
-          value={form.accept_card}
-          onValueChange={(v) => update("accept_card", v)}
-          accessibilityLabel="Toggle accept card payments"
-        />
+        {yocoEnabled && (
+          <ToggleRow
+            label="Accept Card (Yoco)"
+            description="Accept card payments via Yoco terminal"
+            value={form.accept_card}
+            onValueChange={(v) => update("accept_card", v)}
+            accessibilityLabel="Toggle accept card payments"
+          />
+        )}
         <View style={twStyle("px-4 py-3.5")}>
           <View style={twStyle("flex-row items-center justify-between")}>
             <View style={twStyle("mr-3 flex-1")}>

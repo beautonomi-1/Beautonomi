@@ -10,12 +10,14 @@ import {
   resolveProviderCredentialMode,
   YocoOAuthRequired,
 } from "@/lib/payments/yoco-oauth";
+import { requireYocoPlatformEnabledForProvider } from "@/lib/payments/yoco-feature-gate";
 
 /** Create Web POS device: only name required (Yoco API). Optional fields for our DB. */
 const createDeviceSchema = z.object({
   name: z.string().min(1, "Device name is required"),
   location_id: z.string().uuid().optional().nullable(),
   is_active: z.boolean().optional().default(true),
+  credential_mode: z.enum(["web_pos", "virtual_checkout"]).optional(),
 });
 
 /**
@@ -42,6 +44,8 @@ export async function GET(request: NextRequest) {
         { status: 404 }
       );
     }
+    const yocoGate = await requireYocoPlatformEnabledForProvider(supabase, providerId);
+    if (yocoGate) return yocoGate;
 
     // Primary source: provider_yoco_devices
     const { data: devices, error } = await supabase
@@ -213,6 +217,8 @@ export async function POST(request: NextRequest) {
         { status: 404 }
       );
     }
+    const yocoGate = await requireYocoPlatformEnabledForProvider(supabase, providerId);
+    if (yocoGate) return yocoGate;
 
     // Check subscription allows Yoco integration
     const yocoAccess = await checkYocoFeatureAccess(providerId, supabase);
@@ -282,7 +288,25 @@ export async function POST(request: NextRequest) {
       if (loc?.name && typeof loc.name === "string") locationNameForInsert = loc.name;
     }
 
-    if (credentials.credentialMode === "oauth") {
+    const shouldCreateVirtual =
+      validationResult.data.credential_mode === "virtual_checkout" ||
+      credentials.credentialMode === "checkout";
+
+    if (shouldCreateVirtual && !credentials.hasSecretKey) {
+      return NextResponse.json(
+        {
+          data: null,
+          error: {
+            message:
+              "Add a Yoco Checkout secret key before creating a virtual checkout device.",
+            code: "CHECKOUT_KEY_REQUIRED",
+          },
+        },
+        { status: 400 },
+      );
+    }
+
+    if (!shouldCreateVirtual && credentials.credentialMode === "oauth") {
       const endpoints = getYocoEndpoints(credentials.environment);
       let accessToken: string;
       try {
@@ -391,7 +415,8 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // credential_mode === 'checkout': create a virtual station — no Yoco call.
+    // credential_mode === 'checkout' or explicit virtual_checkout: create a
+    // virtual station — no Yoco call.
     // Each payment will mint its own Yoco Checkout link/QR and the customer
     // will pay on Yoco's hosted page. The `yoco_device_id` is set to a stable
     // sentinel so existing reporting joins on the column do not blow up.

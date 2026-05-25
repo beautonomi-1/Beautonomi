@@ -52,7 +52,7 @@ export async function GET(
     const defaults = {
       staff_selection_mode: "client_chooses" as const,
       require_auth_step: "checkout" as const,
-      min_notice_minutes: 60,
+      min_notice_minutes: 0,
       max_advance_days: 90,
       allow_pay_in_person: false,
       deposit_required: false,

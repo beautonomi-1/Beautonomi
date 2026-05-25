@@ -13,17 +13,27 @@ export async function GET(request: NextRequest) {
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
 
-    const { data: tipSettings, error } = await supabase
-      .from('provider_tip_settings')
-      .select('*')
-      .eq('provider_id', providerId)
-      .single();
+    const [{ data: tipSettings, error }, { data: providerRow }] = await Promise.all([
+      supabase
+        .from('provider_tip_settings')
+        .select('*')
+        .eq('provider_id', providerId)
+        .single(),
+      supabase
+        .from('providers')
+        .select('tips_distribution')
+        .eq('id', providerId)
+        .maybeSingle(),
+    ]);
 
     // Return default if not found (PGRST116 is "not found" error)
     if (error && error.code === 'PGRST116') {
+      const legacyDistribution = (providerRow as { tips_distribution?: string | null } | null)
+        ?.tips_distribution;
+      const legacyStaff = legacyDistribution === 'staff';
       return successResponse({
-        keep_all_tips: true,
-        distribute_to_staff: false,
+        keep_all_tips: !legacyStaff,
+        distribute_to_staff: legacyStaff,
       });
     }
 
@@ -54,13 +64,16 @@ export async function PATCH(request: NextRequest) {
 
     const { keep_all_tips, distribute_to_staff } = body;
 
+    const nextKeepAllTips = keep_all_tips !== false;
+    const nextDistributeToStaff = distribute_to_staff === true && keep_all_tips === false;
+
     const { data: settings, error } = await supabase
       .from('provider_tip_settings')
       .upsert(
         {
           provider_id: providerId,
-          keep_all_tips: keep_all_tips !== false,
-          distribute_to_staff: distribute_to_staff === true && keep_all_tips === false,
+          keep_all_tips: nextKeepAllTips,
+          distribute_to_staff: nextDistributeToStaff,
           updated_at: new Date().toISOString(),
         },
         {
@@ -72,6 +85,18 @@ export async function PATCH(request: NextRequest) {
 
     if (error) {
       throw error;
+    }
+
+    const { error: providerUpdateError } = await supabase
+      .from('providers')
+      .update({
+        tips_distribution: nextDistributeToStaff ? 'staff' : 'owner',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', providerId);
+
+    if (providerUpdateError) {
+      throw providerUpdateError;
     }
 
     return successResponse(settings);

@@ -50,7 +50,7 @@ export function getBookingNextStepCard(
   ) {
     return {
       title: "Ready for service",
-      description: "Client arrival confirmed. Use Change Status to start the service.",
+      description: "Client arrival confirmed. Start the service from the Journey card.",
       icon: "play-circle-outline",
       color: "#2563eb",
     };
@@ -78,7 +78,7 @@ export function getBookingNextStepCard(
       title: options.isAtHome ? "Ready for journey" : options.isAtSalon ? "Ready for check-in" : "Ready for service",
       description: options.isAtHome
         ? "Start journey when you leave for the client."
-        : "Use Change Status to check in the client or start service.",
+        : "Use the guided booking actions to check in the client or start service.",
       icon: options.isAtHome ? "car-outline" : "play-circle-outline",
       color: "#2563eb",
     };

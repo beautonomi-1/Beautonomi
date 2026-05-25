@@ -100,7 +100,7 @@ export default function OnlineBookingSettings() {
       const mangomintDefaults: MangomintSettings = {
         staff_selection_mode: "client_chooses",
         require_auth_step: "checkout",
-        min_notice_minutes: 60,
+        min_notice_minutes: 0,
         max_advance_days: 90,
         allow_pay_in_person: false,
         deposit_required: false,
@@ -587,7 +587,7 @@ export default function OnlineBookingSettings() {
                         }
                       />
                       <p className="text-xs text-muted-foreground mt-1">
-                        How far in advance clients must book
+                        Set to 0 to let clients book the first available slot. Service buffers and travel time still apply.
                       </p>
                     </div>
                     <div>

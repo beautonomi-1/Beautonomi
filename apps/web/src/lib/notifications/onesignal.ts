@@ -274,7 +274,9 @@ type UserScopedSupabase = SupabaseClient<Database>;
 
 /**
  * Register a device for push notifications.
- * @param supabase — Request-scoped client (must include the caller's JWT, e.g. from `getSupabaseServer(request)`), otherwise mobile Bearer registration hits cookie/anon RLS and fails silently.
+ * @param supabase — Prefer `getSupabaseAdmin()` from API routes after auth checks.
+ *   User-scoped clients can fail RLS on upsert when the same OneSignal subscription id
+ *   was previously registered to another account on this device.
  * @param appType - 'customer' | 'provider' for multi-app OneSignal; defaults to 'customer'.
  */
 export async function registerDevice(

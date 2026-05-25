@@ -7,6 +7,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
+import Link from "next/link";
 
 export default function TipsSettings() {
   const [tipsEnabled, setTipsEnabled] = useState(true);
@@ -58,14 +59,44 @@ export default function TipsSettings() {
     >
 
       <SectionCard>
-        <div className="flex items-center justify-between">
-          <div>
-            <Label className="text-base font-medium">Enable Tips</Label>
-            <p className="text-sm text-gray-600">Allow customers to add tips</p>
+        <div className="space-y-5">
+          <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-4">
+            <p className="text-sm font-semibold text-emerald-950">Tips are on by default for every provider.</p>
+            <p className="mt-1 text-sm text-emerald-800">
+              Solo providers keep tips by default. Salons can choose whether tips stay with the business
+              or are allocated to the staff member assigned to the booking.
+            </p>
           </div>
-          <Switch checked={tipsEnabled} onCheckedChange={setTipsEnabled} />
-        </div>
 
+          <div className="flex items-center justify-between">
+            <div>
+              <Label className="text-base font-medium">Enable Tips</Label>
+              <p className="text-sm text-gray-600">Allow customers to add tips during checkout</p>
+            </div>
+            <Switch checked={tipsEnabled} onCheckedChange={setTipsEnabled} />
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Link
+              href="/provider/settings/tips/distribution"
+              className="rounded-lg border border-gray-200 p-3 text-sm font-medium text-gray-800 hover:border-primary hover:text-primary"
+            >
+              Tip distribution
+              <span className="mt-1 block text-xs font-normal text-gray-500">
+                Decide who receives tips for staff-assigned bookings
+              </span>
+            </Link>
+            <Link
+              href="/provider/settings/payments"
+              className="rounded-lg border border-gray-200 p-3 text-sm font-medium text-gray-800 hover:border-primary hover:text-primary"
+            >
+              Payment settings
+              <span className="mt-1 block text-xs font-normal text-gray-500">
+                Review tip presets and checkout payment methods
+              </span>
+            </Link>
+          </div>
+        </div>
       </SectionCard>
     </SettingsDetailLayout>
   );

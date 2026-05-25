@@ -155,6 +155,7 @@ export function AppointmentDialog({
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [availableSlots, setAvailableSlots] = useState<string[] | null>(null);
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
+  const [providerTimezone, setProviderTimezone] = useState<string | null>(null);
 
   /* ── Form ── */
   const [formData, setFormData] = useState({
@@ -528,12 +529,16 @@ export function AppointmentDialog({
       .then((data) => {
         if (cancelled) return;
         const slots: string[] = data?.data?.slots ?? [];
+        setProviderTimezone(data?.data?.provider_timezone ?? null);
         const cur = formData.scheduled_time;
         const merged = slots.includes(cur) ? slots : [cur, ...slots].sort();
         setAvailableSlots(merged.length > 0 ? merged : null);
       })
       .catch(() => {
-        if (!cancelled) setAvailableSlots(null);
+        if (!cancelled) {
+          setAvailableSlots(null);
+          setProviderTimezone(null);
+        }
       })
       .finally(() => {
         if (!cancelled) setIsLoadingSlots(false);
@@ -602,6 +607,7 @@ export function AppointmentDialog({
       service_name: primaryService?.name ?? "",
       scheduled_date: format(formData.scheduled_date, "yyyy-MM-dd"),
       scheduled_time: formData.scheduled_time,
+      provider_timezone: providerTimezone,
       duration_minutes: totalDuration || 60,
       price: totalPrice,
       notes: formData.notes || undefined,

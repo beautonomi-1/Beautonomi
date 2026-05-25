@@ -23,6 +23,7 @@ import { Label } from "@/components/ui/label";
 import { isCompleteE164 } from "@/lib/phone";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 import { YocoPaymentDialog } from "@/components/provider-portal/YocoPaymentDialog";
+import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 
 interface Variant {
   id: string;
@@ -93,6 +94,7 @@ interface WalkInOrder {
 
 export default function WalkInSalePage() {
   const { format: formatMoney, locale } = useProviderMoneyFormat();
+  const yocoEnabled = useFeatureFlag("payment_yoco");
   const [products, setProducts] = useState<Product[]>([]);
   const [search, setSearch] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -336,7 +338,9 @@ export default function WalkInSalePage() {
         <div className="mb-6 flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Walk-in Sale</h1>
-            <p className="text-sm text-gray-500">Process in-person product sales (cash or Yoco)</p>
+            <p className="text-sm text-gray-500">
+              Process in-person product sales {yocoEnabled ? "(cash or Yoco)" : "(cash)"}
+            </p>
           </div>
           <button
             onClick={() => {
@@ -623,17 +627,19 @@ export default function WalkInSalePage() {
                       <Banknote className="h-4 w-4" />
                       Cash
                     </button>
-                    <button
-                      onClick={() => setPaymentMethod("yoco")}
-                      className={`flex items-center justify-center gap-2 rounded-lg border-2 py-2.5 text-sm font-medium transition-colors ${
-                        paymentMethod === "yoco"
-                          ? "border-pink-500 bg-pink-50 text-pink-700"
-                          : "border-gray-200 text-gray-600 hover:bg-gray-50"
-                      }`}
-                    >
-                      <CreditCard className="h-4 w-4" />
-                      Yoco Card
-                    </button>
+                    {yocoEnabled && (
+                      <button
+                        onClick={() => setPaymentMethod("yoco")}
+                        className={`flex items-center justify-center gap-2 rounded-lg border-2 py-2.5 text-sm font-medium transition-colors ${
+                          paymentMethod === "yoco"
+                            ? "border-pink-500 bg-pink-50 text-pink-700"
+                            : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                        }`}
+                      >
+                        <CreditCard className="h-4 w-4" />
+                        Yoco Card
+                      </button>
+                    )}
                   </div>
                 </div>
 

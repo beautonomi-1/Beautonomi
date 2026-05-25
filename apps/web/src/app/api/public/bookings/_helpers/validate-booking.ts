@@ -354,8 +354,8 @@ export async function validateBooking(
         ? rawNotice
         : typeof rawNotice === "string"
           ? parseInt(rawNotice, 10)
-          : 60;
-    const effectiveMinNotice = Number.isFinite(minNotice) && minNotice >= 0 ? minNotice : 60;
+          : 0;
+    const effectiveMinNotice = Number.isFinite(minNotice) && minNotice >= 0 ? minNotice : 0;
 
     const rawAdvance = (obSettings as { max_advance_days?: number | string | null } | null)
       ?.max_advance_days;

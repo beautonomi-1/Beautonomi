@@ -11,9 +11,17 @@ import { Platform } from "react-native";
 import type { NotificationClickEvent, NotificationWillDisplayEvent } from "react-native-onesignal";
 import { useAuth } from "@/providers/AuthProvider";
 import { useNativePermissionsOnboardingGate } from "@/providers/NativePermissionsOnboardingProvider";
-import { ONE_SIGNAL_APP_ID } from "@/config/public-env";
 import { api } from "@/lib/api-client";
-import { getOneSignalAppId } from "@/lib/third-party-config";
+import {
+  clearPendingPushNotification,
+  ensureOneSignalInitialized,
+  enqueueOrRoutePushNotification,
+  flushPendingPushNotification,
+  getOneSignalSubscriptionId,
+  logoutOneSignal,
+  resolveOneSignalAppId,
+  setPushNavigationReady,
+} from "@/lib/onesignal-client";
 import { trackNotificationOpened } from "@/lib/analytics";
 import { addBreadcrumb, captureError } from "@/lib/sentry";
 import { navigateFromNotification, type Notification } from "@/lib/notifications";
@@ -95,21 +103,26 @@ function usePushRegistration() {
     if (Platform.OS === "web" || !user) return;
 
     let cancelled = false;
-    (async () => {
-      try {
-        const fromApi = await getOneSignalAppId();
-        if (cancelled) return;
-        const id = fromApi || ONE_SIGNAL_APP_ID || "";
-        setAppId(id ? id : null);
-      } catch {
-        // Push optional — ignore config fetch failures
-      }
-    })();
+    void resolveOneSignalAppId().then((id) => {
+      if (!cancelled) setAppId(id);
+    });
     return () => {
       cancelled = true;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps -- run when user id available
   }, [user?.id]);
+
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    const ready = Boolean(user?.id) && gate.phase !== "loading";
+    setPushNavigationReady(ready);
+    if (ready) {
+      flushPendingPushNotification((payload) => handleNotificationRoute(payload));
+    }
+    return () => {
+      if (!ready) setPushNavigationReady(false);
+    };
+  }, [user?.id, gate.phase]);
 
   useEffect(() => {
     if (Platform.OS === "web" || !appId || !user) return;
@@ -145,18 +158,15 @@ function usePushRegistration() {
 
     const init = async () => {
       try {
-        const { OneSignal, LogLevel } = await import("react-native-onesignal");
+        const { OneSignal } = await import("react-native-onesignal");
         const retryTimeoutIds: ReturnType<typeof setTimeout>[] = [];
 
-        OneSignal.Debug.setLogLevel(LogLevel.None);
-        OneSignal.initialize(appId);
+        await ensureOneSignalInitialized(appId, user.id);
 
         const sessionKey = `${user.id}:${appId}`;
         const isFirstInitForSession = oneSignalInitKeyRef.current !== sessionKey;
         if (isFirstInitForSession) {
           oneSignalInitKeyRef.current = sessionKey;
-          // Must match Supabase users.id — server targets pushes via external_id / include_aliases.
-          OneSignal.login(user.id);
 
           OneSignal.Notifications.addEventListener("click", (event: NotificationClickEvent) => {
             const additionalData = (event.notification.additionalData ?? {}) as Record<string, unknown>;
@@ -172,18 +182,17 @@ function usePushRegistration() {
                 : typeof raw.launchURL === "string"
                   ? raw.launchURL
                   : undefined;
-            // Parity with provider app: OneSignal often puts the action URL on the root
-            // notification as launchURL, not inside additionalData — merge so admin_broadcast
-            // and other deep links see `url` / `deep_link` in one place.
             const merged: Record<string, unknown> = {
               ...additionalData,
               ...(launchUrl ? { url: launchUrl, deep_link: launchUrl } : {}),
             };
-            handleNotificationRoute(merged, {
-              launchUrl,
-              title: raw.title,
-              body: raw.body,
-            });
+            enqueueOrRoutePushNotification(merged, (payload) =>
+              handleNotificationRoute(payload, {
+                launchUrl,
+                title: raw.title,
+                body: raw.body,
+              }),
+            );
           });
 
           // Show immediately in the notification shade while the app is open (not queued by us).
@@ -210,20 +219,20 @@ function usePushRegistration() {
 
         // Preserve explicit onboarding skips. Only legacy restored installs get an automatic compatibility prompt.
         if (gate.phase === "complete") {
-          const earlySub = await OneSignal.User.pushSubscription.getIdAsync();
+          const earlySub = await getOneSignalSubscriptionId();
           if (gate.fromRestore && !earlySub) {
             await OneSignal.Notifications.requestPermission(false);
           }
         }
 
-        const subId = await OneSignal.User.pushSubscription.getIdAsync();
+        const subId = await getOneSignalSubscriptionId();
         if (subId) {
           await registerWithBackend(subId, "initial_subscription");
         } else {
           SUBSCRIPTION_RETRY_DELAYS_MS.forEach((delay) => {
             const timeoutId = setTimeout(async () => {
             try {
-              const id = await OneSignal.User.pushSubscription.getIdAsync();
+              const id = await getOneSignalSubscriptionId();
                 if (id) await registerWithBackend(id, `retry_${delay}`);
             } catch {
               // ignore
@@ -261,7 +270,7 @@ function usePushRegistration() {
       if (cancelled || registeredRef.current) return;
       try {
         const { OneSignal } = await import("react-native-onesignal");
-        const id = await OneSignal.User.pushSubscription.getIdAsync();
+        const id = await getOneSignalSubscriptionId();
         if (!id || cancelled || registeredRef.current) return;
         const platform = Platform.OS === "ios" ? "ios" : "android";
         const res = await api.post<{ registered?: boolean }>("/api/me/devices", {
@@ -305,10 +314,17 @@ function useOneSignalLogout() {
 
     // If user was logged in and now logged out
     if (prevUserRef.current && !user) {
-      (async () => {
+      clearPendingPushNotification();
+      setPushNavigationReady(false);
+      void (async () => {
         try {
-          const { OneSignal } = await import("react-native-onesignal");
-          OneSignal.logout();
+          const playerId = await logoutOneSignal();
+          if (playerId) {
+            await api.fetch("/api/me/devices", {
+              method: "DELETE",
+              body: { player_id: playerId },
+            });
+          }
         } catch {
           // OneSignal not available
         }

@@ -101,6 +101,12 @@ export interface OnboardingFormData {
   no_plans_available?: boolean;
   /** When true, provider accepts ad-hoc / custom booking requests (defaults true in API). */
   accepts_custom_requests?: boolean;
+  /**
+   * When true, customers can leave tips on bookings for this provider. Defaults
+   * to `true` server-side; the wizard preserves any explicit choice the
+   * provider made on the sales-settings step.
+   */
+  tips_enabled?: boolean;
 }
 
 export interface OnboardingStepMeta {

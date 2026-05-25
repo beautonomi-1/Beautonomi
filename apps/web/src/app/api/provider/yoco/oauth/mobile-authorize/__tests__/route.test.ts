@@ -69,7 +69,20 @@ describe("POST /api/provider/yoco/oauth/mobile-authorize", () => {
     vi.clearAllMocks();
     mockRequireRoleInApi.mockResolvedValue({ user: { id: "user-1" } });
     mockGetProviderIdForUser.mockResolvedValue("provider-1");
-    mockGetSupabaseServer.mockResolvedValue({});
+    mockGetSupabaseServer.mockResolvedValue({
+      from: (table: string) => {
+        if (table === "providers") {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                single: vi.fn(async () => ({ data: { tenant_id: "tenant-1" }, error: null })),
+              })),
+            })),
+          };
+        }
+        throw new Error(`Unexpected server table ${table}`);
+      },
+    });
     mockAdminFrom.mockImplementation(adminTable);
     mockResolveTenant.mockResolvedValue("tenant-1");
     mockFeatureEnabled.mockResolvedValue(true);
@@ -103,7 +116,7 @@ describe("POST /api/provider/yoco/oauth/mobile-authorize", () => {
   });
 
   it("blocks mobile OAuth when the rollout flag is off", async () => {
-    mockFeatureEnabled.mockResolvedValue(false);
+    mockFeatureEnabled.mockImplementation(async (key: string) => key === "payment_yoco");
     const { POST } = await import("../route");
     const res = await POST(
       new NextRequest("https://app/api/provider/yoco/oauth/mobile-authorize", {

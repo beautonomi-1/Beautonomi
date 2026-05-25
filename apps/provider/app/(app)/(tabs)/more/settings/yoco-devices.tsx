@@ -25,6 +25,7 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { useYocoDevices, useYocoIntegration, type YocoDevice } from "@/hooks/useYoco";
 import { useApi } from "@/hooks/useApi";
 import { twStyle } from "@/lib/twStyle";
+import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 
 interface Location {
   id: string;
@@ -49,6 +50,7 @@ function formatLastUsedShort(iso: string): string {
 }
 
 export default function YocoDevicesScreen() {
+  const yocoEnabled = useFeatureFlag("payment_yoco");
   const {
     devices,
     loading: devicesLoading,
@@ -79,6 +81,7 @@ export default function YocoDevicesScreen() {
   const [formName, setFormName] = useState("");
   const [formLocationId, setFormLocationId] = useState<string | null>(null);
   const [formActive, setFormActive] = useState(true);
+  const [formCredentialMode, setFormCredentialMode] = useState<"web_pos" | "virtual_checkout">("web_pos");
 
   // Yoco API key form
   const [apiKey, setApiKey] = useState("");
@@ -92,6 +95,7 @@ export default function YocoDevicesScreen() {
     setFormName("");
     setFormLocationId(null);
     setFormActive(true);
+    setFormCredentialMode("web_pos");
   }, []);
 
   // §Yoco-OAuth 2026-05: when the provider returns to the app from the Yoco
@@ -145,6 +149,7 @@ export default function YocoDevicesScreen() {
         name: formName.trim(),
         location_id: formLocationId,
         is_active: formActive,
+        credential_mode: formCredentialMode,
       });
       if (result) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -229,6 +234,19 @@ export default function YocoDevicesScreen() {
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Yoco Devices" showBack />
         <ErrorState message={devicesError} onRetry={reloadDevices} />
+      </ScreenContainer>
+    );
+  }
+
+  if (!yocoEnabled) {
+    return (
+      <ScreenContainer scrollable={false}>
+        <ScreenHeader title="Yoco Devices" showBack />
+        <EmptyState
+          icon="card-outline"
+          title="Yoco payments are disabled"
+          description="Yoco card terminals and hosted checkout are not available for this market right now."
+        />
       </ScreenContainer>
     );
   }
@@ -562,10 +580,39 @@ export default function YocoDevicesScreen() {
         </View>
 
         {!editDevice && (
-          <View style={twStyle("mb-4 rounded-xl bg-violet-50 px-3 py-2")}>
-            <Text style={twStyle("text-xs text-violet-900")}>
-              Beautonomi calls Yoco&apos;s Create Web POS device API with this name. Yoco assigns the device ID used for
-              card charges.
+          <View style={twStyle("mb-4")}>
+            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Device type</Text>
+            <View style={twStyle("flex-row")}>
+              {[
+                { value: "web_pos" as const, label: "Web POS terminal" },
+                { value: "virtual_checkout" as const, label: "Virtual checkout" },
+              ].map((option) => (
+                <TouchableOpacity
+                  key={option.value}
+                  onPress={() => setFormCredentialMode(option.value)}
+                  style={[
+                    twStyle(`rounded-full px-3 py-1.5 ${
+                      formCredentialMode === option.value
+                        ? "bg-indigo-600"
+                        : "border border-gray-200 bg-gray-50"
+                    }`),
+                    { marginRight: 8 },
+                  ]}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: formCredentialMode === option.value }}
+                >
+                  <Text
+                    style={twStyle(`text-xs font-medium ${
+                      formCredentialMode === option.value ? "text-white" : "text-gray-600"
+                    }`)}
+                  >
+                    {option.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={twStyle("mt-2 text-xs text-gray-500")}>
+              Virtual checkout creates hosted payment links and QR codes without a physical terminal.
             </Text>
           </View>
         )}

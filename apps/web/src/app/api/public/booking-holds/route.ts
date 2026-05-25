@@ -368,9 +368,9 @@ export async function POST(request: NextRequest) {
             ? rawNotice
             : typeof rawNotice === "string"
               ? parseInt(rawNotice, 10)
-              : 60;
+              : 0;
         const effectiveMinNotice =
-          Number.isFinite(minNoticeMinutes) && minNoticeMinutes >= 0 ? minNoticeMinutes : 60;
+          Number.isFinite(minNoticeMinutes) && minNoticeMinutes >= 0 ? minNoticeMinutes : 0;
         if (effectiveMinNotice > 0) {
           const cutoffMs = Date.now() + effectiveMinNotice * 60 * 1000;
           if (startDate.getTime() < cutoffMs) {

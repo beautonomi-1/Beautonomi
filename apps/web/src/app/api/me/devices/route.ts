@@ -6,6 +6,7 @@ import {
   errorResponse,
 } from "@/lib/supabase/api-helpers";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { registerDevice } from "@/lib/notifications/onesignal";
 import { z } from "zod";
 
@@ -40,8 +41,11 @@ export async function POST(request: NextRequest) {
 
     const { player_id, platform } = validationResult.data;
 
-    const supabase = await getSupabaseServer(request);
-    const result = await registerDevice(supabase, user.id, player_id, platform, "customer");
+    // Mobile apps authenticate with Bearer JWT; upsert on an existing
+    // onesignal_player_id can hit RLS USING when the row belongs to another
+    // user (same device, account switch). Verify identity here, write via admin.
+    const admin = getSupabaseAdmin();
+    const result = await registerDevice(admin, user.id, player_id, platform, "customer");
     if (!result.success) {
       return errorResponse(
         result.error || "Failed to register device",
@@ -103,8 +107,8 @@ export async function DELETE(request: NextRequest) {
       return errorResponse("player_id is required", "VALIDATION_ERROR", 400);
     }
 
-    const supabase = await getSupabaseServer(request);
-    const { error } = await supabase
+    const admin = getSupabaseAdmin();
+    const { error } = await admin
       .from("user_devices")
       .delete()
       .eq("user_id", user.id)

@@ -49,6 +49,18 @@ export async function POST(
       idempotency_key,
     } = body;
 
+    if (
+      payment_provider === "paystack_virtual_terminal" ||
+      payment_provider === "paystack_terminal" ||
+      payment_method === "paystack_terminal"
+    ) {
+      return errorResponse(
+        "Paystack Terminal additional-charge payments must be verified by Paystack and allocated from the terminal payment inbox.",
+        "PAYSTACK_TERMINAL_ALLOCATION_REQUIRED",
+        400,
+      );
+    }
+
     const validPaymentMethods = ['cash', 'card', 'bank_transfer', 'other'];
     const effectiveMethod = payment_method === 'mobile' ? 'other' : payment_method;
     if (!payment_method || !validPaymentMethods.includes(effectiveMethod)) {

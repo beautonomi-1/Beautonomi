@@ -82,7 +82,7 @@ type Step = "services" | "venue" | "staff" | "calendar" | "slots";
 const defaultSettings: OnlineBookingSettings = {
   staff_selection_mode: "client_chooses",
   require_auth_step: "checkout",
-  min_notice_minutes: 60,
+  min_notice_minutes: 0,
   max_advance_days: 90,
 };
 

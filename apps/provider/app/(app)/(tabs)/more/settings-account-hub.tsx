@@ -19,6 +19,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { twStyle } from "@/lib/twStyle";
 import { openNativeStoreReview } from "@/lib/open-store-review";
 import { getAnalyticsClient } from "@/lib/analytics-rn";
+import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 
 type SettingsItem = {
   title: string;
@@ -105,6 +106,7 @@ const SETTINGS_CATEGORIES: SettingsCategory[] = [
       { title: "Payout center", description: "Balance, statements and payouts", href: "/provider/payouts", mobileRoute: "/(app)/(tabs)/more/payouts" },
       { title: "Payout accounts", description: "Bank accounts for payouts", href: "/provider/settings/payout-accounts", mobileRoute: "/(app)/(tabs)/more/settings/payout-accounts" },
       { title: "Yoco integration", description: "Yoco payment devices", href: "/provider/settings/sales/yoco-integration", mobileRoute: "/(app)/(tabs)/more/settings/yoco-devices" },
+      { title: "Paystack Terminal", description: "QR and link payments through Beautonomi payouts", href: "/provider/settings/sales/paystack-terminal", mobileRoute: "/(app)/(tabs)/more/paystack-terminal" },
       { title: "Receipt sequencing", description: "Receipt numbering", href: "/provider/settings/sales/receipt-sequencing", mobileRoute: "/(app)/(tabs)/more/settings/receipt-sequencing" },
       { title: "Receipt template", description: "Receipt design", href: "/provider/settings/sales/receipt-template", mobileRoute: "/(app)/(tabs)/more/settings/receipt-template" },
       { title: "Taxes", description: "Tax rates", href: "/provider/settings/sales/taxes", mobileRoute: "/(app)/(tabs)/more/settings/tax-configuration" },
@@ -176,6 +178,7 @@ export default function SettingsAccountHubScreen() {
   const router = useRouter();
   const { signOut } = useAuth();
   const [expandedId, setExpandedId] = useState<string | null>("account");
+  const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
 
   const { data: providerData } = useApi<{ business_type?: string } | { data?: { business_type?: string } }>(
     "/api/me/provider"
@@ -336,9 +339,12 @@ export default function SettingsAccountHubScreen() {
 
         {SETTINGS_CATEGORIES.map((category) => {
           const isExpanded = expandedId === category.id;
-          const items = category.id === "appointment-activity" && isFreelancer
+          const rawItems = category.id === "appointment-activity" && isFreelancer
             ? [{ title: "Upgrade to Salon", description: "Unlock team management and more", href: "/provider/settings/upgrade-to-salon", isUpgrade: true as const }, ...category.items]
             : category.items;
+          const items = rawItems.filter(
+            (item) => paystackTerminalEnabled || !(item.mobileRoute ?? item.href).includes("paystack-terminal"),
+          );
           return (
             <View key={category.id} style={twStyle("mb-2")}>
               <TouchableOpacity

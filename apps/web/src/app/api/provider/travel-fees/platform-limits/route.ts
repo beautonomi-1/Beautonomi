@@ -32,6 +32,10 @@ export async function GET(request: NextRequest) {
     };
 
     return successResponse({
+      default_rate_per_km: travelFees.default_rate_per_km ?? 8.0,
+      default_minimum_fee: travelFees.default_minimum_fee ?? 20.0,
+      default_maximum_fee: travelFees.default_maximum_fee ?? null,
+      default_currency: travelFees.default_currency ?? "ZAR",
       provider_min_rate_per_km: travelFees.provider_min_rate_per_km ?? 0.0,
       provider_max_rate_per_km: travelFees.provider_max_rate_per_km ?? 50.0,
       provider_min_minimum_fee: travelFees.provider_min_minimum_fee ?? 0.0,

@@ -50,10 +50,8 @@ import { Colors } from "@/constants/colors";
 import { APP_URL } from "@/config/public-env";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
-import {
-  ensureForegroundLocationPermission,
-  launchImageLibraryWithPermission,
-} from "@/lib/native-permissions";
+import { ensureForegroundLocationPermission } from "@/lib/native-permissions";
+import { useImagePicker } from "@/hooks/useImagePicker";
 import { useOnboardingWizard } from "./OnboardingWizardContext";
 import { coerceOwnerPhoneToE164ForForm, isValidOwnerPhoneE164 } from "./onboarding-phone";
 import { DEFAULT_COUNTRY_NAME } from "./state";
@@ -1363,6 +1361,7 @@ async function uploadOnboardingImage(
 
 function Step8Photos() {
   const { formData, updateFormData } = useOnboardingWizard();
+  const { pickWithOptions, pickMultipleFromLibrary } = useImagePicker();
   const [uploading, setUploading] = useState<{ thumb: boolean; avatar: boolean; gallery: boolean }>(
     { thumb: false, avatar: false, gallery: false }
   );
@@ -1383,28 +1382,40 @@ function Step8Photos() {
       );
       return;
     }
-    const result = await launchImageLibraryWithPermission(
-      {
+
+    let pickedAssets: ImagePicker.ImagePickerAsset[] = [];
+    if (isGallery) {
+      const assets = await pickMultipleFromLibrary({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: !isGallery,
-        allowsMultipleSelection: isGallery,
-        selectionLimit: isGallery ? remainingSlots : 1,
+        selectionLimit: remainingSlots,
+      });
+      if (!assets?.length) return;
+      pickedAssets = assets;
+    } else {
+      const single = await pickWithOptions({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
         quality: 0.85,
-      },
-      {
-        title: "Permission",
-        message: "Allow photo access to upload.",
-      },
-    );
-    if (!result) return;
-    if (result.canceled || !result.assets?.length) return;
+      });
+      if (!single) return;
+      pickedAssets = [
+        {
+          uri: single.uri,
+          width: single.width,
+          height: single.height,
+          fileName: single.fileName,
+          mimeType: single.mimeType,
+          fileSize: single.fileSize,
+        },
+      ];
+    }
 
     // Pre-validate everything client-side so we never start the upload on
     // assets we know the server will reject (saves 5MB+ wasted bandwidth and
     // surfaces the failure immediately).
-    const validAssets: typeof result.assets = [];
+    const validAssets: ImagePicker.ImagePickerAsset[] = [];
     const rejected: string[] = [];
-    for (const a of result.assets) {
+    for (const a of pickedAssets) {
       const mime = inferMime({ mimeType: a.mimeType, fileName: a.fileName });
       if (!ONBOARDING_ALLOWED_MIME.has(mime)) {
         rejected.push(`${a.fileName || "Image"}: unsupported type`);

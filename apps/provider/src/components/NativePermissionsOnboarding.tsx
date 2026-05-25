@@ -14,14 +14,22 @@ import {
   ensureMediaLibraryPermission,
   showPermissionRecoveryAlert,
 } from "@/lib/native-permissions";
+import {
+  ensureOneSignalInitialized,
+  requestOneSignalPushPermission,
+  resolveOneSignalAppId,
+} from "@/lib/onesignal-client";
+import { ONE_SIGNAL_APP_ID } from "@/config/public-env";
 
 const STEPS = ["welcome", "notifications", "location", "photos"] as const;
 
-async function requestOneSignalPush(): Promise<void> {
+async function requestOneSignalPush(userId: string): Promise<void> {
   try {
-    const { OneSignal } = await import("react-native-onesignal");
-    const accepted = await OneSignal.Notifications.requestPermission(true);
-    if (accepted === false) {
+    const appId = (await resolveOneSignalAppId()) || ONE_SIGNAL_APP_ID || "";
+    if (!appId) return;
+    await ensureOneSignalInitialized(appId, userId);
+    const accepted = await requestOneSignalPushPermission(true);
+    if (!accepted) {
       await showPermissionRecoveryAlert({
         title: "Notifications are off",
         message: "Turn on notifications in Settings to receive bookings, messages, payout updates, and urgent alerts.",
@@ -34,7 +42,7 @@ async function requestOneSignalPush(): Promise<void> {
 
 export function NativePermissionsOnboarding() {
   const insets = useSafeAreaInsets();
-  const { session } = useAuth();
+  const { session, user } = useAuth();
   const { gate, markOnboardingFinished } = useNativePermissionsOnboardingGate();
   const [stepIndex, setStepIndex] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -62,12 +70,12 @@ export function NativePermissionsOnboarding() {
   const onEnableNotifications = useCallback(async () => {
     setBusy(true);
     try {
-      await requestOneSignalPush();
+      if (user?.id) await requestOneSignalPush(user.id);
     } finally {
       setBusy(false);
       goNext();
     }
-  }, [goNext]);
+  }, [goNext, user?.id]);
 
   const onEnableLocation = useCallback(async () => {
     setBusy(true);

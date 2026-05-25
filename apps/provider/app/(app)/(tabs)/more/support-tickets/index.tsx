@@ -81,7 +81,7 @@ function statusBgColor(status: string): string {
 export default function SupportTicketsListScreen() {
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
-  const { data, loading, error, refresh } = useApi<TicketsResponse>("/api/me/support-tickets");
+  const { data, loading, error, refresh } = useApi<TicketsResponse>("/api/provider/support-tickets");
   const skipNextListFocusRefresh = useRef(true);
 
   /** CSAT is submitted on the ticket detail screen; useApi caches this list — refetch when returning (skip first focus; useApi loads on mount). */

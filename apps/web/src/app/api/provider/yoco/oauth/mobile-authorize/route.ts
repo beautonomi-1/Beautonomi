@@ -12,6 +12,7 @@ import {
 import { type YocoEnvironment, getDefaultYocoEnvironment } from "@/lib/payments/yoco";
 import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
 import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
+import { requireYocoPlatformEnabledForProvider } from "@/lib/payments/yoco-feature-gate";
 
 const STATE_TTL_MS = 15 * 60 * 1000;
 
@@ -39,6 +40,8 @@ export async function POST(request: NextRequest) {
         { status: 404 },
       );
     }
+    const yocoGate = await requireYocoPlatformEnabledForProvider(supabase, providerId);
+    if (yocoGate) return yocoGate;
 
     const admin = getSupabaseAdmin();
     const { data: integration } = await (admin.from("provider_yoco_integrations") as any)

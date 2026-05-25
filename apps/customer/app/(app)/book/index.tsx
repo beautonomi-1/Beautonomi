@@ -202,7 +202,7 @@ function isSlotStartStillSelectable(startIso: string, day: Date, minNoticeMinute
   const dayStart = startOfLocalDay(day).getTime();
   const todayStart = startOfLocalDay(now).getTime();
   if (dayStart < todayStart) return false;
-  const safeNotice = Number.isFinite(minNoticeMinutes) && minNoticeMinutes >= 0 ? minNoticeMinutes : 60;
+  const safeNotice = Number.isFinite(minNoticeMinutes) && minNoticeMinutes >= 0 ? minNoticeMinutes : 0;
   const cutoff = now.getTime() + safeNotice * 60 * 1000;
   return slotTime.getTime() >= cutoff;
 }
@@ -695,7 +695,7 @@ export default function BookScreen() {
     max_advance_days: number;
   } | null>(null);
   const maxAdvanceDays = onlineBookingSettings?.max_advance_days ?? 90;
-  const minNoticeMinutes = onlineBookingSettings?.min_notice_minutes ?? 60;
+  const minNoticeMinutes = onlineBookingSettings?.min_notice_minutes ?? 0;
 
   const selectableSlots = useMemo(() => {
     if (!selectedDay) return [];
@@ -1198,14 +1198,14 @@ export default function BookScreen() {
       setOnlineBookingSettings(
         merged
           ? {
-              min_notice_minutes: merged.min_notice_minutes ?? 60,
+              min_notice_minutes: merged.min_notice_minutes ?? 0,
               max_advance_days: merged.max_advance_days ?? 90,
             }
-          : { min_notice_minutes: 60, max_advance_days: 90 },
+          : { min_notice_minutes: 0, max_advance_days: 90 },
       );
     } catch (e) {
       setError(getApiErrorMessage(e, t("booking.failedToLoad")));
-      setOnlineBookingSettings({ min_notice_minutes: 60, max_advance_days: 90 });
+      setOnlineBookingSettings({ min_notice_minutes: 0, max_advance_days: 90 });
     } finally {
       setLoading(false);
     }

@@ -136,7 +136,7 @@ const onboardingSchema = z.object({
   }).optional().default({}),
   website: z.string().url().optional().nullable(),
   tax_rate_percent: z.number().min(0).max(100).optional().nullable(),
-  tips_enabled: z.boolean().optional().default(false),
+  tips_enabled: z.boolean().optional().default(true),
   cancellation_window_hours: z.number().int().min(0).optional().default(24),
   requires_deposit: z.boolean().optional().default(false),
   deposit_percentage: z.number().min(0).max(100).optional().nullable(),
@@ -337,7 +337,7 @@ export async function POST(request: NextRequest) {
         social_media_links: social_media_links || {},
         website: website || null,
         tax_rate_percent: is_vat_registered === true ? 15 : (tax_rate_percent ?? 0),
-        tips_enabled: tips_enabled || false,
+        tips_enabled: tips_enabled !== false,
         cancellation_window_hours: cancellation_window_hours || 24,
         requires_deposit: requires_deposit || false,
         deposit_percentage: deposit_percentage || null,
@@ -965,6 +965,32 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const supportsHouseCalls = business_type === "mobile" || business_type === "both";
+
+    if (supportsHouseCalls) {
+      const platformTravelFees = (platformSettings as any)?.travel_fees || {};
+      const { error: travelFeeSettingsError } = await supabaseAdmin
+        .from("provider_travel_fee_settings")
+        .upsert(
+          {
+            provider_id: providerId,
+            enabled: true,
+            rate_per_km: platformTravelFees.default_rate_per_km ?? 8,
+            minimum_fee: platformTravelFees.default_minimum_fee ?? 20,
+            maximum_fee: platformTravelFees.default_maximum_fee ?? null,
+            currency: platformTravelFees.default_currency || tenantDefaultCurrency,
+            use_platform_default: true,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "provider_id" },
+        );
+
+      if (travelFeeSettingsError) {
+        console.error("Error creating travel fee defaults:", travelFeeSettingsError);
+        // Non-fatal: the settings API still falls back to platform defaults.
+      }
+    }
+
     // Auto-select service zones if provided
     if (selected_zone_ids && selected_zone_ids.length > 0) {
       const platformTravelFees = (platformSettings as any)?.travel_fees || {
@@ -1293,6 +1319,10 @@ export async function POST(request: NextRequest) {
     if (business_type === "mobile") {
       autoConfigDetails.push("marked as mobile-ready");
     }
+
+    if (supportsHouseCalls) {
+      autoConfigDetails.push("travel fees set to platform defaults");
+    }
     
     if (autoConfigDetails.length > 0) {
       message += ` We've automatically configured: ${autoConfigDetails.join(', ')}.`;
@@ -1319,6 +1349,7 @@ export async function POST(request: NextRequest) {
         zones: selected_zone_ids?.length || 0,
         services: servicesToCreate.length > 0 && services.length === 0 ? servicesToCreate.length : 0,
         mobile_ready: business_type === "mobile",
+        travel_fee_defaults: supportsHouseCalls,
       },
     });
   } catch (error) {

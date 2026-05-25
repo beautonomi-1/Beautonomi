@@ -30,6 +30,14 @@ export interface YocoFeatureAccess {
   advancedFeatures: boolean; // Webhooks, reporting, etc.
 }
 
+export interface PaystackVirtualTerminalFeatureAccess {
+  enabled: boolean;
+  maxTerminals?: number;
+  perLocationTerminals: boolean;
+  advancedReconciliation: boolean;
+  splitSettlement: boolean;
+}
+
 export interface StaffManagementFeatureAccess {
   enabled: boolean;
   maxStaffMembers?: number;
@@ -79,6 +87,7 @@ export interface ProviderFeatureAccess {
   marketing: MarketingFeatureAccess;
   chat: ChatFeatureAccess;
   yoco: YocoFeatureAccess;
+  paystackVirtualTerminal: PaystackVirtualTerminalFeatureAccess;
   staffManagement: StaffManagementFeatureAccess;
   locations: LocationFeatureAccess;
   bookingLimits: BookingLimitsFeatureAccess;
@@ -369,6 +378,40 @@ export async function checkYocoFeatureAccess(
 }
 
 /**
+ * Check if provider has access to Paystack Virtual Terminal features.
+ *
+ * The platform/tenant killswitch is enforced separately by
+ * `paystack-virtual-terminal-feature-gate.ts`; this function only reads the
+ * provider's subscription plan entitlements.
+ */
+export async function checkPaystackVirtualTerminalFeatureAccess(
+  providerId: string,
+  supabaseClient?: SupabaseClient
+): Promise<PaystackVirtualTerminalFeatureAccess> {
+  const supabase = supabaseClient ?? (await getSupabaseServer());
+  const tier = await getProviderSubscriptionTier(supabase, providerId);
+
+  if (!tier) {
+    return {
+      enabled: false,
+      perLocationTerminals: false,
+      advancedReconciliation: false,
+      splitSettlement: false,
+    };
+  }
+
+  const terminal = tier.features?.paystack_virtual_terminal || {};
+
+  return {
+    enabled: terminal.enabled === true,
+    maxTerminals: terminal.max_terminals,
+    perLocationTerminals: terminal.per_location_terminals === true,
+    advancedReconciliation: terminal.advanced_reconciliation === true,
+    splitSettlement: terminal.split_settlement === true,
+  };
+}
+
+/**
  * Check if provider can use a specific marketing channel
  */
 export async function canUseMarketingChannel(
@@ -393,6 +436,14 @@ export async function canSendChatMessages(providerId: string): Promise<boolean> 
  */
 export async function canUseYocoIntegration(providerId: string): Promise<boolean> {
   const access = await checkYocoFeatureAccess(providerId);
+  return access.enabled;
+}
+
+/**
+ * Check if provider can use Paystack Virtual Terminal.
+ */
+export async function canUsePaystackVirtualTerminal(providerId: string): Promise<boolean> {
+  const access = await checkPaystackVirtualTerminalFeatureAccess(providerId);
   return access.enabled;
 }
 
@@ -634,6 +685,12 @@ export async function getProviderFeatureAccess(
         enabled: false,
         advancedFeatures: false,
       },
+      paystackVirtualTerminal: {
+        enabled: false,
+        perLocationTerminals: false,
+        advancedReconciliation: false,
+        splitSettlement: false,
+      },
       staffManagement: {
         enabled: false,
       },
@@ -671,6 +728,7 @@ export async function getProviderFeatureAccess(
   const marketing = tier.features?.marketing_campaigns || {};
   const chat = tier.features?.chat_messages || {};
   const yoco = tier.features?.yoco_integration || {};
+  const paystackVirtualTerminal = tier.features?.paystack_virtual_terminal || {};
   const staff = tier.features?.staff_management || {};
   const locations = tier.features?.multi_location || {};
   const bookings = tier.features?.booking_limits || {};
@@ -699,6 +757,13 @@ export async function getProviderFeatureAccess(
       enabled: yoco.enabled === true,
       maxDevices: yoco.max_devices,
       advancedFeatures: yoco.advanced_features === true,
+    },
+    paystackVirtualTerminal: {
+      enabled: paystackVirtualTerminal.enabled === true,
+      maxTerminals: paystackVirtualTerminal.max_terminals,
+      perLocationTerminals: paystackVirtualTerminal.per_location_terminals === true,
+      advancedReconciliation: paystackVirtualTerminal.advanced_reconciliation === true,
+      splitSettlement: paystackVirtualTerminal.split_settlement === true,
     },
     staffManagement: {
       enabled: staff.enabled === true,

@@ -4,6 +4,10 @@
  */
 
 import { format as formatDate } from "date-fns";
+import { formatInTimeZone } from "date-fns-tz";
+import { buildZonedIsoForWallClock } from "@beautonomi/utils";
+import { normalizeProviderTimezone } from "@/lib/availability/time-utils";
+import { DEFAULT_BOOKING_DISPLAY_TIMEZONE } from "@/lib/bookings/display-invariants";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { nextUpcomingOccurrenceYmd } from "@/lib/recurring/next-due-date";
 import {
@@ -583,6 +587,37 @@ export class ProviderApiClient implements ProviderApi {
     throw new Error(`API call failed: ${error?.message || String(error)}`);
   }
 
+  private async resolveProviderTimezone(explicitTimezone?: string | null): Promise<string | null> {
+    const normalizedExplicit = normalizeProviderTimezone(explicitTimezone);
+    if (normalizedExplicit) return normalizedExplicit;
+    try {
+      return normalizeProviderTimezone((await this.getProvider())?.timezone) ?? DEFAULT_BOOKING_DISPLAY_TIMEZONE;
+    } catch {
+      return DEFAULT_BOOKING_DISPLAY_TIMEZONE;
+    }
+  }
+
+  private formatBookingWallClock(iso: string | null | undefined, timezone: string | null | undefined): {
+    scheduled_date: string;
+    scheduled_time: string;
+  } {
+    if (!iso) return { scheduled_date: "", scheduled_time: "" };
+    const instant = new Date(iso);
+    if (!Number.isFinite(instant.getTime())) return { scheduled_date: "", scheduled_time: "" };
+    const tz = normalizeProviderTimezone(timezone) ?? DEFAULT_BOOKING_DISPLAY_TIMEZONE;
+    try {
+      return {
+        scheduled_date: formatInTimeZone(instant, tz, "yyyy-MM-dd"),
+        scheduled_time: formatInTimeZone(instant, tz, "HH:mm"),
+      };
+    } catch {
+      return {
+        scheduled_date: formatInTimeZone(instant, DEFAULT_BOOKING_DISPLAY_TIMEZONE, "yyyy-MM-dd"),
+        scheduled_time: formatInTimeZone(instant, DEFAULT_BOOKING_DISPLAY_TIMEZONE, "HH:mm"),
+      };
+    }
+  }
+
   async getProvider(): Promise<Provider | null> {
     const retryDelaysMs = [400, 1200, 3000];
     let lastError: unknown;
@@ -860,9 +895,10 @@ export class ProviderApiClient implements ProviderApi {
 
   /** Build Appointment from booking + service (shared by listAppointments and getAppointment) */
   private buildAppointmentFromBooking(booking: any, svc: any, _idx: number): Appointment {
-    const scheduledAt = svc.scheduled_start_at ? new Date(svc.scheduled_start_at) : new Date(booking.scheduled_at);
-    const scheduledDate = formatDate(scheduledAt, "yyyy-MM-dd");
-    const scheduledTime = formatDate(scheduledAt, "HH:mm");
+    const wallClock = this.formatBookingWallClock(
+      svc.scheduled_start_at || booking.scheduled_at,
+      booking.provider_timezone || booking.provider?.timezone || booking.provider_time_zone,
+    );
     const customer = booking.customers || {};
     const location = booking.locations || {};
     const address = booking.address || {};
@@ -879,8 +915,8 @@ export class ProviderApiClient implements ProviderApi {
       service_name: svc.offering_name || svc.service_name || "Service",
       team_member_id: svc.staff_id || "",
       team_member_name: svc.staff_name || svc.staff?.name || "",
-      scheduled_date: scheduledDate,
-      scheduled_time: scheduledTime,
+      scheduled_date: wallClock.scheduled_date,
+      scheduled_time: wallClock.scheduled_time,
       duration_minutes: svc.duration_minutes || 60,
       price: booking.total_amount || booking.subtotal || svc.price || 0,
       status,
@@ -957,8 +993,10 @@ export class ProviderApiClient implements ProviderApi {
     try {
       const { fetcher } = await import("@/lib/http/fetcher");
       
-      // Combine date and time into scheduled_at
-      const scheduledAt = new Date(`${data.scheduled_date}T${data.scheduled_time}`);
+      const providerTimezone = await this.resolveProviderTimezone((data as any).provider_timezone);
+      const scheduledDate = data.scheduled_date || formatDate(new Date(), "yyyy-MM-dd");
+      const scheduledTime = (data.scheduled_time || "09:00").trim().slice(0, 5);
+      const scheduledAt = buildZonedIsoForWallClock(scheduledDate, scheduledTime, providerTimezone);
       
       // Prepare booking data
       // Support both new format (services/products arrays) and legacy format (single service_id)
@@ -973,7 +1011,7 @@ export class ProviderApiClient implements ProviderApi {
 
       bookingData = {
         customer_id: data.client_id || null, // Will be null for walk-ins
-        scheduled_at: scheduledAt.toISOString(),
+        scheduled_at: scheduledAt,
         location_type: data.location_type || "at_salon",
         location_id: data.location_id || null,
         // Package id (if appointment was created from a package)
@@ -1048,10 +1086,8 @@ export class ProviderApiClient implements ProviderApi {
       
       const booking = response.data;
 
-      // Transform booking to appointment format
-      const scheduledAtDate = new Date(booking.scheduled_at);
-      const scheduledDate = scheduledAtDate.toISOString().split("T")[0];
-      const scheduledTime = scheduledAtDate.toTimeString().slice(0, 5);
+      // Transform booking to appointment format in the provider's wall clock.
+      const wallClock = this.formatBookingWallClock(booking.scheduled_at, providerTimezone);
 
       const firstService = booking.services?.[0] || {};
       
@@ -1071,8 +1107,8 @@ export class ProviderApiClient implements ProviderApi {
         service_name: data.service_name || firstService.name || "",
         team_member_id: data.team_member_id || "",
         team_member_name: data.team_member_name || "",
-        scheduled_date: scheduledDate,
-        scheduled_time: scheduledTime,
+        scheduled_date: wallClock.scheduled_date,
+        scheduled_time: wallClock.scheduled_time,
         duration_minutes: data.duration_minutes || firstService.duration_minutes || 60,
         price: data.price || booking.total_amount || 0,
         status: DEFAULT_APPOINTMENT_STATUS,
@@ -1123,14 +1159,14 @@ export class ProviderApiClient implements ProviderApi {
       
       // Schedule change - always include if date or time is provided
       if (data.scheduled_date || data.scheduled_time) {
-        const date = data.scheduled_date || new Date().toISOString().split('T')[0];
+        const providerTimezone = await this.resolveProviderTimezone((data as any).provider_timezone);
+        const date = data.scheduled_date || formatDate(new Date(), "yyyy-MM-dd");
         const timeRaw = (data.scheduled_time || "09:00").trim();
         // Avoid "09:00:00:00" when time already includes seconds
         const m = timeRaw.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
         const hh = (m?.[1] ?? "9").padStart(2, "0");
         const mm = (m?.[2] ?? "00").padStart(2, "0");
-        const ss = (m?.[3] ?? "00").padStart(2, "0");
-        updateData.scheduled_at = `${date}T${hh}:${mm}:${ss}`;
+        updateData.scheduled_at = buildZonedIsoForWallClock(date, `${hh}:${mm}`, providerTimezone);
       }
       
       // Notes/special requests - always send if provided (even if empty string)
@@ -1311,22 +1347,13 @@ export class ProviderApiClient implements ProviderApi {
         throw new Error("No booking data returned from API");
       }
 
-      // Transform back to Appointment format
-      // Safely handle scheduled_at - it might be null or invalid
-      let scheduledDate = "";
-      let scheduledTime = "";
-      const scheduledAtRaw = (booking as { scheduled_at?: unknown }).scheduled_at;
-      if (scheduledAtRaw) {
-        try {
-          const scheduledAt = new Date(String(scheduledAtRaw));
-          if (!isNaN(scheduledAt.getTime())) {
-            scheduledDate = formatDate(scheduledAt, "yyyy-MM-dd");
-            scheduledTime = formatDate(scheduledAt, "HH:mm");
-          }
-        } catch {
-          console.warn("Invalid scheduled_at date:", scheduledAtRaw);
-        }
-      }
+      const wallClock = this.formatBookingWallClock(
+        String((booking as { scheduled_at?: unknown }).scheduled_at ?? ""),
+        (booking as any).provider_timezone ||
+          (booking as any).provider?.timezone ||
+          (booking as any).provider_time_zone ||
+          (data as any).provider_timezone,
+      );
 
       // Get first service or default (group rows have no booking_services join on PATCH response)
       const firstService = (booking as { services?: unknown[] }).services?.[0] || {};
@@ -1373,8 +1400,8 @@ export class ProviderApiClient implements ProviderApi {
           ? String((booking as { staff_id?: string }).staff_id ?? "")
           : String((firstService as { staff_id?: string }).staff_id || data.team_member_id || ""),
         team_member_name: String((firstService as { staff_name?: string }).staff_name || data.team_member_name || ""),
-        scheduled_date: scheduledDate,
-        scheduled_time: scheduledTime,
+        scheduled_date: wallClock.scheduled_date,
+        scheduled_time: wallClock.scheduled_time,
         duration_minutes: isGroupAppointment
           ? Number((booking as { duration_minutes?: unknown }).duration_minutes ?? 60)
           : Number((firstService as { duration_minutes?: number }).duration_minutes ?? 60),
@@ -4649,11 +4676,10 @@ export class ProviderApiClient implements ProviderApi {
     const appointment = await this.getAppointment(appointmentId);
     const newDate = data.new_date || appointment.scheduled_date;
     const nt = data.new_time || appointment.scheduled_time;
-    const newTime = nt.length === 5 ? `${nt}:00` : nt;
-    const ost = appointment.scheduled_time.length === 5 ? `${appointment.scheduled_time}:00` : appointment.scheduled_time;
-    const origStart = new Date(`${appointment.scheduled_date}T${ost}`);
-    const origEnd = new Date(origStart.getTime() + appointment.duration_minutes * 60_000);
-    const newStart = new Date(`${newDate}T${newTime}`);
+    const newTime = (nt.length === 5 ? nt : nt.slice(0, 5));
+    const providerTimezone = await this.resolveProviderTimezone((data as any).provider_timezone);
+    const newStartIso = buildZonedIsoForWallClock(newDate, newTime, providerTimezone);
+    const newStart = new Date(newStartIso);
     const newEnd = new Date(newStart.getTime() + appointment.duration_minutes * 60_000);
     const res = (await fetcher.post(`/api/provider/reschedule-requests`, {
       booking_id: appointmentId,
@@ -4788,8 +4814,10 @@ export class ProviderApiClient implements ProviderApi {
       service_name: booking.service_name || "",
       team_member_id: booking.staff_id || "",
       team_member_name: booking.staff_name || "",
-      scheduled_date: booking.scheduled_at?.split("T")[0] || "",
-      scheduled_time: booking.scheduled_at?.split("T")[1]?.substring(0, 5) || "",
+      ...this.formatBookingWallClock(
+        booking.scheduled_at,
+        booking.provider_timezone || booking.provider?.timezone || booking.provider_time_zone,
+      ),
       duration_minutes: booking.duration_minutes || 60,
       price: Number.isFinite(totalPriceNum) ? totalPriceNum : 0,
       status,

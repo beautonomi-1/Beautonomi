@@ -4,11 +4,13 @@ import { Ionicons } from "@expo/vector-icons";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { twStyle } from "@/lib/twStyle";
+import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 
 /** All items use native screens (no portal) */
 const FINANCE_ITEMS = [
   { icon: "wallet-outline" as const, label: "Earnings & summary", subtitle: "Period earnings, payout balance, transactions", route: "/(app)/(tabs)/more/finance", color: "#22c55e" },
   { icon: "phone-portrait-outline" as const, label: "Yoco payments", subtitle: "Connect Yoco and manage card devices", route: "/(app)/(tabs)/more/settings/yoco-devices", color: "#2563eb" },
+  { icon: "qr-code-outline" as const, label: "Paystack Terminal", subtitle: "QR and link payments through Beautonomi payouts", route: "/(app)/(tabs)/more/paystack-terminal", color: "#16a34a" },
   { icon: "ribbon-outline" as const, label: "Subscription & plan", subtitle: "Upgrade, renew, cancel or change billing", route: "/(app)/(tabs)/more/settings/subscription", color: "#8b5cf6" },
   { icon: "business-outline" as const, label: "Payout bank accounts", subtitle: "Add, verify and manage payout accounts", route: "/(app)/(tabs)/more/settings/payout-accounts", color: "#059669" },
   { icon: "card-outline" as const, label: "Payroll", subtitle: "Pay runs, approve, mark paid", route: "/(app)/(tabs)/more/payroll", color: "#0d9488" },
@@ -24,6 +26,10 @@ const FINANCE_ITEMS = [
 
 export default function FinanceBillingHubScreen() {
   const router = useRouter();
+  const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
+  const visibleItems = FINANCE_ITEMS.filter(
+    (item) => paystackTerminalEnabled || !item.route.includes("paystack-terminal"),
+  );
 
   return (
     // §UX-audit 2026-04: `ScreenContainer` already renders a scrollable
@@ -37,7 +43,7 @@ export default function FinanceBillingHubScreen() {
         subtitle="Earnings, payroll, invoices & more"
         onBack={() => router.back()}
       />
-      {FINANCE_ITEMS.map((item) => (
+      {visibleItems.map((item) => (
         <TouchableOpacity
           key={item.route}
           onPress={() => router.push(item.route as never)}
