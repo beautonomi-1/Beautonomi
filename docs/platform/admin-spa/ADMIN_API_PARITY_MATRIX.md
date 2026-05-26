@@ -10,7 +10,7 @@
 
 **Status key:** `Draft` | `In review` | `Reviewed` | `Deprecated (product approved)`
 
-**Seed:** Generated from `apps/web/src/components/admin/AdminShell.tsx` (`navGroups`), `apps/web/src/app/admin/**/page.tsx` (108 routes, 2026-04-11), and targeted greps for `"/api/admin` usage. For the **Vite admin SPA**, use [`ADMIN_SPA_AUDIT_INVENTORY.md`](./ADMIN_SPA_AUDIT_INVENTORY.md) (route inverse map + page→API summary). Reconcile with `docs/admin-api-route-taxonomy.csv` after `node docs/scripts/generate-admin-route-taxonomy.mjs` (latest regen: **297** API rows, 2026-04-11 — see §8 Implementation Delta).
+**Seed:** Generated from `apps/web/src/components/admin/AdminShell.tsx` (`navGroups`), `apps/web/src/app/admin/**/page.tsx` (108 routes, 2026-04-11), and targeted greps for `"/api/admin` usage. For the **Vite admin SPA**, use [`ADMIN_SPA_AUDIT_INVENTORY.md`](./ADMIN_SPA_AUDIT_INVENTORY.md) (route inverse map + page→API summary). Reconcile with `docs/admin-api-route-taxonomy.csv` after `node docs/scripts/generate-admin-route-taxonomy.mjs` (latest regen: **362** API rows, 2026-05-26 — see §8 Implementation Delta).
 
 ---
 
@@ -26,7 +26,7 @@
 
 | Theme | Finding | Target (see contract guidelines) |
 |-------|---------|-----------------------------------|
-| **Inventory** | **355** admin `route.ts` handlers; full list in `docs/admin-api-route-taxonomy.csv` | Regenerate CSV when adding routes; CI blocks orphan files. |
+| **Inventory** | **362** admin `route.ts` handlers; full list in `docs/admin-api-route-taxonomy.csv` | Regenerate CSV when adding routes; CI blocks orphan files. |
 | **Response envelope** | Mix of `{ data, error }` (`successResponse` / `errorResponse`) and **raw** `NextResponse.json` (`{ tickets }`, `{ error: string }`, `{ success: true }`, etc.) | New/changed handlers use standard envelope; migrate legacy when touching. |
 | **List shape** | Some lists nest `{ data: rows, meta }` **inside** envelope `data` (e.g. users); others return domain keys at root **without** envelope | Standard: `data: { items, meta }` + outer envelope. |
 | **Pagination** | `page`+`limit` (`getPaginationParams`) vs `offset`+`limit`; default limits vary (20–100) | Standard query params + `meta`; document per row until migrated. |
@@ -72,7 +72,7 @@ Complete these first; they block the SPA shell.
 
 ---
 
-## 4. Seeded page → primary API inventory (96 routes)
+## 4. Seeded page → primary API inventory
 
 Use this table as the **index** for deep-dive sub-tables (§5). **AuthZ column** is the *page’s* RBAC intent from `RoleGuard` / nav section where obvious; confirm every call in `route.ts` before marking `Reviewed`.
 
@@ -110,6 +110,7 @@ Use this table as the **index** for deep-dive sub-tables (§5). **AuthZ column**
 | 27 | `/admin/subscription-plans` | W2 | finance | N | Same family as plans | Direct route still exists |
 | 28 | `/admin/provider-subscriptions` | W2 | finance | Y | `GET /api/admin/provider-subscriptions` | |
 | 29 | `/admin/subscription-revenue` | W2 | finance | Y | `GET /api/admin/subscription-metrics` | |
+| 29a | `/admin/paystack-terminal` | W2 | finance | Y (superadmin only) | `GET /api/admin/paystack-terminal/terminals`, `GET /api/admin/paystack-terminal/payments`, `GET/POST /api/admin/paystack-terminal/setup-requests`, `POST /api/admin/paystack-terminal/terminals`, `POST /api/admin/paystack-terminal/payments/sync`, `PATCH /api/admin/paystack-terminal/payments/:id`, `PATCH /api/admin/paystack-terminal/terminals/:id/assets`, `POST /api/admin/paystack-terminal/terminals/:id/poster` | **SPA:** [`PaystackTerminalOperationsPage`](../../apps/admin-web/src/routes/finance/PaystackTerminalOperationsPage.tsx). Superadmin-only operations console for terminal registry sync/import, payment exception resolution, setup-request fulfillment, asset updates, and poster uploads. |
 | 30 | `/admin/reports/revenue` | W2 | finance | N | `GET /api/admin/reports/revenue`, export | |
 | 31 | `/admin/reports/bookings` | W2 | finance | N | `GET /api/admin/reports/bookings`, export | |
 | 32 | `/admin/reports/providers` | W2 | finance | N | `GET /api/admin/reports/providers`, export | |
@@ -266,6 +267,7 @@ Record the test **id** in the **Client method** column. **Envelope:** fixtures M
 | 2026-04-30 | **Taxonomy / CI:** Added `docs/admin-api-route-taxonomy.csv` rows for `GET /api/admin/reports/support-performance` and `GET /api/admin/reports/support-workload` (`ADMIN_SECTION_OVERVIEW`, `resolveAdminApiTenantId`). SPA: [`ReportDetailPage`](../../apps/admin-web/src/routes/reports/ReportDetailPage.tsx), [`ReportsHubPage`](../../apps/admin-web/src/routes/ReportsHubPage.tsx). §1.1 inventory **334**; §4 rows 35a–35b. |
 | 2026-05-02 | **Taxonomy / CI:** Added **6** rows for Slack workspace integration (`/api/admin/integrations/slack`, `.../channels`, `.../logs`, `.../test`, `.../oauth/install`, `.../oauth/callback`). SPA: [`SlackIntegrationPage`](../../apps/admin-web/src/routes/integrations/SlackIntegrationPage.tsx) at `/admin/integrations/slack`. §1.1 inventory **344**; §4 row **61a**. |
 | 2026-05-20 | **Taxonomy / CI:** Regenerated `docs/admin-api-route-taxonomy.csv` (**355** rows) for group bookings (`/api/admin/group-bookings`, `.../[id]`), payout finalize (`POST .../payouts/[id]/finalize-transfer`), provider Yoco admin (`/api/admin/providers/[id]/yoco`). SPA: [`GroupBookingsPage`](../../apps/admin-web/src/routes/bookings/GroupBookingsPage.tsx), [`PayoutsPage`](../../apps/admin-web/src/routes/finance/PayoutsPage.tsx), [`ProviderDetailPage`](../../apps/admin-web/src/routes/providers/ProviderDetailPage.tsx). §4 rows **13a**, **10**, **20** updated. |
+| 2026-05-26 | **Taxonomy / CI:** Regenerated `docs/admin-api-route-taxonomy.csv` (**362** rows) to add Paystack Terminal admin APIs: `/api/admin/paystack-terminal/payments`, `.../payments/[id]`, `.../payments/sync`, `.../setup-requests`, `.../terminals`, `.../terminals/[id]/assets`, `.../terminals/[id]/poster`. SPA: [`PaystackTerminalOperationsPage`](../../apps/admin-web/src/routes/finance/PaystackTerminalOperationsPage.tsx) at `/admin/paystack-terminal`. §4 row **29a**. |
 
 ---
 
@@ -300,3 +302,4 @@ Record the test **id** in the **Client method** column. **Envelope:** fixtures M
 | 2026-05-06 | Taxonomy: `+2` routes (`GET /api/admin/provider-ops/assignable-users`, `GET /api/admin/provider-ops/reports/lead-assignees`); §4 rows 100–105 provider-ops notes; §1.1 inventory **348**. |
 | 2026-05-17 | Taxonomy: `+1` route (`GET /api/admin/provider-ops/reports/previous-software`); §4 row 105 provider-ops reports note; §1.1 inventory **349**. |
 | 2026-05-19 | Taxonomy: `+1` route (`GET /api/admin/integrations/yoco`); §4 row **61b**; SPA [`YocoIntegrationPage`](../../apps/admin-web/src/routes/integrations/YocoIntegrationPage.tsx) at `/admin/integrations/yoco`. §1.1 inventory **350**. |
+| 2026-05-26 | Taxonomy: `+7` Paystack Terminal admin routes (`/api/admin/paystack-terminal/payments`, `.../[id]`, `.../sync`, `.../setup-requests`, `.../terminals`, `.../terminals/[id]/assets`, `.../terminals/[id]/poster`); §4 row **29a**; §1.1 inventory **362**. |
