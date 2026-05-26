@@ -24,7 +24,7 @@ import { useTranslation } from "@beautonomi/i18n";
 import { useApi } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
 import { api } from "@/lib/api-client";
-import { launchImageLibraryWithPermission } from "@/lib/native-permissions";
+import { useImagePicker } from "@/hooks/useImagePicker";
 import { validateRequired, validateEmail } from "@/lib/validation";
 import {
   COUNTRY_CODES,
@@ -128,6 +128,7 @@ export default function BusinessDetailsScreen() {
   const [showCountryPicker, setShowCountryPicker] = useState(false);
   const [countrySearch, setCountrySearch] = useState("");
   const [phoneFieldError, setPhoneFieldError] = useState<string | null>(null);
+  const { pickWithOptions } = useImagePicker();
 
   useEffect(() => {
     if (!data) return;
@@ -183,24 +184,15 @@ export default function BusinessDetailsScreen() {
 
   const pickLogo = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const result = await launchImageLibraryWithPermission(
-      {
-        mediaTypes: ["images"],
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
-        base64: true,
-      },
-      {
-        title: "Permission needed",
-        message: "Allow access to photos to choose a logo.",
-      },
-    );
-    if (!result) return;
-    if (result.canceled || !result.assets[0]) return;
-    const asset = result.assets[0];
-    const base64 = asset.base64;
-    const mime = asset.mimeType ?? "image/jpeg";
+    const picked = await pickWithOptions({
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+      base64: true,
+    });
+    if (!picked) return;
+    const base64 = picked.base64;
+    const mime = picked.mimeType ?? "image/jpeg";
     if (!base64) {
       Alert.alert("Upload failed", "Could not read image. Try another photo.");
       return;
@@ -221,7 +213,7 @@ export default function BusinessDetailsScreen() {
     } finally {
       setUploadingLogo(false);
     }
-  }, [refresh]);
+  }, [pickWithOptions, refresh]);
 
   const handleSave = useCallback(async () => {
     const nextErrors: Record<string, string> = {};

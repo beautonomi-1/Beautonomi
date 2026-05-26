@@ -98,7 +98,7 @@ function isSlotStartStillSelectable(startIso: string, day: Date, minNoticeMinute
   const dayStart = startOfLocalDay(day).getTime();
   const todayStart = startOfLocalDay(now).getTime();
   if (dayStart < todayStart) return false;
-  const safeNotice = Number.isFinite(minNoticeMinutes) && minNoticeMinutes >= 0 ? minNoticeMinutes : 60;
+  const safeNotice = Number.isFinite(minNoticeMinutes) && minNoticeMinutes >= 0 ? minNoticeMinutes : 0;
   const cutoff = now.getTime() + safeNotice * 60 * 1000;
   return slotTime.getTime() >= cutoff;
 }
@@ -140,7 +140,7 @@ export function StepSchedule({
   onNextAvailable,
   onNext,
   maxAdvanceDays,
-  minNoticeMinutes = 60,
+  minNoticeMinutes = 0,
   providerId = "",
   serviceId = null,
   providerTimeZone = null,

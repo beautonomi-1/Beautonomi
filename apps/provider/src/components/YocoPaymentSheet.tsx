@@ -8,6 +8,8 @@ import { useRouter } from "expo-router";
 import { pushInAppBrowser } from "@/lib/in-app-web";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import * as Clipboard from "expo-clipboard";
+import QRCode from "react-native-qrcode-svg";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import {
@@ -20,6 +22,7 @@ import {
 import { formatCurrency } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 
 // §Yoco-synergy 2026-05: compact relative-time label for the device's
 // `last_used` timestamp so the picker matches the settings list's recency
@@ -70,10 +73,12 @@ export function YocoPaymentSheet({
   onPaymentSuccess,
 }: YocoPaymentSheetProps) {
   const router = useRouter();
+  const yocoEnabled = useFeatureFlag("payment_yoco");
   const { integration: yocoIntegration, loading: integrationLoading, reload: reloadIntegration } = useYocoIntegration();
   const { devices, loading: devicesLoading, error: devicesError, reload: reloadDevices } = useYocoDevices();
   const { processPayment, processing } = useYocoPayment();
   const [selectedDevice, setSelectedDevice] = useState<YocoDevice | null>(null);
+  const [hostedCheckout, setHostedCheckout] = useState<YocoPaymentResult | null>(null);
 
   const isIntegrationConnected =
     yocoIntegration?.is_enabled === true && yocoIntegration?.api_key_set === true;
@@ -82,10 +87,10 @@ export function YocoPaymentSheet({
   const loading = integrationLoading || devicesLoading;
 
   useEffect(() => {
-    if (!visible) return;
+    if (!visible || !yocoEnabled) return;
     void reloadIntegration();
     void reloadDevices();
-  }, [visible, reloadIntegration, reloadDevices]);
+  }, [visible, yocoEnabled, reloadIntegration, reloadDevices]);
 
   // §Yoco-synergy 2026-05: a device with location_id === null is set to
   // "All Locations" in settings, i.e. a portable Web POS that travels with
@@ -126,6 +131,7 @@ export function YocoPaymentSheet({
     }
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setHostedCheckout(null);
 
     const result = await processPayment({
       amount_cents: amountCents,
@@ -144,28 +150,8 @@ export function YocoPaymentSheet({
       // notification or open the booking again to confirm.
       if (result.credential_mode === "virtual_checkout" && result.checkout_url) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        Alert.alert(
-          "Hand the phone to the customer",
-          "Yoco hosted-checkout will open. Once they pay, the booking updates automatically.",
-          [
-            {
-              text: "Open checkout",
-              onPress: () => {
-                pushInAppBrowser(router, result.checkout_url!, "Pay with Yoco");
-                onPaymentSuccess(result);
-                onClose();
-              },
-            },
-            {
-              text: "Later",
-              style: "cancel",
-              onPress: () => {
-                onPaymentSuccess(result);
-                onClose();
-              },
-            },
-          ],
-        );
+        setHostedCheckout(result);
+        onPaymentSuccess(result);
         return;
       }
       if (result.status === "successful") {
@@ -202,6 +188,10 @@ export function YocoPaymentSheet({
 
   const displayAmount = formatCurrency(amountCents / 100, currency);
 
+  if (!yocoEnabled) {
+    return null;
+  }
+
   return (
     <BottomSheet
       visible={visible}
@@ -215,6 +205,34 @@ export function YocoPaymentSheet({
         <Text style={twStyle("text-sm text-gray-500")}>Amount to charge</Text>
         <Text style={twStyle("mt-1 text-3xl font-bold text-gray-900")}>{displayAmount}</Text>
       </View>
+
+      {hostedCheckout?.checkout_url ? (
+        <View style={twStyle("mb-6 items-center rounded-2xl border border-blue-100 bg-blue-50 p-4")}>
+          <Text style={twStyle("mb-3 text-sm font-semibold text-blue-900")}>
+            Ask the customer to scan this Yoco checkout QR
+          </Text>
+          <View style={twStyle("rounded-xl bg-white p-3")}>
+            <QRCode value={hostedCheckout.qr_payload || hostedCheckout.checkout_url} size={180} />
+          </View>
+          <View style={twStyle("mt-3 flex-row")}>
+            <TouchableOpacity
+              onPress={() => pushInAppBrowser(router, hostedCheckout.checkout_url!, "Pay with Yoco")}
+              style={[twStyle("rounded-full bg-blue-600 px-4 py-2"), { marginRight: 8 }]}
+            >
+              <Text style={twStyle("text-xs font-semibold text-white")}>Open link</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={async () => {
+                await Clipboard.setStringAsync(hostedCheckout.checkout_url!);
+                Alert.alert("Copied", "Yoco checkout link copied.");
+              }}
+              style={twStyle("rounded-full border border-blue-200 bg-white px-4 py-2")}
+            >
+              <Text style={twStyle("text-xs font-semibold text-blue-700")}>Copy link</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : null}
 
       {/* Device selection */}
       <Text style={twStyle("mb-2 text-sm font-semibold text-gray-700")}>Select Device</Text>

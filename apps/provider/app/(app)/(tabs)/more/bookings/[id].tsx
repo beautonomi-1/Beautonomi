@@ -23,6 +23,7 @@ import * as Location from "expo-location";
 import { useApi, useApiMutation, useApiPost } from "@/hooks/useApi";
 import { useYocoIntegration } from "@/hooks/useYoco";
 import { YocoPaymentSheet } from "@/components/YocoPaymentSheet";
+import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
@@ -541,10 +542,11 @@ function AutoYocoCollectGate({ shouldRun, onTrigger }: { shouldRun: boolean; onT
 
 export default function BookingDetailScreen() {
   const router = useRouter();
-  const { id, focusPayment, collectYoco } = useLocalSearchParams<{
+  const { id, focusPayment, collectYoco, collectPaystack } = useLocalSearchParams<{
     id: string;
     focusPayment?: string;
     collectYoco?: string;
+    collectPaystack?: string;
   }>();
   const [etaMinutes, setEtaMinutes] = useState<number | null>(null);
   const { data, loading, error, refresh } = useApi<BookingDetail>(`/api/provider/bookings/${id}`);
@@ -795,6 +797,14 @@ export default function BookingDetailScreen() {
   // Pay with Yoco (pending POS sale → terminal with sale_id → finalize sale + mark booking paid)
   const [showYocoPayment, setShowYocoPayment] = useState(false);
   const { integration: yocoIntegration } = useYocoIntegration();
+  const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
+  const [preparingPaystackTerminal, setPreparingPaystackTerminal] = useState(false);
+  const [paystackTerminalPrompt, setPaystackTerminalPrompt] = useState<{
+    code: string;
+    link?: string | null;
+    reference?: string | null;
+    expectedAmount: number;
+  } | null>(null);
   const yocoBookingSaleIdRef = useRef<string | null>(null);
   const [yocoBookingSaleId, setYocoBookingSaleId] = useState<string | null>(null);
   /** Amount (booking currency) we will send to mark-paid after Yoco — matches terminal charge. */
@@ -1544,6 +1554,57 @@ export default function BookingDetailScreen() {
     setShowYocoPayment(true);
   }
 
+  async function openPaystackTerminalCollection() {
+    if (!id) return;
+    const chargeAmount = Number(yocoTerminalAmount.toFixed(2));
+    if (chargeAmount <= 0) {
+      Alert.alert("Nothing to collect", "There is no remaining balance on this booking.");
+      return;
+    }
+    if (!canMarkPaid) {
+      Alert.alert(
+        "Cannot prepare terminal payment",
+        canProcessPayments
+          ? "This booking is not in a state where an in-person payment can be collected."
+          : "You do not have permission to process payments.",
+      );
+      return;
+    }
+    try {
+      setPreparingPaystackTerminal(true);
+      const customerReference = b.booking_number ?? String(id).slice(0, 8);
+      const res = await api.post<{
+        terminal?: { terminal_code?: string; payment_link?: string | null; terminal_url?: string | null; qr_url?: string | null };
+        expectedAmount?: number | null;
+      }>("/api/provider/paystack/terminal-payments", {
+        entity_type: "booking",
+        entity_id: id,
+        expected_amount: chargeAmount,
+        customer_reference: customerReference,
+      });
+      if (res.error) {
+        Alert.alert("Paystack Terminal", res.error.message ?? "Failed to prepare terminal payment.");
+        return;
+      }
+      const terminal = res.data?.terminal;
+      const code = terminal?.terminal_code;
+      if (!code) {
+        Alert.alert("Paystack Terminal", "No active Paystack Terminal is available. Create one first.");
+        return;
+      }
+      setPaystackTerminalPrompt({
+        code,
+        link: terminal.payment_link ?? terminal.terminal_url ?? terminal.qr_url ?? null,
+        reference: customerReference,
+        expectedAmount: Number(res.data?.expectedAmount ?? chargeAmount),
+      });
+    } catch (err) {
+      Alert.alert("Paystack Terminal", err instanceof Error ? err.message : "Failed to prepare terminal payment.");
+    } finally {
+      setPreparingPaystackTerminal(false);
+    }
+  }
+
   async function finalizeYocoBookingPayment(result: { reference: string }) {
     if (!id || !result.reference) return;
     const saleId = yocoBookingSaleIdRef.current ?? yocoBookingSaleId;
@@ -2220,6 +2281,18 @@ export default function BookingDetailScreen() {
         onTrigger={() => {
           router.setParams({ collectYoco: undefined });
           void openYocoCheckout();
+        }}
+      />
+      <AutoYocoCollectGate
+        shouldRun={
+          providerParamTruthy(collectPaystack) &&
+          paystackTerminalEnabled &&
+          yocoTerminalAmount > 0 &&
+          canMarkPaid
+        }
+        onTrigger={() => {
+          router.setParams({ collectPaystack: undefined });
+          void openPaystackTerminalCollection();
         }}
       />
       <ScreenHeader
@@ -3259,6 +3332,19 @@ export default function BookingDetailScreen() {
                       )}
                     </TouchableOpacity>
                   )}
+                  {paystackTerminalEnabled && outstanding > 0 && (
+                    <TouchableOpacity
+                      onPress={() => void openPaystackTerminalCollection()}
+                      disabled={preparingPaystackTerminal}
+                      style={twStyle("rounded-xl border border-emerald-300 bg-emerald-50 py-2.5 px-4")}
+                    >
+                      {preparingPaystackTerminal ? (
+                        <ActivityIndicator size="small" color="#047857" />
+                      ) : (
+                        <Text style={twStyle("font-medium text-emerald-800")}>Pay with Paystack Terminal</Text>
+                      )}
+                    </TouchableOpacity>
+                  )}
                 </>
               )}
               {canSendPaymentLink && (
@@ -3868,6 +3954,57 @@ export default function BookingDetailScreen() {
         description={`Booking ${b.booking_number ?? id}`}
         onPaymentSuccess={(result) => void finalizeYocoBookingPayment(result)}
       />
+
+      <BottomSheet
+        visible={!!paystackTerminalPrompt}
+        onClose={() => setPaystackTerminalPrompt(null)}
+        title="Paystack Terminal"
+      >
+        {paystackTerminalPrompt ? (
+          <View>
+            <Text style={twStyle("text-sm text-gray-600 mb-3")}>
+              Ask the customer to pay using this Paystack link. Paystack will generate the transaction reference; after the webhook arrives, allocate the payment from your terminal inbox.
+            </Text>
+            <View style={twStyle("rounded-2xl border border-emerald-200 bg-emerald-50 p-4 mb-3")}>
+              <Text style={twStyle("text-xs uppercase tracking-wide text-emerald-700")}>Terminal code</Text>
+              <Text style={twStyle("mt-2 font-mono text-2xl font-semibold text-emerald-950")}>
+                {paystackTerminalPrompt.code}
+              </Text>
+              <Text style={twStyle("mt-2 text-sm text-emerald-800")}>
+                Expected: {b.currency ?? getTenantDefaultCurrency()} {paystackTerminalPrompt.expectedAmount.toFixed(2)}
+              </Text>
+              {paystackTerminalPrompt.reference ? (
+                <Text style={twStyle("mt-1 text-sm text-emerald-800")}>
+                  Booking/order note: {paystackTerminalPrompt.reference}
+                </Text>
+              ) : null}
+            </View>
+            <View style={twStyle("flex-row gap-2")}>
+              <TouchableOpacity
+                onPress={() => {
+                  void Share.share({
+                    title: "Paystack Terminal",
+                    message: paystackTerminalPrompt.link
+                      ? `Pay ${b.currency ?? getTenantDefaultCurrency()} ${paystackTerminalPrompt.expectedAmount.toFixed(2)} using this Paystack Terminal link: ${paystackTerminalPrompt.link}${paystackTerminalPrompt.reference ? ` Note: ${paystackTerminalPrompt.reference}` : ""}`
+                      : `Pay ${b.currency ?? getTenantDefaultCurrency()} ${paystackTerminalPrompt.expectedAmount.toFixed(2)} using Paystack Terminal code ${paystackTerminalPrompt.code}${paystackTerminalPrompt.reference ? `. Note: ${paystackTerminalPrompt.reference}` : ""}.`,
+                  });
+                }}
+                style={twStyle("flex-1 rounded-xl bg-emerald-600 px-3 py-3")}
+              >
+                <Text style={twStyle("text-center font-semibold text-white")}>Share</Text>
+              </TouchableOpacity>
+              {paystackTerminalPrompt.link ? (
+                <TouchableOpacity
+                  onPress={() => void Linking.openURL(paystackTerminalPrompt.link || "")}
+                  style={twStyle("flex-1 rounded-xl border border-emerald-600 px-3 py-3")}
+                >
+                  <Text style={twStyle("text-center font-semibold text-emerald-700")}>Open link</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          </View>
+        ) : null}
+      </BottomSheet>
 
       {/* Provider post-completion modal: once per booking when opening a completed booking */}
       <Modal

@@ -83,7 +83,7 @@ export default function NewSupportTicketScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSubmitting(true);
     try {
-      const res = await api.post("/api/me/support-tickets", {
+      const res = await api.post("/api/provider/support-tickets", {
         subject: subjectTrimmed,
         message: messageTrimmed,
         category,

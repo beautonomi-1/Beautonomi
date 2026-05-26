@@ -36,12 +36,14 @@ export async function GET(
       return notFoundResponse("Ticket not found");
     }
 
-    const { data: messages } = await supabase
+    const { data: messages, error: messagesError } = await supabase
       .from("support_ticket_messages")
       .select("id, message, is_internal, created_at, user_id, attachments, author:profiles(id, full_name, display_name)")
       .eq("ticket_id", id)
       .eq("is_internal", false)
       .order("created_at", { ascending: true });
+
+    if (messagesError) throw messagesError;
 
     // Resolve author names: current user = "You", staff/admin = display name or "Support Team"
     const enrichedMessages = (messages || []).map((m: any) => {

@@ -5,7 +5,7 @@ import {
   handleApiError,
   errorResponse,
 } from "@/lib/supabase/api-helpers";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { registerDevice } from "@/lib/notifications/onesignal";
 import { z } from "zod";
 
@@ -25,7 +25,6 @@ export async function POST(request: NextRequest) {
       ["provider_owner", "provider_staff", "provider_onboarding", "superadmin"],
       request
     );
-    const supabase = await getSupabaseServer(request);
 
     const body = await request.json();
     const validationResult = deviceSchema.safeParse(body);
@@ -41,7 +40,8 @@ export async function POST(request: NextRequest) {
 
     const { player_id, platform } = validationResult.data;
 
-    const result = await registerDevice(supabase, user.id, player_id, platform, "provider");
+    const admin = getSupabaseAdmin();
+    const result = await registerDevice(admin, user.id, player_id, platform, "provider");
     if (!result.success) {
       return errorResponse(
         result.error || "Failed to register device",
@@ -67,14 +67,14 @@ export async function DELETE(request: NextRequest) {
       ["provider_owner", "provider_staff", "provider_onboarding", "superadmin"],
       request
     );
-    const supabase = await getSupabaseServer(request);
     const body = await request.json().catch(() => ({}));
     const playerId = typeof body?.player_id === "string" ? body.player_id.trim() : "";
     if (!playerId) {
       return errorResponse("player_id is required", "VALIDATION_ERROR", 400);
     }
 
-    const { error } = await supabase
+    const admin = getSupabaseAdmin();
+    const { error } = await admin
       .from("user_devices")
       .delete()
       .eq("user_id", user.id)

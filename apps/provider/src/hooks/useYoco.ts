@@ -386,12 +386,14 @@ export function useYocoDevices() {
       name: string;
       location_id?: string | null;
       is_active?: boolean;
+      credential_mode?: "web_pos" | "virtual_checkout";
     }) => {
       try {
         const res = await api.post<YocoDevice>("/api/provider/yoco/devices", {
           name: input.name,
           location_id: input.location_id ?? undefined,
           is_active: input.is_active ?? true,
+          credential_mode: input.credential_mode,
         });
         if (res.error) {
           Alert.alert("Error", res.error.message || "Failed to add device");

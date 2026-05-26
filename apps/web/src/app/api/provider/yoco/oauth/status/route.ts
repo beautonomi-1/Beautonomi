@@ -3,6 +3,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser } from "@/lib/supabase/api-helpers";
 import { resolveProviderCredentialMode } from "@/lib/payments/yoco-oauth";
+import { requireYocoPlatformEnabledForProvider } from "@/lib/payments/yoco-feature-gate";
 
 /**
  * GET /api/provider/yoco/oauth/status
@@ -26,6 +27,8 @@ export async function GET(request: NextRequest) {
         { status: 404 },
       );
     }
+    const yocoGate = await requireYocoPlatformEnabledForProvider(supabase, providerId);
+    if (yocoGate) return yocoGate;
 
     const mode = await resolveProviderCredentialMode(providerId);
 

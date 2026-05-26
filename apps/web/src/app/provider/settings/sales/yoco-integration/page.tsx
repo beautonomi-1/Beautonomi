@@ -28,10 +28,13 @@ import { toast } from "sonner";
 import Link from "next/link";
 import { SubscriptionGate } from "@/components/provider/SubscriptionGate";
 import { invalidateSetupStatusCache } from "@/lib/provider-portal/setup-status-utils";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 
 export default function YocoIntegrationPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { bundle, isLoading: isConfigLoading } = useConfigBundle();
+  const yocoEnabled = bundle?.flags?.payment_yoco?.enabled === true;
   const [integration, setIntegration] = useState<YocoIntegration | null>(null);
   const [devices, setDevices] = useState<YocoDevice[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -48,6 +51,10 @@ export default function YocoIntegrationPage() {
   });
 
   const loadData = useCallback(async () => {
+    if (!yocoEnabled) {
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     try {
       const [integrationData, devicesData] = await Promise.all([
@@ -96,7 +103,7 @@ export default function YocoIntegrationPage() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [yocoEnabled]);
 
   useEffect(() => {
     void loadData();
@@ -258,7 +265,7 @@ export default function YocoIntegrationPage() {
     { label: "Yoco Integration" },
   ];
 
-  if (isLoading) {
+  if (isConfigLoading || isLoading) {
     return (
       <SettingsDetailLayout
         title="Yoco Integration"
@@ -269,6 +276,27 @@ export default function YocoIntegrationPage() {
           <div className="h-8 bg-gray-200 rounded animate-pulse" />
           <div className="h-64 bg-gray-200 rounded animate-pulse" />
         </div>
+      </SettingsDetailLayout>
+    );
+  }
+
+  if (!yocoEnabled) {
+    return (
+      <SettingsDetailLayout
+        title="Yoco Integration"
+        subtitle="Yoco is currently unavailable"
+        breadcrumbs={breadcrumbs}
+      >
+        <SectionCard>
+          <div className="py-8 text-center">
+            <CreditCard className="mx-auto mb-3 h-8 w-8 text-gray-400" />
+            <h2 className="text-base font-semibold text-gray-900">Yoco payments are disabled</h2>
+            <p className="mx-auto mt-2 max-w-md text-sm text-gray-600">
+              Yoco card terminals and hosted checkout are not available for this market right now.
+              Contact support if you expected to use Yoco.
+            </p>
+          </div>
+        </SectionCard>
       </SettingsDetailLayout>
     );
   }

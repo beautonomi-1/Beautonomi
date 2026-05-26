@@ -22,6 +22,7 @@ import { CreditCard, Loader2, CheckCircle2, XCircle, ExternalLink, QrCode } from
 import { toast } from "sonner";
 import { Money } from "./Money";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import QRCode from "qrcode";
 
 // §Yoco-synergy 2026-05: compact relative-time string ("3m ago", "2h ago",
 // "Yesterday"-style "1d ago"). Keeps the dialog from depending on date-fns
@@ -71,23 +72,26 @@ export function YocoPaymentDialog({
 }: YocoPaymentDialogProps) {
   const { bundle } = useConfigBundle();
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
+  const yocoEnabled = bundle?.flags?.payment_yoco?.enabled === true;
   const [devices, setDevices] = useState<YocoDevice[]>([]);
   const [allDevices, setAllDevices] = useState<YocoDevice[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>("");
   const [customAmount, setCustomAmount] = useState<string>(amount.toString());
   const [isProcessing, setIsProcessing] = useState(false);
   const [paymentResult, setPaymentResult] = useState<YocoPayment | null>(null);
+  const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    if (open) {
+    if (open && yocoEnabled) {
       setSelectedDeviceId("");
       loadDevices();
       setCustomAmount(amount.toString());
       setPaymentResult(null);
     }
-  }, [open, amount]);
+  }, [open, amount, yocoEnabled]);
 
   const loadDevices = async () => {
+    if (!yocoEnabled) return;
     try {
       const data = await providerApi.listYocoDevices();
       setAllDevices(data);
@@ -207,6 +211,24 @@ export function YocoPaymentDialog({
   const selectedDevice = devices.find((d) => d.id === selectedDeviceId);
   const amountInCents = Math.round(parseFloat(customAmount) * 100) || 0;
 
+  useEffect(() => {
+    const payload = paymentResult?.qr_payload || paymentResult?.checkout_url;
+    if (!payload) {
+      setQrCodeUrl(null);
+      return;
+    }
+    QRCode.toDataURL(payload, { width: 220, margin: 2 })
+      .then(setQrCodeUrl)
+      .catch((error) => {
+        console.error("Failed to render Yoco checkout QR:", error);
+        setQrCodeUrl(null);
+      });
+  }, [paymentResult?.qr_payload, paymentResult?.checkout_url]);
+
+  if (!yocoEnabled) {
+    return null;
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
@@ -231,6 +253,11 @@ export function YocoPaymentDialog({
                     <div>
                       Open this hosted checkout link or share it with the customer. The booking or sale updates automatically after Yoco sends the payment webhook.
                     </div>
+                    {qrCodeUrl && (
+                      <div className="flex justify-center rounded-lg bg-white p-3">
+                        <img src={qrCodeUrl} alt="Yoco checkout QR code" className="h-44 w-44" />
+                      </div>
+                    )}
                     <a
                       href={paymentResult.checkout_url}
                       target="_blank"
@@ -243,6 +270,17 @@ export function YocoPaymentDialog({
                     <div className="break-all rounded-md bg-white/70 p-2 text-xs text-blue-800">
                       {paymentResult.checkout_url}
                     </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        void navigator.clipboard.writeText(paymentResult.checkout_url || "");
+                        toast.success("Checkout link copied");
+                      }}
+                    >
+                      Copy checkout link
+                    </Button>
                   </div>
                 </AlertDescription>
               </Alert>

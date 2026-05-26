@@ -175,6 +175,9 @@ export function formatPaymentMethodLabel(
   if (m === "gift_card" || p === "gift_card") return "Gift card";
   if (m === "cash" || p === "cash") return "Cash";
   if (m === "bank_transfer") return "EFT";
+  if (m === "paystack_terminal" || p === "paystack_terminal" || p === "paystack_virtual_terminal") {
+    return "Paystack Terminal";
+  }
   if (m === "card") {
     if (p === "yoco") return "Card (Yoco)";
     if (p === "paystack") return "Card";

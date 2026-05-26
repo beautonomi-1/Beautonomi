@@ -10,6 +10,11 @@ vi.mock("@/lib/supabase/admin", () => ({
 const exchangeCodeForTokenMock = vi.fn();
 const upsertProviderTokensMock = vi.fn();
 const resolveOauthAppMock = vi.fn();
+const isFeatureEnabledServerMock = vi.fn();
+
+vi.mock("@/lib/server/feature-flags", () => ({
+  isFeatureEnabledServer: (...args: unknown[]) => isFeatureEnabledServerMock(...args),
+}));
 
 vi.mock("@/lib/payments/yoco-oauth", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/payments/yoco-oauth")>();
@@ -63,6 +68,7 @@ beforeEach(() => {
     redirectUri: "https://app/cb",
     defaultScopes: "openid",
   });
+  isFeatureEnabledServerMock.mockResolvedValue(true);
 });
 
 describe("GET /api/provider/yoco/oauth/callback", () => {

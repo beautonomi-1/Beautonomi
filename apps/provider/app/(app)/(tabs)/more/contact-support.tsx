@@ -30,7 +30,7 @@ export default function ContactSupportScreen() {
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const res = await createTicket("/api/me/support-tickets", {
+    const res = await createTicket("/api/provider/support-tickets", {
       subject: sub,
       message: msg,
       priority,

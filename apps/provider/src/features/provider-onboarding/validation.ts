@@ -157,7 +157,7 @@ export function buildSubmitPayload(formData: Partial<OnboardingFormData>): Recor
     social_media_links: formData.social_media_links || {},
     website: formData.website ?? null,
     tax_rate_percent: null,
-    tips_enabled: false,
+    tips_enabled: formData.tips_enabled ?? true,
     cancellation_window_hours: 24,
     requires_deposit: false,
     deposit_percentage: null,

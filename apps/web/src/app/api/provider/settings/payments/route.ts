@@ -18,6 +18,8 @@ import {
   providerTenantMismatchResponse,
 } from "@/lib/tenant/provider-matches-host";
 import type { UserRole } from "@/types/beautonomi";
+import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
+import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
 
 const PROVIDER_SETTINGS_ROLES = [
   "provider_owner",
@@ -67,6 +69,11 @@ export async function GET(request: NextRequest) {
 
     const effectiveTenantId =
       (provider as { tenant_id?: string | null }).tenant_id ?? hostTenantId;
+    const yocoEnabled = await isFeatureEnabledServer(FEATURE_FLAG_KEYS.PAYMENT_YOCO, effectiveTenantId);
+    const paystackTerminalEnabled = await isFeatureEnabledServer(
+      FEATURE_FLAG_KEYS.PAYMENT_PAYSTACK_VIRTUAL_TERMINAL,
+      effectiveTenantId,
+    );
     const tenantRegion = await getTenantRegionConfig(effectiveTenantId);
     const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
@@ -76,6 +83,12 @@ export async function GET(request: NextRequest) {
       .select("is_enabled, public_key, connected_date")
       .eq("provider_id", providerId)
       .maybeSingle();
+
+    const { data: paystackTerminals } = await (supabase
+      .from("provider_paystack_virtual_terminals") as any)
+      .select("id, terminal_code, name, active, status, last_payment_at")
+      .eq("provider_id", providerId)
+      .is("deleted_at", null);
 
     // Get platform settings for default tax rate
     const { data: platformSettings } = await supabase
@@ -97,7 +110,7 @@ export async function GET(request: NextRequest) {
       noShowFeeEnabled: provider.no_show_fee_enabled ?? false,
       noShowFeeAmount: provider.no_show_fee_amount ?? 0,
       acceptCash: provider.accept_cash ?? true,
-      acceptCard: provider.accept_card ?? true,
+      acceptCard: yocoEnabled ? (provider.accept_card ?? true) : false,
       acceptOnline: provider.accept_online ?? false,
       taxInclusive: provider.tax_inclusive ?? true,
       tipsEnabled: provider.tips_enabled ?? true,
@@ -105,9 +118,18 @@ export async function GET(request: NextRequest) {
       receiptAutoSend: provider.receipt_auto_send ?? true,
       tipsDistribution: provider.tips_distribution ?? "staff",
       yoco: {
-        isEnabled: yocoIntegration?.is_enabled ?? false,
-        publicKey: yocoIntegration?.public_key || null,
-        connectedDate: yocoIntegration?.connected_date || null,
+        isEnabled: yocoEnabled ? (yocoIntegration?.is_enabled ?? false) : false,
+        publicKey: yocoEnabled ? (yocoIntegration?.public_key || null) : null,
+        connectedDate: yocoEnabled ? (yocoIntegration?.connected_date || null) : null,
+        platformEnabled: yocoEnabled,
+      },
+      paystackTerminal: {
+        isEnabled: paystackTerminalEnabled && (paystackTerminals?.some((terminal: any) => terminal.active) ?? false),
+        platformEnabled: paystackTerminalEnabled,
+        terminals: paystackTerminalEnabled ? (paystackTerminals ?? []) : [],
+        activeTerminalCount: paystackTerminalEnabled
+          ? (paystackTerminals ?? []).filter((terminal: any) => terminal.active).length
+          : 0,
       },
       defaultTaxRate,
     };
@@ -136,6 +158,8 @@ export async function PATCH(request: NextRequest) {
 
     const mismatch = await providerTenantMismatchResponse(supabase, tenantId, providerId);
     if (mismatch) return mismatch;
+
+    const yocoEnabled = await isFeatureEnabledServer(FEATURE_FLAG_KEYS.PAYMENT_YOCO, tenantId);
 
     const updates: Record<string, any> = {};
 
@@ -167,7 +191,7 @@ export async function PATCH(request: NextRequest) {
       updates.accept_cash = body.acceptCash;
     }
     if (body.acceptCard !== undefined) {
-      updates.accept_card = body.acceptCard;
+      updates.accept_card = yocoEnabled ? body.acceptCard : false;
     }
     if (body.acceptOnline !== undefined) {
       updates.accept_online = body.acceptOnline;

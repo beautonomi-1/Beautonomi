@@ -6,12 +6,22 @@
 import { useEffect } from "react";
 import { DeviceEventEmitter, View, Text, TouchableOpacity, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { usePathname } from "expo-router";
 import { useProvider } from "@/providers/ProviderContext";
 import { twStyle } from "@/lib/twStyle";
 import { Colors } from "@/constants/colors";
 
+const ONBOARDING_ENTRY_ROLES = new Set(["customer", "provider_onboarding"]);
+
 export function ProfileLoadErrorBanner() {
-  const { profileLoadError, loading, refresh } = useProvider();
+  const pathname = usePathname();
+  const { profileLoadError, loading, refresh, role } = useProvider();
+  const isOnboardingRoute = pathname?.includes("/onboarding") ?? false;
+  const isExpectedSetupPermissionError =
+    isOnboardingRoute &&
+    !!profileLoadError &&
+    /insufficient permissions|forbidden|requires one of/i.test(profileLoadError) &&
+    (role === null || ONBOARDING_ENTRY_ROLES.has(role));
 
   // Auto-retry when app comes back to foreground or network recovers so the
   // user doesn't have to tap "Retry" after switching apps or reconnecting.
@@ -28,7 +38,7 @@ export function ProfileLoadErrorBanner() {
     };
   }, [profileLoadError, loading, refresh]);
 
-  if (!profileLoadError) return null;
+  if (!profileLoadError || isExpectedSetupPermissionError) return null;
 
   return (
     <View style={twStyle("border-l-4 border-red-500 bg-red-50 px-4 py-3")}>

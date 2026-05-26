@@ -456,6 +456,7 @@ async function handleGetProviderBookings(request: NextRequest) {
           : null,
         house_call_instructions: booking.house_call_instructions || null,
         scheduled_at: booking.scheduled_at,
+        provider_timezone: tz,
         completed_at: booking.completed_at || null,
         cancelled_at: booking.cancelled_at || null,
         cancellation_reason: booking.cancellation_reason || null,
@@ -799,6 +800,7 @@ async function handleGetProviderBookings(request: NextRequest) {
             }
           : null,
         scheduled_at: group.scheduled_at,
+        provider_timezone: tz,
         completed_at: null,
         cancelled_at: null,
         cancellation_reason: null,
@@ -916,6 +918,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
     const tenantId = await resolveTenantIdWithZaFallback(request);
     const tenantRegion = await getTenantRegionConfig(tenantId);
     const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+    const { timezone: providerTimezone } = await getProviderReportContext(supabaseAdmin, providerId);
 
     invalidateProviderBookingsReadCache(providerId);
 
@@ -2215,6 +2218,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
           }
         : null,
       scheduled_at: booking.scheduled_at,
+      provider_timezone: providerTimezone,
       completed_at: booking.completed_at || null,
       cancelled_at: booking.cancelled_at || null,
       cancellation_reason: booking.cancellation_reason || null,

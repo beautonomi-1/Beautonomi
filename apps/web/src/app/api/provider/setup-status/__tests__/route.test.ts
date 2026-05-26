@@ -6,6 +6,7 @@ const mockResolveTenant = vi.fn();
 const mockGetPlatformSalesDefaults = vi.fn();
 const mockLocationHasOperatingHours = vi.fn();
 const mockCreateClient = vi.fn();
+const mockIsFeatureEnabledServer = vi.fn();
 
 vi.mock("@/lib/supabase/api-helpers", () => ({
   requireAuthInApi: (...args: unknown[]) => mockRequireAuthInApi(...args),
@@ -34,6 +35,10 @@ vi.mock("@supabase/supabase-js", () => ({
   createClient: (...args: unknown[]) => mockCreateClient(...args),
 }));
 
+vi.mock("@/lib/server/feature-flags", () => ({
+  isFeatureEnabledServer: (...args: unknown[]) => mockIsFeatureEnabledServer(...args),
+}));
+
 type Fixture = {
   provider: Record<string, unknown> | null;
   accountUser: Record<string, unknown> | null;
@@ -42,6 +47,10 @@ type Fixture = {
   servicesCount: number;
   yocoCount: number;
   payoutCount: number;
+  travelFeeCount: number;
+  zoneSelectionCount: number;
+  paystackTerminalCount: number;
+  paystackTerminalReadyCount: number;
   userProfile: Record<string, unknown> | null;
 };
 
@@ -50,6 +59,10 @@ function makeBuilder(result: { data?: unknown; count?: number | null; error?: un
   const chain = (..._args: unknown[]) => b;
   b.select = chain;
   b.eq = chain;
+  b.neq = chain;
+  b.is = chain;
+  b.not = chain;
+  b.in = chain;
   b.order = chain;
   b.limit = chain;
   b.single = vi.fn().mockResolvedValue({ data: result.data ?? null, error: result.error ?? null });
@@ -66,6 +79,7 @@ function makeBuilder(result: { data?: unknown; count?: number | null; error?: un
 
 function makeSupabase(fixture: Fixture) {
   let providerCallIndex = 0;
+  let paystackTerminalCallIndex = 0;
   return {
     from(table: string) {
       switch (table) {
@@ -92,8 +106,21 @@ function makeSupabase(fixture: Fixture) {
           return makeBuilder({ count: fixture.servicesCount, data: [] });
         case "provider_yoco_integrations":
           return makeBuilder({ count: fixture.yocoCount, data: [] });
+        case "provider_travel_fee_settings":
+          return makeBuilder({ count: fixture.travelFeeCount, data: [] });
+        case "provider_zone_selections":
+          return makeBuilder({ count: fixture.zoneSelectionCount, data: [] });
         case "provider_payout_accounts":
           return makeBuilder({ count: fixture.payoutCount, data: [] });
+        case "provider_paystack_virtual_terminals": {
+          // Route queries this table twice: once for active count, once for asset_status=ready count.
+          // Use a per-table call index to return the appropriate fixture value.
+          paystackTerminalCallIndex += 1;
+          if (paystackTerminalCallIndex === 1) {
+            return makeBuilder({ count: fixture.paystackTerminalCount, data: [] });
+          }
+          return makeBuilder({ count: fixture.paystackTerminalReadyCount, data: [] });
+        }
         case "user_profiles":
           return makeBuilder({ data: fixture.userProfile });
         default:
@@ -135,6 +162,10 @@ function emptyFixture(overrides: Partial<Fixture> = {}): Fixture {
     servicesCount: 1,
     yocoCount: 0,
     payoutCount: 1,
+    travelFeeCount: 0,
+    zoneSelectionCount: 0,
+    paystackTerminalCount: 0,
+    paystackTerminalReadyCount: 0,
     userProfile: {
       about: "I am a freelancer offering bespoke services",
       languages: ["en"],
@@ -152,6 +183,7 @@ async function callRoute(fixture: Fixture) {
   mockLocationHasOperatingHours.mockImplementation((hours: unknown) =>
     Array.isArray(hours) ? hours.length > 0 : !!hours,
   );
+  mockIsFeatureEnabledServer.mockResolvedValue(true);
   const { GET } = await import("../route");
   const req = new NextRequest("https://app.example.com/api/provider/setup-status");
   const res = await GET(req);

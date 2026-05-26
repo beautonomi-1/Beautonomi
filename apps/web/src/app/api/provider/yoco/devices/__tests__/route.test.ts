@@ -7,6 +7,7 @@ const mockGetSupabaseServer = vi.fn();
 const mockCheckYocoFeatureAccess = vi.fn();
 const mockResolveCredentialMode = vi.fn();
 const mockGetValidAccessToken = vi.fn();
+const mockRequireYocoPlatformEnabledForProvider = vi.fn();
 
 vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/supabase/api-helpers")>();
@@ -33,6 +34,11 @@ vi.mock("@/lib/payments/yoco-oauth", async (importOriginal) => {
     getValidAccessToken: (...args: unknown[]) => mockGetValidAccessToken(...args),
   };
 });
+
+vi.mock("@/lib/payments/yoco-feature-gate", () => ({
+  requireYocoPlatformEnabledForProvider: (...args: unknown[]) =>
+    mockRequireYocoPlatformEnabledForProvider(...args),
+}));
 
 function createSupabaseForDeviceList() {
   return {
@@ -108,6 +114,7 @@ describe("GET /api/provider/yoco/devices", () => {
     mockGetProviderIdForUser.mockResolvedValue("provider-1");
     mockGetSupabaseServer.mockResolvedValue(createSupabaseForDeviceList());
     mockCheckYocoFeatureAccess.mockResolvedValue({ enabled: true });
+    mockRequireYocoPlatformEnabledForProvider.mockResolvedValue(null);
     mockResolveCredentialMode.mockResolvedValue({
       credentialMode: "oauth",
       environment: "live",
@@ -146,6 +153,7 @@ describe("POST /api/provider/yoco/devices", () => {
     mockRequireRoleInApi.mockResolvedValue({ user: { id: "u1" } });
     mockGetProviderIdForUser.mockResolvedValue("p1");
     mockCheckYocoFeatureAccess.mockResolvedValue({ enabled: true });
+    mockRequireYocoPlatformEnabledForProvider.mockResolvedValue(null);
   });
 
   function jsonRequest(body: unknown) {
@@ -228,6 +236,40 @@ describe("POST /api/provider/yoco/devices", () => {
     expect(res.status).toBe(200);
     expect(body.data.credential_mode).toBe("virtual_checkout");
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("creates an explicit virtual checkout device when OAuth and checkout key are both available", async () => {
+    mockResolveCredentialMode.mockResolvedValue({
+      credentialMode: "oauth",
+      environment: "live",
+      isEnabled: true,
+      hasSecretKey: true,
+      hasOauthToken: true,
+    });
+    mockGetSupabaseServer.mockResolvedValue(supabaseForInsert());
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const { POST } = await import("../route");
+    const res = await POST(jsonRequest({ name: "Hosted checkout", credential_mode: "virtual_checkout" }));
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.data.credential_mode).toBe("virtual_checkout");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("rejects Yoco routes when the platform flag is disabled", async () => {
+    mockRequireYocoPlatformEnabledForProvider.mockResolvedValue(
+      Response.json(
+        { data: null, error: { message: "Yoco disabled", code: "YOCO_DISABLED_BY_PLATFORM" } },
+        { status: 403 },
+      ),
+    );
+    mockGetSupabaseServer.mockResolvedValue(supabaseForInsert());
+    const { POST } = await import("../route");
+    const res = await POST(jsonRequest({ name: "Front desk" }));
+    const body = await res.json();
+    expect(res.status).toBe(403);
+    expect(body.error.code).toBe("YOCO_DISABLED_BY_PLATFORM");
+    expect(mockCheckYocoFeatureAccess).not.toHaveBeenCalled();
   });
 
   it("calls Yoco api.yoco.com with the OAuth Bearer when credential_mode is 'oauth'", async () => {

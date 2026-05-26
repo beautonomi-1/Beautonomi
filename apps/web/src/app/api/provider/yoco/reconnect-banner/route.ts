@@ -3,6 +3,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
 import { getProviderIdForUser } from "@/lib/supabase/api-helpers";
+import { requireYocoPlatformEnabledForProvider } from "@/lib/payments/yoco-feature-gate";
 
 /**
  * POST /api/provider/yoco/reconnect-banner
@@ -29,6 +30,8 @@ export async function POST(request: NextRequest) {
         { status: 404 },
       );
     }
+    const yocoGate = await requireYocoPlatformEnabledForProvider(supabase, providerId);
+    if (yocoGate) return yocoGate;
 
     let action: "dismiss" | "reset" = "dismiss";
     try {

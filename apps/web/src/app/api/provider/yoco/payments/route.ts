@@ -19,6 +19,7 @@ import {
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { requireYocoPlatformEnabledForProvider } from "@/lib/payments/yoco-feature-gate";
 
 const createPaymentSchema = z
   .object({
@@ -95,6 +96,9 @@ export async function POST(request: Request) {
         { status: 404 }
       );
     }
+    const yocoGate = await requireYocoPlatformEnabledForProvider(supabase, providerId);
+    if (yocoGate) return yocoGate;
+
     const { data: provider } = await supabase
       .from("providers")
       .select("id, tenant_id")

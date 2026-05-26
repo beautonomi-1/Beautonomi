@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser } from "@/lib/supabase/api-helpers";
+import { requireYocoPlatformEnabledForProvider } from "@/lib/payments/yoco-feature-gate";
 
 /**
  * POST /api/provider/yoco/oauth/disconnect
@@ -24,6 +25,8 @@ export async function POST(request: NextRequest) {
         { status: 404 }
       );
     }
+    const yocoGate = await requireYocoPlatformEnabledForProvider(supabase, providerId);
+    if (yocoGate) return yocoGate;
 
     const admin = getSupabaseAdmin();
 

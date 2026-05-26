@@ -300,6 +300,25 @@
       "deleteConfirmMessage": "This cannot be undone.",
       "staffPrefix": "Staff"
     },
+    "mobile": {
+      "components": {
+        "imagePicker": {
+          "profilePhotoTitle": "Profile photo",
+          "chooseOption": "Choose an option",
+          "takePhoto": "Take photo",
+          "photoLibrary": "Photo library",
+          "cancel": "Cancel",
+          "photosAccessTitle": "Photos access needed",
+          "photosAccessBody": "Allow Beautonomi Provider to access your photos so you can choose a picture.",
+          "cameraAccessTitle": "Camera access needed",
+          "cameraAccessBody": "Allow Beautonomi Provider to use your camera so you can take a photo.",
+          "permissionPhotosRequired": "Permission to access photos is required",
+          "permissionCameraRequired": "Camera permission is required",
+          "failedPickImage": "Failed to pick image",
+          "failedTakePhoto": "Failed to take photo"
+        }
+      }
+    },
     "moreTab": {
       "rateStoreHeading": "Love the app?"
     },

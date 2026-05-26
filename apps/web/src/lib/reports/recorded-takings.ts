@@ -18,6 +18,7 @@ export const RECORDED_TAKINGS_PAYMENT_METHODS = [
   "card",
   "bank_transfer",
   "paystack",
+  "paystack_terminal",
   "yoco",
   "gift_card",
   "wallet",
@@ -44,6 +45,7 @@ export function normalizeRecordedPaymentMethod(m: string | null | undefined): st
   if (!m) return "other";
   const lower = m.toLowerCase();
   if ((RECORDED_TAKINGS_PAYMENT_METHODS as readonly string[]).includes(lower)) return lower;
+  if (lower === "paystack_virtual_terminal") return "paystack_terminal";
   if (lower === "wallet_credit" || lower === "wallet_payment") return "wallet";
   if (lower === "credit_card" || lower === "debit_card") return "card";
   return "other";

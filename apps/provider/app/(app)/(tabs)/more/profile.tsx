@@ -19,7 +19,6 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Image } from "expo-image";
-import * as ImagePicker from "expo-image-picker";
 import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";
 import { Ionicons } from "@expo/vector-icons";
@@ -56,10 +55,8 @@ import { AddressMapPinModal } from "@/components/AddressMapPinModal";
 import { StaticMapImage } from "@/components/ui/StaticMapImage";
 import { reverseGeocodeCoordinates } from "@/lib/reverse-geocode-address";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
-import {
-  ensureForegroundLocationPermission,
-  launchImageLibraryWithPermission,
-} from "@/lib/native-permissions";
+import { ensureForegroundLocationPermission } from "@/lib/native-permissions";
+import { useImagePicker } from "@/hooks/useImagePicker";
 
 const IMAGE_CONSTRAINTS = { maxSizeBytes: 2 * 1024 * 1024 }; // 2MB
 const PRIMARY = Colors.primary;
@@ -110,6 +107,7 @@ export default function ProfileScreen() {
   const [savedPhoneForDisplay, setSavedPhoneForDisplay] = useState("");
   const [savedEmailForDisplay, setSavedEmailForDisplay] = useState("");
   const initialProfileRef = useRef<{ email: string; phone: string }>({ email: "", phone: "" });
+  const { pickWithOptions } = useImagePicker();
 
   const tenantCountryFallback = useCallback(
     () => bundle?.meta?.tenant_region?.name?.trim() || "",
@@ -362,32 +360,22 @@ export default function ProfileScreen() {
   }, [phoneCountryCode, phoneNational]);
 
   const uploadAvatar = useCallback(async () => {
-    const result = await launchImageLibraryWithPermission(
-      {
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
-        base64: false,
-      },
-      {
-        title: "Permission needed",
-        message: "Allow access to your photos to change your profile picture.",
-      },
-    );
-    if (!result) return;
-    if (result.canceled || !result.assets?.[0]) return;
-    const asset = result.assets[0];
-    if (asset.fileSize && asset.fileSize > IMAGE_CONSTRAINTS.maxSizeBytes) {
+    const picked = await pickWithOptions({ quality: 0.8, base64: false });
+    if (!picked) return;
+    if (picked.fileSize && picked.fileSize > IMAGE_CONSTRAINTS.maxSizeBytes) {
       Alert.alert("File too large", "Please choose an image under 2MB.");
       return;
     }
     setUploading(true);
     try {
-      const uri = asset.uri;
-      const name = uri.split("/").pop() || "photo.jpg";
+      const uri = picked.uri;
+      const name = picked.fileName || uri.split("/").pop() || "photo.jpg";
       const formData = new FormData();
-      appendFormDataFileNative(formData, "file", { uri, name, type: "image/jpeg" });
+      appendFormDataFileNative(formData, "file", {
+        uri,
+        name,
+        type: picked.mimeType || "image/jpeg",
+      });
       const res = await api.fetch<{ url?: string }>("/api/me/avatar", {
         method: "POST",
         body: formData,
@@ -405,7 +393,7 @@ export default function ProfileScreen() {
     } finally {
       setUploading(false);
     }
-  }, [load]);
+  }, [load, pickWithOptions]);
 
   const save = useCallback(async () => {
     if (!profile) return;

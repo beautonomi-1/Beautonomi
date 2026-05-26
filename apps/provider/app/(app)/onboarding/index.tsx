@@ -5,6 +5,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
+import { useAuth } from "@/providers/AuthProvider";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
@@ -34,12 +35,14 @@ type SetupStatus = {
  */
 export default function OnboardingHubScreen() {
   const router = useRouter();
+  const { signOut } = useAuth();
   const { screenPadding, isTablet, contentMaxWidth } = useResponsive();
   const { data, loading, error, refresh } = useApi<SetupStatus>("/api/provider/setup-status");
 
   const status = data as SetupStatus | null;
   const isComplete = status?.isComplete ?? false;
   const allSteps = status?.steps ?? [];
+  const hasSetupSteps = allSteps.length > 0;
   const requiredSteps = allSteps.filter((s) => s.required);
   const completedRequired = requiredSteps.filter((s) => s.completed).length;
   const pendingRequired = requiredSteps.filter((s) => !s.completed);
@@ -65,9 +68,10 @@ export default function OnboardingHubScreen() {
     router.push("/(app)/onboarding/wizard" as never);
   };
 
-  const backToDashboard = () => {
+  const leaveSetup = async () => {
     hapticLight();
-    router.replace("/(app)/(tabs)/dashboard" as never);
+    await signOut();
+    router.replace("/(auth)/login" as never);
   };
 
   // §provider-setup-seamless-ux 2026-05: clicking a step now routes directly
@@ -146,20 +150,28 @@ export default function OnboardingHubScreen() {
           <ScreenHeader
             title="Set up"
             showBack={false}
-            subtitle={isComplete ? "Everything looks good" : "A few steps to go live"}
+            subtitle={
+              isComplete
+                ? "Everything looks good"
+                : hasSetupSteps
+                  ? "A few steps to go live"
+                  : "Start your provider profile"
+            }
             rightAction={
-              <TouchableOpacity
-                onPress={backToDashboard}
-                style={twStyle(
-                  "flex-row items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 shadow-sm",
-                )}
-                accessibilityRole="button"
-                accessibilityLabel="Back to dashboard"
-                activeOpacity={0.85}
-              >
-                <Ionicons name="home-outline" size={14} color="#334155" />
-                <Text style={twStyle("text-[12px] font-semibold text-slate-700")}>Dashboard</Text>
-              </TouchableOpacity>
+              isComplete ? (
+                <TouchableOpacity
+                  onPress={goToApp}
+                  style={twStyle(
+                    "flex-row items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 shadow-sm",
+                  )}
+                  accessibilityRole="button"
+                  accessibilityLabel="Go to dashboard"
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="home-outline" size={14} color="#334155" />
+                  <Text style={twStyle("text-[12px] font-semibold text-slate-700")}>Dashboard</Text>
+                </TouchableOpacity>
+              ) : undefined
             }
           />
 
@@ -195,6 +207,8 @@ export default function OnboardingHubScreen() {
             <Text style={twStyle("mt-2 max-w-sm text-center text-[15px] leading-relaxed text-slate-500")}>
               {isComplete
                 ? "Your profile is live. Accept bookings and manage your business from the app."
+                : !hasSetupSteps
+                  ? "Create your business profile first. You can leave setup any time and come back when you're ready."
                 : remaining > 0
                   ? `${remaining} required step${remaining === 1 ? "" : "s"} left before you can go fully live.`
                   : "Complete the required steps to start accepting bookings."}
@@ -203,6 +217,37 @@ export default function OnboardingHubScreen() {
         </LinearGradient>
 
         <View style={{ paddingHorizontal: screenPadding, paddingBottom: 32 }}>
+          {!isComplete && !hasSetupSteps && (
+            <View
+              style={[
+                twStyle("mb-5 rounded-[1.5rem] border border-primary/10 bg-white p-5"),
+                Shadows.cardSmall,
+              ]}
+            >
+              <View style={twStyle("mb-4 flex-row items-center gap-3")}>
+                <View style={twStyle("h-11 w-11 items-center justify-center rounded-full bg-primary/10")}>
+                  <Ionicons name="business-outline" size={22} color={Colors.primary} />
+                </View>
+                <View style={twStyle("flex-1")}>
+                  <Text style={twStyle("text-[16px] font-bold text-slate-900")}>
+                    Set up your business profile
+                  </Text>
+                  <Text style={twStyle("mt-1 text-[13px] leading-relaxed text-slate-500")}>
+                    We will guide you through the basics before showing provider tools.
+                  </Text>
+                </View>
+              </View>
+              <View style={twStyle("gap-3")}>
+                {["Business details", "Services and availability", "Payment and payout setup"].map((label) => (
+                  <View key={label} style={twStyle("flex-row items-center gap-3")}>
+                    <Ionicons name="checkmark-circle-outline" size={18} color={Colors.primary} />
+                    <Text style={twStyle("text-[14px] font-medium text-slate-700")}>{label}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+
           {!isComplete && requiredSteps.length > 0 && (
             <View
               style={[
@@ -350,7 +395,7 @@ export default function OnboardingHubScreen() {
               <View style={twStyle("flex-row items-center gap-2")}>
                 <Ionicons name="rocket-outline" size={20} color="#fff" />
                 <Text style={twStyle("text-[16px] font-semibold text-white")}>
-                  Start setup wizard
+                  {hasSetupSteps ? "Start setup wizard" : "Start business setup"}
                 </Text>
               </View>
               <Text style={twStyle("mt-1 px-6 text-center text-[13px] text-slate-300")}>
@@ -361,16 +406,16 @@ export default function OnboardingHubScreen() {
 
           {!isComplete && (
             <TouchableOpacity
-              onPress={backToDashboard}
+              onPress={() => void leaveSetup()}
               style={twStyle(
                 "items-center rounded-full border-2 border-slate-200 bg-white py-4",
               )}
               activeOpacity={0.85}
-              accessibilityLabel="Back to dashboard"
+              accessibilityLabel="Back to login"
               accessibilityRole="button"
             >
               <Text style={twStyle("text-[15px] font-semibold text-slate-700")}>
-                Back to dashboard
+                Back to login
               </Text>
             </TouchableOpacity>
           )}

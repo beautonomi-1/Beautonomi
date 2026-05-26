@@ -154,6 +154,70 @@ export function slackNotifyCustomOfferFinalizeFailed(params: {
   });
 }
 
+export function slackNotifyPaystackTerminalAssetRequested(params: {
+  tenantId?: string | null;
+  terminalId: string;
+  terminalCode?: string | null;
+  providerName?: string | null;
+  terminalName?: string | null;
+  paymentLink?: string | null;
+  requestedBy?: string | null;
+  autoRequested?: boolean;
+}) {
+  void tryNotifySlackEvent({
+    tenantId: params.tenantId ?? "platform",
+    environment: eventEnv(),
+    eventKey: SLACK_EVENT_KEYS.FINANCE_PAYSTACK_TERMINAL_ASSET_REQUESTED,
+    dedupeKey: `paystack_terminal:${params.terminalId}:asset_requested`,
+    entityType: "provider_paystack_virtual_terminal",
+    entityId: params.terminalId,
+    title: params.autoRequested
+      ? "Paystack Terminal created — QR/poster setup needed"
+      : "Paystack Terminal branded QR/poster requested",
+    detailLines: [
+      params.providerName ? `Provider: ${params.providerName}` : null,
+      params.terminalName ? `Terminal: ${params.terminalName}` : null,
+      params.terminalCode ? `Code: ${params.terminalCode}` : null,
+      params.paymentLink ? `Payment link: ${params.paymentLink}` : "Payment link: missing",
+      params.requestedBy ? `Requested by: ${params.requestedBy}` : null,
+      "Action: Admin → Paystack Terminal → Terminal setup queue",
+    ].filter(Boolean) as string[],
+    actionUrl: "/paystack-terminal",
+  }).catch((err) => {
+    console.error("[slack] paystack_terminal asset_requested notify error", err);
+  });
+}
+
+export function slackNotifyPaystackTerminalSetupRequested(params: {
+  tenantId?: string | null;
+  requestId?: string | null;
+  providerId: string;
+  providerName?: string | null;
+  requestedBy?: string | null;
+  suggestedTerminalName?: string | null;
+  destinationTarget?: string | null;
+}) {
+  void tryNotifySlackEvent({
+    tenantId: params.tenantId ?? "platform",
+    environment: eventEnv(),
+    eventKey: SLACK_EVENT_KEYS.FINANCE_PAYSTACK_TERMINAL_SETUP_REQUESTED,
+    dedupeKey: `provider:${params.providerId}:paystack_terminal_setup_requested`,
+    entityType: "provider_paystack_virtual_terminal_setup_request",
+    entityId: params.requestId ?? params.providerId,
+    title: "Paystack Terminal setup requested",
+    detailLines: [
+      params.providerName ? `Provider: ${params.providerName}` : `Provider ID: ${params.providerId}`,
+      params.suggestedTerminalName ? `Suggested Paystack name: ${params.suggestedTerminalName}` : null,
+      params.destinationTarget ? `WhatsApp destination: ${params.destinationTarget}` : "WhatsApp destination: missing",
+      params.requestedBy ? `Requested by: ${params.requestedBy}` : null,
+      "Action: create or fetch the Virtual Terminal in Paystack, then import its code, payment link, QR/poster into Admin → Paystack Terminal.",
+    ].filter(Boolean) as string[],
+    actionUrl: "/paystack-terminal",
+  }).catch((err) => {
+    console.error("[slack] paystack_terminal setup_requested notify error", err);
+  });
+}
+
 /** Manual upload or SumSub outcome that still needs admin review. */
 export function slackNotifyVerificationNeedsReview(params: {
   tenantId: string;

@@ -16,6 +16,7 @@ type RecordProductOrderPaymentInput = {
   source:
     | "paystack_verify"
     | "paystack_webhook"
+    | "paystack_virtual_terminal_allocation"
     | "wallet_checkout"
     | "provider_mark_collected"
     | "walk_in_pos";

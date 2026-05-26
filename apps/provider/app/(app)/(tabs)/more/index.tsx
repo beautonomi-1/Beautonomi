@@ -13,6 +13,7 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { openNativeStoreReview } from "@/lib/open-store-review";
 import { getAnalyticsClient } from "@/lib/analytics-rn";
 import { formatCurrency } from "@/lib/format";
+import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 /**
  * Setup status API response (GET /api/provider/setup-status) — single source
  * of truth for the More-tab completion card, the Dashboard hero card, the
@@ -161,6 +162,7 @@ const MENU_SECTIONS: { title: string; items: MenuItem[] }[] = [
       { icon: "people-circle-outline", label: "Team & scheduling", subtitle: "Staff, shifts & time clock", route: "/(app)/(tabs)/more/team", color: "#14b8a6", bg: "#ccfbf1" },
       { icon: "cash-outline", label: "Finance & billing", subtitle: "Earnings, payroll, invoices & gift cards", route: "/(app)/(tabs)/more/finance-billing-hub", color: "#22c55e", bg: "#f0fdf4" },
       { icon: "card-outline", label: "Yoco payments", subtitle: "Connect Yoco and manage card devices", route: "/(app)/(tabs)/more/settings/yoco-devices", color: "#2563eb", bg: "#dbeafe" },
+      { icon: "qr-code-outline", label: "Paystack Terminal", subtitle: "QR and link payments through Beautonomi payouts", route: "/(app)/(tabs)/more/paystack-terminal", color: "#16a34a", bg: "#dcfce7" },
       { icon: "ribbon-outline", label: "Subscription & plan", subtitle: "Upgrade, renew, cancel or change billing", route: "/(app)/(tabs)/more/settings/subscription", color: "#8b5cf6", bg: "#ede9fe" },
       { icon: "wallet-outline", label: "Payout bank accounts", subtitle: "Add or manage payout accounts", route: "/(app)/(tabs)/more/settings/payout-accounts", color: "#059669", bg: "#d1fae5" },
       { icon: "swap-horizontal-outline", label: "Transactions & history", subtitle: "Payments, fees & sales", route: "/(app)/(tabs)/more/transactions-hub", color: "#0d9488", bg: "#ccfbf1" },
@@ -199,6 +201,7 @@ const QUICK_ACTIONS: { icon: keyof typeof Ionicons.glyphMap; label: string; rout
   { icon: "megaphone-outline", label: "Buy ads", route: "/(app)/(tabs)/more/settings/ads", color: "#f59e0b" },
   { icon: "card-outline", label: "Memberships", route: "/(app)/(tabs)/more/membership-plans", color: "#7c3aed" },
   { icon: "phone-portrait-outline", label: "Yoco", route: "/(app)/(tabs)/more/settings/yoco-devices", color: "#2563eb" },
+  { icon: "qr-code-outline", label: "Paystack Terminal", route: "/(app)/(tabs)/more/paystack-terminal", color: "#16a34a" },
   { icon: "ribbon-outline", label: "Subscription", route: "/(app)/(tabs)/more/settings/subscription", color: "#8b5cf6" },
   { icon: "wallet-outline", label: "Bank accounts", route: "/(app)/(tabs)/more/settings/payout-accounts", color: "#059669" },
 ];
@@ -207,6 +210,7 @@ export default function MoreScreen() {
   const router = useRouter();
   const { t } = useTranslation();
   const { user, signOut } = useAuth();
+  const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     "Grow your business": true,
     Operations: true,
@@ -673,7 +677,7 @@ export default function MoreScreen() {
 
         {/* Quick actions - customer-style 2x2 grid (shortens perceived page length) */}
         <View style={{ marginBottom: 20, flexDirection: "row", flexWrap: "wrap" }}>
-          {QUICK_ACTIONS.map((action) => {
+          {QUICK_ACTIONS.filter((action) => paystackTerminalEnabled || !action.route.includes("paystack-terminal")).map((action) => {
             const badge = formatBadgeCount(getRouteBadgeCount(action.route));
             return (
               <TouchableOpacity
@@ -927,7 +931,7 @@ export default function MoreScreen() {
               </TouchableOpacity>
               {isExpanded && (
                 <View style={{ overflow: "hidden", borderBottomLeftRadius: 16, borderBottomRightRadius: 16, borderWidth: 1, borderTopWidth: 0, borderColor: Colors.gray[100], backgroundColor: Colors.white }}>
-                  {section.items.map((item, idx) => {
+                  {section.items.filter((item) => paystackTerminalEnabled || !item.route.includes("paystack-terminal")).map((item, idx) => {
                     const badge = formatBadgeCount(getRouteBadgeCount(item.route));
                     return (
                       <TouchableOpacity

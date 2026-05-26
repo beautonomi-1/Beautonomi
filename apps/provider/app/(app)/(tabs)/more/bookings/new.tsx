@@ -494,6 +494,7 @@ export default function NewBookingScreen() {
   const tenantCurrency = getTenantDefaultCurrency();
   const { width: windowWidth } = useWindowDimensions();
   const { bundle } = useConfigBundle();
+  const yocoEnabled = bundle?.flags?.payment_yoco?.enabled === true;
   const defaultPhoneDial = useDefaultPhoneDial();
   const mapboxCountryIso =
     bundle?.meta?.active_market_country?.trim().length === 2
@@ -717,6 +718,12 @@ export default function NewBookingScreen() {
   const [recurrencePattern, setRecurrencePattern] = useState<RecurrencePattern>("weekly");
   const [recurrenceEndDate, setRecurrenceEndDate] = useState("");
   const [recurrenceOccurrences, setRecurrenceOccurrences] = useState("");
+
+  useEffect(() => {
+    if (!yocoEnabled && paymentMethod === "yoco_pos") {
+      setPaymentMethod("pay_later");
+    }
+  }, [yocoEnabled, paymentMethod]);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [conflictWarning, setConflictWarning] = useState<string | null>(null);
   const [, setCheckingAvailability] = useState(false);
@@ -3269,7 +3276,7 @@ export default function NewBookingScreen() {
               {/* -------- PAYMENT METHOD -------- */}
               <SectionLabel label="Payment Method" />
               <View style={twStyle("mb-4 flex-row flex-wrap justify-between")}>
-                {PAYMENT_METHODS.map((pm, idx) => (
+                {PAYMENT_METHODS.filter((pm) => yocoEnabled || pm.value !== "yoco_pos").map((pm, idx) => (
                   <TouchableOpacity
                     key={pm.value}
                     style={[twStyle(`flex-row items-center justify-center rounded-xl border py-3 ${

@@ -27,6 +27,7 @@ import { useTranslation } from "@beautonomi/i18n";
 import { useImagePicker } from "@/hooks/useImagePicker";
 import { appendFormDataFileNative } from "@beautonomi/utils";
 import { invalidateSupportTicketsListCache } from "@/lib/api-response-cache";
+import { supabase } from "@/lib/supabase/client";
 
 type Message = {
   id: string;
@@ -118,6 +119,7 @@ export default function SupportTicketDetailScreen() {
   const scrollViewRef = useRef<ScrollView>(null);
   const knownMessageIdsRef = useRef<Set<string>>(new Set());
   const loadedOnceRef = useRef(false);
+  const realtimeGenRef = useRef(0);
   const [loadError, setLoadError] = useState<string | null>(null);
   const { pickFromLibrary } = useImagePicker();
 
@@ -179,6 +181,37 @@ export default function SupportTicketDetailScreen() {
     };
   }, [loadTicket]);
 
+  useEffect(() => {
+    const tid = typeof id === "string" ? id : Array.isArray(id) ? id[0] : "";
+    if (!tid) return;
+    const topic = `customer-support-ticket:${tid}:${++realtimeGenRef.current}`;
+    const channel = supabase
+      .channel(topic)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "support_ticket_messages", filter: `ticket_id=eq.${tid}` },
+        () => {
+          void loadTicket();
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "support_tickets", filter: `id=eq.${tid}` },
+        () => {
+          void loadTicket();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      try {
+        supabase.removeChannel(channel);
+      } catch {
+        // Best effort cleanup only.
+      }
+    };
+  }, [id, loadTicket]);
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
@@ -210,12 +243,13 @@ export default function SupportTicketDetailScreen() {
   const handleReply = async () => {
     const msg = reply.trim();
     if ((!msg && pendingAttachments.length === 0) || !id) return;
+    const attachmentsToSend = pendingAttachments;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSending(true);
     try {
       const res = await api.post(`/api/me/support-tickets/${id}/messages`, {
         message: msg,
-        attachments: pendingAttachments,
+        attachments: attachmentsToSend,
       });
       if (res.error) {
         Alert.alert(sd("sendFailedTitle"), getApiErrorMessage(res.error, sd("sendReplyFallback")));
@@ -223,6 +257,19 @@ export default function SupportTicketDetailScreen() {
       }
       setReply("");
       setPendingAttachments([]);
+      const sentMessage = (res.data as { message?: Message } | null | undefined)?.message;
+      const localMessage: Message = {
+        id: sentMessage?.id ?? `local-${Date.now()}`,
+        message: sentMessage?.message ?? (msg || (attachmentsToSend.length ? "(attachment)" : "")),
+        is_internal: false,
+        created_at: sentMessage?.created_at ?? new Date().toISOString(),
+        user_id: sentMessage?.user_id ?? user?.id ?? "",
+        author_name: "You",
+        is_mine: true,
+        attachments: sentMessage?.attachments ?? attachmentsToSend,
+      };
+      setMessages((prev) => (prev.some((m) => m.id === localMessage.id) ? prev : [...prev, localMessage]));
+      invalidateSupportTicketsListCache();
       trackSupportTicketReply(id);
       await loadTicket();
     } catch (e) {
@@ -289,6 +336,7 @@ export default function SupportTicketDetailScreen() {
         Alert.alert("Could not submit rating", getApiErrorMessage(res.error, "Please try again."));
         return;
       }
+      invalidateSupportTicketsListCache();
       Alert.alert("Thanks", "Your rating helps us improve support.");
       await loadTicket();
     } catch (e) {
@@ -425,6 +473,10 @@ export default function SupportTicketDetailScreen() {
               </View>
             );
           })}
+
+          {messages.length === 0 ? (
+            <Text style={styles.emptyThreadText}>No visible messages are available for this ticket yet.</Text>
+          ) : null}
 
           {canReply && (
             <View style={styles.replyBlock}>
@@ -576,6 +628,7 @@ const styles = StyleSheet.create({
   attachmentTextOwn: { color: "#fff" },
   bubbleTime: { marginTop: 4, fontSize: 10, color: "#9CA3AF" },
   bubbleTimeOwn: { color: "rgba(255,255,255,0.65)", textAlign: "right" },
+  emptyThreadText: { marginTop: 12, marginBottom: 4, fontSize: 13, color: Colors.gray[500], textAlign: "center" },
   replyBlock: { marginTop: 16 },
   label: { marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] },
   replyInput: {

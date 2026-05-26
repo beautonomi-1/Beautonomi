@@ -48,6 +48,7 @@ type ProviderBookingDetail = Booking & {
   arrival_otp_pending?: boolean;
   qr_arrival_pending?: boolean;
   display_time_zone?: string | null;
+  db_status?: string | null;
 };
 import { toast } from "sonner";
 import Link from "next/link";
@@ -86,6 +87,11 @@ import {
   HouseCallExcellenceNote,
   OnPlatformPaymentNote,
 } from "@/components/provider/ProviderBookingExcellenceInline";
+import {
+  buildProviderBookingActionModel,
+  type ProviderBookingAction,
+} from "@/lib/provider-booking/action-policy";
+import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 
 const PROVIDER_COMPLETION_MODAL_STORAGE_KEY = "provider_booking_completion_modal_seen_";
 
@@ -118,6 +124,7 @@ type SendLinkDelivery = (typeof SEND_LINK_OPTIONS)[number]["value"];
 
 export default function ProviderBookingDetail() {
   const { format: formatMoney } = useProviderMoneyFormat();
+  const yocoEnabled = useFeatureFlag("payment_yoco");
   const params = useParams();
   const router = useRouter();
   const bookingId = params.id as string;
@@ -170,6 +177,13 @@ export default function ProviderBookingDetail() {
   const yocoBookingSaleIdRef = useRef<string | null>(null);
   const yocoPendingChargeAmountRef = useRef<number | null>(null);
   const yocoPendingSaleOutstandingSnapshotRef = useRef<number | null>(null);
+
+  // Paystack Terminal (platform-held in-person QR/link collection)
+  const [paystackTerminalReady, setPaystackTerminalReady] = useState(false);
+  const [paystackTerminalCode, setPaystackTerminalCode] = useState<string | null>(null);
+  const [paystackTerminalReference, setPaystackTerminalReference] = useState<string | null>(null);
+  const [showPaystackTerminal, setShowPaystackTerminal] = useState(false);
+  const [preparingPaystackTerminal, setPreparingPaystackTerminal] = useState(false);
 
   // Notes state
   const [editingNotes, setEditingNotes] = useState(false);
@@ -251,6 +265,24 @@ export default function ProviderBookingDetail() {
       })
       .catch(() => {
         if (!cancelled) setYocoIntegrationEnabled(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetcher
+      .get<{ data?: { paystackTerminal?: { isEnabled?: boolean; activeTerminalCount?: number } } }>(
+        "/api/provider/settings/payments",
+      )
+      .then((response) => {
+        const terminal = response.data?.paystackTerminal;
+        if (!cancelled) setPaystackTerminalReady(Boolean(terminal?.isEnabled && (terminal.activeTerminalCount ?? 0) > 0));
+      })
+      .catch(() => {
+        if (!cancelled) setPaystackTerminalReady(false);
       });
     return () => {
       cancelled = true;
@@ -707,6 +739,59 @@ export default function ProviderBookingDetail() {
     setShowYocoPayment(true);
   }, [booking, bookingId, yocoBookingSaleId]);
 
+  const openPaystackTerminalCollection = useCallback(async () => {
+    const b = booking as ProviderBookingDetail | null;
+    if (!b) return;
+    const totalAmountLocal = Number((b as any).total_amount ?? 0);
+    const totalPaidLocal = Number((b as any).total_paid ?? 0);
+    const totalRefundedLocal = Number((b as any).total_refunded ?? 0);
+    const walletLocal = Number((b as any).wallet_amount ?? 0);
+    const giftLocal = Number((b as any).gift_card_amount ?? 0);
+    const unpaidChargesTotal = Array.isArray((b as any).additional_charges)
+      ? (b as any).additional_charges
+          .filter((charge: any) => charge?.status !== "paid" && charge?.status !== "rejected")
+          .reduce((sum: number, charge: any) => sum + Number(charge?.amount || 0), 0)
+      : 0;
+    const outstandingLocal = computeBookingOutstandingDisplay({
+      totalAmount: totalAmountLocal,
+      totalPaid: totalPaidLocal,
+      totalRefunded: totalRefundedLocal,
+      walletAmount: walletLocal,
+      giftCardAmount: giftLocal,
+      unpaidAdditionalCharges: unpaidChargesTotal,
+      paymentStatus: b.payment_status,
+    });
+    const expectedAmount = Number(outstandingLocal.toFixed(2));
+    if (expectedAmount <= 0) {
+      toast.error("There is no remaining balance to collect.");
+      return;
+    }
+
+    try {
+      setPreparingPaystackTerminal(true);
+      const response = await fetcher.post<{
+        data?: { terminal?: { terminal_code?: string }; expectedAmount?: number };
+      }>("/api/provider/paystack/terminal-payments", {
+        entity_type: "booking",
+        entity_id: bookingId,
+        expected_amount: expectedAmount,
+        customer_reference: (b as any).booking_number ?? bookingId,
+      });
+      const code = response.data?.terminal?.terminal_code;
+      if (!code) {
+        toast.error("No Paystack Terminal is ready for this booking.");
+        return;
+      }
+      setPaystackTerminalCode(code);
+      setPaystackTerminalReference((b as any).booking_number ?? bookingId);
+      setShowPaystackTerminal(true);
+    } catch (err) {
+      toast.error(err instanceof FetchError ? err.message : "Failed to prepare Paystack Terminal payment.");
+    } finally {
+      setPreparingPaystackTerminal(false);
+    }
+  }, [booking, bookingId]);
+
   const finalizeYocoBookingPayment = useCallback(
     async (payment: YocoPayment) => {
       const reference = payment.yoco_payment_id;
@@ -1079,7 +1164,50 @@ export default function ProviderBookingDetail() {
     bookingLifecycleStatus !== "cancelled" &&
     b.payment_status !== "paid" &&
     !!(b.customer_email || b.customer_phone);
-  const showYocoPayButton = yocoIntegrationEnabled && canMarkPaid;
+  const showYocoPayButton = yocoEnabled && yocoIntegrationEnabled && canMarkPaid;
+  const showPaystackTerminalButton = paystackTerminalReady && canMarkPaid;
+  const actionModel = useMemo(
+    () =>
+      buildProviderBookingActionModel({
+        id: bookingId,
+        status: b.status,
+        db_status: b.db_status,
+        payment_status: b.payment_status,
+        scheduled_at: b.scheduled_at,
+        location_type: b.location_type,
+        location_id: b.location_id,
+        current_stage: b.current_stage,
+        arrival_otp_verified: b.arrival_otp_verified,
+        qr_code_verified: b.qr_code_verified,
+        arrival_otp_pending: b.arrival_otp_pending,
+        qr_arrival_pending: b.qr_arrival_pending,
+      }),
+    [
+      bookingId,
+      b.status,
+      b.db_status,
+      b.payment_status,
+      b.scheduled_at,
+      b.location_type,
+      b.location_id,
+      b.current_stage,
+      b.arrival_otp_verified,
+      b.qr_code_verified,
+      b.arrival_otp_pending,
+      b.qr_arrival_pending,
+    ],
+  );
+
+  const runBookingAction = (action: ProviderBookingAction) => {
+    if (action.id === "start_journey") return void handleStartJourney();
+    if (action.id === "mark_arrived") return void handleMarkArrived();
+    if (action.id === "start_service") return void handleStatusChange("started");
+    if (action.id === "complete_service") return void handleStatusChange("completed");
+    if (action.id === "cancel") return void handleStatusChange("cancelled");
+    if (action.id === "mark_no_show") return void handleStatusChange("no_show");
+    if (action.id === "check_in") return void handleStatusChange("checked_in");
+    return void handleStatusChange(action.dbTarget);
+  };
 
   return (
     <RoleGuard allowedRoles={["provider_owner", "provider_staff"]}>
@@ -2059,68 +2187,74 @@ export default function ProviderBookingDetail() {
           </div>
         )}
 
-        {/* Status Actions */}
-        <div className="flex flex-col sm:flex-row gap-3">
-          {/* Confirm — only for bookings awaiting provider confirmation */}
-          {bookingLifecycleStatus === "pending" && (
-            <Button
-              onClick={() => handleStatusChange("confirmed")}
-              disabled={isUpdating}
-              className="flex-1 bg-green-600 hover:bg-green-700 min-h-[44px] text-sm sm:text-base"
-            >
-              <CheckCircle2 className="w-4 h-4 mr-2" />
-              Confirm Booking
-            </Button>
+        {/* Guided status flow */}
+        <div className="rounded-lg border bg-white p-4">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Next booking step
+              </p>
+              <h3 className="mt-1 text-lg font-semibold text-gray-900">
+                {actionModel.stepTitle}
+              </h3>
+              <p className="mt-1 text-sm text-gray-600">
+                {actionModel.stepDescription}
+              </p>
+            </div>
+            {actionModel.primaryAction && (
+              <Button
+                onClick={() => runBookingAction(actionModel.primaryAction!)}
+                disabled={isUpdating || isStartingJourney || isMarkingArrived}
+                className="min-h-[44px] shrink-0 bg-blue-600 hover:bg-blue-700"
+              >
+                <CheckCircle2 className="w-4 h-4 mr-2" />
+                {actionModel.primaryAction.label}
+              </Button>
+            )}
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            {actionModel.happyPath.map((label, idx) => (
+              <span
+                key={label}
+                className={`rounded-full px-3 py-1 text-xs font-medium ${
+                  idx <= actionModel.activeStepIndex
+                    ? "bg-blue-100 text-blue-800"
+                    : "bg-gray-100 text-gray-500"
+                }`}
+              >
+                {idx + 1}. {label}
+              </span>
+            ))}
+          </div>
+
+          {actionModel.disabledReasons.length > 0 && (
+            <div className="mt-4 rounded-md bg-amber-50 p-3 text-sm text-amber-800">
+              {actionModel.disabledReasons[0]}
+            </div>
           )}
-          {/* Salon physical check-in — only for at-salon bookings (house-calls use Mark arrived).
-              Marks the customer as physically arrived in the waiting room before chair time. */}
-          {!isAtHome && (bookingLifecycleStatus === "confirmed" || bookingLifecycleStatus === "booked") && (
-            <Button
-              onClick={() => handleStatusChange("checked_in")}
-              disabled={isUpdating}
-              variant="outline"
-              className="flex-1 min-h-[44px] text-sm sm:text-base border-primary text-primary hover:bg-primary/10"
-            >
-              <CheckCircle2 className="w-4 h-4 mr-2" />
-              Check in customer
-            </Button>
-          )}
-          {/* Start Service — for confirmed bookings (at-home gated by arrival/verification).
-              Salon can also start service straight from confirmed (skip waiting room) or from checked_in/waiting.
-              At-home uses the same `canStartService` rules as Start service in the At-home visit card. */}
-          {canStartService && (
-            <Button
-              onClick={() => handleStatusChange("started")}
-              disabled={isUpdating}
-              className="flex-1 bg-blue-600 hover:bg-blue-700 min-h-[44px] text-sm sm:text-base"
-            >
-              Start Service
-            </Button>
-          )}
-          {/* Recovery: at-home booking is stuck in a salon-only status (legacy data or
-              wrong-button mishap). Server allows checked_in/waiting → confirmed for at-home. */}
-          {isAtHome && (bookingLifecycleStatus === "checked_in" || bookingLifecycleStatus === "waiting") && (
-            <Button
-              onClick={() => handleStatusChange("confirmed")}
-              disabled={isUpdating}
-              variant="outline"
-              className="flex-1 min-h-[44px] text-sm sm:text-base border-amber-400 text-amber-700 hover:bg-amber-50"
-            >
-              <CheckCircle2 className="w-4 h-4 mr-2" />
-              Reset to confirmed (restart journey)
-            </Button>
-          )}
-          {/* Complete — for in-progress bookings */}
-          {isStarted && (
-            <Button
-              onClick={() => handleStatusChange("completed")}
-              disabled={isUpdating}
-              className="flex-1 bg-green-600 hover:bg-green-700 min-h-[44px] text-sm sm:text-base"
-            >
-              <CheckCircle2 className="w-4 h-4 mr-2" />
-              Complete Booking
-            </Button>
-          )}
+
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+            {actionModel.actions
+              .filter(
+                (action) =>
+                  action.id !== actionModel.primaryAction?.id &&
+                  action.id !== "cancel" &&
+                  action.id !== "mark_no_show",
+              )
+              .map((action) => (
+                <Button
+                  key={action.id}
+                  type="button"
+                  variant="outline"
+                  onClick={() => runBookingAction(action)}
+                  disabled={isUpdating || isStartingJourney || isMarkingArrived}
+                  className="flex-1 min-h-[44px]"
+                >
+                  {action.label}
+                </Button>
+              ))}
+          </div>
         </div>
 
         {/* Payment Actions */}
@@ -2145,6 +2279,18 @@ export default function ProviderBookingDetail() {
             >
               <CreditCard className="w-4 h-4 mr-2" />
               {preparingYocoSale ? "Preparing…" : "Pay with Yoco (terminal)"}
+            </Button>
+          )}
+          {showPaystackTerminalButton && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void openPaystackTerminalCollection()}
+              disabled={isUpdating || preparingPaystackTerminal}
+              className="flex-1 min-h-[44px] border-emerald-300 text-emerald-900 hover:bg-emerald-50"
+            >
+              <Link2 className="w-4 h-4 mr-2" />
+              {preparingPaystackTerminal ? "Preparing…" : "Show Paystack Terminal"}
             </Button>
           )}
           {canSendPaymentLink && (
@@ -2453,6 +2599,48 @@ export default function ProviderBookingDetail() {
                 </Button>
                 <Button variant="outline" onClick={() => setShowSendPaymentLink(false)} className="flex-1">
                   Cancel
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Paystack Terminal collection */}
+        {showPaystackTerminal && paystackTerminalCode && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg p-6 max-w-md w-full space-y-4">
+              <h3 className="text-lg font-semibold">Paystack Terminal</h3>
+              <p className="text-sm text-gray-600">
+                Ask the customer to pay the outstanding amount using this Paystack terminal. Paystack generates the transaction reference; once the webhook arrives, allocate the payment from the terminal inbox.
+              </p>
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-center">
+                <p className="text-xs uppercase tracking-wide text-emerald-700">Terminal code</p>
+                <p className="mt-2 font-mono text-2xl font-semibold text-emerald-950">
+                  {paystackTerminalCode}
+                </p>
+                <p className="mt-2 text-sm text-emerald-800">Expected: {formatMoney(outstanding)}</p>
+                <p className="mt-1 text-sm text-emerald-800">
+                  Booking/order note: <span className="font-mono">{paystackTerminalReference}</span>
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <Button
+                  type="button"
+                  className="flex-1"
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(paystackTerminalCode);
+                    toast.success("Terminal code copied");
+                  }}
+                >
+                  Copy code
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setShowPaystackTerminal(false)}
+                >
+                  Close
                 </Button>
               </div>
             </div>

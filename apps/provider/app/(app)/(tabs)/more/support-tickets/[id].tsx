@@ -30,6 +30,7 @@ import { labelForSupportTicketCategory } from "@/lib/supportTicketCategoryPreset
 import { appendFormDataFileNative } from "@beautonomi/utils";
 import { invalidateSupportTicketsListCache } from "@/lib/api-response-cache";
 import { launchImageLibraryWithPermission } from "@/lib/native-permissions";
+import { supabase } from "@/lib/supabase/client";
 
 type Message = {
   id: string;
@@ -110,6 +111,7 @@ export default function SupportTicketDetailScreen() {
   const [csatComment, setCsatComment] = useState("");
   const [submittingCsat, setSubmittingCsat] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
+  const realtimeGenRef = useRef(0);
 
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -124,7 +126,7 @@ export default function SupportTicketDetailScreen() {
     setLoadError(null);
     try {
       const res = await api.get<{ ticket: Ticket; messages: Message[] }>(
-        `/api/me/support-tickets/${id}`
+        `/api/provider/support-tickets/${id}`
       ) as { data?: { ticket?: Ticket; messages?: Message[] }; error?: { message?: string } };
       if (res.error) {
         setTicket(null);
@@ -138,7 +140,7 @@ export default function SupportTicketDetailScreen() {
       setCsatScore(t?.csat_score ?? null);
       setCsatComment(t?.csat_comment ?? "");
       setMessages(Array.isArray(payload?.messages) ? payload!.messages! : []);
-      void api.post(`/api/me/support-tickets/${id}/seen`, {}).catch(() => {});
+      void api.post(`/api/provider/support-tickets/${id}/seen`, {}).catch(() => {});
       if (t) trackSupportTicketDetailView(t.id, t.ticket_number);
     } catch (e) {
       setTicket(null);
@@ -168,6 +170,37 @@ export default function SupportTicketDetailScreen() {
     };
   }, [loadTicket]);
 
+  useEffect(() => {
+    const tid = typeof id === "string" ? id : Array.isArray(id) ? id[0] : "";
+    if (!tid) return;
+    const topic = `provider-support-ticket:${tid}:${++realtimeGenRef.current}`;
+    const channel = supabase
+      .channel(topic)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "support_ticket_messages", filter: `ticket_id=eq.${tid}` },
+        () => {
+          void loadTicket();
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "support_tickets", filter: `id=eq.${tid}` },
+        () => {
+          void loadTicket();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      try {
+        supabase.removeChannel(channel);
+      } catch {
+        // Best effort cleanup only.
+      }
+    };
+  }, [id, loadTicket]);
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
@@ -188,12 +221,13 @@ export default function SupportTicketDetailScreen() {
   const handleReply = async () => {
     const msg = reply.trim();
     if ((!msg && pendingAttachments.length === 0) || !id) return;
+    const attachmentsToSend = pendingAttachments;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSending(true);
     try {
-      const res = await api.post(`/api/me/support-tickets/${id}/messages`, {
+      const res = await api.post(`/api/provider/support-tickets/${id}/messages`, {
         message: msg,
-        attachments: pendingAttachments,
+        attachments: attachmentsToSend,
       }) as { data?: unknown; error?: { message?: string } };
       if (res.error) {
         const errMsg = typeof res.error === "string" ? res.error : (res.error?.message ?? "Could not send reply");
@@ -203,6 +237,19 @@ export default function SupportTicketDetailScreen() {
       }
       setReply("");
       setPendingAttachments([]);
+      const sentMessage = (res.data as { message?: Message } | null | undefined)?.message;
+      const localMessage: Message = {
+        id: sentMessage?.id ?? `local-${Date.now()}`,
+        message: sentMessage?.message ?? (msg || (attachmentsToSend.length ? "(attachment)" : "")),
+        is_internal: false,
+        created_at: sentMessage?.created_at ?? new Date().toISOString(),
+        user_id: sentMessage?.user_id ?? user?.id ?? "",
+        author_name: "You",
+        is_mine: true,
+        attachments: sentMessage?.attachments ?? attachmentsToSend,
+      };
+      setMessages((prev) => (prev.some((m) => m.id === localMessage.id) ? prev : [...prev, localMessage]));
+      invalidateSupportTicketsListCache();
       trackSupportTicketReply(id);
       await loadTicket();
     } catch (e) {
@@ -236,7 +283,7 @@ export default function SupportTicketDetailScreen() {
         type: asset.mimeType || "image/jpeg",
       });
       const res = await api.fetch<{ attachments?: SupportAttachment[] }>(
-        `/api/me/support-tickets/${id}/upload`,
+        `/api/provider/support-tickets/${id}/upload`,
         { method: "POST", body: formData },
       ) as { data?: { attachments?: SupportAttachment[] }; error?: { message?: string } | string };
       if (res.error) {
@@ -261,7 +308,7 @@ export default function SupportTicketDetailScreen() {
     if (!id || !csatScore) return;
     setSubmittingCsat(true);
     try {
-      const res = await api.post(`/api/me/support-tickets/${id}/csat`, {
+      const res = await api.post(`/api/provider/support-tickets/${id}/csat`, {
         score: csatScore,
         comment: csatComment.trim() || null,
       }) as { error?: { message?: string } | string };
@@ -447,6 +494,12 @@ export default function SupportTicketDetailScreen() {
                 </View>
               );
             })}
+
+            {messages.length === 0 ? (
+              <Text style={twStyle("mt-3 mb-1 text-center text-sm text-gray-500")}>
+                No visible messages are available for this ticket yet.
+              </Text>
+            ) : null}
 
             {canReply && (
               <View style={twStyle("mt-4")}>

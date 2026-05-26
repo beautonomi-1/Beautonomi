@@ -4,6 +4,9 @@
  */
 
 import { format as formatDate } from "date-fns";
+import { formatInTimeZone } from "date-fns-tz";
+import { DEFAULT_BOOKING_DISPLAY_TIMEZONE } from "@/lib/bookings/display-invariants";
+import { normalizeProviderTimezone } from "@/lib/availability/time-utils";
 import { APPOINTMENT_STATUS } from "./constants";
 import type { Appointment } from "./types";
 import type { FilterParams, PaginationParams, PaginatedResponse } from "./types";
@@ -41,8 +44,16 @@ function createAppointmentFromBookingRow(
   expandForCalendar: boolean,
 ): Appointment {
   const scheduledAt = svc.scheduled_start_at ? new Date(svc.scheduled_start_at) : new Date(booking.scheduled_at);
-  const scheduledDate = formatDate(scheduledAt, "yyyy-MM-dd");
-  const scheduledTime = formatDate(scheduledAt, "HH:mm");
+  const providerTimezone =
+    normalizeProviderTimezone(
+      booking.provider_timezone || booking.provider?.timezone || booking.provider_time_zone,
+    ) ?? DEFAULT_BOOKING_DISPLAY_TIMEZONE;
+  const scheduledDate = Number.isFinite(scheduledAt.getTime())
+    ? formatInTimeZone(scheduledAt, providerTimezone, "yyyy-MM-dd")
+    : formatDate(scheduledAt, "yyyy-MM-dd");
+  const scheduledTime = Number.isFinite(scheduledAt.getTime())
+    ? formatInTimeZone(scheduledAt, providerTimezone, "HH:mm")
+    : formatDate(scheduledAt, "HH:mm");
   const serviceName = svc.offering_name || svc.name || "Service";
   const serviceId = svc.offering_id || svc.id || "";
   const durationMinutes = svc.duration_minutes || 60;

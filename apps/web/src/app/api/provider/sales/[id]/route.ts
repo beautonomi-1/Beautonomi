@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import {
+  errorResponse,
   getProviderIdForUser,
   handleApiError,
   notFoundResponse,
@@ -44,6 +45,16 @@ export async function PATCH(
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");
+    if (
+      parsed.data.payment_provider === "paystack_terminal" ||
+      parsed.data.payment_provider === "paystack_virtual_terminal"
+    ) {
+      return errorResponse(
+        "Paystack Terminal sale payments must be verified by Paystack and allocated from the terminal payment inbox.",
+        "PAYSTACK_TERMINAL_ALLOCATION_REQUIRED",
+        400,
+      );
+    }
 
     const updates: Record<string, unknown> = {};
     if (parsed.data.payment_status !== undefined) {

@@ -77,6 +77,15 @@ interface ProviderContextType {
 const ProviderContext = createContext<ProviderContextType | undefined>(undefined);
 
 const PROFILE_LOAD_TIMEOUT_MS = 15 * 1000;
+const ONBOARDING_ENTRY_ROLES = new Set(["customer", "provider_onboarding"]);
+
+function roleFromResponse(roleRes: Awaited<ReturnType<typeof api.get<{ role: string }>>>): string | null {
+  return roleRes.error ? null : roleRes.data?.role ?? null;
+}
+
+function isAuthStatus(status: number | undefined): boolean {
+  return status === 401 || status === 403;
+}
 
 export function ProviderProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
@@ -183,9 +192,24 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
       const pe = profileRes.error as { status?: number; code?: string; message?: string } | undefined;
       const isNoProviderRowYet =
         pe?.status === 404 || pe?.code === "NOT_FOUND" || pe?.code === "NEW_PROVIDER";
+      const resolvedRole = roleFromResponse(roleRes);
+      const isExpectedOnboardingProfileAuthError =
+        !!profileRes.error &&
+        isAuthStatus(pe?.status) &&
+        !!resolvedRole &&
+        ONBOARDING_ENTRY_ROLES.has(resolvedRole);
 
       if (profileRes.error && isNoProviderRowYet) {
         // New provider completing onboarding: no providers row yet — expected; still need role for RoleGate.
+        setProvider(null);
+        setProfileLoadError(null);
+        setActiveProviderApiHint(null);
+        AsyncStorage.removeItem(ACTIVE_PROVIDER_ORG_HINT_STORAGE_KEY).catch(() => {});
+        applyRoleFromResponse(roleRes);
+      } else if (isExpectedOnboardingProfileAuthError) {
+        // First-run users may still be customer/provider_onboarding while the
+        // setup wizard creates the provider row. Keep them in onboarding instead
+        // of surfacing the provider-profile 403 as a scary banner.
         setProvider(null);
         setProfileLoadError(null);
         setActiveProviderApiHint(null);

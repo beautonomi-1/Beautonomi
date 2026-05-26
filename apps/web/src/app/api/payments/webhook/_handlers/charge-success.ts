@@ -40,6 +40,10 @@ import {
 } from "@/lib/bookings/ensure-wallet-gift-booking-payments";
 import { patchCustomOfferMessageAttachments } from "@/lib/custom-offers/sync-offer-message-attachments";
 import { finalizeCustomOfferPaymentFromPaystackEvent } from "@/lib/custom-offers/finalize-custom-offer-payment";
+import {
+  isPaystackTerminalCharge,
+  recordPaystackTerminalCharge,
+} from "@/lib/payments/paystack-terminal-webhook";
 
 async function lastResortCurrencyFromTenantId(
   tenantId: string | null | undefined,
@@ -189,6 +193,10 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
     }
   }
   data.metadata = metaObj as PaystackChargeData["metadata"];
+  if (isPaystackTerminalCharge(data as any)) {
+    await recordPaystackTerminalCharge(supabase, data as any);
+    return;
+  }
   const { metadata, amount, fees, customer, authorization } = data;
 
   if (!reference || !metadata?.booking_id) {

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 const mockRequireRoleInApi = vi.fn();
-const mockGetSupabaseServer = vi.fn();
+const mockGetSupabaseAdmin = vi.fn();
 const mockRegisterDevice = vi.fn();
 
 vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
@@ -13,8 +13,8 @@ vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
   };
 });
 
-vi.mock("@/lib/supabase/server", () => ({
-  getSupabaseServer: (...args: unknown[]) => mockGetSupabaseServer(...args),
+vi.mock("@/lib/supabase/admin", () => ({
+  getSupabaseAdmin: (...args: unknown[]) => mockGetSupabaseAdmin(...args),
 }));
 
 vi.mock("@/lib/notifications/onesignal", () => ({
@@ -25,7 +25,7 @@ describe("POST /api/provider/devices", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockRequireRoleInApi.mockResolvedValue({ user: { id: "provider-user-1" } });
-    mockGetSupabaseServer.mockResolvedValue({ from: vi.fn() });
+    mockGetSupabaseAdmin.mockReturnValue({ from: vi.fn() });
     mockRegisterDevice.mockResolvedValue({ success: true });
   });
 

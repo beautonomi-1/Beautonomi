@@ -26,6 +26,7 @@ import {
   startRuntimeMarketHostLinkListener,
 } from "@/config/public-env";
 import { ScreenshotDeepLinkBootstrap } from "@/components/ScreenshotDeepLinkBootstrap";
+import { configureNativePushNotifications } from "@/lib/push-notifications-setup";
 
 if (Platform.OS !== "web") {
   SplashScreen.preventAutoHideAsync();
@@ -41,6 +42,9 @@ try {
 try {
   initSingular();
 } catch {}
+if (Platform.OS !== "web") {
+  configureNativePushNotifications();
+}
 
 function SplashController() {
   const { loading } = useAuth();

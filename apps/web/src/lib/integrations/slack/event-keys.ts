@@ -21,6 +21,8 @@ export const SLACK_EVENT_KEYS = {
   FINANCE_PAYOUT_EXCEPTION: "finance.payout.exception",
   FINANCE_REFUND_REVIEW: "finance.refund.manual_review",
   FINANCE_RECONCILIATION_WARNING: "finance.reconciliation.warning",
+  FINANCE_PAYSTACK_TERMINAL_SETUP_REQUESTED: "finance.paystack_terminal.setup_requested",
+  FINANCE_PAYSTACK_TERMINAL_ASSET_REQUESTED: "finance.paystack_terminal.asset_requested",
   CUSTOM_OFFER_FINALIZE_FAILED: "finance.custom_offer.finalize_failed",
   DISPUTE_NEW: "dispute.new",
   DISPUTE_OVERDUE: "dispute.overdue",

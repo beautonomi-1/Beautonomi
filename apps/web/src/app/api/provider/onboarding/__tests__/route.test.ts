@@ -564,6 +564,12 @@ describe("POST /api/provider/onboarding", () => {
           };
         }
 
+        if (table === "provider_travel_fee_settings") {
+          return {
+            upsert: vi.fn(async () => ({ error: null })),
+          };
+        }
+
         throw new Error(`Unexpected table: ${table}`);
       }),
       rpc: vi.fn(async () => ({ data: null, error: { message: "does not exist" } })),

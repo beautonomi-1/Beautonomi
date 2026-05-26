@@ -696,22 +696,27 @@ export async function listTransactions(params?: {
   perPage?: number;
   page?: number;
   customer?: number;
+  terminalid?: string | number;
   status?: string;
   from?: string;
   to?: string;
   amount?: number;
+  tenantId?: string | null;
 }): Promise<PaystackResponse<Transaction[]>> {
   const queryParams = new URLSearchParams();
   if (params?.perPage) queryParams.append("perPage", params.perPage.toString());
   if (params?.page) queryParams.append("page", params.page.toString());
   if (params?.customer) queryParams.append("customer", params.customer.toString());
+  if (params?.terminalid) queryParams.append("terminalid", params.terminalid.toString());
   if (params?.status) queryParams.append("status", params.status);
   if (params?.from) queryParams.append("from", params.from);
   if (params?.to) queryParams.append("to", params.to);
   if (params?.amount) queryParams.append("amount", params.amount.toString());
 
   const query = queryParams.toString();
-  return paystackRequest(`/transaction${query ? `?${query}` : ""}`);
+  return paystackRequest(`/transaction${query ? `?${query}` : ""}`, {
+    tenantId: params?.tenantId,
+  });
 }
 
 export async function fetchTransaction(

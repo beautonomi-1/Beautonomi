@@ -7,6 +7,8 @@ export const TENANT_PAYMENT_FEATURE_KEYS = {
   GIFT_CARDS: "gift_cards",
   PAYMENT_WALLET: "payment_wallet",
   PAYMENT_PAYSTACK: "payment_paystack",
+  PAYMENT_PAYSTACK_VIRTUAL_TERMINAL: "payment_paystack_virtual_terminal",
+  PAYMENT_YOCO: "payment_yoco",
 } as const;
 
 type CheckResponse = { features: Record<string, boolean> };

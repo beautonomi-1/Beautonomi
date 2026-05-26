@@ -7,6 +7,7 @@ const mockCheckYocoFeatureAccess = vi.fn();
 const mockResolveTenantIdWithZaFallback = vi.fn();
 const mockGetTenantRegionConfig = vi.fn();
 const mockResolveProviderCredentialMode = vi.fn();
+const mockRequireYocoPlatformEnabledForProvider = vi.fn();
 
 vi.mock("@/lib/auth/requireRole", () => ({
   requireRole: (...args: unknown[]) => mockRequireRole(...args),
@@ -46,6 +47,11 @@ vi.mock("@/lib/payments/yoco-oauth", async (importOriginal) => {
       mockResolveProviderCredentialMode(...args),
   };
 });
+
+vi.mock("@/lib/payments/yoco-feature-gate", () => ({
+  requireYocoPlatformEnabledForProvider: (...args: unknown[]) =>
+    mockRequireYocoPlatformEnabledForProvider(...args),
+}));
 
 function createSupabaseForLegacyTerminalFlow() {
   return {
@@ -130,6 +136,7 @@ describe("POST /api/provider/yoco/payments", () => {
     mockRequireRole.mockResolvedValue({ user: { id: "provider-user-1" } });
     mockGetProviderIdForUser.mockResolvedValue("provider-1");
     mockCheckYocoFeatureAccess.mockResolvedValue({ enabled: true });
+    mockRequireYocoPlatformEnabledForProvider.mockResolvedValue(null);
     mockResolveTenantIdWithZaFallback.mockResolvedValue("tenant-1");
     mockGetTenantRegionConfig.mockResolvedValue({
       defaultCurrency: "ZAR",

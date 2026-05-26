@@ -245,7 +245,7 @@ const PartnerHeroMobile: React.FC<PartnerHeroMobileProps> = ({
         />
 
         {/* Avatar on gallery (bottom-left) — keeps name row below unobstructed */}
-        <div className="absolute bottom-5 left-4 z-30">
+        <div className="absolute bottom-6 left-4 z-30">
           <div className="relative h-[72px] w-[72px] shrink-0">
             <div className="relative h-full w-full overflow-hidden rounded-full border-[3px] border-white bg-gray-200 shadow-xl ring-1 ring-black/10">
               {thumbnail_url ? (
@@ -270,7 +270,7 @@ const PartnerHeroMobile: React.FC<PartnerHeroMobileProps> = ({
 
         {/* Photo Counter - Bottom Right */}
         {displayImages.length > 1 && (
-          <div className="absolute bottom-4 right-4 z-20 rounded-full bg-black/70 px-3 py-1.5 text-xs font-medium text-white backdrop-blur-sm">
+          <div className="absolute bottom-6 right-4 z-20 rounded-full bg-black/70 px-3 py-1.5 text-xs font-medium text-white backdrop-blur-sm">
             {currentImageIndex + 1}/{displayImages.length}
           </div>
         )}
@@ -364,7 +364,7 @@ const PartnerHeroMobile: React.FC<PartnerHeroMobileProps> = ({
       </div>
 
       {/* Provider information — sits below gallery; avatar lives on hero so title stays readable */}
-      <div className="relative -mt-5 rounded-t-3xl bg-white pb-4 pt-5 shadow-lg">
+      <div className="relative -mt-6 rounded-t-3xl bg-white pb-4 pt-5 shadow-lg">
         <div className="mb-4 px-4">
           <h1 className="text-2xl font-bold leading-tight text-gray-900 md:text-3xl">
             {businessName || "Provider"}
