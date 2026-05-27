@@ -134,7 +134,7 @@ export default function SettingsDeactivateAccountScreen() {
     try {
       const { error } = await supabase.auth.reauthenticate();
       if (error) throw error;
-      Alert.alert("Code sent", "Enter the verification code below to confirm deactivation.");
+      Alert.alert("Code sent", "A verification code has been sent to the email address on your account. Enter it below to confirm deactivation.");
     } catch (e) {
       Alert.alert("Error", getApiErrorMessage(e, "Failed to send verification code."));
     } finally {
@@ -189,7 +189,7 @@ export default function SettingsDeactivateAccountScreen() {
                 </>
               ) : (
                 <>
-                  <Text style={{ marginBottom: 8, fontSize: 14, color: Colors.gray[600] }}>Confirm with a one-time verification code.</Text>
+                  <Text style={{ marginBottom: 8, fontSize: 14, color: Colors.gray[600] }}>We'll send a verification code to the email address on your account.</Text>
                   <TouchableOpacity
                     onPress={requestVerificationCode}
                     disabled={requestingNonce || !canVerifyWithCode}

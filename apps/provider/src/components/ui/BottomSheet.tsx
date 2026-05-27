@@ -32,6 +32,8 @@ import * as Haptics from "expo-haptics";
 interface BottomSheetProps {
   visible: boolean;
   onClose: () => void;
+  /** Fires after the modal finishes its dismiss animation (best-effort). */
+  onModalHide?: () => void;
   title?: string;
   subtitle?: string;
   children: React.ReactNode;
@@ -46,6 +48,7 @@ const GestureRoot = GestureHandlerRootView as ComponentType<
 export function BottomSheet({
   visible,
   onClose,
+  onModalHide,
   title,
   subtitle,
   children,
@@ -108,6 +111,12 @@ export function BottomSheet({
   useEffect(() => {
     if (!visible) setAndroidKeyboardInset(0);
   }, [visible]);
+
+  useEffect(() => {
+    if (visible || !onModalHide) return;
+    const timer = setTimeout(() => onModalHide(), 280);
+    return () => clearTimeout(timer);
+  }, [visible, onModalHide]);
 
   const panGesture = Gesture.Pan()
     .onUpdate((e) => {

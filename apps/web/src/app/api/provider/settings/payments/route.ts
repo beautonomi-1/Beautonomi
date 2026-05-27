@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
     const { data: provider, error: providerError } = await supabase
       .from("providers")
       .select(
-        "tenant_id, currency, tax_rate_percent, is_vat_registered, vat_number, requires_deposit, deposit_percentage, no_show_fee_enabled, no_show_fee_amount, accept_cash, accept_card, accept_online, tax_inclusive, tips_enabled, tip_presets, receipt_auto_send, tips_distribution"
+        "tenant_id, currency, tax_rate_percent, is_vat_registered, vat_number, requires_deposit, deposit_percentage, no_show_fee_enabled, no_show_fee_amount, accept_cash, accept_card, accept_online, accept_paystack_terminal, tax_inclusive, tips_enabled, tip_presets, receipt_auto_send, tips_distribution"
       )
       .eq("id", providerId)
       .single();
@@ -112,6 +112,9 @@ export async function GET(request: NextRequest) {
       acceptCash: provider.accept_cash ?? true,
       acceptCard: yocoEnabled ? (provider.accept_card ?? true) : false,
       acceptOnline: provider.accept_online ?? false,
+      acceptPaystackTerminal: paystackTerminalEnabled
+        ? (provider.accept_paystack_terminal ?? false)
+        : false,
       taxInclusive: provider.tax_inclusive ?? true,
       tipsEnabled: provider.tips_enabled ?? true,
       tipPresets: provider.tip_presets ?? [10, 15, 20, 25],
@@ -160,6 +163,10 @@ export async function PATCH(request: NextRequest) {
     if (mismatch) return mismatch;
 
     const yocoEnabled = await isFeatureEnabledServer(FEATURE_FLAG_KEYS.PAYMENT_YOCO, tenantId);
+    const paystackTerminalEnabled = await isFeatureEnabledServer(
+      FEATURE_FLAG_KEYS.PAYMENT_PAYSTACK_VIRTUAL_TERMINAL,
+      tenantId,
+    );
 
     const updates: Record<string, any> = {};
 
@@ -195,6 +202,9 @@ export async function PATCH(request: NextRequest) {
     }
     if (body.acceptOnline !== undefined) {
       updates.accept_online = body.acceptOnline;
+    }
+    if (body.acceptPaystackTerminal !== undefined) {
+      updates.accept_paystack_terminal = paystackTerminalEnabled ? body.acceptPaystackTerminal : false;
     }
     if (body.taxInclusive !== undefined) {
       updates.tax_inclusive = body.taxInclusive;

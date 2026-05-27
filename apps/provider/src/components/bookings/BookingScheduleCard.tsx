@@ -40,6 +40,8 @@ export interface BookingScheduleCardBooking {
   additional_charges?: { amount?: number | string | null; status?: string | null }[] | null;
   location_type?: "at_salon" | "at_home" | null;
   is_group_booking?: boolean;
+  group_booking_id?: string | null;
+  group_booking_ref?: string | null;
   is_recurring?: boolean;
   recurring_series_id?: string | null;
   booking_source?: string | null;
@@ -191,10 +193,12 @@ export function BookingScheduleCard({
   const actionModel = buildProviderBookingActionModel(booking, { listContext: true });
   const cta = actionModel.primaryListAction;
   const traits = [
+    booking.is_group_booking
+      ? { label: booking.group_booking_ref ? `GRP ${booking.group_booking_ref}` : "GRP", icon: "people-outline" as const }
+      : null,
     booking.location_type === "at_home" ? { label: "House call", icon: "home-outline" as const } : null,
     booking.is_recurring || booking.recurring_series_id ? { label: "Repeats", icon: "repeat-outline" as const } : null,
-    booking.is_group_booking ? { label: "Group", icon: "people-outline" as const } : null,
-    booking.booking_source === "walk_in" ? { label: "Walk-in", icon: "walk-outline" as const } : null,
+    !booking.is_group_booking && booking.booking_source === "walk_in" ? { label: "Walk-in", icon: "walk-outline" as const } : null,
     booking.booking_source === "provider" ? { label: "Provider", icon: "person-outline" as const } : null,
     booking.booking_source === "online" ? { label: "Online", icon: "globe-outline" as const } : null,
     booking.custom_offer ? { label: "Custom", icon: "pricetag-outline" as const } : null,
@@ -226,15 +230,30 @@ export function BookingScheduleCard({
           Shadows.cardSmall,
           {
             borderRadius: 24,
-            borderWidth: isNextUpcoming ? 1.5 : 1,
-            borderColor: isNextUpcoming ? Colors.primaryRing : "#f1f5f9",
+            borderWidth: isNextUpcoming ? 1.5 : booking.is_group_booking ? 1.5 : 1,
+            borderColor: isNextUpcoming
+              ? Colors.primaryRing
+              : booking.is_group_booking
+                ? "#c7d2fe"
+                : "#f1f5f9",
           },
           isNextUpcoming ? Shadows.card : null,
         ]}
         accessibilityLabel={`Booking for ${customerName}`}
         accessibilityRole="button"
       >
-        <View style={[twStyle("absolute bottom-4 left-0 top-4 w-1 rounded-r-full"), { backgroundColor: isNextUpcoming ? Colors.primary : st.text }]} />
+        <View
+          style={[
+            twStyle("absolute bottom-4 left-0 top-4 w-1 rounded-r-full"),
+            {
+              backgroundColor: booking.is_group_booking
+                ? "#6366f1"
+                : isNextUpcoming
+                  ? Colors.primary
+                  : st.text,
+            },
+          ]}
+        />
         <View style={twStyle("flex-row")}>
           <View style={twStyle("mr-4 w-[58px] items-start pl-2")}>
             <Text style={twStyle("text-base font-extrabold text-gray-950")}>{scheduledTime}</Text>

@@ -31,14 +31,20 @@ export async function GET(request: NextRequest) {
       return notFoundResponse("Provider not found");
     }
 
-    // Get provider's product categories
-    const { data: categories, error } = await supabase
+    const includeInactive = request.nextUrl.searchParams.get("include_inactive") === "true";
+
+    let categoriesQuery = supabase
       .from("provider_product_categories")
       .select("*")
       .eq("provider_id", providerId)
-      .eq("is_active", true)
       .order("display_order", { ascending: true })
       .order("name", { ascending: true });
+
+    if (!includeInactive) {
+      categoriesQuery = categoriesQuery.eq("is_active", true);
+    }
+
+    const { data: categories, error } = await categoriesQuery;
 
     if (error) {
       console.error("Error fetching product categories:", error);

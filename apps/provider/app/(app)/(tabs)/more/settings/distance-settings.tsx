@@ -46,16 +46,20 @@ export default function DistanceSettingsScreen() {
   }
 
   async function handleSave() {
-    const dist = parseFloat(maxDistance);
-    if (isNaN(dist) || dist < 1 || dist > 200) {
-      Alert.alert("Invalid", "Distance must be between 1 and 200 km");
-      return;
+    if (enabled) {
+      const dist = parseFloat(maxDistance);
+      if (isNaN(dist) || dist < 1 || dist > 200) {
+        Alert.alert("Invalid", "Distance must be between 1 and 200 km");
+        return;
+      }
     }
     const payload: Record<string, unknown> = {
       is_distance_filter_enabled: enabled,
-      max_service_distance_km: dist,
       show_distance_to_clients: showToClients,
     };
+    if (enabled) {
+      payload.max_service_distance_km = parseFloat(maxDistance);
+    }
     if (atHomeDistance) {
       const ahDist = parseFloat(atHomeDistance);
       if (!isNaN(ahDist) && ahDist > 0) payload.at_home_distance_km = ahDist;
@@ -180,6 +184,25 @@ export default function DistanceSettingsScreen() {
                     </Text>
                   </TouchableOpacity>
                 ))}
+                <TouchableOpacity
+                  style={[twStyle(`rounded-full px-3 py-1.5 ${
+                    !enabled ? "bg-emerald-600" : "bg-gray-100"
+                  }`), { marginRight: 8, marginBottom: 8 }]}
+                  onPress={() =>
+                    update(() => {
+                      setEnabled(false);
+                      setMaxDistance("");
+                    })
+                  }
+                >
+                  <Text
+                    style={twStyle(`text-xs font-medium ${
+                      !enabled ? "text-white" : "text-gray-600"
+                    }`)}
+                  >
+                    No limit
+                  </Text>
+                </TouchableOpacity>
               </View>
             </View>
 

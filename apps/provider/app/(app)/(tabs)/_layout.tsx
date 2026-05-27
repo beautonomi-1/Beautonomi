@@ -15,6 +15,7 @@ import { useApi } from "@/hooks/useApi";
 import { useNotificationsCount } from "@/providers/NotificationsCountContext";
 import { useProvider } from "@/providers/ProviderContext";
 import { supabase } from "@/lib/supabase/client";
+import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -138,100 +139,84 @@ export default function TabsLayout() {
   }, []);
 
   // Realtime badge updates across dashboard/bookings/chats/more counters.
-  // §provider-nav-counts-realtime 2026-05: previous topic name was static
-  // (`provider-nav-counts:${providerId}`), so when React re-mounted this
-  // effect (Strict Mode, fast refresh, tab remount) the Supabase realtime
-  // client reused the already-subscribed channel and threw
-  // "tried to add postgres_changes callbacks after subscribe()". A
-  // per-mount counter guarantees a fresh channel topic every effect cycle,
-  // and the cleanup removes the old channel so we don't leak listeners.
-  const navChannelGen = useRef(0);
+  // §provider-nav-counts-realtime 2026-05: module-level topic suffix — useRef
+  // resets when TabsLayout unmounts (e.g. onboarding), reusing `:1` before
+  // removeChannel finishes caused "postgres_changes after subscribe()".
   useEffect(() => {
     const providerId = provider?.id;
     if (!providerId) return;
-    navChannelGen.current += 1;
-    const gen = navChannelGen.current;
     let debounce: ReturnType<typeof setTimeout> | undefined;
-    const channel = supabase
-      .channel(`provider-nav-counts:${providerId}:${gen}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "bookings",
-          filter: `provider_id=eq.${providerId}`,
-        },
-        () => {
-          if (debounce) clearTimeout(debounce);
-          debounce = setTimeout(() => {
-            refreshNavCountsDebounced.current();
-          }, 120);
-        },
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "product_orders",
-          filter: `provider_id=eq.${providerId}`,
-        },
-        () => {
-          if (debounce) clearTimeout(debounce);
-          debounce = setTimeout(() => {
-            refreshNavCountsDebounced.current();
-          }, 120);
-        },
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "conversations",
-          filter: `provider_id=eq.${providerId}`,
-        },
-        () => {
-          if (debounce) clearTimeout(debounce);
-          debounce = setTimeout(() => {
-            refreshNavCountsDebounced.current();
-          }, 120);
-        },
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "product_return_requests",
-          filter: `provider_id=eq.${providerId}`,
-        },
-        () => {
-          if (debounce) clearTimeout(debounce);
-          debounce = setTimeout(() => {
-            refreshNavCountsDebounced.current();
-          }, 120);
-        },
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "custom_requests",
-          filter: `provider_id=eq.${providerId}`,
-        },
-        () => {
-          if (debounce) clearTimeout(debounce);
-          debounce = setTimeout(() => {
-            refreshNavCountsDebounced.current();
-          }, 120);
-        },
-      )
-      .subscribe();
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+
+    const scheduleRefresh = () => {
+      if (debounce) clearTimeout(debounce);
+      debounce = setTimeout(() => {
+        refreshNavCountsDebounced.current();
+      }, 120);
+    };
+
+    try {
+      const topic = nextRealtimeTopic(`provider-nav-counts:${providerId}`);
+      channel = supabase
+        .channel(topic)
+        .on(
+          "postgres_changes" as never,
+          {
+            event: "*",
+            schema: "public",
+            table: "bookings",
+            filter: `provider_id=eq.${providerId}`,
+          },
+          scheduleRefresh,
+        )
+        .on(
+          "postgres_changes" as never,
+          {
+            event: "*",
+            schema: "public",
+            table: "product_orders",
+            filter: `provider_id=eq.${providerId}`,
+          },
+          scheduleRefresh,
+        )
+        .on(
+          "postgres_changes" as never,
+          {
+            event: "*",
+            schema: "public",
+            table: "conversations",
+            filter: `provider_id=eq.${providerId}`,
+          },
+          scheduleRefresh,
+        )
+        .on(
+          "postgres_changes" as never,
+          {
+            event: "*",
+            schema: "public",
+            table: "product_return_requests",
+            filter: `provider_id=eq.${providerId}`,
+          },
+          scheduleRefresh,
+        )
+        .on(
+          "postgres_changes" as never,
+          {
+            event: "*",
+            schema: "public",
+            table: "custom_requests",
+            filter: `provider_id=eq.${providerId}`,
+          },
+          scheduleRefresh,
+        )
+        .subscribe();
+    } catch {
+      // Non-fatal: badges still refresh on interval / focus / tab press.
+    }
+
     return () => {
       if (debounce) clearTimeout(debounce);
+      if (!channel) return;
       try {
         supabase.removeChannel(channel);
       } catch {

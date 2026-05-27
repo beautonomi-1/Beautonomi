@@ -6,6 +6,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
 import { GET, PATCH } from "../route";
+import { POST as POSTRefund } from "../refund/route";
 import { mockUser } from "@/lib/test-utils/setup";
 
 vi.mock("@/lib/supabase/server", () => ({
@@ -210,5 +211,22 @@ describe("GET/PATCH /api/provider/bookings/[id] for synthetic group: ids", () =>
     expect(JSON.parse((init?.body as string) ?? "{}")).toEqual({
       cancellation_reason: "no longer needed",
     });
+  });
+
+  it("POST refund on synthetic group id returns GROUP_REFUND_UNSUPPORTED", async () => {
+    const url = new URL(`http://localhost:3000/api/provider/bookings/${encodeURIComponent(syntheticId)}/refund`);
+    const req = new NextRequest(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        authorization: "Bearer fake-refund-auth-header",
+      },
+      body: JSON.stringify({ amount: 50, reason: "customer request" }),
+    });
+
+    const res = await POSTRefund(req, { params: Promise.resolve({ id: syntheticId }) });
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error?.code).toBe("GROUP_REFUND_UNSUPPORTED");
   });
 });

@@ -405,9 +405,9 @@ export default function ProviderProducts() {
                 <div key={product.id} className="p-4 space-y-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-start gap-3 flex-1 min-w-0">
-                      {product.image_url && (
+                      {product.image_urls?.[0] && (
                         <img
-                          src={product.image_url}
+                          src={product.image_urls[0]}
                           alt={product.name}
                           className="w-16 h-16 object-cover rounded-lg flex-shrink-0"
                         />
@@ -495,9 +495,9 @@ export default function ProviderProducts() {
                     <TableRow key={product.id}>
                       <TableCell>
                         <div className="flex items-center gap-3">
-                          {product.image_url ? (
+                          {product.image_urls?.[0] ? (
                             <img
-                              src={product.image_url}
+                              src={product.image_urls[0]}
                               alt={product.name}
                               className="w-10 h-10 rounded object-cover"
                             />
@@ -733,9 +733,9 @@ function StockAdjustmentDialog({
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="bg-gray-50 p-4 rounded-lg">
             <div className="flex items-center gap-3">
-              {product.image_url ? (
+              {product.image_urls?.[0] ? (
                 <img
-                  src={product.image_url}
+                  src={product.image_urls[0]}
                   alt={product.name}
                   className="w-12 h-12 rounded object-cover"
                 />

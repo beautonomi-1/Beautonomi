@@ -180,6 +180,7 @@ const MENU_SECTIONS: { title: string; items: MenuItem[] }[] = [
   {
     title: "Settings",
     items: [
+      { icon: "lock-closed-outline", label: "Login & security", subtitle: "Email, phone, password, biometrics & sessions", route: "/(app)/(tabs)/more/settings-login-and-security", color: "#6366f1", bg: "#eef2ff" },
       { icon: "language-outline", label: "Language & region", subtitle: "App language & market entry point", route: "/(app)/(tabs)/more/settings/language", color: "#0ea5e9", bg: "#e0f2fe" },
       { icon: "storefront-outline", label: "Locations & operating hours", subtitle: "Branches, addresses & opening times", route: "/(app)/(tabs)/more/locations-operating-hub", color: "#059669", bg: "#ecfdf5" },
       { icon: "car-outline", label: "Travel fees", subtitle: "At-home travel fees", route: "/(app)/(tabs)/more/settings/travel-fees", color: "#f59e0b", bg: "#fef3c7" },
@@ -211,6 +212,7 @@ export default function MoreScreen() {
   const { t } = useTranslation();
   const { user, signOut } = useAuth();
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
+  const yocoEnabled = useFeatureFlag("payment_yoco");
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     "Grow your business": true,
     Operations: true,
@@ -677,7 +679,11 @@ export default function MoreScreen() {
 
         {/* Quick actions - customer-style 2x2 grid (shortens perceived page length) */}
         <View style={{ marginBottom: 20, flexDirection: "row", flexWrap: "wrap" }}>
-          {QUICK_ACTIONS.filter((action) => paystackTerminalEnabled || !action.route.includes("paystack-terminal")).map((action) => {
+          {QUICK_ACTIONS.filter(
+            (action) =>
+              (paystackTerminalEnabled || !action.route.includes("paystack-terminal")) &&
+              (yocoEnabled || !action.route.includes("yoco")),
+          ).map((action) => {
             const badge = formatBadgeCount(getRouteBadgeCount(action.route));
             return (
               <TouchableOpacity
@@ -931,7 +937,11 @@ export default function MoreScreen() {
               </TouchableOpacity>
               {isExpanded && (
                 <View style={{ overflow: "hidden", borderBottomLeftRadius: 16, borderBottomRightRadius: 16, borderWidth: 1, borderTopWidth: 0, borderColor: Colors.gray[100], backgroundColor: Colors.white }}>
-                  {section.items.filter((item) => paystackTerminalEnabled || !item.route.includes("paystack-terminal")).map((item, idx) => {
+                  {section.items.filter(
+                    (item) =>
+                      (paystackTerminalEnabled || !item.route.includes("paystack-terminal")) &&
+                      (yocoEnabled || !item.route.includes("yoco")),
+                  ).map((item, idx) => {
                     const badge = formatBadgeCount(getRouteBadgeCount(item.route));
                     return (
                       <TouchableOpacity

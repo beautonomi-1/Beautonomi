@@ -3,6 +3,7 @@ import { InteractionManager, Linking } from "react-native";
 import { fetchAmplitudeConfig } from "@beautonomi/analytics";
 import {
   initAnalytics,
+  resetAnalyticsModule,
   handleEngagementURL,
   getMobileAnalyticsAttribution,
   captureMarketingAttributionFromUrl,
@@ -119,11 +120,7 @@ export function AnalyticsProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
       deferredHandle?.cancel?.();
-      try {
-        clientRef.current?.reset();
-      } catch {
-        /* ignore */
-      }
+      resetAnalyticsModule();
       clientRef.current = null;
       setAnalyticsInstance(null);
     };

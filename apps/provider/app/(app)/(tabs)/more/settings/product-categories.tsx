@@ -52,7 +52,7 @@ export default function ProductCategoriesScreen() {
   });
 
   const { data: categories, loading, refresh } = useApi<ProductCategory[]>(
-    "/api/provider/product-categories"
+    "/api/provider/product-categories?include_inactive=true"
   );
   const { execute: createCategory, loading: creating } = useApiPost<any, any>(
     "/api/provider/product-categories"

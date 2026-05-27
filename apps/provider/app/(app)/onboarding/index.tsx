@@ -65,7 +65,12 @@ export default function OnboardingHubScreen() {
 
   const startNativeWizard = () => {
     hapticLight();
-    router.push("/(app)/onboarding/wizard" as never);
+    const nextStep = pendingRequired[0] || optionalPending[0];
+    if (nextStep) {
+      router.push(`/(app)/onboarding/wizard?focus=${encodeURIComponent(nextStep.id)}` as never);
+    } else {
+      router.push("/(app)/onboarding/wizard" as never);
+    }
   };
 
   const leaveSetup = async () => {

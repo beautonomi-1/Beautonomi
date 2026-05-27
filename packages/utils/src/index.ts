@@ -196,3 +196,8 @@ export {
   type WallClockParts,
   type WeeklyHours,
 } from "./calendar-hours";
+export {
+  MEMBERSHIP_CANCELLED_BADGE_TTL_DAYS,
+  isCancelledMembershipBadgeStale,
+  shouldShowCancelledMembershipBadge,
+} from "./membership/cancelledMembershipBadge";

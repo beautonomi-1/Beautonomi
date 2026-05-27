@@ -74,7 +74,7 @@ CREATE POLICY "Providers can view own Paystack terminal setup requests"
                     SELECT 1 FROM public.provider_staff ps
                     WHERE ps.provider_id = p.id
                       AND ps.user_id = auth.uid()
-                      AND ps.status = 'active'
+                      AND ps.is_active = true
                 )
               )
         )

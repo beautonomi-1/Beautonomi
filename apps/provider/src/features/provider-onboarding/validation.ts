@@ -74,13 +74,16 @@ export function validateStep(
         if (service?.at_home_radius_km != null && !Number.isFinite(service.at_home_radius_km)) {
           errors.push(`${label}: at-home radius must be a number`);
         }
-        const addons = service?.addons || [];
+        const addons = formData.service_addons || [];
         for (let j = 0; j < addons.length; j++) {
           const addon = addons[j];
-          const addonLabel = `${label} add-on ${j + 1}`;
+          const addonLabel = `Add-on ${j + 1}`;
           if (!addon?.name?.trim()) errors.push(`${addonLabel}: name is required`);
           if (!Number.isFinite(addon?.price) || Number(addon?.price) < 0) {
             errors.push(`${addonLabel}: price must be 0 or higher`);
+          }
+          if (!Number.isFinite(addon?.parent_service_index) || addon.parent_service_index < 0) {
+            errors.push(`${addonLabel}: parent service reference is invalid`);
           }
         }
       }
@@ -145,7 +148,8 @@ export function buildSubmitPayload(formData: Partial<OnboardingFormData>): Recor
     global_category_ids: formData.global_category_ids || [],
     selected_zone_ids: formData.selected_zone_ids || [],
     operating_hours: formData.operating_hours || {},
-    services: formData.services || [],
+    services: (formData.services || []).map(({ addons: _legacy, ...svc }) => svc),
+    service_addons: formData.service_addons || [],
     thumbnail_url: formData.thumbnail_url ?? null,
     avatar_url: formData.avatar_url ?? null,
     gallery: formData.gallery || [],

@@ -38,7 +38,9 @@ import { formatCurrency, formatDate } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 import { E164PhoneField } from "@/components/E164PhoneField";
 import { validateE164Phone } from "@/lib/phone-country-codes";
+import { validateGroupBookingCreateStep } from "@/features/group-bookings/validateGroupBookingCreate";
 import { useProvider } from "@/providers/ProviderContext";
+import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { buildZonedIsoForWallClock } from "@/lib/tz";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { api, getApiBaseUrl } from "@/lib/api-client";
@@ -386,12 +388,14 @@ export default function GroupBookingsScreen() {
   const { width: windowWidth } = useWindowDimensions();
   const params = useLocalSearchParams<{
     open_group_id?: string;
+    openCreate?: string;
     default_date?: string;
     default_time?: string;
     default_staff_id?: string;
     default_location_id?: string;
   }>();
   const { provider, selectedLocationId } = useProvider();
+  const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
   const providerTz = provider?.timezone ?? null;
   const locations = provider?.locations ?? [];
 
@@ -536,9 +540,7 @@ export default function GroupBookingsScreen() {
     addressLatitude: null as number | null,
     addressLongitude: null as number | null,
     travelFee: "",
-    // §Provider-audit 2026-04 (packages round 3): track the attached
-    // service_package so the POST payload can include `package_id` like
-    // the web `GroupBookingDialog` does.
+    travelPreviewDistanceKm: null as number | null,
     packageId: "" as string,
   });
   const [createParticipants, setCreateParticipants] = useState<ParticipantFormRow[]>([]);
@@ -550,6 +552,10 @@ export default function GroupBookingsScreen() {
   const [createProducts, setCreateProducts] = useState<SelectedGroupProduct[]>([]);
   const [showPackagePicker, setShowPackagePicker] = useState(false);
   const [showProductPicker, setShowProductPicker] = useState(false);
+  const finishProductPicker = useCallback(() => {
+    setShowProductPicker(false);
+    requestAnimationFrame(() => setShowCreate(true));
+  }, []);
   const [validatingCreateAddress, setValidatingCreateAddress] = useState(false);
   const [createMapPinOpen, setCreateMapPinOpen] = useState(false);
   const [createLocatingHome, setCreateLocatingHome] = useState(false);
@@ -605,9 +611,10 @@ export default function GroupBookingsScreen() {
   // confirmation step before posting, with payment method selection mirroring
   // the single-booking flow. Defaults to "pay_later" so providers must
   // explicitly opt into recording money received at create time.
-  const [showCreateReview, setShowCreateReview] = useState(false);
+  const [createStep, setCreateStep] = useState<"form" | "review">("form");
+  const [createReviewError, setCreateReviewError] = useState<string | null>(null);
   const [createPaymentMethod, setCreatePaymentMethod] = useState<
-    "pay_later" | "cash" | "card" | "yoco_pos" | "payment_link"
+    "pay_later" | "cash" | "card" | "yoco_pos" | "payment_link" | "paystack_terminal"
   >("pay_later");
   const [createSendNotification, setCreateSendNotification] = useState(true);
 
@@ -759,6 +766,7 @@ export default function GroupBookingsScreen() {
     if (group) {
       setSelectedGroup(group);
       openGroupFetchRef.current = null;
+      router.setParams({ open_group_id: "" });
       return;
     }
     if (openGroupFetchRef.current === openId) return;
@@ -783,8 +791,9 @@ export default function GroupBookingsScreen() {
       );
       setSelectedGroup(fetched as GroupBooking);
       openGroupFetchRef.current = null;
+      router.setParams({ open_group_id: "" });
     })();
-  }, [groups, params.open_group_id]);
+  }, [groups, params.open_group_id, router]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -971,7 +980,7 @@ export default function GroupBookingsScreen() {
 
   async function handleRecordGroupPayment(
     group: GroupBooking,
-    paymentMethod: "cash" | "card" | "bank_transfer" | "other" | "yoco"
+    paymentMethod: "cash" | "card" | "bank_transfer" | "other" | "yoco" | "paystack_terminal"
   ) {
     if (!group.id) {
       Alert.alert("Error", "Group booking has no id yet — refresh and try again.");
@@ -1167,6 +1176,7 @@ export default function GroupBookingsScreen() {
       addressLatitude: null,
       addressLongitude: null,
       travelFee: "",
+      travelPreviewDistanceKm: null,
       packageId: "",
     });
     setCreateParticipants([createBlankParticipant(`participant-${Date.now()}`)]);
@@ -1175,11 +1185,46 @@ export default function GroupBookingsScreen() {
     // (parity with web `GroupBookingDialog`). Without this, a previous open
     // could leave `showCreateReview === true`, stranding a stacked modal that
     // intercepts touches on the underlying "Review & Create" button.
-    setShowCreateReview(false);
+    setCreateStep("form");
+    setCreateReviewError(null);
     setCreatePaymentMethod("pay_later");
     setCreateSendNotification(true);
     setValidatingCreateAddress(false);
     setShowCreate(true);
+  }
+
+  const openCreateHandledRef = useRef(false);
+  useEffect(() => {
+    const raw = params.openCreate;
+    const want =
+      raw === "true" || (Array.isArray(raw) && raw[0] === "true");
+    if (!want || openCreateHandledRef.current) return;
+    openCreateHandledRef.current = true;
+    openCreate();
+    router.setParams({ openCreate: "" } as never);
+  }, [params.openCreate, router]);
+
+  function validateCreateFormParticipants(): string | null {
+    return validateGroupBookingCreateStep({
+      date: createForm.date,
+      time: createForm.time,
+      duration: createForm.duration,
+      serviceId: createForm.serviceId,
+      staffId: createForm.staffId,
+      locationType: createForm.locationType,
+      addressLine1: createForm.addressLine1,
+      addressLatitude: createForm.addressLatitude,
+      addressLongitude: createForm.addressLongitude,
+      participants: createParticipants
+        .map((p) => ({
+          name: p.name.trim(),
+          phone: p.phone.trim(),
+          email: p.email.trim(),
+          serviceId: p.serviceId || createForm.serviceId,
+        }))
+        .filter((p) => p.name.length > 0 || p.phone.length > 0 || p.email.length > 0),
+      validatePhone: validateE164Phone,
+    });
   }
 
   function addCreateParticipantRow() {
@@ -1493,137 +1538,30 @@ export default function GroupBookingsScreen() {
   // review sheet only opens when the form is committable. Same checks as
   // handleCreate, just without the actual POST.
   async function handleOpenCreateReview() {
-    if (!YMD_RE.test(createForm.date)) {
-      Alert.alert("Invalid date", "Date must be in YYYY-MM-DD format.");
+    const fail = (message: string) => {
+      setCreateReviewError(message);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    };
+    setCreateReviewError(null);
+    const validationErr = validateCreateFormParticipants();
+    if (validationErr) {
+      fail(validationErr);
       return;
     }
-    if (!HHMM_RE.test(createForm.time)) {
-      Alert.alert("Invalid time", "Time must be in HH:MM format.");
-      return;
-    }
-    const duration = Number(createForm.duration);
-    if (!Number.isFinite(duration) || duration <= 0) {
-      Alert.alert("Invalid duration", "Duration must be greater than 0 minutes.");
-      return;
-    }
-    const maxParticipants = Math.max(
-      Math.max(1, createParticipants.length),
-      Number(createForm.maxParticipants) || 10,
-    );
-    if (!createForm.serviceId) {
-      Alert.alert(
-        "Service required",
-        "Select a service so participant bookings can be created for calendar + accounting."
-      );
-      return;
-    }
-    if (!createForm.staffId) {
-      Alert.alert(
-        "Staff required",
-        "Select a team member to schedule this group booking correctly."
-      );
-      return;
-    }
-    if (createForm.locationType === "at_home") {
-      if (!createForm.addressLine1.trim()) {
-        Alert.alert(
-          "Address required",
-          "Search and select the client address so the map pin and travel fee are accurate."
-        );
-        return;
-      }
-      if (createForm.addressLatitude == null || createForm.addressLongitude == null) {
-        Alert.alert(
-          "Map pin required",
-          "Choose a Mapbox address suggestion so the exact coordinates are saved."
-        );
-        return;
-      }
-    }
-    const participantsToCreate = createParticipants
-      .map((p) => ({
-        id: p.id,
-        name: p.name.trim(),
-        phone: p.phone.trim(),
-        email: p.email.trim(),
-        serviceId: p.serviceId || createForm.serviceId,
-        addOnIds: p.addOnIds,
-      }))
-      .filter((p) => p.name.length > 0 || p.phone.length > 0 || p.email.length > 0);
-    if (participantsToCreate.length === 0) {
-      Alert.alert(
-        "Participant required",
-        "Add at least one participant so the group creates booking records."
-      );
-      return;
-    }
-    for (const [idx, p] of participantsToCreate.entries()) {
-      if (!p.name) {
-        Alert.alert("Participant name required", `Participant ${idx + 1} needs a name.`);
-        return;
-      }
-      const phoneErr = validateE164Phone(p.phone);
-      if (phoneErr) {
-        Alert.alert("Invalid phone", `Participant ${idx + 1}: ${phoneErr}`);
-        return;
-      }
-      if (!p.serviceId) {
-        Alert.alert("Participant service required", `Select what participant ${idx + 1} wants.`);
-        return;
-      }
-    }
-    // All client-side validation passed → open review sheet for final confirm.
-    setShowCreateReview(true);
+    setCreateStep("review");
   }
 
   async function handleCreate() {
-    if (!YMD_RE.test(createForm.date)) {
-      Alert.alert("Invalid date", "Date must be in YYYY-MM-DD format.");
-      return;
-    }
-    if (!HHMM_RE.test(createForm.time)) {
-      Alert.alert("Invalid time", "Time must be in HH:MM format.");
+    const validationErr = validateCreateFormParticipants();
+    if (validationErr) {
+      Alert.alert("Validation", validationErr);
       return;
     }
     const duration = Number(createForm.duration);
-    if (!Number.isFinite(duration) || duration <= 0) {
-      Alert.alert("Invalid duration", "Duration must be greater than 0 minutes.");
-      return;
-    }
     const maxParticipants = Math.max(
       Math.max(1, createParticipants.length),
       Number(createForm.maxParticipants) || 10,
     );
-    if (!createForm.serviceId) {
-      Alert.alert(
-        "Service required",
-        "Select a service so participant bookings can be created for calendar + accounting."
-      );
-      return;
-    }
-    if (!createForm.staffId) {
-      Alert.alert(
-        "Staff required",
-        "Select a team member to schedule this group booking correctly."
-      );
-      return;
-    }
-    if (createForm.locationType === "at_home") {
-      if (!createForm.addressLine1.trim()) {
-        Alert.alert(
-          "Address required",
-          "Search and select the client address so the map pin and travel fee are accurate."
-        );
-        return;
-      }
-      if (createForm.addressLatitude == null || createForm.addressLongitude == null) {
-        Alert.alert(
-          "Map pin required",
-          "Choose a Mapbox address suggestion so the exact coordinates are saved."
-        );
-        return;
-      }
-    }
     const createAvailabilityError = await verifyGroupSlotAvailability({
       date: createForm.date,
       time: createForm.time,
@@ -1652,28 +1590,6 @@ export default function GroupBookingsScreen() {
         customerId: p.customerId,
       }))
       .filter((p) => p.name.length > 0 || p.phone.length > 0 || p.email.length > 0);
-    if (participantsToCreate.length === 0) {
-      Alert.alert(
-        "Participant required",
-        "Add at least one participant so the group creates booking records."
-      );
-      return;
-    }
-    for (const [idx, p] of participantsToCreate.entries()) {
-      if (!p.name) {
-        Alert.alert("Participant name required", `Participant ${idx + 1} needs a name.`);
-        return;
-      }
-      const phoneErr = validateE164Phone(p.phone);
-      if (phoneErr) {
-        Alert.alert("Invalid phone", `Participant ${idx + 1}: ${phoneErr}`);
-        return;
-      }
-      if (!p.serviceId) {
-        Alert.alert("Participant service required", `Select what participant ${idx + 1} wants.`);
-        return;
-      }
-    }
 
     const scheduledAt = buildZonedIsoForWallClock(
       createForm.date,
@@ -1776,69 +1692,98 @@ export default function GroupBookingsScreen() {
     // group back, but a stale createdGroupId could still leak to actions that
     // expected the group to exist.
     let participantsSucceeded = false;
-    try {
-      const createdBookings = await Promise.all(
-        participantsToCreate.map(async (participant, idx) => {
-          const line = participantLines[idx];
-          const res = await createParticipantBookingAndLink({
-            groupId: createdGroupId,
-            groupRef,
-            scheduledDate: createForm.date,
-            scheduledTime: createForm.time,
-            serviceId: line.serviceId,
-            serviceName: line.service ? serviceLabel(line.service) : undefined,
-            addOns: line.addOns,
-            packageId: createForm.packageId || null,
-            staffId: createForm.staffId,
-            locationId: createForm.locationType === "at_home" ? null : createForm.locationId,
-            locationType: createForm.locationType,
-            address:
-              createForm.locationType === "at_home"
-                ? {
-                    address_line1: createForm.addressLine1.trim(),
-                    address_city: createForm.addressCity.trim(),
-                    address_state: createForm.addressState.trim(),
-                    address_postal_code: createForm.addressPostalCode.trim(),
-                    address_country: createForm.addressCountry.trim() || "South Africa",
-                    address_latitude: createForm.addressLatitude,
-                    address_longitude: createForm.addressLongitude,
-                    travel_fee: idx === 0 ? travelFee : 0,
-                  }
-                : undefined,
-            products: idx === 0 ? createProducts : [],
-            durationMinutes: line.durationMinutes,
-            unitPrice: line.price,
-            participant: { ...participant, customerId: participant.customerId },
-            isPrimary: idx === 0,
-          });
-          if (res.error) throw new Error(`${participant.name}: ${res.error}`);
-          return res;
-        })
-      );
-      if (createdBookings.length === 0) {
-        throw new Error("Could not add participants to the group.");
+    const participantFailures: Array<{ name: string; error: string }> = [];
+    const createdBookings: Awaited<ReturnType<typeof createParticipantBookingAndLink>>[] = [];
+
+    for (let idx = 0; idx < participantsToCreate.length; idx++) {
+      const participant = participantsToCreate[idx];
+      const line = participantLines[idx];
+      const res = await createParticipantBookingAndLink({
+        groupId: createdGroupId,
+        groupRef,
+        scheduledDate: createForm.date,
+        scheduledTime: createForm.time,
+        serviceId: line.serviceId,
+        serviceName: line.service ? serviceLabel(line.service) : undefined,
+        addOns: line.addOns,
+        packageId: createForm.packageId || null,
+        staffId: createForm.staffId,
+        locationId: createForm.locationType === "at_home" ? null : createForm.locationId,
+        locationType: createForm.locationType,
+        address:
+          createForm.locationType === "at_home"
+            ? {
+                address_line1: createForm.addressLine1.trim(),
+                address_city: createForm.addressCity.trim(),
+                address_state: createForm.addressState.trim(),
+                address_postal_code: createForm.addressPostalCode.trim(),
+                address_country: createForm.addressCountry.trim() || "South Africa",
+                address_latitude: createForm.addressLatitude,
+                address_longitude: createForm.addressLongitude,
+                travel_fee: idx === 0 ? travelFee : 0,
+              }
+            : undefined,
+        products: idx === 0 ? createProducts : [],
+        durationMinutes: line.durationMinutes,
+        unitPrice: line.price,
+        participant: { ...participant, customerId: participant.customerId },
+        isPrimary: idx === 0,
+      });
+      if (res.error) {
+        participantFailures.push({
+          name: participant.name,
+          error: res.error,
+        });
+      } else {
+        createdBookings.push(res);
       }
-      participantsSucceeded = true;
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Could not add all participants.";
-      // §Group-booking-audit 2026-05: close the review sheet immediately so
-      // the rollback alert isn't stacked behind a modal that intercepts taps,
-      // and so the create form is interactive when the user retries.
-      setShowCreateReview(false);
+    }
+
+    if (createdBookings.length === 0) {
+      setCreateStep("form");
+      setCreateReviewError(null);
       const { error: deleteErr } = await cancelGroup(
-        `/api/provider/group-bookings/${encodeURIComponent(createdGroupId)}`
+        `/api/provider/group-bookings/${encodeURIComponent(createdGroupId)}`,
       );
+      const failSummary = participantFailures.map((f) => `${f.name}: ${f.error}`).join("\n");
       if (deleteErr) {
         Alert.alert(
           "Group creation failed",
-          `${msg}\n\nThe group could not be rolled back automatically: ${deleteErr}. Check the group list for a partial group to cancel manually.`
+          `${failSummary || "Could not add participants."}\n\nThe group could not be rolled back automatically: ${deleteErr}. Cancel it manually from the group list.`,
         );
       } else {
-        Alert.alert("Group creation failed", msg);
+        Alert.alert("Group creation failed", failSummary || "Could not add participants to the group.");
       }
       refresh();
       return;
     }
+
+    if (participantFailures.length > 0) {
+      participantsSucceeded = true;
+      setCreateStep("form");
+      setCreateReviewError(null);
+      setShowCreate(false);
+      const failSummary = participantFailures.map((f) => `${f.name}: ${f.error}`).join("\n");
+      Alert.alert(
+        "Group partially created",
+        `${createdBookings.length} of ${participantsToCreate.length} participants were added.\n\nFailed:\n${failSummary}\n\nOpen the group to add the remaining participants manually.`,
+        [
+          {
+            text: "Open group",
+            onPress: () => {
+              router.setParams({ open_group_id: createdGroupId } as never);
+            },
+          },
+          { text: "OK" },
+        ],
+      );
+      InteractionManager.runAfterInteractions(() => {
+        void refresh();
+      });
+      return;
+    }
+
+    participantsSucceeded = true;
 
     // §Group-booking-audit 2026-05 (auto mark_paid): only attempt to mark
     // paid AFTER every participant booking + link succeeded. If we hit this
@@ -1850,6 +1795,8 @@ export default function GroupBookingsScreen() {
           ? "card"
           : participantsSucceeded && createPaymentMethod === "yoco_pos"
             ? "yoco"
+            : participantsSucceeded && createPaymentMethod === "paystack_terminal"
+              ? "paystack_terminal"
             : null;
     if (methodToMark) {
       const paymentResult = await postGroupAction(
@@ -1869,7 +1816,8 @@ export default function GroupBookingsScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     // Close the review sheet first so the create sheet's onClose can fire
     // cleanly when we close it below.
-    setShowCreateReview(false);
+    setCreateStep("form");
+    setCreateReviewError(null);
     setShowCreate(false);
     InteractionManager.runAfterInteractions(() => {
       void refresh();
@@ -1906,6 +1854,7 @@ export default function GroupBookingsScreen() {
       const res = await api.post<{
         valid?: boolean;
         travelFee?: number;
+        distanceKm?: number;
         coordinates?: { latitude: number; longitude: number };
         address?: {
           line1?: string;
@@ -1916,15 +1865,27 @@ export default function GroupBookingsScreen() {
           fullAddress?: string;
         };
         reason?: string;
+        errorCode?: string;
+        settingsRoute?: string;
       }>("/api/location/validate", {
         address: addressString,
         provider_id: provider.id,
+        latitude: parsed.latitude,
+        longitude: parsed.longitude,
       });
       const data = res.data ?? {};
       if (!data.valid) {
+        const settingsRoute = data.settingsRoute;
+        const buttons = settingsRoute
+          ? [
+              { text: "Open settings", onPress: () => router.push(settingsRoute as never) },
+              { text: "Cancel", style: "cancel" as const },
+            ]
+          : [{ text: "OK" }];
         Alert.alert(
-          "Outside service area",
-          data.reason || "This address is outside your active service zones."
+          data.errorCode === "DISTANCE_LIMIT" ? "Outside service radius" : "Outside service area",
+          data.reason || "This address is outside your active service zones.",
+          buttons,
         );
         return;
       }
@@ -1939,6 +1900,10 @@ export default function GroupBookingsScreen() {
         addressLatitude: data.coordinates?.latitude ?? parsed.latitude,
         addressLongitude: data.coordinates?.longitude ?? parsed.longitude,
         travelFee: String(Math.max(0, Number(data.travelFee || 0))),
+        travelPreviewDistanceKm:
+          typeof data.distanceKm === "number" && Number.isFinite(data.distanceKm)
+            ? data.distanceKm
+            : p.travelPreviewDistanceKm,
       }));
     } catch (e) {
       Alert.alert(
@@ -2461,7 +2426,10 @@ export default function GroupBookingsScreen() {
       {/* Group detail sheet */}
       <BottomSheet
         visible={!!selectedGroup && !showEdit && !showAddParticipant}
-        onClose={() => setSelectedGroup(null)}
+        onClose={() => {
+          setSelectedGroup(null);
+          router.setParams({ open_group_id: "" });
+        }}
         title={
           selectedGroup?.title?.trim() ||
           selectedGroup?.service_name ||
@@ -2913,7 +2881,15 @@ export default function GroupBookingsScreen() {
               <View style={twStyle("mt-2")}>
                 <Text style={twStyle("mb-2 text-xs font-medium text-gray-500")}>Record payment</Text>
                 <View style={twStyle("flex-row flex-wrap")}>
-                  {(["cash", "card", "yoco", "bank_transfer"] as const).map((method) => (
+                  {(
+                    [
+                      "cash",
+                      "card",
+                      "yoco",
+                      ...(paystackTerminalEnabled ? (["paystack_terminal"] as const) : []),
+                      "bank_transfer",
+                    ] as const
+                  ).map((method) => (
                     <TouchableOpacity
                       key={method}
                       style={[
@@ -2928,6 +2904,8 @@ export default function GroupBookingsScreen() {
                           ? "Bank transfer"
                           : method === "yoco"
                             ? "Yoco"
+                            : method === "paystack_terminal"
+                              ? "Paystack Terminal"
                             : method[0].toUpperCase() + method.slice(1)}
                       </Text>
                     </TouchableOpacity>
@@ -3200,6 +3178,32 @@ export default function GroupBookingsScreen() {
             placeholderTextColor="#9ca3af"
             multiline
           />
+          <TouchableOpacity
+            onPress={() => {
+              const groupId = editingGroupId;
+              const group =
+                groups.find((g) => g.id === groupId) ??
+                extraGroups.find((g) => g.id === groupId) ??
+                selectedGroup;
+              setShowEdit(false);
+              setEditingGroupId(null);
+              setEditingGroupContext(null);
+              setEditOriginalSlot(null);
+              if (group && group.id === groupId) {
+                setSelectedGroup(group);
+              } else if (groupId) {
+                router.setParams({ open_group_id: groupId } as never);
+              }
+            }}
+            style={twStyle(
+              "mb-3 flex-row items-center justify-center rounded-xl border border-indigo-200 bg-indigo-50 py-3",
+            )}
+            accessibilityRole="button"
+            accessibilityLabel="Manage participants"
+          >
+            <Ionicons name="people-outline" size={18} color="#4338ca" style={{ marginRight: 8 }} />
+            <Text style={twStyle("text-sm font-semibold text-indigo-800")}>Manage participants</Text>
+          </TouchableOpacity>
           <ActionButton
             label="Save Changes"
             onPress={handleSaveEdit}
@@ -3467,16 +3471,16 @@ export default function GroupBookingsScreen() {
 
       {/* B10: Create new group booking */}
       <BottomSheet
-        visible={showCreate && !showProductPicker}
+        visible={showCreate && !showProductPicker && !createMapPinOpen}
         onClose={() => {
           setShowCreate(false);
-          // Clearing the review sheet here prevents a swipe-down on the create
-          // sheet from leaving the upper review modal mounted with no parent.
-          setShowCreateReview(false);
+          setCreateStep("form");
+          setCreateReviewError(null);
           setValidatingCreateAddress(false);
         }}
-        title="New Group Booking"
+        title={createStep === "form" ? "New Group Booking" : "Review group booking"}
       >
+        {createStep === "form" ? (
         <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Title</Text>
           <TextInput
@@ -3628,6 +3632,9 @@ export default function GroupBookingsScreen() {
                     />
                     <Text style={twStyle("mt-1.5 text-xs text-gray-500")}>
                       Selected map pin
+                      {createForm.travelPreviewDistanceKm != null
+                        ? ` · ${createForm.travelPreviewDistanceKm.toFixed(1)} km`
+                        : ""}
                       {Number(createForm.travelFee || 0) > 0
                         ? ` · Travel fee ${formatCurrency(Number(createForm.travelFee || 0))}`
                         : ""}
@@ -4388,20 +4395,16 @@ export default function GroupBookingsScreen() {
             fullWidth
           />
         </ScrollView>
-      </BottomSheet>
-
-      {/* §Group-booking-audit 2026-05: review + payment method confirmation
-        sheet so providers see a single source-of-truth summary before paying
-        and avoid R 0 / wrong-method receipts. */}
-      <BottomSheet
-        visible={showCreateReview}
-        onClose={() => setShowCreateReview(false)}
-        title="Review group booking"
-      >
+        ) : (
         <ScrollView
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={{ paddingBottom: 32 }}
         >
+          {createReviewError ? (
+            <View style={twStyle("mb-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3")}>
+              <Text style={twStyle("text-sm font-medium text-red-800")}>{createReviewError}</Text>
+            </View>
+          ) : null}
           {(() => {
             const svc = createForm.serviceId
               ? services.find((s) => s.id === createForm.serviceId)
@@ -4583,6 +4586,15 @@ export default function GroupBookingsScreen() {
                     label: "Yoco terminal",
                     icon: "phone-portrait-outline" as const,
                   },
+                  ...(paystackTerminalEnabled
+                    ? ([
+                        {
+                          value: "paystack_terminal" as const,
+                          label: "Paystack Terminal",
+                          icon: "qr-code-outline" as const,
+                        },
+                      ] as const)
+                    : []),
                   { value: "payment_link", label: "Payment link", icon: "send-outline" as const },
                 ] as const
               ).map((m) => {
@@ -4647,14 +4659,16 @@ export default function GroupBookingsScreen() {
           <View style={{ marginTop: 16, flexDirection: "row" }}>
             <ActionButton
               label="Back"
-              onPress={() => setShowCreateReview(false)}
+              onPress={() => {
+                setCreateStep("form");
+                setCreateReviewError(null);
+              }}
               variant="secondary"
               style={{ flex: 1, marginRight: 8 }}
             />
             <ActionButton
               label="Confirm & create"
               onPress={() => {
-                setShowCreateReview(false);
                 void handleCreate();
               }}
               loading={creatingGroup || creatingParticipantBooking || addingParticipant}
@@ -4663,6 +4677,7 @@ export default function GroupBookingsScreen() {
             />
           </View>
         </ScrollView>
+        )}
       </BottomSheet>
 
       <AddressMapPinModal
@@ -4680,7 +4695,7 @@ export default function GroupBookingsScreen() {
 
       <BottomSheet
         visible={showProductPicker}
-        onClose={() => setShowProductPicker(false)}
+        onClose={finishProductPicker}
         title="Add product"
       >
         {productsList.length === 0 ? (
@@ -4723,7 +4738,7 @@ export default function GroupBookingsScreen() {
                                 },
                               ]);
                             }
-                            setShowProductPicker(false);
+                            finishProductPicker();
                           }}
                           style={twStyle(
                             `flex-row items-center justify-between border-b border-gray-100 px-4 py-3 ${alreadyAdded ? "bg-indigo-50" : ""}`
@@ -4760,7 +4775,7 @@ export default function GroupBookingsScreen() {
                         },
                       ]);
                     }
-                    setShowProductPicker(false);
+                    finishProductPicker();
                   }}
                   style={twStyle(
                     `flex-row items-center justify-between border-b border-gray-100 px-4 py-3 ${alreadyAdded ? "bg-indigo-50" : ""}`

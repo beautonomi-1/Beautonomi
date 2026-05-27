@@ -18,7 +18,7 @@ import { cookies } from 'next/headers';
 import type { Database } from './database.types';
 
 /** Create Supabase client from Bearer token (for mobile/Expo API calls) */
-export function createSupabaseClientFromToken(accessToken: string) {
+export async function createSupabaseClientFromToken(accessToken: string) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -36,9 +36,24 @@ export function createSupabaseClientFromToken(accessToken: string) {
     );
   }
 
-  return createClient<Database>(url, key, {
+  const client = createClient<Database>(url, key, {
     global: { headers: { Authorization: `Bearer ${accessToken}` } },
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
+
+  // Initialise the in-memory session so supabase.auth.updateUser() works correctly.
+  // updateUser() calls getSession() internally and returns AuthSessionMissingError before
+  // even reaching GoTrue when no session is present — causing valid OTP nonces to appear
+  // invalid on mobile (Bearer-token) requests. The access_token is fresh (just used to
+  // authenticate), so setSession will store it locally without making a network call.
+  // refresh_token is required by the type but will never be used (autoRefreshToken: false).
+  try {
+    await client.auth.setSession({ access_token: accessToken, refresh_token: accessToken });
+  } catch {
+    // Non-fatal: DB/storage calls still work via global Authorization header.
+  }
+
+  return client;
 }
 
 export async function getSupabaseServer(req?: { headers: { get: (n: string) => string | null } }) {

@@ -33,6 +33,7 @@ import { tabScreenScrollBottomPadding } from "@/constants/layout";
 import { E164PhoneField } from "@/components/E164PhoneField";
 import { validateE164Phone } from "@/lib/phone-country-codes";
 import { useDefaultPhoneDial } from "@/hooks/useDefaultPhoneDial";
+import { shouldShowCancelledMembershipBadge } from "@beautonomi/utils";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -59,6 +60,7 @@ interface ApiClient {
     cancelled_at: string | null;
     /** Matches booking discount rules when true. */
     is_entitled?: boolean;
+    show_cancelled_badge?: boolean;
   } | null;
   customer?: {
     id: string;
@@ -137,6 +139,10 @@ function membershipBadgeState(c: Client): MembershipBadgeState {
   // never written (older rows / manual edits). This keeps the provider
   // list in sync the moment the cancel API flips the status.
   if (m.status === "cancelled" || m.cancelled_at) {
+    const showBadge =
+      m.show_cancelled_badge ??
+      shouldShowCancelledMembershipBadge({ status: m.status, cancelled_at: m.cancelled_at });
+    if (!showBadge) return null;
     return { kind: "cancelled", label: "Cancelled" };
   }
   if (m.expires_at) {

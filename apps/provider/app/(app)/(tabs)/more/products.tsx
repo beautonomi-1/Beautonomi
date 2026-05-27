@@ -1,5 +1,13 @@
-import { useCallback, useEffect, useMemo } from "react";
-import { View, Text, TouchableOpacity, ScrollView, Alert, RefreshControl, DeviceEventEmitter } from "react-native";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  ScrollView,
+  Alert,
+  RefreshControl,
+  DeviceEventEmitter,
+} from "react-native";
 import { useRouter } from "expo-router";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
@@ -10,49 +18,21 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
+import { SearchBar } from "@/components/ui/SearchBar";
+import { FilterChipGroup } from "@/components/ui/FilterChip";
+import { BottomSheet } from "@/components/ui/BottomSheet";
 import { Colors } from "@/constants/colors";
 import {
   PROVIDER_PRODUCTS_CATALOG_CHANGED,
   emitProviderProductsCatalogChanged,
 } from "@/lib/provider-products-catalog-events";
-
-interface ProductVariant {
-  id?: string;
-  option_values?: Record<string, string>;
-  retail_price: number;
-  quantity?: number;
-  supply_price?: number;
-  sku?: string | null;
-  low_stock_level?: number;
-}
-
-interface Product {
-  id: string;
-  name: string;
-  sku?: string | null;
-  barcode?: string | null;
-  retail_price: number;
-  quantity?: number;
-  low_stock_level?: number;
-  category?: string | null;
-  short_description?: string | null;
-  brand?: string | null;
-  supplier?: string | null;
-  has_variants?: boolean;
-  variant_option_types?: { name: string; values: string[] }[];
-  variants?: ProductVariant[];
-  /** Merged primary + extra URLs from API */
-  image_urls?: string[] | null;
-  tax_rate?: number | null;
-  track_stock_quantity?: boolean;
-  /** Sum of variant qty or base quantity (GET /api/provider/products) */
-  effective_quantity?: number;
-  retail_sales_enabled?: boolean;
-  is_active?: boolean;
-}
+import { groupProductsIntoSections } from "@/features/products/groupProductsIntoSections";
+import type { ProductItem } from "@/features/products/types";
+import { StockAdjustSheet } from "@/features/products/StockAdjustSheet";
+import { BarcodeLookupModal } from "@/features/products/BarcodeLookup";
 
 interface ProductsResponse {
-  products?: Product[];
+  products?: ProductItem[];
   total?: number;
   page?: number;
   total_pages?: number;
@@ -65,23 +45,70 @@ interface ProductMetricsResponse {
   totalInventoryValue: number;
 }
 
-const UNCATEGORIZED_PRODUCT_LABEL = "Uncategorized";
-const EMPTY_PRODUCTS: Product[] = [];
+type FilterKey = "all" | "active" | "inactive" | "low_stock" | "out_of_stock";
 
-function productCategorySectionTitle(p: Product): string {
-  const t = (p.category ?? "").trim();
-  return t.length > 0 ? t : UNCATEGORIZED_PRODUCT_LABEL;
+const FILTER_CHIPS = [
+  { key: "all", label: "All" },
+  { key: "active", label: "Active" },
+  { key: "inactive", label: "Inactive" },
+  { key: "low_stock", label: "Low stock" },
+  { key: "out_of_stock", label: "Out of stock" },
+];
+
+const EMPTY: ProductItem[] = [];
+
+function stockBadge(p: ProductItem): "low" | "out" | null {
+  if (p.track_stock_quantity === false) return null;
+  const q =
+    typeof p.effective_quantity === "number"
+      ? p.effective_quantity
+      : effectiveStockQuantity({
+          has_variants: p.has_variants,
+          quantity: p.quantity,
+          variants: p.variants?.map((v) => ({ quantity: v.quantity, retail_price: v.retail_price })),
+        });
+  const low = Number(p.low_stock_level) || 5;
+  if (q <= 0) return "out";
+  if (q <= low) return "low";
+  return null;
 }
 
-/** Content-only for use in Products hub (Products tab). */
 export function ProductsContent() {
   const router = useRouter();
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [filter, setFilter] = useState<FilterKey>("all");
+  const [page, setPage] = useState(1);
+  const [menuProduct, setMenuProduct] = useState<ProductItem | null>(null);
+  const [adjustProduct, setAdjustProduct] = useState<ProductItem | null>(null);
+  const [barcodeOpen, setBarcodeOpen] = useState(false);
 
-  const { data: productsData, loading: loadingList, error, refresh: refreshList } = useApi<ProductsResponse>(
-    "/api/provider/products?limit=200"
-  );
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, filter]);
+
+  const queryUrl = useMemo(() => {
+    const params = new URLSearchParams();
+    params.set("include_inactive", "true");
+    params.set("page", String(page));
+    params.set("limit", "20");
+    if (debouncedSearch) params.set("search", debouncedSearch);
+    if (filter === "inactive") params.set("include_inactive", "true");
+    if (filter === "low_stock") params.set("has_low_stock", "true");
+    if (filter === "out_of_stock") params.set("out_of_stock", "true");
+    return `/api/provider/products?${params.toString()}`;
+  }, [debouncedSearch, filter, page]);
+
+  const { data: productsData, loading: loadingList, error, refresh: refreshList } = useApi<ProductsResponse>(queryUrl);
   const { data: metricsData, refresh: refreshMetrics } = useApi<ProductMetricsResponse>("/api/provider/products/metrics");
   const { execute: deleteProduct } = useApiMutation("delete");
+  const { execute: patchProduct } = useApiMutation("patch");
+  const { execute: createProduct } = useApiMutation("post");
 
   const onRefresh = useCallback(() => {
     refreshList();
@@ -96,70 +123,83 @@ export function ProductsContent() {
     return () => sub.remove();
   }, [refreshList, refreshMetrics]);
 
-  const goToAddProduct = useCallback(() => {
-    router.push("/(app)/(tabs)/more/product-form" as never);
-  }, [router]);
+  let displayProducts = productsData?.products ?? EMPTY;
+  if (filter === "active") {
+    displayProducts = displayProducts.filter((p) => p.is_active !== false);
+  } else if (filter === "inactive") {
+    displayProducts = displayProducts.filter((p) => p.is_active === false);
+  }
 
-  const goToEditProduct = useCallback(
-    (p: Product) => {
-      router.push({ pathname: "/(app)/(tabs)/more/product-form", params: { id: p.id } } as never);
-    },
-    [router]
-  );
+  const sections = useMemo(() => groupProductsIntoSections(displayProducts), [displayProducts]);
 
-  const handleDelete = (p: Product) => {
-    Alert.alert(
-      "Delete product",
-      `Delete "${p.name}"? This cannot be undone.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            const { error: err } = await deleteProduct(`/api/provider/products/${p.id}`);
-            if (err) Alert.alert("Error", err);
-            else {
-              emitProviderProductsCatalogChanged();
-            }
-          },
+  const handleDelete = (p: ProductItem) => {
+    Alert.alert("Delete product", `Delete "${p.name}"?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          const { error: err, data } = await deleteProduct(`/api/provider/products/${p.id}`);
+          if (err?.includes("PRODUCT_HAS_BOOKINGS") || (data as { error?: { code?: string } })?.error?.code === "PRODUCT_HAS_BOOKINGS") {
+            Alert.alert(
+              "Cannot delete",
+              "This product is linked to bookings. Archive it instead?",
+              [
+                { text: "Cancel", style: "cancel" },
+                {
+                  text: "Archive",
+                  onPress: async () => {
+                    const { error: archErr } = await deleteProduct(`/api/provider/products/${p.id}?archive=true`);
+                    if (archErr) Alert.alert("Error", archErr);
+                    else emitProviderProductsCatalogChanged();
+                  },
+                },
+              ],
+            );
+            return;
+          }
+          if (err) Alert.alert("Error", err);
+          else emitProviderProductsCatalogChanged();
         },
-      ]
-    );
+      },
+    ]);
   };
 
-  const displayProducts = productsData?.products ?? EMPTY_PRODUCTS;
-
-  const productSections = useMemo(() => {
-    const map = new Map<string, Product[]>();
-    for (const p of displayProducts) {
-      const label = productCategorySectionTitle(p);
-      if (!map.has(label)) map.set(label, []);
-      map.get(label)!.push(p);
-    }
-    const keys = [...map.keys()].sort((a, b) => {
-      if (a === UNCATEGORIZED_PRODUCT_LABEL) return 1;
-      if (b === UNCATEGORIZED_PRODUCT_LABEL) return -1;
-      return a.localeCompare(b, undefined, { sensitivity: "base" });
+  const handleDuplicate = async (p: ProductItem) => {
+    const { error: err } = await createProduct("/api/provider/products", {
+      name: `${p.name} (copy)`,
+      category: p.category,
+      brand: p.brand,
+      retail_price: p.retail_price,
+      supply_price: p.supply_price,
+      quantity: 0,
+      is_active: false,
+      retail_sales_enabled: p.retail_sales_enabled,
+      image_urls: p.image_urls ?? [],
     });
-    return keys.map((title) => ({ title, products: map.get(title)! }));
-  }, [displayProducts]);
+    if (err) Alert.alert("Error", err);
+    else emitProviderProductsCatalogChanged();
+  };
 
-  const productDisplayPrice = (p: Product): string => {
-    const row = {
+  const toggleActive = async (p: ProductItem) => {
+    const { error: err } = await patchProduct(`/api/provider/products/${p.id}`, {
+      is_active: p.is_active === false,
+    });
+    if (err) Alert.alert("Error", err);
+    else emitProviderProductsCatalogChanged();
+  };
+
+  const productDisplayPrice = (p: ProductItem) => {
+    const min = displayRetailPriceMin({
       has_variants: p.has_variants,
       retail_price: p.retail_price,
       quantity: p.quantity,
       variants: p.variants?.map((v) => ({ quantity: v.quantity, retail_price: v.retail_price })),
-    };
-    const min = displayRetailPriceMin(row);
-    if (p.has_variants && p.variants?.length) {
-      return `From ${formatCurrency(min)}`;
-    }
-    return formatCurrency(min);
+    });
+    return p.has_variants && (p.variants?.length ?? 0) > 0 ? `From ${formatCurrency(min)}` : formatCurrency(min);
   };
 
-  const productStockLabel = (p: Product): string => {
+  const productStockLabel = (p: ProductItem) => {
     if (p.track_stock_quantity === false) return "Stock not tracked";
     const q =
       typeof p.effective_quantity === "number"
@@ -172,12 +212,7 @@ export function ProductsContent() {
     return `${q} in stock`;
   };
 
-  const retailCount = displayProducts.filter((p) => p.retail_sales_enabled !== false).length;
-  const internalCount = displayProducts.filter((p) => p.retail_sales_enabled === false).length;
-  const lowOutCombined =
-    (metricsData?.lowStockProducts ?? 0) + (metricsData?.outOfStockProducts ?? 0);
-
-  const isLoading = loadingList;
+  const totalPages = productsData?.total_pages ?? 1;
 
   if (error && !productsData) {
     return (
@@ -188,267 +223,158 @@ export function ProductsContent() {
   }
 
   return (
-    <ScrollView
-      style={{ flex: 1 }}
-      contentContainerStyle={{ paddingBottom: 120 }}
-      refreshControl={
-        <RefreshControl refreshing={isLoading} onRefresh={onRefresh} tintColor="#1a1f3c" />
-      }
-    >
-      {isLoading && displayProducts.length === 0 ? (
-        <View style={{ paddingVertical: 48 }}>
+    <>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingBottom: 120 }}
+        refreshControl={<RefreshControl refreshing={loadingList} onRefresh={onRefresh} tintColor="#1a1f3c" />}
+      >
+        <View style={{ paddingHorizontal: 16, paddingTop: 8 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            <View style={{ flex: 1 }}>
+              <SearchBar value={search} onChangeText={setSearch} placeholder="Search name, SKU, barcode…" />
+            </View>
+            <TouchableOpacity
+              onPress={() => setBarcodeOpen(true)}
+              style={{ height: 44, width: 44, alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: "#ede9fe" }}
+            >
+              <Ionicons name="barcode-outline" size={22} color="#6d28d9" />
+            </TouchableOpacity>
+          </View>
+          <FilterChipGroup
+            options={FILTER_CHIPS.map((c) => ({ label: c.label, value: c.key }))}
+            selected={filter}
+            onSelect={(k) => setFilter(k as FilterKey)}
+          />
+        </View>
+
+        {loadingList && displayProducts.length === 0 ? (
           <LoadingState />
-        </View>
-      ) : displayProducts.length === 0 ? (
-        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 24, paddingVertical: 64 }}>
-          <View
-            style={{
-              marginBottom: 16,
-              height: 64,
-              width: 64,
-              alignItems: "center",
-              justifyContent: "center",
-              borderRadius: 9999,
-              backgroundColor: "#ede9fe",
-            }}
-          >
-            <Ionicons name="cube-outline" size={32} color="#8b5cf6" />
+        ) : displayProducts.length === 0 ? (
+          <View style={{ padding: 32, alignItems: "center" }}>
+            <Text style={{ color: Colors.gray[500] }}>No products match your filters.</Text>
+            <TouchableOpacity
+              onPress={() => router.push("/(app)/(tabs)/more/product-form" as never)}
+              style={{ marginTop: 16, backgroundColor: "#8b5cf6", paddingHorizontal: 20, paddingVertical: 10, borderRadius: 12 }}
+            >
+              <Text style={{ color: "#fff", fontWeight: "600" }}>Add product</Text>
+            </TouchableOpacity>
           </View>
-          <Text style={{ textAlign: "center", fontSize: 18, fontWeight: "600", color: Colors.gray[900] }}>No products yet</Text>
-          <Text style={{ marginTop: 8, textAlign: "center", fontSize: 14, color: Colors.gray[500], lineHeight: 20 }}>
-            Open the full product editor to add images, long description, variants, tax, retail vs internal-only, stock rules,
-            and more — the same screen you use when editing existing products.
-          </Text>
-          <TouchableOpacity
-            onPress={goToAddProduct}
-            style={{
-              marginTop: 24,
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "center",
-              borderRadius: 12,
-              backgroundColor: "#8b5cf6",
-              paddingHorizontal: 24,
-              paddingVertical: 12,
-            }}
-          >
-            <Ionicons name="add" size={20} color="#fff" />
-            <Text style={{ marginLeft: 8, fontWeight: "500", color: Colors.white }}>Add product</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <View style={{ paddingHorizontal: 16 }}>
-          <View style={{ marginBottom: 16, flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-            <View
-              style={{
-                flex: 1,
-                minWidth: "45%",
-                borderRadius: 12,
-                borderWidth: 1,
-                borderColor: Colors.gray[200],
-                backgroundColor: Colors.white,
-                padding: 12,
-              }}
-            >
-              <Text style={{ fontSize: 11, color: Colors.gray[500] }}>Active products</Text>
-              <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>{metricsData?.totalProducts ?? "—"}</Text>
-              <Text style={{ fontSize: 10, color: Colors.gray[400], marginTop: 2 }}>Same basis as web metrics</Text>
-            </View>
-            <View
-              style={{
-                flex: 1,
-                minWidth: "45%",
-                borderRadius: 12,
-                borderWidth: 1,
-                borderColor: Colors.gray[200],
-                backgroundColor: Colors.white,
-                padding: 12,
-              }}
-            >
-              <Text style={{ fontSize: 11, color: Colors.gray[500] }}>Retail / Internal</Text>
-              <Text style={{ fontSize: 14, fontWeight: "600", color: "#db2777" }}>{retailCount} retail</Text>
-              <Text style={{ fontSize: 12, color: Colors.gray[600] }}>{internalCount} internal-only</Text>
-            </View>
-            <View
-              style={{
-                flex: 1,
-                minWidth: "45%",
-                borderRadius: 12,
-                borderWidth: 1,
-                borderColor: Colors.gray[200],
-                backgroundColor: Colors.white,
-                padding: 12,
-              }}
-            >
-              <Text style={{ fontSize: 11, color: Colors.gray[500] }}>Stock value (est.)</Text>
-              <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }} numberOfLines={1}>
-                {formatCurrency(metricsData?.totalInventoryValue ?? 0)}
-              </Text>
-            </View>
-            <View
-              style={{
-                flex: 1,
-                minWidth: "45%",
-                borderRadius: 12,
-                borderWidth: 1,
-                borderColor: Colors.gray[200],
-                backgroundColor: Colors.white,
-                padding: 12,
-              }}
-            >
-              <Text style={{ fontSize: 11, color: Colors.gray[500] }}>Low / out</Text>
-              <Text style={{ fontSize: 18, fontWeight: "700", color: "#dc2626" }}>{lowOutCombined}</Text>
-              <Text style={{ fontSize: 11, color: Colors.gray[500] }}>matches platform metrics</Text>
-            </View>
-          </View>
-          <TouchableOpacity
-            onPress={goToAddProduct}
-            style={{
-              marginBottom: 12,
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "center",
-              borderRadius: 12,
-              borderWidth: 1,
-              borderColor: "#c4b5fd",
-              backgroundColor: "#f5f3ff",
-              paddingVertical: 12,
-            }}
-          >
-            <Ionicons name="add" size={18} color="#8b5cf6" />
-            <Text style={{ marginLeft: 8, fontWeight: "500", color: "#6d28d9" }}>Add product</Text>
-          </TouchableOpacity>
-          <Text style={{ marginBottom: 12, fontSize: 14, color: Colors.gray[500] }}>
-            {displayProducts.length} product{displayProducts.length !== 1 ? "s" : ""} loaded — tap the pencil to edit in the full form
-          </Text>
-          {productSections.map(({ title, products }) => (
-            <View key={title} style={{ marginBottom: 20 }}>
-              <View
-                style={{
-                  marginBottom: 10,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  borderLeftWidth: 4,
-                  borderLeftColor: "#8b5cf6",
-                  paddingLeft: 10,
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 12,
-                    fontWeight: "700",
-                    letterSpacing: 0.6,
-                    textTransform: "uppercase",
-                    color: Colors.gray[600],
-                  }}
-                  numberOfLines={1}
-                >
-                  {title}
-                </Text>
-                <Text style={{ marginLeft: 8, fontSize: 12, fontWeight: "500", color: Colors.gray[400] }}>
-                  {products.length} item{products.length !== 1 ? "s" : ""}
+        ) : (
+          <View style={{ paddingHorizontal: 16 }}>
+            <View style={{ marginBottom: 12, flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+              <View style={{ flex: 1, minWidth: "45%", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], padding: 12 }}>
+                <Text style={{ fontSize: 11, color: Colors.gray[500] }}>Active products</Text>
+                <Text style={{ fontSize: 18, fontWeight: "700" }}>{metricsData?.totalProducts ?? "—"}</Text>
+              </View>
+              <View style={{ flex: 1, minWidth: "45%", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], padding: 12 }}>
+                <Text style={{ fontSize: 11, color: Colors.gray[500] }}>Low / out</Text>
+                <Text style={{ fontSize: 18, fontWeight: "700", color: "#dc2626" }}>
+                  {(metricsData?.lowStockProducts ?? 0) + (metricsData?.outOfStockProducts ?? 0)}
                 </Text>
               </View>
-              {products.map((p) => {
-                const thumb = p.image_urls?.[0];
-                return (
-                  <View
-                    key={p.id}
-                    style={{
-                      marginBottom: 12,
-                      flexDirection: "row",
-                      alignItems: "center",
-                      borderRadius: 12,
-                      borderWidth: 1,
-                      borderColor: Colors.gray[100],
-                      backgroundColor: Colors.white,
-                      padding: 12,
-                    }}
-                  >
-                    {thumb ? (
-                      <Image
-                        source={{ uri: thumb }}
-                        style={{ width: 48, height: 48, borderRadius: 8, marginRight: 12, backgroundColor: Colors.gray[100] }}
-                        contentFit="cover"
-                      />
-                    ) : (
-                      <View
-                        style={{
-                          width: 48,
-                          height: 48,
-                          borderRadius: 8,
-                          marginRight: 12,
-                          backgroundColor: "#f3f4f6",
-                          alignItems: "center",
-                          justifyContent: "center",
-                        }}
-                      >
-                        <Ionicons name="cube-outline" size={22} color="#9ca3af" />
-                      </View>
-                    )}
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
-                        <Text style={{ fontWeight: "500", color: Colors.gray[900] }} numberOfLines={1}>
-                          {p.name}
-                        </Text>
-                        {p.retail_sales_enabled === false && (
-                          <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: Colors.gray[200] }}>
-                            <Text style={{ fontSize: 10, fontWeight: "600", color: Colors.gray[700] }}>INTERNAL</Text>
-                          </View>
-                        )}
-                        {p.is_active === false && (
-                          <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: "#fee2e2" }}>
-                            <Text style={{ fontSize: 10, fontWeight: "600", color: "#b91c1c" }}>INACTIVE</Text>
-                          </View>
-                        )}
-                        {p.has_variants ? (
-                          <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: "#ede9fe" }}>
-                            <Text style={{ fontSize: 10, fontWeight: "600", color: "#6d28d9" }}>VARIANTS</Text>
-                          </View>
-                        ) : null}
-                      </View>
-                      <Text style={{ marginTop: 2, fontSize: 13, color: Colors.gray[600] }}>{productDisplayPrice(p)}</Text>
-                      <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>{productStockLabel(p)}</Text>
-                    </View>
-                    <TouchableOpacity
-                      onPress={() => goToEditProduct(p)}
-                      style={{
-                        marginRight: 8,
-                        height: 36,
-                        width: 36,
-                        alignItems: "center",
-                        justifyContent: "center",
-                        borderRadius: 8,
-                        backgroundColor: Colors.gray[100],
-                      }}
-                      accessibilityLabel="Edit product in full form"
-                      accessibilityRole="button"
-                    >
-                      <Ionicons name="create-outline" size={18} color="#6b7280" />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => handleDelete(p)}
-                      style={{
-                        height: 36,
-                        width: 36,
-                        alignItems: "center",
-                        justifyContent: "center",
-                        borderRadius: 8,
-                        backgroundColor: "#fee2e2",
-                      }}
-                      accessibilityLabel="Delete product"
-                      accessibilityRole="button"
-                    >
-                      <Ionicons name="trash-outline" size={18} color="#ef4444" />
-                    </TouchableOpacity>
-                  </View>
-                );
-              })}
             </View>
-          ))}
-        </View>
-      )}
-    </ScrollView>
+
+            <TouchableOpacity
+              onPress={() => router.push("/(app)/(tabs)/more/product-form" as never)}
+              style={{ marginBottom: 12, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 12, borderWidth: 1, borderColor: "#c4b5fd", backgroundColor: "#f5f3ff", paddingVertical: 12 }}
+            >
+              <Ionicons name="add" size={18} color="#8b5cf6" />
+              <Text style={{ marginLeft: 8, fontWeight: "500", color: "#6d28d9" }}>Add product</Text>
+            </TouchableOpacity>
+
+            {sections.map((section) => (
+              <View key={section.sectionKey} style={{ marginBottom: 20 }}>
+                <Text style={{ marginBottom: 10, fontSize: 12, fontWeight: "700", letterSpacing: 0.6, textTransform: "uppercase", color: Colors.gray[600] }}>
+                  {section.title} · {section.items.length}
+                </Text>
+                {section.items.map((p) => {
+                  const thumb = p.image_urls?.[0];
+                  const badge = stockBadge(p);
+                  return (
+                    <TouchableOpacity
+                      key={p.id}
+                      onPress={() => router.push(`/(app)/(tabs)/more/products/${p.id}` as never)}
+                      style={{ marginBottom: 10, flexDirection: "row", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 12 }}
+                    >
+                      {thumb ? (
+                        <Image source={{ uri: thumb }} style={{ width: 48, height: 48, borderRadius: 8, marginRight: 12 }} contentFit="cover" />
+                      ) : (
+                        <View style={{ width: 48, height: 48, borderRadius: 8, marginRight: 12, backgroundColor: "#f3f4f6", alignItems: "center", justifyContent: "center" }}>
+                          <Ionicons name="cube-outline" size={22} color="#9ca3af" />
+                        </View>
+                      )}
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 4 }}>
+                          <Text style={{ fontWeight: "500", color: Colors.gray[900] }} numberOfLines={1}>{p.name}</Text>
+                          {p.is_active === false && <Text style={{ fontSize: 10, fontWeight: "700", color: "#b45309" }}>INACTIVE</Text>}
+                          {p.retail_sales_enabled === false && <Text style={{ fontSize: 10, fontWeight: "700", color: Colors.gray[500] }}>INTERNAL</Text>}
+                          {p.has_variants && <Text style={{ fontSize: 10, fontWeight: "700", color: "#4338ca" }}>VARIANTS</Text>}
+                          {badge === "low" && <Text style={{ fontSize: 10, fontWeight: "700", color: "#ca8a04" }}>LOW</Text>}
+                          {badge === "out" && <Text style={{ fontSize: 10, fontWeight: "700", color: "#dc2626" }}>OUT</Text>}
+                        </View>
+                        <Text style={{ fontSize: 13, color: Colors.gray[600] }}>{productDisplayPrice(p)}</Text>
+                        <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{productStockLabel(p)}</Text>
+                      </View>
+                      <TouchableOpacity onPress={() => setMenuProduct(p)} style={{ padding: 8 }}>
+                        <Ionicons name="ellipsis-vertical" size={20} color="#6b7280" />
+                      </TouchableOpacity>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            ))}
+
+            {totalPages > 1 && (
+              <View style={{ flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 16, marginTop: 8 }}>
+                <TouchableOpacity disabled={page <= 1} onPress={() => setPage((p) => Math.max(1, p - 1))}>
+                  <Text style={{ color: page <= 1 ? Colors.gray[300] : "#6366f1" }}>Previous</Text>
+                </TouchableOpacity>
+                <Text style={{ color: Colors.gray[600] }}>Page {page} / {totalPages}</Text>
+                <TouchableOpacity disabled={page >= totalPages} onPress={() => setPage((p) => p + 1)}>
+                  <Text style={{ color: page >= totalPages ? Colors.gray[300] : "#6366f1" }}>Next</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        )}
+      </ScrollView>
+
+      <BottomSheet visible={!!menuProduct} onClose={() => setMenuProduct(null)} title={menuProduct?.name ?? "Product"}>
+        {menuProduct && (
+          <View>
+            {[
+              { label: "Edit", onPress: () => { setMenuProduct(null); router.push({ pathname: "/(app)/(tabs)/more/product-form", params: { id: menuProduct.id } } as never); } },
+              {
+                label: "Adjust stock",
+                onPress: () => {
+                  if (menuProduct.has_variants && (menuProduct.variants?.length ?? 0) > 1) {
+                    Alert.alert("Variants", "Open the product to adjust stock per variant.");
+                    return;
+                  }
+                  setMenuProduct(null);
+                  setAdjustProduct(menuProduct);
+                },
+              },
+              { label: "Duplicate", onPress: () => { setMenuProduct(null); void handleDuplicate(menuProduct); } },
+              { label: menuProduct.is_active === false ? "Activate" : "Deactivate", onPress: () => { setMenuProduct(null); void toggleActive(menuProduct); } },
+              { label: "Delete", destructive: true, onPress: () => { setMenuProduct(null); handleDelete(menuProduct); } },
+            ].map((action) => (
+              <TouchableOpacity
+                key={action.label}
+                onPress={action.onPress}
+                style={{ paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: Colors.gray[100] }}
+              >
+                <Text style={{ fontSize: 16, color: action.destructive ? "#dc2626" : Colors.gray[900] }}>{action.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+      </BottomSheet>
+
+      <StockAdjustSheet visible={!!adjustProduct} product={adjustProduct} onClose={() => setAdjustProduct(null)} onSuccess={onRefresh} />
+      <BarcodeLookupModal visible={barcodeOpen} onClose={() => setBarcodeOpen(false)} />
+    </>
   );
 }
 

@@ -55,7 +55,9 @@ import { useImagePicker } from "@/hooks/useImagePicker";
 import { useOnboardingWizard } from "./OnboardingWizardContext";
 import { coerceOwnerPhoneToE164ForForm, isValidOwnerPhoneE164 } from "./onboarding-phone";
 import { DEFAULT_COUNTRY_NAME } from "./state";
-import type { BusinessType, OnboardingService, TeamSize, YocoMachine } from "./types";
+import type { BusinessType, OnboardingService, OnboardingServiceAddon, TeamSize, YocoMachine } from "./types";
+import { PricingOptionsEditor } from "@/features/catalogue/PricingOptionsEditor";
+import { DEFAULT_PRICING_OPTION, pricingOptionsToPayload, type PricingOption } from "@/features/catalogue/types";
 
 const labelCls = "mb-1.5 text-[13px] font-semibold tracking-wide text-slate-800";
 const inputCls =
@@ -2016,7 +2018,8 @@ function Step11Services() {
   const [addonPrice, setAddonPrice] = useState("");
   const [addonDuration, setAddonDuration] = useState("");
   const [addonDescription, setAddonDescription] = useState("");
-  const [draftAddons, setDraftAddons] = useState<NonNullable<OnboardingService["addons"]>>([]);
+  const [draftAddons, setDraftAddons] = useState<OnboardingServiceAddon[]>([]);
+  const [pricingOptions, setPricingOptions] = useState<PricingOption[]>([DEFAULT_PRICING_OPTION()]);
   // §provider-onboarding-2026-05: Catalog-parity advanced fields. These ride
   // through to `/api/provider/onboarding` so providers don't have to revisit
   // every service in the catalog after going live.
@@ -2071,6 +2074,7 @@ function Step11Services() {
     setDraftAddons((prev) => [
       ...prev,
       {
+        parent_service_index: services.length,
         name: addonName.trim(),
         description: addonDescription.trim() || undefined,
         price: parsedAddonPrice,
@@ -2116,17 +2120,19 @@ function Step11Services() {
     const parsedAdj = parseFloat(atHomePriceAdj);
     const parsedTax = parseFloat(taxRate);
     const parsedExtraDur = parseInt(extraTimeDuration, 10);
+    const primaryPricing = pricingOptions[0] ?? DEFAULT_PRICING_OPTION();
     const s: OnboardingService = {
       title: title.trim(),
       category_id: categoryId,
       description: description.trim() || undefined,
-      duration_minutes: d,
-      price: p,
+      duration_minutes: primaryPricing.duration || d,
+      price: primaryPricing.price ?? p,
       currency: tenantCurrency,
       supports_at_home: supportsAtHome,
       supports_at_salon: supportsAtSalon,
       service_type: serviceType || "basic",
-      pricing_name: pricingName.trim() || undefined,
+      pricing_name: primaryPricing.pricingName.trim() || pricingName.trim() || undefined,
+      pricing_options: pricingOptionsToPayload(pricingOptions),
       aftercare_description: aftercareDescription.trim() || undefined,
       service_available_for: availableFor || "everyone",
       online_booking_enabled: onlineBookable,
@@ -2142,9 +2148,12 @@ function Step11Services() {
         extraTimeEnabled && Number.isFinite(parsedExtraDur) && parsedExtraDur > 0
           ? parsedExtraDur
           : 0,
-      addons: draftAddons.length ? draftAddons : [],
     };
-    updateFormData({ services: [...services, s] });
+    const nextAddons = [
+      ...(formData.service_addons || []),
+      ...draftAddons.map((a) => ({ ...a, parent_service_index: services.length })),
+    ];
+    updateFormData({ services: [...services, s], service_addons: nextAddons });
     setTitle("");
     setPrice("");
     setDur("60");
@@ -2153,6 +2162,7 @@ function Step11Services() {
     setSupportsAtSalon(formData.business_type !== "mobile");
     setSupportsAtHome(formData.business_type !== "salon");
     setDraftAddons([]);
+    setPricingOptions([DEFAULT_PRICING_OPTION()]);
     setServiceType("basic");
     setPricingName("");
     setAftercareDescription("");
@@ -2356,12 +2366,11 @@ function Step11Services() {
                   );
                 })}
               </View>
-              <TextInput
-                value={pricingName}
-                onChangeText={setPricingName}
-                placeholder="Pricing label (e.g. Standard, Hour 1)"
-                style={twStyle(inputCls)}
-                placeholderTextColor="#94a3b8"
+              <PricingOptionsEditor
+                options={pricingOptions}
+                onChange={setPricingOptions}
+                durationOptions={[{ value: "60", label: "60 min" }, { value: "30", label: "30 min" }, { value: "90", label: "90 min" }]}
+                priceTypeOptions={[{ value: "fixed", label: "Fixed" }]}
               />
             </View>
 

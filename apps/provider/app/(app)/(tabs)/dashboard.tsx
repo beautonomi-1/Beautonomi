@@ -8,6 +8,7 @@ import { formatInTimeZone, toZonedTime } from "date-fns-tz";
 import { useApi } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
 import { supabase } from "@/lib/supabase/client";
+import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
 import { useProvider } from "@/providers/ProviderContext";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -506,11 +507,11 @@ export default function DashboardScreen() {
 
   const dashboardRefreshRef = useRef(refreshRealtimeDashboardData);
   useEffect(() => { dashboardRefreshRef.current = refreshRealtimeDashboardData; }, [refreshRealtimeDashboardData]);
-  const dashboardBookingRealtimeGenRef = useRef(0);
 
   useEffect(() => {
     if (!isFocused || !provider?.id) return;
     let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
     const scheduleRefresh = () => {
       if (refreshTimer) return;
       refreshTimer = setTimeout(() => {
@@ -519,26 +520,28 @@ export default function DashboardScreen() {
       }, 500);
     };
 
-    const gen = ++dashboardBookingRealtimeGenRef.current;
-    const channel = supabase
-      .channel(`dashboard-booking-updates-rt${gen}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "bookings",
-          filter: `provider_id=eq.${provider.id}`,
-        },
-        () => {
-          scheduleRefresh();
-        },
-      )
-      .subscribe();
+    try {
+      const topic = nextRealtimeTopic(`dashboard-booking-updates:${provider.id}`);
+      channel = supabase
+        .channel(topic)
+        .on(
+          "postgres_changes" as never,
+          {
+            event: "*",
+            schema: "public",
+            table: "bookings",
+            filter: `provider_id=eq.${provider.id}`,
+          },
+          scheduleRefresh,
+        )
+        .subscribe();
+    } catch {
+      // Non-fatal: dashboard still refreshes on focus / pull.
+    }
 
     return () => {
       if (refreshTimer) clearTimeout(refreshTimer);
-      supabase.removeChannel(channel);
+      if (channel) supabase.removeChannel(channel);
     };
   }, [isFocused, provider?.id]);
 
@@ -1283,11 +1286,25 @@ export default function DashboardScreen() {
                       </Text>
                     ))}
                   </View>
-                  {booking.is_group_booking && booking.group_booking_ref && (
-                    <Text style={{ marginTop: 4, fontSize: 10, color: Colors.gray[500] }} numberOfLines={1}>
-                      Group: {booking.group_booking_ref}
-                    </Text>
-                  )}
+                  {booking.is_group_booking ? (
+                    <View style={{ marginTop: 6, flexDirection: "row", alignItems: "center" }}>
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          borderRadius: 999,
+                          backgroundColor: "#eef2ff",
+                          paddingHorizontal: 8,
+                          paddingVertical: 3,
+                        }}
+                      >
+                        <Ionicons name="people-outline" size={12} color="#4338ca" style={{ marginRight: 4 }} />
+                        <Text style={{ fontSize: 10, fontWeight: "700", color: "#4338ca" }}>
+                          GRP{booking.group_booking_ref ? ` · ${booking.group_booking_ref}` : ""}
+                        </Text>
+                      </View>
+                    </View>
+                  ) : null}
                   {booking.package_name ? (
                     <Text style={{ marginTop: 4, fontSize: 10, color: Colors.gray[600] }} numberOfLines={1}>
                       Package: {booking.package_name}

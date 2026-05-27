@@ -80,6 +80,32 @@ export function optimisticBookingFieldsForDbTarget(dbTarget: string): { db_statu
   };
 }
 
+/** Optimistic `current_stage` overlay for house-call journey POST actions. */
+export function optimisticCurrentStageForActionId(actionId: string): string | null {
+  switch (actionId) {
+    case "start_journey":
+      return "provider_on_way";
+    case "mark_arrived":
+      return "provider_arrived";
+    default:
+      return null;
+  }
+}
+
+export function optimisticBookingFieldsForAction(
+  actionId: string,
+  dbTarget: string,
+): { db_status?: string; status?: string; current_stage?: string } {
+  const stage = optimisticCurrentStageForActionId(actionId);
+  if (stage) {
+    return { current_stage: stage };
+  }
+  if (actionId === "start_service" || actionId === "complete_service" || dbTarget === "in_progress" || dbTarget === "completed") {
+    return optimisticBookingFieldsForDbTarget(dbTarget);
+  }
+  return optimisticBookingFieldsForDbTarget(dbTarget);
+}
+
 /**
  * At-home bookings may require arrival verification before starting service.
  * Remove `in_progress` from the generic status picker when OTP/QR is still pending.

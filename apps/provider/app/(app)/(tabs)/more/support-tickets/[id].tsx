@@ -110,6 +110,7 @@ export default function SupportTicketDetailScreen() {
   const [csatScore, setCsatScore] = useState<number | null>(null);
   const [csatComment, setCsatComment] = useState("");
   const [submittingCsat, setSubmittingCsat] = useState(false);
+  const [csatExpanded, setCsatExpanded] = useState(true);
   const scrollViewRef = useRef<ScrollView>(null);
   const realtimeGenRef = useRef(0);
 
@@ -139,6 +140,7 @@ export default function SupportTicketDetailScreen() {
       setTicket(t);
       setCsatScore(t?.csat_score ?? null);
       setCsatComment(t?.csat_comment ?? "");
+      setCsatExpanded(typeof t?.csat_score !== "number");
       setMessages(Array.isArray(payload?.messages) ? payload!.messages! : []);
       void api.post(`/api/provider/support-tickets/${id}/seen`, {}).catch(() => {});
       if (t) trackSupportTicketDetailView(t.id, t.ticket_number);
@@ -318,7 +320,9 @@ export default function SupportTicketDetailScreen() {
       }
       invalidateSupportTicketsListCache();
       Alert.alert("Thanks", "Your rating helps us improve support.");
+      setCsatExpanded(false);
       await loadTicket();
+      setTimeout(() => scrollViewRef.current?.scrollTo({ y: 0, animated: true }), 200);
     } catch (e) {
       Alert.alert("Could not submit rating", e instanceof Error ? e.message : "Please try again");
     } finally {
@@ -563,48 +567,67 @@ export default function SupportTicketDetailScreen() {
             )}
 
             {(ticket.status === "closed" || ticket.status === "resolved") && (
-              <View style={twStyle("mt-4")}>
-                <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>
-                  {typeof ticket.csat_score === "number" ? "Your support rating" : "Rate this support experience"}
-                </Text>
-                <View style={{ flexDirection: "row", gap: 8, marginBottom: 10 }}>
-                  {[1, 2, 3, 4, 5].map((score) => (
-                    <TouchableOpacity
-                      key={score}
-                      onPress={() => setCsatScore(score)}
-                      style={{
-                        minWidth: 44,
-                        borderRadius: 12,
-                        borderWidth: 1,
-                        borderColor: csatScore === score ? Colors.primary : Colors.gray[200],
-                        backgroundColor: csatScore === score ? Colors.primary : "#fff",
-                        paddingVertical: 10,
-                        alignItems: "center",
-                      }}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: csatScore === score }}
-                    >
-                      <Text style={{ fontWeight: "700", color: csatScore === score ? "#fff" : Colors.gray[700] }}>{score}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-                <TextInput
-                  style={twStyle("mb-3 min-h-[72px] rounded-xl border border-gray-200 px-4 py-3 text-base text-gray-900")}
-                  placeholder="Optional comment"
-                  placeholderTextColor="#9ca3af"
-                  value={csatComment}
-                  onChangeText={setCsatComment}
-                  multiline
-                  maxLength={1000}
-                />
-                <ActionButton
-                  label={
-                    submittingCsat ? "Submitting…" : typeof ticket.csat_score === "number" ? "Update rating" : "Submit rating"
-                  }
-                  onPress={submitCsat}
-                  fullWidth
-                  disabled={!csatScore || submittingCsat}
-                />
+              <View style={twStyle("mt-6 border-t border-gray-100 pt-4")}>
+                <TouchableOpacity
+                  onPress={() => setCsatExpanded((prev) => !prev)}
+                  style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: csatExpanded ? 12 : 0 }}
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: csatExpanded }}
+                >
+                  <Text style={twStyle("text-sm font-medium text-gray-700")}>
+                    {typeof ticket.csat_score === "number" ? "Your support rating" : "Rate this support experience"}
+                  </Text>
+                  <Text style={twStyle("text-xs font-semibold text-indigo-600")}>
+                    {csatExpanded ? "Hide" : "Show"}
+                  </Text>
+                </TouchableOpacity>
+                {csatExpanded ? (
+                  <>
+                    <View style={{ flexDirection: "row", gap: 8, marginBottom: 10 }}>
+                      {[1, 2, 3, 4, 5].map((score) => (
+                        <TouchableOpacity
+                          key={score}
+                          onPress={() => setCsatScore(score)}
+                          style={{
+                            minWidth: 44,
+                            borderRadius: 12,
+                            borderWidth: 1,
+                            borderColor: csatScore === score ? Colors.primary : Colors.gray[200],
+                            backgroundColor: csatScore === score ? Colors.primary : "#fff",
+                            paddingVertical: 10,
+                            alignItems: "center",
+                          }}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: csatScore === score }}
+                        >
+                          <Text style={{ fontWeight: "700", color: csatScore === score ? "#fff" : Colors.gray[700] }}>{score}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                    <TextInput
+                      style={twStyle("mb-3 min-h-[72px] rounded-xl border border-gray-200 px-4 py-3 text-base text-gray-900")}
+                      placeholder="Optional comment"
+                      placeholderTextColor="#9ca3af"
+                      value={csatComment}
+                      onChangeText={setCsatComment}
+                      multiline
+                      maxLength={1000}
+                    />
+                    <ActionButton
+                      label={
+                        submittingCsat ? "Submitting…" : typeof ticket.csat_score === "number" ? "Update rating" : "Submit rating"
+                      }
+                      onPress={submitCsat}
+                      fullWidth
+                      disabled={!csatScore || submittingCsat}
+                    />
+                  </>
+                ) : typeof ticket.csat_score === "number" ? (
+                  <Text style={twStyle("text-sm text-gray-600")}>
+                    You rated this ticket {ticket.csat_score}/5
+                    {ticket.csat_comment ? ` — "${ticket.csat_comment}"` : ""}
+                  </Text>
+                ) : null}
                 <Text style={twStyle("mt-4 text-sm text-gray-500")}>
                   This ticket is {ticket.status}. Submit a new ticket from Settings → Contact support to continue.
                 </Text>

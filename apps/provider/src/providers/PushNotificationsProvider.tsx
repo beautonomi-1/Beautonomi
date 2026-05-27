@@ -448,17 +448,22 @@ function usePushRegistration() {
             );
             return;
           }
-          if (isTransientApiFailure(res.error)) {
+          const code = res.error.code;
+          const transient =
+            isTransientApiFailure(res.error) &&
+            code !== "DEVICE_REGISTRATION_FAILED";
+          if (transient) {
             addBreadcrumb(
               "Device register skipped (transient network)",
               "push_notifications",
-              { code: res.error.code },
+              { code },
             );
           } else {
             captureError(new Error(`Device registration rejected: ${res.error.message}`), {
               scope: "push_notifications:device_register",
-              code: res.error.code,
+              code,
               source,
+              status,
             });
           }
         } else {

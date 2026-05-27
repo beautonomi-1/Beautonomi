@@ -5,20 +5,19 @@ import {
   ScrollView,
   RefreshControl,
   TouchableOpacity,
-  TextInput,
-  ActivityIndicator,
   Alert,
   DeviceEventEmitter,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { useApi, useApiMutation } from "@/hooks/useApi";
+import { useApi } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
-import { BottomSheet } from "@/components/ui/BottomSheet";
+import { StockAdjustSheet } from "@/features/products/StockAdjustSheet";
+import type { ProductItem } from "@/features/products/types";
 import { Colors } from "@/constants/colors";
 import { formatCurrency } from "@/lib/format";
 import {
@@ -55,14 +54,11 @@ export function InventoryContent() {
   const router = useRouter();
   const { screenPadding } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
-  const [adjustProduct, setAdjustProduct] = useState<InventoryProduct | null>(null);
-  const [adjustQuantity, setAdjustQuantity] = useState("");
-  const [adjustLowStock, setAdjustLowStock] = useState("");
+  const [adjustProduct, setAdjustProduct] = useState<ProductItem | null>(null);
 
   const { data, loading, error, refresh } = useApi<InventoryResponse>(
     "/api/provider/reports/products/inventory"
   );
-  const { execute: patchProduct, loading: patching } = useApiMutation("patch");
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -97,46 +93,14 @@ export function InventoryContent() {
         );
         return;
       }
-      setAdjustProduct(p);
-      setAdjustQuantity(String(p.quantity ?? 0));
-      setAdjustLowStock(String(p.low_stock_level ?? 5));
+      setAdjustProduct(p as ProductItem);
     },
     [router]
   );
 
   const closeAdjust = useCallback(() => {
     setAdjustProduct(null);
-    setAdjustQuantity("");
-    setAdjustLowStock("");
   }, []);
-
-  const saveAdjust = useCallback(async () => {
-    if (!adjustProduct) return;
-    const qty = parseInt(adjustQuantity, 10);
-    if (Number.isNaN(qty) || qty < 0) {
-      Alert.alert("Invalid quantity", "Enter a number ≥ 0.");
-      return;
-    }
-    const low = parseInt(adjustLowStock, 10);
-    const payload: { quantity: number; low_stock_level?: number } = { quantity: qty };
-    if (!Number.isNaN(low) && low >= 0) payload.low_stock_level = low;
-
-    const { error: err } = await patchProduct(`/api/provider/products/${adjustProduct.id}`, payload);
-    if (err) {
-      Alert.alert("Update failed", err);
-      return;
-    }
-    emitProviderProductsCatalogChanged();
-    closeAdjust();
-    await refresh();
-  }, [adjustProduct, adjustQuantity, adjustLowStock, patchProduct, closeAdjust, refresh]);
-
-  const openFullEdit = useCallback(() => {
-    if (adjustProduct) {
-      closeAdjust();
-      router.push({ pathname: "/(app)/(tabs)/more/product-form", params: { id: adjustProduct.id } } as never);
-    }
-  }, [adjustProduct, closeAdjust, router]);
 
   if (loading && !data) {
     return (
@@ -293,76 +257,15 @@ export function InventoryContent() {
         )}
       </ScrollView>
 
-      <BottomSheet
+      <StockAdjustSheet
         visible={!!adjustProduct}
+        product={adjustProduct}
         onClose={closeAdjust}
-        title="Adjust stock"
-        subtitle={adjustProduct?.name}
-        snapHeight="auto"
-      >
-        <View style={{ paddingHorizontal: 4, paddingBottom: 24 }}>
-          <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Quantity</Text>
-          <TextInput
-            value={adjustQuantity}
-            onChangeText={setAdjustQuantity}
-            placeholder="0"
-            keyboardType="number-pad"
-            style={{
-              borderWidth: 1,
-              borderColor: Colors.gray[200],
-              borderRadius: 12,
-              paddingHorizontal: 16,
-              paddingVertical: 12,
-              fontSize: 16,
-              color: Colors.gray[900],
-              marginBottom: 16,
-            }}
-            placeholderTextColor={Colors.gray[400]}
-          />
-          <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Low stock alert (optional)</Text>
-          <TextInput
-            value={adjustLowStock}
-            onChangeText={setAdjustLowStock}
-            placeholder="5"
-            keyboardType="number-pad"
-            style={{
-              borderWidth: 1,
-              borderColor: Colors.gray[200],
-              borderRadius: 12,
-              paddingHorizontal: 16,
-              paddingVertical: 12,
-              fontSize: 16,
-              color: Colors.gray[900],
-              marginBottom: 24,
-            }}
-            placeholderTextColor={Colors.gray[400]}
-          />
-          <TouchableOpacity
-            onPress={saveAdjust}
-            disabled={patching}
-            style={{
-              backgroundColor: "#059669",
-              borderRadius: 12,
-              paddingVertical: 14,
-              alignItems: "center",
-              marginBottom: 12,
-            }}
-          >
-            {patching ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Text style={{ fontSize: 16, fontWeight: "600", color: "#fff" }}>Save</Text>
-            )}
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={openFullEdit}
-            style={{ paddingVertical: 12, alignItems: "center", flexDirection: "row", justifyContent: "center" }}
-          >
-            <Ionicons name="open-outline" size={18} color="#6d28d9" />
-            <Text style={{ marginLeft: 6, fontSize: 15, color: "#6d28d9", fontWeight: "500" }}>Edit full product</Text>
-          </TouchableOpacity>
-        </View>
-      </BottomSheet>
+        onSuccess={async () => {
+          emitProviderProductsCatalogChanged();
+          await refresh();
+        }}
+      />
     </>
   );
 }

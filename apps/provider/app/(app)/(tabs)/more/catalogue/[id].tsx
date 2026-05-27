@@ -20,12 +20,10 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { SectionHeader } from "@/components/ui/SectionHeader";
-import { ActionButton } from "@/components/ui/ActionButton";
-import { BottomSheet } from "@/components/ui/BottomSheet";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
-import { formatCurrency, formatDuration } from "@/lib/format";
+import { formatCurrency } from "@/lib/format";
 import { APP_URL, withWebApiTenantHeaders } from "@/config/public-env";
 import { supabase } from "@/lib/supabase/client";
 import { twStyle } from "@/lib/twStyle";
@@ -37,7 +35,7 @@ interface ServiceDetail {
   title: string;
   description: string | null;
   duration_minutes: number;
-  buffer_minutes: number;
+  buffer_minutes?: number;
   price: number;
   currency: string;
   is_active: boolean;
@@ -49,6 +47,7 @@ interface ServiceDetail {
   provider_category_id?: string | null;
   team_member_ids?: string[] | null;
   image_url?: string | null;
+  pricing_options?: Array<{ duration?: number; price?: number; pricingName?: string }>;
   created_at: string;
   updated_at: string;
 }
@@ -69,29 +68,10 @@ interface StaffMemberRow {
   email?: string;
 }
 
-interface AddOn {
-  id: string;
-  name: string;
-  price: number;
-  duration_minutes: number;
-  is_active: boolean;
-}
-
-interface ServiceVariant {
-  id: string;
-  /** Provider API returns title (same field used in booking flow) */
-  title: string;
-  variant_name?: string | null;
-  price: number;
-  duration_minutes: number;
-  variant_sort_order?: number | null;
-}
-
 interface FormState {
   title: string;
   description: string;
   duration_minutes: string;
-  buffer_minutes: string;
   price: string;
   supports_at_home: boolean;
   supports_at_salon: boolean;
@@ -107,7 +87,6 @@ function initForm(service: ServiceDetail): FormState {
     title: service.title,
     description: service.description ?? "",
     duration_minutes: String(service.duration_minutes),
-    buffer_minutes: String(service.buffer_minutes),
     price: String(service.price),
     supports_at_home: service.supports_at_home,
     supports_at_salon: service.supports_at_salon,
@@ -117,12 +96,6 @@ function initForm(service: ServiceDetail): FormState {
     category_id: service.provider_category_id ?? "",
     team_member_ids: Array.isArray(service.team_member_ids) ? [...service.team_member_ids] : [],
   };
-}
-
-interface AddOnFormState {
-  name: string;
-  price: string;
-  duration_minutes: string;
 }
 
 export default function ServiceDetailScreen() {
@@ -137,31 +110,8 @@ export default function ServiceDetailScreen() {
     error: serviceError,
     refresh,
   } = useApi<ServiceDetail>(`/api/provider/services/${id}`);
-  const { data: addOns, refresh: refreshAddOns } = useApi<AddOn[]>(
-    `/api/provider/services/${id}/addons`
-  );
-  const { data: variantResponse, refresh: refreshVariants } = useApi<{
-    variants: ServiceVariant[];
-    parent_service: { id: string; title: string; service_type: string };
-    total_count: number;
-  }>(`/api/provider/services/${id}/variants`);
-  // The API returns { data: { variants, parent_service, total_count } }; extract the array.
-  const variants = variantResponse?.variants ?? null;
-
   const { execute: updateService, loading: saving } = useApiMutation("patch");
   const { execute: deleteItem } = useApiMutation("delete");
-  const { execute: createAddOn, loading: creatingAddOn } = useApiPost<
-    object,
-    AddOn
-  >(`/api/provider/services/${id}/addons`);
-  const { execute: updateAddOn, loading: updatingAddOn } =
-    useApiMutation("patch");
-  const { execute: createVariant, loading: creatingVariant } = useApiPost<
-    object,
-    ServiceVariant
-  >(`/api/provider/services/${id}/variants`);
-  const { execute: updateVariant, loading: updatingVariant } = useApiMutation("patch");
-  const { execute: reorderVariant } = useApiMutation("patch");
 
   const { data: categoriesRes, refresh: refreshCategories } = useApi<
     CategoriesApiShape | ServiceCategoryRow[] | { data?: CategoriesApiShape }
@@ -211,20 +161,8 @@ export default function ServiceDetailScreen() {
 
   const [form, setForm] = useState<FormState | null>(null);
   const [editing, setEditing] = useState(false);
-  const [showAddOnSheet, setShowAddOnSheet] = useState(false);
-  const [editingAddOn, setEditingAddOn] = useState<AddOn | null>(null);
-  const [addOnForm, setAddOnForm] = useState<AddOnFormState>({
-    name: "",
-    price: "",
-    duration_minutes: "",
-  });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [uploadingImage, setUploadingImage] = useState(false);
-
-  // Variant form state
-  const [showVariantSheet, setShowVariantSheet] = useState(false);
-  const [variantForm, setVariantForm] = useState({ title: "", price: "", duration_minutes: "" });
-  const [editingVariant, setEditingVariant] = useState<ServiceVariant | null>(null);
 
   async function handlePickServiceImage() {
     if (!editing) return;
@@ -341,6 +279,7 @@ export default function ServiceDetailScreen() {
       newErrors.price = "Valid price required";
     if (!form!.duration_minutes || Number(form!.duration_minutes) <= 0)
       newErrors.duration_minutes = "Valid duration required";
+    if (!form!.category_id.trim()) newErrors.category_id = "Category is required";
     if (!form!.supports_at_home && !form!.supports_at_salon)
       newErrors.location = "Select at least one location type";
     setErrors(newErrors);
@@ -353,7 +292,6 @@ export default function ServiceDetailScreen() {
       title: form.title.trim(),
       description: form.description.trim() || null,
       duration_minutes: Number(form.duration_minutes),
-      buffer_minutes: Number(form.buffer_minutes) || 0,
       price: Number(form.price),
       supports_at_home: form.supports_at_home,
       supports_at_salon: form.supports_at_salon,
@@ -364,7 +302,7 @@ export default function ServiceDetailScreen() {
         ? Number(form.at_home_radius_km) || 0
         : 0,
       is_active: form.is_active,
-      provider_category_id: form.category_id.trim() || null,
+      provider_category_id: form.category_id.trim(),
       team_member_ids: form.team_member_ids,
     };
     const { error } = await updateService(
@@ -384,72 +322,6 @@ export default function ServiceDetailScreen() {
     setForm(initForm(service!));
     setEditing(false);
     setErrors({});
-  }
-
-  function openAddOnForm(addOn?: AddOn) {
-    if (addOn) {
-      setEditingAddOn(addOn);
-      setAddOnForm({
-        name: addOn.name,
-        price: String(addOn.price),
-        duration_minutes: String(addOn.duration_minutes),
-      });
-    } else {
-      setEditingAddOn(null);
-      setAddOnForm({ name: "", price: "", duration_minutes: "" });
-    }
-    setShowAddOnSheet(true);
-  }
-
-  async function handleSaveAddOn() {
-    if (!addOnForm.name.trim()) {
-      Alert.alert("Required", "Please enter an add-on name.");
-      return;
-    }
-    if (!addOnForm.price || Number(addOnForm.price) <= 0) {
-      Alert.alert("Required", "Please enter a valid price.");
-      return;
-    }
-    const payload = {
-      name: addOnForm.name.trim(),
-      price: Number(addOnForm.price),
-      duration_minutes: Number(addOnForm.duration_minutes) || 0,
-    };
-    if (editingAddOn) {
-      const { error } = await updateAddOn(
-        `/api/provider/services/${id}/addons/${editingAddOn.id}`,
-        payload
-      );
-      if (error) {
-        Alert.alert("Error", error);
-        return;
-      }
-    } else {
-      const { error } = await createAddOn(payload);
-      if (error) {
-        Alert.alert("Error", error);
-        return;
-      }
-    }
-    setShowAddOnSheet(false);
-    await refreshAddOns();
-  }
-
-  async function handleDeleteAddOn(addOn: AddOn) {
-    Alert.alert("Delete Add-on", `Remove "${addOn.name}"?`, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          const { error } = await deleteItem(
-            `/api/provider/services/${id}/addons/${addOn.id}`
-          );
-          if (error) Alert.alert("Error", error);
-          else refreshAddOns();
-        },
-      },
-    ]);
   }
 
   function handleDeleteService() {
@@ -480,97 +352,6 @@ export default function ServiceDetailScreen() {
         },
       ],
     );
-  }
-
-  function openVariantForm(v?: ServiceVariant) {
-    if (v) {
-      setEditingVariant(v);
-      setVariantForm({
-        title: v.title || v.variant_name || "",
-        price: String(v.price ?? ""),
-        duration_minutes: String(v.duration_minutes ?? ""),
-      });
-    } else {
-      setEditingVariant(null);
-      setVariantForm({ title: "", price: "", duration_minutes: "" });
-    }
-    setShowVariantSheet(true);
-  }
-
-  async function handleSaveVariant() {
-    if (!variantForm.title.trim() || !variantForm.price || !variantForm.duration_minutes) {
-      Alert.alert("Error", "Title, price, and duration are required");
-      return;
-    }
-    const payload = {
-      title: variantForm.title.trim(),
-      variant_name: variantForm.title.trim(),
-      price: Number(variantForm.price),
-      duration_minutes: Number(variantForm.duration_minutes),
-    };
-    if (editingVariant) {
-      const { error } = await updateVariant(
-        `/api/provider/services/${id}/variants/${editingVariant.id}`,
-        payload,
-      );
-      if (error) {
-        Alert.alert("Error", error);
-        return;
-      }
-    } else {
-      const { error } = await createVariant(payload);
-      if (error) {
-        Alert.alert("Error", error);
-        return;
-      }
-    }
-    setShowVariantSheet(false);
-    setEditingVariant(null);
-    await refreshVariants();
-    // Also refresh the service so has_variants flag is current
-    await refresh();
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  }
-
-  // §Provider-audit 2026-04 (catalogue round 2): reorder a variant by
-  // swapping its `variant_sort_order` with the neighbour. Matches the
-  // server endpoint we just added at /api/provider/services/[id]/variants/[variantId]/reorder.
-  async function handleReorderVariant(v: ServiceVariant, direction: "up" | "down") {
-    if (!variants) return;
-    const idx = variants.findIndex((x) => x.id === v.id);
-    if (idx < 0) return;
-    if (direction === "up" && idx === 0) return;
-    if (direction === "down" && idx === variants.length - 1) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const { error } = await reorderVariant(
-      `/api/provider/services/${id}/variants/${v.id}/reorder`,
-      { direction },
-    );
-    if (error) {
-      Alert.alert("Error", error);
-      return;
-    }
-    await refreshVariants();
-  }
-
-  async function handleDeleteVariant(v: ServiceVariant) {
-    Alert.alert("Delete Variant", `Remove "${v.title || v.variant_name || "this variant"}"?`, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          const { error } = await deleteItem(
-            `/api/provider/services/${id}/variants/${v.id}`
-          );
-          if (error) Alert.alert("Error", error);
-          else {
-            await refreshVariants();
-            await refresh();
-          }
-        },
-      },
-    ]);
   }
 
   function renderFormField(
@@ -760,6 +541,19 @@ export default function ServiceDetailScreen() {
             ) : null}
             {renderFormField("Title", "title")}
             {renderFormField("Description", "description", "default", true)}
+            {(service.pricing_options?.length ?? 0) > 1 && (
+              <TouchableOpacity
+                onPress={() => router.push(`/(app)/(tabs)/more/service-form?id=${service.id}` as never)}
+                style={twStyle("mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3")}
+                accessibilityRole="button"
+                accessibilityLabel="This service has multiple pricing tiers. Open full editor."
+              >
+                <Text style={twStyle("text-sm font-medium text-amber-800")}>Multiple pricing tiers</Text>
+                <Text style={twStyle("mt-0.5 text-xs text-amber-700")}>
+                  Price & duration here reflect the primary tier only. Tap to open the full editor to manage all tiers.
+                </Text>
+              </TouchableOpacity>
+            )}
             <View style={twStyle("flex-row")}>
               <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
                 {renderFormField("Price", "price", "numeric", false, service.currency)}
@@ -774,13 +568,9 @@ export default function ServiceDetailScreen() {
                 )}
               </View>
             </View>
-            {renderFormField(
-              "Buffer Time",
-              "buffer_minutes",
-              "numeric",
-              false,
-              "min"
-            )}
+            {errors.category_id ? (
+              <Text style={twStyle("mb-2 text-xs text-red-500")}>{errors.category_id}</Text>
+            ) : null}
           </View>
 
           {/* Location Types */}
@@ -877,166 +667,6 @@ export default function ServiceDetailScreen() {
         </View>
 
         <View style={twStyle(isTablet ? "flex-1" : "")}>
-          {/* Add-ons Section */}
-          <SectionHeader
-            title="Add-ons"
-            actionLabel="Add New"
-            onAction={() => openAddOnForm()}
-          />
-          {!addOns || addOns.length === 0 ? (
-            <View style={twStyle("items-center rounded-xl border border-dashed border-gray-200 bg-gray-50 py-6")}>
-              <Ionicons name="add-circle-outline" size={28} color="#d1d5db" />
-              <Text style={twStyle("mt-2 text-sm text-gray-400")}>
-                No add-ons yet
-              </Text>
-              <TouchableOpacity
-                style={twStyle("mt-3 rounded-lg bg-indigo-50 px-4 py-2")}
-                onPress={() => openAddOnForm()}
-                accessibilityLabel="Create first add-on"
-                accessibilityRole="button"
-              >
-                <Text style={twStyle("text-sm font-medium text-indigo-600")}>
-                  Create Add-on
-                </Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <View>
-              {addOns.map((addOn, addOnIdx) => (
-                <View
-                  key={addOn.id}
-                  style={[twStyle("flex-row items-center justify-between rounded-xl border border-gray-100 bg-white p-4"), addOnIdx > 0 && { marginTop: 8 }]}
-                >
-                  <View style={twStyle("flex-1")}>
-                    <Text style={twStyle("text-sm font-medium text-gray-900")}>
-                      {addOn.name}
-                    </Text>
-                    <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
-                      {formatCurrency(addOn.price, service.currency)} &middot;{" "}
-                      {formatDuration(addOn.duration_minutes)}
-                    </Text>
-                  </View>
-                  <View style={twStyle("flex-row")}>
-                    <TouchableOpacity
-                      onPress={() => openAddOnForm(addOn)}
-                      style={[twStyle("rounded-lg bg-gray-100 p-2"), { marginRight: 8 }]}
-                      accessibilityLabel={`Edit add-on ${addOn.name}`}
-                      accessibilityRole="button"
-                    >
-                      <Ionicons
-                        name="pencil-outline"
-                        size={16}
-                        color="#6b7280"
-                      />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => handleDeleteAddOn(addOn)}
-                      style={twStyle("rounded-lg bg-red-50 p-2")}
-                      accessibilityLabel={`Delete add-on ${addOn.name}`}
-                      accessibilityRole="button"
-                    >
-                      <Ionicons
-                        name="trash-outline"
-                        size={16}
-                        color="#ef4444"
-                      />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ))}
-            </View>
-          )}
-
-          {/* Variants Section */}
-          <SectionHeader
-            title="Service Variants"
-            actionLabel="Add New"
-            onAction={() => openVariantForm()}
-          />
-          <Text style={twStyle("mb-3 text-xs text-gray-500 leading-relaxed")}>
-            Variants let customers choose from different options (e.g. short / long hair, 30 min / 60 min). Each variant gets its own price and duration and appears as a selectable option in the booking flow.
-          </Text>
-          {!variants || variants.length === 0 ? (
-            <View style={twStyle("items-center rounded-xl border border-dashed border-gray-200 bg-gray-50 py-6")}>
-              <Ionicons name="layers-outline" size={28} color="#d1d5db" />
-              <Text style={twStyle("mt-2 text-sm text-gray-400")}>
-                No variants yet
-              </Text>
-              <TouchableOpacity
-                style={twStyle("mt-3 rounded-lg bg-indigo-50 px-4 py-2")}
-                onPress={() => openVariantForm()}
-                accessibilityLabel="Create first variant"
-                accessibilityRole="button"
-              >
-                <Text style={twStyle("text-sm font-medium text-indigo-600")}>
-                  Create Variant
-                </Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <View>
-              {variants.map((v, vIdx) => (
-                <View
-                  key={v.id}
-                  style={[twStyle("flex-row items-center rounded-xl border border-gray-100 bg-white p-3"), vIdx > 0 && { marginTop: 8 }]}
-                >
-                  {/* §Provider-audit 2026-04 (catalogue round 2): variant reorder buttons — the
-                      variants already sort server-side by `variant_sort_order`, now providers
-                      can control that order from mobile without going to web admin. */}
-                  <View style={twStyle("mr-2 items-center")}>
-                    <TouchableOpacity
-                      hitSlop={8}
-                      onPress={() => handleReorderVariant(v, "up")}
-                      disabled={vIdx === 0}
-                      accessibilityLabel={`Move ${v.title || v.variant_name} up`}
-                      style={{ opacity: vIdx === 0 ? 0.25 : 1 }}
-                    >
-                      <Ionicons name="chevron-up" size={18} color="#6b7280" />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      hitSlop={8}
-                      onPress={() => handleReorderVariant(v, "down")}
-                      disabled={vIdx === variants.length - 1}
-                      accessibilityLabel={`Move ${v.title || v.variant_name} down`}
-                      style={{ opacity: vIdx === variants.length - 1 ? 0.25 : 1 }}
-                    >
-                      <Ionicons name="chevron-down" size={18} color="#6b7280" />
-                    </TouchableOpacity>
-                  </View>
-                  <TouchableOpacity
-                    style={twStyle("flex-1")}
-                    onPress={() => openVariantForm(v)}
-                    accessibilityLabel={`Edit variant ${v.title || v.variant_name}`}
-                    accessibilityRole="button"
-                  >
-                    <Text style={twStyle("text-sm font-medium text-gray-900")}>
-                      {v.title || v.variant_name || "—"}
-                    </Text>
-                    <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
-                      {formatDuration(v.duration_minutes)} · {formatCurrency(v.price, service.currency)}
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => openVariantForm(v)}
-                    style={[twStyle("rounded-lg bg-gray-100 p-2"), { marginRight: 8 }]}
-                    accessibilityLabel={`Edit variant ${v.title || v.variant_name}`}
-                    accessibilityRole="button"
-                  >
-                    <Ionicons name="pencil-outline" size={16} color="#6b7280" />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => handleDeleteVariant(v)}
-                    style={twStyle("rounded-lg bg-red-50 p-2")}
-                    accessibilityLabel={`Delete variant ${v.title || v.variant_name}`}
-                    accessibilityRole="button"
-                  >
-                    <Ionicons name="trash-outline" size={16} color="#ef4444" />
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </View>
-          )}
-
           {/* Category */}
           {service.provider_categories?.[0] && (
             <>
@@ -1076,134 +706,12 @@ export default function ServiceDetailScreen() {
                 </Text>
               </TouchableOpacity>
               <Text style={twStyle("mt-2 text-center text-xs text-gray-500")}>
-                Permanently removes this service and its add-ons. Existing bookings are not affected.
+                Permanently removes this service. Use the full editor to manage variants and add-ons.
               </Text>
             </View>
           )}
         </View>
       </View>
-
-      {/* Add-on Bottom Sheet */}
-      <BottomSheet
-        visible={showAddOnSheet}
-        onClose={() => setShowAddOnSheet(false)}
-        title={editingAddOn ? "Edit Add-on" : "New Add-on"}
-      >
-        <View style={twStyle("mb-4")}>
-          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Name</Text>
-          <TextInput
-            style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900")}
-            placeholder="e.g., Deep conditioning"
-            placeholderTextColor="#9ca3af"
-            value={addOnForm.name}
-            onChangeText={(v) => setAddOnForm((p) => ({ ...p, name: v }))}
-            accessibilityLabel="Add-on name"
-          />
-        </View>
-        <View style={twStyle("mb-4 flex-row")}>
-          <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
-            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-              Price
-            </Text>
-            <TextInput
-              style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900")}
-              placeholder="0"
-              placeholderTextColor="#9ca3af"
-              value={addOnForm.price}
-              onChangeText={(v) => setAddOnForm((p) => ({ ...p, price: v }))}
-              keyboardType="numeric"
-              accessibilityLabel="Add-on price"
-            />
-          </View>
-          <View style={twStyle("flex-1")}>
-            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-              Duration (min)
-            </Text>
-            <TextInput
-              style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900")}
-              placeholder="0"
-              placeholderTextColor="#9ca3af"
-              value={addOnForm.duration_minutes}
-              onChangeText={(v) =>
-                setAddOnForm((p) => ({ ...p, duration_minutes: v }))
-              }
-              keyboardType="numeric"
-              accessibilityLabel="Add-on duration in minutes"
-            />
-          </View>
-        </View>
-        <ActionButton
-          label={editingAddOn ? "Update Add-on" : "Create Add-on"}
-          variant="secondary"
-          onPress={handleSaveAddOn}
-          loading={creatingAddOn || updatingAddOn}
-          fullWidth
-          disabled={!addOnForm.name.trim() || !addOnForm.price}
-        />
-      </BottomSheet>
-
-      {/* Variant Bottom Sheet */}
-      <BottomSheet
-        visible={showVariantSheet}
-        onClose={() => {
-          setShowVariantSheet(false);
-          setEditingVariant(null);
-        }}
-        title={editingVariant ? "Edit Variant" : "New Variant"}
-      >
-        <Text style={twStyle("mb-3 text-xs text-gray-500 leading-relaxed")}>
-          Add a booking option with its own price and duration (e.g. &quot;Short Hair - 30 min&quot;).
-        </Text>
-        <View style={twStyle("mb-4")}>
-          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Title</Text>
-          <TextInput
-            style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900")}
-            placeholder="e.g., Short Hair, 30 min session"
-            placeholderTextColor="#9ca3af"
-            value={variantForm.title}
-            onChangeText={(v) => setVariantForm((p) => ({ ...p, title: v }))}
-            accessibilityLabel="Variant title"
-          />
-        </View>
-        <View style={twStyle("mb-4 flex-row")}>
-          <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
-            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-              Price ({service?.currency})
-            </Text>
-            <TextInput
-              style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900")}
-              placeholder="0"
-              placeholderTextColor="#9ca3af"
-              value={variantForm.price}
-              onChangeText={(v) => setVariantForm((p) => ({ ...p, price: v }))}
-              keyboardType="numeric"
-              accessibilityLabel="Variant price"
-            />
-          </View>
-          <View style={twStyle("flex-1")}>
-            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-              Duration (min)
-            </Text>
-            <TextInput
-              style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900")}
-              placeholder="60"
-              placeholderTextColor="#9ca3af"
-              value={variantForm.duration_minutes}
-              onChangeText={(v) => setVariantForm((p) => ({ ...p, duration_minutes: v }))}
-              keyboardType="numeric"
-              accessibilityLabel="Variant duration in minutes"
-            />
-          </View>
-        </View>
-        <ActionButton
-          label={editingVariant ? "Update Variant" : "Create Variant"}
-          variant="secondary"
-          onPress={handleSaveVariant}
-          loading={creatingVariant || updatingVariant}
-          fullWidth
-          disabled={!variantForm.title.trim() || !variantForm.price || !variantForm.duration_minutes}
-        />
-      </BottomSheet>
 
       <View style={twStyle("h-8")} />
     </ScreenContainer>

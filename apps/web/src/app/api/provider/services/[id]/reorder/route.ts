@@ -43,10 +43,9 @@ export async function PATCH(
     if (!body) return errorResponse("Invalid JSON body", "VALIDATION_ERROR", 400);
 
     // Confirm the service belongs to this provider and is a top-level service
-    // (reorder does not apply to child variants — those use variant_sort_order).
     const { data: current } = await supabase
       .from("offerings")
-      .select("id, display_order, parent_service_id, service_type")
+      .select("id, display_order, parent_service_id, service_type, provider_category_id")
       .eq("id", id)
       .eq("provider_id", providerId)
       .maybeSingle();
@@ -60,39 +59,51 @@ export async function PATCH(
       );
     }
 
-    // Simple bump-and-swap reorder by direction.
+    // Category-scoped neighbour swap by direction.
     if (body.direction === "up" || body.direction === "down") {
-      const step = body.direction === "up" ? -1 : 1;
-      const currentOrder = current.display_order ?? 0;
-      const newOrder = Math.max(0, currentOrder + step);
-
-      if (newOrder === currentOrder) {
-        return successResponse({ id, display_order: currentOrder, moved: false });
-      }
-
-      const { data: neighbour } = await supabase
+      const { data: siblings } = await supabase
         .from("offerings")
-        .select("id, display_order")
+        .select("id, display_order, provider_category_id")
         .eq("provider_id", providerId)
         .is("parent_service_id", null)
         .neq("service_type", "variant")
-        .neq("service_type", "addon")
-        .eq("display_order", newOrder)
-        .neq("id", id)
-        .maybeSingle();
+        .eq("provider_category_id", current.provider_category_id);
 
-      if (neighbour) {
-        await supabase
-          .from("offerings")
-          .update({ display_order: currentOrder })
-          .eq("id", neighbour.id);
+      const ordered = (siblings ?? []).sort(
+        (a, b) => (a.display_order ?? 0) - (b.display_order ?? 0) || a.id.localeCompare(b.id),
+      );
+      const idx = ordered.findIndex((s) => s.id === id);
+      if (idx < 0) {
+        return notFoundResponse("Service not found in category");
       }
+
+      const targetIdx = body.direction === "up" ? idx - 1 : idx + 1;
+      if (targetIdx < 0 || targetIdx >= ordered.length) {
+        return errorResponse(
+          "Cannot move service further in this direction within the category",
+          "REORDER_BOUND",
+          422,
+        );
+      }
+
+      const neighbour = ordered[targetIdx];
+      const currentOrder = current.display_order ?? idx;
+      const neighbourOrder = neighbour.display_order ?? targetIdx;
+
+      await supabase
+        .from("offerings")
+        .update({ display_order: neighbourOrder })
+        .eq("id", id);
+
+      await supabase
+        .from("offerings")
+        .update({ display_order: currentOrder })
+        .eq("id", neighbour.id);
 
       const { data: updated, error } = await supabase
         .from("offerings")
-        .update({ display_order: newOrder })
-        .eq("id", id)
         .select("id, display_order")
+        .eq("id", id)
         .single();
 
       if (error) throw error;

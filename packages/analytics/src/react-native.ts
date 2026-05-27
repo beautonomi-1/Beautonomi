@@ -31,9 +31,45 @@ export {
 let isInitialized = false;
 let currentConfig: AmplitudeConfig | null = null;
 let engagementEnabled = false;
+let engagementPluginAdded = false;
+let lastBootedEngagementUserId: string | null = null;
 /** Last session replay choice; mismatch → reset + re-init (e.g. sign-in). */
 let lastEnableSessionReplay: boolean | undefined = undefined;
 let lastPortal: "client" | "provider" | null = null;
+/** Ignores stale in-flight init when auth/bootstrap races (anonymous → signed-in). */
+let initGeneration = 0;
+
+/** Full module reset — call from AnalyticsProvider cleanup on sign-out / remount. */
+export function resetAnalyticsModule(): void {
+  initGeneration += 1;
+  try {
+    amplitude.reset();
+  } catch {
+    /* ignore */
+  }
+  isInitialized = false;
+  currentConfig = null;
+  engagementEnabled = false;
+  engagementPluginAdded = false;
+  lastBootedEngagementUserId = null;
+  lastEnableSessionReplay = undefined;
+  lastPortal = null;
+}
+
+function clearAnalyticsModuleState(): void {
+  try {
+    amplitude.reset();
+  } catch {
+    /* ignore */
+  }
+  isInitialized = false;
+  currentConfig = null;
+  engagementEnabled = false;
+  engagementPluginAdded = false;
+  lastBootedEngagementUserId = null;
+  lastEnableSessionReplay = undefined;
+  lastPortal = null;
+}
 
 /** Merged into every track / screen for cross-device funnels (non-PII). */
 let cachedEventAttribution: Record<string, string> | null = null;
@@ -80,6 +116,8 @@ export async function initAnalytics(
     return null;
   }
 
+  const generation = ++initGeneration;
+
   if (
     isInitialized &&
     lastEnableSessionReplay === enableSessionReplay &&
@@ -94,20 +132,14 @@ export async function initAnalytics(
   }
 
   if (isInitialized) {
-    try {
-      amplitude.reset();
-    } catch {
-      /* ignore */
-    }
-    isInitialized = false;
-    engagementEnabled = false;
-    currentConfig = null;
-    lastEnableSessionReplay = undefined;
-    lastPortal = null;
+    clearAnalyticsModuleState();
   }
 
   try {
     amplitude.init(config.api_key_public);
+    if (generation !== initGeneration) {
+      return null;
+    }
     isInitialized = true;
     currentConfig = config;
     lastEnableSessionReplay = enableSessionReplay;
@@ -126,11 +158,19 @@ export async function initAnalytics(
       }
     }
 
-    if (engagementEnabled) {
+    if (generation !== initGeneration) {
+      return null;
+    }
+
+    if (engagementEnabled && !engagementPluginAdded) {
       try {
         amplitudeAdd(getPlugin());
+        engagementPluginAdded = true;
       } catch (pluginErr) {
-        console.warn("[Amplitude] Engagement plugin add failed:", pluginErr);
+        const msg = pluginErr instanceof Error ? pluginErr.message : String(pluginErr);
+        if (!/already initialized/i.test(msg)) {
+          console.warn("[Amplitude] Engagement plugin add failed:", pluginErr);
+        }
         engagementEnabled = false;
       }
     }
@@ -141,12 +181,14 @@ export async function initAnalytics(
       /* ignore */
     }
 
+    if (generation !== initGeneration) {
+      return null;
+    }
+
     return createClient();
   } catch (err) {
     console.warn("[Amplitude] Init failed:", err);
-    isInitialized = false;
-    lastEnableSessionReplay = undefined;
-    lastPortal = null;
+    clearAnalyticsModuleState();
     return null;
   }
 }
@@ -170,12 +212,19 @@ export async function handleEngagementURL(url: string): Promise<boolean> {
  */
 export function bootEngagement(userId: string, deviceId?: string): void {
   if (!engagementEnabled || !userId) return;
+  if (lastBootedEngagementUserId === userId) return;
   try {
     const plugin = getPlugin();
     if (typeof plugin.boot === "function") {
       plugin.boot(userId, deviceId ?? "");
+      lastBootedEngagementUserId = userId;
     }
-  } catch {}
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/already initialized/i.test(msg)) {
+      lastBootedEngagementUserId = userId;
+    }
+  }
 }
 
 function createClient(): AnalyticsClient {
@@ -216,6 +265,7 @@ function createClient(): AnalyticsClient {
       try {
         amplitude.reset();
       } catch {}
+      lastBootedEngagementUserId = null;
     },
   };
 }

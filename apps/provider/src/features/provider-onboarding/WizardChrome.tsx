@@ -14,9 +14,10 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { twStyle } from "@/lib/twStyle";
 import { Colors, Shadows } from "@/constants/colors";
-import { STEPS } from "./state";
+import { STEPS, stepIsVisible } from "./state";
 import { useOnboardingWizard } from "./OnboardingWizardContext";
 import { OnboardingStepBody } from "./WizardSteps";
+import { validateStep } from "./validation";
 
 /**
  * Named milestone ranges that appear as a segmented progress strip.
@@ -60,6 +61,7 @@ export function WizardChrome() {
     isSubmitting,
     loadingDraft,
     savingDraft,
+    formData,
   } = useOnboardingWizard();
 
   if (loadingDraft) {
@@ -72,10 +74,33 @@ export function WizardChrome() {
   }
 
   const isLast = currentStep === STEPS.length;
-  const progressPct = Math.min(100, (visibleIndex / Math.max(visibleTotal, 1)) * 100);
   const milestoneLabel = getMilestoneLabel(currentStep);
   const milestoneProgress = getMilestoneProgress(currentStep);
-  const milestoneCount = MILESTONES.length;
+
+  const milestoneStates = MILESTONES.map((m, i) => {
+    const isPast = milestoneProgress > i + 1;
+    const isActiveMilestone = m.stepIds.includes(currentStep);
+
+    const visibleStepsInM = m.stepIds.filter((id) => stepIsVisible(id, formData));
+    const allValid =
+      visibleStepsInM.length > 0 &&
+      visibleStepsInM.every((id) => validateStep(id, formData).valid);
+
+    const done = isPast && allValid;
+
+    let fillPct = 0;
+    if (done) {
+      fillPct = 100;
+    } else if (isActiveMilestone) {
+      const currentIdx = visibleStepsInM.indexOf(currentStep);
+      fillPct =
+        visibleStepsInM.length > 0
+          ? ((currentIdx + 1) / visibleStepsInM.length) * 100
+          : 100;
+    }
+
+    return { ...m, isPast, isActiveMilestone, done, fillPct };
+  });
 
   return (
     <ScreenContainer scrollable={false} edges={["top"]} reserveTabBarSpace={false} keyboardAvoiding={false}>
@@ -129,27 +154,25 @@ export function WizardChrome() {
 
           {/* Segmented progress bar */}
           <View style={twStyle("flex-row gap-1.5")}>
-            {MILESTONES.map((m, i) => {
-              const done = milestoneProgress > i + 1;
-              const active = milestoneProgress === i + 1;
+            {milestoneStates.map((m) => {
+              const active = m.isActiveMilestone;
               return (
                 <View
                   key={m.label}
                   style={[
                     twStyle(`h-2 flex-1 overflow-hidden rounded-full`),
-                    { backgroundColor: done || active ? "transparent" : "#f1f5f9" },
+                    { backgroundColor: m.done || active ? "transparent" : "#f1f5f9" },
                   ]}
                 >
-                  {done ? (
+                  {m.done ? (
                     <View style={twStyle("h-full w-full rounded-full bg-primary")} />
                   ) : active ? (
                     <View style={twStyle("h-full w-full overflow-hidden rounded-full bg-slate-200")}>
-                      {/* Proportional fill within the active milestone */}
                       <View
                         style={[
                           twStyle("h-full rounded-full bg-primary"),
                           {
-                            width: `${Math.min(100, progressPct * milestoneCount - i * 100)}%`,
+                            width: `${Math.min(100, m.fillPct)}%`,
                           },
                         ]}
                       />
@@ -164,18 +187,17 @@ export function WizardChrome() {
 
           {/* Milestone name row */}
           <View style={twStyle("mt-2 flex-row")}>
-            {MILESTONES.map((m, i) => {
-              const done = milestoneProgress > i + 1;
-              const active = milestoneProgress === i + 1;
+            {milestoneStates.map((m) => {
+              const active = m.isActiveMilestone;
               return (
                 <View key={m.label} style={twStyle("flex-1 items-center")}>
                   <Text
                     style={twStyle(
-                      `text-[12px] font-semibold ${active ? "text-slate-900" : done ? "text-emerald-700" : "text-slate-400"}`,
+                      `text-[12px] font-semibold ${active ? "text-slate-900" : m.done ? "text-emerald-700" : "text-slate-400"}`,
                     )}
                     numberOfLines={1}
                   >
-                    {done ? "✓ " : ""}
+                    {m.done ? "✓ " : ""}
                     {m.label}
                   </Text>
                 </View>

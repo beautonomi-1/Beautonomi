@@ -19,6 +19,10 @@ import {
   hasProviderCustomerActivityRelationship,
   hasProviderCustomerRelationship,
 } from "@/lib/provider/client-access";
+import {
+  attachSalonMembership,
+  buildSalonMembershipMap,
+} from "@/lib/provider/attach-salon-membership-to-clients";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
@@ -549,6 +553,11 @@ export async function GET(
         ? (client.source_metadata as Record<string, unknown>)
         : {};
 
+    const membershipMap = await buildSalonMembershipMap(providerId, [customerId], supabaseAdmin);
+    const salonMembership =
+      attachSalonMembership([{ customer_id: customerId }], (r) => r.customer_id, membershipMap)[0]
+        ?.salon_membership ?? null;
+
     return successResponse({
       id: client?.id || customerId,
       customer_id: customerId,
@@ -578,6 +587,7 @@ export async function GET(
       total_bookings: client?.total_bookings || appointments?.length || 0,
       total_spent: client?.total_spent || computedTotalSpent,
       created_at: client?.created_at || customer.created_at,
+      salon_membership: salonMembership,
       history,
     });
   } catch (error) {

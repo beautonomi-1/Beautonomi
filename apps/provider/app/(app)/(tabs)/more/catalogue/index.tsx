@@ -26,75 +26,31 @@ import { formatCurrency, formatDuration } from "@/lib/format";
 import { Colors } from "@/constants/colors";
 import { tabScreenScrollBottomPadding } from "@/constants/layout";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
+import { groupServicesIntoSections } from "@/features/catalogue/groupServicesIntoSections";
+import type { CatalogueServiceItem, CategoryOption as SharedCategoryOption, ServiceSection } from "@/features/catalogue/types";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
 
-interface CategoryInfo {
-  id?: string;
-  name: string;
-  color?: string | null;
-}
-
-interface ServiceItem {
-  id: string;
+interface ServiceItem extends CatalogueServiceItem {
   title: string;
   description: string | null;
   duration_minutes: number;
   price: number;
   currency: string;
   is_active: boolean;
-  is_onboarding_auto_generated?: boolean;
-  supports_at_home: boolean;
-  supports_at_salon: boolean;
-  provider_category_id?: string | null;
-  /**
-   * §Provider-audit 2026-04 (catalogue round 2): the underlying `offerings`
-   * table column is `display_order` — the mobile type previously called it
-   * `sort_order` so `items.sort((a,b) => a.sort_order - b.sort_order)` always
-   * returned 0 and the ordering was inadvertently dependent on server response
-   * order. Renamed to match the API payload.
-   */
-  display_order?: number | null;
-  service_type?: string;
-  parent_service_id?: string | null;
-  /** PostgREST returns a single joined row as an object; some clients may still send an array. */
-  provider_categories?: CategoryInfo | CategoryInfo[] | null;
 }
 
-interface CategoryOption {
-  id: string;
-  name: string;
+interface CategoryOption extends SharedCategoryOption {
   slug?: string;
-  color: string | null;
   description?: string | null;
-  display_order?: number | null;
 }
 
 interface CategoriesResponse {
   own_categories: CategoryOption[];
   global_categories: CategoryOption[];
 }
-
-function normalizeNestedProviderCategory(
-  pc: ServiceItem["provider_categories"],
-): CategoryInfo | null {
-  if (!pc) return null;
-  if (Array.isArray(pc)) return pc[0] ?? null;
-  if (typeof pc === "object" && pc !== null && "name" in pc && typeof (pc as CategoryInfo).name === "string") {
-    return pc as CategoryInfo;
-  }
-  return null;
-}
-
-type ServiceSection = {
-  sectionKey: string;
-  title: string;
-  color: string | null;
-  sortOrder: number;
-  items: ServiceItem[];
-};
 
 /* ------------------------------------------------------------------ */
 /*  Screen                                                             */
@@ -108,7 +64,7 @@ export default function CatalogueScreen() {
 
   // --- Data ---
   const { data: services, loading, error: servicesError, refresh } = useApi<ServiceItem[]>(
-    "/api/provider/services?include_inactive=true",
+    "/api/provider/services?include_inactive=true&include_variants=true",
   );
   const { data: categoriesResponse, refresh: refreshCategories } = useApi<
     CategoriesResponse | CategoryOption[]
@@ -129,6 +85,7 @@ export default function CatalogueScreen() {
   >("/api/provider/categories");
   const { execute: updateCategory } = useApiMutation("put");
   const { execute: deleteCategory } = useApiMutation("delete");
+  const { execute: deleteService } = useApiMutation("delete");
 
   // --- Local state ---
   const [refreshing, setRefreshing] = useState(false);
@@ -144,6 +101,7 @@ export default function CatalogueScreen() {
   const [catSheetOpen, setCatSheetOpen] = useState(false);
   const [catForm, setCatForm] = useState({ name: "", color: "", description: "" });
   const [editingCatId, setEditingCatId] = useState<string | null>(null);
+  const [expandedVariants, setExpandedVariants] = useState<Set<string>>(new Set());
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -192,15 +150,31 @@ export default function CatalogueScreen() {
   }
 
   function handleDeleteCategory(cat: CategoryOption) {
-    Alert.alert("Delete Category", `Delete "${cat.name}"? Services in this category will become uncategorized.`, [
+    Alert.alert("Delete Category", `Delete "${cat.name}"?`, [
       { text: "Cancel", style: "cancel" },
       {
         text: "Delete",
         style: "destructive",
         onPress: async () => {
-          const { error: err } = await deleteCategory(`/api/provider/categories/${cat.id}`, {});
-          if (err) Alert.alert("Error", err);
-          else { refreshCategories(); refresh(); }
+          const result = (await deleteCategory(`/api/provider/categories/${cat.id}`, {})) as {
+            error?: string;
+            errorCode?: string;
+            data?: { services?: Array<{ id: string; name: string }> };
+          };
+          if (result.error) {
+            if (result.errorCode === "CATEGORY_HAS_SERVICES" || result.error.includes("services")) {
+              const names = result.data?.services?.map((s) => s.name).join(", ") ?? "assigned services";
+              Alert.alert(
+                "Category has services",
+                `Reassign or delete these services first: ${names}`,
+              );
+            } else {
+              Alert.alert("Error", result.error);
+            }
+            return;
+          }
+          refreshCategories();
+          refresh();
         },
       },
     ]);
@@ -213,89 +187,67 @@ export default function CatalogueScreen() {
     else refreshCategories();
   }
 
-  // --- Filtering ---
-  const filtered = useMemo(() => {
-    let items = (services ?? []).filter(
-      // Always exclude child variant rows — they appear inside the service detail screen
-      (s) => s.service_type !== "variant" && !s.parent_service_id
-    );
-    if (filter === "active") items = items.filter((s) => s.is_active);
-    if (filter === "inactive") items = items.filter((s) => !s.is_active);
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      items = items.filter(
-        (s) =>
-          s.title.toLowerCase().includes(q) ||
-          (s.description ?? "").toLowerCase().includes(q),
-      );
-    }
-    return items.sort(
-      (a, b) => (a.display_order ?? 0) - (b.display_order ?? 0),
-    );
-  }, [services, filter, search]);
+  const grouped = useMemo(
+    () =>
+      groupServicesIntoSections(
+        (services ?? []) as CatalogueServiceItem[],
+        categories,
+        {
+          includeVariants: true,
+          search,
+          filter: filter as "all" | "active" | "inactive",
+        },
+      ),
+    [services, categories, search, filter],
+  );
 
-  // --- Grouped by category (matches web: own categories + display_order); PostgREST
-  //     returns `provider_categories` as a single object, not `[0]`.
-  const grouped = useMemo((): ServiceSection[] => {
-    const catById = new Map(categories.map((c) => [c.id, c]));
+  const hasServices = (services ?? []).some(
+    (s) => s.service_type !== "variant" && !s.parent_service_id,
+  );
 
-    const sectionMeta = (item: ServiceItem) => {
-      const nested = normalizeNestedProviderCategory(item.provider_categories);
-      const cid =
-        item.provider_category_id ??
-        (typeof nested?.id === "string" ? nested.id : null);
-      if (cid && catById.has(cid)) {
-        const c = catById.get(cid)!;
-        return {
-          key: cid,
-          title: c.name,
-          color: (c.color ?? nested?.color ?? null) as string | null,
-          sortOrder: c.display_order ?? 0,
-        };
-      }
-      if (nested?.name) {
-        return {
-          key: cid ?? `name:${nested.name}`,
-          title: nested.name,
-          color: (nested.color ?? null) as string | null,
-          sortOrder: 50_000,
-        };
-      }
-      return {
-        key: "__uncategorized__",
-        title: "Uncategorized",
-        color: null,
-        sortOrder: 100_000,
-      };
-    };
+  function handleDeleteServiceItem(service: ServiceItem) {
+    Alert.alert("Delete service", `Remove "${service.title}"? This cannot be undone.`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          const { error } = await deleteService(`/api/provider/services/${service.id}`);
+          if (error) Alert.alert("Error", error);
+          else refresh();
+        },
+      },
+    ]);
+  }
 
-    const bucket = new Map<
-      string,
-      { title: string; color: string | null; sortOrder: number; items: ServiceItem[] }
-    >();
-    for (const item of filtered) {
-      const m = sectionMeta(item);
-      if (!bucket.has(m.key)) {
-        bucket.set(m.key, { title: m.title, color: m.color, sortOrder: m.sortOrder, items: [] });
-      }
-      bucket.get(m.key)!.items.push(item);
-    }
+  function openServiceKebab(service: ServiceItem) {
+    Alert.alert(service.title, undefined, [
+      {
+        text: "Edit",
+        onPress: () => router.push(`/(app)/(tabs)/more/service-form?id=${service.id}` as never),
+      },
+      {
+        text: service.is_active ? "Deactivate" : "Activate",
+        onPress: () => handleToggleActive(service),
+      },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () => handleDeleteServiceItem(service),
+      },
+      { text: "Cancel", style: "cancel" },
+    ]);
+  }
 
-    return [...bucket.entries()]
-      .map(([sectionKey, v]) => ({
-        sectionKey,
-        title: v.title,
-        color: v.color,
-        sortOrder: v.sortOrder,
-        items: v.items,
-      }))
-      .sort((a, b) => {
-        if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
-        return a.title.localeCompare(b.title, undefined, { sensitivity: "base" });
-      });
-  }, [filtered, categories]);
+  function toggleVariantExpand(serviceId: string) {
+    setExpandedVariants((prev) => {
+      const next = new Set(prev);
+      if (next.has(serviceId)) next.delete(serviceId);
+      else next.add(serviceId);
+      return next;
+    });
+  }
 
-  // --- Handlers ---
   async function handleToggleActive(service: ServiceItem) {
     const { error } = await toggleService(
       `/api/provider/services/${service.id}`,
@@ -303,6 +255,14 @@ export default function CatalogueScreen() {
     );
     if (error) Alert.alert("Error", error);
     else refresh();
+  }
+
+  function canReorderInSection(items: ServiceItem[], serviceId: string, direction: "up" | "down"): boolean {
+    const topLevel = items.filter((s) => !s.parent_service_id);
+    const idx = topLevel.findIndex((s) => s.id === serviceId);
+    if (idx < 0) return false;
+    if (direction === "up") return idx > 0;
+    return idx < topLevel.length - 1;
   }
 
   async function handleReorder(serviceId: string, direction: "up" | "down") {
@@ -592,7 +552,7 @@ export default function CatalogueScreen() {
         <SkeletonList rows={5} />
       ) : servicesError && !services ? (
         <ErrorState message={servicesError} onRetry={refresh} />
-      ) : filtered.length === 0 ? (
+      ) : !hasServices || grouped.length === 0 ? (
         <EmptyState
           icon="layers-outline"
           title="No services"
@@ -671,6 +631,21 @@ export default function CatalogueScreen() {
                               <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900], flexShrink: 1 }} numberOfLines={1}>
                                 {service.title}
                               </Text>
+                              {service.service_type === "addon" ? (
+                                <View style={{ marginLeft: 8, borderRadius: 9999, backgroundColor: "#fef3c7", paddingHorizontal: 8, paddingVertical: 2 }}>
+                                  <Text style={{ fontSize: 10, fontWeight: "700", color: "#b45309" }}>Add-on</Text>
+                                </View>
+                              ) : null}
+                              {service.service_type === "package" ? (
+                                <View style={{ marginLeft: 8, borderRadius: 9999, backgroundColor: "#e0e7ff", paddingHorizontal: 8, paddingVertical: 2 }}>
+                                  <Text style={{ fontSize: 10, fontWeight: "700", color: "#4338ca" }}>Package</Text>
+                                </View>
+                              ) : null}
+                              {(service.variants?.length ?? 0) > 0 ? (
+                                <View style={{ marginLeft: 8, borderRadius: 9999, backgroundColor: "#f3f4f6", paddingHorizontal: 8, paddingVertical: 2 }}>
+                                  <Text style={{ fontSize: 10, fontWeight: "700", color: "#4b5563" }}>{service.variants!.length} variants</Text>
+                                </View>
+                              ) : null}
                               {service.is_onboarding_auto_generated ? (
                                 <View
                                   style={{
@@ -717,11 +692,31 @@ export default function CatalogueScreen() {
                           <View style={{ flexDirection: "row", alignItems: "center" }}>
                             {!bulkMode && (
                               <>
-                                <TouchableOpacity hitSlop={6} onPress={() => handleReorder(service.id, "up")} accessibilityLabel={`Move ${service.title} up`} style={{ marginRight: 8 }}>
+                                <TouchableOpacity
+                                  hitSlop={6}
+                                  onPress={() => handleReorder(service.id, "up")}
+                                  disabled={!canReorderInSection(items as ServiceItem[], service.id, "up")}
+                                  accessibilityLabel={`Move ${service.title} up`}
+                                  style={{ marginRight: 8, opacity: canReorderInSection(items as ServiceItem[], service.id, "up") ? 1 : 0.3 }}
+                                >
                                   <Ionicons name="arrow-up-circle-outline" size={20} color="#9ca3af" />
                                 </TouchableOpacity>
-                                <TouchableOpacity hitSlop={6} onPress={() => handleReorder(service.id, "down")} accessibilityLabel={`Move ${service.title} down`} style={{ marginRight: 8 }}>
+                                <TouchableOpacity
+                                  hitSlop={6}
+                                  onPress={() => handleReorder(service.id, "down")}
+                                  disabled={!canReorderInSection(items as ServiceItem[], service.id, "down")}
+                                  accessibilityLabel={`Move ${service.title} down`}
+                                  style={{ marginRight: 8, opacity: canReorderInSection(items as ServiceItem[], service.id, "down") ? 1 : 0.3 }}
+                                >
                                   <Ionicons name="arrow-down-circle-outline" size={20} color="#9ca3af" />
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  hitSlop={8}
+                                  onPress={() => openServiceKebab(service)}
+                                  accessibilityLabel={`Actions for ${service.title}`}
+                                  style={{ marginRight: 8 }}
+                                >
+                                  <Ionicons name="ellipsis-vertical" size={20} color="#6b7280" />
                                 </TouchableOpacity>
                               </>
                             )}
@@ -732,6 +727,46 @@ export default function CatalogueScreen() {
                             </TouchableOpacity>
                           </View>
                         </View>
+
+                        {(service.variants?.length ?? 0) > 0 ? (
+                          <View style={{ marginTop: 8 }}>
+                            <TouchableOpacity
+                              onPress={() => toggleVariantExpand(service.id)}
+                              style={{ flexDirection: "row", alignItems: "center" }}
+                            >
+                              <Ionicons
+                                name={expandedVariants.has(service.id) ? "chevron-up" : "chevron-down"}
+                                size={14}
+                                color="#6b7280"
+                              />
+                              <Text style={{ marginLeft: 4, fontSize: 12, color: Colors.gray[600] }}>
+                                {expandedVariants.has(service.id) ? "Hide variants" : "Show variants"}
+                              </Text>
+                            </TouchableOpacity>
+                            {expandedVariants.has(service.id)
+                              ? service.variants!.map((variant) => (
+                                  <View
+                                    key={variant.id}
+                                    style={{
+                                      marginTop: 6,
+                                      marginLeft: 12,
+                                      borderLeftWidth: 2,
+                                      borderLeftColor: Colors.gray[200],
+                                      paddingLeft: 10,
+                                    }}
+                                  >
+                                    <Text style={{ fontSize: 13, fontWeight: "500", color: Colors.gray[800] }}>
+                                      {variant.variant_name ?? variant.title ?? variant.name}
+                                    </Text>
+                                    <Text style={{ fontSize: 11, color: Colors.gray[500] }}>
+                                      {formatDuration(variant.duration_minutes ?? 0)} ·{" "}
+                                      {formatCurrency(variant.price ?? 0, variant.currency ?? service.currency)}
+                                    </Text>
+                                  </View>
+                                ))
+                              : null}
+                          </View>
+                        ) : null}
                       </View>
                     ))}
                   </View>

@@ -28,6 +28,8 @@ import { formatCurrency, formatDate, formatTime } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 import { AddressAutocomplete, type ParsedAddress } from "@/components/ui/AddressAutocomplete";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { shouldShowCancelledMembershipBadge } from "@beautonomi/utils";
+import { ActionButton } from "@/components/ui/ActionButton";
 
 interface ClientDefaultAddress {
   address_line1: string;
@@ -93,6 +95,15 @@ interface ClientDetail {
   is_favorite?: boolean | null;
   total_bookings: number;
   total_spent: number;
+  salon_membership?: {
+    subscription_id: string;
+    plan_id: string;
+    plan_name: string | null;
+    status: string;
+    expires_at: string | null;
+    cancelled_at: string | null;
+    show_cancelled_badge?: boolean;
+  } | null;
   history: HistoryItem[];
 }
 
@@ -185,6 +196,7 @@ export default function ClientDetailScreen() {
   const clientDetailFocusRef = useRef(true);
 
   const { execute: patchClient } = useApiMutation("patch");
+  const { execute: postWinBack, loading: sendingWinBack } = useApiMutation<{ sent?: boolean }>("post");
 
   useFocusEffect(
     useCallback(() => {
@@ -447,6 +459,37 @@ export default function ClientDetailScreen() {
   // customers — hide the Edit button so the provider never sees a 403.
   const identityEditable = customer.is_registered === false;
   const limitedPlatformLink = Boolean(customer.is_limited_platform_link);
+  const membership = client.salon_membership ?? null;
+  const showCancelledMembershipBadge =
+    membership &&
+    (membership.status === "cancelled" || membership.cancelled_at) &&
+    (membership.show_cancelled_badge ??
+      shouldShowCancelledMembershipBadge({
+        status: membership.status,
+        cancelled_at: membership.cancelled_at,
+      }));
+
+  const sendMembershipWinBack = useCallback(async () => {
+    if (!membership?.subscription_id) return;
+    Alert.alert(
+      "Send membership offer",
+      "We'll notify this client that they can rejoin your membership plan.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Send",
+          onPress: async () => {
+            const { error: err } = await postWinBack(
+              `/api/provider/membership-subscriptions/${membership.subscription_id}/win-back`,
+              {},
+            );
+            if (err) Alert.alert("Could not send", err);
+            else Alert.alert("Sent", "Membership reminder sent to the client.");
+          },
+        },
+      ],
+    );
+  }, [membership?.subscription_id, postWinBack]);
 
   return (
     <ScreenContainer scrollable={false} keyboardAvoiding={false}>
@@ -611,6 +654,30 @@ export default function ClientDetailScreen() {
                 </Text>
               </View>
             </View>
+
+            {membership ? (
+              <View style={twStyle("mt-3 rounded-xl border border-gray-100 bg-gray-50 px-3 py-3")}>
+                <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-500")}>
+                  Membership
+                </Text>
+                <Text style={twStyle("mt-1 text-sm font-semibold text-gray-900")}>
+                  {membership.plan_name ?? "Plan"}
+                </Text>
+                <Text style={twStyle("text-xs text-gray-600")}>
+                  Status: {membership.status}
+                  {membership.expires_at ? ` · ends ${formatDate(membership.expires_at)}` : ""}
+                </Text>
+                {showCancelledMembershipBadge ? (
+                  <ActionButton
+                    label={sendingWinBack ? "Sending…" : "Send membership offer"}
+                    onPress={() => void sendMembershipWinBack()}
+                    loading={sendingWinBack}
+                    fullWidth
+                    style={{ marginTop: 10 }}
+                  />
+                ) : null}
+              </View>
+            ) : null}
 
             {/* §Provider-audit 2026-04: quick-book entry point from the client
                 profile — saves several taps vs. going back to the clients tab

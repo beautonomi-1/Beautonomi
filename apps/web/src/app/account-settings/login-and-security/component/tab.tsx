@@ -424,7 +424,7 @@ const LoginAccount = ({
       const supabase = getSupabaseClient();
       const { error } = await supabase.auth.reauthenticate();
       if (error) throw error;
-      toast.success("Verification code sent. Enter it below to confirm deactivation.");
+      toast.success("A verification code has been sent to the email address on your account. Enter it below to confirm deactivation.");
     } catch (error: unknown) {
       toast.error(error instanceof Error ? error.message : "Failed to send verification code");
     } finally {

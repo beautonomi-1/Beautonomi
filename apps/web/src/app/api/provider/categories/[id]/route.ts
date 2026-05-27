@@ -172,12 +172,28 @@ export async function DELETE(
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");
 
-    // Nullify category on associated services (do not delete services)
-    await supabase
+    // Block delete when services are still assigned to this category
+    const { data: linkedServices, error: linkedError } = await supabase
       .from("offerings")
-      .update({ provider_category_id: null })
+      .select("id, title")
       .eq("provider_id", providerId)
       .eq("provider_category_id", id);
+
+    if (linkedError) throw linkedError;
+
+    if (linkedServices && linkedServices.length > 0) {
+      return errorResponse(
+        "Category has services assigned. Reassign or delete them first.",
+        "CATEGORY_HAS_SERVICES",
+        409,
+        {
+          services: linkedServices.map((s) => ({
+            id: s.id,
+            name: s.title,
+          })),
+        },
+      );
+    }
 
     const { error } = await supabase
       .from("provider_categories")

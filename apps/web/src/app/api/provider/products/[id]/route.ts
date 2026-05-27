@@ -1,6 +1,7 @@
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { successResponse, notFoundResponse, handleApiError, requireRoleInApi, getProviderIdForUser } from "@/lib/supabase/api-helpers";
+import { successResponse, notFoundResponse, handleApiError, requireRoleInApi, getProviderIdForUser, errorResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { logStockChangeFromAbsoluteQuantity } from "@/lib/products/stock-movements";
 
 /**
  * GET /api/provider/products/[id]
@@ -64,7 +65,7 @@ async function updateProductHandler(
 
   const { data: existingProduct } = await supabase
     .from("products")
-    .select("id")
+    .select("id, quantity, has_variants")
     .eq("id", id)
     .eq("provider_id", providerId)
     .single();
@@ -72,6 +73,8 @@ async function updateProductHandler(
   if (!existingProduct) {
     return notFoundResponse("Product not found");
   }
+
+  const previousQuantity = Number((existingProduct as { quantity?: number }).quantity) || 0;
 
   const updateData: Record<string, any> = {};
   if (body.name !== undefined) updateData.name = body.name;
@@ -109,6 +112,24 @@ async function updateProductHandler(
 
   if (updateError || !updatedProduct) {
     throw updateError || new Error("Failed to update product");
+  }
+
+  if (
+    body.quantity !== undefined &&
+    !(existingProduct as { has_variants?: boolean }).has_variants
+  ) {
+    const newQuantity = parseInt(String(body.quantity), 10);
+    try {
+      await logStockChangeFromAbsoluteQuantity(supabase, {
+        providerId,
+        productId: id,
+        previousQuantity,
+        newQuantity,
+        actorUserId: user.id,
+      });
+    } catch (logErr) {
+      console.error("[products PATCH] stock movement log failed:", logErr);
+    }
   }
 
   // Replace variants if sent
@@ -191,7 +212,6 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Check permission to edit products (deletion requires edit permission)
     const permissionCheck = await requirePermission('edit_products', request);
     if (!permissionCheck.authorized) {
       return permissionCheck.response!;
@@ -199,17 +219,16 @@ export async function DELETE(
     const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
+    const archive = new URL(request.url).searchParams.get("archive") === "true";
 
-    // Get provider ID
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) {
       return notFoundResponse("Provider not found");
     }
 
-    // Verify product belongs to provider
     const { data: existingProduct } = await supabase
       .from("products")
-      .select("id")
+      .select("id, name")
       .eq("id", id)
       .eq("provider_id", providerId)
       .single();
@@ -218,7 +237,33 @@ export async function DELETE(
       return notFoundResponse("Product not found");
     }
 
-    // Delete product
+    if (archive) {
+      const { error: archiveError } = await supabase
+        .from("products")
+        .update({ is_active: false })
+        .eq("id", id);
+      if (archiveError) throw archiveError;
+      return successResponse({ success: true, archived: true });
+    }
+
+    const { count, data: bookingRefs } = await supabase
+      .from("booking_products")
+      .select("id, booking_id", { count: "exact", head: false })
+      .eq("product_id", id)
+      .limit(5);
+
+    if ((count ?? 0) > 0) {
+      return errorResponse(
+        `This product is linked to ${count} booking(s) and cannot be deleted.`,
+        "PRODUCT_HAS_BOOKINGS",
+        409,
+        {
+          count,
+          sample: (bookingRefs ?? []).map((r: { booking_id?: string }) => r.booking_id).filter(Boolean),
+        },
+      );
+    }
+
     const { error: deleteError } = await supabase
       .from("products")
       .delete()

@@ -210,11 +210,15 @@ export async function POST(request: Request) {
       parent_service_id,
       variant_name,
       variant_sort_order,
+      advanced_pricing_rules,
     } = body;
 
     const serviceTitle = title || name;
-    if (!serviceTitle || !price || !duration_minutes) {
-      return handleApiError(new Error("title/name, price, and duration_minutes are required"), "Validation failed", "VALIDATION_ERROR", 400);
+    if (!serviceTitle || duration_minutes == null || duration_minutes === "") {
+      return handleApiError(new Error("title/name and duration_minutes are required"), "Validation failed", "VALIDATION_ERROR", 400);
+    }
+    if (price == null || price === "" || Number.isNaN(parseFloat(String(price)))) {
+      return handleApiError(new Error("price is required"), "Validation failed", "VALIDATION_ERROR", 400);
     }
     
     // Validate variant fields
@@ -277,6 +281,7 @@ export async function POST(request: Request) {
         included_services: included_services || [],
         team_member_ids: team_member_ids && Array.isArray(team_member_ids) ? team_member_ids : [],
         pricing_options: pricing_options && Array.isArray(pricing_options) ? pricing_options : [],
+        advanced_pricing_rules: Array.isArray(advanced_pricing_rules) ? advanced_pricing_rules : [],
         display_order: display_order || 0,
         // Add-on fields
         addon_category: service_type === 'addon' ? (addon_category || 'general') : null,
