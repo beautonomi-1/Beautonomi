@@ -82,7 +82,9 @@ export function CompliancePurgePage() {
     setUserLoadBusy(true);
     setUserMsg(null);
     try {
-      const u = await adminApi.getJson<Record<string, unknown>>(`/api/admin/users/${encodeURIComponent(id)}`);
+      const u = await adminApi.getJson<Record<string, unknown>>(
+        `/api/admin/compliance/lookup-user/${encodeURIComponent(id)}`,
+      );
       const em = u.email != null ? String(u.email) : "";
       setUserEmailHint(em);
       setUserMsg(em ? `Loaded account email on file: ${em}` : "User loaded but no email on record.");

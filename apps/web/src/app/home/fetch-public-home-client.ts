@@ -6,7 +6,7 @@ type HomeApiResponse = { data?: HomePageInitialData };
 
 const inflight = new Map<string, Promise<HomeApiResponse>>();
 /** Short TTL so revisiting a category is instant without stale data for long. */
-const CACHE_TTL_MS = 45_000;
+const CACHE_TTL_MS = 15_000;
 const responseCache = new Map<string, { at: number; data: HomeApiResponse }>();
 const MAX_CACHE_ENTRIES = 48;
 

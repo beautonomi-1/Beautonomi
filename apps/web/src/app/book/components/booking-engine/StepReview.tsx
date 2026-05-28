@@ -21,9 +21,17 @@ import {
 } from "../../constants";
 
 interface CancellationPolicy {
-  policy_text?: string;
   hours_before_cutoff?: number;
+  grace_window_minutes?: number;
   late_cancellation_type?: "no_refund" | "partial_refund" | "full_refund";
+  late_refund_percentage?: number;
+  fee_amount?: number;
+  fee_type?: "fixed" | "percentage";
+  no_show_fee_enabled?: boolean;
+  no_show_fee_amount?: number;
+  currency?: string;
+  /** Kept for type compatibility; not used for display — structured fields above are authoritative. */
+  policy_text?: string;
 }
 
 interface PaymentSettings {
@@ -67,13 +75,23 @@ export function StepReview({
   const policyAccepted = data.policyAccepted === true;
   const hasDateTime = data.selectedDate != null && data.selectedSlot != null;
   const hours = cancellationPolicy?.hours_before_cutoff ?? 24;
+  const graceMin = cancellationPolicy?.grace_window_minutes;
   const lateType = cancellationPolicy?.late_cancellation_type ?? "no_refund";
-  const lateTypeLabel =
-    lateType === "no_refund"
-      ? "no refund"
-      : lateType === "partial_refund"
-      ? "partial refund"
-      : "full refund";
+  const latePct = cancellationPolicy?.late_refund_percentage;
+  // Prefer explicit refund percentage when available, otherwise derive from type
+  const effectiveLatePct =
+    latePct !== undefined && latePct !== null && !Number.isNaN(Number(latePct))
+      ? Number(latePct)
+      : lateType === "full_refund"
+        ? 100
+        : lateType === "partial_refund"
+          ? 50
+          : 0;
+  const noShowFeeEnabled =
+    cancellationPolicy?.no_show_fee_enabled &&
+    cancellationPolicy?.no_show_fee_amount != null &&
+    (cancellationPolicy.no_show_fee_amount ?? 0) > 0;
+  const policyCurrency = cancellationPolicy?.currency ?? currency;
 
   const whenStr =
     data.selectedDate && data.selectedSlot
@@ -227,19 +245,37 @@ export function StepReview({
           <Shield className="h-4 w-4 shrink-0" style={{ color: BOOKING_ACCENT }} />
           Cancellation policy
         </h3>
-        {cancellationPolicy?.policy_text ? (
-          <p className="text-sm" style={{ color: BOOKING_TEXT_SECONDARY }}>
-            {cancellationPolicy.policy_text}
-          </p>
-        ) : (
-          <p className="text-sm" style={{ color: BOOKING_TEXT_SECONDARY }}>
-            Cancellations must be made at least {hours} hours before your appointment. Cancellations
-            made within {hours} hours may result in {lateTypeLabel}.
-          </p>
-        )}
-        <p className="text-xs" style={{ color: BOOKING_TEXT_SECONDARY }}>
-          I understand that cancellations made within {hours} hours of my appointment may result in a{" "}
-          {lateTypeLabel}.
+        <ul className="space-y-1.5 text-sm" style={{ color: BOOKING_TEXT_SECONDARY }}>
+          {graceMin != null && graceMin > 0 && (
+            <li className="flex items-start gap-2">
+              <span className="mt-0.5 text-green-500 shrink-0">✓</span>
+              <span>Cancel within {graceMin} min of booking for free.</span>
+            </li>
+          )}
+          <li className="flex items-start gap-2">
+            <span className="mt-0.5 text-green-500 shrink-0">✓</span>
+            <span>Free cancellation up to {hours} {hours === 1 ? "hour" : "hours"} before your appointment.</span>
+          </li>
+          {effectiveLatePct < 100 && (
+            <li className="flex items-start gap-2">
+              <span className="mt-0.5 text-amber-500 shrink-0">⚠</span>
+              <span>
+                {effectiveLatePct <= 0
+                  ? `Within ${hours} ${hours === 1 ? "hour" : "hours"}: no refund will be issued.`
+                  : `Within ${hours} ${hours === 1 ? "hour" : "hours"}: ${effectiveLatePct}% refund.`}
+              </span>
+            </li>
+          )}
+          {noShowFeeEnabled && (
+            <li className="flex items-start gap-2">
+              <span className="mt-0.5 text-amber-500 shrink-0">⚠</span>
+              <span>No-show fee of {formatCurrency(cancellationPolicy!.no_show_fee_amount!, policyCurrency)} applies.</span>
+            </li>
+          )}
+        </ul>
+        <p className="text-xs flex items-center gap-1" style={{ color: BOOKING_TEXT_SECONDARY, borderTop: `1px solid ${BOOKING_BORDER}`, paddingTop: "8px", marginTop: "4px" }}>
+          <Lock className="h-3 w-3 shrink-0" />
+          This policy is enforced automatically at the time of cancellation.
         </p>
         <div className="flex items-start gap-3 pt-2">
           <Checkbox

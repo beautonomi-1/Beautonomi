@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { providerApi } from "@/lib/provider-portal/api";
 import type { GroupBooking, GroupBookingParticipant, FilterParams, PaginationParams } from "@/lib/provider-portal/types";
 import { PageHeader } from "@/components/provider/PageHeader";
@@ -17,9 +18,26 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import {
   Search, Users, Calendar, Edit, Trash2, CheckCircle, Plus, Sparkles,
   MapPin, Clock, DollarSign, User, Phone, Mail, FileText, Play,
-  CheckSquare, XCircle, Info, Building2, Home,
+  CheckSquare, XCircle, Info, Building2, Home, QrCode, ExternalLink, Copy,
 } from "lucide-react";
 import Pagination from "@/components/ui/pagination";
 import LoadingTimeout from "@/components/ui/loading-timeout";
@@ -31,7 +49,21 @@ import { toast } from "sonner";
 import { fetcher } from "@/lib/http/fetcher";
 import { cn } from "@/lib/utils";
 
-export default function GroupBookingsPage() {
+type RecordPaymentMethod = "cash" | "card" | "bank_transfer" | "other" | "yoco";
+
+type PaystackTerminalData = {
+  bookingId: string;
+  expectedAmount: number;
+  terminal: {
+    qr_url?: string | null;
+    payment_link?: string | null;
+    terminal_url?: string | null;
+    name?: string | null;
+  };
+};
+
+function GroupBookingsPageInner() {
+  const searchParams = useSearchParams();
   const [hasMounted, setHasMounted] = useState(false);
   const [groupBookings, setGroupBookings] = useState<GroupBooking[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -48,6 +80,13 @@ export default function GroupBookingsPage() {
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [isStatusChanging, setIsStatusChanging] = useState(false);
+  const [recordPaymentConfirm, setRecordPaymentConfirm] = useState<{
+    bookingId: string;
+    method: RecordPaymentMethod;
+    amount: number;
+  } | null>(null);
+  const [paystackTerminalData, setPaystackTerminalData] = useState<PaystackTerminalData | null>(null);
+  const [isPreparingTerminal, setIsPreparingTerminal] = useState(false);
 
   const loadGroupBookings = useCallback(async () => {
     try {
@@ -214,6 +253,27 @@ export default function GroupBookingsPage() {
     }
   };
 
+  const handleRequestPaystackTerminal = async (bookingId: string, expectedAmount: number) => {
+    const normalizedBookingId = normalizeGroupBookingId(bookingId);
+    setIsPreparingTerminal(true);
+    try {
+      // fetcher.post returns raw JSON: { data: { terminal, ... }, error: null }
+      const response = await fetcher.post("/api/provider/paystack/terminal-payments", {
+        entity_type: "group_booking",
+        entity_id: normalizedBookingId,
+        expected_amount: expectedAmount,
+      }) as { data?: { terminal?: PaystackTerminalData["terminal"] }; error?: string | null };
+      const terminal = response?.data?.terminal;
+      if (!terminal) throw new Error("No active Paystack Terminal found. Please set one up in Settings → Sales → Paystack Terminal.");
+      setPaystackTerminalData({ bookingId: normalizedBookingId, expectedAmount, terminal });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Could not prepare Paystack Terminal";
+      toast.error(msg);
+    } finally {
+      setIsPreparingTerminal(false);
+    }
+  };
+
   const openDetail = async (booking: GroupBooking) => {
     const normalizedBookingId = normalizeGroupBookingId(booking.id);
     setDetailBooking({ ...booking, id: normalizedBookingId });
@@ -229,6 +289,15 @@ export default function GroupBookingsPage() {
       setIsDetailLoading(false);
     }
   };
+
+  const openedFromQueryRef = React.useRef(false);
+  useEffect(() => {
+    if (!hasMounted || openedFromQueryRef.current) return;
+    const openId = searchParams.get("open_group_id")?.trim();
+    if (!openId) return;
+    openedFromQueryRef.current = true;
+    void openDetail({ id: normalizeGroupBookingId(openId) } as GroupBooking);
+  }, [hasMounted, searchParams]);
 
   const openParticipantBookingForRefund = (bookingId?: string | null) => {
     const id = bookingId?.trim();
@@ -610,7 +679,11 @@ export default function GroupBookingsPage() {
             onStatusChange={handleStatusChange}
             onCheckIn={handleCheckIn}
             onCheckOut={handleCheckOut}
-            onRecordPayment={handleRecordPayment}
+            onRequestRecordPayment={(bookingId, method, amount) =>
+              setRecordPaymentConfirm({ bookingId, method, amount })
+            }
+            onRequestPaystackTerminal={handleRequestPaystackTerminal}
+            isPreparingTerminal={isPreparingTerminal}
             onOpenParticipantBooking={openParticipantBookingForRefund}
             onEdit={() => { setIsDetailOpen(false); handleEdit(detailBooking); }}
             onCancel={() => handleDelete(detailBooking.id, detailBooking.status)}
@@ -619,8 +692,142 @@ export default function GroupBookingsPage() {
           />}
         </SheetContent>
       </Sheet>
+
+      <AlertDialog
+        open={!!recordPaymentConfirm}
+        onOpenChange={(open) => {
+          if (!open) setRecordPaymentConfirm(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Record group payment?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {recordPaymentConfirm ? (
+                <>
+                  Mark linked participant bookings as paid via{" "}
+                  <span className="font-semibold text-gray-900">
+                    {recordPaymentConfirm.method.replace("_", " ")}
+                  </span>
+                  {recordPaymentConfirm.amount > 0 ? (
+                    <>
+                      {" "}
+                      for approximately{" "}
+                      <Money amount={recordPaymentConfirm.amount} className="inline font-semibold" />{" "}
+                      outstanding.
+                    </>
+                  ) : (
+                    " (no outstanding balance detected on linked bookings)."
+                  )}
+                </>
+              ) : null}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (!recordPaymentConfirm) return;
+                const { bookingId, method } = recordPaymentConfirm;
+                setRecordPaymentConfirm(null);
+                void handleRecordPayment(bookingId, method);
+              }}
+            >
+              Confirm payment
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Paystack Terminal QR Dialog */}
+      <Dialog open={!!paystackTerminalData} onOpenChange={(open) => { if (!open) setPaystackTerminalData(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <QrCode className="w-5 h-5 text-green-600" />
+              Paystack Terminal Collection
+            </DialogTitle>
+            <DialogDescription>
+              Show the QR code to the customer or share the payment link. Once payment is received, allocate it from the Payment Inbox.
+            </DialogDescription>
+          </DialogHeader>
+          {paystackTerminalData && (
+            <div className="space-y-4 pt-2">
+              {paystackTerminalData.expectedAmount > 0 && (
+                <div className="rounded-xl bg-green-50 border border-green-200 p-4 text-center">
+                  <p className="text-xs text-green-700 mb-1">Amount due</p>
+                  <p className="text-2xl font-bold text-green-800">
+                    <Money amount={paystackTerminalData.expectedAmount} />
+                  </p>
+                </div>
+              )}
+              {paystackTerminalData.terminal.qr_url ? (
+                <div className="flex justify-center">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={paystackTerminalData.terminal.qr_url}
+                    alt="Paystack Terminal QR Code"
+                    className="w-48 h-48 rounded-xl border border-gray-200"
+                  />
+                </div>
+              ) : null}
+              <div className="rounded-lg bg-gray-50 p-3 text-sm text-gray-700">
+                <p className="font-medium mb-1">Instructions</p>
+                <p className="text-xs text-gray-600">
+                  Ask the customer to scan the QR code or open the payment link. Once Paystack confirms payment, it will appear in the <strong>Payment Inbox</strong> for you to allocate to the participant bookings.
+                </p>
+              </div>
+              <div className="flex flex-col gap-2">
+                {(paystackTerminalData.terminal.payment_link || paystackTerminalData.terminal.terminal_url) && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                    onClick={() => {
+                      const link = paystackTerminalData.terminal.payment_link || paystackTerminalData.terminal.terminal_url || "";
+                      navigator.clipboard.writeText(link).then(() => toast.success("Payment link copied")).catch(() => {});
+                    }}
+                  >
+                    <Copy className="w-4 h-4" />
+                    Copy payment link
+                  </Button>
+                )}
+                <Button
+                  variant="default"
+                  size="sm"
+                  className="gap-2 bg-green-600 hover:bg-green-700"
+                  onClick={() => {
+                    window.location.assign("/provider/settings/sales/paystack-terminal");
+                  }}
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  Go to Payment Inbox
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
+}
+
+function computeGroupOutstandingBalance(
+  participants: GroupBookingParticipant[],
+  booking: GroupBooking
+): number {
+  if (participants.length === 0) {
+    return Math.max(0, Number(booking.total_price) || 0);
+  }
+  return participants.reduce((sum, p) => {
+    const balanceDue = (p as { balance_due?: number }).balance_due;
+    if (typeof balanceDue === "number" && Number.isFinite(balanceDue)) {
+      return sum + Math.max(0, balanceDue);
+    }
+    const price = Number(p.price) || 0;
+    const paid = Number((p as { total_paid?: number }).total_paid) || 0;
+    return sum + Math.max(0, price - paid);
+  }, 0);
 }
 
 // ─── Comprehensive detail panel ────────────────────────────────────────────
@@ -629,10 +836,13 @@ interface DetailPanelProps {
   onStatusChange: (id: string, status: string) => void;
   onCheckIn: (bookingId: string, participantId: string) => void;
   onCheckOut: (bookingId: string, participantId: string) => void;
-  onRecordPayment: (
+  onRequestRecordPayment: (
     bookingId: string,
-    paymentMethod: "cash" | "card" | "bank_transfer" | "other" | "yoco",
+    paymentMethod: RecordPaymentMethod,
+    outstandingAmount: number,
   ) => void;
+  onRequestPaystackTerminal: (bookingId: string, expectedAmount: number) => void;
+  isPreparingTerminal: boolean;
   onOpenParticipantBooking: (bookingId?: string | null) => void;
   onEdit: () => void;
   onCancel: () => void;
@@ -645,7 +855,9 @@ function GroupBookingDetailPanel({
   onStatusChange,
   onCheckIn,
   onCheckOut,
-  onRecordPayment,
+  onRequestRecordPayment,
+  onRequestPaystackTerminal,
+  isPreparingTerminal,
   onOpenParticipantBooking,
   onEdit,
   onCancel,
@@ -895,21 +1107,89 @@ function GroupBookingDetailPanel({
                 Record payment method for remaining linked participant invoices
               </p>
               <div className="flex flex-wrap gap-2">
-                <Button variant="outline" size="sm" onClick={() => onRecordPayment(booking.id, "cash")}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    onRequestRecordPayment(
+                      booking.id,
+                      "cash",
+                      computeGroupOutstandingBalance(participants, booking),
+                    )
+                  }
+                >
                   <DollarSign className="w-4 h-4 mr-1" />
                   Cash
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => onRecordPayment(booking.id, "card")}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    onRequestRecordPayment(
+                      booking.id,
+                      "card",
+                      computeGroupOutstandingBalance(participants, booking),
+                    )
+                  }
+                >
                   Card
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => onRecordPayment(booking.id, "yoco")}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    onRequestRecordPayment(
+                      booking.id,
+                      "yoco",
+                      computeGroupOutstandingBalance(participants, booking),
+                    )
+                  }
+                >
                   Yoco
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => onRecordPayment(booking.id, "bank_transfer")}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    onRequestRecordPayment(
+                      booking.id,
+                      "bank_transfer",
+                      computeGroupOutstandingBalance(participants, booking),
+                    )
+                  }
+                >
                   Bank transfer
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => onRecordPayment(booking.id, "other")}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    onRequestRecordPayment(
+                      booking.id,
+                      "other",
+                      computeGroupOutstandingBalance(participants, booking),
+                    )
+                  }
+                >
                   Other
+                </Button>
+              </div>
+              <div className="mt-3 pt-3 border-t">
+                <p className="text-xs text-gray-500 mb-2">Collect via Paystack Virtual Terminal (QR / link)</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={isPreparingTerminal}
+                  onClick={() =>
+                    onRequestPaystackTerminal(
+                      booking.id,
+                      computeGroupOutstandingBalance(participants, booking),
+                    )
+                  }
+                  className="border-green-300 text-green-700 hover:bg-green-50 gap-1.5"
+                >
+                  <QrCode className="w-4 h-4" />
+                  {isPreparingTerminal ? "Preparing…" : "Paystack Terminal"}
                 </Button>
               </div>
             </div>
@@ -1063,4 +1343,12 @@ function formatLocalDate(date: Date) {
     String(date.getMonth() + 1).padStart(2, "0"),
     String(date.getDate()).padStart(2, "0"),
   ].join("-");
+}
+
+export default function GroupBookingsPage() {
+  return (
+    <Suspense fallback={null}>
+      <GroupBookingsPageInner />
+    </Suspense>
+  );
 }

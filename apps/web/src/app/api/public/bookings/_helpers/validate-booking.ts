@@ -21,6 +21,7 @@ import { sumChainedBlockedMinutes } from "@/lib/booking-slot-math/blocked-window
 import { applyPublicBookingHoldSnapshotToDraft } from "@/lib/bookings/apply-hold-snapshot-to-draft";
 import { formatInTimeZone } from "date-fns-tz";
 import { normalizeProviderTimezone } from "@/lib/availability/time-utils";
+import { DEFAULT_BOOKING_DISPLAY_TIMEZONE } from "@/lib/bookings/display-invariants";
 import { loadEffectiveStaffShifts } from "@/lib/availability/load-constraints";
 import { segmentFitsAnyShift } from "@/lib/availability/shift-fit";
 
@@ -1961,7 +1962,7 @@ export async function validateBooking(
   // staff_schedules → working_hours → location hours, then clamp to location window.
   {
     const providerTz =
-      normalizeProviderTimezone((provider as { timezone?: string | null }).timezone) ?? "UTC";
+      normalizeProviderTimezone((provider as { timezone?: string | null }).timezone) ?? DEFAULT_BOOKING_DISPLAY_TIMEZONE;
 
     const minutesFromInstantInZone = (instant: Date): number => {
       const hm = formatInTimeZone(instant, providerTz, "HH:mm");

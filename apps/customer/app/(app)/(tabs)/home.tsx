@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState, memo, useMemo } from "react";
+import { useCallback, useEffect, useRef, useState, memo, useMemo } from "react";
+import { useFocusEffect } from "expo-router";
 import { NotificationsDropdown } from "@/components/NotificationsDropdown";
 import {
   View,
@@ -449,6 +450,19 @@ export default function HomeScreen() {
     effectiveLat,
     effectiveLng,
     activeCategorySlug
+  );
+
+  // Refresh provider list whenever the Home tab gains focus so newly registered
+  // or deleted providers appear without requiring a manual pull-to-refresh.
+  const hasMountedRef = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (hasMountedRef.current) {
+        refetch();
+      } else {
+        hasMountedRef.current = true;
+      }
+    }, [refetch])
   );
 
   const adsDisclosureLabel = useMemo(

@@ -299,16 +299,17 @@ export async function registerDevice(
     last_seen: new Date().toISOString(),
   };
 
-  // Same physical device can switch accounts — reassign the subscription row.
+  // Same physical device can switch accounts — reassign the subscription row for this app.
   await supabase
     .from("user_devices")
     .delete()
     .eq("onesignal_player_id", normalizedPlayerId)
+    .eq("app_type", appType)
     .neq("user_id", userId);
 
   const { error } = await supabase
     .from("user_devices")
-    .upsert(row, { onConflict: "onesignal_player_id" });
+    .upsert(row, { onConflict: "onesignal_player_id,app_type" });
 
   if (!error) {
     return { success: true };
@@ -318,7 +319,8 @@ export async function registerDevice(
   const { error: deleteError } = await supabase
     .from("user_devices")
     .delete()
-    .eq("onesignal_player_id", normalizedPlayerId);
+    .eq("onesignal_player_id", normalizedPlayerId)
+    .eq("app_type", appType);
 
   if (deleteError) {
     console.error("Error registering device:", error);

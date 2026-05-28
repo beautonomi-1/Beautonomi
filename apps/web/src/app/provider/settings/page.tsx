@@ -73,6 +73,7 @@ const settingsCategories: { id: string; title: string; description: string; item
     items: [
       { title: "Payout center", description: "Balance, schedule, statements, and payout history", href: "/provider/payouts" },
       { title: "Payout Accounts", description: "Manage bank accounts for receiving payouts", href: "/provider/settings/payout-accounts" },
+      { title: "Payment Methods", description: "Enable or disable cash, online, and gift card payment options", href: "/provider/settings/payments" },
       { title: "Subscription & plan", description: "Manage your Beautonomi plan, billing period, upgrades, renewals, and cancellations", href: "/provider/subscription" },
       { title: "Yoco Integration", description: "Connect and manage Yoco payment devices", href: "/provider/settings/sales/yoco-integration" },
       { title: "Paystack Terminal", description: "Create QR/link terminals for in-person payments that settle through payouts", href: "/provider/settings/sales/paystack-terminal" },

@@ -28,11 +28,12 @@ import {
   AlertDialogTitle,
   AlertDialogDescription,
   AlertDialogCancel,
+  AlertDialogFooter,
 } from "@/components/ui/alert-dialog";
 import {
   CalendarIcon, Plus, X, User, Home, Building2, Users, Tag,
   StickyNote, MapPin, Search, Package, ShoppingBag, Loader2, ChevronDown,
-  Info, Lock, Minus,
+  Info, Lock, Minus, QrCode, ExternalLink, Copy,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { format } from "date-fns";
@@ -131,9 +132,14 @@ export function GroupBookingDialog({
   // Payment methods mirror the single-booking screen so providers see the
   // same set everywhere (pay_later, cash, manual card, Yoco terminal, link).
   const [createStep, setCreateStep] = useState<"form" | "review">("form");
-  type GroupCreatePaymentMethod = "pay_later" | "cash" | "card" | "yoco_pos" | "payment_link";
+  type GroupCreatePaymentMethod = "pay_later" | "cash" | "card" | "yoco_pos" | "payment_link" | "paystack_terminal";
   const [createPaymentMethod, setCreatePaymentMethod] = useState<GroupCreatePaymentMethod>("pay_later");
   const [createSendNotification, setCreateSendNotification] = useState(true);
+  const [postCreatePaystackData, setPostCreatePaystackData] = useState<{
+    expectedAmount: number;
+    terminal: { qr_url?: string | null; payment_link?: string | null; terminal_url?: string | null; name?: string | null };
+  } | null>(null);
+  const [isPreparingTerminal, setIsPreparingTerminal] = useState(false);
 
   // Reset two-step state every time the dialog opens so we never strand the
   // provider on the review screen from a previous open.
@@ -142,6 +148,7 @@ export function GroupBookingDialog({
       setCreateStep("form");
       setCreatePaymentMethod("pay_later");
       setCreateSendNotification(true);
+      setPostCreatePaystackData(null);
     }
   }, [open]);
 
@@ -903,6 +910,7 @@ export function GroupBookingDialog({
         // record the payment so the receipt is "paid" right out of the gate.
         // payment_link is intentionally skipped — it must be sent to each
         // participant individually after creation.
+        // paystack_terminal: show QR sheet instead of calling mark_paid.
         const methodToMark =
           createPaymentMethod === "cash"
             ? "cash"
@@ -915,7 +923,33 @@ export function GroupBookingDialog({
           (created as { id?: string; data?: { id?: string } } | null)?.id ??
           (created as { data?: { id?: string } } | null)?.data?.id ??
           null;
-        if (methodToMark && createdId) {
+        if (createPaymentMethod === "paystack_terminal" && createdId) {
+          toast.success("Group booking created — preparing Paystack Terminal…");
+          onSuccess?.();
+          onOpenChange(false);
+          // Trigger prepare-collection in background and surface QR
+          setIsPreparingTerminal(true);
+          try {
+            const { fetcher: f } = await import("@/lib/http/fetcher");
+            // fetcher.post returns raw JSON: { data: { terminal, ... }, error: null }
+            const terminalRes = await f.post("/api/provider/paystack/terminal-payments", {
+              entity_type: "group_booking",
+              entity_id: createdId,
+              expected_amount: pricing.totalAmount,
+            }) as { data?: { terminal?: { qr_url?: string; payment_link?: string; terminal_url?: string; name?: string } }; error?: string | null };
+            const terminal = terminalRes?.data?.terminal;
+            if (terminal) {
+              setPostCreatePaystackData({ expectedAmount: pricing.totalAmount, terminal });
+            } else {
+              toast.info("Group created. Use the Payment Inbox to collect via Paystack Terminal.");
+            }
+          } catch {
+            toast.info("Group created. Use the Payment Inbox to collect via Paystack Terminal.");
+          } finally {
+            setIsPreparingTerminal(false);
+          }
+          return;
+        } else if (methodToMark && createdId) {
           try {
             const { fetcher } = await import("@/lib/http/fetcher");
             await fetcher.post(
@@ -1029,7 +1063,11 @@ export function GroupBookingDialog({
 
         {/* Scrollable body: flex-1 + min-h-0 so the form scrolls inside max-h dialog */}
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
-          <form id="group-booking-form" onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 sm:space-y-5 box-border w-full max-w-full overflow-x-hidden min-w-0">
+          <form
+            id="group-booking-form"
+            onSubmit={handleSubmit}
+            className={`p-4 sm:p-6 space-y-4 sm:space-y-5 box-border w-full max-w-full overflow-x-hidden min-w-0 ${createStep === "review" && !booking ? "hidden" : ""}`}
+          >
 
             {/* Title */}
             <div className="space-y-2">
@@ -1818,6 +1856,64 @@ export function GroupBookingDialog({
               <Textarea value={formData.notes} onChange={e => setFormData({ ...formData, notes: e.target.value })} rows={2} placeholder="Add any notes about this group booking..." className="resize-none text-sm" />
             </div>
 
+            {!booking ? (
+              <>
+                <Separator />
+                <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-3">
+                  <div className="text-xs font-bold uppercase tracking-wider text-gray-500">Payment</div>
+                  <div className="flex flex-wrap gap-2">
+                    {([
+                      { value: "pay_later", label: "Pay later" },
+                      { value: "cash", label: "Cash" },
+                      { value: "card", label: "Manual card" },
+                      { value: "yoco_pos", label: "Yoco terminal" },
+                      { value: "payment_link", label: "Payment link" },
+                      { value: "paystack_terminal", label: "Paystack Terminal" },
+                    ] as const).map((m) => {
+                      const active = createPaymentMethod === m.value;
+                      return (
+                        <button
+                          key={m.value}
+                          type="button"
+                          onClick={() => setCreatePaymentMethod(m.value as GroupCreatePaymentMethod)}
+                          className={`rounded-full border px-3 py-1.5 text-sm transition ${active ? "border-primary bg-primary/10 text-primary font-semibold" : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"}`}
+                        >
+                          {m.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {createPaymentMethod === "payment_link" ? (
+                    <p className="text-xs text-gray-500">
+                      You will need to send payment links to each participant manually from their booking.
+                    </p>
+                  ) : createPaymentMethod === "paystack_terminal" ? (
+                    <p className="text-xs text-gray-500">
+                      After creating the group, a QR code will be shown for the customer to scan. Allocate the payment from the Paystack Payment Inbox.
+                    </p>
+                  ) : createPaymentMethod !== "pay_later" ? (
+                    <p className="text-xs text-gray-500">
+                      The group will be marked paid immediately on every participant&apos;s booking after create.
+                    </p>
+                  ) : null}
+                </div>
+                <label className="flex items-start gap-3 rounded-xl border border-gray-200 bg-white p-4 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={createSendNotification}
+                    onChange={(e) => setCreateSendNotification(e.target.checked)}
+                    className="mt-1 h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                  />
+                  <span className="text-sm">
+                    <span className="font-semibold text-gray-900">Notify participants</span>
+                    <span className="mt-0.5 block text-xs text-gray-500">
+                      Sends email + push to each participant with a linked customer account.
+                    </span>
+                  </span>
+                </label>
+              </>
+            ) : null}
+
             {/* ─── Total Summary ──────────────────────────────────── */}
             {(participants.length > 0 || groupProducts.length > 0) && (
               <div className="bg-gray-50 rounded-xl p-3 border space-y-1.5">
@@ -1882,53 +1978,35 @@ export function GroupBookingDialog({
             </div>
 
             <div className="rounded-xl border border-gray-200 bg-white p-4">
-              <div className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-500">Payment</div>
-              <div className="flex flex-wrap gap-2">
-                {([
-                  { value: "pay_later", label: "Pay later" },
-                  { value: "cash", label: "Cash" },
-                  { value: "card", label: "Manual card" },
-                  { value: "yoco_pos", label: "Yoco terminal" },
-                  { value: "payment_link", label: "Payment link" },
-                ] as const).map((m) => {
-                  const active = createPaymentMethod === m.value;
-                  return (
-                    <button
-                      key={m.value}
-                      type="button"
-                      onClick={() => setCreatePaymentMethod(m.value as GroupCreatePaymentMethod)}
-                      className={`rounded-full border px-3 py-1.5 text-sm transition ${active ? "border-primary bg-primary/10 text-primary font-semibold" : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"}`}
-                    >
-                      {m.label}
-                    </button>
-                  );
-                })}
-              </div>
-              {createPaymentMethod === "payment_link" ? (
-                <p className="mt-2 text-xs text-gray-500">
-                  Payment links are sent to each participant individually after the group is created.
-                </p>
-              ) : createPaymentMethod !== "pay_later" ? (
-                <p className="mt-2 text-xs text-gray-500">
-                  The group will be marked paid immediately on every participant&apos;s booking.
-                </p>
-              ) : null}
-            </div>
-
-            <label className="flex items-start gap-3 rounded-xl border border-gray-200 bg-white p-4 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={createSendNotification}
-                onChange={(e) => setCreateSendNotification(e.target.checked)}
-                className="mt-1 h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
-              />
-              <span className="text-sm">
-                <span className="font-semibold text-gray-900">Notify primary contact</span>
-                <span className="mt-0.5 block text-xs text-gray-500">
-                  Sends one email + push to the first participant only. Other guests aren&apos;t contacted.
+              <div className="mb-2 text-xs font-bold uppercase tracking-wider text-gray-500">Payment</div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="font-medium text-gray-900">
+                  {createPaymentMethod === "pay_later"
+                    ? "Pay later"
+                    : createPaymentMethod === "cash"
+                      ? "Cash"
+                      : createPaymentMethod === "card"
+                        ? "Manual card"
+                        : createPaymentMethod === "yoco_pos"
+                          ? "Yoco terminal"
+                          : createPaymentMethod === "paystack_terminal"
+                            ? "Paystack Terminal (QR)"
+                            : "Payment link"}
                 </span>
-              </span>
-            </label>
+                <button
+                  type="button"
+                  className="text-xs font-semibold text-primary hover:underline"
+                  onClick={() => setCreateStep("form")}
+                >
+                  Change
+                </button>
+              </div>
+              {createSendNotification ? (
+                <p className="mt-2 text-xs text-gray-500">Participants will be notified after create.</p>
+              ) : (
+                <p className="mt-2 text-xs text-amber-700">Participant notifications are off for this group.</p>
+              )}
+            </div>
           </div>
         ) : null}
 
@@ -1972,6 +2050,77 @@ export function GroupBookingDialog({
         defaultCountryName={formData.address_country || "South Africa"}
         onLocationPicked={applyAtHomeAddress}
       />
+
+      {/* Post-create Paystack Terminal QR sheet */}
+      <AlertDialog open={!!postCreatePaystackData} onOpenChange={(o) => { if (!o) setPostCreatePaystackData(null); }}>
+        <AlertDialogContent className="z-[200002] max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <QrCode className="w-5 h-5 text-green-600" />
+              Paystack Terminal Payment
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Show the QR code or share the payment link. Once the customer pays, allocate the payment from the Payment Inbox.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {postCreatePaystackData && (
+            <div className="space-y-4">
+              {postCreatePaystackData.expectedAmount > 0 && (
+                <div className="rounded-xl bg-green-50 border border-green-200 p-4 text-center">
+                  <p className="text-xs text-green-700 mb-1">Amount due</p>
+                  <p className="text-2xl font-bold text-green-800">
+                    {postCreatePaystackData.expectedAmount.toLocaleString("en-ZA", { style: "currency", currency: "ZAR" })}
+                  </p>
+                </div>
+              )}
+              {postCreatePaystackData.terminal.qr_url ? (
+                <div className="flex justify-center">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={postCreatePaystackData.terminal.qr_url}
+                    alt="Paystack Terminal QR Code"
+                    className="w-48 h-48 rounded-xl border border-gray-200"
+                  />
+                </div>
+              ) : null}
+              <div className="rounded-lg bg-gray-50 p-3 text-xs text-gray-600">
+                Ask the customer to scan the QR or open the payment link. After Paystack confirms, the payment appears in the <strong>Payment Inbox</strong> for allocation.
+              </div>
+              <div className="flex flex-col gap-2">
+                {(postCreatePaystackData.terminal.payment_link || postCreatePaystackData.terminal.terminal_url) && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                    onClick={() => {
+                      const link = postCreatePaystackData.terminal.payment_link || postCreatePaystackData.terminal.terminal_url || "";
+                      navigator.clipboard.writeText(link).then(() => toast.success("Payment link copied")).catch(() => {});
+                    }}
+                  >
+                    <Copy className="w-4 h-4" />
+                    Copy payment link
+                  </Button>
+                )}
+                <Button
+                  variant="default"
+                  size="sm"
+                  className="gap-2 bg-green-600 hover:bg-green-700"
+                  onClick={() => {
+                    setPostCreatePaystackData(null);
+                    window.location.assign("/provider/settings/sales/paystack-terminal");
+                  }}
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  Go to Payment Inbox
+                </Button>
+              </div>
+            </div>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setPostCreatePaystackData(null)}>Close</AlertDialogCancel>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* ─── Variant Picker Dialog ────────────────────────────────── */}
       <AlertDialog open={variantPickerFor !== null} onOpenChange={o => !o && setVariantPickerFor(null)}>
