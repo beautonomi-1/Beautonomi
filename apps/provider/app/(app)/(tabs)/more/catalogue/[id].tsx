@@ -23,7 +23,6 @@ import { SectionHeader } from "@/components/ui/SectionHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
-import { formatCurrency } from "@/lib/format";
 import { APP_URL, withWebApiTenantHeaders } from "@/config/public-env";
 import { supabase } from "@/lib/supabase/client";
 import { twStyle } from "@/lib/twStyle";
@@ -47,7 +46,7 @@ interface ServiceDetail {
   provider_category_id?: string | null;
   team_member_ids?: string[] | null;
   image_url?: string | null;
-  pricing_options?: Array<{ duration?: number; price?: number; pricingName?: string }>;
+  pricing_options?: { duration?: number; price?: number; pricingName?: string }[];
   created_at: string;
   updated_at: string;
 }

@@ -43,7 +43,7 @@ export interface CatalogueServiceItem {
   parent_service_id?: string | null;
   variant_name?: string | null;
   variants?: CatalogueServiceItem[];
-  provider_categories?: { id?: string; name: string; color?: string | null } | Array<{ id?: string; name: string; color?: string | null }> | null;
+  provider_categories?: { id?: string; name: string; color?: string | null } | { id?: string; name: string; color?: string | null }[] | null;
 }
 
 export interface CategoryOption {
@@ -82,7 +82,7 @@ export function pricingOptionsFromService(service: {
   price?: number;
   price_type?: string;
   pricing_name?: string | null;
-  pricing_options?: Array<{
+  pricing_options?: {
     id?: string;
     duration?: number;
     priceType?: string;
@@ -90,7 +90,7 @@ export function pricingOptionsFromService(service: {
     price?: number;
     pricingName?: string;
     pricing_name?: string;
-  }>;
+  }[];
 }): PricingOption[] {
   const raw = service.pricing_options;
   if (Array.isArray(raw) && raw.length > 0) {

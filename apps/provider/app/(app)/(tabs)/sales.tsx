@@ -206,13 +206,6 @@ const DATE_RANGES = [
   { label: "All Time", value: "all" },
 ];
 
-const PAYMENT_METHODS: { label: string; value: PaymentMethod; icon: keyof typeof Ionicons.glyphMap }[] = [
-  { label: "Cash", value: "cash", icon: "cash-outline" },
-  { label: "Yoco terminal", value: "yoco", icon: "card-outline" },
-  { label: "Card manual", value: "card", icon: "reader-outline" },
-  { label: "EFT", value: "eft", icon: "swap-horizontal-outline" },
-];
-
 const TRANSACTIONS_HUB_HREF = "/(app)/(tabs)/more/transactions-hub" as const;
 const FROM_TRANSACTIONS_HUB = "transactions-hub";
 

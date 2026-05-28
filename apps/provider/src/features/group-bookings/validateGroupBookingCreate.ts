@@ -9,12 +9,12 @@ export type GroupBookingCreateValidationInput = {
   addressLine1: string;
   addressLatitude: number | null;
   addressLongitude: number | null;
-  participants: Array<{
+  participants: {
     name: string;
     phone: string;
     email: string;
     serviceId: string;
-  }>;
+  }[];
   validatePhone: (phone: string) => string | null;
 };
 

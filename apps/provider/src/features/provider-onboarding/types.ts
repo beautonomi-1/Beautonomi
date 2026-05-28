@@ -49,7 +49,7 @@ export interface OnboardingService {
   /** Buffer duration in minutes when `extra_time_enabled` is true. */
   extra_time_duration?: number;
   /** Multi-row pricing options; server auto-syncs named rows to variant offerings. */
-  pricing_options?: Array<{
+  pricing_options?: {
     id?: string;
     duration: number;
     priceType?: string;
@@ -57,7 +57,7 @@ export interface OnboardingService {
     price: number;
     pricingName?: string;
     pricing_name?: string;
-  }>;
+  }[];
   team_member_ids?: string[];
   /** @deprecated Legacy inline add-ons; use `service_addons` on onboarding form data. */
   addons?: OnboardingServiceAddon[];

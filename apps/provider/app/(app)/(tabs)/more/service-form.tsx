@@ -9,13 +9,13 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
-  ActivityIndicator,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ChipCombobox } from "@/components/ui/ChipCombobox";
@@ -165,7 +165,7 @@ export default function ServiceFormScreen() {
   );
 
   const { data: resourcesData } = useApi<
-    Array<{ id: string; name: string; group_name?: string | null }> | { data?: Array<{ id: string; name: string; group_name?: string | null }> }
+    { id: string; name: string; group_name?: string | null }[] | { data?: { id: string; name: string; group_name?: string | null }[] }
   >("/api/provider/resources");
 
   const { data: serviceResources } = useApi<{ resources?: OfferingResourceEntry[] }>(
@@ -174,7 +174,7 @@ export default function ServiceFormScreen() {
   );
 
   const { data: zoneSelectionsRaw, refresh: refreshZones } = useApi<
-    Array<{ is_selected?: boolean }> | { data?: Array<{ is_selected?: boolean }> }
+    { is_selected?: boolean }[] | { data?: { is_selected?: boolean }[] }
   >("/api/provider/zone-selections");
 
   const { execute: createService, loading: creating } = useApiMutation("post");
@@ -374,6 +374,17 @@ export default function ServiceFormScreen() {
     [router, refreshZones, zoneSelections],
   );
 
+  const handleDeactivate = useCallback(async () => {
+    if (!serviceId) return;
+    const { error } = await updateService(`/api/provider/services/${serviceId}`, { is_active: false });
+    if (error) {
+      Alert.alert("Error", error);
+      return;
+    }
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    router.back();
+  }, [serviceId, updateService, router]);
+
   const handleDelete = useCallback(() => {
     if (!serviceId) return;
     Alert.alert(
@@ -387,7 +398,20 @@ export default function ServiceFormScreen() {
           onPress: async () => {
             const { error } = await deleteService(`/api/provider/services/${serviceId}`);
             if (error) {
-              Alert.alert("Error", error);
+              const cannotDelete =
+                /booking|foreign|constraint|referenced|in use|cannot be deleted|violates/i.test(error);
+              if (cannotDelete) {
+                Alert.alert(
+                  "Cannot delete",
+                  "This service is linked to bookings or other records. Deactivate it instead?",
+                  [
+                    { text: "Cancel", style: "cancel" },
+                    { text: "Deactivate", onPress: () => void handleDeactivate() },
+                  ],
+                );
+              } else {
+                Alert.alert("Error", error);
+              }
             } else {
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               router.back();
@@ -396,7 +420,7 @@ export default function ServiceFormScreen() {
         },
       ],
     );
-  }, [serviceId, form.name, deleteService, router]);
+  }, [serviceId, form.name, deleteService, router, handleDeactivate]);
 
   const handleSave = useCallback(async () => {
     const validationError = validateServiceForm({
@@ -519,30 +543,24 @@ export default function ServiceFormScreen() {
     <ScreenContainer keyboardAvoiding={false}>
       <ScreenHeader
         title={isEdit ? "Edit Service" : "Add Service"}
-        onBack={() => router.back()}
-        rightAction={
-          <TouchableOpacity
-            onPress={handleSave}
-            disabled={isSaving}
-            style={twStyle("min-h-[40px] flex-row items-center justify-center rounded-full bg-indigo-600 px-4")}
-          >
-            {isSaving ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Text style={twStyle("font-medium text-white")}>Save</Text>
-            )}
-          </TouchableOpacity>
+        subtitle={
+          isEdit
+            ? service?.title || service?.name || form.name || undefined
+            : "Pricing, team, location, variants, and booking settings"
         }
+        onBack={() => router.back()}
       />
 
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "padding"}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={twStyle("flex-1")}
         keyboardVerticalOffset={Platform.OS === "ios" ? 56 : 20}
       >
         <ScrollView
+          style={twStyle("flex-1")}
           contentContainerStyle={{ paddingBottom: 220 }}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
         >
           <View style={twStyle("px-1 pt-2")}>
@@ -802,7 +820,7 @@ export default function ServiceFormScreen() {
             <View style={twStyle("mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}>
               <View>
                 <Text style={twStyle("text-sm font-medium text-gray-700")}>Active</Text>
-                <Text style={twStyle("text-xs text-gray-500")}>Inactive services won't appear in booking flows</Text>
+                <Text style={twStyle("text-xs text-gray-500")}>Inactive services won&apos;t appear in booking flows</Text>
               </View>
               <Switch
                 value={form.isActive}
@@ -810,17 +828,27 @@ export default function ServiceFormScreen() {
               />
             </View>
 
-            {isEdit && (
-              <TouchableOpacity
-                onPress={handleDelete}
-                style={twStyle("mb-3 items-center rounded-xl border border-red-200 bg-red-50 py-3")}
-                accessibilityLabel="Delete service"
-              >
-                <Text style={twStyle("text-sm font-medium text-red-600")}>Delete service</Text>
-              </TouchableOpacity>
-            )}
           </View>
         </ScrollView>
+
+        <View style={twStyle("border-t border-gray-100 bg-white px-4 py-3")}>
+          {isEdit && (
+            <TouchableOpacity
+              onPress={handleDelete}
+              style={twStyle("mb-3 items-center rounded-xl border border-red-200 py-3")}
+              accessibilityLabel="Delete service"
+              accessibilityRole="button"
+            >
+              <Text style={twStyle("font-medium text-red-600")}>Delete service</Text>
+            </TouchableOpacity>
+          )}
+          <ActionButton
+            label={isSaving ? "Saving…" : isEdit ? "Save changes" : "Create service"}
+            onPress={handleSave}
+            loading={isSaving}
+            fullWidth
+          />
+        </View>
       </KeyboardAvoidingView>
 
       <AdvancedPricingRulesEditor

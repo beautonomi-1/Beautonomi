@@ -399,6 +399,29 @@ export default function ClientDetailScreen() {
     refresh();
   }, [clientId, client, patchClient, refresh]);
 
+  const membershipSubscriptionId = client?.salon_membership?.subscription_id ?? null;
+  const sendMembershipWinBack = useCallback(async () => {
+    if (!membershipSubscriptionId) return;
+    Alert.alert(
+      "Send membership offer",
+      "We'll notify this client that they can rejoin your membership plan.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Send",
+          onPress: async () => {
+            const { error: err } = await postWinBack(
+              `/api/provider/membership-subscriptions/${membershipSubscriptionId}/win-back`,
+              {},
+            );
+            if (err) Alert.alert("Could not send", err);
+            else Alert.alert("Sent", "Membership reminder sent to the client.");
+          },
+        },
+      ],
+    );
+  }, [membershipSubscriptionId, postWinBack]);
+
   const dobLabel = useMemo(() => {
     if (!formDob) return "";
     const d = new Date(formDob);
@@ -468,28 +491,6 @@ export default function ClientDetailScreen() {
         status: membership.status,
         cancelled_at: membership.cancelled_at,
       }));
-
-  const sendMembershipWinBack = useCallback(async () => {
-    if (!membership?.subscription_id) return;
-    Alert.alert(
-      "Send membership offer",
-      "We'll notify this client that they can rejoin your membership plan.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Send",
-          onPress: async () => {
-            const { error: err } = await postWinBack(
-              `/api/provider/membership-subscriptions/${membership.subscription_id}/win-back`,
-              {},
-            );
-            if (err) Alert.alert("Could not send", err);
-            else Alert.alert("Sent", "Membership reminder sent to the client.");
-          },
-        },
-      ],
-    );
-  }, [membership?.subscription_id, postWinBack]);
 
   return (
     <ScreenContainer scrollable={false} keyboardAvoiding={false}>

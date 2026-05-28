@@ -189,7 +189,7 @@ export default function SettingsDeactivateAccountScreen() {
                 </>
               ) : (
                 <>
-                  <Text style={{ marginBottom: 8, fontSize: 14, color: Colors.gray[600] }}>We'll send a verification code to the email address on your account.</Text>
+                  <Text style={{ marginBottom: 8, fontSize: 14, color: Colors.gray[600] }}>We&apos;ll send a verification code to the email address on your account.</Text>
                   <TouchableOpacity
                     onPress={requestVerificationCode}
                     disabled={requestingNonce || !canVerifyWithCode}

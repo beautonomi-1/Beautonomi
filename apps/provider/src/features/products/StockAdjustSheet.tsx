@@ -35,7 +35,7 @@ export function StockAdjustSheet({ visible, product, onClose, onSuccess }: Props
 
   if (!product) return null;
 
-  const variants = (product.variants ?? []).filter((v) => v.id) as Array<ProductVariantRow & { id: string }>;
+  const variants = (product.variants ?? []).filter((v) => v.id) as (ProductVariantRow & { id: string })[];
   const hasVariants = Boolean(product.has_variants && variants.length > 0);
 
   const handleSubmit = async () => {

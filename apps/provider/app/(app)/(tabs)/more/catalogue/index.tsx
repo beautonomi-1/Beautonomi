@@ -159,7 +159,7 @@ export default function CatalogueScreen() {
           const result = (await deleteCategory(`/api/provider/categories/${cat.id}`, {})) as {
             error?: string;
             errorCode?: string;
-            data?: { services?: Array<{ id: string; name: string }> };
+            data?: { services?: { id: string; name: string }[] };
           };
           if (result.error) {
             if (result.errorCode === "CATEGORY_HAS_SERVICES" || result.error.includes("services")) {

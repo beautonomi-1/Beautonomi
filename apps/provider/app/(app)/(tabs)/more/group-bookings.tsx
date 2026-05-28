@@ -1194,13 +1194,15 @@ export default function GroupBookingsScreen() {
   }
 
   const openCreateHandledRef = useRef(false);
+  const openCreateRef = useRef(openCreate);
+  openCreateRef.current = openCreate;
   useEffect(() => {
     const raw = params.openCreate;
     const want =
       raw === "true" || (Array.isArray(raw) && raw[0] === "true");
     if (!want || openCreateHandledRef.current) return;
     openCreateHandledRef.current = true;
-    openCreate();
+    openCreateRef.current();
     router.setParams({ openCreate: "" } as never);
   }, [params.openCreate, router]);
 
@@ -1692,7 +1694,7 @@ export default function GroupBookingsScreen() {
     // group back, but a stale createdGroupId could still leak to actions that
     // expected the group to exist.
     let participantsSucceeded = false;
-    const participantFailures: Array<{ name: string; error: string }> = [];
+    const participantFailures: { name: string; error: string }[] = [];
     const createdBookings: Awaited<ReturnType<typeof createParticipantBookingAndLink>>[] = [];
 
     for (let idx = 0; idx < participantsToCreate.length; idx++) {
@@ -2928,6 +2930,20 @@ export default function GroupBookingsScreen() {
           setVerifyingEditSlot(false);
         }}
         title="Edit Group Booking"
+        subtitle={
+          selectedGroup?.title?.trim() ||
+          selectedGroup?.service_name ||
+          selectedGroup?.ref_number ||
+          "Update details"
+        }
+        footer={
+          <ActionButton
+            label="Save Changes"
+            onPress={handleSaveEdit}
+            loading={verifyingEditSlot || updatingGroup}
+            fullWidth
+          />
+        }
       >
         <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           {/* §Provider-audit 2026-04 (packages round 4 — mobile edit
@@ -3204,12 +3220,6 @@ export default function GroupBookingsScreen() {
             <Ionicons name="people-outline" size={18} color="#4338ca" style={{ marginRight: 8 }} />
             <Text style={twStyle("text-sm font-semibold text-indigo-800")}>Manage participants</Text>
           </TouchableOpacity>
-          <ActionButton
-            label="Save Changes"
-            onPress={handleSaveEdit}
-            loading={verifyingEditSlot || updatingGroup}
-            fullWidth
-          />
         </ScrollView>
       </BottomSheet>
 
@@ -3348,6 +3358,14 @@ export default function GroupBookingsScreen() {
         visible={showAddParticipant}
         onClose={() => setShowAddParticipant(false)}
         title="Add Participant"
+        footer={
+          <ActionButton
+            label="Add Participant"
+            onPress={handleAddParticipant}
+            loading={addingParticipant || creatingParticipantBooking}
+            fullWidth
+          />
+        }
       >
         <View>
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Name *</Text>
@@ -3460,12 +3478,6 @@ export default function GroupBookingsScreen() {
             placeholderTextColor="#9ca3af"
             multiline
           />
-          <ActionButton
-            label="Add Participant"
-            onPress={handleAddParticipant}
-            loading={addingParticipant || creatingParticipantBooking}
-            fullWidth
-          />
         </View>
       </BottomSheet>
 
@@ -3479,6 +3491,38 @@ export default function GroupBookingsScreen() {
           setValidatingCreateAddress(false);
         }}
         title={createStep === "form" ? "New Group Booking" : "Review group booking"}
+        subtitle={createStep === "form" ? "Date, time, location, and participants" : "Confirm session details"}
+        footer={
+          createStep === "form" ? (
+            <ActionButton
+              label={validatingCreateAddress ? "Checking address..." : "Review & Create"}
+              onPress={handleOpenCreateReview}
+              loading={validatingCreateAddress}
+              fullWidth
+            />
+          ) : (
+            <View style={{ flexDirection: "row" }}>
+              <ActionButton
+                label="Back"
+                onPress={() => {
+                  setCreateStep("form");
+                  setCreateReviewError(null);
+                }}
+                variant="secondary"
+                style={{ flex: 1, marginRight: 8 }}
+              />
+              <ActionButton
+                label="Confirm & create"
+                onPress={() => {
+                  void handleCreate();
+                }}
+                loading={creatingGroup || creatingParticipantBooking || addingParticipant}
+                variant="brand"
+                style={{ flex: 2 }}
+              />
+            </View>
+          )
+        }
       >
         {createStep === "form" ? (
         <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
@@ -4387,13 +4431,6 @@ export default function GroupBookingsScreen() {
               );
             })}
           </View>
-
-          <ActionButton
-            label={validatingCreateAddress ? "Checking address..." : "Review & Create"}
-            onPress={handleOpenCreateReview}
-            loading={validatingCreateAddress}
-            fullWidth
-          />
         </ScrollView>
         ) : (
         <ScrollView
@@ -4655,27 +4692,6 @@ export default function GroupBookingsScreen() {
               </Text>
             </View>
           </TouchableOpacity>
-
-          <View style={{ marginTop: 16, flexDirection: "row" }}>
-            <ActionButton
-              label="Back"
-              onPress={() => {
-                setCreateStep("form");
-                setCreateReviewError(null);
-              }}
-              variant="secondary"
-              style={{ flex: 1, marginRight: 8 }}
-            />
-            <ActionButton
-              label="Confirm & create"
-              onPress={() => {
-                void handleCreate();
-              }}
-              loading={creatingGroup || creatingParticipantBooking || addingParticipant}
-              variant="brand"
-              style={{ flex: 2 }}
-            />
-          </View>
         </ScrollView>
         )}
       </BottomSheet>

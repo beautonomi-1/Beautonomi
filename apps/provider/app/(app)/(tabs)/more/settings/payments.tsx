@@ -221,7 +221,7 @@ export default function PaymentSettingsScreen() {
       setHasChanges(false);
       refresh();
     }
-  }, [saveSettings, form, refresh]);
+  }, [saveSettings, form, refresh, paystackTerminalEnabled, yocoEnabled]);
 
   if (loading) {
     return (

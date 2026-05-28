@@ -31,7 +31,7 @@ export function validateServiceForm(input: ServiceFormValidationInput): string |
 }
 
 export function validateAdvancedPricingRules(
-  rules: Array<{ name: string; enabled: boolean; priceAdjustment: { value: number } }>,
+  rules: { name: string; enabled: boolean; priceAdjustment: { value: number } }[],
 ): string | null {
   const invalid = rules.filter((r) => !r.name.trim() || (r.enabled && r.priceAdjustment.value === 0));
   if (invalid.length > 0) {

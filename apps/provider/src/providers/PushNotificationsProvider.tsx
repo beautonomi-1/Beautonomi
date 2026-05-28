@@ -403,7 +403,7 @@ function usePushRegistration() {
     return () => {
       cancelled = true;
     };
-  }, [user?.id]);
+  }, [user]);
 
   // Cold-start taps can fire before the authenticated router is mounted.
   useEffect(() => {
@@ -607,7 +607,7 @@ function usePushRegistration() {
     const tryRegister = async () => {
       if (cancelled || registeredRef.current) return;
       try {
-        const { OneSignal } = await import("react-native-onesignal");
+        await import("react-native-onesignal");
         const id = await getOneSignalSubscriptionId();
         if (!id || cancelled || registeredRef.current) return;
         const platform = Platform.OS === "ios" ? "ios" : "android";

@@ -9,33 +9,22 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
-  ActivityIndicator,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import * as ImagePicker from "expo-image-picker";
-import { Image } from "expo-image";
 import { useApi, useApiMutation } from "@/hooks/useApi";
-import { api } from "@/lib/api-client";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { BottomSheet } from "@/components/ui/BottomSheet";
-import { ChipCombobox } from "@/components/ui/ChipCombobox";
 import { twStyle } from "@/lib/twStyle";
-import { appendFormDataFileNative } from "@beautonomi/utils";
 import { emitProviderProductsCatalogChanged } from "@/lib/provider-products-catalog-events";
 import { buildProductPayload } from "@/features/products/buildProductPayload";
 import { validateProductForm } from "@/features/products/validateProductForm";
 import { computeMarkupFromPrices, computeRetailFromMarkup } from "@/features/products/markupCalc";
 import { ProductGalleryUpload } from "@/features/products/ProductGalleryUpload";
 import { VariantMatrixEditor } from "@/features/products/VariantMatrixEditor";
-import {
-  launchCameraWithPermission,
-  launchImageLibraryWithPermission,
-} from "@/lib/native-permissions";
 
 interface ProductVariantRow {
   id?: string;
@@ -142,20 +131,6 @@ type VariantFormRow = {
   amount: number;
 };
 
-function optionValuesKey(ov: Record<string, string> | undefined): string {
-  if (!ov || Object.keys(ov).length === 0) return "";
-  const sorted = Object.keys(ov)
-    .sort()
-    .reduce(
-      (acc, k) => {
-        acc[k] = ov[k];
-        return acc;
-      },
-      {} as Record<string, string>
-    );
-  return JSON.stringify(sorted);
-}
-
 const defaultForm = {
   name: "",
   barcode: "",
@@ -226,7 +201,6 @@ export default function ProductFormScreen() {
   const [newBrandName, setNewBrandName] = useState("");
   const [newCategoryName, setNewCategoryName] = useState("");
   const [newSupplierName, setNewSupplierName] = useState("");
-  const [uploadingImage, setUploadingImage] = useState(false);
 
   const handleCreateBrand = useCallback(async () => {
     const name = newBrandName.trim();
@@ -282,131 +256,6 @@ export default function ProductFormScreen() {
     setSupplierSheetOpen(false);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }, [newSupplierName, postMutation, refreshSuppliers]);
-
-  const uploadImageAsset = useCallback(
-    async (asset: { uri: string; mimeType?: string | null; fileName?: string | null }) => {
-      setUploadingImage(true);
-      try {
-        const formData = new FormData();
-        const name = asset.fileName || `photo-${Date.now()}.jpg`;
-        const type = asset.mimeType || "image/jpeg";
-        appendFormDataFileNative(formData, "file", { uri: asset.uri, type, name });
-        formData.append("folder", "products");
-        const res = await api.fetch<{ url?: string; path?: string }>("/api/upload", {
-          method: "POST",
-          body: formData,
-        });
-        const url = res.data?.url;
-        if (res.error) {
-          Alert.alert("Upload failed", res.error.message ?? "Could not upload image.");
-          return;
-        }
-        if (url) {
-          setForm((p) => ({ ...p, image_url: url }));
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        } else {
-          Alert.alert("Upload failed", "Could not get image URL from server.");
-        }
-      } catch (e) {
-        Alert.alert("Upload failed", e instanceof Error ? e.message : "Failed to upload image.");
-      } finally {
-        setUploadingImage(false);
-      }
-    },
-    []
-  );
-
-  const uploadVariantImageAtIndex = useCallback(
-    async (rowIndex: number, asset: { uri: string; mimeType?: string | null; fileName?: string | null }) => {
-      setUploadingImage(true);
-      try {
-        const formData = new FormData();
-        const name = asset.fileName || `variant-${rowIndex}-${Date.now()}.jpg`;
-        const type = asset.mimeType || "image/jpeg";
-        appendFormDataFileNative(formData, "file", { uri: asset.uri, type, name });
-        formData.append("folder", "products");
-        const res = await api.fetch<{ url?: string }>("/api/upload", {
-          method: "POST",
-          body: formData,
-        });
-        const url = res.data?.url;
-        if (res.error) {
-          Alert.alert("Upload failed", res.error.message ?? "Could not upload image.");
-          return;
-        }
-        if (url) {
-          setForm((p) => {
-            const next = [...p.variantRows];
-            if (!next[rowIndex]) return p;
-            next[rowIndex] = { ...next[rowIndex], image_url: url };
-            return { ...p, variantRows: next };
-          });
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        }
-      } catch (e) {
-        Alert.alert("Upload failed", e instanceof Error ? e.message : "Failed to upload image.");
-      } finally {
-        setUploadingImage(false);
-      }
-    },
-    []
-  );
-
-  const pickVariantImageFromLibrary = useCallback(
-    async (rowIndex: number) => {
-      const result = await launchImageLibraryWithPermission(
-        {
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          allowsEditing: true,
-          aspect: [1, 1],
-          quality: 0.8,
-        },
-        {
-          title: "Permission needed",
-          message: "Allow access to your photo library to add a variant image.",
-        },
-      );
-      if (!result) return;
-      if (result.canceled || !result.assets?.[0]) return;
-      await uploadVariantImageAtIndex(rowIndex, result.assets[0]);
-    },
-    [uploadVariantImageAtIndex]
-  );
-
-  const pickImageFromLibrary = useCallback(async () => {
-    const result = await launchImageLibraryWithPermission(
-      {
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
-      },
-      {
-        title: "Permission needed",
-        message: "Allow access to your photo library to add a product image.",
-      },
-    );
-    if (!result) return;
-    if (result.canceled || !result.assets?.[0]) return;
-    await uploadImageAsset(result.assets[0]);
-  }, [uploadImageAsset]);
-
-  const takePhoto = useCallback(async () => {
-    const result = await launchCameraWithPermission(
-      {
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
-      },
-      {
-        title: "Permission needed",
-        message: "Allow camera access to take a product photo.",
-      },
-    );
-    if (!result) return;
-    if (result.canceled || !result.assets?.[0]) return;
-    await uploadImageAsset(result.assets[0]);
-  }, [uploadImageAsset]);
 
   const generateSku = useCallback(() => {
     const ts = Date.now().toString().slice(-6);
@@ -616,7 +465,7 @@ export default function ProductFormScreen() {
       />
 
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "padding"}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={twStyle("flex-1")}
         keyboardVerticalOffset={Platform.OS === "ios" ? 56 : 20}
       >

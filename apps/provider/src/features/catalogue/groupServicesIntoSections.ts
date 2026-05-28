@@ -85,7 +85,6 @@ export function groupServicesIntoSections(
     });
   }
 
-  const catById = new Map(categories.map((c) => [c.id, c]));
   const categoryIds = new Set(categories.map((c) => c.id));
   const bucket = new Map<string, CatalogueServiceItem[]>();
 

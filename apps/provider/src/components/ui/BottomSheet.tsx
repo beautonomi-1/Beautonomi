@@ -37,6 +37,7 @@ interface BottomSheetProps {
   title?: string;
   subtitle?: string;
   children: React.ReactNode;
+  footer?: React.ReactNode;
   snapHeight?: "auto" | "half" | "full";
   showHandle?: boolean;
 }
@@ -52,6 +53,7 @@ export function BottomSheet({
   title,
   subtitle,
   children,
+  footer,
   snapHeight = "auto",
   showHandle = true,
 }: BottomSheetProps) {
@@ -214,7 +216,7 @@ export function BottomSheet({
                 style={{ flexShrink: 1, backgroundColor: "#ffffff" }}
                 contentContainerStyle={{
                   padding: 20,
-                  paddingBottom: 40 + insets.bottom,
+                  paddingBottom: footer ? 20 : 40 + insets.bottom,
                   backgroundColor: "#ffffff",
                 }}
                 nestedScrollEnabled
@@ -226,7 +228,13 @@ export function BottomSheet({
                 {children}
               </ScrollView>
 
-              <SafeAreaView edges={["bottom"]} />
+              {footer && (
+                <View style={{ padding: 20, paddingBottom: 20 + insets.bottom, borderTopWidth: 1, borderTopColor: "#f3f4f6", backgroundColor: "#ffffff" }}>
+                  {footer}
+                </View>
+              )}
+
+              {!footer && <SafeAreaView edges={["bottom"]} />}
             </Animated.View>
           </KeyboardAvoidingView>
         </View>
