@@ -231,8 +231,9 @@ export async function POST(request: NextRequest) {
      * If they left both off, we do not apply a fake 50km “service radius” — that was blocking bookings
      * when providers never configured radius (fee tiers still apply below).
      */
-    const maxRadiusKmForFeeEngine =
-      explicitMaxDistanceKm != null ? explicitMaxDistanceKm : isDistanceFilterEnabled ? maxDistanceWhenFilterOn : undefined;
+    const maxRadiusKmForFeeEngine = isDistanceFilterEnabled
+      ? (explicitMaxDistanceKm ?? HOUSE_CALL_CONFIG.DEFAULT_MAX_SERVICE_DISTANCE_KM)
+      : undefined;
 
     type ProviderZoneSelectionRow = {
       id: string;
@@ -330,6 +331,8 @@ export async function POST(request: NextRequest) {
         zoneId: null,
         distanceKm: parseFloat(distanceKm.toFixed(2)),
         reason: `This address is ${distanceKm.toFixed(1)}km away, but this provider only serves areas within ${maxDistanceWhenFilterOn}km. Would you like to book at their salon instead?`,
+        errorCode: "DISTANCE_LIMIT",
+        settingsRoute: "/(app)/(tabs)/more/settings/distance-settings",
       });
     }
 
@@ -367,12 +370,20 @@ export async function POST(request: NextRequest) {
     });
 
     if (!travelFeeResult.withinServiceArea) {
+      const outsideReason = travelFeeResult.outsideReason || "Address is outside service area";
+      const isDistanceLimit =
+        /max service radius/i.test(outsideReason) ||
+        (isDistanceFilterEnabled && distanceKm > maxDistanceWhenFilterOn);
       return successResponse({
         valid: false,
         travelFee: 0,
         zoneId: null,
         distanceKm: travelFeeResult.distanceKm,
-        reason: travelFeeResult.outsideReason || "Address is outside service area",
+        reason: outsideReason,
+        errorCode: isDistanceLimit ? "DISTANCE_LIMIT" : "OUTSIDE_SERVICE_AREA",
+        settingsRoute: isDistanceLimit
+          ? "/(app)/(tabs)/more/settings/distance-settings"
+          : "/(app)/(tabs)/more/settings/travel-fees",
       });
     }
 

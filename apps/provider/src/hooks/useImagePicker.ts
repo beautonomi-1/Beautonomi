@@ -4,7 +4,7 @@
 import { useState, useCallback } from "react";
 import { Alert, Platform } from "react-native";
 import * as ImagePicker from "expo-image-picker";
-import { i18n } from "@beautonomi/i18n";
+import { pm } from "@/lib/provider-translate";
 import {
   launchCameraWithPermission,
   launchImageLibraryWithPermission,
@@ -33,12 +33,24 @@ export type ImagePickLaunchOptions = Pick<
 
 const PERMISSION_COPY = {
   photos: {
-    title: () => i18n.t("provider.mobile.components.imagePicker.photosAccessTitle"),
-    message: () => i18n.t("provider.mobile.components.imagePicker.photosAccessBody"),
+    title: () =>
+      pm("components.imagePicker.photosAccessTitle", undefined, "Photos access needed"),
+    message: () =>
+      pm(
+        "components.imagePicker.photosAccessBody",
+        undefined,
+        "Allow Beautonomi Provider to access your photos so you can choose a picture.",
+      ),
   },
   camera: {
-    title: () => i18n.t("provider.mobile.components.imagePicker.cameraAccessTitle"),
-    message: () => i18n.t("provider.mobile.components.imagePicker.cameraAccessBody"),
+    title: () =>
+      pm("components.imagePicker.cameraAccessTitle", undefined, "Camera access needed"),
+    message: () =>
+      pm(
+        "components.imagePicker.cameraAccessBody",
+        undefined,
+        "Allow Beautonomi Provider to use your camera so you can take a photo.",
+      ),
   },
 };
 
@@ -82,7 +94,13 @@ export function useImagePicker() {
           { defer: deferLaunch },
         );
         if (!result) {
-          setError(i18n.t("provider.mobile.components.imagePicker.permissionPhotosRequired"));
+          setError(
+            pm(
+              "components.imagePicker.permissionPhotosRequired",
+              undefined,
+              "Permission to access photos is required",
+            ),
+          );
           return null;
         }
         if (result.canceled || !result.assets[0]) return null;
@@ -91,7 +109,7 @@ export function useImagePicker() {
         setError(
           e instanceof Error
             ? e.message
-            : i18n.t("provider.mobile.components.imagePicker.failedPickImage"),
+            : pm("components.imagePicker.failedPickImage", undefined, "Failed to pick image"),
         );
         return null;
       } finally {
@@ -118,7 +136,13 @@ export function useImagePicker() {
           { defer: deferLaunch },
         );
         if (!result) {
-          setError(i18n.t("provider.mobile.components.imagePicker.permissionCameraRequired"));
+          setError(
+            pm(
+              "components.imagePicker.permissionCameraRequired",
+              undefined,
+              "Camera permission is required",
+            ),
+          );
           return null;
         }
         if (result.canceled || !result.assets[0]) return null;
@@ -127,7 +151,7 @@ export function useImagePicker() {
         setError(
           e instanceof Error
             ? e.message
-            : i18n.t("provider.mobile.components.imagePicker.failedTakePhoto"),
+            : pm("components.imagePicker.failedTakePhoto", undefined, "Failed to take photo"),
         );
         return null;
       } finally {
@@ -144,23 +168,23 @@ export function useImagePicker() {
       }
       return new Promise((resolve) => {
         Alert.alert(
-          i18n.t("provider.mobile.components.imagePicker.profilePhotoTitle"),
-          i18n.t("provider.mobile.components.imagePicker.chooseOption"),
+          pm("components.imagePicker.profilePhotoTitle", undefined, "Profile photo"),
+          pm("components.imagePicker.chooseOption", undefined, "Choose an option"),
           [
             {
-              text: i18n.t("provider.mobile.components.imagePicker.takePhoto"),
+              text: pm("components.imagePicker.takePhoto", undefined, "Take photo"),
               onPress: () => {
                 void pickFromCamera(launchOptions, true).then(resolve);
               },
             },
             {
-              text: i18n.t("provider.mobile.components.imagePicker.photoLibrary"),
+              text: pm("components.imagePicker.photoLibrary", undefined, "Photo library"),
               onPress: () => {
                 void pickFromLibrary(launchOptions, true).then(resolve);
               },
             },
             {
-              text: i18n.t("provider.mobile.components.imagePicker.cancel"),
+              text: pm("components.imagePicker.cancel", undefined, "Cancel"),
               style: "cancel",
               onPress: () => resolve(null),
             },
@@ -190,7 +214,13 @@ export function useImagePicker() {
           },
         );
         if (!result) {
-          setError(i18n.t("provider.mobile.components.imagePicker.permissionPhotosRequired"));
+          setError(
+            pm(
+              "components.imagePicker.permissionPhotosRequired",
+              undefined,
+              "Permission to access photos is required",
+            ),
+          );
           return null;
         }
         if (result.canceled || !result.assets?.length) return null;
@@ -199,7 +229,7 @@ export function useImagePicker() {
         setError(
           e instanceof Error
             ? e.message
-            : i18n.t("provider.mobile.components.imagePicker.failedPickImage"),
+            : pm("components.imagePicker.failedPickImage", undefined, "Failed to pick image"),
         );
         return null;
       } finally {

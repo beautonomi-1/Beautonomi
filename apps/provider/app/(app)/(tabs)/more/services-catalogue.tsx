@@ -190,7 +190,7 @@ export default function ServicesCatalogueScreen() {
         rightAction={
           <View style={twStyle("flex-row items-center")}>
             <TouchableOpacity
-              onPress={() => router.push("/(app)/(tabs)/more/advanced-pricing" as never)}
+              onPress={() => router.push("/(app)/(tabs)/more/catalogue" as never)}
               style={[twStyle("h-10 min-w-[44px] flex-row items-center justify-center rounded-full bg-gray-100 px-3"), { marginRight: 8 }]}
               accessibilityLabel="Advanced pricing rules"
               accessibilityRole="button"

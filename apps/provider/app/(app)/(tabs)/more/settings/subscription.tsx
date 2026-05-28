@@ -490,7 +490,7 @@ export default function SubscriptionScreen() {
           await openSubscriptionPaystack(data.link, "Update Card");
           return;
         }
-      } catch (e) {
+      } catch {
         Alert.alert("Error", "Failed to get manage link.");
       }
     }

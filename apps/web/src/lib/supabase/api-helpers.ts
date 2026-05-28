@@ -370,7 +370,7 @@ async function requireRoleInApiImpl(
     const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
     if (token) {
       try {
-        const supabase = createSupabaseClientFromToken(token);
+        const supabase = await createSupabaseClientFromToken(token);
         const { data: { user: authUser }, error } = await supabase.auth.getUser();
         if (error || !authUser) throw new Error("Authentication required");
         const { data: userData } = await supabase

@@ -14,6 +14,7 @@
     "back": "Back",
     "next": "Next",
     "done": "Done",
+    "continue": "Continue",
     "close": "Close",
     "confirm": "Confirm",
     "yes": "Yes",
@@ -299,6 +300,22 @@
       "deleteConfirmTitle": "Remove waitlist entry?",
       "deleteConfirmMessage": "This cannot be undone.",
       "staffPrefix": "Staff"
+    },
+    "walkInSale": {
+      "saleCompleteTitle": "Sale complete",
+      "saleCompleteBody": "Order {{orderNumber}} recorded.",
+      "saleCompleteBodyGeneric": "The sale has been recorded.",
+      "couldntCompleteSale": "Couldn't complete sale",
+      "emptyCartTitle": "Empty cart",
+      "emptyCartBody": "Add at least one product."
+    },
+    "salesScreen": {
+      "receiptTitle": "Receipt",
+      "saleCompleteTitle": "Sale complete!",
+      "totalLabel": "Total",
+      "paidVia": "Paid via {{method}}",
+      "done": "Done",
+      "backToItems": "Back to items"
     },
     "mobile": {
       "components": {
@@ -1233,7 +1250,16 @@
           "paymentPendingCheckoutBody": "If you completed the card payment, it can take a few moments to confirm. Check Product orders shortly.",
           "paymentSuccessTitle": "Payment successful",
           "paymentPendingTitle": "Payment pending",
-          "viewOrdersCta": "View orders"
+          "viewOrdersCta": "View orders",
+          "orderNumberLabel": "Order number",
+          "itemsLabel": "Items",
+          "orderSuccessFooterHint": "Tap continue to view your orders.",
+          "placingOrder": "Placing your order…",
+          "processingPayment": "Processing payment…",
+          "openingPaymentPage": "Opening payment page…",
+          "confirmingPayment": "Confirming your payment…",
+          "securePaymentTitle": "Secure payment",
+          "savedCardChargeFailed": "Could not charge your saved card. Try again or use a different payment method."
         }
       },
       "screens": {
@@ -1427,7 +1453,21 @@
           "paymentRedirectHint": "You will be redirected to complete payment securely.",
           "codeRowLabel": "Your gift card code",
           "codeRowLabelNumbered": "Gift card {{number}}",
-          "giftCardReadyBodyWithCodes": "Copy your code — use it at checkout or find it anytime under Payments."
+          "giftCardReadyBodyWithCodes": "Copy your code — use it at checkout or find it anytime under Payments.",
+          "successFooterHint": "Tap continue when you are ready to leave this screen."
+        },
+        "customOfferCheckout": {
+          "paymentSuccessfulTitle": "Payment successful",
+          "bookingConfirmingSubtitle": "Your booking is being confirmed…",
+          "offerLabel": "Offer",
+          "statusLabel": "Status",
+          "statusPaidConfirmed": "Paid — booking confirmed",
+          "customOfferFallback": "Custom offer",
+          "processingPayment": "Processing payment…",
+          "confirmingPayment": "Confirming payment…",
+          "securePaymentTitle": "Pay custom offer",
+          "chargingCard": "Charging your card…",
+          "openingSecurePayment": "Opening secure payment…"
         },
         "requestReturn": {
           "selectReasonTitle": "Select reason",
@@ -2333,7 +2373,15 @@
     "failedComplete": "Failed to complete",
     "memberDiscountFallback": "Member discount",
     "saveCardInfoA11y": "Info about saving card",
-    "customTipA11y": "Custom tip amount"
+    "customTipA11y": "Custom tip amount",
+    "bookingSuccessTitleConfirmed": "Booking confirmed!",
+    "bookingSuccessTitlePending": "Booking received!",
+    "bookingSuccessTitlePendingPayment": "Payment processing...",
+    "bookingSuccessPendingPaymentBody": "Your payment is being confirmed. You'll receive a notification shortly.",
+    "bookingSuccessPendingBody": "Awaiting provider confirmation — usually within 8 hours",
+    "bookingSuccessFooter": "Taking you to your booking…",
+    "totalPaidPrefix": "Total paid",
+    "platformFeeInclusive": " (incl. platform fee {{amount}})"
   },
   "payments": {
     "pay": "Pay",

@@ -13,6 +13,7 @@ const analyticsRN =
 /* eslint-enable @typescript-eslint/no-require-imports */
 
 export const initAnalytics = analyticsRN.initAnalytics;
+export const resetAnalyticsModule = analyticsRN.resetAnalyticsModule;
 export const handleEngagementURL = analyticsRN.handleEngagementURL;
 export const bootEngagement = analyticsRN.bootEngagement;
 export const getAnalyticsClient = analyticsRN.getAnalyticsClient;

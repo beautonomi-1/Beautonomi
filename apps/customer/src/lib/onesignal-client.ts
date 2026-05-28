@@ -7,6 +7,7 @@ import { getOneSignalAppId } from "@/lib/third-party-config";
 
 let initializedFor: string | null = null;
 let initInflight: Promise<void> | null = null;
+let loggedInUserId: string | null = null;
 let pendingPushPayload: Record<string, unknown> | null = null;
 let pushNavigationReady = false;
 
@@ -28,9 +29,10 @@ export async function ensureOneSignalInitialized(appId: string, userId?: string 
 
   if (initInflight && initializedFor === normalizedAppId) {
     await initInflight;
-    if (userId) {
+    if (userId && loggedInUserId !== userId) {
       const { OneSignal } = await import("react-native-onesignal");
       OneSignal.login(userId);
+      loggedInUserId = userId;
     }
     return;
   }
@@ -41,8 +43,12 @@ export async function ensureOneSignalInitialized(appId: string, userId?: string 
     if (initializedFor !== normalizedAppId) {
       OneSignal.initialize(normalizedAppId);
       initializedFor = normalizedAppId;
+      loggedInUserId = null;
     }
-    if (userId) OneSignal.login(userId);
+    if (userId && loggedInUserId !== userId) {
+      OneSignal.login(userId);
+      loggedInUserId = userId;
+    }
   })();
 
   try {
@@ -107,6 +113,7 @@ export async function logoutOneSignal(): Promise<string | null> {
     const { OneSignal } = await import("react-native-onesignal");
     OneSignal.logout();
     initializedFor = null;
+    loggedInUserId = null;
     return playerId;
   } catch {
     return null;

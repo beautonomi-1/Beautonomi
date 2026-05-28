@@ -8,6 +8,7 @@ import { AppState, Platform } from "react-native";
 import { useApi } from "@/hooks/useApi";
 import { useAuth } from "@/providers/AuthProvider";
 import { supabase } from "@/lib/supabase/client";
+import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
 
 interface NotificationsCountResponse {
   notifications: unknown[];
@@ -73,7 +74,6 @@ export function NotificationsCountProvider({ children }: { children: ReactNode }
   const refreshCount = useCallback(async () => {
     await refreshRef.current();
   }, []);
-  const notificationsRealtimeGenRef = useRef(0);
 
   useEffect(() => {
     const sub = AppState.addEventListener("change", (next) => {
@@ -90,22 +90,30 @@ export function NotificationsCountProvider({ children }: { children: ReactNode }
   useEffect(() => {
     if (!user?.id) return;
     let debounce: ReturnType<typeof setTimeout> | undefined;
-    const gen = ++notificationsRealtimeGenRef.current;
-    const channel = supabase
-      .channel(`notifications-count:user:${user.id}:rt${gen}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}` },
-        () => {
-          if (debounce) clearTimeout(debounce);
-          debounce = setTimeout(() => {
-            void refreshRef.current();
-          }, 120);
-        }
-      )
-      .subscribe();
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+
+    try {
+      const topic = nextRealtimeTopic(`notifications-count:user:${user.id}`);
+      channel = supabase
+        .channel(topic)
+        .on(
+          "postgres_changes" as never,
+          { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}` },
+          () => {
+            if (debounce) clearTimeout(debounce);
+            debounce = setTimeout(() => {
+              void refreshRef.current();
+            }, 120);
+          },
+        )
+        .subscribe();
+    } catch {
+      // Non-fatal: badge still refreshes on focus / interval.
+    }
+
     return () => {
       if (debounce) clearTimeout(debounce);
+      if (!channel) return;
       try {
         supabase.removeChannel(channel);
       } catch {

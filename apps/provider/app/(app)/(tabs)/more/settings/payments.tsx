@@ -30,6 +30,7 @@ interface PaymentSettings {
   accept_cash: boolean;
   accept_card: boolean;
   accept_online: boolean;
+  accept_paystack_terminal: boolean;
   vat_registered: boolean;
   vat_number: string | null;
   tax_rate: number;
@@ -50,6 +51,7 @@ type PaymentsSettingsApi = Partial<PaymentSettings> & {
   acceptCash?: boolean;
   acceptCard?: boolean;
   acceptOnline?: boolean;
+  acceptPaystackTerminal?: boolean;
   receiptAutoSend?: boolean;
   tipsEnabled?: boolean;
   tipPresets?: number[];
@@ -63,6 +65,7 @@ const DEFAULT_SETTINGS: PaymentSettings = {
   accept_cash: true,
   accept_card: true,
   accept_online: false,
+  accept_paystack_terminal: false,
   vat_registered: false,
   vat_number: null,
   tax_rate: 15,
@@ -158,6 +161,9 @@ export default function PaymentSettingsScreen() {
         accept_cash: raw.acceptCash ?? DEFAULT_SETTINGS.accept_cash,
         accept_card: yocoEnabled && (raw.acceptCard ?? DEFAULT_SETTINGS.accept_card),
         accept_online: raw.acceptOnline ?? DEFAULT_SETTINGS.accept_online,
+        accept_paystack_terminal:
+          paystackTerminalEnabled &&
+          (raw.acceptPaystackTerminal ?? DEFAULT_SETTINGS.accept_paystack_terminal),
         receipt_auto_send: raw.receiptAutoSend ?? DEFAULT_SETTINGS.receipt_auto_send,
         tips_enabled: raw.tipsEnabled ?? DEFAULT_SETTINGS.tips_enabled,
         tip_presets: raw.tipPresets ?? DEFAULT_SETTINGS.tip_presets,
@@ -165,7 +171,7 @@ export default function PaymentSettingsScreen() {
         tax_inclusive: raw.taxInclusive ?? DEFAULT_SETTINGS.tax_inclusive,
       });
     }
-  }, [settings, yocoEnabled]);
+  }, [settings, yocoEnabled, paystackTerminalEnabled]);
 
   function update<K extends keyof PaymentSettings>(
     key: K,
@@ -196,6 +202,7 @@ export default function PaymentSettingsScreen() {
       acceptCash: form.accept_cash,
       acceptCard: yocoEnabled ? form.accept_card : false,
       acceptOnline: form.accept_online,
+      acceptPaystackTerminal: paystackTerminalEnabled ? form.accept_paystack_terminal : false,
       taxInclusive: form.tax_inclusive,
       tipsEnabled: form.tips_enabled,
       tipPresets: form.tip_presets,
@@ -214,7 +221,7 @@ export default function PaymentSettingsScreen() {
       setHasChanges(false);
       refresh();
     }
-  }, [saveSettings, form, refresh]);
+  }, [saveSettings, form, refresh, paystackTerminalEnabled, yocoEnabled]);
 
   if (loading) {
     return (
@@ -326,6 +333,15 @@ export default function PaymentSettingsScreen() {
             value={form.accept_card}
             onValueChange={(v) => update("accept_card", v)}
             accessibilityLabel="Toggle accept card payments"
+          />
+        )}
+        {paystackTerminalEnabled && (
+          <ToggleRow
+            label="Accept Paystack Terminal"
+            description="Accept QR and link payments via Paystack Virtual Terminal"
+            value={form.accept_paystack_terminal}
+            onValueChange={(v) => update("accept_paystack_terminal", v)}
+            accessibilityLabel="Toggle accept Paystack Terminal payments"
           />
         )}
         <View style={twStyle("px-4 py-3.5")}>

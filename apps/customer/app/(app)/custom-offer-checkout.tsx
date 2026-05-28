@@ -36,6 +36,7 @@ import {
   PaymentSuccessOverlay,
   type PaymentSuccessSummaryRow,
 } from "@/components/payment/PaymentSuccessOverlay";
+import { useTranslation } from "@beautonomi/i18n";
 
 const PRIMARY = Colors.primary;
 
@@ -96,6 +97,17 @@ export default function CustomOfferCheckoutScreen() {
   const { offer_id } = useLocalSearchParams<{ offer_id: string }>();
   const { contentPadding } = useResponsive();
   const { user } = useAuth();
+  const { t } = useTranslation();
+  const coc = useCallback(
+    (key: string, options?: Record<string, string | number>, fallback?: string) => {
+      const fullKey = `customer.mobile.screens.customOfferCheckout.${key}`;
+      return t(fullKey, {
+        ...(options ?? {}),
+        defaultValue: fallback ?? "",
+      }) as string;
+    },
+    [t],
+  );
   const offerId = typeof offer_id === "string" ? offer_id : "";
 
   const [offer, setOffer] = useState<OfferPayload | null>(null);
@@ -105,7 +117,9 @@ export default function CustomOfferCheckoutScreen() {
 
   const [paymentOption, setPaymentOption] = useState<"full" | "deposit">("full");
   const [processingPayment, setProcessingPayment] = useState(false);
-  const [processingMessage, setProcessingMessage] = useState("Processing payment…");
+  const [processingMessage, setProcessingMessage] = useState(() =>
+    coc("processingPayment", undefined, "Processing payment…"),
+  );
   const [successOverlay, setSuccessOverlay] = useState<{
     rows: PaymentSuccessSummaryRow[];
   } | null>(null);
@@ -122,6 +136,22 @@ export default function CustomOfferCheckoutScreen() {
 
   const currency = offer?.currency || getTenantDefaultCurrency();
   const fmt = useCallback((n: number) => formatMoney(n, currency), [currency]);
+
+  const buildOfferSuccessRows = useCallback((): PaymentSuccessSummaryRow[] => {
+    return [
+      {
+        icon: "pricetag-outline",
+        label: coc("offerLabel", undefined, "Offer"),
+        value:
+          offer?.request?.service_name || coc("customOfferFallback", undefined, "Custom offer"),
+      },
+      {
+        icon: "checkmark-done-outline",
+        label: coc("statusLabel", undefined, "Status"),
+        value: coc("statusPaidConfirmed", undefined, "Paid — booking confirmed"),
+      },
+    ];
+  }, [coc, offer?.request?.service_name]);
 
   const providerRequiresDeposit = Boolean(offer?.provider_deposit?.requires_deposit);
   const depositPct = Number(offer?.provider_deposit?.deposit_percentage ?? 30);
@@ -251,7 +281,9 @@ export default function CustomOfferCheckoutScreen() {
       setPayError(null);
       setProcessingPayment(true);
       setProcessingMessage(
-        body.payment_method_id ? "Charging your card…" : "Opening secure payment…"
+        body.payment_method_id
+          ? coc("chargingCard", undefined, "Charging your card…")
+          : coc("openingSecurePayment", undefined, "Opening secure payment…"),
       );
       try {
         const res = await api.post<{
@@ -281,20 +313,7 @@ export default function CustomOfferCheckoutScreen() {
           haptic.success();
           setProcessingPayment(false);
           if (bookingId) {
-            setSuccessOverlay({
-              rows: [
-                {
-                  icon: "pricetag-outline",
-                  label: "Offer",
-                  value: offer?.request?.service_name || "Custom offer",
-                },
-                {
-                  icon: "checkmark-done-outline",
-                  label: "Status",
-                  value: "Paid — booking confirmed",
-                },
-              ],
-            });
+            setSuccessOverlay({ rows: buildOfferSuccessRows() });
             setTimeout(() => {
               router.replace({ pathname: "/(app)/booking-detail", params: { id: bookingId } });
             }, 2200);
@@ -330,7 +349,7 @@ export default function CustomOfferCheckoutScreen() {
         // Concurrent RN modals can prevent checkout from appearing.
         setProcessingPayment(false);
         const pr = await paystackHostedCheckout.waitForCheckout(url, {
-          title: "Pay custom offer",
+          title: coc("securePaymentTitle", undefined, "Pay custom offer"),
           returnUrl: paystackReturnPath ?? undefined,
           matchSuccess: (u) =>
             !!paystackReturnPath &&
@@ -368,7 +387,7 @@ export default function CustomOfferCheckoutScreen() {
         }
 
         setProcessingPayment(true);
-        setProcessingMessage("Confirming payment…");
+        setProcessingMessage(coc("confirmingPayment", undefined, "Confirming payment…"));
         let bookingId: string | null = await pollForBooking();
         if (!bookingId) {
           await new Promise((r) => setTimeout(r, 1500));
@@ -382,20 +401,7 @@ export default function CustomOfferCheckoutScreen() {
         setProcessingPayment(false);
         if (bookingId) {
           haptic.success();
-          setSuccessOverlay({
-            rows: [
-              {
-                icon: "pricetag-outline",
-                label: "Offer",
-                value: offer?.request?.service_name || "Custom offer",
-              },
-              {
-                icon: "checkmark-done-outline",
-                label: "Status",
-                value: "Paid — booking confirmed",
-              },
-            ],
-          });
+          setSuccessOverlay({ rows: buildOfferSuccessRows() });
           setTimeout(() => {
             router.replace({ pathname: "/(app)/booking-detail", params: { id: bookingId! } });
           }, 2200);
@@ -1118,8 +1124,8 @@ export default function CustomOfferCheckoutScreen() {
 
         <PaymentSuccessOverlay
           visible={Boolean(successOverlay)}
-          title="Payment successful"
-          subtitle="Your booking is being confirmed…"
+          title={coc("paymentSuccessfulTitle", undefined, "Payment successful")}
+          subtitle={coc("bookingConfirmingSubtitle", undefined, "Your booking is being confirmed…")}
           summaryRows={successOverlay?.rows}
           onDismiss={() => setSuccessOverlay(null)}
         />

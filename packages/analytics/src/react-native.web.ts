@@ -37,6 +37,13 @@ export type InitAnalyticsOptions = {
   enableSessionReplay?: boolean;
 };
 
+export function resetAnalyticsModule(): void {
+  isInitialized = false;
+  try {
+    amplitude.reset();
+  } catch {}
+}
+
 export async function initAnalytics(
   config: AmplitudeConfig,
   portal: "client" | "provider",

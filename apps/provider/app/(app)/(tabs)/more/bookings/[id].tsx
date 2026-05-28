@@ -494,12 +494,22 @@ const ETA_OPTIONS = [15, 30, 45] as const;
 /** At-home reschedule slot queries: matches `new.tsx` fallback before /api/location/validate returns. */
 const DEFAULT_RESCHEDULE_TRAVEL_BUFFER_MINUTES = 30;
 
-const PAYMENT_METHODS = [
+type MarkPaidPaymentMethod = "cash" | "card" | "bank_transfer" | "other" | "paystack_terminal";
+
+const BASE_PAYMENT_METHODS: { label: string; value: MarkPaidPaymentMethod }[] = [
   { label: "Cash", value: "cash" },
   { label: "Card (Yoco / terminal)", value: "card" },
   { label: "EFT", value: "bank_transfer" },
   { label: "Other", value: "other" },
-] as const;
+];
+
+function buildMarkPaidPaymentMethods(paystackTerminalEnabled: boolean) {
+  const methods = [...BASE_PAYMENT_METHODS];
+  if (paystackTerminalEnabled) {
+    methods.splice(2, 0, { label: "Paystack Terminal", value: "paystack_terminal" });
+  }
+  return methods;
+}
 
 const PAYMENT_METHODS_CHARGE = [
   { label: "Cash", value: "cash" as const },
@@ -784,7 +794,9 @@ export default function BookingDetailScreen() {
 
   // Mark paid
   const [showMarkPaid, setShowMarkPaid] = useState(false);
-  const [markPaidMethod, setMarkPaidMethod] = useState<"cash" | "card" | "bank_transfer" | "other">("card");
+  const [markPaidMethod, setMarkPaidMethod] = useState<
+    "cash" | "card" | "bank_transfer" | "other" | "paystack_terminal"
+  >("card");
   const [markingPaid, setMarkingPaid] = useState(false);
 
   // Refund
@@ -798,6 +810,10 @@ export default function BookingDetailScreen() {
   const [showYocoPayment, setShowYocoPayment] = useState(false);
   const { integration: yocoIntegration } = useYocoIntegration();
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
+  const markPaidPaymentMethods = useMemo(
+    () => buildMarkPaidPaymentMethods(paystackTerminalEnabled),
+    [paystackTerminalEnabled],
+  );
   const [preparingPaystackTerminal, setPreparingPaystackTerminal] = useState(false);
   const [paystackTerminalPrompt, setPaystackTerminalPrompt] = useState<{
     code: string;
@@ -840,6 +856,44 @@ export default function BookingDetailScreen() {
   const refreshBookingDetail = useCallback(async () => {
     await Promise.all([refresh(), refreshCharges(), refreshResources()]);
   }, [refresh, refreshCharges, refreshResources]);
+
+  const refreshBookingDetailRef = useRef(refreshBookingDetail);
+  refreshBookingDetailRef.current = refreshBookingDetail;
+  const bookingDetailRealtimeGenRef = useRef(0);
+
+  useEffect(() => {
+    if (!bookingIdStr) return;
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const gen = ++bookingDetailRealtimeGenRef.current;
+    const channel = supabase
+      .channel(`provider-booking-detail-${bookingIdStr}-rt${gen}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "bookings",
+          filter: `id=eq.${bookingIdStr}`,
+        },
+        () => {
+          if (debounceTimer) clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(() => {
+            debounceTimer = null;
+            void refreshBookingDetailRef.current();
+          }, 400);
+        },
+      )
+      .subscribe();
+
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      try {
+        supabase.removeChannel(channel);
+      } catch {
+        // Best effort cleanup only.
+      }
+    };
+  }, [bookingIdStr]);
 
   // Refetch all detail satellite data on focus; otherwise payment/add-on/resource
   // state can stay stale after web or another-device changes.
@@ -3784,7 +3838,7 @@ export default function BookingDetailScreen() {
           ) : null}
           <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Payment method</Text>
           <View style={twStyle("flex-row flex-wrap gap-2 mb-4")}>
-            {PAYMENT_METHODS.map((pm) => (
+            {markPaidPaymentMethods.map((pm) => (
               <TouchableOpacity
                 key={pm.value}
                 onPress={() => setMarkPaidMethod(pm.value)}

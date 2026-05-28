@@ -179,6 +179,7 @@ export default function SettingsAccountHubScreen() {
   const { signOut } = useAuth();
   const [expandedId, setExpandedId] = useState<string | null>("account");
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
+  const yocoEnabled = useFeatureFlag("payment_yoco");
 
   const { data: providerData } = useApi<{ business_type?: string } | { data?: { business_type?: string } }>(
     "/api/me/provider"
@@ -342,9 +343,13 @@ export default function SettingsAccountHubScreen() {
           const rawItems = category.id === "appointment-activity" && isFreelancer
             ? [{ title: "Upgrade to Salon", description: "Unlock team management and more", href: "/provider/settings/upgrade-to-salon", isUpgrade: true as const }, ...category.items]
             : category.items;
-          const items = rawItems.filter(
-            (item) => paystackTerminalEnabled || !(item.mobileRoute ?? item.href).includes("paystack-terminal"),
-          );
+          const items = rawItems.filter((item) => {
+            const routeKey = item.mobileRoute ?? item.href;
+            return (
+              (paystackTerminalEnabled || !routeKey.includes("paystack-terminal")) &&
+              (yocoEnabled || !routeKey.includes("yoco"))
+            );
+          });
           return (
             <View key={category.id} style={twStyle("mb-2")}>
               <TouchableOpacity

@@ -38,6 +38,9 @@ import { Colors } from "@/constants/colors";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { api } from "@/lib/api-client";
 import { PROVIDER_PRODUCTS_CATALOG_CHANGED } from "@/lib/provider-products-catalog-events";
+import { isProductSellable, maxSellableUnits } from "@/features/products/cartItem";
+import type { ProductItem as PosProductItem } from "@/features/products/types";
+import { pt } from "@/lib/provider-translate";
 
 interface DashboardMetrics {
   revenue_today: number;
@@ -194,20 +197,13 @@ type CheckoutStep =
   | "payment"
   | "receipt";
 
-type PaymentMethod = "cash" | "yoco" | "card" | "eft";
+type PaymentMethod = "cash" | "yoco" | "card" | "eft" | "paystack_terminal";
 
 const DATE_RANGES = [
   { label: "Today", value: "today" },
   { label: "This Week", value: "week" },
   { label: "This Month", value: "month" },
   { label: "All Time", value: "all" },
-];
-
-const PAYMENT_METHODS: { label: string; value: PaymentMethod; icon: keyof typeof Ionicons.glyphMap }[] = [
-  { label: "Cash", value: "cash", icon: "cash-outline" },
-  { label: "Yoco terminal", value: "yoco", icon: "card-outline" },
-  { label: "Card manual", value: "card", icon: "reader-outline" },
-  { label: "EFT", value: "eft", icon: "swap-horizontal-outline" },
 ];
 
 const TRANSACTIONS_HUB_HREF = "/(app)/(tabs)/more/transactions-hub" as const;
@@ -226,6 +222,23 @@ export default function SalesScreen() {
   const { isTablet } = useResponsive();
   const adsModule = useModuleConfig("ads") as { enabled?: boolean } | undefined;
   const adsFeatureOn = useFeatureFlag("ads.enabled");
+  const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
+  const paymentMethodOptions = useMemo(() => {
+    const base: { label: string; value: PaymentMethod; icon: keyof typeof Ionicons.glyphMap }[] = [
+      { label: "Cash", value: "cash", icon: "cash-outline" },
+      { label: "Yoco terminal", value: "yoco", icon: "card-outline" },
+      { label: "Card manual", value: "card", icon: "reader-outline" },
+      { label: "EFT", value: "eft", icon: "swap-horizontal-outline" },
+    ];
+    if (paystackTerminalEnabled) {
+      base.splice(3, 0, {
+        label: "Paystack Terminal",
+        value: "paystack_terminal",
+        icon: "qr-code-outline",
+      });
+    }
+    return base;
+  }, [paystackTerminalEnabled]);
   const adsSelfServeAvailable = Boolean(adsModule?.enabled) || adsFeatureOn;
   const { selectedLocationId } = useProvider();
   const locQ = selectedLocationId ? `&location_id=${selectedLocationId}` : "";
@@ -317,8 +330,8 @@ export default function SalesScreen() {
   );
   const products = useMemo<ProductItem[]>(() => {
     if (!productsResponse) return [];
-    if (Array.isArray(productsResponse)) return productsResponse;
-    return productsResponse.products ?? [];
+    const raw = Array.isArray(productsResponse) ? productsResponse : productsResponse.products ?? [];
+    return raw.filter((p) => isProductSellable(p as PosProductItem));
   }, [productsResponse]);
 
   useEffect(() => {
@@ -467,6 +480,11 @@ export default function SalesScreen() {
   }
 
   function addSimpleProductToCart(product: ProductItem) {
+    const max = maxSellableUnits(product as PosProductItem, null);
+    if (max <= 0) {
+      Alert.alert("Out of stock", `${product.name} is out of stock.`);
+      return;
+    }
     const unit = Number(product.retail_price ?? 0);
     setCart((prev) => {
       const existing = prev.find(
@@ -476,6 +494,7 @@ export default function SalesScreen() {
           !(i.product_variant_id ?? null),
       );
       if (existing) {
+        if (existing.quantity >= max) return prev;
         return prev.map((i) =>
           i.lineId === existing.lineId ? { ...i, quantity: i.quantity + 1 } : i,
         );
@@ -497,6 +516,11 @@ export default function SalesScreen() {
   }
 
   function addProductVariantToCart(product: ProductItem, variant: ProductVariantRow) {
+    const max = maxSellableUnits(product as PosProductItem, variant as never);
+    if (max <= 0) {
+      Alert.alert("Out of stock", "That variant is out of stock.");
+      return;
+    }
     const unit = Number(variant.retail_price ?? 0);
     const label = formatProductVariantLabel(variant);
     setCart((prev) => {
@@ -507,6 +531,7 @@ export default function SalesScreen() {
           (i.product_variant_id ?? null) === variant.id,
       );
       if (existing) {
+        if (existing.quantity >= max) return prev;
         return prev.map((i) =>
           i.lineId === existing.lineId ? { ...i, quantity: i.quantity + 1 } : i,
         );
@@ -992,6 +1017,8 @@ export default function SalesScreen() {
               <View>
                 {products.map((prod, i) => {
                   const hasOpts = Boolean(prod.has_variants && (prod.variants?.length ?? 0) > 0);
+                  const maxSimple = maxSellableUnits(prod as PosProductItem, null);
+                  const oos = maxSimple <= 0 && !hasOpts;
                   const inCart = hasOpts
                     ? cart.find((c) => c.type === "product" && c.item_id === prod.id)
                     : cart.find(
@@ -1019,9 +1046,11 @@ export default function SalesScreen() {
                         borderWidth: 1,
                         padding: 16,
                         marginTop: i === 0 ? 0 : 8,
+                        opacity: oos ? 0.45 : 1,
                         ...(inCart ? { borderColor: "#a5b4fc", backgroundColor: "#eef2ff" } : { borderColor: Colors.gray[100], backgroundColor: Colors.white }),
                       }}
-                      onPress={() => handleProductRowPress(prod)}
+                      onPress={() => !oos && handleProductRowPress(prod)}
+                      disabled={oos}
                       accessibilityLabel={`Add ${prod.name} to cart`}
                     >
                       <View style={{ flex: 1, paddingRight: 8 }}>
@@ -1170,7 +1199,7 @@ export default function SalesScreen() {
           Payment Method
         </Text>
         <View style={{ flexDirection: "row", flexWrap: "wrap", marginHorizontal: -4 }}>
-          {PAYMENT_METHODS.map((pm) => (
+          {paymentMethodOptions.map((pm) => (
             <TouchableOpacity
               key={pm.value}
               style={[
@@ -1236,7 +1265,9 @@ export default function SalesScreen() {
           accessibilityLabel="Go back to item selection"
           accessibilityRole="button"
         >
-          <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Back to items</Text>
+          <Text style={{ fontSize: 14, color: Colors.gray[500] }}>
+            {pt("salesScreen.backToItems", undefined, "Back to items")}
+          </Text>
         </TouchableOpacity>
       </BottomSheet>
     );
@@ -1249,7 +1280,7 @@ export default function SalesScreen() {
       <BottomSheet
         visible
         onClose={handleDoneReceipt}
-        title="Receipt"
+        title={pt("salesScreen.receiptTitle", undefined, "Receipt")}
         snapHeight="half"
       >
         <View style={{ alignItems: "center" }}>
@@ -1257,7 +1288,7 @@ export default function SalesScreen() {
             <Ionicons name="checkmark-circle" size={36} color="#22c55e" />
           </View>
           <Text style={{ marginTop: 12, fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>
-            Sale Complete!
+            {pt("salesScreen.saleCompleteTitle", undefined, "Sale complete!")}
           </Text>
           <Text style={{ marginTop: 4, fontSize: 14, color: Colors.gray[500] }}>
             {receiptData.client} · {format(new Date(receiptData.date), "MMM d, HH:mm")}
@@ -1277,18 +1308,20 @@ export default function SalesScreen() {
           ))}
           <View style={{ marginTop: 8, borderTopWidth: 1, borderTopColor: Colors.gray[200], paddingTop: 8 }}>
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-              <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>Total</Text>
+              <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>
+                {pt("salesScreen.totalLabel", undefined, "Total")}
+              </Text>
               <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>{formatCurrency(receiptData.total)}</Text>
             </View>
             <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500], textTransform: "capitalize" }}>
-              Paid via {receiptData.method}
+              {pt("salesScreen.paidVia", { method: receiptData.method }, `Paid via ${receiptData.method}`)}
             </Text>
           </View>
         </View>
 
         <View style={{ marginTop: 16 }}>
           <ActionButton
-            label="Done"
+            label={pt("salesScreen.done", undefined, "Done")}
             variant="primary"
             onPress={handleDoneReceipt}
             fullWidth

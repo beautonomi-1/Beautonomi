@@ -130,11 +130,14 @@ export default function ProductCheckoutScreen() {
   const { t } = useTranslation();
   const errTitle = t("customer.mobile.screens.authLogin.errorTitle");
   const pc = useCallback(
-    (key: string, options?: Record<string, string | number>) => {
+    (key: string, options?: Record<string, string | number>, fallback?: string) => {
       const fullKey = `customer.mobile.tabs.productCheckout.${key}`;
-      return (options != null ? t(fullKey, options as never) : t(fullKey)) as string;
+      return t(fullKey, {
+        ...(options ?? {}),
+        defaultValue: fallback ?? "",
+      }) as string;
     },
-    [t]
+    [t],
   );
 
   const [fulfillment, setFulfillment] = useState<"collection" | "delivery">("collection");
@@ -386,7 +389,7 @@ export default function ProductCheckoutScreen() {
 
     setPlacing(true);
     setProcessingPayment(true);
-    setProcessingMessage(pc("placingOrder") || "Placing your order…");
+    setProcessingMessage(pc("placingOrder", undefined, "Placing your order…"));
     await refreshSession().catch(() => {});
 
     // 1. Create the order (payment_status = "pending" or "paid" if wallet covers full amount)
@@ -486,7 +489,7 @@ export default function ProductCheckoutScreen() {
       selectedCardId &&
       savedCards.some((c) => c.id === selectedCardId)
     ) {
-      setProcessingMessage(pc("processingPayment") || "Processing payment…");
+      setProcessingMessage(pc("processingPayment", undefined, "Processing payment…"));
       const cardCharge = await payWithSavedCard({
         payment_method_id: selectedCardId,
         amount: amountDue,
@@ -517,7 +520,11 @@ export default function ProductCheckoutScreen() {
       setProcessingPayment(false);
       Alert.alert(
         errTitle,
-        pc("savedCardChargeFailed") ||
+        pc(
+          "savedCardChargeFailed",
+          undefined,
+          "Could not charge your saved card. Try again or use a different payment method.",
+        ) ||
           "We could not charge your saved card. Try paying with a new card or another method."
       );
       return;
@@ -560,7 +567,7 @@ export default function ProductCheckoutScreen() {
 
     // 3. In-app Paystack WebView; return URL matches `callback_url` above.
     const url = paystackRes.data.authorization_url;
-    setProcessingMessage(pc("openingPaymentPage") || "Opening payment page…");
+    setProcessingMessage(pc("openingPaymentPage", undefined, "Opening payment page…"));
     if (Platform.OS === "web") {
       setProcessingPayment(false);
       window.location.href = url;
@@ -573,7 +580,7 @@ export default function ProductCheckoutScreen() {
       // Two RN modals competing can leave users stuck on "opening payment page".
       setProcessingPayment(false);
       const pr = await paystackHostedCheckout.waitForCheckout(url, {
-        title: (pc("securePaymentTitle") as string) || "Secure payment",
+        title: pc("securePaymentTitle", undefined, "Secure payment"),
         returnUrl: paystackReturnPath,
         matchSuccess: (u) =>
           matchesExpoReturnUrl(u, paystackReturnPath) && !isCancelledPaystackUrl(u),
@@ -587,7 +594,7 @@ export default function ProductCheckoutScreen() {
       }
 
       setProcessingPayment(true);
-      setProcessingMessage(pc("confirmingPayment") || "Confirming your payment…");
+      setProcessingMessage(pc("confirmingPayment", undefined, "Confirming your payment…"));
       let reference = paystackRes.data.reference;
       if (pr.outcome === "success" && pr.url) {
         if (isCancelledPaystackUrl(pr.url)) {
@@ -801,14 +808,14 @@ export default function ProductCheckoutScreen() {
             const rows: PaymentSuccessSummaryRow[] = [
               {
                 icon: "receipt-outline",
-                label: pc("orderNumberLabel") || "Order",
+                label: pc("orderNumberLabel", undefined, "Order number"),
                 value: orderSuccessData.orderNumber ?? "—",
               },
             ];
             if (orderSuccessData.items) {
               rows.push({
                 icon: "bag-outline",
-                label: pc("itemsLabel") || "Items",
+                label: pc("itemsLabel", undefined, "Items"),
                 value: orderSuccessData.items,
               });
             }
@@ -816,7 +823,11 @@ export default function ProductCheckoutScreen() {
           })()}
           amountPaid={orderSuccessData?.total}
           currency={orderSuccessData?.currency}
-          footerHint={pc("orderSuccessFooterHint") || "Tap continue to view your orders."}
+          footerHint={pc(
+            "orderSuccessFooterHint",
+            undefined,
+            "Tap continue to view your orders.",
+          )}
           onDismiss={() => {
             setOrderSuccessData(null);
             router.replace("/(app)/product-orders" as any);

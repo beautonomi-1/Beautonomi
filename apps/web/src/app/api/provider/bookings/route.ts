@@ -2099,6 +2099,23 @@ async function handleCreateProviderBooking(request: NextRequest) {
                 .update({ stock_deducted_at: deductTs })
                 .eq("id", row.id);
             }
+            try {
+              const { logBookingStockMovements } = await import("@/lib/products/stock-movements");
+              await logBookingStockMovements(supabaseAdmin, {
+                providerId,
+                bookingId: booking.id,
+                actorUserId: user.id,
+                lines: (pendingProducts as Array<{ product_id: string | null; product_variant_id?: string | null; quantity: number | null }>)
+                  .filter((r) => r.product_id && r.quantity && r.quantity > 0)
+                  .map((r) => ({
+                    productId: r.product_id!,
+                    productVariantId: r.product_variant_id ?? null,
+                    quantity: r.quantity!,
+                  })),
+              });
+            } catch (logErr) {
+              console.error("[provider/bookings create] stock movement log failed:", logErr);
+            }
           }
         } catch (stockErr) {
           console.error("[provider/bookings create] failed to deduct retail stock:", stockErr);

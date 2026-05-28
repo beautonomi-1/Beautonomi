@@ -2607,6 +2607,35 @@ export async function notifyMembershipActivated(
 }
 
 /**
+ * Notify a cancelled member that their provider invited them to rejoin.
+ */
+export async function notifyMembershipWinBack(
+  userId: string,
+  args: {
+    providerName: string;
+    membershipName: string;
+    message?: string | null;
+    plansUrl?: string | null;
+  },
+  channels?: NotificationChannel[],
+) {
+  const variables = {
+    provider_name: args.providerName,
+    membership_name: args.membershipName,
+    message: args.message?.trim() || "Tap to view membership plans and rejoin when you are ready.",
+    plans_url: args.plansUrl ?? "/membership",
+  };
+
+  return await sendTemplateNotification(
+    "membership_win_back",
+    [userId],
+    variables,
+    channels ?? ["push", "email"],
+    { appType: "customer" },
+  );
+}
+
+/**
  * Notify the provider team that a customer cancelled a salon membership.
  *
  * Fans out to the whole provider team (owner + active linked staff) using

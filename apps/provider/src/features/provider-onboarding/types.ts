@@ -48,15 +48,29 @@ export interface OnboardingService {
   extra_time_enabled?: boolean;
   /** Buffer duration in minutes when `extra_time_enabled` is true. */
   extra_time_duration?: number;
-  /** Optional list of team-member IDs assigned to the service. */
-  team_member_ids?: string[];
-  addons?: {
-    name: string;
-    description?: string;
+  /** Multi-row pricing options; server auto-syncs named rows to variant offerings. */
+  pricing_options?: {
+    id?: string;
+    duration: number;
+    priceType?: string;
+    price_type?: string;
     price: number;
-    currency?: string;
-    duration_minutes?: number;
+    pricingName?: string;
+    pricing_name?: string;
   }[];
+  team_member_ids?: string[];
+  /** @deprecated Legacy inline add-ons; use `service_addons` on onboarding form data. */
+  addons?: OnboardingServiceAddon[];
+}
+
+export interface OnboardingServiceAddon {
+  parent_service_index: number;
+  name: string;
+  description?: string;
+  price: number;
+  currency?: string;
+  duration_minutes?: number;
+  addon_category?: string;
 }
 
 export interface OnboardingFormData {
@@ -95,6 +109,8 @@ export interface OnboardingFormData {
   selected_zone_ids?: string[];
   global_category_ids: string[];
   services: OnboardingService[];
+  /** Add-ons created after parent services; mapped by parent_service_index. */
+  service_addons?: OnboardingServiceAddon[];
   operating_hours: Record<string, { open: string; close: string; closed: boolean }>;
   selected_plan_id?: string;
   selected_plan_name?: string;

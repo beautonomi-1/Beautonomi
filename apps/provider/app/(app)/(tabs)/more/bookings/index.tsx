@@ -90,6 +90,7 @@ interface Booking {
   location_type?: "at_salon" | "at_home" | null;
   is_group_booking?: boolean;
   group_booking_id?: string | null;
+  group_booking_ref?: string | null;
   is_recurring?: boolean;
   recurring_series_id?: string | null;
   booking_source?: string | null;

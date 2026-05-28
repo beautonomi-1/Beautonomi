@@ -13,6 +13,7 @@ import {
   inflightRequests,
   pruneResponseCache,
   clearApiCache,
+  invalidateApiCacheForPath,
 } from "@/lib/api-response-cache";
 import { useAuth } from "@/providers/AuthProvider";
 
@@ -322,6 +323,7 @@ export function useApiMutation<TRes>(method: "put" | "patch" | "post" | "delete"
           if (mountedRef.current) setError(msg);
           return { data: null, error: msg, errorCode: apiErr.code ?? null };
         }
+        invalidateApiCacheForPath(path);
         return { data: result.data, error: null, errorCode: null };
       } catch (err) {
         const msg = getApiErrorMessage(err, "Request failed");

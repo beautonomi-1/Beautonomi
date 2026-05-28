@@ -105,6 +105,7 @@ export default function MembershipSubscribersScreen() {
   );
   const subscribers = useMemo(() => rawData?.subscribers ?? [], [rawData]);
   const { execute: patchSub, loading: patchLoading } = useApiMutation("patch");
+  const { execute: postWinBack, loading: winBackLoading } = useApiMutation<{ sent?: boolean }>("post");
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -174,6 +175,20 @@ export default function MembershipSubscribersScreen() {
     },
     [patchSub, closeManage, refresh],
   );
+
+  const onSendWinBack = useCallback(async () => {
+    if (!manageRow) return;
+    const { error } = await postWinBack(
+      `/api/provider/membership-subscriptions/${manageRow.subscription.id}/win-back`,
+      {},
+    );
+    if (error) {
+      Alert.alert("Could not send", getApiErrorMessage(error, "Please try again"));
+      return;
+    }
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    Alert.alert("Sent", "Membership reminder sent to the client.");
+  }, [manageRow, postWinBack]);
 
   const onSaveExpiry = useCallback(async () => {
     if (!manageRow) return;
@@ -347,6 +362,22 @@ export default function MembershipSubscribersScreen() {
               >
                 <Text style={twStyle("text-sm font-semibold text-red-700")}>Cancel membership</Text>
               </TouchableOpacity>
+            ) : manageRow.subscription.status === "cancelled" ? (
+              <>
+                <ActionButton
+                  label={winBackLoading ? "Sending…" : "Send win-back offer"}
+                  onPress={() => void onSendWinBack()}
+                  loading={winBackLoading}
+                  fullWidth
+                  style={{ marginTop: 12 }}
+                />
+                <TouchableOpacity
+                  style={twStyle("mt-3 items-center rounded-xl bg-green-50 py-3")}
+                  onPress={() => onReactivate(manageRow)}
+                >
+                  <Text style={twStyle("text-sm font-semibold text-green-800")}>Mark active again</Text>
+                </TouchableOpacity>
+              </>
             ) : (
               <TouchableOpacity
                 style={twStyle("mt-3 items-center rounded-xl bg-green-50 py-3")}

@@ -16,6 +16,7 @@
  */
 
 import { isSalonMembershipEntitledForDiscount } from "@/lib/provider/salon-membership-entitlement";
+import { shouldShowCancelledMembershipBadge } from "@beautonomi/utils";
 
 export interface SalonMembershipForClient {
   subscription_id: string;
@@ -28,6 +29,8 @@ export interface SalonMembershipForClient {
   cancelled_at: string | null;
   /** Matches booking discount eligibility (`validate-booking.ts`). */
   is_entitled: boolean;
+  /** False when a cancelled badge would be stale (>90 days). */
+  show_cancelled_badge: boolean;
 }
 
 interface SupabaseLikeClient {
@@ -104,6 +107,10 @@ export async function buildSalonMembershipMap(
         status: row.status,
         expires_at: row.expires_at,
         planIsActive,
+      }),
+      show_cancelled_badge: shouldShowCancelledMembershipBadge({
+        status: row.status,
+        cancelled_at: row.cancelled_at,
       }),
     });
   }

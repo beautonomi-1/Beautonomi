@@ -341,7 +341,6 @@ describe("POST /api/provider/onboarding", () => {
     });
 
     const offeringsInsertPayloads: Array<Array<Record<string, unknown>>> = [];
-    const addonInsertPayloads: Array<Array<Record<string, unknown>>> = [];
     const providerCategoryInsertPayloads: Array<Record<string, unknown>> = [];
 
     const mockSupabaseAdmin = {
@@ -467,15 +466,6 @@ describe("POST /api/provider/onboarding", () => {
                   error: null,
                 })),
               };
-            }),
-          };
-        }
-
-        if (table === "service_addons") {
-          return {
-            insert: vi.fn(async (payload: Array<Record<string, unknown>>) => {
-              addonInsertPayloads.push(payload);
-              return { error: null };
             }),
           };
         }
@@ -629,8 +619,10 @@ describe("POST /api/provider/onboarding", () => {
     expect(offeringsInsertPayloads[0]?.[1]?.provider_category_id).toBe("provider-category-1");
     expect(offeringsInsertPayloads[0]?.[1]?.category_id).toBe("11111111-1111-4111-8111-111111111111");
     expect(offeringsInsertPayloads[0]?.[1]?.is_onboarding_auto_generated).toBe(false);
-    expect(addonInsertPayloads[0]?.[0]?.name).toBe("Hair Mask");
-    expect(addonInsertPayloads[0]?.[0]?.offering_id).toBe("offering-1");
+    expect(offeringsInsertPayloads.length).toBe(2);
+    expect(offeringsInsertPayloads[1]?.[0]?.title).toBe("Hair Mask");
+    expect(offeringsInsertPayloads[1]?.[0]?.service_type).toBe("addon");
+    expect(offeringsInsertPayloads[1]?.[0]?.applicable_service_ids).toEqual(["offering-1"]);
   }, 45_000);
 
   it("returns requires_checkout=true and a checkout_path when a paid pricing plan is selected", async () => {

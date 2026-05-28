@@ -84,6 +84,7 @@ export function ProductCreateEditDialog({
     lowStockLevel: 5,
     reorderQuantity: 0,
     receiveLowStockNotifications: false,
+    isActive: true,
     imageUrls: [] as string[],
     mainImageUrl: "",
     // Variants
@@ -135,6 +136,7 @@ export function ProductCreateEditDialog({
         lowStockLevel: product.low_stock_level || 5,
         reorderQuantity: product.reorder_quantity || 0,
         receiveLowStockNotifications: product.receive_low_stock_notifications || false,
+        isActive: product.is_active !== false,
         imageUrls: product.image_urls || (product.image_url ? [product.image_url] : []),
         mainImageUrl: product.image_url || (product.image_urls?.[0] || ""),
         hasVariants: Boolean(productHasVariants.has_variants),
@@ -184,6 +186,7 @@ export function ProductCreateEditDialog({
         lowStockLevel: 5,
         reorderQuantity: 0,
         receiveLowStockNotifications: false,
+        isActive: true,
         imageUrls: [],
         mainImageUrl: "",
         hasVariants: false,
@@ -565,8 +568,7 @@ export function ProductCreateEditDialog({
         description: formData.description,
         category: formData.category,
         supplier: formData.supplier,
-        sku: withVariants ? undefined : (formData.sku || formData.skuCodes[0] || undefined),
-        sku_codes: withVariants ? undefined : (formData.skuCodes.length > 0 ? formData.skuCodes : undefined),
+        sku: withVariants ? undefined : (formData.sku || undefined),
         quantity: withVariants ? 0 : formData.quantity,
         low_stock_level: withVariants ? 5 : formData.lowStockLevel,
         reorder_quantity: formData.reorderQuantity,
@@ -585,7 +587,7 @@ export function ProductCreateEditDialog({
           : formData.mainImageUrl && !formData.mainImageUrl.startsWith("data:")
           ? [formData.mainImageUrl]
           : [],
-        is_active: true,
+        is_active: formData.isActive,
       };
       if (withVariants) {
         productData.has_variants = true;
@@ -1062,6 +1064,18 @@ export function ProductCreateEditDialog({
                   <p className="text-xs text-gray-500">Allow sales of this product at checkout.</p>
                 </div>
 
+                <div className="space-y-2">
+                  <h4 className="font-medium">Product status</h4>
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={formData.isActive}
+                      onCheckedChange={(checked) => setFormData({ ...formData, isActive: checked })}
+                    />
+                    <Label className="font-normal text-gray-600">Active in catalog</Label>
+                  </div>
+                  <p className="text-xs text-gray-500">Inactive products are hidden from retail and can be archived instead of deleted.</p>
+                </div>
+
                 {formData.retailSalesEnabled && (
                   <div className="grid grid-cols-2 gap-4">
                     <div>
@@ -1147,77 +1161,23 @@ export function ProductCreateEditDialog({
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <Label htmlFor="sku">SKU (Stock Keeping Unit)</Label>
-                    <div className="flex gap-2">
-                      <Button 
-                        variant="link" 
-                        className="p-0 h-auto text-primary hover:text-primary-hover text-sm font-normal"
-                        onClick={generateSku}
-                        type="button"
-                      >
-                        <Plus className="w-3 h-3 mr-1" />
-                        Generate SKU automatically
-                      </Button>
-                      <Button 
-                        variant="link" 
-                        className="p-0 h-auto text-primary hover:text-primary-hover text-sm font-normal"
-                        onClick={addAnotherSkuCode}
-                        type="button"
-                      >
-                        <Plus className="w-3 h-3 mr-1" />
-                        Add another SKU code
-                      </Button>
-                    </div>
+                    <Button
+                      variant="link"
+                      className="p-0 h-auto text-primary hover:text-primary-hover text-sm font-normal"
+                      onClick={generateSku}
+                      type="button"
+                    >
+                      <Plus className="w-3 h-3 mr-1" />
+                      Generate SKU automatically
+                    </Button>
                   </div>
-                  
-                  {/* Main SKU Input */}
-                  <div>
-                    <Input
-                      id="sku"
-                      value={formData.sku}
-                      onChange={(e) => {
-                        const newSku = e.target.value;
-                        setFormData({ 
-                          ...formData, 
-                          sku: newSku,
-                          skuCodes: formData.skuCodes.length > 0 
-                            ? [newSku, ...formData.skuCodes.slice(1)] 
-                            : [newSku]
-                        });
-                      }}
-                      placeholder="Leave empty to auto-generate"
-                    />
-                  </div>
-
-                  {/* Additional SKU Codes */}
-                  {formData.skuCodes.length > 1 && (
-                    <div className="space-y-2">
-                      <Label className="text-sm text-gray-600">Additional SKU Codes</Label>
-                      {formData.skuCodes.slice(1).map((skuCode, index) => (
-                        <div key={index} className="flex gap-2">
-                          <Input
-                            value={skuCode}
-                            onChange={(e) => updateSkuCode(index + 1, e.target.value)}
-                            placeholder="Enter SKU code"
-                          />
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => removeSkuCode(index + 1)}
-                            className="text-red-500 hover:text-red-700"
-                          >
-                            <X className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  <p className="text-xs text-gray-500">
-                    {formData.skuCodes.length > 0 
-                      ? `${formData.skuCodes.length} SKU code${formData.skuCodes.length > 1 ? 's' : ''} configured`
-                      : "SKU will be auto-generated on save if left empty"}
-                  </p>
+                  <Input
+                    id="sku"
+                    value={formData.sku}
+                    onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
+                    placeholder="Leave empty to auto-generate"
+                  />
+                  <p className="text-xs text-gray-500">SKU will be auto-generated on save if left empty.</p>
                 </div>
 
                 <div>

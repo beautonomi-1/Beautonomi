@@ -286,22 +286,49 @@ export async function registerDevice(
   platform: "web" | "ios" | "android",
   appType: OneSignalAppType = "customer"
 ): Promise<{ success: boolean; error?: string }> {
+  const normalizedPlayerId = playerId.trim();
+  if (!normalizedPlayerId) {
+    return { success: false, error: "Player ID is required" };
+  }
+
+  const row = {
+    user_id: userId,
+    onesignal_player_id: normalizedPlayerId,
+    platform,
+    app_type: appType,
+    last_seen: new Date().toISOString(),
+  };
+
+  // Same physical device can switch accounts — reassign the subscription row.
+  await supabase
+    .from("user_devices")
+    .delete()
+    .eq("onesignal_player_id", normalizedPlayerId)
+    .neq("user_id", userId);
+
   const { error } = await supabase
     .from("user_devices")
-    .upsert(
-      {
-        user_id: userId,
-        onesignal_player_id: playerId,
-        platform,
-        app_type: appType,
-        last_seen: new Date().toISOString(),
-      },
-      { onConflict: "onesignal_player_id" }
-    );
+    .upsert(row, { onConflict: "onesignal_player_id" });
 
-  if (error) {
+  if (!error) {
+    return { success: true };
+  }
+
+  // Fallback when upsert races (e.g. concurrent login on two tabs).
+  const { error: deleteError } = await supabase
+    .from("user_devices")
+    .delete()
+    .eq("onesignal_player_id", normalizedPlayerId);
+
+  if (deleteError) {
     console.error("Error registering device:", error);
     return { success: false, error: error.message };
+  }
+
+  const { error: insertError } = await supabase.from("user_devices").insert(row);
+  if (insertError) {
+    console.error("Error registering device (insert fallback):", insertError);
+    return { success: false, error: insertError.message };
   }
 
   return { success: true };

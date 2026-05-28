@@ -19,6 +19,10 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const search = searchParams.get('search');
+    const category = searchParams.get('category');
+    const includeInactive = searchParams.get('include_inactive') === 'true';
+    const hasLowStock = searchParams.get('has_low_stock') === 'true';
+    const outOfStock = searchParams.get('out_of_stock') === 'true';
     const page = Math.max(1, parseInt(searchParams.get('page') || '1'));
     const limit = Math.min(200, Math.max(1, parseInt(searchParams.get('limit') || '20')));
     const offset = (page - 1) * limit;
@@ -28,6 +32,14 @@ export async function GET(request: Request) {
       .select("*, product_variants(*)", { count: 'exact' })
       .eq("provider_id", providerId)
       .order("created_at", { ascending: false });
+
+    if (!includeInactive) {
+      query = query.eq("is_active", true);
+    }
+
+    if (category) {
+      query = query.ilike("category", category);
+    }
 
     // Apply search filter
     if (search) {
@@ -44,7 +56,7 @@ export async function GET(request: Request) {
     }
 
     // Normalize: Supabase returns product_variants as array; ensure variants sorted by sort_order
-    const products = (productsRaw || []).map((p: any) => {
+    let products = (productsRaw || []).map((p: any) => {
       const variants = (p.product_variants || []).sort((a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
       const { product_variants: _, ...rest } = p;
       const hasV = Boolean(rest.has_variants && variants.length > 0);
@@ -53,6 +65,21 @@ export async function GET(request: Request) {
         : Number(rest.quantity) || 0;
       return { ...rest, variants, effective_quantity };
     });
+
+    if (hasLowStock) {
+      products = products.filter((p: any) => {
+        if (p.track_stock_quantity === false) return false;
+        const low = Number(p.low_stock_level) || 5;
+        return p.effective_quantity > 0 && p.effective_quantity <= low;
+      });
+    }
+
+    if (outOfStock) {
+      products = products.filter((p: any) => {
+        if (p.track_stock_quantity === false) return false;
+        return p.effective_quantity <= 0;
+      });
+    }
 
     const totalPages = count ? Math.ceil(count / limit) : 1;
 

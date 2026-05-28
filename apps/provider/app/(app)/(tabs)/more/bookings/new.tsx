@@ -2154,6 +2154,34 @@ export default function NewBookingScreen() {
       <ScreenContainer onRefresh={() => void refreshStaffList()}>
         <ScreenHeader title={isWalkIn ? "Walk-in Booking" : "New Booking"} showBack />
 
+        {!isWalkIn ? (
+          <TouchableOpacity
+            onPress={() =>
+              router.push("/(app)/(tabs)/more/group-bookings?openCreate=true" as never)
+            }
+            style={twStyle(
+              "mb-3 flex-row items-center rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3",
+            )}
+            accessibilityRole="button"
+            accessibilityLabel="Create group booking"
+          >
+            <View
+              style={twStyle(
+                "mr-3 h-10 w-10 items-center justify-center rounded-full bg-indigo-100",
+              )}
+            >
+              <Ionicons name="people-outline" size={20} color="#4338ca" />
+            </View>
+            <View style={twStyle("flex-1")}>
+              <Text style={twStyle("text-sm font-semibold text-indigo-900")}>Group booking</Text>
+              <Text style={twStyle("mt-0.5 text-xs text-indigo-700")}>
+                Book multiple participants in one session
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#6366f1" />
+          </TouchableOpacity>
+        ) : null}
+
         {staffError && !staffList ? (
           <View style={twStyle("mb-2 rounded-2xl border border-amber-200 bg-amber-50 p-3")}>
             <Text style={twStyle("text-sm text-amber-900")}>

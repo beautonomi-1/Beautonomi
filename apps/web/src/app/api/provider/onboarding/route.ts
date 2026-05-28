@@ -7,6 +7,7 @@ import { geocodeProviderLocation } from "@/lib/mapbox/geocodeProviderLocation";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { syncVariantOfferings } from "../services/_helpers/sync-variants";
 
 const slugifyCategory = (value: string): string =>
   value
@@ -108,6 +109,15 @@ const onboardingSchema = z.object({
     extra_time_enabled: z.boolean().optional().nullable(),
     extra_time_duration: z.number().min(0).optional().nullable(),
     team_member_ids: z.array(z.string().uuid()).optional().nullable(),
+    pricing_options: z.array(z.object({
+      id: z.string().optional(),
+      duration: z.number().min(1),
+      priceType: z.string().optional(),
+      price_type: z.string().optional(),
+      price: z.number().min(0),
+      pricingName: z.string().optional(),
+      pricing_name: z.string().optional(),
+    })).optional().default([]),
     addons: z.array(z.object({
       name: z.string().min(1, "Addon name is required"),
       description: z.string().optional().nullable(),
@@ -115,6 +125,15 @@ const onboardingSchema = z.object({
       currency: z.string().optional(),
       duration_minutes: z.number().optional().nullable(),
     })).optional().default([]),
+  })).optional().default([]),
+  service_addons: z.array(z.object({
+    parent_service_index: z.number().int().min(0),
+    name: z.string().min(1),
+    description: z.string().optional().nullable(),
+    price: z.number().min(0),
+    currency: z.string().optional(),
+    duration_minutes: z.number().optional().nullable(),
+    addon_category: z.string().optional().nullable(),
   })).optional().default([]),
   // New fields for public homepage optimization. Required at final onboarding
   // submit so customer web/app provider cards always have both a hero
@@ -196,6 +215,7 @@ export async function POST(request: NextRequest) {
       selected_zone_ids,
       operating_hours,
       services,
+      service_addons,
       thumbnail_url,
       avatar_url,
       gallery,
@@ -851,6 +871,9 @@ export async function POST(request: NextRequest) {
           Number.isFinite(Number((service as any).extra_time_duration))
             ? Number((service as any).extra_time_duration)
             : 0,
+        pricing_options: Array.isArray((service as any).pricing_options)
+          ? (service as any).pricing_options
+          : [],
         });
       }
 
@@ -919,34 +942,60 @@ export async function POST(request: NextRequest) {
         }
         // Auto-generated fallback: don't fail the entire request
       } else if (createdOfferings && createdOfferings.length > 0) {
-        // Create addons for each service
-        const addonsToCreate: any[] = [];
-        createdOfferings.forEach((offering, index) => {
-          const serviceData = servicesToCreate[index];
-          const serviceAddons = serviceData?.addons || [];
-          serviceAddons.forEach((addon) => {
-            addonsToCreate.push({
-              provider_id: providerId,
-              offering_id: offering.id,
-              name: addon.name,
-              description: addon.description || null,
-              price: addon.price,
-              currency: addon.currency || tenantDefaultCurrency,
-              duration_minutes: addon.duration_minutes || 0,
-              is_active: true,
-            });
-          });
+        for (const offering of createdOfferings) {
+          const pricingOpts = (offering as { pricing_options?: unknown[] }).pricing_options;
+          if (Array.isArray(pricingOpts) && pricingOpts.length > 0) {
+            await syncVariantOfferings(
+              supabaseAdmin,
+              offering as Record<string, unknown>,
+              pricingOpts as Parameters<typeof syncVariantOfferings>[2],
+            );
+          }
+        }
+
+        const addonRows: Record<string, unknown>[] = [];
+        const legacyNestedAddons: Array<{ parentIndex: number; addon: { name: string; description?: string | null; price: number; currency?: string; duration_minutes?: number | null } }> = [];
+        servicesToCreate.forEach((serviceData, index) => {
+          const nested = serviceData?.addons || [];
+          nested.forEach((addon) => legacyNestedAddons.push({ parentIndex: index, addon }));
         });
 
-        if (addonsToCreate.length > 0) {
-          const { error: addonsError } = await supabaseAdmin
-            .from("service_addons")
-            .insert(addonsToCreate);
+        const topLevelAddons = service_addons || [];
+        const allAddonSpecs = [
+          ...topLevelAddons.map((a) => ({
+            parentIndex: a.parent_service_index,
+            addon: a,
+          })),
+          ...legacyNestedAddons,
+        ];
 
-          if (addonsError) {
-            console.error("Error creating addons:", addonsError);
-            // Don't fail the entire request, but log the error
-            // Addons can be added later
+        for (const spec of allAddonSpecs) {
+          const parent = createdOfferings[spec.parentIndex];
+          if (!parent?.id) continue;
+          const parentCategoryId = parent.provider_category_id ?? null;
+          addonRows.push({
+            provider_id: providerId,
+            title: spec.addon.name,
+            description: spec.addon.description || null,
+            duration_minutes: spec.addon.duration_minutes || 0,
+            price: spec.addon.price,
+            currency: spec.addon.currency || tenantDefaultCurrency,
+            supports_at_home: false,
+            supports_at_salon: true,
+            provider_category_id: parentCategoryId,
+            is_active: true,
+            service_type: "addon",
+            addon_category: (spec.addon as { addon_category?: string }).addon_category || "general",
+            applicable_service_ids: [parent.id],
+          });
+        }
+
+        if (addonRows.length > 0) {
+          const { error: addonOfferingsError } = await supabaseAdmin
+            .from("offerings")
+            .insert(addonRows);
+          if (addonOfferingsError) {
+            console.error("Error creating onboarding addon offerings:", addonOfferingsError);
           }
         }
       }

@@ -403,7 +403,7 @@ function usePushRegistration() {
     return () => {
       cancelled = true;
     };
-  }, [user?.id]);
+  }, [user]);
 
   // Cold-start taps can fire before the authenticated router is mounted.
   useEffect(() => {
@@ -448,17 +448,22 @@ function usePushRegistration() {
             );
             return;
           }
-          if (isTransientApiFailure(res.error)) {
+          const code = res.error.code;
+          const transient =
+            isTransientApiFailure(res.error) &&
+            code !== "DEVICE_REGISTRATION_FAILED";
+          if (transient) {
             addBreadcrumb(
               "Device register skipped (transient network)",
               "push_notifications",
-              { code: res.error.code },
+              { code },
             );
           } else {
             captureError(new Error(`Device registration rejected: ${res.error.message}`), {
               scope: "push_notifications:device_register",
-              code: res.error.code,
+              code,
               source,
+              status,
             });
           }
         } else {
@@ -602,7 +607,7 @@ function usePushRegistration() {
     const tryRegister = async () => {
       if (cancelled || registeredRef.current) return;
       try {
-        const { OneSignal } = await import("react-native-onesignal");
+        await import("react-native-onesignal");
         const id = await getOneSignalSubscriptionId();
         if (!id || cancelled || registeredRef.current) return;
         const platform = Platform.OS === "ios" ? "ios" : "android";

@@ -434,6 +434,22 @@ export async function POST(request: NextRequest) {
 
     await applyPosProductStockDecrements(supabase, posItems);
 
+    try {
+      const { logSaleStockMovements } = await import("@/lib/products/stock-movements");
+      await logSaleStockMovements(supabase, {
+        providerId,
+        referenceId: order.id,
+        actorUserId: user.id,
+        lines: mergedItems.map((i) => ({
+          productId: i.product_id,
+          productVariantId: i.product_variant_id ?? null,
+          quantity: i.quantity,
+        })),
+      });
+    } catch (logErr) {
+      console.error("[product-sales] stock movement log failed:", logErr);
+    }
+
     return successResponse({ order: { ...order, items: orderItems } }, 201);
   } catch (err) {
     return handleApiError(err, "Failed to create walk-in sale");

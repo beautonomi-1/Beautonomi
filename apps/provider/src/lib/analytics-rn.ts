@@ -11,6 +11,7 @@ const analyticsRN =
     : require("@beautonomi/analytics/react-native");
 
 export const initAnalytics = analyticsRN.initAnalytics;
+export const resetAnalyticsModule = analyticsRN.resetAnalyticsModule;
 export const handleEngagementURL = analyticsRN.handleEngagementURL;
 export const bootEngagement = analyticsRN.bootEngagement;
 export const getAnalyticsClient = analyticsRN.getAnalyticsClient;

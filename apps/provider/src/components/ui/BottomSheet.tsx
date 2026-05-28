@@ -32,9 +32,12 @@ import * as Haptics from "expo-haptics";
 interface BottomSheetProps {
   visible: boolean;
   onClose: () => void;
+  /** Fires after the modal finishes its dismiss animation (best-effort). */
+  onModalHide?: () => void;
   title?: string;
   subtitle?: string;
   children: React.ReactNode;
+  footer?: React.ReactNode;
   snapHeight?: "auto" | "half" | "full";
   showHandle?: boolean;
 }
@@ -46,9 +49,11 @@ const GestureRoot = GestureHandlerRootView as ComponentType<
 export function BottomSheet({
   visible,
   onClose,
+  onModalHide,
   title,
   subtitle,
   children,
+  footer,
   snapHeight = "auto",
   showHandle = true,
 }: BottomSheetProps) {
@@ -108,6 +113,12 @@ export function BottomSheet({
   useEffect(() => {
     if (!visible) setAndroidKeyboardInset(0);
   }, [visible]);
+
+  useEffect(() => {
+    if (visible || !onModalHide) return;
+    const timer = setTimeout(() => onModalHide(), 280);
+    return () => clearTimeout(timer);
+  }, [visible, onModalHide]);
 
   const panGesture = Gesture.Pan()
     .onUpdate((e) => {
@@ -205,7 +216,7 @@ export function BottomSheet({
                 style={{ flexShrink: 1, backgroundColor: "#ffffff" }}
                 contentContainerStyle={{
                   padding: 20,
-                  paddingBottom: 40 + insets.bottom,
+                  paddingBottom: footer ? 20 : 40 + insets.bottom,
                   backgroundColor: "#ffffff",
                 }}
                 nestedScrollEnabled
@@ -217,7 +228,13 @@ export function BottomSheet({
                 {children}
               </ScrollView>
 
-              <SafeAreaView edges={["bottom"]} />
+              {footer && (
+                <View style={{ padding: 20, paddingBottom: 20 + insets.bottom, borderTopWidth: 1, borderTopColor: "#f3f4f6", backgroundColor: "#ffffff" }}>
+                  {footer}
+                </View>
+              )}
+
+              {!footer && <SafeAreaView edges={["bottom"]} />}
             </Animated.View>
           </KeyboardAvoidingView>
         </View>

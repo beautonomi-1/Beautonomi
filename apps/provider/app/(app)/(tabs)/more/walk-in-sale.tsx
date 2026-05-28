@@ -35,6 +35,7 @@ import { displayRetailPriceMin, effectiveStockQuantity } from "@/lib/product-inv
 import { trackWalkInSaleCompleted } from "@/lib/analytics";
 import { percentOf, sumMoney } from "@beautonomi/utils";
 import { PROVIDER_PRODUCTS_CATALOG_CHANGED } from "@/lib/provider-products-catalog-events";
+import { pt } from "@/lib/provider-translate";
 
 interface ProductVariant {
   id: string;
@@ -490,7 +491,7 @@ export default function WalkInSaleScreen() {
       if (err) {
         const friendly = walkInSaleErrorMessage(errorCode, err);
         setCheckoutError(friendly);
-        Alert.alert("Couldn't complete sale", friendly);
+        Alert.alert(pt("walkInSale.couldntCompleteSale", undefined, "Couldn't complete sale"), friendly);
         return;
       }
       const rawPayload = data as { order?: WalkInSale } | WalkInSale | null | undefined;
@@ -504,7 +505,12 @@ export default function WalkInSaleScreen() {
         trackWalkInSaleCompleted(order.id, cartTotalDue, paymentMethod, cart.length);
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert("Sale complete", order?.order_number ? `Order ${order.order_number} recorded.` : "The sale has been recorded.");
+      Alert.alert(
+        pt("walkInSale.saleCompleteTitle", undefined, "Sale complete"),
+        order?.order_number
+          ? pt("walkInSale.saleCompleteBody", { orderNumber: order.order_number }, `Order ${order.order_number} recorded.`)
+          : pt("walkInSale.saleCompleteBodyGeneric", undefined, "The sale has been recorded."),
+      );
       setCreateOpen(false);
       setShowYocoPayment(false);
       setVariantPickProduct(null);
@@ -520,7 +526,10 @@ export default function WalkInSaleScreen() {
 
   const handleCompleteSale = useCallback(async () => {
     if (cart.length === 0) {
-      Alert.alert("Empty cart", "Add at least one product.");
+      Alert.alert(
+        pt("walkInSale.emptyCartTitle", undefined, "Empty cart"),
+        pt("walkInSale.emptyCartBody", undefined, "Add at least one product."),
+      );
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);

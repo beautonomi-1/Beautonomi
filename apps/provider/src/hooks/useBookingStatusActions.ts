@@ -2,11 +2,12 @@ import { useState, useCallback } from "react";
 import { useApiMutation } from "@/hooks/useApi";
 import {
   dbTargetToPatchStatusField,
+  optimisticBookingFieldsForAction,
   optimisticBookingFieldsForDbTarget,
 } from "@/lib/provider-booking-status-transitions";
 import type { ProviderBookingAction } from "@/lib/provider-booking-action-policy";
 
-export interface UseBookingStatusActionsOptions<T extends { id: string; status: string }> {
+export interface UseBookingStatusActionsOptions<T extends { id: string; status: string; current_stage?: string | null }> {
   bookings: T[] | null;
   mutate: (next: T[] | null) => void;
   refresh: () => Promise<void>;
@@ -28,7 +29,7 @@ export type ApplyStatusInput = string | ProviderBookingAction;
  * Inline booking status transitions (confirm, check-in, start journey, mark
  * arrived, start service, complete) with optimistic UI and rollback on error.
  */
-export function useBookingStatusActions<T extends { id: string; status: string }>({
+export function useBookingStatusActions<T extends { id: string; status: string; current_stage?: string | null }>({
   bookings,
   mutate,
   refresh,
@@ -47,19 +48,21 @@ export function useBookingStatusActions<T extends { id: string; status: string }
 
       setPendingIds((prev) => new Set(prev).add(bookingId));
       const previousBookings = bookings;
-      // Only apply optimistic status overlay for actions that genuinely change `bookings.status`.
-      // Journey actions (`start_journey`, `mark_arrived`) leave the status as `confirmed/booked` —
-      // they only advance `current_stage`, so an optimistic status update would be a lie.
+      const actionId = action?.id ?? "";
+      const optimisticFields = action
+        ? optimisticBookingFieldsForAction(actionId, dbTarget)
+        : optimisticBookingFieldsForDbTarget(dbTarget);
       const updatesStatus =
         !action ||
         action.kind === "patch-status" ||
         action.id === "start_service" ||
         action.id === "complete_service";
+      const updatesStage = Boolean(optimisticFields.current_stage);
 
-      if (bookings && updatesStatus) {
+      if (bookings && (updatesStatus || updatesStage)) {
         mutate(
           bookings.map((b) =>
-            b.id === bookingId ? ({ ...b, ...optimisticBookingFieldsForDbTarget(dbTarget) } as T) : b,
+            b.id === bookingId ? ({ ...b, ...optimisticFields } as T) : b,
           ),
         );
       }
@@ -68,7 +71,7 @@ export function useBookingStatusActions<T extends { id: string; status: string }
         if (action && action.kind === "post-action" && action.route) {
           const res = await postAction(action.route, action.payload ?? {});
           if (res.error) {
-            if (previousBookings && updatesStatus) mutate(previousBookings);
+            if (previousBookings && (updatesStatus || updatesStage)) mutate(previousBookings);
             await refresh();
             return { error: res.error, errorCode: res.errorCode };
           }

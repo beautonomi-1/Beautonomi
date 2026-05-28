@@ -12,6 +12,7 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { sendToUser } from '@/lib/notifications/onesignal';
 import { getGroupBooking } from './group-booking';
+import { resolveTwilioCredentials, sendTwilioSMS } from '@/lib/integrations/twilio';
 
 type GroupNotificationParticipant = {
   participant_name: string;
@@ -71,25 +72,29 @@ export async function sendGroupBookingNotifications(
 
   for (const participant of participants) {
     const userId = await resolveParticipantUserId(supabase, participant);
-    if (!userId) {
-      console.warn('[group booking notifications] participant has no linked user; skipping', {
-        email: participant.participant_email,
-        phone: participant.participant_phone,
-        groupBookingId,
-      });
+    const channels = {
+      email: Boolean(participant.participant_email),
+      sms: Boolean(participant.participant_phone),
+    };
+
+    if (userId) {
+      await sendGroupBookingConfirmation(
+        userId,
+        participant.participant_name,
+        booking,
+        provider,
+        participant.is_primary_contact,
+        channels,
+      );
       continue;
     }
 
-    await sendGroupBookingConfirmation(
-      userId,
-      participant.participant_name,
+    await sendWalkInGroupBookingConfirmation(
+      supabase,
+      participant,
       booking,
       provider,
-      participant.is_primary_contact,
-      {
-        email: Boolean(participant.participant_email),
-        sms: Boolean(participant.participant_phone),
-      }
+      channels,
     );
   }
 }
@@ -124,8 +129,7 @@ async function resolveParticipantUserId(
   return null;
 }
 
-async function sendGroupBookingConfirmation(
-  userId: string,
+function buildGroupConfirmationCopy(
   name: string,
   booking: {
     id: string;
@@ -135,8 +139,7 @@ async function sendGroupBookingConfirmation(
   },
   provider: { business_name?: string | null } | null,
   isPrimary: boolean,
-  channels: { email: boolean; sms: boolean }
-): Promise<void> {
+): { title: string; message: string } {
   const scheduledDate = new Date(booking.scheduled_at || Date.now());
   const dateStr = scheduledDate.toLocaleDateString('en-US', {
     weekday: 'long',
@@ -178,6 +181,118 @@ ${appUrl}/account-settings/bookings
 Best regards,
 Beautonomi Team
   `.trim();
+
+  return { title, message };
+}
+
+async function sendWalkInEmail(to: string, subject: string, body: string): Promise<void> {
+  const providerKey =
+    process.env.RESEND_API_KEY?.trim() ||
+    process.env.EMAIL_PROVIDER_API_KEY?.trim() ||
+    '';
+  if (!providerKey) {
+    console.warn('[group booking notifications] email provider not configured; skipping walk-in email');
+    return;
+  }
+  const fromAddress = process.env.EMAIL_FROM_ADDRESS || 'Beautonomi <notifications@beautonomi.app>';
+  const resp = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${providerKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from: fromAddress,
+      to,
+      subject,
+      text: body,
+    }),
+  });
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => '');
+    console.warn('[group booking notifications] walk-in email failed', resp.status, text.slice(0, 200));
+  }
+}
+
+async function sendWalkInGroupBookingConfirmation(
+  supabase: SupabaseClient,
+  participant: GroupNotificationParticipant,
+  booking: {
+    id: string;
+    booking_number?: string | null;
+    scheduled_at?: string | null;
+    location_type?: string | null;
+    provider_id?: string | null;
+  },
+  provider: { business_name?: string | null } | null,
+  channels: { email: boolean; sms: boolean },
+): Promise<void> {
+  const { title, message } = buildGroupConfirmationCopy(
+    participant.participant_name,
+    booking,
+    provider,
+    participant.is_primary_contact,
+  );
+
+  if (channels.email && participant.participant_email) {
+    try {
+      await sendWalkInEmail(participant.participant_email, title, message);
+    } catch (error) {
+      console.warn('[group booking notifications] walk-in email error:', error);
+    }
+  }
+
+  if (channels.sms && participant.participant_phone && booking.provider_id) {
+    try {
+      const { data: providerRow } = await supabase
+        .from('providers')
+        .select('tenant_id')
+        .eq('id', booking.provider_id)
+        .maybeSingle();
+      const tenantId = (providerRow as { tenant_id?: string | null } | null)?.tenant_id;
+      if (!tenantId) {
+        console.warn('[group booking notifications] provider tenant missing; skipping walk-in SMS');
+      } else {
+        const creds = await resolveTwilioCredentials(supabase, tenantId);
+        if (creds?.smsFrom) {
+          await sendTwilioSMS(creds, participant.participant_phone, message);
+        } else {
+          console.warn('[group booking notifications] SMS not configured; skipping walk-in SMS');
+        }
+      }
+    } catch (error) {
+      console.warn('[group booking notifications] walk-in SMS error:', error);
+    }
+  }
+
+  if (!channels.email && !channels.sms) {
+    console.warn('[group booking notifications] walk-in participant has no contact channels', {
+      email: participant.participant_email,
+      phone: participant.participant_phone,
+    });
+  }
+}
+
+async function sendGroupBookingConfirmation(
+  userId: string,
+  name: string,
+  booking: {
+    id: string;
+    booking_number?: string | null;
+    scheduled_at?: string | null;
+    location_type?: string | null;
+  },
+  provider: { business_name?: string | null } | null,
+  isPrimary: boolean,
+  channels: { email: boolean; sms: boolean }
+): Promise<void> {
+  const { title, message } = buildGroupConfirmationCopy(
+    name,
+    booking,
+    provider,
+    isPrimary,
+  );
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://beautonomi.com';
 
   const deliveryChannels = [
     ...(channels.email ? (['email'] as const) : []),

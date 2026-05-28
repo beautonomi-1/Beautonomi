@@ -27,8 +27,11 @@ const FINANCE_ITEMS = [
 export default function FinanceBillingHubScreen() {
   const router = useRouter();
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
+  const yocoEnabled = useFeatureFlag("payment_yoco");
   const visibleItems = FINANCE_ITEMS.filter(
-    (item) => paystackTerminalEnabled || !item.route.includes("paystack-terminal"),
+    (item) =>
+      (paystackTerminalEnabled || !item.route.includes("paystack-terminal")) &&
+      (yocoEnabled || !item.route.includes("yoco")),
   );
 
   return (
