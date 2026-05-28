@@ -85,12 +85,15 @@ export function AdvancedPricingRulesEditor({
             <TouchableOpacity
               key={tab}
               style={twStyle(
-                "rounded-full px-3 py-1.5",
-                activeTab === tab ? "bg-indigo-600" : "bg-gray-100",
+                `rounded-full px-3 py-1.5 ${activeTab === tab ? "bg-indigo-600" : "bg-gray-100"}`,
               )}
               onPress={() => setActiveTab(tab)}
             >
-              <Text style={twStyle("text-xs font-medium", activeTab === tab ? "text-white" : "text-gray-700")}>
+              <Text
+                style={twStyle(
+                  `text-xs font-medium ${activeTab === tab ? "text-white" : "text-gray-700"}`,
+                )}
+              >
                 {tab === "time_based" ? "Time" : tab === "client_type" ? "Client" : "Seasonal"}
               </Text>
             </TouchableOpacity>
@@ -138,14 +141,18 @@ export function AdvancedPricingRulesEditor({
                     return (
                       <TouchableOpacity
                         key={day}
-                        style={twStyle("rounded-full px-2 py-1", selected ? "bg-indigo-600" : "bg-gray-200")}
+                        style={twStyle(
+                          `rounded-full px-2 py-1 ${selected ? "bg-indigo-600" : "bg-gray-200"}`,
+                        )}
                         onPress={() => {
                           const days = (rule.conditions.days as string[]) ?? [];
                           const next = selected ? days.filter((d) => d !== day) : [...days, day];
                           updateCondition(rule.id, "days", next);
                         }}
                       >
-                        <Text style={twStyle("text-xs", selected ? "text-white" : "text-gray-700")}>
+                        <Text
+                          style={twStyle(`text-xs ${selected ? "text-white" : "text-gray-700"}`)}
+                        >
                           {day.slice(0, 3)}
                         </Text>
                       </TouchableOpacity>
@@ -163,15 +170,13 @@ export function AdvancedPricingRulesEditor({
                     <TouchableOpacity
                       key={ct}
                       style={twStyle(
-                        "rounded-full px-3 py-1.5",
-                        rule.conditions.clientType === ct ? "bg-indigo-600" : "bg-gray-200",
+                        `rounded-full px-3 py-1.5 ${rule.conditions.clientType === ct ? "bg-indigo-600" : "bg-gray-200"}`,
                       )}
                       onPress={() => updateCondition(rule.id, "clientType", ct)}
                     >
                       <Text
                         style={twStyle(
-                          "text-xs capitalize",
-                          rule.conditions.clientType === ct ? "text-white" : "text-gray-700",
+                          `text-xs capitalize ${rule.conditions.clientType === ct ? "text-white" : "text-gray-700"}`,
                         )}
                       >
                         {ct}
@@ -203,8 +208,7 @@ export function AdvancedPricingRulesEditor({
             <View style={twStyle("flex-row gap-2")}>
               <TouchableOpacity
                 style={twStyle(
-                  "rounded-full px-3 py-1.5",
-                  rule.priceAdjustment.type === "percentage" ? "bg-indigo-600" : "bg-gray-200",
+                  `rounded-full px-3 py-1.5 ${rule.priceAdjustment.type === "percentage" ? "bg-indigo-600" : "bg-gray-200"}`,
                 )}
                 onPress={() =>
                   updateRule(rule.id, {
@@ -212,14 +216,17 @@ export function AdvancedPricingRulesEditor({
                   })
                 }
               >
-                <Text style={twStyle("text-xs", rule.priceAdjustment.type === "percentage" ? "text-white" : "text-gray-700")}>
+                <Text
+                  style={twStyle(
+                    `text-xs ${rule.priceAdjustment.type === "percentage" ? "text-white" : "text-gray-700"}`,
+                  )}
+                >
                   %
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={twStyle(
-                  "rounded-full px-3 py-1.5",
-                  rule.priceAdjustment.type === "fixed" ? "bg-indigo-600" : "bg-gray-200",
+                  `rounded-full px-3 py-1.5 ${rule.priceAdjustment.type === "fixed" ? "bg-indigo-600" : "bg-gray-200"}`,
                 )}
                 onPress={() =>
                   updateRule(rule.id, {
@@ -227,7 +234,11 @@ export function AdvancedPricingRulesEditor({
                   })
                 }
               >
-                <Text style={twStyle("text-xs", rule.priceAdjustment.type === "fixed" ? "text-white" : "text-gray-700")}>
+                <Text
+                  style={twStyle(
+                    `text-xs ${rule.priceAdjustment.type === "fixed" ? "text-white" : "text-gray-700"}`,
+                  )}
+                >
                   Fixed
                 </Text>
               </TouchableOpacity>

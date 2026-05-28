@@ -2223,9 +2223,14 @@ function Step11Services() {
               {s.duration_minutes} min · {s.currency || tenantCurrency} {s.price}
               {s.supports_at_salon ? " · Salon" : ""}
               {s.supports_at_home ? " · Home" : ""}
-              {s.addons?.length
-                ? ` · ${s.addons.length} add-on${s.addons.length === 1 ? "" : "s"}`
-                : ""}
+              {(() => {
+                const addonCount = (formData.service_addons || []).filter(
+                  (a) => a.parent_service_index === i,
+                ).length;
+                return addonCount
+                  ? ` · ${addonCount} add-on${addonCount === 1 ? "" : "s"}`
+                  : "";
+              })()}
             </Text>
           </View>
           <TouchableOpacity

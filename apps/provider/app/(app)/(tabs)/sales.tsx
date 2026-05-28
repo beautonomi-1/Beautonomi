@@ -40,6 +40,7 @@ import { api } from "@/lib/api-client";
 import { PROVIDER_PRODUCTS_CATALOG_CHANGED } from "@/lib/provider-products-catalog-events";
 import { isProductSellable, maxSellableUnits } from "@/features/products/cartItem";
 import type { ProductItem as PosProductItem } from "@/features/products/types";
+import { pt } from "@/lib/provider-translate";
 
 interface DashboardMetrics {
   revenue_today: number;
@@ -1271,7 +1272,9 @@ export default function SalesScreen() {
           accessibilityLabel="Go back to item selection"
           accessibilityRole="button"
         >
-          <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Back to items</Text>
+          <Text style={{ fontSize: 14, color: Colors.gray[500] }}>
+            {pt("salesScreen.backToItems", undefined, "Back to items")}
+          </Text>
         </TouchableOpacity>
       </BottomSheet>
     );
@@ -1284,7 +1287,7 @@ export default function SalesScreen() {
       <BottomSheet
         visible
         onClose={handleDoneReceipt}
-        title="Receipt"
+        title={pt("salesScreen.receiptTitle", undefined, "Receipt")}
         snapHeight="half"
       >
         <View style={{ alignItems: "center" }}>
@@ -1292,7 +1295,7 @@ export default function SalesScreen() {
             <Ionicons name="checkmark-circle" size={36} color="#22c55e" />
           </View>
           <Text style={{ marginTop: 12, fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>
-            Sale Complete!
+            {pt("salesScreen.saleCompleteTitle", undefined, "Sale complete!")}
           </Text>
           <Text style={{ marginTop: 4, fontSize: 14, color: Colors.gray[500] }}>
             {receiptData.client} · {format(new Date(receiptData.date), "MMM d, HH:mm")}
@@ -1312,18 +1315,20 @@ export default function SalesScreen() {
           ))}
           <View style={{ marginTop: 8, borderTopWidth: 1, borderTopColor: Colors.gray[200], paddingTop: 8 }}>
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-              <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>Total</Text>
+              <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>
+                {pt("salesScreen.totalLabel", undefined, "Total")}
+              </Text>
               <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>{formatCurrency(receiptData.total)}</Text>
             </View>
             <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500], textTransform: "capitalize" }}>
-              Paid via {receiptData.method}
+              {pt("salesScreen.paidVia", { method: receiptData.method }, `Paid via ${receiptData.method}`)}
             </Text>
           </View>
         </View>
 
         <View style={{ marginTop: 16 }}>
           <ActionButton
-            label="Done"
+            label={pt("salesScreen.done", undefined, "Done")}
             variant="primary"
             onPress={handleDoneReceipt}
             fullWidth

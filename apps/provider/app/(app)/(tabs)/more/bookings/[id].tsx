@@ -494,17 +494,19 @@ const ETA_OPTIONS = [15, 30, 45] as const;
 /** At-home reschedule slot queries: matches `new.tsx` fallback before /api/location/validate returns. */
 const DEFAULT_RESCHEDULE_TRAVEL_BUFFER_MINUTES = 30;
 
-const BASE_PAYMENT_METHODS = [
-  { label: "Cash", value: "cash" as const },
-  { label: "Card (Yoco / terminal)", value: "card" as const },
-  { label: "EFT", value: "bank_transfer" as const },
-  { label: "Other", value: "other" as const },
+type MarkPaidPaymentMethod = "cash" | "card" | "bank_transfer" | "other" | "paystack_terminal";
+
+const BASE_PAYMENT_METHODS: { label: string; value: MarkPaidPaymentMethod }[] = [
+  { label: "Cash", value: "cash" },
+  { label: "Card (Yoco / terminal)", value: "card" },
+  { label: "EFT", value: "bank_transfer" },
+  { label: "Other", value: "other" },
 ];
 
 function buildMarkPaidPaymentMethods(paystackTerminalEnabled: boolean) {
   const methods = [...BASE_PAYMENT_METHODS];
   if (paystackTerminalEnabled) {
-    methods.splice(2, 0, { label: "Paystack Terminal", value: "paystack_terminal" as const });
+    methods.splice(2, 0, { label: "Paystack Terminal", value: "paystack_terminal" });
   }
   return methods;
 }

@@ -5901,10 +5901,12 @@ export default function BookCheckoutScreen() {
               }}
             >
               {bookingConfirmedData.bookingStatus === "pending_payment"
-                ? "Payment processing..."
+                ? t("checkout.bookingSuccessTitlePendingPayment", {
+                    defaultValue: "Payment processing...",
+                  })
                 : bookingConfirmedData.bookingStatus === "pending"
-                  ? "Booking received!"
-                  : "Booking confirmed!"}
+                  ? t("checkout.bookingSuccessTitlePending", { defaultValue: "Booking received!" })
+                  : t("checkout.bookingSuccessTitleConfirmed", { defaultValue: "Booking confirmed!" })}
             </Text>
 
             {bookingConfirmedData.bookingStatus === "pending_payment" && (
@@ -5920,7 +5922,10 @@ export default function BookCheckoutScreen() {
                   marginBottom: 8,
                 }}
               >
-                Your payment is being confirmed. You&apos;ll receive a notification shortly.
+                {t("checkout.bookingSuccessPendingPaymentBody", {
+                  defaultValue:
+                    "Your payment is being confirmed. You'll receive a notification shortly.",
+                })}
               </Text>
             )}
 
@@ -5937,7 +5942,9 @@ export default function BookCheckoutScreen() {
                   marginBottom: 8,
                 }}
               >
-                Awaiting provider confirmation — usually within 8 hours
+                {t("checkout.bookingSuccessPendingBody", {
+                  defaultValue: "Awaiting provider confirmation — usually within 8 hours",
+                })}
               </Text>
             )}
 
@@ -6013,14 +6020,20 @@ export default function BookCheckoutScreen() {
                     <Text
                       style={{ fontSize: 12, color: "#4b5563", textAlign: "center", marginTop: 4 }}
                     >
-                      Total paid{" "}
+                      {t("checkout.totalPaidPrefix", { defaultValue: "Total paid" })}{" "}
                       {formatCurrency(
                         bookingConfirmedData.totalPaid,
                         bookingConfirmedData.currency
                       )}
                       {bookingConfirmedData.platformFee != null &&
                       bookingConfirmedData.platformFee > 0
-                        ? ` (incl. platform fee ${formatCurrency(bookingConfirmedData.platformFee, bookingConfirmedData.currency)})`
+                        ? t("checkout.platformFeeInclusive", {
+                            amount: formatCurrency(
+                              bookingConfirmedData.platformFee,
+                              bookingConfirmedData.currency,
+                            ),
+                            defaultValue: ` (incl. platform fee ${formatCurrency(bookingConfirmedData.platformFee, bookingConfirmedData.currency)})`,
+                          })
                         : ""}
                     </Text>
                   )}
@@ -6028,7 +6041,7 @@ export default function BookCheckoutScreen() {
             )}
 
             <Text style={{ fontSize: 13, color: "#9CA3AF", textAlign: "center" }}>
-              Taking you to your booking…
+              {t("checkout.bookingSuccessFooter", { defaultValue: "Taking you to your booking…" })}
             </Text>
           </View>
         </View>

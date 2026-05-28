@@ -57,8 +57,7 @@ export function ResourceRequirementsEditor({
                 <TouchableOpacity
                   key={opt}
                   style={twStyle(
-                    "rounded-full px-3 py-1.5",
-                    state === opt ? "bg-indigo-600" : "bg-gray-200",
+                    `rounded-full px-3 py-1.5 ${state === opt ? "bg-indigo-600" : "bg-gray-200"}`,
                   )}
                   onPress={() =>
                     setEntry(res.id, opt === "none" ? null : opt === "required")
@@ -66,8 +65,7 @@ export function ResourceRequirementsEditor({
                 >
                   <Text
                     style={twStyle(
-                      "text-xs capitalize",
-                      state === opt ? "text-white" : "text-gray-700",
+                      `text-xs capitalize ${state === opt ? "text-white" : "text-gray-700"}`,
                     )}
                   >
                     {opt}

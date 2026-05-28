@@ -1,6 +1,7 @@
 import { type ComponentProps } from "react";
 import { View, Text, Modal, TouchableOpacity, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useTranslation } from "@beautonomi/i18n";
 import { Colors } from "@/constants/colors";
 import { formatMoney } from "@beautonomi/utils";
 
@@ -42,6 +43,7 @@ export function PaymentSuccessOverlay({
   onDismiss,
   footerHint,
 }: PaymentSuccessOverlayProps) {
+  const { t } = useTranslation();
   const isWaiting = status === "pending" || status === "processing";
   const iconName = isWaiting ? "time-outline" : "checkmark-circle";
   const iconColor = isWaiting ? "#F59E0B" : Colors.primary;
@@ -74,18 +76,25 @@ export function PaymentSuccessOverlay({
               ))}
               {amountPaid != null && amountPaid > 0 && currency ? (
                 <Text style={styles.amountLine}>
-                  Total paid {formatMoney(amountPaid, currency)}
+                  {t("checkout.totalPaidPrefix", { defaultValue: "Total paid" })}{" "}
+                  {formatMoney(amountPaid, currency)}
                 </Text>
               ) : null}
             </View>
           ) : amountPaid != null && amountPaid > 0 && currency ? (
             <Text style={styles.amountStandalone}>
-              Total paid {formatMoney(amountPaid, currency)}
+              {t("checkout.totalPaidPrefix", { defaultValue: "Total paid" })}{" "}
+              {formatMoney(amountPaid, currency)}
             </Text>
           ) : null}
           {footerHint ? <Text style={styles.footer}>{footerHint}</Text> : null}
-          <TouchableOpacity style={styles.cta} onPress={onDismiss} accessibilityRole="button" accessibilityLabel="Continue">
-            <Text style={styles.ctaText}>Continue</Text>
+          <TouchableOpacity
+            style={styles.cta}
+            onPress={onDismiss}
+            accessibilityRole="button"
+            accessibilityLabel={t("common.continue", { defaultValue: "Continue" })}
+          >
+            <Text style={styles.ctaText}>{t("common.continue", { defaultValue: "Continue" })}</Text>
           </TouchableOpacity>
         </View>
       </View>

@@ -35,6 +35,8 @@ export interface CatalogueServiceItem {
   is_onboarding_auto_generated?: boolean;
   supports_at_home?: boolean;
   supports_at_salon?: boolean;
+  at_home_radius_km?: number | null;
+  at_home_price_adjustment?: number | null;
   provider_category_id?: string | null;
   display_order?: number | null;
   service_type?: string;

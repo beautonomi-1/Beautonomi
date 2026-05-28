@@ -59,6 +59,8 @@ export interface OnboardingService {
     pricing_name?: string;
   }>;
   team_member_ids?: string[];
+  /** @deprecated Legacy inline add-ons; use `service_addons` on onboarding form data. */
+  addons?: OnboardingServiceAddon[];
 }
 
 export interface OnboardingServiceAddon {

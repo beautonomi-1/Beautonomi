@@ -14,6 +14,7 @@
     "back": "Back",
     "next": "Next",
     "done": "Done",
+    "continue": "Continue",
     "close": "Close",
     "confirm": "Confirm",
     "yes": "Yes",
@@ -290,6 +291,41 @@
       "deleteConfirmTitle": "Remove waitlist entry?",
       "deleteConfirmMessage": "This cannot be undone.",
       "staffPrefix": "Staff"
+    },
+    "walkInSale": {
+      "saleCompleteTitle": "Sale complete",
+      "saleCompleteBody": "Order {{orderNumber}} recorded.",
+      "saleCompleteBodyGeneric": "The sale has been recorded.",
+      "couldntCompleteSale": "Couldn't complete sale",
+      "emptyCartTitle": "Empty cart",
+      "emptyCartBody": "Add at least one product."
+    },
+    "salesScreen": {
+      "receiptTitle": "Receipt",
+      "saleCompleteTitle": "Sale complete!",
+      "totalLabel": "Total",
+      "paidVia": "Paid via {{method}}",
+      "done": "Done",
+      "backToItems": "Back to items"
+    },
+    "mobile": {
+      "components": {
+        "imagePicker": {
+          "profilePhotoTitle": "Profile photo",
+          "chooseOption": "Choose an option",
+          "takePhoto": "Take photo",
+          "photoLibrary": "Photo library",
+          "cancel": "Cancel",
+          "photosAccessTitle": "Photos access needed",
+          "photosAccessBody": "Allow Beautonomi Provider to access your photos so you can choose a picture.",
+          "cameraAccessTitle": "Camera access needed",
+          "cameraAccessBody": "Allow Beautonomi Provider to use your camera so you can take a photo.",
+          "permissionPhotosRequired": "Permission to access photos is required",
+          "permissionCameraRequired": "Camera permission is required",
+          "failedPickImage": "Failed to pick image",
+          "failedTakePhoto": "Failed to take photo"
+        }
+      }
     },
     "moreTab": {
       "rateStoreHeading": "Love the app?"
@@ -1205,7 +1241,16 @@
           "paymentPendingCheckoutBody": "If you completed the card payment, it can take a few moments to confirm. Check Product orders shortly.",
           "paymentSuccessTitle": "Payment successful",
           "paymentPendingTitle": "Payment pending",
-          "viewOrdersCta": "View orders"
+          "viewOrdersCta": "View orders",
+          "orderNumberLabel": "Inombolo ye-oda",
+          "itemsLabel": "Tintfo",
+          "orderSuccessFooterHint": "Chafata chubeka kubuka ti-oda takho.",
+          "placingOrder": "Placing your order…",
+          "processingPayment": "Processing payment…",
+          "openingPaymentPage": "Opening payment page…",
+          "confirmingPayment": "Confirming your payment…",
+          "securePaymentTitle": "Secure payment",
+          "savedCardChargeFailed": "Could not charge your saved card. Try again or use a different payment method."
         }
       },
       "screens": {
@@ -2276,7 +2321,15 @@
     "failedComplete": "Failed to complete",
     "memberDiscountFallback": "Member discount",
     "saveCardInfoA11y": "Info about saving card",
-    "customTipA11y": "Custom tip amount"
+    "customTipA11y": "Custom tip amount",
+    "bookingSuccessTitleConfirmed": "Booking confirmed!",
+    "bookingSuccessTitlePending": "Booking received!",
+    "bookingSuccessTitlePendingPayment": "Payment processing...",
+    "bookingSuccessPendingPaymentBody": "Your payment is being confirmed. You'll receive a notification shortly.",
+    "bookingSuccessPendingBody": "Awaiting provider confirmation — usually within 8 hours",
+    "bookingSuccessFooter": "Taking you to your booking…",
+    "totalPaidPrefix": "Total paid",
+    "platformFeeInclusive": " (incl. platform fee {{amount}})"
   },
   "payments": {
     "pay": "Pay",

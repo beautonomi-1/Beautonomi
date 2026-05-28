@@ -73,7 +73,11 @@ export function labelForDbStatus(db: string): string {
 }
 
 /** Local optimistic overlay fields after the user triggers a transition (before refresh completes). */
-export function optimisticBookingFieldsForDbTarget(dbTarget: string): { db_status: string; status: string } {
+export function optimisticBookingFieldsForDbTarget(dbTarget: string): {
+  db_status: string;
+  status: string;
+  current_stage?: string;
+} {
   return {
     db_status: dbTarget,
     status: dbTargetToPatchStatusField(dbTarget),

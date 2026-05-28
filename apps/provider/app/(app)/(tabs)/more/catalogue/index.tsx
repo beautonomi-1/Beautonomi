@@ -601,7 +601,7 @@ export default function CatalogueScreen() {
 
                 {!isCollapsed && (
                   <View style={[isTablet ? { flexDirection: "row", flexWrap: "wrap" } : {}]}>
-                    {items.map((service: ServiceItem) => (
+                    {(items as ServiceItem[]).map((service) => (
                       <View
                         key={service.id}
                         style={[

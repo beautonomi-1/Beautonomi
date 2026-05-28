@@ -42,9 +42,12 @@ export default function GiftCardPurchaseScreen() {
   const { t } = useTranslation();
   const errTitle = t("customer.mobile.screens.authLogin.errorTitle");
   const gc = useCallback(
-    (key: string, options?: Record<string, string | number>) => {
+    (key: string, options?: Record<string, string | number>, fallback?: string) => {
       const fullKey = `customer.mobile.screens.giftCardPurchase.${key}`;
-      return (options != null ? t(fullKey, options as never) : t(fullKey)) as string;
+      return t(fullKey, {
+        ...(options ?? {}),
+        defaultValue: fallback ?? "",
+      }) as string;
     },
     [t],
   );
@@ -319,7 +322,11 @@ export default function GiftCardPurchaseScreen() {
         amountPaid={total}
         currency={tenantCurrency}
         summaryRows={giftSuccessSummaryRows}
-        footerHint={gc("successFooterHint") || "Tap continue when you are ready to leave this screen."}
+        footerHint={gc(
+          "successFooterHint",
+          undefined,
+          "Tap continue when you are ready to leave this screen.",
+        )}
         onDismiss={() => {
           setSuccessState(null);
           setIssuedGiftCardCodes([]);
