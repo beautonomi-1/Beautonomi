@@ -46,7 +46,16 @@ interface ServiceDetail {
   provider_category_id?: string | null;
   team_member_ids?: string[] | null;
   image_url?: string | null;
-  pricing_options?: { duration?: number; price?: number; pricingName?: string }[];
+  price_type?: string;
+  pricing_options?: {
+    id?: string;
+    duration?: number;
+    price?: number;
+    priceType?: string;
+    price_type?: string;
+    pricingName?: string;
+    pricing_name?: string;
+  }[];
   created_at: string;
   updated_at: string;
 }
@@ -293,7 +302,7 @@ export default function ServiceDetailScreen() {
   }
 
   async function handleSave() {
-    if (!form || !validate()) return;
+    if (!form || !service || !validate()) return;
 
     const priceNum = Number(form.price?.toString().trim());
     const durationNum = Number(form.duration_minutes?.toString().trim());
