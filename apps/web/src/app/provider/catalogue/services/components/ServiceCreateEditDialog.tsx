@@ -32,6 +32,7 @@ import { isCompleteE164 } from "@/lib/phone";
 import { previewBookingTierName } from "@/app/api/provider/services/_helpers/sync-variants";
 import { BookingTierCustomerPreview } from "./BookingTierCustomerPreview";
 import { formatCurrency } from "@/lib/utils";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 interface ServiceCreateEditDialogProps {
   open: boolean;

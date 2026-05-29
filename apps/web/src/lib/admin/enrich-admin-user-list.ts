@@ -58,6 +58,25 @@ function buildVerificationSummary(
   };
 }
 
+async function fetchAuthSignInBatch(
+  admin: SupabaseClient,
+  userIds: string[],
+): Promise<{ data: AuthSignInRow[] }> {
+  try {
+    const { data, error } = await admin.rpc("admin_auth_users_sign_in_batch", {
+      p_user_ids: userIds,
+    });
+    if (error) {
+      console.warn("[enrichAdminUserListRows] auth batch RPC failed:", error);
+      return { data: [] };
+    }
+    return { data: (data ?? []) as AuthSignInRow[] };
+  } catch (err) {
+    console.warn("[enrichAdminUserListRows] auth batch RPC failed:", err);
+    return { data: [] };
+  }
+}
+
 /**
  * Attach tenant-scoped stats, auth last sign-in, and verification summary
  * to rows returned by admin_users_list_for_tenant.
@@ -95,10 +114,7 @@ export async function enrichAdminUserListRows(
           .in("user_id", userIds)
       : Promise.resolve({ data: [] as { user_id?: string | null }[] }),
     userIds.length > 0
-      ? admin.rpc("admin_auth_users_sign_in_batch", { p_user_ids: userIds }).catch((err) => {
-          console.warn("[enrichAdminUserListRows] auth batch RPC failed:", err);
-          return { data: [] as AuthSignInRow[] };
-        })
+      ? fetchAuthSignInBatch(admin, userIds)
       : Promise.resolve({ data: [] as AuthSignInRow[] }),
   ]);
 
