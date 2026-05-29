@@ -53,6 +53,15 @@ export type PaystackTerminalSetupRequest = {
   updated_at?: string | null;
 };
 
+export type PaystackTerminalSetupRequestResponse = {
+  requested: boolean;
+  status: string;
+  setup_request: PaystackTerminalSetupRequest;
+  suggested_name: string;
+  destination_target?: string | null;
+  message: string;
+};
+
 export function usePaystackTerminals() {
   const [terminals, setTerminals] = useState<PaystackTerminal[]>([]);
   const [setupRequests, setSetupRequests] = useState<PaystackTerminalSetupRequest[]>([]);
@@ -79,7 +88,7 @@ export function usePaystackTerminals() {
 
   const requestTerminalSetup = useCallback(
     async (name?: string | null) => {
-      const res = await api.post<PaystackTerminalSetupRequest>("/api/provider/paystack/virtual-terminals", {
+      const res = await api.post<PaystackTerminalSetupRequestResponse>("/api/provider/paystack/virtual-terminals", {
         name,
       });
       if (res.error) throw new Error(res.error.message ?? "Failed to request Paystack Terminal setup");
