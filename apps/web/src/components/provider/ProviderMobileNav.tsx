@@ -44,6 +44,7 @@ import {
   CreditCard,
   CalendarRange,
   Undo2,
+  QrCode,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
@@ -52,6 +53,7 @@ import PlatformLogo from "@/components/platform/PlatformLogo";
 import { useAuth } from "@/providers/AuthProvider";
 import { usePlatformSettings } from "@/providers/PlatformSettingsProvider";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import type { StaffPermissions } from "@/lib/auth/permissions";
 
 interface NavItem {
@@ -60,6 +62,7 @@ interface NavItem {
   href: string;
   badge?: string;
   permission?: keyof StaffPermissions;
+  featureFlag?: "payment_yoco" | "payment_paystack_virtual_terminal";
 }
 
 interface NavSection {
@@ -128,7 +131,9 @@ const navigationSections: NavSection[] = [
       { icon: CreditCard, label: "Payments", href: "/provider/payments", permission: "view_sales" },
       { icon: Coins, label: "Payouts", href: "/provider/payouts", permission: "view_sales" },
       { icon: PiggyBank, label: "Bank Accounts", href: "/provider/settings/payout-accounts", permission: "view_sales" },
-      { icon: CreditCard, label: "Yoco", href: "/provider/settings/sales/yoco-integration", permission: "edit_settings" },
+      { icon: CreditCard, label: "Payment Methods", href: "/provider/settings/payments", permission: "edit_settings" },
+      { icon: CreditCard, label: "Yoco", href: "/provider/settings/sales/yoco-integration", permission: "edit_settings", featureFlag: "payment_yoco" },
+      { icon: QrCode, label: "Paystack Terminal", href: "/provider/settings/sales/paystack-terminal", permission: "edit_settings", featureFlag: "payment_paystack_virtual_terminal" },
       { icon: CreditCard, label: "Subscription", href: "/provider/subscription" },
       { icon: BarChart3, label: "Analytics", href: "/provider/analytics", permission: "view_reports" },
       { icon: BarChart3, label: "Reports", href: "/provider/reports", permission: "view_reports" },
@@ -193,6 +198,8 @@ const routePrefixMap: Record<string, string> = {
   "/provider/settings/appointment-activity/closed-periods": "/provider/settings/appointment-activity/closed-periods",
   "/provider/settings/payout-accounts": "/provider/settings/payout-accounts",
   "/provider/settings/sales/yoco-integration": "/provider/settings/sales/yoco-integration",
+  "/provider/settings/sales/paystack-terminal": "/provider/settings/sales/paystack-terminal",
+  "/provider/settings/payments": "/provider/settings/payments",
   "/provider/settings/services/memberships": "/provider/settings/services/memberships",
   "/provider/settings/ads": "/provider/settings/ads",
   "/provider/subscription": "/provider/subscription",
@@ -215,7 +222,9 @@ export function ProviderMobileNav() {
   const { signOut } = useAuth();
   const { branding } = usePlatformSettings();
   const { hasPermission, isLoading: permissionsLoading } = usePermissions();
-  
+  const yocoEnabled = useFeatureFlag("payment_yoco");
+  const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
+
   // Get platform colors with fallbacks
   const primaryColor = branding?.primary_color || "#FF0077";
   const secondaryColor = branding?.secondary_color || "#4fd1c5";
@@ -224,16 +233,21 @@ export function ProviderMobileNav() {
     background: `linear-gradient(to bottom, color-mix(in srgb, ${primaryColor} 30%, #171216) 0%, color-mix(in srgb, ${secondaryColor} 22%, #100d10) 100%)`,
   } as const;
 
-  const filteredNavigationSections = useMemo(() =>
-    navigationSections.map(section => ({
-      ...section,
-      items: section.items.filter(item => {
-        if (!item.permission) return true;
-        if (permissionsLoading) return true;
-        return hasPermission(item.permission);
-      })
-    })).filter(section => section.items.length > 0),
-    [permissionsLoading, hasPermission]
+  const filteredNavigationSections = useMemo(
+    () =>
+      navigationSections
+        .map((section) => ({
+          ...section,
+          items: section.items.filter((item) => {
+            if (item.featureFlag === "payment_yoco" && !yocoEnabled) return false;
+            if (item.featureFlag === "payment_paystack_virtual_terminal" && !paystackTerminalEnabled) return false;
+            if (!item.permission) return true;
+            if (permissionsLoading) return true;
+            return hasPermission(item.permission);
+          }),
+        }))
+        .filter((section) => section.items.length > 0),
+    [permissionsLoading, hasPermission, yocoEnabled, paystackTerminalEnabled],
   );
 
   const handleLogout = async () => {

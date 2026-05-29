@@ -1853,7 +1853,7 @@ export default function PartnerProfileScreen() {
               }} />
             </View>
 
-            {/* Bottom scrim + avatar on gallery (verified pill stays top-left; no duplicate check on avatar) */}
+            {/* Bottom scrim */}
             <LinearGradient
               colors={["transparent", "rgba(0,0,0,0.2)", "rgba(0,0,0,0.55)"]}
               locations={[0, 0.45, 1]}
@@ -1867,7 +1867,25 @@ export default function PartnerProfileScreen() {
               }}
               pointerEvents="none"
             />
-            <View style={{ position: "absolute", bottom: 28, left: 16, zIndex: 10 }}>
+
+            {/* Photo counter — tapping opens fullscreen gallery */}
+            {images.length > 1 && (
+              <TouchableOpacity
+                onPress={() => { setGalleryViewerIndex(galleryIndex); setGalleryViewerVisible(true); }}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel={`Photo ${galleryIndex + 1} of ${images.length}. Tap to view all photos.`}
+                style={{ position: "absolute", bottom: 24, right: 16, backgroundColor: "rgba(0,0,0,0.65)", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, zIndex: 5 }}
+              >
+                <Text style={{ color: "#fff", fontSize: 11, fontWeight: "600" }}>{galleryIndex + 1}/{images.length}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* ═══════════ PROVIDER INFO CARD ═══════════ */}
+          <View style={{ position: "relative", backgroundColor: "#fff", borderTopLeftRadius: 24, borderTopRightRadius: 24, marginTop: -24, paddingTop: 52, paddingBottom: 4 }}>
+            {/* Avatar — straddles the gallery/card seam (top: -36 = half of 72px) */}
+            <View style={{ position: "absolute", top: -36, left: 16, zIndex: 20 }}>
               <View
                 style={{
                   width: 72,
@@ -1896,23 +1914,6 @@ export default function PartnerProfileScreen() {
                 )}
               </View>
             </View>
-
-            {/* Photo counter — tapping opens fullscreen gallery */}
-            {images.length > 1 && (
-              <TouchableOpacity
-                onPress={() => { setGalleryViewerIndex(galleryIndex); setGalleryViewerVisible(true); }}
-                activeOpacity={0.8}
-                accessibilityRole="button"
-                accessibilityLabel={`Photo ${galleryIndex + 1} of ${images.length}. Tap to view all photos.`}
-                style={{ position: "absolute", bottom: 24, right: 16, backgroundColor: "rgba(0,0,0,0.65)", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, zIndex: 5 }}
-              >
-                <Text style={{ color: "#fff", fontSize: 11, fontWeight: "600" }}>{galleryIndex + 1}/{images.length}</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-
-          {/* ═══════════ PROVIDER INFO CARD ═══════════ */}
-          <View style={{ backgroundColor: "#fff", borderTopLeftRadius: 24, borderTopRightRadius: 24, marginTop: -24, paddingTop: 16, paddingBottom: 4 }}>
 
             <View style={{ paddingHorizontal: contentPadding, paddingBottom: 4 }}>
               <Text style={{ fontSize: 22, fontWeight: "700", color: "#111827" }} numberOfLines={4}>

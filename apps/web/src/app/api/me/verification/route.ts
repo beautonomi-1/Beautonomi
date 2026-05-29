@@ -62,7 +62,11 @@ export async function GET(request: NextRequest) {
       "submitted",
       "under_review",
     ]);
-    const userBlocking = blockingStatuses.has(userStatus);
+    // Only honour the user-level status when actual verification records back it up.
+    // A stale users.identity_verification_status = 'pending' with no records
+    // (e.g. from a failed submission that set the column before inserting the row)
+    // must not permanently prevent the user from submitting their ID.
+    const userBlocking = list.length > 0 && blockingStatuses.has(userStatus);
     const recordBlocking = list.some((v) => blockingStatuses.has(v.status));
     const can_submit_verification =
       !(userData.identity_verified ?? false) && !userBlocking && !recordBlocking;

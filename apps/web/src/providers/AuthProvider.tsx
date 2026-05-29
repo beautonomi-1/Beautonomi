@@ -65,13 +65,15 @@ async function fetchRoleWithTimeout(
     const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
     const timeout = setTimeout(() => controller?.abort(), timeoutMs);
     try {
-      const response = await raceWithTimeout(
-        fetch(url, {
-          credentials: "include",
-          signal: controller?.signal,
-        }),
-        timeoutMs
-      );
+      const fetchPromise = fetch(url, {
+        credentials: "include",
+        signal: controller?.signal,
+      });
+      // Attach a no-op catch so the fetch promise is never an unhandled rejection
+      // if controller.abort() fires after raceWithTimeout has already resolved with null
+      // (e.g. the timeout race resolves first, then the timer aborts the still-pending fetch).
+      fetchPromise.catch(() => {});
+      const response = await raceWithTimeout(fetchPromise, timeoutMs);
       if (!response || !response.ok) return null;
       const json = (await response.json()) as { data?: { role?: UserRole } };
       return json?.data?.role ?? null;

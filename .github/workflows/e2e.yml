@@ -20,8 +20,10 @@ jobs:
           cache: pnpm
       - name: Install deps
         run: pnpm install --frozen-lockfile
-      - name: Install Playwright browsers
-        run: pnpm --filter web exec playwright install --with-deps chromium
+      - name: Setup Playwright Chromium
+        uses: ./.github/actions/setup-playwright-chromium
+        with:
+          package-filter: web
       - name: Run booking happy-path
         working-directory: apps/web
         env:

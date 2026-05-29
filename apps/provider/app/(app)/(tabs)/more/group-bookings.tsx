@@ -14,6 +14,7 @@ import {
   InteractionManager,
   Platform,
   Share as RNShare,
+  Image,
 } from "react-native";
 import { cacheDirectory, downloadAsync } from "expo-file-system/legacy";
 import * as Location from "expo-location";
@@ -617,6 +618,11 @@ export default function GroupBookingsScreen() {
     "pay_later" | "cash" | "card" | "yoco_pos" | "payment_link" | "paystack_terminal"
   >("pay_later");
   const [createSendNotification, setCreateSendNotification] = useState(true);
+  const [paystackTerminalSheet, setPaystackTerminalSheet] = useState<{
+    expectedAmount: number;
+    terminal: { qr_url?: string | null; payment_link?: string | null; terminal_url?: string | null; name?: string | null };
+  } | null>(null);
+  const [isPreparingTerminal, setIsPreparingTerminal] = useState(false);
 
   useEffect(() => {
     setExtraGroups([]);
@@ -980,7 +986,7 @@ export default function GroupBookingsScreen() {
 
   async function handleRecordGroupPayment(
     group: GroupBooking,
-    paymentMethod: "cash" | "card" | "bank_transfer" | "other" | "yoco" | "paystack_terminal"
+    paymentMethod: "cash" | "card" | "bank_transfer" | "other" | "yoco"
   ) {
     if (!group.id) {
       Alert.alert("Error", "Group booking has no id yet — refresh and try again.");
@@ -1006,6 +1012,45 @@ export default function GroupBookingsScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     Alert.alert("Payment recorded", "Group participant bookings were marked paid.");
     refresh();
+  }
+
+  async function handleRequestPaystackTerminal(group: GroupBooking, expectedAmount: number) {
+    if (!group.id) {
+      Alert.alert("Error", "Group booking has no id yet — refresh and try again.");
+      return;
+    }
+    setIsPreparingTerminal(true);
+    try {
+      // api.post<T> returns ApiResponse<T>; T is the inner data field of successResponse
+      const res = await api.post<{
+        terminal?: { qr_url?: string | null; payment_link?: string | null; terminal_url?: string | null; name?: string | null };
+        metadata?: unknown;
+        instructions?: string;
+      }>(
+        "/api/provider/paystack/terminal-payments",
+        {
+          entity_type: "group_booking",
+          entity_id: group.id,
+          expected_amount: expectedAmount,
+        }
+      );
+      if (res.error) {
+        const errMsg = typeof res.error === "string" ? res.error : (res.error as any)?.message || "Terminal not ready";
+        Alert.alert("Terminal not ready", errMsg);
+        return;
+      }
+      const terminal = res.data?.terminal;
+      if (!terminal) {
+        Alert.alert("Terminal not ready", "No active Paystack Terminal found. Request setup from Settings → Sales → Paystack Terminal.");
+        return;
+      }
+      setPaystackTerminalSheet({ expectedAmount, terminal });
+    } catch (err: any) {
+      const msg = err?.message || "Could not prepare Paystack Terminal";
+      Alert.alert("Paystack Terminal", msg);
+    } finally {
+      setIsPreparingTerminal(false);
+    }
   }
 
   function openEdit(group: GroupBooking) {
@@ -1434,6 +1479,7 @@ export default function GroupBookingsScreen() {
         : [`Group booking ${args.groupId}`, args.participant.notes?.trim()]
             .filter(Boolean)
             .join("\n"),
+      send_notification: createSendNotification,
     };
 
     const bookingRes = await createBooking("/api/provider/bookings", bookingPayload);
@@ -1789,7 +1835,7 @@ export default function GroupBookingsScreen() {
 
     // §Group-booking-audit 2026-05 (auto mark_paid): only attempt to mark
     // paid AFTER every participant booking + link succeeded. If we hit this
-    // branch but the user chose pay-later, we skip cleanly.
+    // branch but the user chose pay-later or paystack_terminal, we skip/handle separately.
     const methodToMark =
       participantsSucceeded && createPaymentMethod === "cash"
         ? "cash"
@@ -1797,9 +1843,41 @@ export default function GroupBookingsScreen() {
           ? "card"
           : participantsSucceeded && createPaymentMethod === "yoco_pos"
             ? "yoco"
-            : participantsSucceeded && createPaymentMethod === "paystack_terminal"
-              ? "paystack_terminal"
             : null;
+
+    if (createPaymentMethod === "paystack_terminal" && participantsSucceeded) {
+      // Close create sheets first, then trigger terminal prepare-collection.
+      setCreateStep("form");
+      setCreateReviewError(null);
+      setShowCreate(false);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      InteractionManager.runAfterInteractions(() => {
+        void refresh();
+        // Determine total price from form state (mirroring the total_price in the payload above)
+        const totalAmt = participantTotal + productsTotal + (createForm.locationType === "at_home" ? travelFee : 0);
+        setIsPreparingTerminal(true);
+        // api.post<T>: T is the inner data object returned by successResponse
+        api.post<{
+          terminal?: { qr_url?: string | null; payment_link?: string | null; terminal_url?: string | null; name?: string | null };
+          metadata?: unknown;
+          instructions?: string;
+        }>(
+          "/api/provider/paystack/terminal-payments",
+          { entity_type: "group_booking", entity_id: createdGroupId, expected_amount: totalAmt }
+        ).then((res) => {
+          const terminal = res.data?.terminal;
+          if (terminal) {
+            setPaystackTerminalSheet({ expectedAmount: totalAmt, terminal });
+          } else {
+            Alert.alert("Group created", "Use the Payment Inbox to collect via Paystack Terminal.");
+          }
+        }).catch(() => {
+          Alert.alert("Group created", "Use the Payment Inbox to collect via Paystack Terminal.");
+        }).finally(() => setIsPreparingTerminal(false));
+      });
+      return;
+    }
+
     if (methodToMark) {
       const paymentResult = await postGroupAction(
         `/api/provider/group-bookings/${encodeURIComponent(createdGroupId)}?action=mark_paid`,
@@ -2878,20 +2956,12 @@ export default function GroupBookingsScreen() {
                 </TouchableOpacity>
               </View>
             )}
-            {/* Record payment — only for non-terminal sessions */}
+            {/* Record payment — only for non-cancelled sessions */}
             {selectedGroup.status !== "cancelled" && (
               <View style={twStyle("mt-2")}>
                 <Text style={twStyle("mb-2 text-xs font-medium text-gray-500")}>Record payment</Text>
                 <View style={twStyle("flex-row flex-wrap")}>
-                  {(
-                    [
-                      "cash",
-                      "card",
-                      "yoco",
-                      ...(paystackTerminalEnabled ? (["paystack_terminal"] as const) : []),
-                      "bank_transfer",
-                    ] as const
-                  ).map((method) => (
+                  {(["cash", "card", "yoco", "bank_transfer"] as const).map((method) => (
                     <TouchableOpacity
                       key={method}
                       style={[
@@ -2906,13 +2976,40 @@ export default function GroupBookingsScreen() {
                           ? "Bank transfer"
                           : method === "yoco"
                             ? "Yoco"
-                            : method === "paystack_terminal"
-                              ? "Paystack Terminal"
                             : method[0].toUpperCase() + method.slice(1)}
                       </Text>
                     </TouchableOpacity>
                   ))}
                 </View>
+                {paystackTerminalEnabled && (
+                  <View style={twStyle("mt-3 border-t border-gray-100 pt-3")}>
+                    <Text style={twStyle("mb-2 text-xs text-gray-500")}>
+                      Collect via Paystack Virtual Terminal (QR / link)
+                    </Text>
+                    <TouchableOpacity
+                      style={[
+                        twStyle("flex-row items-center self-start rounded-full border border-green-300 bg-green-50 px-3 py-2"),
+                        { opacity: isPreparingTerminal ? 0.5 : 1 },
+                      ]}
+                      disabled={isPreparingTerminal}
+                      onPress={() => {
+                        const outstanding = selectedGroup.participants
+                          ? selectedGroup.participants.reduce(
+                              (s: number, p: any) =>
+                                s + Math.max(0, Number(p.balance_due ?? p.price ?? 0)),
+                              0
+                            )
+                          : Number(selectedGroup.total_price ?? 0);
+                        handleRequestPaystackTerminal(selectedGroup, outstanding);
+                      }}
+                    >
+                      <Ionicons name="qr-code-outline" size={16} color="#16a34a" />
+                      <Text style={twStyle("ml-2 text-xs font-medium text-green-700")}>
+                        {isPreparingTerminal ? "Preparing…" : "Paystack Terminal"}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
               </View>
             )}
           </View>
@@ -4623,16 +4720,8 @@ export default function GroupBookingsScreen() {
                     label: "Yoco terminal",
                     icon: "phone-portrait-outline" as const,
                   },
-                  ...(paystackTerminalEnabled
-                    ? ([
-                        {
-                          value: "paystack_terminal" as const,
-                          label: "Paystack Terminal",
-                          icon: "qr-code-outline" as const,
-                        },
-                      ] as const)
-                    : []),
                   { value: "payment_link", label: "Payment link", icon: "send-outline" as const },
+                  { value: "paystack_terminal", label: "Paystack Terminal", icon: "qr-code-outline" as const },
                 ] as const
               ).map((m) => {
                 const active = createPaymentMethod === m.value;
@@ -4660,7 +4749,11 @@ export default function GroupBookingsScreen() {
             </View>
             {createPaymentMethod === "payment_link" ? (
               <Text style={twStyle("mt-2 text-xs text-gray-500")}>
-                Payment links are sent to each participant individually after the group is created.
+                You will need to send payment links to each participant manually from their booking.
+              </Text>
+            ) : createPaymentMethod === "paystack_terminal" ? (
+              <Text style={twStyle("mt-2 text-xs text-gray-500")}>
+                After creating the group, a QR code will be shown for the customer to scan. Allocate the payment from the Paystack Payment Inbox.
               </Text>
             ) : createPaymentMethod !== "pay_later" ? (
               <Text style={twStyle("mt-2 text-xs text-gray-500")}>
@@ -4669,7 +4762,7 @@ export default function GroupBookingsScreen() {
             ) : null}
           </View>
 
-          {/* Notification toggle for the primary contact. */}
+          {/* Notification toggle for participants. */}
           <TouchableOpacity
             onPress={() => setCreateSendNotification((v) => !v)}
             style={twStyle(
@@ -4684,11 +4777,11 @@ export default function GroupBookingsScreen() {
             />
             <View style={{ flex: 1, marginLeft: 12 }}>
               <Text style={twStyle("text-sm font-semibold text-gray-900")}>
-                Notify primary contact
+                Notify participants
               </Text>
               <Text style={twStyle("mt-1 text-xs text-gray-500")}>
-                Sends a single email + push confirmation to the first participant. Other guests are
-                not contacted.
+                Sends email + push to each participant when their booking is created (requires a
+                linked customer account).
               </Text>
             </View>
           </TouchableOpacity>
@@ -4937,6 +5030,70 @@ export default function GroupBookingsScreen() {
                 </TouchableOpacity>
               );
             })}
+          </ScrollView>
+        )}
+      </BottomSheet>
+
+      {/* Paystack Terminal QR sheet */}
+      <BottomSheet
+        visible={!!paystackTerminalSheet}
+        onClose={() => setPaystackTerminalSheet(null)}
+        title="Paystack Terminal Payment"
+      >
+        {paystackTerminalSheet && (
+          <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+            {paystackTerminalSheet.expectedAmount > 0 && (
+              <View style={twStyle("mb-4 rounded-xl bg-green-50 border border-green-200 p-4 items-center")}>
+                <Text style={twStyle("text-xs text-green-700 mb-1")}>Amount due</Text>
+                <Text style={twStyle("text-2xl font-bold text-green-800")}>
+                  {formatCurrency(paystackTerminalSheet.expectedAmount)}
+                </Text>
+              </View>
+            )}
+            {paystackTerminalSheet.terminal.qr_url ? (
+              <View style={twStyle("items-center mb-4")}>
+                <Image
+                  source={{ uri: paystackTerminalSheet.terminal.qr_url }}
+                  style={{ width: 200, height: 200, borderRadius: 12, borderWidth: 1, borderColor: "#e5e7eb" }}
+                  resizeMode="contain"
+                  accessible
+                  accessibilityLabel="Paystack Terminal QR Code"
+                />
+              </View>
+            ) : null}
+            <View style={twStyle("mb-4 rounded-xl bg-gray-50 p-3")}>
+              <Text style={twStyle("text-xs font-medium text-gray-700 mb-1")}>Instructions</Text>
+              <Text style={twStyle("text-xs text-gray-600")}>
+                Ask the customer to scan the QR code or open the payment link. After Paystack confirms payment, it will appear in the{" "}
+                <Text style={twStyle("font-semibold")}>Payment Inbox</Text> for you to allocate to the participant bookings.
+              </Text>
+            </View>
+            {(paystackTerminalSheet.terminal.payment_link || paystackTerminalSheet.terminal.terminal_url) && (
+              <TouchableOpacity
+                style={twStyle("mb-3 flex-row items-center justify-center rounded-xl border border-gray-200 bg-white p-3")}
+                onPress={async () => {
+                  const link = paystackTerminalSheet.terminal.payment_link || paystackTerminalSheet.terminal.terminal_url || "";
+                  try {
+                    await RNShare.share({ message: `Pay via Paystack Terminal: ${link}`, url: link });
+                  } catch {
+                    await Linking.openURL(link);
+                  }
+                }}
+              >
+                <Ionicons name="share-outline" size={18} color="#475569" />
+                <Text style={twStyle("ml-2 text-sm font-medium text-gray-700")}>Share payment link</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={twStyle("flex-row items-center justify-center rounded-xl bg-green-600 p-4")}
+              onPress={() => {
+                setPaystackTerminalSheet(null);
+                router.push("/(app)/(tabs)/more/paystack-terminal" as any);
+              }}
+            >
+              <Ionicons name="wallet-outline" size={18} color="#ffffff" />
+              <Text style={twStyle("ml-2 text-sm font-semibold text-white")}>Open Payment Inbox</Text>
+            </TouchableOpacity>
           </ScrollView>
         )}
       </BottomSheet>

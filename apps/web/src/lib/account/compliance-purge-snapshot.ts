@@ -60,7 +60,33 @@ export async function collectUserPurgeSnapshot(
     .eq("id", userId)
     .maybeSingle();
 
-  if (error || !u) return null;
+  if (error) return null;
+
+  if (!u) {
+    const { data: authRow } = await admin.auth.admin.getUserById(userId);
+    const authUser = authRow?.user;
+    if (!authUser) return null;
+
+    return {
+      user_id: userId,
+      email: authUser.email ?? null,
+      full_name:
+        typeof authUser.user_metadata?.full_name === "string"
+          ? authUser.user_metadata.full_name
+          : null,
+      phone: null,
+      role: null,
+      created_at: authUser.created_at ?? null,
+      counts: {
+        bookings_as_customer: 0,
+        product_orders_as_customer: 0,
+        conversations_as_customer: 0,
+        providers_owned: 0,
+        provider_staff_links: 0,
+        support_tickets: 0,
+      },
+    };
+  }
 
   const [
     bookings_as_customer,

@@ -297,8 +297,9 @@ export async function fetchJson<T = unknown>(
 
   // Create AbortController for timeout
   const controller = new AbortController();
+  let abortedByTimeout = false;
   const timeoutId = setTimeout(() => {
-    // Debug logging removed
+    abortedByTimeout = true;
     controller.abort();
   }, timeoutMs);
 
@@ -462,18 +463,11 @@ export async function fetchJson<T = unknown>(
 
     // Handle abort (timeout or cancellation)
     if (error instanceof Error && (error.name === 'AbortError' || error.message.includes('aborted') || error.message.includes('signal is aborted'))) {
-      // Check if it was a timeout or manual cancellation
-      // If the signal was aborted, it's either a timeout or component unmount
-      // For cancellations (not timeouts), we still throw FetchTimeoutError but mark it as cancelled
-      // The error handlers and unhandled rejection handler will suppress it
-      const wasTimeout = timeoutId !== null && controller.signal.aborted;
-      const errorMessage = wasTimeout 
+      const errorMessage = abortedByTimeout
         ? `Request timed out after ${timeoutMs}ms`
         : 'Request was cancelled';
-      // Convert to FetchTimeoutError - error handlers will suppress cancelled requests
       const timeoutError = new FetchTimeoutError(errorMessage);
-      // Mark cancelled requests so they can be identified and suppressed
-      if (!wasTimeout) {
+      if (!abortedByTimeout) {
         (timeoutError as any).__cancelled = true;
       }
       throw timeoutError;

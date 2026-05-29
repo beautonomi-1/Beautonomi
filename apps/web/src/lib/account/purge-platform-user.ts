@@ -18,8 +18,10 @@ function authDeleteErrorCode(error: unknown): string | undefined {
 }
 
 /**
- * DB-side cleanup for FKs that still use NO ACTION toward users/auth (see migration 440).
- * Must run before auth.admin.deleteUser while the user id still exists for lookups.
+ * DB-side cleanup for FKs that still use NO ACTION toward users/auth (see migrations 440, 631).
+ * Also deletes owned-provider bookings first so provider → offerings CASCADE does not hit
+ * booking_services.offering_id RESTRICT. Must run before auth.admin.deleteUser while the
+ * user id still exists for lookups.
  */
 export async function complianceClearUserReferences(
   admin: SupabaseClient,

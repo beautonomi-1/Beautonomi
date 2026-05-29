@@ -54,7 +54,9 @@ export default function ControlPlaneCompliancePage() {
     if (!id) return;
     setUserLoadBusy(true);
     try {
-      const res = (await fetcher.get(`/api/admin/users/${encodeURIComponent(id)}`)) as {
+      const res = (await fetcher.get(
+        `/api/admin/compliance/lookup-user/${encodeURIComponent(id)}`,
+      )) as {
         data?: { email?: string | null };
       };
       setUserEmail(res.data?.email?.trim() ?? "");

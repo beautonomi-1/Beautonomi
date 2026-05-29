@@ -243,6 +243,8 @@ export default function BookingsList({
           paymentOption: (booking as { payment_option?: string }).payment_option,
           depositRequired: (booking as { deposit_required?: boolean }).deposit_required,
         });
+        const isGroupBooking = Boolean((booking as { is_group_booking?: boolean }).is_group_booking);
+        const groupBookingRef = (booking as { group_booking_ref?: string | null }).group_booking_ref;
         // Resolve the effective lifecycle status for badge styling, so the
         // pill colour matches the label (paid pending_payment shows yellow
         // "Awaiting confirmation" not amber "Awaiting payment").
@@ -289,7 +291,18 @@ export default function BookingsList({
                     {paymentDisplay.label}
                   </span>
                 )}
+                {isGroupBooking && (
+                  <span className="px-3 py-1.5 rounded-full text-xs font-semibold tracking-tight bg-violet-50 text-violet-800 border border-violet-200">
+                    Group
+                  </span>
+                )}
               </div>
+
+              {isGroupBooking && groupBookingRef ? (
+                <p className="text-xs text-violet-700 font-medium mb-2">
+                  Group session · {groupBookingRef}
+                </p>
+              ) : null}
 
               <div className="space-y-3 text-sm md:text-base text-gray-700">
                 <div className="flex items-center gap-3">

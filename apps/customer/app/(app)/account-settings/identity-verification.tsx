@@ -270,13 +270,17 @@ export default function IdentityVerificationScreen() {
   const isVerified = statusData?.verified;
   const canSubmit = statusData?.can_submit_verification ?? false;
   const submissions = statusData?.submissions ?? [];
+  // Only show "under review" when actual submission records are in a blocking state.
+  // Do NOT fire on statusData.status alone — the users table column can be stale
+  // (e.g. 'pending' with no user_verifications rows) after a failed submission.
   const isUnderReview =
-    statusData?.status === "pending" ||
-    statusData?.status === "in_progress" ||
-    statusData?.manual_verification?.status === "pending" ||
     submissions.some((s) =>
       ["pending", "in_progress", "submitted", "under_review"].includes(s.status),
-    );
+    ) ||
+    (!!statusData?.manual_verification &&
+      ["pending", "in_progress", "submitted", "under_review"].includes(
+        statusData.manual_verification.status,
+      ));
   const sumsubAvailable = statusData?.sumsub_available ?? false;
 
   const statusLabel = useCallback(
@@ -451,7 +455,30 @@ export default function IdentityVerificationScreen() {
           <Text style={{ fontSize: 13, color: Colors.gray[500], marginBottom: 12, lineHeight: 18 }}>
             {iv("submissionsSectionSubtitle")}
           </Text>
-          {submissions.length === 0 ? (
+          {submissions.length === 0 && !isVerified ? (
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "flex-start",
+                gap: 10,
+                backgroundColor: Colors.gray[50],
+                borderRadius: RADIUS_CARD,
+                borderWidth: 1,
+                borderColor: Colors.gray[200],
+                padding: 16,
+              }}
+            >
+              <Ionicons name="document-outline" size={20} color={Colors.gray[400]} style={{ marginTop: 1 }} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[700], marginBottom: 4 }}>
+                  No submissions yet
+                </Text>
+                <Text style={{ fontSize: 13, color: Colors.gray[500], lineHeight: 18 }}>
+                  Upload a government-issued ID below to get verified. Your document is reviewed securely.
+                </Text>
+              </View>
+            </View>
+          ) : submissions.length === 0 ? (
             <Text style={{ fontSize: 14, color: Colors.gray[500], fontStyle: "italic" }}>{iv("submissionsEmpty")}</Text>
           ) : (
             submissions.map((row) => (

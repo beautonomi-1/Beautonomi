@@ -10,10 +10,12 @@ import {
   Switch,
   Alert,
   Modal,
+  Pressable,
   Image,
   useWindowDimensions,
   Platform,
 } from "react-native";
+import { Image as ExpoImage } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import * as Haptics from "expo-haptics";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -1925,38 +1927,30 @@ function Step10Categories() {
               accessibilityLabel={item.name}
               accessibilityState={{ selected: on }}
             >
+              {on ? (
+                <View
+                  style={twStyle(
+                    "absolute right-3 top-3 h-5 w-5 items-center justify-center rounded-full bg-primary"
+                  )}
+                >
+                  <Ionicons name="checkmark" size={13} color="#ffffff" />
+                </View>
+              ) : null}
               <View
-                style={[
-                  twStyle(
-                    `mb-3 h-16 w-16 items-center justify-center rounded-2xl border ${on ? "border-primary bg-white" : "border-slate-100 bg-slate-50"}`
-                  ),
-                  {
-                    // Global category artwork is often detailed / non-square.
-                    // Give it room and never tint it, otherwise RN can flatten
-                    // or visually crop the icon on Android/iOS.
-                    overflow: "visible",
-                  },
-                ]}
+                style={twStyle(
+                  `mb-3 h-16 w-16 items-center justify-center rounded-2xl border ${on ? "border-primary bg-white" : "border-slate-100 bg-slate-50"}`
+                )}
               >
                 {iconUri ? (
-                  <Image
+                  <ExpoImage
                     source={{ uri: iconUri }}
                     style={{ width: 46, height: 46 }}
-                    resizeMode="contain"
+                    contentFit="contain"
                     accessibilityIgnoresInvertColors
                   />
                 ) : (
                   <Ionicons name="pricetag-outline" size={26} color={on ? Colors.primary : "#64748b"} />
                 )}
-                {on ? (
-                  <View
-                    style={twStyle(
-                      "absolute -right-1 -top-1 h-5 w-5 items-center justify-center rounded-full bg-primary"
-                    )}
-                  >
-                    <Ionicons name="checkmark" size={13} color="#ffffff" />
-                  </View>
-                ) : null}
               </View>
               <Text
                 style={twStyle(
@@ -2008,8 +2002,6 @@ function Step11Services() {
   const [loadingCats, setLoadingCats] = useState(true);
   const [categoryId, setCategoryId] = useState("");
   const [title, setTitle] = useState("");
-  const [price, setPrice] = useState("");
-  const [dur, setDur] = useState("60");
   const [description, setDescription] = useState("");
   const [supportsAtSalon, setSupportsAtSalon] = useState(formData.business_type !== "mobile");
   const [supportsAtHome, setSupportsAtHome] = useState(formData.business_type !== "salon");
@@ -2090,8 +2082,6 @@ function Step11Services() {
   };
 
   const add = () => {
-    const p = parseFloat(price);
-    const d = parseInt(dur, 10) || 60;
     if (!selectedCategoryIds.length) {
       Alert.alert("Service", "Select at least one category in the previous step first.");
       return;
@@ -2104,11 +2094,12 @@ function Step11Services() {
       Alert.alert("Service", "Enter a service name.");
       return;
     }
-    if (Number.isNaN(p) || p < 0) {
+    const primaryPricing = pricingOptions[0] ?? DEFAULT_PRICING_OPTION();
+    if (primaryPricing.price <= 0) {
       Alert.alert("Service", "Enter a valid service price.");
       return;
     }
-    if (Number.isNaN(d) || d <= 0) {
+    if (!primaryPricing.duration || primaryPricing.duration <= 0) {
       Alert.alert("Service", "Duration must be more than 0 minutes.");
       return;
     }
@@ -2120,13 +2111,12 @@ function Step11Services() {
     const parsedAdj = parseFloat(atHomePriceAdj);
     const parsedTax = parseFloat(taxRate);
     const parsedExtraDur = parseInt(extraTimeDuration, 10);
-    const primaryPricing = pricingOptions[0] ?? DEFAULT_PRICING_OPTION();
     const s: OnboardingService = {
       title: title.trim(),
       category_id: categoryId,
       description: description.trim() || undefined,
-      duration_minutes: primaryPricing.duration || d,
-      price: primaryPricing.price ?? p,
+      duration_minutes: primaryPricing.duration,
+      price: primaryPricing.price,
       currency: tenantCurrency,
       supports_at_home: supportsAtHome,
       supports_at_salon: supportsAtSalon,
@@ -2155,8 +2145,6 @@ function Step11Services() {
     ];
     updateFormData({ services: [...services, s], service_addons: nextAddons });
     setTitle("");
-    setPrice("");
-    setDur("60");
     setDescription("");
     setShowAdvanced(false);
     setSupportsAtSalon(formData.business_type !== "mobile");
@@ -2297,22 +2285,73 @@ function Step11Services() {
         />
         <View style={twStyle("flex-row gap-3")}>
           <TextInput
-            value={price}
-            onChangeText={setPrice}
+            value={pricingOptions[0]?.price > 0 ? String(pricingOptions[0].price) : ""}
+            onChangeText={(t) => {
+              const val = parseFloat(t) || 0;
+              setPricingOptions((prev) =>
+                prev.map((o, i) => (i === 0 ? { ...o, price: val } : o))
+              );
+            }}
             placeholder={`Price (${tenantCurrency})`}
             keyboardType="decimal-pad"
             style={twStyle(`${inputCls} flex-1`)}
             placeholderTextColor="#94a3b8"
           />
           <TextInput
-            value={dur}
-            onChangeText={setDur}
+            value={pricingOptions[0]?.duration > 0 ? String(pricingOptions[0].duration) : ""}
+            onChangeText={(t) => {
+              const val = parseInt(t, 10) || 0;
+              setPricingOptions((prev) =>
+                prev.map((o, i) => (i === 0 ? { ...o, duration: val } : o))
+              );
+            }}
             placeholder="Minutes"
             keyboardType="number-pad"
             style={twStyle(`${inputCls} w-32`)}
             placeholderTextColor="#94a3b8"
           />
         </View>
+
+        {supportsAtHome ? (
+          <View style={twStyle("rounded-[1.5rem] border border-emerald-200 bg-emerald-50 p-4 gap-3")}>
+            <View style={twStyle("flex-row items-center gap-2 mb-1")}>
+              <Ionicons name="home-outline" size={16} color="#047857" />
+              <Text style={twStyle("text-[14px] font-semibold text-emerald-900")}>
+                Home visit settings
+              </Text>
+            </View>
+            <View style={twStyle("rounded-2xl border border-emerald-100 bg-white p-3 flex-row gap-2")}>
+              <Ionicons name="information-circle-outline" size={15} color="#059669" style={{ marginTop: 1 }} />
+              <Text style={twStyle("flex-1 text-[12px] leading-5 text-emerald-800")}>
+                No travel distance limit by default — customers anywhere can book. Set a max km to restrict range.
+              </Text>
+            </View>
+            <View style={twStyle("flex-row gap-3")}>
+              <View style={twStyle("flex-1 gap-1")}>
+                <Text style={twStyle("text-[12px] font-medium text-slate-600")}>Max travel radius (km)</Text>
+                <TextInput
+                  value={atHomeRadius}
+                  onChangeText={setAtHomeRadius}
+                  placeholder="Unlimited"
+                  keyboardType="decimal-pad"
+                  style={twStyle(inputCls)}
+                  placeholderTextColor="#94a3b8"
+                />
+              </View>
+              <View style={twStyle("w-36 gap-1")}>
+                <Text style={twStyle("text-[12px] font-medium text-slate-600")}>Travel surcharge ({tenantCurrency})</Text>
+                <TextInput
+                  value={atHomePriceAdj}
+                  onChangeText={setAtHomePriceAdj}
+                  placeholder="0.00"
+                  keyboardType="decimal-pad"
+                  style={twStyle(inputCls)}
+                  placeholderTextColor="#94a3b8"
+                />
+              </View>
+            </View>
+          </View>
+        ) : null}
 
         <TouchableOpacity
           onPress={() => setShowAdvanced((prev) => !prev)}
@@ -2447,26 +2486,6 @@ function Step11Services() {
                   trackColor={{ false: "#cbd5e1", true: Colors.primary }}
                 />
               </View>
-              {supportsAtHome ? (
-                <View style={twStyle("flex-row gap-3")}>
-                  <TextInput
-                    value={atHomeRadius}
-                    onChangeText={setAtHomeRadius}
-                    placeholder="Travel radius km"
-                    keyboardType="decimal-pad"
-                    style={twStyle(`${inputCls} flex-1`)}
-                    placeholderTextColor="#94a3b8"
-                  />
-                  <TextInput
-                    value={atHomePriceAdj}
-                    onChangeText={setAtHomePriceAdj}
-                    placeholder={`+${tenantCurrency}`}
-                    keyboardType="decimal-pad"
-                    style={twStyle(`${inputCls} w-32`)}
-                    placeholderTextColor="#94a3b8"
-                  />
-                </View>
-              ) : null}
             </View>
 
             <View style={twStyle("rounded-[1.5rem] border border-slate-200 bg-white p-4 gap-3")}>
@@ -2711,17 +2730,22 @@ function Step12Hours() {
   ) => {
     const current = picker;
     const eventType = (event as { type?: string } | undefined)?.type;
-    // On Android, the picker fires once and then must be dismissed by us.
-    // On iOS the spinner stays open until the user taps "Done", but we want
-    // a Done button on the parent overlay; close on dismiss either way.
-    if (Platform.OS !== "ios" || eventType === "dismissed") {
+    // The picker now lives inside a Modal with its own Done button, so we
+    // never auto-dismiss — only the "dismissed" event (Android back button)
+    // closes it. The spinner display fires onChange continuously as the user
+    // scrolls; we just keep updating the preview time.
+    if (eventType === "dismissed") {
       setPicker(null);
+      return;
     }
-    if (!d || !current || eventType === "dismissed") return;
+    if (!d || !current) return;
 
     const timeStr = `${String(d.getHours()).padStart(2, "0")}:${String(
       d.getMinutes(),
     ).padStart(2, "0")}`;
+
+    // Keep picker preview time in sync with the spinner scroll position.
+    setPicker((prev) => (prev ? { ...prev, time: timeStr } : prev));
 
     // §provider-onboarding-hours 2026-05: prevent inverted ranges so providers
     // don't end up with a saved "open after close" schedule that silently
@@ -2749,11 +2773,6 @@ function Step12Hours() {
         return;
       }
       setDay(current.day, { close: timeStr });
-    }
-
-    // On iOS we keep the spinner state in sync with the latest selection.
-    if (Platform.OS === "ios") {
-      setPicker((prev) => (prev ? { ...prev, time: timeStr } : prev));
     }
   };
 
@@ -2910,29 +2929,46 @@ function Step12Hours() {
         );
       })}
 
-      {picker ? (
-        <>
-          <DateTimePicker
-            value={new Date(`2000-01-01T${picker.time}:00`)}
-            mode="time"
-            is24Hour={false}
-            display={Platform.OS === "ios" ? "spinner" : "default"}
-            onChange={handleTimeChange}
-          />
-          {Platform.OS === "ios" ? (
-            <TouchableOpacity
-              onPress={() => setPicker(null)}
-              style={twStyle(
-                "mt-3 items-center rounded-full bg-primary py-3.5"
-              )}
-              accessibilityRole="button"
-              accessibilityLabel="Done picking time"
-            >
-              <Text style={twStyle("text-[15px] font-semibold text-white")}>Done</Text>
-            </TouchableOpacity>
-          ) : null}
-        </>
-      ) : null}
+      <Modal
+        visible={!!picker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setPicker(null)}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.4)" }}
+          onPress={() => setPicker(null)}
+        >
+          <View
+            onStartShouldSetResponder={() => true}
+            style={twStyle(
+              "absolute bottom-0 left-0 right-0 rounded-t-3xl bg-white px-5 pb-10 pt-5"
+            )}
+          >
+            <View style={twStyle("mb-1 flex-row items-center justify-between")}>
+              <Text style={twStyle("text-[17px] font-semibold capitalize text-slate-900")}>
+                {picker?.field === "open" ? "Opening time" : "Closing time"}
+                {picker?.day ? ` — ${picker.day}` : ""}
+              </Text>
+              <TouchableOpacity
+                onPress={() => setPicker(null)}
+                accessibilityRole="button"
+                accessibilityLabel="Done picking time"
+                style={twStyle("px-2 py-1")}
+              >
+                <Text style={twStyle("text-[16px] font-semibold text-primary")}>Done</Text>
+              </TouchableOpacity>
+            </View>
+            <DateTimePicker
+              value={new Date(`2000-01-01T${picker?.time ?? "09:00"}:00`)}
+              mode="time"
+              is24Hour={false}
+              display="spinner"
+              onChange={handleTimeChange}
+            />
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 }

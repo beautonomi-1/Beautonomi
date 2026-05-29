@@ -3,10 +3,13 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useState } from "react";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { twStyle } from "@/lib/twStyle";
+import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { usePaystackTerminals, usePaystackTerminalPayments, type PaystackTerminalPayment } from "@/hooks/usePaystackTerminal";
 
 export default function PaystackTerminalSettingsScreen() {
+  const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
   const { terminals, loading, error, refresh, requestTerminalSetup, requestAssets } = usePaystackTerminals();
   const { payments, refresh: refreshPayments, allocate } = usePaystackTerminalPayments();
   const [creating, setCreating] = useState(false);
@@ -133,6 +136,19 @@ export default function PaystackTerminalSettingsScreen() {
     }
     await Linking.openURL(url);
   };
+
+  if (!paystackTerminalEnabled) {
+    return (
+      <SafeAreaView style={twStyle("flex-1 bg-gray-50")}>
+        <ScreenHeader title="Paystack Terminal" showBack />
+        <EmptyState
+          icon="qr-code-outline"
+          title="Paystack Terminal unavailable"
+          description="Paystack Terminal payments are not enabled for this market."
+        />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={twStyle("flex-1 bg-gray-50")}>

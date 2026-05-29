@@ -325,7 +325,7 @@ function CountdownBar({
   );
 }
 
-/** True when the hold exposes any cancellation / fee / policy text — same visibility as <CancellationPolicy />. */
+/** True when the hold exposes any cancellation / fee / window — same visibility gate as <CancellationPolicy />. */
 function cancellationPolicyRequiresCustomerAck(
   policy: HoldData["cancellation_policy"] | null | undefined
 ): boolean {
@@ -342,18 +342,7 @@ function cancellationPolicyRequiresCustomerAck(
     latePct !== null &&
     !Number.isNaN(Number(latePct)) &&
     Number(latePct) < 100;
-  const policyTextTrimmed = typeof policy.policy_text === "string" ? policy.policy_text.trim() : "";
-  const policySnippet = policyTextTrimmed.length > 0 ? policyTextTrimmed : null;
-  if (
-    !windowHrs &&
-    !noShowFee &&
-    !(graceMin != null && graceMin > 0) &&
-    !showLateLine &&
-    !policySnippet
-  ) {
-    return false;
-  }
-  return true;
+  return !!(windowHrs || noShowFee || (graceMin != null && graceMin > 0) || showLateLine);
 }
 
 /* ─── Cancellation Policy Section ─── */
@@ -381,23 +370,25 @@ function CancellationPolicy({
     latePct !== null &&
     !Number.isNaN(Number(latePct)) &&
     Number(latePct) < 100;
-  const policyTextTrimmed = typeof policy.policy_text === "string" ? policy.policy_text.trim() : "";
-  const policySnippet =
-    policyTextTrimmed.length > 0
-      ? policyTextTrimmed.slice(0, 280) + (policyTextTrimmed.length > 280 ? "…" : "")
-      : null;
 
+  // Visibility guard — nothing meaningful to show
   if (
     !windowHrs &&
     !noShowFee &&
     !(graceMin != null && graceMin > 0) &&
-    !showLateLine &&
-    !policySnippet
+    !showLateLine
   ) {
     return null;
   }
 
   const cur = policy.currency || currency;
+  // Human-readable window for late-cancellation lines
+  const windowLabel =
+    windowHrs != null && windowHrs > 0
+      ? windowHrs === 1
+        ? `1 ${t("checkout.hour")}`
+        : `${windowHrs} ${t("checkout.hours")}`
+      : null;
 
   return (
     <View
@@ -453,39 +444,24 @@ function CancellationPolicy({
       {showLateLine ? (
         <View style={{ flexDirection: "row", alignItems: "flex-start", marginBottom: 6 }}>
           <Ionicons
-            name="information-circle-outline"
+            name="alert-circle-outline"
             size={16}
-            color="#6B7280"
+            color={Colors.warning}
             style={{ marginTop: 1, marginRight: 8 }}
           />
           <Text style={{ fontSize: 13, color: "#374151", flex: 1, lineHeight: 20 }}>
             {Number(latePct) <= 0
-              ? t("checkout.lateCancellationNoRefund")
-              : t("checkout.lateCancellationRefund", { percent: Math.round(Number(latePct)) })}
-          </Text>
-        </View>
-      ) : null}
-      {policySnippet ? (
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "flex-start",
-            marginBottom: noShowFee ? 6 : 0,
-          }}
-        >
-          <Ionicons
-            name="document-text-outline"
-            size={16}
-            color="#6B7280"
-            style={{ marginTop: 1, marginRight: 8 }}
-          />
-          <Text style={{ fontSize: 12, color: "#6B7280", flex: 1, lineHeight: 18 }}>
-            {policySnippet}
+              ? windowLabel
+                ? `Within ${windowLabel}: no refund will be issued.`
+                : t("checkout.lateCancellationNoRefund")
+              : windowLabel
+                ? `Within ${windowLabel}: ${Math.round(Number(latePct))}% refund.`
+                : t("checkout.lateCancellationRefund", { percent: Math.round(Number(latePct)) })}
           </Text>
         </View>
       ) : null}
       {noShowFee ? (
-        <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
+        <View style={{ flexDirection: "row", alignItems: "flex-start", marginBottom: 6 }}>
           <Ionicons
             name="alert-circle-outline"
             size={16}
@@ -499,6 +475,12 @@ function CancellationPolicy({
           </Text>
         </View>
       ) : null}
+      <View style={{ flexDirection: "row", alignItems: "center", marginTop: 6, paddingTop: 8, borderTopWidth: 1, borderTopColor: "#E5E7EB" }}>
+        <Ionicons name="lock-closed-outline" size={12} color="#9CA3AF" style={{ marginRight: 4 }} />
+        <Text style={{ fontSize: 11, color: "#9CA3AF", lineHeight: 16 }}>
+          This policy is enforced automatically at the time of cancellation.
+        </Text>
+      </View>
     </View>
   );
 }

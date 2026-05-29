@@ -246,6 +246,9 @@ export async function PATCH(
     if (body.email !== undefined) updateData.email = body.email;
     if (body.phone !== undefined) updateData.phone = body.phone;
     if (body.business_type !== undefined) updateData.business_type = body.business_type;
+    if (body.accept_paystack_terminal !== undefined) {
+      updateData.accept_paystack_terminal = Boolean(body.accept_paystack_terminal);
+    }
 
     const { data: updatedProvider, error: updateError } = await supabase
       .from("providers")

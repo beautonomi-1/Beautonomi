@@ -549,7 +549,17 @@ export function BookingsClient({
 
   const openBookingDetails = useCallback((booking: ProviderBookingListItem) => {
     const groupId = (booking as any).group_booking_id;
-    if ((booking as any).is_group_booking && typeof groupId === "string" && groupId.length > 0) {
+    if ((booking as any).is_group_booking) {
+      const rawId =
+        (typeof groupId === "string" && groupId.length > 0
+          ? groupId
+          : typeof booking.id === "string" && booking.id.startsWith("group:")
+            ? booking.id.slice("group:".length)
+            : "") || "";
+      if (rawId) {
+        router.push(`/provider/group-bookings?open_group_id=${encodeURIComponent(rawId)}`);
+        return;
+      }
       router.push("/provider/group-bookings");
       return;
     }
@@ -727,7 +737,14 @@ export function BookingsClient({
                               {getInitials(name)}
                             </div>
                             <div className="min-w-0">
-                              <div className="font-medium text-sm text-gray-900 truncate">{name}</div>
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <div className="font-medium text-sm text-gray-900 truncate">{name}</div>
+                                {(b as any).is_group_booking ? (
+                                  <span className="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800">
+                                    Group
+                                  </span>
+                                ) : null}
+                              </div>
                               {b.location_name && (
                                 <div className="text-[11px] text-gray-500 truncate">{b.location_name}</div>
                               )}
@@ -835,7 +852,14 @@ export function BookingsClient({
                       )}
                     </button>
                     <div className="min-w-0">
-                      <h3 className="font-semibold text-gray-900 truncate">{b.customer_name || "Customer"}</h3>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <h3 className="font-semibold text-gray-900 truncate">{b.customer_name || "Customer"}</h3>
+                        {(b as any).is_group_booking ? (
+                          <span className="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800">
+                            Group
+                          </span>
+                        ) : null}
+                      </div>
                       <p className="text-xs text-gray-500">#{b.booking_number}</p>
                     </div>
                   </div>

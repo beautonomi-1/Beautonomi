@@ -42,18 +42,29 @@ import {
   Coins,
   PiggyBank,
   CreditCard,
+  QrCode,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useProviderSidebar } from "@/contexts/ProviderSidebarContext";
 import { useAuth } from "@/providers/AuthProvider";
+import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { usePlatformSettings } from "@/providers/PlatformSettingsProvider";
 import PlatformLogo from "@/components/platform/PlatformLogo";
 import { usePermissions } from "@/hooks/usePermissions";
 import type { StaffPermissions } from "@/lib/auth/permissions";
 
+type NavItemConfig = {
+  icon: React.ElementType;
+  label: string;
+  href: string;
+  badge?: string;
+  permission?: keyof StaffPermissions;
+  featureFlag?: "payment_yoco" | "payment_paystack_virtual_terminal";
+};
+
 // Navigation sections with permission requirements
-const navigationSections = [
+const navigationSections: { title: string; items: NavItemConfig[] }[] = [
   {
     title: "Main",
     items: [
@@ -120,7 +131,8 @@ const navigationSections = [
       { icon: CreditCard, label: "Payments", href: "/provider/payments", permission: "view_sales" as keyof StaffPermissions },
       { icon: Coins, label: "Payouts", href: "/provider/payouts", permission: "view_sales" as keyof StaffPermissions },
       { icon: PiggyBank, label: "Bank Accounts", href: "/provider/settings/payout-accounts", permission: "view_sales" as keyof StaffPermissions },
-      { icon: CreditCard, label: "Yoco", href: "/provider/settings/sales/yoco-integration", permission: "edit_settings" as keyof StaffPermissions },
+      { icon: CreditCard, label: "Yoco", href: "/provider/settings/sales/yoco-integration", permission: "edit_settings" as keyof StaffPermissions, featureFlag: "payment_yoco" },
+      { icon: QrCode, label: "Paystack Terminal", href: "/provider/settings/sales/paystack-terminal", permission: "edit_settings" as keyof StaffPermissions, featureFlag: "payment_paystack_virtual_terminal" },
       { icon: CreditCard, label: "Subscription", href: "/provider/subscription", permission: undefined },
       { icon: BarChart3, label: "Analytics", href: "/provider/analytics", permission: "view_reports" as keyof StaffPermissions },
       { icon: BarChart3, label: "Reports", href: "/provider/reports", permission: "view_reports" as keyof StaffPermissions },
@@ -243,6 +255,9 @@ const isActiveRoute = (pathname: string, href: string) => {
   if (href === "/provider/settings/sales/yoco-integration") {
     return pathname.startsWith("/provider/settings/sales/yoco");
   }
+  if (href === "/provider/settings/sales/paystack-terminal") {
+    return pathname.startsWith("/provider/settings/sales/paystack-terminal");
+  }
   if (href === "/provider/settings/services/memberships") {
     return pathname.startsWith("/provider/settings/services/memberships");
   }
@@ -273,6 +288,8 @@ export function ProviderSidebar() {
   const { signOut, user: _user, role } = useAuth();
   const { branding } = usePlatformSettings();
   const { hasPermission, isLoading: permissionsLoading, permissions } = usePermissions();
+  const yocoEnabled = useFeatureFlag("payment_yoco");
+  const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
   const [navCounts, setNavCounts] = React.useState<ProviderNavCounts>(emptyNavCounts);
   
   // Track if user was a provider owner (to handle temporary role loss during tab switches)
@@ -342,46 +359,54 @@ export function ProviderSidebar() {
     [navCounts],
   );
 
-  // Filter navigation sections based on permissions
-  // CRITICAL FIX: For provider owners, ALWAYS show all menu items
-  // This prevents menu from disappearing during tab switches or temporary permission issues
-  // Provider owners should have access to everything anyway
-  const filteredNavigationSections = React.useMemo(() => {
-    // If user is/was a provider owner, show ALL items (no filtering)
-    if (isProvider && (role === 'provider_owner' || wasOwnerRef.current)) {
-      return navigationSections;
-    }
-    
-    // For staff members, apply permission filtering
-    const withFilteredItems = navigationSections.map(section => ({
-      ...section,
-      items: section.items.filter(item => {
-        // If no permission required, always show
-        if (!item.permission) return true;
-        
-        // If permissions are loading, show all items
-        if (permissionsLoading) return true;
-        
-        // If we don't have permissions, show all items (might be temporary)
-        if (!permissions) return true;
-        
-        // Check permission
-        try {
-          return hasPermission(item.permission);
-        } catch {
-          // Fail open - show item if check fails
-          return true;
-        }
-      })
-    }));
-    // Always show E-Commerce section (alignment with provider app): if all items were filtered out, show one entry point
-    return withFilteredItems.map(section => {
-      if (section.title === "E-Commerce" && section.items.length === 0) {
-        return { ...section, items: [{ icon: Store, label: "E-Commerce", href: "/provider/ecommerce/orders", permission: undefined }] };
+  const passesFeatureFlag = React.useCallback(
+    (item: NavItemConfig) => {
+      if (item.featureFlag === "payment_yoco" && !yocoEnabled) return false;
+      if (item.featureFlag === "payment_paystack_virtual_terminal" && !paystackTerminalEnabled) return false;
+      return true;
+    },
+    [yocoEnabled, paystackTerminalEnabled],
+  );
+
+  const passesPermission = React.useCallback(
+    (item: NavItemConfig) => {
+      if (!item.permission) return true;
+      if (permissionsLoading) return true;
+      if (!permissions) return true;
+      try {
+        return hasPermission(item.permission);
+      } catch {
+        return true;
       }
-      return section;
-    }).filter(section => section.items.length > 0);
-  }, [isProvider, role, permissionsLoading, permissions, hasPermission]);
+    },
+    [permissionsLoading, permissions, hasPermission],
+  );
+
+  // Filter navigation: feature flags apply to all roles; owners bypass permission checks only.
+  const filteredNavigationSections = React.useMemo(() => {
+    const isOwner = isProvider && (role === "provider_owner" || wasOwnerRef.current);
+
+    const withFilteredItems = navigationSections.map((section) => ({
+      ...section,
+      items: section.items.filter((item) => {
+        if (!passesFeatureFlag(item)) return false;
+        if (isOwner) return true;
+        return passesPermission(item);
+      }),
+    }));
+
+    return withFilteredItems
+      .map((section) => {
+        if (section.title === "E-Commerce" && section.items.length === 0) {
+          return {
+            ...section,
+            items: [{ icon: Store, label: "E-Commerce", href: "/provider/ecommerce/orders", permission: undefined }],
+          };
+        }
+        return section;
+      })
+      .filter((section) => section.items.length > 0);
+  }, [isProvider, role, passesFeatureFlag, passesPermission]);
 
   const filteredBottomItems = bottomItems;
 

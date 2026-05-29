@@ -22,6 +22,13 @@ import {
 import { evaluateGroupCapacity, normalizeGroupCapacity } from "@/lib/bookings/group-capacity";
 import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
 import { computeCatalogPackageServiceDiscount } from "@beautonomi/utils";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import {
+  createGroupParticipantChildBooking,
+  notifyGroupParticipantBooking,
+} from "@/lib/bookings/create-group-participant-booking";
 
 async function generateGroupBookingRef(admin: ReturnType<typeof getSupabaseAdmin>) {
   const { data, error } = await admin.rpc("generate_group_booking_ref");
@@ -337,6 +344,10 @@ export async function POST(request: NextRequest) {
       return notFoundResponse("Provider not found");
     }
 
+    const tenantId = await resolveTenantIdWithZaFallback(request);
+    const tenantRegion = await getTenantRegionConfig(tenantId);
+    const groupBookingCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+
     const body = await request.json();
     const {
       title,
@@ -541,7 +552,75 @@ export async function POST(request: NextRequest) {
       );
       const primaryIdxResolved = explicitPrimaryIdx >= 0 ? explicitPrimaryIdx : 0;
 
-      const participantRows = normalizedParticipants.map((p: any, idx: number) => ({
+      const sessionContext = {
+        providerId,
+        groupBookingId: groupBooking.id,
+        groupRef: refNumber,
+        scheduledAt: scheduled_at,
+        staffId: staff_id ? String(staff_id) : null,
+        locationId: location_type === "at_home" ? null : location_id ? String(location_id) : null,
+        locationType: (location_type === "at_home" ? "at_home" : "at_salon") as
+          | "at_home"
+          | "at_salon",
+        address:
+          location_type === "at_home"
+            ? {
+                line1: address_line1 || null,
+                city: address_city || null,
+                state: address_state || null,
+                country: address_country || null,
+                postal_code: address_postal_code || null,
+                latitude: address_latitude != null ? Number(address_latitude) : null,
+                longitude: address_longitude != null ? Number(address_longitude) : null,
+              }
+            : undefined,
+        travelFee: serverTravelFee,
+        currency: groupBookingCurrency,
+        tenantId: tenantId ?? null,
+      };
+
+      const participantsWithBookings = [...normalizedParticipants] as any[];
+      const newlyCreatedBookingIds: string[] = [];
+      for (let idx = 0; idx < participantsWithBookings.length; idx++) {
+        const p = participantsWithBookings[idx];
+        if (p.booking_id) continue;
+        const customerId =
+          typeof p.customer_id === "string" && p.customer_id.trim().length > 0
+            ? p.customer_id.trim()
+            : null;
+        if (!customerId) continue;
+        const svcId = p.service_id || service_id || null;
+        if (!svcId) continue;
+
+        const created = await createGroupParticipantChildBooking(admin, sessionContext, {
+          customerId,
+          serviceId: String(svcId),
+          serviceName: p.service_name || null,
+          price: typeof p.price === "number" ? p.price : 0,
+          durationMinutes:
+            typeof p.duration_minutes === "number"
+              ? p.duration_minutes
+              : duration_minutes || 60,
+          addons: Array.isArray(p.addons) ? p.addons : [],
+        });
+        if ("error" in created) {
+          console.error("Failed to create participant booking for group", groupBooking.id, created.error);
+          // Roll back any child bookings created before this failure, then the group row.
+          if (newlyCreatedBookingIds.length > 0) {
+            await admin.from("bookings").delete().in("id", newlyCreatedBookingIds);
+          }
+          await admin.from("group_bookings").delete().eq("id", groupBooking.id);
+          return errorResponse(
+            `Could not create booking for participant ${p.name || p.participant_name || idx + 1}: ${created.error}`,
+            "PARTICIPANT_BOOKING_FAILED",
+            400
+          );
+        }
+        newlyCreatedBookingIds.push(created.bookingId);
+        participantsWithBookings[idx] = { ...p, booking_id: created.bookingId };
+      }
+
+      const participantRows = participantsWithBookings.map((p: any, idx: number) => ({
         group_booking_id: groupBooking.id,
         booking_id: p.booking_id || null,
         // §Group-booking-audit 2026-05: store customer_id when an existing
@@ -564,7 +643,10 @@ export async function POST(request: NextRequest) {
 
       if (pError) {
         console.error("Failed to insert participants for group", groupBooking.id, pError);
-        // Roll back the group so we never expose the orphan to providers.
+        // Roll back child bookings created during this request, then the group row.
+        if (newlyCreatedBookingIds.length > 0) {
+          await admin.from("bookings").delete().in("id", newlyCreatedBookingIds);
+        }
         await admin.from("group_bookings").delete().eq("id", groupBooking.id);
 
         const dbCode = (pError as { code?: string }).code ?? null;
@@ -610,7 +692,7 @@ export async function POST(request: NextRequest) {
       // primary contact's booking on `group_bookings.primary_contact_booking_id`
       // so notify-reschedule / notify-cancellation can route through the real
       // bookings row that carries the customer.
-      const primaryParticipantInput = normalizedParticipants[primaryIdxResolved];
+      const primaryParticipantInput = participantsWithBookings[primaryIdxResolved];
       const primaryBookingId: string | null = primaryParticipantInput?.booking_id ?? null;
       if (primaryBookingId) {
         const { error: linkPrimaryErr } = await admin
@@ -625,19 +707,20 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // §Group-booking-audit 2026-05 (notify primary): when the caller opts
-      // in (default true to match single-booking parity), send a single
-      // confirmation to the primary contact — never to every participant, to
-      // avoid spamming guests who didn't book themselves.
-      const shouldNotifyPrimary = body?.send_notification !== false;
-      if (shouldNotifyPrimary && primaryBookingId) {
-        void import("@/lib/notifications/notification-service")
-          .then(({ notifyBookingConfirmed }) =>
-            notifyBookingConfirmed(primaryBookingId, ["email", "push"]).catch((e) =>
-              console.warn("Group primary confirmation:", e)
-            )
-          )
-          .catch((e) => console.warn("Group primary confirmation import:", e));
+      const shouldNotifyParticipants = body?.send_notification !== false;
+      if (shouldNotifyParticipants) {
+        const notifiedCustomerIds = new Set<string>();
+        for (const p of participantsWithBookings) {
+          const bookingId =
+            typeof p.booking_id === "string" && p.booking_id.length > 0 ? p.booking_id : null;
+          const customerId =
+            typeof p.customer_id === "string" && p.customer_id.trim().length > 0
+              ? p.customer_id.trim()
+              : null;
+          if (!bookingId || !customerId || notifiedCustomerIds.has(customerId)) continue;
+          notifiedCustomerIds.add(customerId);
+          void notifyGroupParticipantBooking(bookingId, customerId, providerId);
+        }
       }
     }
 

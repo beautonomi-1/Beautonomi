@@ -350,30 +350,11 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
                   </div>
                 )}
               </div>
-              {/* Avatar on main gallery (bottom-left) — avoids overlapping the name block below */}
+              {/* Bottom scrim — avatar moved to info card below */}
               <div
                 className="pointer-events-none absolute inset-x-0 bottom-0 z-[5] h-32 bg-gradient-to-t from-black/55 via-black/20 to-transparent"
                 aria-hidden
               />
-              <div className="pointer-events-none absolute bottom-5 left-5 z-10 h-[88px] w-[88px] shrink-0">
-                <div className="relative h-full w-full overflow-hidden rounded-full border-[3px] border-white bg-gray-200 shadow-xl ring-1 ring-black/10">
-                  {thumbnail_url ? (
-                    <Image
-                      src={thumbnail_url}
-                      alt={businessName ? `${businessName} profile photo` : "Provider profile photo"}
-                      fill
-                      sizes="88px"
-                      className="object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-gray-300 to-gray-400">
-                      <span className="text-2xl font-bold text-white">
-                        {(businessName || "P").charAt(0).toUpperCase()}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
             </Link>
           </div>
           <div className="grid grid-cols-2 gap-2">
@@ -440,8 +421,30 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
         </div>
       </div>
 
-      {/* Provider information — avatar sits on gallery above */}
-      <div className="relative -mt-6 rounded-t-3xl bg-white px-4 pb-6 pt-6 shadow-xl md:-mt-8 md:px-10 md:pb-8 md:pt-8">
+      {/* Provider information — avatar straddles the gallery/card seam */}
+      <div className="relative -mt-6 rounded-t-3xl bg-white px-4 pb-6 pt-[60px] shadow-xl md:-mt-8 md:px-10 md:pb-8 md:pt-[68px]">
+        {/* Avatar — -top-9 (mobile, 72px/2=36px) / md:-top-11 (desktop, 88px/2=44px) */}
+        <div className="absolute -top-9 left-4 z-30 md:-top-11 md:left-10">
+          <div className="relative h-[72px] w-[72px] shrink-0 md:h-[88px] md:w-[88px]">
+            <div className="relative h-full w-full overflow-hidden rounded-full border-[3px] border-white bg-gray-200 shadow-xl ring-1 ring-black/10">
+              {thumbnail_url ? (
+                <Image
+                  src={thumbnail_url}
+                  alt={businessName ? `${businessName} profile photo` : "Provider profile photo"}
+                  fill
+                  sizes="(min-width: 768px) 88px, 72px"
+                  className="object-cover"
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-gray-300 to-gray-400">
+                  <span className="text-xl font-bold text-white md:text-2xl">
+                    {(businessName || "P").charAt(0).toUpperCase()}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
         <div className="mb-6 flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
           <div className="flex-1">
             {/* Provider Name and Location */}

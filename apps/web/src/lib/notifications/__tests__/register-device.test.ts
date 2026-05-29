@@ -13,8 +13,8 @@ function mockSupabase(handlers: {
   const deleteChain = {
     eq: vi.fn(function (this: unknown, _col: string, _val: string) {
       return {
+        eq: vi.fn().mockReturnValue({ neq: deleteResult }),
         neq: deleteResult,
-        eq: deleteResult,
       };
     }),
   };
@@ -55,7 +55,7 @@ describe("registerDevice", () => {
         app_type: "provider",
         platform: "ios",
       }),
-      { onConflict: "onesignal_player_id" },
+      { onConflict: "onesignal_player_id,app_type" },
     );
   });
 

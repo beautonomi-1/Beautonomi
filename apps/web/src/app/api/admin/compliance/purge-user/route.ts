@@ -58,18 +58,27 @@ export async function POST(request: NextRequest) {
     const { user_id, reason, target_email_confirmation } = parsed.data;
     const admin = getSupabaseAdmin();
 
-    const { data: accessibleRows, error: fetchError } = await admin.rpc(
-      "get_user_if_admin_tenant_accessible",
-      {
-        p_user_id: user_id,
-        p_tenant_id: tenantId,
+    const { data: userRow, error: fetchError } = await admin
+      .from("users")
+      .select("id, email, role")
+      .eq("id", user_id)
+      .maybeSingle();
+
+    if (fetchError) {
+      return handleApiError(fetchError, "Failed to load user");
+    }
+
+    let existingUser: { id: string; email: string | null; role: string | null } | null = userRow;
+    if (!existingUser) {
+      const { data: authRow, error: authLookupErr } = await admin.auth.admin.getUserById(user_id);
+      if (authLookupErr || !authRow?.user) {
+        return notFoundResponse("User not found");
       }
-    );
-
-    const existingUser = Array.isArray(accessibleRows) ? accessibleRows[0] : null;
-
-    if (fetchError || !existingUser) {
-      return notFoundResponse("User not found in this tenant scope");
+      existingUser = {
+        id: authRow.user.id,
+        email: authRow.user.email ?? null,
+        role: null,
+      };
     }
 
     if (user_id === actor.id) {
