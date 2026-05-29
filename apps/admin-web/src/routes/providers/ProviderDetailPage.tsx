@@ -39,11 +39,24 @@ type PayoutAccountRow = Record<string, unknown> & {
   created_at?: string;
 };
 
+type AdminProviderTerminalRow = {
+  id: string;
+  terminal_code: string;
+  name: string;
+  display_name?: string | null;
+  status: string;
+  asset_status?: string | null;
+  destination_status?: string | null;
+  last_payment_at?: string | null;
+  created_at: string;
+};
+
 type ProviderDetail = Record<string, unknown> & {
   is_verified?: boolean;
   slug?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
+  accept_paystack_terminal?: boolean | null;
   staff?: unknown[] | null;
   offerings?: unknown[] | null;
   owner?: { id?: string; full_name?: string | null; email?: string | null; phone?: string | null } | null;
@@ -321,6 +334,28 @@ export function ProviderDetailPage() {
       adminToast.success("Yoco OAuth tokens disconnected");
     },
     onError: (e: Error) => adminToast.error(`Failed to disconnect Yoco OAuth: ${e.message}`),
+  });
+
+  const togglePaystackTerminal = useMutation({
+    mutationFn: (enabled: boolean) =>
+      adminApi.patchJson(`/api/admin/providers/${encodeURIComponent(providerCanonicalId || id)}`, {
+        accept_paystack_terminal: enabled,
+      }),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: adminQueryKeys.providers.detail(id) });
+      adminToast.success("Paystack Terminal setting updated");
+    },
+    onError: (e: Error) => adminToast.error(`Failed to update Paystack Terminal setting: ${e.message}`),
+  });
+
+  const providerTerminalsQ = useQuery({
+    queryKey: [...adminQueryKeys.finance.all(), "paystack-terminal-provider", providerCanonicalId],
+    queryFn: () =>
+      adminApi.getJson<{ items: AdminProviderTerminalRow[] }>(
+        `/api/admin/paystack-terminal/terminals?provider_id=${encodeURIComponent(providerCanonicalId)}&limit=10`,
+        { timeoutMs: 30_000 },
+      ),
+    enabled: allowed && !!providerCanonicalId && bootstrap?.isSuperadmin === true,
   });
 
   if (denied) return denied;
@@ -1045,6 +1080,137 @@ export function ProviderDetailPage() {
               </tbody>
             </table>
           </div>
+        ) : null}
+      </AdminPanel>
+
+      <AdminPanel>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">Paystack Virtual Terminal</h2>
+            <p className="mt-1 text-sm text-gray-600">
+              Provider-level opt-in for in-person QR / payment-link terminal payments via Paystack. The platform
+              feature flag <code className="rounded bg-gray-100 px-1 text-xs">payment_paystack_virtual_terminal</code>{" "}
+              must also be enabled for the market.
+            </p>
+          </div>
+          <Link
+            to={adminSpaTo("/admin/paystack-terminal")}
+            className="shrink-0 text-sm font-medium text-primary underline"
+          >
+            Terminal ops →
+          </Link>
+        </div>
+
+        <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+          <div>
+            <dt className="text-gray-500">Accept Paystack Terminal</dt>
+            <dd className="font-medium">
+              {row?.accept_paystack_terminal ? (
+                <span className="text-emerald-700">Enabled</span>
+              ) : (
+                <span className="text-gray-500">Disabled</span>
+              )}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-gray-500">Terminals registered</dt>
+            <dd className="font-medium">
+              {bootstrap?.isSuperadmin
+                ? providerTerminalsQ.isLoading
+                  ? "Loading…"
+                  : (providerTerminalsQ.data?.items?.length ?? 0)
+                : "—"}
+            </dd>
+          </div>
+        </dl>
+
+        {bootstrap?.isSuperadmin ? (
+          <div className="mt-4 flex flex-wrap gap-3">
+            <button
+              type="button"
+              className={adminToolbarButtonClass(togglePaystackTerminal.isPending)}
+              disabled={togglePaystackTerminal.isPending}
+              onClick={() => togglePaystackTerminal.mutate(!row?.accept_paystack_terminal)}
+            >
+              {togglePaystackTerminal.isPending
+                ? "Saving…"
+                : row?.accept_paystack_terminal
+                  ? "Disable terminal payments"
+                  : "Enable terminal payments"}
+            </button>
+          </div>
+        ) : null}
+
+        {bootstrap?.isSuperadmin &&
+        providerTerminalsQ.data?.items &&
+        providerTerminalsQ.data.items.length > 0 ? (
+          <div className="mt-6 overflow-x-auto">
+            <table className="w-full min-w-[560px] border-collapse text-left text-sm">
+              <thead>
+                <tr className="border-b border-gray-200 text-gray-500">
+                  <th className="py-2 pr-3 font-medium">Terminal</th>
+                  <th className="py-2 pr-3 font-medium">Status</th>
+                  <th className="py-2 pr-3 font-medium">Assets</th>
+                  <th className="py-2 pr-3 font-medium">WhatsApp</th>
+                  <th className="py-2 pr-3 font-medium">Last payment</th>
+                </tr>
+              </thead>
+              <tbody>
+                {providerTerminalsQ.data.items.map((t) => (
+                  <tr key={t.id} className="border-b border-gray-100">
+                    <td className="py-2 pr-3">
+                      <p className="font-medium text-gray-900">{t.display_name || t.name}</p>
+                      <p className="font-mono text-xs text-gray-500">{t.terminal_code}</p>
+                    </td>
+                    <td className="py-2 pr-3">
+                      <span
+                        className={cn(
+                          "inline-flex rounded-full px-2 py-0.5 text-xs font-semibold",
+                          t.status === "active" ? "bg-emerald-100 text-emerald-900" : "bg-gray-100 text-gray-700",
+                        )}
+                      >
+                        {t.status}
+                      </span>
+                    </td>
+                    <td className="py-2 pr-3">
+                      <span
+                        className={cn(
+                          "inline-flex rounded-full px-2 py-0.5 text-xs font-semibold",
+                          t.asset_status === "ready"
+                            ? "bg-emerald-100 text-emerald-900"
+                            : "bg-amber-100 text-amber-900",
+                        )}
+                      >
+                        {(t.asset_status ?? "missing_assets").replace(/_/g, " ")}
+                      </span>
+                    </td>
+                    <td className="py-2 pr-3">
+                      <span
+                        className={cn(
+                          "inline-flex rounded-full px-2 py-0.5 text-xs font-semibold",
+                          t.destination_status === "configured"
+                            ? "bg-emerald-100 text-emerald-900"
+                            : "bg-red-100 text-red-900",
+                        )}
+                      >
+                        {(t.destination_status ?? "not_configured").replace(/_/g, " ")}
+                      </span>
+                    </td>
+                    <td className="py-2 pr-3 text-gray-600">
+                      {t.last_payment_at ? new Date(t.last_payment_at).toLocaleString() : "Never"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {(providerTerminalsQ.data?.items?.length ?? 0) >= 10 ? (
+              <p className="mt-2 text-xs text-gray-500">Showing up to 10 terminals — see Terminal ops for full list.</p>
+            ) : null}
+          </div>
+        ) : null}
+
+        {bootstrap?.isSuperadmin && providerTerminalsQ.data?.items?.length === 0 ? (
+          <p className="mt-4 text-sm text-gray-500">No Paystack Virtual Terminals registered for this provider yet.</p>
         ) : null}
       </AdminPanel>
 

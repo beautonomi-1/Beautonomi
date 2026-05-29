@@ -67,7 +67,7 @@ AdminChrome resolves these relative to `/admin`. **Staging check:** run a search
 | Tenant domains | `settings/tenant-domains` | `useSuperadminPage` | `GET/POST/PATCH/DELETE /api/admin/tenant-domains` |
 | Control Plane | `control-plane/overview` | `useSuperadminPage` on overview; child pages inherit superadmin nav | Mix: see §5 control-plane |
 | Team permissions | `settings/team-permissions` | `useSuperadminPage` | `GET/PUT /api/admin/settings/section-permissions` |
-| Compliance purge | `control-plane/compliance` | `useSuperadminPage` | `GET /api/admin/compliance/purge-audit`, `POST .../purge-user`, `POST .../purge-provider` |
+| Compliance purge | `control-plane/compliance` | `useSuperadminPage` | `GET /api/admin/compliance/purge-audit`, `GET .../lookup-user/:id`, `POST .../purge-user`, `POST .../purge-provider` |
 
 **Shell:** [AdminChrome](../../../apps/admin-web/src/components/layout/AdminChrome.tsx) loads `GET /api/admin/tenants` only when `bootstrap?.isSuperadmin === true`.
 
@@ -199,7 +199,7 @@ Legend: **fetch** = raw `fetch()` (e.g. multipart). Non-admin: `POST /api/featur
 
 ### Control plane (superadmin)
 
-**Compliance:** [CompliancePurgePage.tsx](../../../apps/admin-web/src/routes/control-plane/CompliancePurgePage.tsx) — `GET /api/admin/compliance/purge-audit`, `POST .../purge-user`, `POST .../purge-provider`. Legacy Next parity: [compliance/page.tsx](../../../apps/web/src/app/admin/control-plane/compliance/page.tsx) (dialogs + same APIs).
+**Compliance:** [CompliancePurgePage.tsx](../../../apps/admin-web/src/routes/control-plane/CompliancePurgePage.tsx) — `GET /api/admin/compliance/purge-audit`, `GET .../lookup-user/:id`, `POST .../purge-user`, `POST .../purge-provider`. Legacy Next parity: [compliance/page.tsx](../../../apps/web/src/app/admin/control-plane/compliance/page.tsx) (dialogs + same APIs).
 
 Shared ops in [CpControlPlaneOps.tsx](../../../apps/admin-web/src/routes/control-plane/CpControlPlaneOps.tsx): safety logs, config-change-log, maintenance, maintenance-notify, AI usage/entitlements/templates, ranking scores/recompute.
 

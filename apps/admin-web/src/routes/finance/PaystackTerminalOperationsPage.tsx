@@ -238,6 +238,8 @@ export function PaystackTerminalOperationsPage() {
   const [resolveEntityType, setResolveEntityType] = useState("booking");
   const [resolveEntityId, setResolveEntityId] = useState("");
   const [resolveReason, setResolveReason] = useState("");
+  const [importFor, setImportFor] = useState<SyncTerminal | null>(null);
+  const [importForm, setImportForm] = useState({ provider_id: "", payment_link: "" });
 
   const q = useQuery({
     queryKey: [...QK, allocationStatus],
@@ -403,17 +405,11 @@ export function PaystackTerminalOperationsPage() {
     });
   }
 
-  function promptImport(item: SyncTerminal) {
-    const suggested = item.suggested_matches?.[0]?.provider?.id ?? "";
-    const providerId = window.prompt("Provider ID to assign this Paystack terminal to", suggested);
-    if (!providerId) return;
-    const paymentLink = window.prompt("Provider payment link from Paystack dashboard", `https://paystack.shop/pay/${item.code.toLowerCase()}`) ?? "";
-    importMut.mutate({
-      terminal_code: item.code,
-      provider_id: providerId,
-      display_name: item.name,
-      payment_link: paymentLink || null,
-      terminal_url: paymentLink || null,
+  function openImportModal(item: SyncTerminal) {
+    setImportFor(item);
+    setImportForm({
+      provider_id: item.suggested_matches?.[0]?.provider?.id ?? "",
+      payment_link: `https://paystack.shop/pay/${item.code.toLowerCase()}`,
     });
   }
 
@@ -483,6 +479,10 @@ export function PaystackTerminalOperationsPage() {
           <p className="mt-1 text-2xl font-semibold text-gray-900">{money(totals.received)}</p>
         </AdminPanel>
         <AdminPanel>
+          <p className="text-xs font-medium text-gray-500">Allocated</p>
+          <p className="mt-1 text-2xl font-semibold text-emerald-600">{money(totals.allocated)}</p>
+        </AdminPanel>
+        <AdminPanel>
           <p className="text-xs font-medium text-gray-500">Admin review</p>
           <p className="mt-1 text-2xl font-semibold text-amber-600">{money(totals.review)}</p>
         </AdminPanel>
@@ -495,7 +495,7 @@ export function PaystackTerminalOperationsPage() {
           <p className="mt-1 text-2xl font-semibold text-gray-900">{money(totals.held)}</p>
         </AdminPanel>
       </div>
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
         <AdminPanel>
           <p className="text-xs font-medium text-gray-500">Needs link</p>
           <p className="mt-1 text-2xl font-semibold text-amber-600">{summary?.missingPaymentLink ?? 0}</p>
@@ -509,6 +509,10 @@ export function PaystackTerminalOperationsPage() {
         <AdminPanel>
           <p className="text-xs font-medium text-gray-500">Needs WhatsApp</p>
           <p className="mt-1 text-2xl font-semibold text-red-600">{summary?.missingWhatsappDestination ?? 0}</p>
+        </AdminPanel>
+        <AdminPanel>
+          <p className="text-xs font-medium text-gray-500">Needs identity review</p>
+          <p className="mt-1 text-2xl font-semibold text-red-600">{summary?.needsIdentityReview ?? 0}</p>
         </AdminPanel>
         <AdminPanel>
           <p className="text-xs font-medium text-gray-500">Requested by providers</p>
@@ -651,6 +655,31 @@ export function PaystackTerminalOperationsPage() {
                           <ShieldAlert className="mr-1 inline h-3.5 w-3.5" />
                           Dispute
                         </button>
+                        <button
+                          type="button"
+                          className="rounded-lg border border-emerald-300 px-3 py-2 text-xs font-medium text-emerald-900 hover:bg-emerald-50"
+                          disabled={actionMut.isPending}
+                          onClick={() => actionMut.mutate({ id: payment.id, body: { action: "clear_dispute" } })}
+                        >
+                          <CheckCircle2 className="mr-1 inline h-3.5 w-3.5" />
+                          Clear dispute
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded-lg border border-red-300 px-3 py-2 text-xs font-medium text-red-900 hover:bg-red-50"
+                          disabled={actionMut.isPending}
+                          onClick={() => actionMut.mutate({ id: payment.id, body: { action: "mark_refunded" } })}
+                        >
+                          Mark refunded
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                          disabled={actionMut.isPending}
+                          onClick={() => actionMut.mutate({ id: payment.id, body: { action: "mark_admin_review" } })}
+                        >
+                          To review
+                        </button>
                       </div>
                     </AdminTd>
                   </tr>
@@ -670,7 +699,7 @@ export function PaystackTerminalOperationsPage() {
           {terminals.length === 0 ? (
             <EmptyState title="No terminals found" description="No Paystack Virtual Terminals have been created yet." />
           ) : (
-            <AdminDataTable tableClassName="min-w-[840px]">
+            <AdminDataTable tableClassName="min-w-[960px]">
               <AdminTableHead>
                 <tr>
                   <AdminTh>Terminal</AdminTh>
@@ -681,6 +710,7 @@ export function PaystackTerminalOperationsPage() {
                   <AdminTh>Currency</AdminTh>
                   <AdminTh>Last payment</AdminTh>
                   <AdminTh>Created</AdminTh>
+                  <AdminTh>Actions</AdminTh>
                 </tr>
               </AdminTableHead>
               <AdminTableBody>
@@ -712,6 +742,15 @@ export function PaystackTerminalOperationsPage() {
                     <AdminTd>{terminal.currency ?? "ZAR"}</AdminTd>
                     <AdminTd>{terminal.last_payment_at ? new Date(terminal.last_payment_at).toLocaleString() : "Never"}</AdminTd>
                     <AdminTd>{new Date(terminal.created_at).toLocaleString()}</AdminTd>
+                    <AdminTd>
+                      <button
+                        type="button"
+                        className="rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-800 hover:bg-gray-50"
+                        onClick={() => openAssetEditor(terminal)}
+                      >
+                        Edit assets
+                      </button>
+                    </AdminTd>
                   </tr>
                 ))}
               </AdminTableBody>
@@ -915,7 +954,7 @@ export function PaystackTerminalOperationsPage() {
                           type="button"
                           className="rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-800 hover:bg-gray-50"
                           disabled={importMut.isPending}
-                          onClick={() => promptImport(item)}
+                          onClick={() => openImportModal(item)}
                         >
                           Import / assign
                         </button>
@@ -1002,6 +1041,88 @@ export function PaystackTerminalOperationsPage() {
                 }
               >
                 {actionMut.isPending ? "Resolving..." : "Resolve allocation"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {importFor ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/50 p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
+            <h3 className="text-lg font-semibold text-gray-900">Import Paystack terminal</h3>
+            <p className="mt-1 text-sm text-gray-600">
+              Assign <span className="font-medium">{importFor.name}</span>{" "}
+              <span className="font-mono text-xs text-gray-500">({importFor.code})</span> to a provider.
+            </p>
+            {importFor.suggested_matches && importFor.suggested_matches.length > 0 ? (
+              <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                <p className="text-xs font-semibold text-amber-900">Suggested match</p>
+                {importFor.suggested_matches.map((match) => (
+                  <div key={match.provider.id} className="mt-1 flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-sm text-gray-900">{match.provider.business_name ?? match.provider.id}</p>
+                      <p className="font-mono text-xs text-gray-500">{match.provider.id}</p>
+                      <p className="text-xs text-amber-800">{match.confidence}% — {match.reasons.join(", ")}</p>
+                    </div>
+                    <button
+                      type="button"
+                      className="shrink-0 rounded-lg border border-amber-300 px-2 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100"
+                      onClick={() => setImportForm((prev) => ({ ...prev, provider_id: match.provider.id ?? "" }))}
+                    >
+                      Use
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            <div className="mt-4 space-y-3">
+              <label className="block text-sm font-medium text-gray-700">
+                Provider ID
+                <input
+                  className="mt-1 min-h-11 w-full rounded-xl border border-gray-300 px-3 font-mono text-sm"
+                  value={importForm.provider_id}
+                  onChange={(e) => setImportForm((prev) => ({ ...prev, provider_id: e.target.value }))}
+                  placeholder="UUID of the provider"
+                />
+              </label>
+              <label className="block text-sm font-medium text-gray-700">
+                Paystack payment link
+                <input
+                  className="mt-1 min-h-11 w-full rounded-xl border border-gray-300 px-3 text-sm"
+                  value={importForm.payment_link}
+                  onChange={(e) => setImportForm((prev) => ({ ...prev, payment_link: e.target.value }))}
+                  placeholder="https://paystack.shop/pay/..."
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Copy the hosted payment page URL from the Paystack dashboard.
+                </p>
+              </label>
+            </div>
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                className={adminToolbarButtonClass(false)}
+                onClick={() => setImportFor(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="inline-flex min-h-11 items-center justify-center rounded-xl bg-gray-900 px-4 text-sm font-medium text-white disabled:opacity-50"
+                disabled={importMut.isPending || !importForm.provider_id.trim() || !importForm.payment_link.trim()}
+                onClick={() => {
+                  importMut.mutate({
+                    terminal_code: importFor.code,
+                    provider_id: importForm.provider_id.trim(),
+                    display_name: importFor.name,
+                    payment_link: importForm.payment_link.trim() || null,
+                    terminal_url: importForm.payment_link.trim() || null,
+                  });
+                  setImportFor(null);
+                }}
+              >
+                {importMut.isPending ? "Importing..." : "Import terminal"}
               </button>
             </div>
           </div>

@@ -37,9 +37,21 @@ const DOCUMENT_TYPES = [
   { value: "identity", label: "National ID" },
 ] as const;
 
-function statusForCard(status: string, verified: boolean): "none" | "pending" | "verified" | "failed" {
+// Pass hasSubmissions so we don't show "Under Review" when the user-level
+// status is stale ('pending' on the users table) but no actual records exist.
+function statusForCard(
+  status: string,
+  verified: boolean,
+  hasSubmissions: boolean,
+): "none" | "pending" | "verified" | "failed" {
   if (verified || status === "approved") return "verified";
-  if (status === "pending" || status === "in_progress" || status === "submitted" || status === "under_review") {
+  if (
+    hasSubmissions &&
+    (status === "pending" ||
+      status === "in_progress" ||
+      status === "submitted" ||
+      status === "under_review")
+  ) {
     return "pending";
   }
   if (status === "rejected") return "failed";
@@ -97,7 +109,7 @@ export default function IdentityVerificationPageClient() {
 
   const canSubmit = data?.can_submit_verification ?? false;
   const submissions = data?.submissions ?? [];
-  const cardStatus = statusForCard(data?.status ?? "none", Boolean(data?.verified));
+  const cardStatus = statusForCard(data?.status ?? "none", Boolean(data?.verified), submissions.length > 0);
   const latestRejection = submissions.find((s) => s.rejection_reason)?.rejection_reason;
 
   const openSumsub = async () => {
@@ -284,7 +296,7 @@ export default function IdentityVerificationPageClient() {
                 </form>
               </CardContent>
             </Card>
-          ) : !data?.verified ? (
+          ) : !data?.verified && submissions.length > 0 ? (
             <Card className="border-amber-200 bg-amber-50">
               <CardContent className="p-4 flex gap-3">
                 <ShieldCheck className="h-5 w-5 text-amber-700 shrink-0 mt-0.5" />

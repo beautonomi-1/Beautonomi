@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Customer post-signup onboarding wizard — 6 steps.
  *
  * Step 1 — Preferred name     (required)
@@ -209,6 +209,8 @@ export default function CustomerOnboarding() {
   /** Set when user picks from search, map pin, or current location */
   const [addressLatitude, setAddressLatitude] = useState<number | null>(null);
   const [addressLongitude, setAddressLongitude] = useState<number | null>(null);
+  /** Whether to show the manual edit fields below the selected-address card */
+  const [showManualFields, setShowManualFields] = useState(false);
 
   /* Step 6 */
   const [hairTypes, setHairTypes] = useState<string[]>([]);
@@ -226,6 +228,16 @@ export default function CustomerOnboarding() {
     if (!tenantRegionName) return;
     setCountry((c) => (c === "South Africa" ? tenantRegionName : c));
   }, [tenantRegionName]);
+
+  /* Auto-open the address picker the first time the user lands on step 5 with no address */
+  useEffect(() => {
+    if (step !== 5 || initializing) return;
+    if (!alreadyHasAddress && !addressLine1.trim()) {
+      setAddressPickerOpen(true);
+    }
+    // Only fire on step entry -- deps intentionally limited to [step, initializing]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, initializing]);
 
   /* ── Init: prefill from profile ── */
   useEffect(() => {
@@ -986,7 +998,7 @@ export default function CustomerOnboarding() {
             </View>
           )}
 
-          {/* ── Step 5: Address ── */}
+          {/* -- Step 5: Address -- */}
           {step === 5 && (
             <View style={{ marginTop: 24 }}>
               <StepIcon name="location" />
@@ -995,6 +1007,7 @@ export default function CustomerOnboarding() {
                 subtitle="Used for house-call bookings and finding services near you"
               />
 
+              {/* AddressPicker modal -- auto-opens on first visit; can also be triggered by the CTA below */}
               <AddressPicker
                 visible={addressPickerOpen}
                 onClose={() => setAddressPickerOpen(false)}
@@ -1003,6 +1016,7 @@ export default function CustomerOnboarding() {
                 initialQuery={addressLine1.trim() || undefined}
               />
 
+              {/* Already-has-address banner */}
               {alreadyHasAddress && (
                 <View
                   style={{
@@ -1010,143 +1024,270 @@ export default function CustomerOnboarding() {
                     gap: 8,
                     backgroundColor: "#F0FDF4",
                     borderRadius: RADIUS_CARD,
-                    padding: 12,
+                    padding: 14,
                     marginBottom: 16,
                   }}
                 >
-                  <Ionicons
-                    name="checkmark-circle"
-                    size={16}
-                    color="#16A34A"
-                    style={{ marginTop: 1 }}
-                  />
+                  <Ionicons name="checkmark-circle" size={16} color="#16A34A" style={{ marginTop: 1 }} />
                   <Text style={{ flex: 1, fontSize: 13, color: "#166534", lineHeight: 18 }}>
-                    You already have a saved address. You can add another below, or continue.
+                    You already have a saved address. You can continue or add another.
                   </Text>
                 </View>
               )}
 
               {!alreadyHasAddress && (
                 <>
-                  <TouchableOpacity
-                    onPress={() => setAddressPickerOpen(true)}
-                    activeOpacity={0.85}
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: 10,
-                      backgroundColor: PRIMARY + "12",
-                      borderWidth: 1.5,
-                      borderColor: PRIMARY + "55",
-                      borderRadius: RADIUS_BUTTON,
-                      paddingVertical: 14,
-                      paddingHorizontal: 16,
-                      marginBottom: 16,
-                    }}
-                    accessibilityRole="button"
-                    accessibilityLabel="Search for your address, drop a pin on the map, or use current location"
-                  >
-                    <Ionicons name="map-outline" size={22} color={PRIMARY} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 15, fontWeight: "700", color: "#0F172A" }}>
-                        Find on map
-                      </Text>
-                      <Text style={{ fontSize: 12, color: "#64748B", marginTop: 2 }}>
-                        Search, drop a pin, or use current location — same as when you book
-                      </Text>
-                    </View>
-                    <Ionicons name="chevron-forward" size={20} color={PRIMARY} />
-                  </TouchableOpacity>
-
-                  {addressLatitude != null &&
-                    addressLongitude != null &&
-                    Number.isFinite(addressLatitude) &&
-                    Number.isFinite(addressLongitude) && (
-                      <View style={{ marginBottom: 14 }}>
-                        <SectionLabel>Map preview</SectionLabel>
-                        <StaticMapImage
-                          latitude={addressLatitude}
-                          longitude={addressLongitude}
-                          width={Math.max(280, windowWidth - SCREEN_PADDING * 2)}
-                          height={152}
-                          borderRadius={12}
-                        />
-                        <Text style={[hintStyle, { marginTop: 6 }]}>
-                          Pin shows the saved location for distances and directions. Edit the fields
-                          below if needed.
+                  {/* ── State A: no address selected yet ── */}
+                  {!addressLine1.trim() && (
+                    <>
+                      {/* Primary CTA -- opens the full Mapbox picker */}
+                      <TouchableOpacity
+                        onPress={() => setAddressPickerOpen(true)}
+                        activeOpacity={0.82}
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 12,
+                          backgroundColor: "#F8FAFC",
+                          borderWidth: 1.5,
+                          borderColor: "#CBD5E1",
+                          borderRadius: RADIUS_INPUT,
+                          paddingVertical: 14,
+                          paddingHorizontal: 14,
+                          marginBottom: 12,
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel="Search for your address"
+                      >
+                        <Ionicons name="search-outline" size={20} color="#94A3B8" />
+                        <Text style={{ flex: 1, fontSize: 15, color: "#94A3B8" }}>
+                          Search for your address...
                         </Text>
+                      </TouchableOpacity>
+
+                      {/* Quick-action row */}
+                      <View style={{ flexDirection: "row", gap: 10, marginBottom: 20 }}>
+                        <TouchableOpacity
+                          onPress={() => setAddressPickerOpen(true)}
+                          activeOpacity={0.82}
+                          style={{
+                            flex: 1,
+                            flexDirection: "row",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: 6,
+                            backgroundColor: PRIMARY + "12",
+                            borderWidth: 1.5,
+                            borderColor: PRIMARY + "40",
+                            borderRadius: RADIUS_BUTTON,
+                            paddingVertical: 12,
+                          }}
+                          accessibilityRole="button"
+                          accessibilityLabel="Use current location"
+                        >
+                          <Ionicons name="locate-outline" size={18} color={PRIMARY} />
+                          <Text style={{ fontSize: 13, fontWeight: "600", color: PRIMARY }}>
+                            My location
+                          </Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          onPress={() => setAddressPickerOpen(true)}
+                          activeOpacity={0.82}
+                          style={{
+                            flex: 1,
+                            flexDirection: "row",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: 6,
+                            backgroundColor: "#F8FAFC",
+                            borderWidth: 1.5,
+                            borderColor: "#CBD5E1",
+                            borderRadius: RADIUS_BUTTON,
+                            paddingVertical: 12,
+                          }}
+                          accessibilityRole="button"
+                          accessibilityLabel="Drop a pin on the map"
+                        >
+                          <Ionicons name="map-outline" size={18} color="#475569" />
+                          <Text style={{ fontSize: 13, fontWeight: "600", color: "#475569" }}>
+                            Drop a pin
+                          </Text>
+                        </TouchableOpacity>
                       </View>
-                    )}
+
+                      <Text style={[hintStyle, { marginTop: -4, marginBottom: 20, textAlign: "center" }]}>
+                        Your exact address is only shared with providers when you book a house call.
+                      </Text>
+                    </>
+                  )}
+
+                  {/* ── State B: address selected -- show preview card ── */}
+                  {addressLine1.trim() && (
+                    <View
+                      style={{
+                        borderWidth: 1,
+                        borderColor: PRIMARY + "40",
+                        borderRadius: RADIUS_CARD,
+                        overflow: "hidden",
+                        marginBottom: 16,
+                      }}
+                    >
+                      {/* Map thumbnail */}
+                      {addressLatitude != null &&
+                        addressLongitude != null &&
+                        Number.isFinite(addressLatitude) &&
+                        Number.isFinite(addressLongitude) && (
+                          <StaticMapImage
+                            latitude={addressLatitude}
+                            longitude={addressLongitude}
+                            width={Math.max(280, windowWidth - SCREEN_PADDING * 2)}
+                            height={128}
+                            borderRadius={0}
+                          />
+                        )}
+
+                      {/* Address details */}
+                      <View style={{ padding: 14, backgroundColor: "#FAFAFA" }}>
+                        <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
+                          <Ionicons
+                            name="location"
+                            size={18}
+                            color={PRIMARY}
+                            style={{ marginTop: 2 }}
+                          />
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 14, fontWeight: "600", color: "#0F172A", marginBottom: 2 }}>
+                              {addressLine1}
+                              {addressLine2.trim() ? `, ${addressLine2}` : ""}
+                            </Text>
+                            <Text style={{ fontSize: 13, color: "#64748B" }}>
+                              {[city, province, postalCode, country].filter(Boolean).join(", ")}
+                            </Text>
+                          </View>
+                        </View>
+
+                        <TouchableOpacity
+                          onPress={() => setAddressPickerOpen(true)}
+                          style={{
+                            marginTop: 12,
+                            alignSelf: "flex-start",
+                            flexDirection: "row",
+                            alignItems: "center",
+                            gap: 4,
+                          }}
+                          accessibilityRole="button"
+                          accessibilityLabel="Change address"
+                        >
+                          <Ionicons name="pencil-outline" size={14} color={PRIMARY} />
+                          <Text style={{ fontSize: 13, fontWeight: "600", color: PRIMARY }}>
+                            Change address
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  )}
+
+                  {/* ── Manual edit fields -- collapsed by default after picker selection ── */}
+                  {addressLine1.trim() && (
+                    <>
+                      <TouchableOpacity
+                        onPress={() => setShowManualFields((v) => !v)}
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 6,
+                          marginBottom: showManualFields ? 14 : 0,
+                          paddingVertical: 4,
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel={showManualFields ? "Hide manual edit fields" : "Edit address fields manually"}
+                      >
+                        <Ionicons
+                          name={showManualFields ? "chevron-up" : "chevron-down"}
+                          size={16}
+                          color="#64748B"
+                        />
+                        <Text style={{ fontSize: 13, color: "#64748B", fontWeight: "500" }}>
+                          {showManualFields ? "Hide manual fields" : "Edit fields manually"}
+                        </Text>
+                      </TouchableOpacity>
+
+                      {showManualFields && (
+                        <View>
+                          <SectionLabel required>Street address</SectionLabel>
+                          <TextInput
+                            value={addressLine1}
+                            onChangeText={(t) => {
+                              setAddressLine1(t);
+                              if (!t.trim()) {
+                                setAddressLatitude(null);
+                                setAddressLongitude(null);
+                              }
+                            }}
+                            placeholder="e.g. 12 Main Street"
+                            style={inputStyle}
+                            placeholderTextColor="#94A3B8"
+                          />
+
+                          <SectionLabel>Apartment, suite, unit (optional)</SectionLabel>
+                          <TextInput
+                            value={addressLine2}
+                            onChangeText={setAddressLine2}
+                            placeholder="e.g. Unit 4B, Estate name"
+                            style={inputStyle}
+                            placeholderTextColor="#94A3B8"
+                          />
+
+                          <SectionLabel required>City</SectionLabel>
+                          <TextInput
+                            value={city}
+                            onChangeText={setCity}
+                            placeholder="e.g. Cape Town"
+                            style={inputStyle}
+                            placeholderTextColor="#94A3B8"
+                          />
+
+                          <View style={{ flexDirection: "row", gap: 10 }}>
+                            <View style={{ flex: 1 }}>
+                              <SectionLabel>Province</SectionLabel>
+                              <TextInput
+                                value={province}
+                                onChangeText={setProvince}
+                                placeholder="Gauteng"
+                                style={inputStyle}
+                                placeholderTextColor="#94A3B8"
+                              />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                              <SectionLabel>Postal code</SectionLabel>
+                              <TextInput
+                                value={postalCode}
+                                onChangeText={setPostalCode}
+                                placeholder="0001"
+                                keyboardType="numeric"
+                                style={inputStyle}
+                                placeholderTextColor="#94A3B8"
+                              />
+                            </View>
+                          </View>
+
+                          <SectionLabel required>Country</SectionLabel>
+                          <TextInput
+                            value={country}
+                            onChangeText={setCountry}
+                            placeholder={tenantRegionName || "Country"}
+                            style={inputStyle}
+                            placeholderTextColor="#94A3B8"
+                          />
+                        </View>
+                      )}
+                    </>
+                  )}
                 </>
               )}
 
-              <SectionLabel required={!alreadyHasAddress}>Street address</SectionLabel>
-              <TextInput
-                value={addressLine1}
-                onChangeText={(t) => {
-                  setAddressLine1(t);
-                  if (!t.trim()) {
-                    setAddressLatitude(null);
-                    setAddressLongitude(null);
-                  }
-                }}
-                placeholder="e.g. 12 Main Street — or open Find on map above"
-                style={inputStyle}
-                placeholderTextColor="#94A3B8"
-              />
-
-              <SectionLabel>Apartment, suite, unit (optional)</SectionLabel>
-              <TextInput
-                value={addressLine2}
-                onChangeText={setAddressLine2}
-                placeholder="e.g. Unit 4B, Estate name"
-                style={inputStyle}
-                placeholderTextColor="#94A3B8"
-              />
-
-              <SectionLabel required={!alreadyHasAddress}>City</SectionLabel>
-              <TextInput
-                value={city}
-                onChangeText={setCity}
-                placeholder="e.g. Cape Town"
-                style={inputStyle}
-                placeholderTextColor="#94A3B8"
-              />
-
-              <View style={{ flexDirection: "row", gap: 10 }}>
-                <View style={{ flex: 1 }}>
-                  <SectionLabel>Province</SectionLabel>
-                  <TextInput
-                    value={province}
-                    onChangeText={setProvince}
-                    placeholder="Gauteng"
-                    style={inputStyle}
-                    placeholderTextColor="#94A3B8"
-                  />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <SectionLabel>Postal code</SectionLabel>
-                  <TextInput
-                    value={postalCode}
-                    onChangeText={setPostalCode}
-                    placeholder="0001"
-                    keyboardType="numeric"
-                    style={inputStyle}
-                    placeholderTextColor="#94A3B8"
-                  />
-                </View>
-              </View>
-
-              <SectionLabel required={!alreadyHasAddress}>Country</SectionLabel>
-              <TextInput
-                value={country}
-                onChangeText={setCountry}
-                placeholder={tenantRegionName || "Country"}
-                style={inputStyle}
-                placeholderTextColor="#94A3B8"
-              />
-
+              {/* Mandatory notice */}
               {!alreadyHasAddress && (
                 <View
                   style={{
