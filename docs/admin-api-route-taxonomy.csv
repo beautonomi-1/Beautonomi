@@ -187,6 +187,7 @@ path,class,note
 /api/admin/payouts/[id]/mark-failed,T,"uses resolveAdminApiTenantId"
 /api/admin/payouts/[id]/mark-paid,T,"uses resolveAdminApiTenantId"
 /api/admin/payouts/[id]/reject,T,"uses resolveAdminApiTenantId"
+/api/admin/payouts/bulk-approve,T,"uses resolveAdminApiTenantId"
 /api/admin/payouts,T,"uses resolveAdminApiTenantId"
 /api/admin/paystack-terminal/payments/[id],T,"needs explicit tenant filter"
 /api/admin/paystack-terminal/payments,T,"needs explicit tenant filter"
