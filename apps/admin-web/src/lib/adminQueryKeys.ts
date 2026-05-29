@@ -135,7 +135,7 @@ export const adminQueryKeys = {
 
   payouts: {
     all: () => [...adminQueryKeys.root, "payouts"] as const,
-    list: (filters: { page: number; status: string }) => [...adminQueryKeys.payouts.all(), "list", filters] as const,
+    list: (filters: Record<string, string | number>) => [...adminQueryKeys.payouts.all(), "list", filters] as const,
   },
 
   fees: {

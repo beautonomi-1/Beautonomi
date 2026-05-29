@@ -36,6 +36,9 @@ export function getBookingHoldSlotUnavailableMessage(
   if (code === "SLOT_TAKEN_BY_HOLD") {
     return "Someone else just reserved this slot. Pick another time.";
   }
+  if (code === "OUTSIDE_WORKING_HOURS") {
+    return "This time slot is outside the provider's working hours. Please go back and choose a different time.";
+  }
   return getApiErrorMessage(error, fallback);
 }
 

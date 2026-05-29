@@ -1924,12 +1924,21 @@ export default function PartnerProfileScreen() {
                   style={{
                     alignSelf: "flex-start",
                     marginTop: 10,
+                    flexDirection: "row",
+                    alignItems: "center",
                     paddingHorizontal: 10,
-                    paddingVertical: 4,
+                    paddingVertical: 5,
                     borderRadius: 999,
                     backgroundColor: provider.current_badge.color ?? "#CA8A04",
                   }}
                 >
+                  {provider.current_badge.icon_url ? (
+                    <Image
+                      source={{ uri: provider.current_badge.icon_url }}
+                      style={{ width: 14, height: 14, marginRight: 5 }}
+                      contentFit="contain"
+                    />
+                  ) : null}
                   <Text style={{ color: "#fff", fontSize: 11, fontWeight: "700" }} numberOfLines={1}>
                     {provider.current_badge.name}
                   </Text>

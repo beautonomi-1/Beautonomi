@@ -22,14 +22,30 @@ import { formatAdminCurrency } from "@/lib/adminFormatCurrency";
 
 type PayoutRow = Record<string, unknown> & {
   id?: string;
+  payout_number?: string;
   status?: string;
   amount?: number;
+  net_amount?: number;
+  platform_fee_amount?: number;
   currency?: string;
   transfer_code?: string | null;
+  recipient_code?: string | null;
+  created_at?: string | null;
+  scheduled_at?: string | null;
+  approved_at?: string | null;
+  processed_at?: string | null;
+  completed_at?: string | null;
+  failed_at?: string | null;
+  failure_reason?: string | null;
   payout_provider_response?:
     | { data?: { status?: string | null } | null; status?: string | null }
     | null;
   provider?: { business_name?: string } | null;
+  bank_account?: {
+    account_name?: string | null;
+    account_number_last4?: string | null;
+    bank_name?: string | null;
+  } | null;
 };
 
 type NegativeBalanceProvidersMeta = {
@@ -49,8 +65,18 @@ type PayoutsEnvelope = {
     limit: number;
     total: number;
     has_more: boolean;
+    summary?: Record<string, { count: number; amount: number }>;
     negative_balance_providers?: NegativeBalanceProvidersMeta;
   };
+};
+
+type BulkApproveResult = {
+  run_id: string;
+  dry_run: boolean;
+  approved_count: number;
+  skipped_count: number;
+  approved_ids: string[];
+  skipped: Array<{ id: string; reason: string; code?: string }>;
 };
 
 type ModalState =
@@ -81,29 +107,100 @@ export function PayoutsPage() {
   const [sp, setSp] = useSearchParams();
   const page = Math.max(1, parseInt(sp.get("page") || "1", 10) || 1);
   const status = sp.get("status") || "all";
+  const qFilter = sp.get("q") || "";
+  const startDate = sp.get("start_date") || "";
+  const endDate = sp.get("end_date") || "";
+  const minAmount = sp.get("min_amount") || "";
+  const maxAmount = sp.get("max_amount") || "";
+  const transferStatus = sp.get("transfer_status") || "";
   const [modal, setModal] = useState<ModalState>(null);
   const [reason, setReason] = useState("");
   const [transferOtp, setTransferOtp] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [runLabel, setRunLabel] = useState("");
+  const [bulkNotes, setBulkNotes] = useState("");
 
-  const filters = useMemo(() => ({ page, status }), [page, status]);
+  const filters = useMemo(
+    () => ({ page, status, q: qFilter, startDate, endDate, minAmount, maxAmount, transferStatus }),
+    [page, status, qFilter, startDate, endDate, minAmount, maxAmount, transferStatus],
+  );
+
+  const buildQueryString = (overrides: Record<string, string> = {}) => {
+    const p = new URLSearchParams();
+    p.set("page", String(overrides.page ?? page));
+    p.set("limit", overrides.limit ?? "25");
+    if ((overrides.status ?? status) !== "all") p.set("status", overrides.status ?? status);
+    const values = {
+      export: overrides.export ?? "",
+      q: overrides.q ?? qFilter,
+      start_date: overrides.start_date ?? startDate,
+      end_date: overrides.end_date ?? endDate,
+      min_amount: overrides.min_amount ?? minAmount,
+      max_amount: overrides.max_amount ?? maxAmount,
+      transfer_status: overrides.transfer_status ?? transferStatus,
+    };
+    Object.entries(values).forEach(([key, value]) => {
+      if (value) p.set(key, value);
+    });
+    return p.toString();
+  };
 
   const q = useQuery({
     queryKey: adminQueryKeys.payouts.list(filters),
     queryFn: async () => {
-      const p = new URLSearchParams();
-      p.set("page", String(page));
-      p.set("limit", "25");
-      if (status !== "all") p.set("status", status);
-      return adminApi.getRawJson<PayoutsEnvelope>(`/api/admin/payouts?${p}`, { timeoutMs: 60_000 });
+      return adminApi.getRawJson<PayoutsEnvelope>(`/api/admin/payouts?${buildQueryString()}`, { timeoutMs: 60_000 });
     },
     enabled: allowed,
   });
 
   const rows = q.data?.data ?? [];
   const meta = q.data?.meta;
+  const summary = meta?.summary ?? {};
   const negativeBalances = meta?.negative_balance_providers;
+  const pendingRows = rows.filter((r) => String(r.status ?? "") === "pending" && r.id);
+  const selectedPendingIds = pendingRows.map((r) => String(r.id)).filter((id) => selectedIds.has(id));
 
   const invalidate = () => void qc.invalidateQueries({ queryKey: adminQueryKeys.payouts.all() });
+
+  const exportMut = useMutation({
+    mutationFn: async () => {
+      const blob = await adminApi.downloadBlob(`/api/admin/payouts?${buildQueryString({ export: "csv", limit: "5000" })}`, {
+        timeoutMs: 120_000,
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `payouts-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    },
+    onSuccess: () => adminToast.success("Payout CSV exported"),
+    onError: (e: Error) => adminToast.error(e.message),
+  });
+
+  const bulkApproveMut = useMutation({
+    mutationFn: () =>
+      adminApi.postJson<BulkApproveResult>(
+        "/api/admin/payouts/bulk-approve",
+        {
+          payout_ids: selectedPendingIds,
+          run_label: runLabel.trim() || null,
+          notes: bulkNotes.trim() || null,
+        },
+        { timeoutMs: 120_000 },
+      ),
+    onSuccess: (result) => {
+      invalidate();
+      setSelectedIds(new Set());
+      adminToast.success(`Approved ${result.approved_count} payout${result.approved_count === 1 ? "" : "s"}`);
+      if (result.skipped_count > 0) {
+        adminToast.warning(`${result.skipped_count} payout${result.skipped_count === 1 ? "" : "s"} skipped. Review readiness/errors.`);
+      }
+    },
+    onError: (e: Error) => adminToast.error(e.message),
+  });
 
   const approveMut = useMutation({
     mutationFn: (id: string) => adminApi.postJson(`/api/admin/payouts/${id}/approve`, { notes: "" }),
@@ -183,6 +280,16 @@ export function PayoutsPage() {
     n.set("status", next);
     n.set("page", "1");
     setSp(n, { replace: true });
+    setSelectedIds(new Set());
+  }
+
+  function setFilter(key: string, value: string) {
+    const n = new URLSearchParams(sp);
+    if (value) n.set(key, value);
+    else n.delete(key);
+    n.set("page", "1");
+    setSp(n, { replace: true });
+    setSelectedIds(new Set());
   }
 
   function setPage(next: number) {
@@ -231,9 +338,52 @@ export function PayoutsPage() {
   const columns: AdminListColumn<PayoutRow>[] = useMemo(
     () => [
       {
+        id: "select",
+        header: (
+          <input
+            type="checkbox"
+            aria-label="Select all pending payouts on this page"
+            checked={pendingRows.length > 0 && selectedPendingIds.length === pendingRows.length}
+            onChange={(e) => {
+              setSelectedIds((prev) => {
+                const next = new Set(prev);
+                for (const row of pendingRows) {
+                  if (!row.id) continue;
+                  if (e.target.checked) next.add(String(row.id));
+                  else next.delete(String(row.id));
+                }
+                return next;
+              });
+            }}
+          />
+        ),
+        cell: (r) =>
+          String(r.status ?? "") === "pending" && r.id ? (
+            <input
+              type="checkbox"
+              aria-label={`Select payout ${r.payout_number ?? r.id}`}
+              checked={selectedIds.has(String(r.id))}
+              onChange={(e) => {
+                const id = String(r.id);
+                setSelectedIds((prev) => {
+                  const next = new Set(prev);
+                  if (e.target.checked) next.add(id);
+                  else next.delete(id);
+                  return next;
+                });
+              }}
+            />
+          ) : null,
+      },
+      {
         id: "provider",
         header: "Provider",
-        cell: (r) => (r.provider as { business_name?: string } | null)?.business_name ?? "—",
+        cell: (r) => (
+          <div>
+            <div className="font-medium text-gray-900">{(r.provider as { business_name?: string } | null)?.business_name ?? "—"}</div>
+            <div className="text-xs text-gray-500">{r.payout_number ?? r.id ?? "—"}</div>
+          </div>
+        ),
       },
       { id: "status", header: "Status", cell: (r) => String(r.status ?? "") },
       {
@@ -243,6 +393,29 @@ export function PayoutsPage() {
           <span className="tabular-nums">
             {String(r.currency ?? "")} {Number(r.amount ?? 0).toFixed(2)}
           </span>
+        ),
+      },
+      {
+        id: "bank",
+        header: "Destination",
+        cell: (r) => (
+          <div className="text-sm">
+            <div>{r.bank_account?.bank_name ?? "—"}</div>
+            <div className="text-xs text-gray-500">
+              {r.bank_account?.account_name ?? ""} {r.bank_account?.account_number_last4 ? `•••• ${r.bank_account.account_number_last4}` : ""}
+            </div>
+          </div>
+        ),
+      },
+      {
+        id: "dates",
+        header: "Timeline",
+        cell: (r) => (
+          <div className="text-xs text-gray-600">
+            <div>Created: {r.created_at ? new Date(r.created_at).toLocaleDateString() : "—"}</div>
+            {r.approved_at ? <div>Approved: {new Date(r.approved_at).toLocaleDateString()}</div> : null}
+            {r.completed_at ? <div>Completed: {new Date(r.completed_at).toLocaleDateString()}</div> : null}
+          </div>
         ),
       },
       {
@@ -376,6 +549,9 @@ export function PayoutsPage() {
       rejectMut,
       markFailedMut,
       modal?.id,
+      pendingRows,
+      selectedIds,
+      selectedPendingIds.length,
     ]
   );
 
@@ -476,8 +652,146 @@ export function PayoutsPage() {
         ) : null}
       </AdminPanel>
 
+      <AdminPanel>
+        <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-6">
+          <label className="text-sm">
+            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Search</span>
+            <input
+              className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+              value={qFilter}
+              onChange={(e) => setFilter("q", e.target.value)}
+              placeholder="Provider or payout #"
+            />
+          </label>
+          <label className="text-sm">
+            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">From</span>
+            <input
+              className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+              type="date"
+              value={startDate}
+              onChange={(e) => setFilter("start_date", e.target.value)}
+            />
+          </label>
+          <label className="text-sm">
+            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">To</span>
+            <input
+              className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+              type="date"
+              value={endDate}
+              onChange={(e) => setFilter("end_date", e.target.value)}
+            />
+          </label>
+          <label className="text-sm">
+            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Min amount</span>
+            <input
+              className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+              inputMode="decimal"
+              value={minAmount}
+              onChange={(e) => setFilter("min_amount", e.target.value)}
+            />
+          </label>
+          <label className="text-sm">
+            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Max amount</span>
+            <input
+              className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+              inputMode="decimal"
+              value={maxAmount}
+              onChange={(e) => setFilter("max_amount", e.target.value)}
+            />
+          </label>
+          <label className="text-sm">
+            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Transfer</span>
+            <select
+              className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+              value={transferStatus}
+              onChange={(e) => setFilter("transfer_status", e.target.value)}
+            >
+              <option value="">Any</option>
+              <option value="otp">OTP pending</option>
+              <option value="pending">Pending</option>
+              <option value="success">Success</option>
+              <option value="failed">Failed</option>
+              <option value="reversed">Reversed</option>
+            </select>
+          </label>
+        </div>
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <button type="button" className={adminToolbarButtonClass()} onClick={() => void exportMut.mutate()}>
+            {exportMut.isPending ? "Exporting…" : "Export CSV"}
+          </button>
+          <button
+            type="button"
+            className={adminToolbarButtonClass()}
+            onClick={() => {
+              setSp(new URLSearchParams(), { replace: true });
+              setSelectedIds(new Set());
+            }}
+          >
+            Clear filters
+          </button>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-5">
+          {["pending", "processing", "completed", "failed"].map((key) => (
+            <div key={key} className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
+              <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">{key}</div>
+              <div className="mt-1 text-sm font-semibold text-gray-900">
+                {summary[key]?.count ?? 0} · {formatAdminCurrency(summary[key]?.amount ?? 0)}
+              </div>
+            </div>
+          ))}
+          <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
+            <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Total</div>
+            <div className="mt-1 text-sm font-semibold text-gray-900">{meta?.total ?? 0} payouts</div>
+          </div>
+        </div>
+      </AdminPanel>
+
+      {selectedPendingIds.length > 0 ? (
+        <AdminPanel>
+          <div className="grid gap-3 md:grid-cols-[1fr_2fr_auto] md:items-end">
+            <label className="text-sm">
+              <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Run label</span>
+              <input
+                className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+                value={runLabel}
+                onChange={(e) => setRunLabel(e.target.value)}
+                placeholder="May payout run"
+              />
+            </label>
+            <label className="text-sm">
+              <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Approval notes</span>
+              <input
+                className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+                value={bulkNotes}
+                onChange={(e) => setBulkNotes(e.target.value)}
+                placeholder="Bank file checked, accounts verified"
+              />
+            </label>
+            <button
+              type="button"
+              className="inline-flex min-h-11 items-center justify-center rounded-xl bg-gray-900 px-4 text-sm font-semibold text-white disabled:opacity-50"
+              disabled={bulkApproveMut.isPending}
+              onClick={() => void bulkApproveMut.mutate()}
+            >
+              {bulkApproveMut.isPending ? "Approving…" : `Approve ${selectedPendingIds.length} selected`}
+            </button>
+          </div>
+          <p className="mt-2 text-xs text-gray-600">
+            Bulk approval only accepts pending payouts in this market, validates bank readiness, and writes a run audit log.
+          </p>
+        </AdminPanel>
+      ) : null}
+
       <AdminMutationAlert
-        errors={[approveMut.error, rejectMut.error, markPaidMut.error, markFailedMut.error, transferMut.error]}
+        errors={[
+          approveMut.error,
+          rejectMut.error,
+          markPaidMut.error,
+          markFailedMut.error,
+          transferMut.error,
+          exportMut.error,
+          bulkApproveMut.error,
+        ]}
       />
 
       <AdminModal

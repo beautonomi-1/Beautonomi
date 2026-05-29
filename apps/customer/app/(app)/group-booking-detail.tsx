@@ -10,6 +10,13 @@ import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { haptic } from "@/lib/haptics";
 import { getApiErrorMessage } from "@/lib/api-error";
 
+type ParticipantAddon = {
+  id: string | null;
+  name: string | null;
+  price: number;
+  duration_minutes: number | null;
+};
+
 type Participant = {
   id: string;
   booking_id: string | null;
@@ -21,11 +28,21 @@ type Participant = {
   service_name: string;
   price: number;
   duration_minutes: number | null;
+  addons?: ParticipantAddon[];
   checked_in: boolean;
   checked_out: boolean;
   booking_status: string | null;
   payment_status: string | null;
   booking_number: string | null;
+  total_paid?: number;
+  total_refunded?: number;
+};
+
+type GroupProduct = {
+  name: string;
+  quantity: number;
+  unit_price: number;
+  total: number;
 };
 
 type GroupBookingDetail = {
@@ -42,6 +59,8 @@ type GroupBookingDetail = {
   participant_count: number;
   max_participants?: number | null;
   participants: Participant[];
+  products?: GroupProduct[];
+  travel_fee?: number;
   total_price: number;
   notes?: string | null;
 };
@@ -62,6 +81,15 @@ function formatTime(value?: string | null) {
 
 function money(value: number) {
   return `R ${Number(value || 0).toFixed(2)}`;
+}
+
+function paymentBadge(status: string | null | undefined): { label: string; bg: string; fg: string } | null {
+  if (!status) return null;
+  if (status === "paid") return { label: "Paid", bg: "#DCFCE7", fg: "#15803D" };
+  if (status === "unpaid" || status === "pending") return { label: "Unpaid", bg: "#FEF3C7", fg: "#92400E" };
+  if (status === "partial") return { label: "Partial", bg: "#FEF9C3", fg: "#854D0E" };
+  if (status === "refunded") return { label: "Refunded", bg: "#EDE9FE", fg: "#6D28D9" };
+  return null;
 }
 
 function statusColor(status: string) {
@@ -226,56 +254,124 @@ export default function GroupBookingDetailScreen() {
             </View>
           )}
 
-          <View style={[{ backgroundColor: Colors.white, borderRadius: 18, padding: 18 }, Shadows.cardSmall]}>
+          <View style={[{ backgroundColor: Colors.white, borderRadius: 18, padding: 18, marginBottom: 16 }, Shadows.cardSmall]}>
             <Text style={{ fontSize: 18, fontWeight: "800", color: Colors.gray[900], marginBottom: 12 }}>Participants</Text>
             {data.participants.length === 0 && (
               <Text style={{ color: Colors.gray[400], fontSize: 14, fontStyle: "italic", textAlign: "center", paddingVertical: 12 }}>
                 No participants listed yet.
               </Text>
             )}
-            {data.participants.map((p) => (
-              <TouchableOpacity
-                key={p.id}
-                disabled={!p.booking_id}
-                onPress={() => {
-                  if (!p.booking_id) return;
-                  haptic.selection();
-                  router.push({ pathname: "/(app)/booking-detail", params: { id: p.booking_id } });
-                }}
-                style={[
-                  { borderWidth: 1, borderColor: p.is_current_user ? Colors.primary : Colors.gray[200], borderRadius: 14, padding: 14, marginBottom: 10 },
-                  !p.booking_id && { opacity: 0.7 },
-                ]}
-              >
-                <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 10 }}>
-                  <View style={{ flex: 1 }}>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                      <Text style={{ fontWeight: "800", color: Colors.gray[900] }}>{p.name}</Text>
-                      {p.is_current_user && (
-                        <View style={{ backgroundColor: Colors.primary + "20", borderRadius: 99, paddingHorizontal: 6, paddingVertical: 2 }}>
-                          <Text style={{ color: Colors.primary, fontSize: 10, fontWeight: "700" }}>you</Text>
-                        </View>
-                      )}
-                      {p.is_primary_contact && (
-                        <View style={{ backgroundColor: "#FDF2F8", borderRadius: 99, paddingHorizontal: 6, paddingVertical: 2 }}>
-                          <Text style={{ color: "#9D174D", fontSize: 10, fontWeight: "700" }}>primary</Text>
-                        </View>
+            {data.participants.map((p) => {
+              const badge = paymentBadge(p.payment_status);
+              return (
+                <TouchableOpacity
+                  key={p.id}
+                  disabled={!p.booking_id}
+                  onPress={() => {
+                    if (!p.booking_id) return;
+                    haptic.selection();
+                    router.push({ pathname: "/(app)/booking-detail", params: { id: p.booking_id } });
+                  }}
+                  style={[
+                    { borderWidth: 1, borderColor: p.is_current_user ? Colors.primary : Colors.gray[200], borderRadius: 14, padding: 14, marginBottom: 10 },
+                    !p.booking_id && { opacity: 0.7 },
+                  ]}
+                >
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                        <Text style={{ fontWeight: "800", color: Colors.gray[900] }}>{p.name}</Text>
+                        {p.is_current_user && (
+                          <View style={{ backgroundColor: Colors.primary + "20", borderRadius: 99, paddingHorizontal: 6, paddingVertical: 2 }}>
+                            <Text style={{ color: Colors.primary, fontSize: 10, fontWeight: "700" }}>you</Text>
+                          </View>
+                        )}
+                        {p.is_primary_contact && (
+                          <View style={{ backgroundColor: "#FDF2F8", borderRadius: 99, paddingHorizontal: 6, paddingVertical: 2 }}>
+                            <Text style={{ color: "#9D174D", fontSize: 10, fontWeight: "700" }}>primary</Text>
+                          </View>
+                        )}
+                        {badge ? (
+                          <View style={{ backgroundColor: badge.bg, borderRadius: 99, paddingHorizontal: 6, paddingVertical: 2 }}>
+                            <Text style={{ color: badge.fg, fontSize: 10, fontWeight: "700" }}>{badge.label}</Text>
+                          </View>
+                        ) : null}
+                      </View>
+                      <Text style={{ color: Colors.gray[700], fontWeight: "600", marginTop: 4 }}>{p.service_name}</Text>
+                      {Array.isArray(p.addons) && p.addons.length > 0 ? (
+                        <Text style={{ color: Colors.gray[500], fontSize: 12, marginTop: 2 }}>
+                          + {p.addons.map((ao) => ao.name ?? "Add-on").join(", ")}
+                        </Text>
+                      ) : null}
+                      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
+                        <Text style={{ color: Colors.gray[600], fontSize: 14, fontWeight: "700" }}>{money(p.price)}</Text>
+                        {p.duration_minutes ? (
+                          <Text style={{ color: Colors.gray[400], fontSize: 12 }}>{p.duration_minutes} min</Text>
+                        ) : null}
+                      </View>
+                      <Text style={{ color: Colors.gray[400], fontSize: 11, marginTop: 4 }}>
+                        {p.checked_in ? "✓ Checked in" : "Not checked in"}{p.checked_out ? " · ✓ Checked out" : ""}
+                      </Text>
+                      {!p.booking_id && (
+                        <Text style={{ color: Colors.gray[400], fontSize: 11, marginTop: 2, fontStyle: "italic" }}>
+                          Booking details not available
+                        </Text>
                       )}
                     </View>
-                    <Text style={{ color: Colors.gray[600], marginTop: 4 }}>{p.service_name} · {money(p.price)}</Text>
-                    <Text style={{ color: Colors.gray[500], fontSize: 12, marginTop: 4 }}>
-                      {p.checked_in ? "Checked in" : "Not checked in"} · {p.checked_out ? "Checked out" : "Not checked out"}
-                    </Text>
-                    {!p.booking_id && (
-                      <Text style={{ color: Colors.gray[400], fontSize: 11, marginTop: 4, fontStyle: "italic" }}>
-                        Booking details not available
-                      </Text>
-                    )}
+                    {p.booking_id ? <Ionicons name="chevron-forward" size={18} color={Colors.gray[400]} style={{ marginTop: 2 }} /> : null}
                   </View>
-                  {p.booking_id ? <Ionicons name="chevron-forward" size={18} color={Colors.gray[400]} /> : null}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* Products */}
+          {Array.isArray(data.products) && data.products.length > 0 ? (
+            <View style={[{ backgroundColor: Colors.white, borderRadius: 18, padding: 18, marginBottom: 16 }, Shadows.cardSmall]}>
+              <Text style={{ fontSize: 18, fontWeight: "800", color: Colors.gray[900], marginBottom: 12 }}>Products</Text>
+              {data.products.map((product, idx) => (
+                <View key={idx} style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 8, borderBottomWidth: idx < data.products!.length - 1 ? 1 : 0, borderBottomColor: Colors.gray[100] }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{product.name}</Text>
+                    {product.quantity > 1 ? (
+                      <Text style={{ color: Colors.gray[500], fontSize: 12, marginTop: 2 }}>
+                        {money(product.unit_price)} × {product.quantity}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <Text style={{ fontWeight: "700", color: Colors.gray[900] }}>{money(product.total)}</Text>
                 </View>
-              </TouchableOpacity>
+              ))}
+            </View>
+          ) : null}
+
+          {/* Price breakdown */}
+          <View style={[{ backgroundColor: Colors.white, borderRadius: 18, padding: 18 }, Shadows.cardSmall]}>
+            <Text style={{ fontSize: 18, fontWeight: "800", color: Colors.gray[900], marginBottom: 12 }}>Price breakdown</Text>
+            {data.participants.map((p) => (
+              <View key={p.id} style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 4 }}>
+                <Text style={{ color: Colors.gray[600], flex: 1 }} numberOfLines={1}>{p.name} — {p.service_name}</Text>
+                <Text style={{ color: Colors.gray[900], fontWeight: "600" }}>{money(p.price)}</Text>
+              </View>
             ))}
+            {Array.isArray(data.products) && data.products.length > 0 ? (
+              data.products.map((product, idx) => (
+                <View key={`prod-${idx}`} style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 4 }}>
+                  <Text style={{ color: Colors.gray[600], flex: 1 }} numberOfLines={1}>{product.name} ×{product.quantity}</Text>
+                  <Text style={{ color: Colors.gray[900], fontWeight: "600" }}>{money(product.total)}</Text>
+                </View>
+              ))
+            ) : null}
+            {(data.travel_fee ?? 0) > 0 ? (
+              <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 4 }}>
+                <Text style={{ color: Colors.gray[600] }}>Travel fee</Text>
+                <Text style={{ color: Colors.gray[900], fontWeight: "600" }}>{money(data.travel_fee ?? 0)}</Text>
+              </View>
+            ) : null}
+            <View style={{ flexDirection: "row", justifyContent: "space-between", paddingTop: 12, marginTop: 4, borderTopWidth: 1, borderTopColor: Colors.gray[200] }}>
+              <Text style={{ fontSize: 16, fontWeight: "800", color: Colors.gray[900] }}>Total</Text>
+              <Text style={{ fontSize: 16, fontWeight: "800", color: Colors.gray[900] }}>{money(data.total_price)}</Text>
+            </View>
           </View>
         </ScrollView>
       ) : null}

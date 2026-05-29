@@ -8,6 +8,102 @@ import {
   type NegativeBalanceProvidersPayload,
 } from "@/lib/admin/negative-provider-payout-balances";
 
+type PayoutRow = {
+  id?: string;
+  provider_id?: string;
+  payout_number?: string;
+  status?: string;
+  amount?: number;
+  net_amount?: number;
+  platform_fee_amount?: number;
+  currency?: string;
+  payout_method?: string;
+  recipient_code?: string;
+  transfer_code?: string;
+  payout_provider_response?: unknown;
+  scheduled_at?: string | null;
+  created_at?: string | null;
+  approved_at?: string | null;
+  processed_at?: string | null;
+  completed_at?: string | null;
+  failed_at?: string | null;
+  failure_reason?: string | null;
+  providers?: unknown;
+  [key: string]: unknown;
+};
+
+function csvEscape(value: unknown): string {
+  const raw = value == null ? "" : String(value);
+  return /[",\r\n]/.test(raw) ? `"${raw.replace(/"/g, '""')}"` : raw;
+}
+
+function paystackTransferStatus(response: unknown): string {
+  if (!response || typeof response !== "object") return "";
+  const rec = response as Record<string, unknown>;
+  const nested = rec.data;
+  if (nested && typeof nested === "object") {
+    const st = (nested as Record<string, unknown>).status;
+    if (typeof st === "string") return st;
+  }
+  return typeof rec.status === "string" ? rec.status : "";
+}
+
+function payoutsToCsv(rows: Array<PayoutRow & { provider?: any; bank_account?: any }>) {
+  const headers = [
+    "payout_id",
+    "payout_number",
+    "provider_id",
+    "provider",
+    "status",
+    "currency",
+    "amount",
+    "net_amount",
+    "platform_fee_amount",
+    "payout_method",
+    "recipient_code",
+    "transfer_code",
+    "transfer_status",
+    "bank_name",
+    "account_name",
+    "account_last4",
+    "scheduled_at",
+    "created_at",
+    "approved_at",
+    "processed_at",
+    "completed_at",
+    "failed_at",
+    "failure_reason",
+  ];
+  const lines = rows.map((r) =>
+    [
+      r.id,
+      r.payout_number,
+      r.provider_id,
+      r.provider?.business_name ?? "",
+      r.status,
+      r.currency,
+      r.amount,
+      r.net_amount,
+      r.platform_fee_amount,
+      r.payout_method,
+      r.recipient_code,
+      r.transfer_code,
+      paystackTransferStatus(r.payout_provider_response),
+      r.bank_account?.bank_name ?? "",
+      r.bank_account?.account_name ?? "",
+      r.bank_account?.account_number_last4 ?? "",
+      r.scheduled_at,
+      r.created_at,
+      r.approved_at,
+      r.processed_at,
+      r.completed_at,
+      r.failed_at,
+      r.failure_reason,
+    ].map(csvEscape).join(",")
+  );
+  return [headers.join(","), ...lines].join("\r\n");
+}
+
 /**
  * GET /api/admin/payouts
  * 
@@ -47,25 +143,61 @@ export async function GET(request: NextRequest) {
 
     const status = searchParams.get("status"); // pending, processing, completed, failed
     const providerId = searchParams.get("provider_id");
+    const q = searchParams.get("q")?.trim() || "";
+    const startDate = searchParams.get("start_date")?.slice(0, 10) || "";
+    const endDate = searchParams.get("end_date")?.slice(0, 10) || "";
+    const minAmountRaw = searchParams.get("min_amount");
+    const maxAmountRaw = searchParams.get("max_amount");
+    const transferStatus = searchParams.get("transfer_status")?.trim() || "";
+    const exportFormat = searchParams.get("export")?.trim().toLowerCase() || "";
+    const requestedLimit = exportFormat === "csv" ? Math.min(5000, Math.max(limit, 5000)) : limit;
 
-    // Payouts scoped via provider → tenant (service role bypasses RLS)
-    let query = supabase
+    let providerIdsForSearch: string[] | null = null;
+    if (q) {
+      const { data: matchedProviders } = await supabase
+        .from("providers")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .or(`business_name.ilike.%${q}%,slug.ilike.%${q}%`)
+        .limit(250);
+      providerIdsForSearch = (matchedProviders || []).map((p: { id: string }) => p.id);
+    }
+
+    const buildBaseQuery = (opts: { count?: "exact"; select?: string } = {}) => {
+      let query = supabase
       .from("payouts")
-      .select("*, providers!inner(tenant_id)", { count: "exact" })
+        .select(opts.select ?? "*, providers!inner(tenant_id)", opts.count ? { count: opts.count } : undefined)
       .eq("providers.tenant_id", tenantId);
 
-    // Apply filters
-    if (status && status !== "all") {
-      query = query.eq("status", status);
-    }
-    if (providerId) {
-      query = query.eq("provider_id", providerId);
-    }
+      if (status && status !== "all") query = query.eq("status", status);
+      if (providerId) query = query.eq("provider_id", providerId);
+      if (startDate && /^\d{4}-\d{2}-\d{2}$/.test(startDate)) query = query.gte("created_at", `${startDate}T00:00:00.000Z`);
+      if (endDate && /^\d{4}-\d{2}-\d{2}$/.test(endDate)) query = query.lte("created_at", `${endDate}T23:59:59.999Z`);
+      const minAmount = minAmountRaw != null ? Number(minAmountRaw) : NaN;
+      const maxAmount = maxAmountRaw != null ? Number(maxAmountRaw) : NaN;
+      if (Number.isFinite(minAmount)) query = query.gte("amount", minAmount);
+      if (Number.isFinite(maxAmount)) query = query.lte("amount", maxAmount);
+      if (q) {
+        const payoutNumberFilter = `payout_number.ilike.%${q}%`;
+        if (providerIdsForSearch && providerIdsForSearch.length > 0) {
+          query = query.or(`${payoutNumberFilter},provider_id.in.(${providerIdsForSearch.join(",")})`);
+        } else {
+          query = query.ilike("payout_number", `%${q}%`);
+        }
+      }
+      if (transferStatus) {
+        // Paystack responses are JSONB; top-level and nested data.status are both seen in historical rows.
+        query = query.or(
+          `payout_provider_response->>status.eq.${transferStatus},payout_provider_response->data->>status.eq.${transferStatus}`
+        );
+      }
+      return query;
+    };
 
     // Apply pagination
-    const { data: payouts, error, count } = await query
+    const { data: payouts, error, count } = await buildBaseQuery({ count: "exact" })
       .order("scheduled_at", { ascending: false })
-      .range(offset, offset + limit - 1);
+      .range(exportFormat === "csv" ? 0 : offset, exportFormat === "csv" ? requestedLimit - 1 : offset + limit - 1);
 
     if (error) {
       console.error("Error fetching payouts:", error);
@@ -85,6 +217,19 @@ export async function GET(request: NextRequest) {
       }, { status: 500 });
     }
 
+    const { data: summaryRows } = await buildBaseQuery({ select: "status, amount, currency, providers!inner(tenant_id)" })
+      .limit(10000);
+    const summary = (summaryRows || []).reduce(
+      (acc: Record<string, { count: number; amount: number }>, row: any) => {
+        const key = String(row.status ?? "unknown");
+        acc[key] = acc[key] || { count: 0, amount: 0 };
+        acc[key].count += 1;
+        acc[key].amount += Number(row.amount || 0);
+        return acc;
+      },
+      {},
+    );
+
     if (!payouts || payouts.length === 0) {
       return NextResponse.json({
         data: [],
@@ -94,14 +239,15 @@ export async function GET(request: NextRequest) {
           limit,
           total: 0,
           has_more: false,
+          summary,
           negative_balance_providers: negativeBalanceProviders,
         },
       });
     }
 
     // Fetch provider data separately
-    type PayoutRow = { provider_id?: string; recipient_code?: string; [key: string]: unknown };
-    const providerIds = [...new Set((payouts as PayoutRow[]).map((p) => p.provider_id).filter(Boolean))];
+    const payoutRows = payouts as unknown as PayoutRow[];
+    const providerIds = [...new Set(payoutRows.map((p) => p.provider_id).filter(Boolean))];
 
     let providerMap = new Map<string, { id: string; business_name?: string; slug?: string }>();
     if (providerIds.length > 0) {
@@ -115,7 +261,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const recipientCodes = (payouts as PayoutRow[]).map((p) => p.recipient_code).filter(Boolean);
+    const recipientCodes = payoutRows.map((p) => p.recipient_code).filter(Boolean);
 
     let bankAccountByRecipient = new Map<string, { recipient_code?: string; account_name?: string; account_number_last4?: string; bank_name?: string; bank_code?: string }>();
     if (recipientCodes.length > 0) {
@@ -154,7 +300,7 @@ export async function GET(request: NextRequest) {
     }
 
     type PayoutWithScope = PayoutRow & { providers?: unknown };
-    const enrichedPayouts = (payouts as PayoutWithScope[]).map((payout) => {
+    const enrichedPayouts = (payoutRows as PayoutWithScope[]).map((payout) => {
       const { providers: _tenantScope, ...payoutRest } = payout;
       void _tenantScope;
       const bankFromRecipient = payoutRest.recipient_code
@@ -173,6 +319,16 @@ export async function GET(request: NextRequest) {
       };
     });
 
+    if (exportFormat === "csv") {
+      return new NextResponse(payoutsToCsv(enrichedPayouts as any), {
+        headers: {
+          "Content-Type": "text/csv; charset=utf-8",
+          "Content-Disposition": `attachment; filename="payouts-${new Date().toISOString().slice(0, 10)}.csv"`,
+          "Cache-Control": "no-store",
+        },
+      });
+    }
+
     return NextResponse.json({
       data: enrichedPayouts,
       error: null,
@@ -181,6 +337,7 @@ export async function GET(request: NextRequest) {
         limit,
         total: count || 0,
         has_more: (count || 0) > offset + limit,
+        summary,
         negative_balance_providers: negativeBalanceProviders,
       },
     });

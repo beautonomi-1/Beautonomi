@@ -6,7 +6,7 @@ import { cn } from "@/lib/cn";
  */
 export type AdminListColumn<T> = {
   id: string;
-  header: string;
+  header: ReactNode;
   cell: (row: T) => ReactNode;
   /** Hide label row on mobile (e.g. when cell is self-explanatory) */
   compactMobile?: boolean;

@@ -32,6 +32,11 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { calculateTravelFeeForHold } from "@/lib/travel/calculateTravelFeeForHold";
 import { zPublicBookingStaffIdOptional } from "@/lib/public-booking/zod-public-staff-id";
+import { loadEffectiveStaffShifts } from "@/lib/availability/load-constraints";
+import { segmentFitsAnyShift } from "@/lib/availability/shift-fit";
+import { normalizeProviderTimezone } from "@/lib/availability/time-utils";
+import { DEFAULT_BOOKING_DISPLAY_TIMEZONE } from "@/lib/bookings/display-invariants";
+import { formatInTimeZone } from "date-fns-tz";
 
 const PUBLIC_BOOKING_HOLDS_ENDPOINT = "POST /api/public/booking-holds";
 
@@ -323,7 +328,7 @@ export async function POST(request: NextRequest) {
         // Load provider
         const { data: provider, error: providerError } = await supabase
           .from("providers")
-          .select("id, currency, status, business_name")
+          .select("id, currency, status, business_name, timezone")
           .eq("id", provider_id)
           .eq("tenant_id", tenantId)
           .single();
@@ -560,6 +565,14 @@ export async function POST(request: NextRequest) {
           ])
         );
 
+        const rawProviderTz = (provider as { timezone?: string | null }).timezone;
+        const providerTz =
+          normalizeProviderTimezone(rawProviderTz) ?? DEFAULT_BOOKING_DISPLAY_TIMEZONE;
+        const travelBufferMinsForHold =
+          location_type === "at_home"
+            ? Number(availability_travel_buffer_minutes ?? 0)
+            : 0;
+
         const allSnapshotStaffNull = bookingServicesSnapshot.every((s) => !s.staff_id);
         if (allSnapshotStaffNull) {
           const { pickFirstStaffForNullStaffLines } = await import(
@@ -578,6 +591,8 @@ export async function POST(request: NextRequest) {
               scheduled_end_at: s.scheduled_end_at,
             })),
             offeringBufferMinutesById,
+            providerTimeZone: providerTz,
+            travelBufferMinutes: travelBufferMinsForHold,
             preferredStaffIds: bodyPreferredStaffIds ?? undefined,
           });
           if (picked.ok) {
@@ -602,6 +617,94 @@ export async function POST(request: NextRequest) {
 
         const locationIdForCalendar =
           location_type === "at_salon" ? location_id ?? null : null;
+
+        // ── Working-hours guard (fail-fast) ─────────────────────────────────────
+        // Mirror validate-booking's shift check here so customers get an immediate
+        // "slot unavailable" response instead of passing hold creation but failing at
+        // checkout with a confusing "outside working hours" error.
+        {
+          const minutesFromInstantInZone = (instant: Date): number => {
+            const hm = formatInTimeZone(instant, providerTz, "HH:mm");
+            const [h, m] = hm.split(":").map((x) => parseInt(x, 10));
+            return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
+          };
+
+          const holdShiftCache = new Map<string, Awaited<ReturnType<typeof loadEffectiveStaffShifts>>>();
+          const OVERNIGHT_CUTOFF_MIN = 8 * 60;
+
+          for (let idx = 0; idx < bookingServicesSnapshot.length; idx++) {
+            const line = bookingServicesSnapshot[idx];
+            const segStart = new Date(line.scheduled_start_at);
+            const segEnd = new Date(line.scheduled_end_at);
+            const buf = offeringBufferMinutesById.get(line.offering_id) ?? 0;
+            const isLast = idx === bookingServicesSnapshot.length - 1;
+            const travelTail = isLast ? travelBufferMinsForHold : 0;
+            const effectiveEnd = new Date(segEnd.getTime() + (buf + travelTail) * 60000);
+
+            const staffIdForHoldGuard = line.staff_id ?? `provider-${provider_id}`;
+            const localDate = formatInTimeZone(segStart, providerTz, "yyyy-MM-dd");
+            const holdCacheKey = `${staffIdForHoldGuard}|${localDate}`;
+
+            let holdResolved = holdShiftCache.get(holdCacheKey);
+            if (!holdResolved) {
+              holdResolved = await loadEffectiveStaffShifts(
+                supabase as SupabaseClient,
+                staffIdForHoldGuard,
+                localDate,
+                provider_id,
+                locationIdForCalendar,
+              );
+              holdShiftCache.set(holdCacheKey, holdResolved);
+            }
+
+            const { staffShifts: holdShifts, workHoursEnabledEffective: holdWHEnabled } = holdResolved;
+            const segStartMin = minutesFromInstantInZone(segStart);
+            const segEndMin = minutesFromInstantInZone(effectiveEnd);
+
+            let holdFits = holdWHEnabled && holdShifts.length > 0 &&
+              segmentFitsAnyShift(segStartMin, segEndMin, holdShifts);
+
+            // Overnight fallback: slot before 08:00 may be continuation of prev-day overnight shift
+            if (!holdFits && segStartMin < OVERNIGHT_CUTOFF_MIN) {
+              const prevMs = new Date(`${localDate}T12:00:00.000Z`).getTime() - 86400000;
+              const prevDate = new Date(prevMs).toISOString().slice(0, 10);
+              const prevKey = `${staffIdForHoldGuard}|${prevDate}`;
+              let prevResolved = holdShiftCache.get(prevKey);
+              if (!prevResolved) {
+                prevResolved = await loadEffectiveStaffShifts(
+                  supabase as SupabaseClient,
+                  staffIdForHoldGuard,
+                  prevDate,
+                  provider_id,
+                  locationIdForCalendar,
+                );
+                holdShiftCache.set(prevKey, prevResolved);
+              }
+              if (prevResolved.workHoursEnabledEffective && prevResolved.staffShifts.length > 0) {
+                const overnightOnly = prevResolved.staffShifts.filter((s) => {
+                  const [sh, sm] = s.start_time.split(":").map(Number);
+                  const [eh, em] = s.end_time.split(":").map(Number);
+                  const sMin = (Number.isFinite(sh) ? sh : 0) * 60 + (Number.isFinite(sm) ? sm : 0);
+                  const eMin = (Number.isFinite(eh) ? eh : 0) * 60 + (Number.isFinite(em) ? em : 0);
+                  return eMin < sMin || s.end_time === "00:00" || s.end_time === "00:00:00";
+                });
+                if (overnightOnly.length > 0) {
+                  holdFits = segmentFitsAnyShift(segStartMin, segEndMin, overnightOnly);
+                }
+              }
+            }
+
+            if (!holdFits && (holdShifts.length > 0 || holdWHEnabled)) {
+              // Only reject if there are shifts configured but slot doesn't fit.
+              // If no shifts at all, allow — validate-booking will do the authoritative check.
+              console.warn(
+                `[booking-holds] shift-guard: segment ${segStart.toISOString()} outside shifts ` +
+                  `for staff ${staffIdForHoldGuard} on ${localDate}`,
+              );
+              return bookingHoldSlotUnavailableResponse("OUTSIDE_WORKING_HOURS");
+            }
+          }
+        }
         {
           const { isProviderCalendarWindowBlocked } = await import(
             "@/lib/public-booking/provider-calendar-block-overlap"

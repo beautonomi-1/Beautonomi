@@ -148,22 +148,57 @@ jobs:
       - name: Build admin SPA (artifacts copied into web via next-build)
         run: pnpm exec turbo run build --filter=admin-web
 
-      - name: Setup Playwright Chromium for admin E2E
-        uses: ./.github/actions/setup-playwright-chromium
-        with:
-          package-filter: admin-web
-
-      - name: Admin SPA E2E smoke (login shell, auth redirect)
-        working-directory: apps/admin-web
-        run: pnpm exec playwright test
-        env:
-          CI: true
-
       - name: Build web (turbo)
         run: pnpm exec turbo run build --filter=web
 
       - name: Check bundle size budget
         run: pnpm --filter web check-bundle
+
+  # Parallel with build-web: same Playwright smoke as before, without blocking the Next build.
+  # Image tag must match @playwright/test in pnpm-lock.yaml (browsers preinstalled — no install step).
+  admin-e2e-smoke:
+    name: Admin SPA E2E Smoke
+    needs: [typecheck, lint]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container:
+      image: mcr.microsoft.com/playwright:v1.59.1-noble
+    env:
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Restore node_modules
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            node_modules
+            apps/*/node_modules
+            packages/*/node_modules
+            tooling/*/node_modules
+          key: modules-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: Restore Turbo cache (admin-web)
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-admin-${{ hashFiles('pnpm-lock.yaml', 'turbo.json', 'apps/admin-web/package.json', 'apps/admin-web/vite.config.ts') }}
+          restore-keys: |
+            ${{ runner.os }}-admin-${{ hashFiles('pnpm-lock.yaml', 'turbo.json') }}-
+            ${{ runner.os }}-admin-
+
+      - name: Build admin SPA
+        run: pnpm exec turbo run build --filter=admin-web
+
+      - name: Playwright smoke (login shell, auth redirect)
+        working-directory: apps/admin-web
+        run: pnpm exec playwright test
 
   build-mobile:
     name: Build Mobile Apps (Typecheck)

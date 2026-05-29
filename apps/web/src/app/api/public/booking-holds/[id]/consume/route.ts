@@ -168,7 +168,7 @@ export async function POST(
     const setAsDefault = parsed.data.set_as_default;
     const rescheduleBookingId = parsed.data.reschedule_booking_id;
     const products = parsed.data.products;
-    const packageId = (parsed.data.package_id ?? parsed.data.primary_package_id) ?? undefined;
+    const requestedPackageId = (parsed.data.package_id ?? parsed.data.primary_package_id) ?? undefined;
     const customerPackageEntitlementId = parsed.data.customer_package_entitlement_id;
     const loyaltyPointsUsed = parsed.data.loyalty_points_used;
     const membershipPlanId = parsed.data.membership_plan_id;
@@ -433,6 +433,13 @@ export async function POST(
     const resourceIdsFromHold = Array.isArray(holdMeta.resource_ids)
       ? (holdMeta.resource_ids as string[]).filter((id) => typeof id === "string")
       : undefined;
+    const packageId =
+      requestedPackageId ??
+      (typeof holdMeta.package_id === "string" && holdMeta.package_id.trim()
+        ? holdMeta.package_id.trim()
+        : typeof holdMeta.primary_package_id === "string" && holdMeta.primary_package_id.trim()
+          ? holdMeta.primary_package_id.trim()
+          : undefined);
 
     const cc = clientInfo?.phoneCountryCode || "27";
     const normalizedClientInfo = clientInfo

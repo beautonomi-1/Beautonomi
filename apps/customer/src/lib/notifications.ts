@@ -11,6 +11,8 @@ export interface Notification {
   data?: {
     conversation_id?: string;
     booking_id?: string;
+    group_booking_id?: string;
+    group_booking?: boolean;
     custom_offer_id?: string;
     offer_id?: string;
     custom_request_id?: string;
@@ -174,6 +176,33 @@ export function navigateFromNotification(n: Notification): void {
   ) {
     router.push("/(app)/(tabs)/chats" as never);
     return;
+  }
+
+  // ── Group bookings ────────────────────────────────────────────────────────
+  const groupBookingIdRaw = data.group_booking_id;
+  const groupBookingId =
+    groupBookingIdRaw != null && String(groupBookingIdRaw).trim() !== ""
+      ? String(groupBookingIdRaw).trim()
+      : "";
+  if (nType === "group_booking_confirmation" || data.group_booking === true) {
+    if (groupBookingId) {
+      router.push({ pathname: "/(app)/group-booking-detail", params: { id: groupBookingId } });
+      return;
+    }
+    // No group_booking_id — fall back to the individual booking if we have it.
+    if (anyBookingIdRaw) {
+      router.push({ pathname: "/(app)/booking-detail", params: { id: String(anyBookingIdRaw) } });
+      return;
+    }
+    router.push("/(app)/(tabs)/bookings" as never);
+    return;
+  }
+  if (link && (getUuidAfterSegment(link, "group-bookings") || getLinkParam(link, "group_booking_id"))) {
+    const gid = getUuidAfterSegment(link, "group-bookings") || getLinkParam(link, "group_booking_id");
+    if (gid) {
+      router.push({ pathname: "/(app)/group-booking-detail", params: { id: gid } });
+      return;
+    }
   }
 
   // ── Bookings ─────────────────────────────────────────────────────────────

@@ -72,9 +72,11 @@ export const ME_GROUP_DETAIL_SELECT = `
     participant_email,
     participant_phone,
     is_primary_contact,
+    service_id,
     service_name,
     price,
     duration_minutes,
+    addons,
     checked_in_at,
     checked_out_at
   ),

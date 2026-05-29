@@ -48,7 +48,7 @@ interface PartnerHeroProps {
   business_type?: 'freelancer' | 'salon';
   supports_house_calls?: boolean;
   supports_salon?: boolean;
-  current_badge?: { id: string; name: string; color?: string | null; description?: string | null } | null;
+  current_badge?: { id: string; name: string; color?: string | null; description?: string | null; icon_url?: string | null } | null;
 }
 
 const PartnerHero: React.FC<PartnerHeroProps> = ({
@@ -454,10 +454,14 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
               </h1>
               {current_badge ? (
                 <span
-                  className="mb-3 inline-flex max-w-full items-center rounded-full border border-white/30 px-3 py-1 text-sm font-medium text-white"
+                  className="mb-3 inline-flex max-w-full items-center gap-1.5 rounded-full border border-white/30 px-3 py-1.5 text-sm font-semibold text-white shadow-sm"
                   style={{ backgroundColor: current_badge.color || "#6366f1" }}
                   title={current_badge.description || current_badge.name}
                 >
+                  {current_badge.icon_url && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={current_badge.icon_url} alt="" className="w-4 h-4 object-contain flex-shrink-0" aria-hidden />
+                  )}
                   {current_badge.name}
                 </span>
               ) : null}

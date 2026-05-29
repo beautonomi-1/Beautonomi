@@ -83,24 +83,33 @@ export default function NewSupportTicketScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSubmitting(true);
     try {
-      const res = await api.post("/api/provider/support-tickets", {
-        subject: subjectTrimmed,
-        message: messageTrimmed,
-        category,
-        priority,
-        support_context_type: supportContextType,
-        support_context_label: supportContextLabel.trim() || null,
-      }) as { error?: { message?: string } };
+      const res = await api.post<{ ticket?: { id?: string; ticket_number?: string } }>(
+        "/api/provider/support-tickets",
+        {
+          subject: subjectTrimmed,
+          message: messageTrimmed,
+          category,
+          priority,
+          support_context_type: supportContextType,
+          support_context_label: supportContextLabel.trim() || null,
+        }
+      );
       if (res.error) {
-        Alert.alert("Could not submit", typeof res.error === "string" ? res.error : (res.error?.message ?? "Please try again"));
+        Alert.alert("Could not submit", res.error.message ?? "Please try again");
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert(
-        "Ticket submitted",
-        "We'll get back to you as soon as possible. You can track replies in your support tickets.",
-        [{ text: "OK", onPress: () => router.back() }]
-      );
+      const ticketId = res.data?.ticket?.id;
+      if (ticketId) {
+        // Navigate to the created ticket so the provider can track replies.
+        router.replace(`/(app)/(tabs)/more/support-tickets/${ticketId}` as never);
+      } else {
+        Alert.alert(
+          "Ticket submitted",
+          "We'll get back to you as soon as possible. You can track replies in My support tickets.",
+          [{ text: "OK", onPress: () => router.back() }]
+        );
+      }
     } catch (e) {
       Alert.alert("Error", e instanceof Error ? e.message : "Could not submit ticket");
     } finally {

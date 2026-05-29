@@ -76,6 +76,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const participantRows = participants.map((p: any) => {
       const linkedBooking = p.booking_id ? bookings.find((b: any) => b.id === p.booking_id) : null;
+      const addons = Array.isArray(p.addons) ? p.addons : [];
       return {
         id: p.id,
         booking_id: p.booking_id ?? null,
@@ -84,16 +85,42 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         email: p.participant_email ?? null,
         phone: p.participant_phone ?? null,
         is_primary_contact: Boolean(p.is_primary_contact),
+        service_id: p.service_id ?? null,
         service_name: p.service_name || "Service",
         price: num(p.price),
         duration_minutes: p.duration_minutes ?? null,
+        addons: addons.map((ao: any) => ({
+          id: ao.id ?? ao.addonId ?? null,
+          name: ao.name ?? null,
+          price: num(ao.price),
+          duration_minutes: ao.duration_minutes ?? ao.duration ?? null,
+        })),
         checked_in: Boolean(p.checked_in_at),
         checked_out: Boolean(p.checked_out_at),
         booking_status: linkedBooking?.status ?? null,
         payment_status: linkedBooking?.payment_status ?? null,
         booking_number: linkedBooking?.booking_number ?? null,
+        total_paid: num(linkedBooking?.total_paid),
+        total_refunded: num(linkedBooking?.total_refunded),
       };
     });
+
+    // Products are stored as a JSONB array on group_bookings.products
+    const products: { name: string; quantity: number; unit_price: number; total: number }[] = [];
+    const rawProducts = (group as any).products;
+    if (Array.isArray(rawProducts)) {
+      for (const item of rawProducts) {
+        if (!item) continue;
+        products.push({
+          name: String(item.productName ?? item.name ?? "Product"),
+          quantity: Number(item.quantity ?? 1),
+          unit_price: num(item.unitPrice ?? item.unit_price ?? item.price),
+          total: num(item.total ?? (num(item.unitPrice ?? item.unit_price ?? item.price) * Number(item.quantity ?? 1))),
+        });
+      }
+    }
+
+    const travelFee = num((group as any).travel_fee);
 
     return NextResponse.json({
       data: {
@@ -118,6 +145,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         participant_count: participantRows.length,
         max_participants: (group as any).max_participants ?? null,
         participants: participantRows,
+        products,
+        travel_fee: travelFee,
         total_price: num((group as any).total_price),
         notes: (group as any).notes ?? null,
       },

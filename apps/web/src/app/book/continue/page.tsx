@@ -119,7 +119,7 @@ interface HoldData {
   cancellation_policy?: HoldCancellationPolicy | null;
 }
 
-/** Same rules as customer app checkout — require explicit ack when policy has material terms. */
+/** Require explicit ack when the policy has material terms the customer needs to understand. */
 function cancellationPolicyRequiresCustomerAck(policy: HoldCancellationPolicy | null | undefined): boolean {
   if (!policy) return false;
   const windowHrs = policy.cancellation_window_hours;
@@ -127,14 +127,23 @@ function cancellationPolicyRequiresCustomerAck(policy: HoldCancellationPolicy | 
   const noShowFee =
     policy.no_show_fee_enabled && policy.no_show_fee_amount != null && Number(policy.no_show_fee_amount) > 0;
   const latePct = policy.late_refund_percentage;
+  // Require ack when: there's a cancellation window, a grace period, a no-show fee, or a non-full-refund policy.
+  // policy_text is NOT used here — it's often a duplicate of the structured fields and including it caused
+  // the ack checkbox to appear for all bookings even when no real policy was configured.
   const showLateLine =
     latePct !== undefined && latePct !== null && !Number.isNaN(Number(latePct)) && Number(latePct) < 100;
-  const policyTextTrimmed = typeof policy.policy_text === "string" ? policy.policy_text.trim() : "";
-  const policySnippet = policyTextTrimmed.length > 0 ? policyTextTrimmed : null;
-  if (!windowHrs && !noShowFee && !(graceMin != null && graceMin > 0) && !showLateLine && !policySnippet) {
-    return false;
+  return !!(windowHrs || noShowFee || (graceMin != null && graceMin > 0) || showLateLine);
+}
+
+function generateConsumeIdempotencyKey(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
   }
-  return true;
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
 }
 
 function HoldSlotCountdown({ expiresAt, clockOffsetMs }: { expiresAt: string; clockOffsetMs: number }) {
@@ -358,6 +367,7 @@ function BookContinueContent() {
   const [recurringFrequency, setRecurringFrequency] = useState<"weekly" | "biweekly" | "monthly">("weekly");
   const [groupBookingForRecurring, setGroupBookingForRecurring] = useState(false);
   const [groupParticipants, setGroupParticipants] = useState<Array<{ name: string; email?: string | null; phone?: string | null; service_ids: string[]; notes?: string | null }>>([]);
+  const consumeIdempotencyKeyRef = useRef<string | null>(null);
   const { user } = useAuth();
   const { bundle } = useConfigBundle();
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
@@ -978,6 +988,9 @@ function BookContinueContent() {
         promotion_code: promotionCode.trim() || undefined,
         gift_card_code: effectiveGiftCardCode,
         guest_fingerprint_hash: getGuestFingerprintHash(),
+        idempotency_key:
+          consumeIdempotencyKeyRef.current ??
+          (consumeIdempotencyKeyRef.current = generateConsumeIdempotencyKey()),
       };
       if (prefillConsumeProducts.length > 0) {
         payload.products = prefillConsumeProducts.map((r) => ({
@@ -1795,7 +1808,9 @@ function BookContinueContent() {
               </h2>
               <ul className="text-sm space-y-2 list-disc pl-5" style={{ color: BOOKING_TEXT_SECONDARY }}>
                 {hold.cancellation_policy.grace_window_minutes != null && hold.cancellation_policy.grace_window_minutes > 0 && (
-                  <li>Grace period: free cancellation within {hold.cancellation_policy.grace_window_minutes} minutes of booking.</li>
+                  <li>
+                    Free cancellation within {hold.cancellation_policy.grace_window_minutes} minutes of booking (grace period).
+                  </li>
                 )}
                 {hold.cancellation_policy.cancellation_window_hours != null &&
                   hold.cancellation_policy.cancellation_window_hours > 0 && (
@@ -1806,15 +1821,18 @@ function BookContinueContent() {
                   )}
                 {hold.cancellation_policy.late_refund_percentage != null &&
                   !Number.isNaN(Number(hold.cancellation_policy.late_refund_percentage)) &&
-                  Number(hold.cancellation_policy.late_refund_percentage) < 100 && (
-                    <li>
-                      Late cancellation:{" "}
-                      {Number(hold.cancellation_policy.late_refund_percentage) <= 0
-                        ? "no refund"
-                        : `${Math.round(Number(hold.cancellation_policy.late_refund_percentage))}% refund`}
-                      .
-                    </li>
-                  )}
+                  Number(hold.cancellation_policy.late_refund_percentage) < 100 && (() => {
+                    const pct = Math.round(Number(hold.cancellation_policy.late_refund_percentage));
+                    const hrs = hold.cancellation_policy.cancellation_window_hours;
+                    const hrsLabel = hrs != null && hrs > 0
+                      ? `Within ${hrs} ${hrs === 1 ? "hour" : "hours"}`
+                      : "Cancellation";
+                    return (
+                      <li>
+                        {hrsLabel}: {pct <= 0 ? "no refund" : `${pct}% refund`}.
+                      </li>
+                    );
+                  })()}
                 {hold.cancellation_policy.no_show_fee_enabled &&
                   hold.cancellation_policy.no_show_fee_amount != null &&
                   Number(hold.cancellation_policy.no_show_fee_amount) > 0 && (
@@ -1827,14 +1845,10 @@ function BookContinueContent() {
                       .
                     </li>
                   )}
-                {typeof hold.cancellation_policy.policy_text === "string" &&
-                  hold.cancellation_policy.policy_text.trim().length > 0 && (
-                    <li className="list-none -ml-5 pl-0 text-xs leading-relaxed opacity-90">
-                      {hold.cancellation_policy.policy_text.trim().slice(0, 400)}
-                      {hold.cancellation_policy.policy_text.trim().length > 400 ? "…" : ""}
-                    </li>
-                  )}
               </ul>
+              <p className="text-xs opacity-60 pt-1" style={{ color: BOOKING_TEXT_SECONDARY }}>
+                This policy is enforced automatically at the time of cancellation.
+              </p>
               <div className="flex items-start gap-3 pt-2">
                 <Checkbox
                   id="cancellation-policy-ack"

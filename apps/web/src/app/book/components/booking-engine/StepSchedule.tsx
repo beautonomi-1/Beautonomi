@@ -91,15 +91,12 @@ function startOfLocalDay(d: Date): Date {
   return x;
 }
 
-/** Slot must be at least minNoticeMinutes after now (lead time), and not on a past calendar day. */
-function isSlotStartStillSelectable(startIso: string, day: Date, minNoticeMinutes: number): boolean {
+/** Slot must be at least minNoticeMinutes after now (lead time). */
+function isSlotStartStillSelectable(startIso: string, _day: Date, minNoticeMinutes: number): boolean {
   const slotTime = new Date(startIso);
-  const now = new Date();
-  const dayStart = startOfLocalDay(day).getTime();
-  const todayStart = startOfLocalDay(now).getTime();
-  if (dayStart < todayStart) return false;
+  if (!Number.isFinite(slotTime.getTime())) return false;
   const safeNotice = Number.isFinite(minNoticeMinutes) && minNoticeMinutes >= 0 ? minNoticeMinutes : 0;
-  const cutoff = now.getTime() + safeNotice * 60 * 1000;
+  const cutoff = Date.now() + safeNotice * 60 * 1000;
   return slotTime.getTime() >= cutoff;
 }
 
@@ -159,6 +156,14 @@ export function StepSchedule({
   const [waitlistSubmitting, setWaitlistSubmitting] = useState(false);
   const [waitlistForm, setWaitlistForm] = useState({ name: "", email: "", phone: "" });
   const [openPeriodKey, setOpenPeriodKey] = useState<"morning" | "afternoon" | "evening" | null>(null);
+  const [slotClockTick, setSlotClockTick] = useState(0);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setSlotClockTick((value) => value + 1);
+    }, 30_000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   // §Booking-slot-audit 2026-05: anchor the date strip and date bounds to
   // the provider business day when the salon timezone is known. The returned
@@ -191,7 +196,7 @@ export function StepSchedule({
   const relevantSlots = useMemo(() => {
     if (!selectedDay) return slots;
     return slots.filter((s) => isSlotStartStillSelectable(s.start, selectedDay, minNoticeMinutes));
-  }, [slots, selectedDay, minNoticeMinutes]);
+  }, [slots, selectedDay, minNoticeMinutes, slotClockTick]);
 
   const morningSlots = relevantSlots.filter((s) => getSlotPeriod(s.start, providerTimeZone) === "morning");
   const afternoonSlots = relevantSlots.filter((s) => getSlotPeriod(s.start, providerTimeZone) === "afternoon");
@@ -224,7 +229,7 @@ export function StepSchedule({
     if (isSlotStartStillSelectable(data.selectedSlot.start, selectedDay, minNoticeMinutes)) return;
     onSelectSlot(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- parent passes inline updater; avoid infinite effect loops
-  }, [selectedDay, data.selectedSlot?.start, minNoticeMinutes]);
+  }, [selectedDay, data.selectedSlot?.start, minNoticeMinutes, slotClockTick]);
 
   const timezoneLabel =
     typeof Intl !== "undefined"

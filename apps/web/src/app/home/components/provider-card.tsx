@@ -205,46 +205,68 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
             }}
           />
           
-          {/* Badges Container - Top Left */}
-          <div className="absolute top-2 left-2 md:top-3 md:left-3 flex flex-col gap-1.5 md:gap-2 z-10" role="list" aria-label="Listing badges">
-            {showTopRatedBadge && (
-              <span className="bg-[#FF0077] text-white text-[10px] md:text-xs font-medium px-2 md:px-3 py-1 rounded-full inline-block" role="listitem">Top Rated</span>
-            )}
-            {showHottestBadge && (
-              <span className="bg-orange-600 text-white text-[10px] md:text-xs font-medium px-2 md:px-3 py-1 rounded-full inline-block" role="listitem">Hottest</span>
-            )}
-            {showNearestBadge && (
-              <span className="bg-blue-600 text-white text-[10px] md:text-xs font-medium px-2 md:px-3 py-1 rounded-full inline-block" role="listitem">Nearest</span>
-            )}
-            {showUpcomingTalentBadge && (
-              <span className="bg-purple-600 text-white text-[10px] md:text-xs font-medium px-2 md:px-3 py-1 rounded-full inline-block" role="listitem">Rising Star</span>
-            )}
-            {provider.business_type === 'freelancer' && (
-              <span className="bg-orange-500 text-white text-[10px] md:text-xs font-medium px-2 md:px-3 py-1 rounded-full inline-block" role="listitem">Freelancer</span>
-            )}
-            {provider.supports_house_calls === true && (
-              <span className="bg-green-500 text-white text-[10px] md:text-xs font-medium px-2 md:px-3 py-1 rounded-full inline-block" role="listitem">House Calls</span>
-            )}
-            {provider.supports_salon === true && (
-              <span className="bg-purple-500 text-white text-[10px] md:text-xs font-medium px-2 md:px-3 py-1 rounded-full inline-block" role="listitem">At Salon</span>
-            )}
-            {provider.current_badge && (
-              <span
-                className="text-white text-[10px] md:text-xs font-medium px-2 md:px-3 py-1 rounded-full inline-block shadow-md"
-                style={{ background: provider.current_badge.color || '#6366f1', border: '1px solid rgba(255, 255, 255, 0.3)' }}
-                role="listitem"
-                title={provider.current_badge.description || provider.current_badge.name}
-                aria-label={provider.current_badge.name}
-              >
-                {provider.current_badge.name}
-              </span>
-            )}
-            {provider.is_sponsored && (
-              <span className="bg-amber-600 text-white text-[10px] md:text-xs font-medium px-2 md:px-3 py-1 rounded-full inline-block" role="listitem">
-                {sponsoredBadgeText}
-              </span>
-            )}
-          </div>
+          {/* Badges Container - Top Left.
+              Priority: sponsored/ad-disclosure FIRST, then earned provider tier badge,
+              then contextual section badge, then capability badges.
+              Overflow beyond 3 is collapsed into a "+N more" pill so the stack
+              never grows taller than the image on small cards. */}
+          {(() => {
+            const MAX_VISIBLE = 3;
+            const badges: Array<{ key: string; label: string; style?: React.CSSProperties; className: string; title?: string; iconUrl?: string }> = [];
+            if (provider.is_sponsored) {
+              badges.push({ key: "spon", label: sponsoredBadgeText, className: "bg-amber-600" });
+            }
+            if (provider.current_badge) {
+              badges.push({
+                key: "badge",
+                label: provider.current_badge.name,
+                className: "shadow-md",
+                style: { background: provider.current_badge.color || "#6366f1", border: "1px solid rgba(255,255,255,0.3)" },
+                title: (provider.current_badge as { description?: string }).description || provider.current_badge.name,
+                iconUrl: provider.current_badge.icon_url ?? undefined,
+              });
+            }
+            if (showTopRatedBadge) badges.push({ key: "top", label: "Top Rated", className: "bg-[#FF0077]" });
+            if (showHottestBadge) badges.push({ key: "hot", label: "Hottest", className: "bg-orange-600" });
+            if (showNearestBadge) badges.push({ key: "near", label: "Nearest", className: "bg-blue-600" });
+            if (showUpcomingTalentBadge) badges.push({ key: "up", label: "Rising Star", className: "bg-purple-600" });
+            if (provider.business_type === "freelancer") badges.push({ key: "free", label: "Freelancer", className: "bg-orange-500" });
+            if (provider.supports_house_calls) badges.push({ key: "house", label: "House Calls", className: "bg-green-500" });
+            if (provider.supports_salon) badges.push({ key: "salon", label: "At Salon", className: "bg-purple-500" });
+
+            const visible = badges.slice(0, MAX_VISIBLE);
+            const overflow = badges.length - MAX_VISIBLE;
+
+            return (
+              <div className="absolute top-2 left-2 md:top-3 md:left-3 flex flex-col gap-1.5 md:gap-2 z-10" role="list" aria-label="Listing badges">
+                {visible.map((b) => (
+                  <span
+                    key={b.key}
+                    className={`text-white text-[11px] md:text-xs font-semibold px-2 md:px-3 py-1 rounded-full inline-flex items-center gap-1 ${b.className}`}
+                    style={b.style}
+                    role="listitem"
+                    title={b.title}
+                    aria-label={b.title || b.label}
+                  >
+                    {b.iconUrl && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={b.iconUrl} alt="" className="w-3 h-3 object-contain flex-shrink-0" aria-hidden />
+                    )}
+                    {b.label}
+                  </span>
+                ))}
+                {overflow > 0 && (
+                  <span
+                    className="text-white text-[11px] md:text-xs font-semibold px-2 md:px-3 py-1 rounded-full inline-block bg-black/55"
+                    role="listitem"
+                    aria-label={`${overflow} more badges`}
+                  >
+                    +{overflow} more
+                  </span>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Wishlist - Top Right */}
           <button

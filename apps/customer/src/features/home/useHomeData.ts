@@ -2,10 +2,13 @@
  * useHomeData – parity hook for home screen.
  * Contract: /api/public/home
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { api } from "@/lib/api-client";
 import type { HomeApiResponse, PublicProviderCard } from "@/types/api";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+
+/** Skip silent focus-refresh if data was fetched within this window. */
+const FOCUS_REFRESH_TTL_MS = 45_000;
 
 function normalizeProvider(p: Record<string, unknown>): PublicProviderCard {
   const o = p as Record<string, unknown>;
@@ -52,16 +55,20 @@ function normalize(r: unknown): HomeApiResponse {
   };
 }
 
+type LoadMode = "initial" | "refresh" | "silent";
+
 export function useHomeData(lat?: number, lng?: number, category?: string) {
   const [data, setData] = useState<HomeApiResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const lastSuccessRef = useRef<number>(0);
 
   const load = useCallback(
-    async (isRefresh = false) => {
-      if (isRefresh) setRefreshing(true);
-      else setLoading(true);
+    async (mode: LoadMode = "initial") => {
+      if (mode === "refresh") setRefreshing(true);
+      else if (mode === "initial") setLoading(true);
+      // "silent" sets no loading indicator — existing data stays visible
       setError(null);
       try {
         const params = new URLSearchParams();
@@ -75,6 +82,7 @@ export function useHomeData(lat?: number, lng?: number, category?: string) {
         } else {
           try {
             setData(normalize(res.data ?? {}));
+            lastSuccessRef.current = Date.now();
           } catch (e) {
             setError(e instanceof Error ? e.message : "Could not load home feed");
           }
@@ -82,16 +90,29 @@ export function useHomeData(lat?: number, lng?: number, category?: string) {
       } catch (e) {
         setError(e instanceof Error ? e.message : "Could not load home feed");
       } finally {
-        setLoading(false);
-        setRefreshing(false);
+        if (mode === "refresh") setRefreshing(false);
+        else if (mode === "initial") setLoading(false);
       }
     },
     [lat, lng, category]
   );
 
   useEffect(() => {
-    load();
+    load("initial");
   }, [load]);
 
-  return { data, loading, refreshing, error, refetch: () => load(true) };
+  /** Explicit pull-to-refresh – shows the spinner. Stable reference. */
+  const refetch = useCallback(() => load("refresh"), [load]);
+
+  /**
+   * Focus-triggered background refresh.
+   * Skipped when data was successfully fetched within the TTL window so that
+   * returning to the Home tab doesn't reset scroll position or re-animate.
+   */
+  const silentRefetch = useCallback(() => {
+    if (Date.now() - lastSuccessRef.current < FOCUS_REFRESH_TTL_MS) return;
+    load("silent");
+  }, [load]);
+
+  return { data, loading, refreshing, error, refetch, silentRefetch };
 }
