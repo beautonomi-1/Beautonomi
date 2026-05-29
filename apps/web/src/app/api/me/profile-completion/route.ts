@@ -1,6 +1,7 @@
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { successResponse, handleApiError, requireRoleInApi } from "@/lib/supabase/api-helpers";
 import { NextRequest } from "next/server";
+import { bootstrapPreferredHomeTenantForAuthedUser } from "@/lib/tenant/assign-preferred-home-tenant-from-host";
 
 /**
  * GET /api/me/profile-completion
@@ -11,6 +12,8 @@ export async function GET(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
     const supabase = await getSupabaseServer(request);
+
+    await bootstrapPreferredHomeTenantForAuthedUser(user.id, request);
 
     // Auth user for email_confirmed_at (Supabase verification state)
     const { data: { user: authUser } } = await supabase.auth.getUser();

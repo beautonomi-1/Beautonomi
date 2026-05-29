@@ -41,6 +41,10 @@ vi.mock("@/lib/supabase/server", () => ({
   getSupabaseServer: vi.fn().mockResolvedValue({}),
 }));
 
+vi.mock("@/lib/tenant/assign-preferred-home-tenant-from-host", () => ({
+  bootstrapPreferredHomeTenantForAuthedUser: vi.fn().mockResolvedValue(null),
+}));
+
 function authUserLike(id: string, email = "test@example.com") {
   return { id, email, user_metadata: {} };
 }

@@ -7,6 +7,7 @@ import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { getUserRowIfAccessibleToAdminTenant } from "@/lib/tenant/admin-user-tenant-access";
 import { z } from "zod";
 import { writeAuditLog, extractRequestMeta, computeChangedFields } from "@/lib/audit/audit";
+import { syncUserAuthMetadataToPublicProfile } from "@/lib/auth/sync-user-auth-metadata";
 
 function sanitizeUserForAdmin(row: Record<string, unknown>) {
   const { two_factor_secret: _tfs, ...rest } = row;
@@ -151,8 +152,45 @@ export async function GET(
       return p?.tenant_id === tenantId;
     });
 
+    let last_sign_in_at: string | null = null;
+    let email_verified = Boolean((userData as { email_verified?: boolean }).email_verified);
+    let phone_verified = Boolean((userData as { phone_verified?: boolean }).phone_verified);
+    try {
+      const { data: authRow } = await admin.auth.admin.getUserById(id);
+      const authUser = authRow?.user;
+      if (authUser) {
+        last_sign_in_at = authUser.last_sign_in_at ?? null;
+        email_verified = email_verified || Boolean(authUser.email_confirmed_at);
+        phone_verified = phone_verified || Boolean(authUser.phone_confirmed_at);
+        await syncUserAuthMetadataToPublicProfile(admin, id, authUser);
+      }
+    } catch (authErr) {
+      console.warn("[admin/users/:id] auth metadata lookup failed:", authErr);
+    }
+
+    const last_login_at =
+      typeof (userData as { last_login_at?: string | null }).last_login_at === "string"
+        ? (userData as { last_login_at?: string | null }).last_login_at
+        : null;
+    const last_active_at =
+      [last_sign_in_at, last_login_at]
+        .filter(Boolean)
+        .sort((a, b) => Date.parse(String(b)) - Date.parse(String(a)))[0] ?? null;
+
     return successResponse({
       ...sanitizeUserForAdmin(userData as Record<string, unknown>),
+      last_sign_in_at,
+      last_active_at,
+      verification: {
+        email_verified,
+        phone_verified,
+        identity_verified: Boolean((userData as { identity_verified?: boolean }).identity_verified),
+        identity_verification_status:
+          typeof (userData as { identity_verification_status?: string }).identity_verification_status ===
+          "string"
+            ? (userData as { identity_verification_status?: string }).identity_verification_status
+            : null,
+      },
       stats,
       addresses: addresses ?? [],
       payment_methods: payment_methods ?? [],

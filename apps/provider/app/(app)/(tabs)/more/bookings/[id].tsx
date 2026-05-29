@@ -37,6 +37,10 @@ import { pushInAppBrowser } from "@/lib/in-app-web";
 import { ArrivalQrScannerModal } from "@/components/ArrivalQrScannerModal";
 import * as Haptics from "expo-haptics";
 import { api, getApiBaseUrl } from "@/lib/api-client";
+import {
+  PAYSTACK_TERMINAL_PAYMENTS_ACTION_PATH,
+  paystackTerminalCollectionIntentPayload,
+} from "@/lib/paystack-terminal-api";
 import { supabase } from "@/lib/supabase/client";
 import { twStyle } from "@/lib/twStyle";
 import { buildZonedIsoForWallClock } from "@/lib/tz";
@@ -1630,12 +1634,12 @@ export default function BookingDetailScreen() {
       const res = await api.post<{
         terminal?: { terminal_code?: string; payment_link?: string | null; terminal_url?: string | null; qr_url?: string | null };
         expectedAmount?: number | null;
-      }>("/api/provider/paystack/terminal-payments", {
+      }>(PAYSTACK_TERMINAL_PAYMENTS_ACTION_PATH, paystackTerminalCollectionIntentPayload({
         entity_type: "booking",
         entity_id: id,
         expected_amount: chargeAmount,
         customer_reference: customerReference,
-      });
+      }));
       if (res.error) {
         Alert.alert("Paystack Terminal", res.error.message ?? "Failed to prepare terminal payment.");
         return;

@@ -210,10 +210,26 @@ export default function ServiceFormScreen() {
   const serviceTypeOptions = refObj.service_type?.length
     ? refObj.service_type
     : [
-        { value: "basic", label: "Basic" },
-        { value: "variant", label: "Variant" },
-        { value: "addon", label: "Add-on" },
-        { value: "package", label: "Package" },
+        {
+          value: "basic",
+          label: "Basic service",
+          description: "What most providers use. One service — add options below for multiple prices or lengths.",
+        },
+        {
+          value: "variant",
+          label: "Standalone variant",
+          description: "Advanced only. Links to another service. Prefer Basic + booking options instead.",
+        },
+        {
+          value: "addon",
+          label: "Add-on",
+          description: "Optional extra during checkout, not a main bookable service.",
+        },
+        {
+          value: "package",
+          label: "Package",
+          description: "Bundle of services sold together at one price.",
+        },
       ];
 
   const availabilityOptions = refObj.availability?.length
@@ -438,6 +454,7 @@ export default function ServiceFormScreen() {
       parentServiceId: form.parentServiceId,
       pricingOptions,
       includedServices: form.includedServices,
+      parentPricingName: pricingOptions[0]?.pricingName ?? null,
     });
     if (validationError) {
       setFormValidationError(validationError);
@@ -483,16 +500,28 @@ export default function ServiceFormScreen() {
     });
 
     let savedId = serviceId;
+    let variantSyncMessage: string | null = null;
 
     if (isEdit && serviceId) {
-      const { error } = await updateService(`/api/provider/services/${serviceId}`, payload);
+      const { data, error } = (await updateService(`/api/provider/services/${serviceId}`, payload)) as {
+        data?: { variant_sync?: { synced?: number; errors?: string[] } };
+        error?: string | null;
+      };
       if (error) {
         Alert.alert("Error", error);
         return;
       }
+      const sync = data?.variant_sync;
+      if (pricingOptions.length > 1) {
+        if (sync?.errors?.length) {
+          variantSyncMessage = `Service saved, but tier sync had issues: ${sync.errors[0]}`;
+        } else if (sync?.synced != null) {
+          variantSyncMessage = `${sync.synced} booking tier${sync.synced === 1 ? "" : "s"} synced for customers.`;
+        }
+      }
     } else {
       const { data, error } = (await createService("/api/provider/services", payload)) as {
-        data?: { id?: string };
+        data?: { id?: string; variant_sync?: { synced?: number; errors?: string[] } };
         error?: string | null;
       };
       if (error) {
@@ -500,6 +529,14 @@ export default function ServiceFormScreen() {
         return;
       }
       savedId = data?.id;
+      const sync = data?.variant_sync;
+      if (pricingOptions.length > 1) {
+        if (sync?.errors?.length) {
+          variantSyncMessage = `Service saved, but tier sync had issues: ${sync.errors[0]}`;
+        } else if (sync?.synced != null) {
+          variantSyncMessage = `${sync.synced} booking tier${sync.synced === 1 ? "" : "s"} synced for customers.`;
+        }
+      }
     }
 
     if (savedId && (form.serviceType === "basic" || form.serviceType === "variant")) {
@@ -510,7 +547,11 @@ export default function ServiceFormScreen() {
     }
 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    router.back();
+    if (variantSyncMessage) {
+      Alert.alert("Service saved", variantSyncMessage, [{ text: "OK", onPress: () => router.back() }]);
+    } else {
+      router.back();
+    }
   }, [
     form,
     pricingOptions,
@@ -590,6 +631,15 @@ export default function ServiceFormScreen() {
                   {serviceTypeOptions.find((o) => o.value === form.serviceType)?.label ?? form.serviceType}
                 </Text>
               </TouchableOpacity>
+              {form.serviceType === "variant" ? (
+                <Text style={twStyle("mt-1 text-xs text-amber-700")}>
+                  Tip: For multiple prices on one service, choose Basic and use booking options below instead.
+                </Text>
+              ) : form.serviceType === "basic" ? (
+                <Text style={twStyle("mt-1 text-xs text-gray-500")}>
+                  Set price and duration below. Add more options if customers should choose (e.g. short vs long).
+                </Text>
+              ) : null}
             </View>
 
             {form.serviceType === "package" ? (
@@ -669,6 +719,26 @@ export default function ServiceFormScreen() {
               value={form.aftercareDescription}
               onChangeText={(t) => setForm((p) => ({ ...p, aftercareDescription: t }))}
               multiline
+            />
+
+            <View style={twStyle("my-4 flex-row items-center gap-3")}>
+              <View style={twStyle("h-px flex-1 bg-gray-200")} />
+              <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-400")}>
+                Pricing
+              </Text>
+              <View style={twStyle("h-px flex-1 bg-gray-200")} />
+            </View>
+            <PricingOptionsEditor
+              options={pricingOptions}
+              onChange={setPricingOptions}
+              durationOptions={durationOptions}
+              priceTypeOptions={priceTypeOptions}
+              onOpenAdvancedPricing={
+                form.serviceType === "variant" ? undefined : () => setAdvancedPricingOpen(true)
+              }
+              parentPricingName={pricingOptions[0]?.pricingName ?? null}
+              serviceTitle={form.name.trim() || undefined}
+              allowMultipleTiers={form.serviceType !== "variant"}
             />
 
             <View style={twStyle("mb-3")}>
@@ -757,14 +827,6 @@ export default function ServiceFormScreen() {
                 onValueChange={(v) => setForm((p) => ({ ...p, teamMemberCommissionEnabled: v }))}
               />
             </View>
-
-            <PricingOptionsEditor
-              options={pricingOptions}
-              onChange={setPricingOptions}
-              durationOptions={durationOptions}
-              priceTypeOptions={priceTypeOptions}
-              onOpenAdvancedPricing={() => setAdvancedPricingOpen(true)}
-            />
 
             <View style={twStyle("mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}>
               <Text style={twStyle("text-sm font-medium text-gray-700")}>Extra (buffer) time</Text>
@@ -949,13 +1011,18 @@ function OptionSheet({
         {options.map((o) => (
           <TouchableOpacity
             key={o.value}
-            style={twStyle("border-b border-gray-100 py-3.5")}
+            style={twStyle("border-b border-gray-100 px-1 py-3.5")}
             onPress={() => {
               onSelect(o.value);
               onClose();
             }}
+            accessibilityRole="button"
+            accessibilityLabel={o.description ? `${o.label}. ${o.description}` : o.label}
           >
-            <Text style={twStyle("text-base text-gray-900")}>{o.label}</Text>
+            <Text style={twStyle("text-base font-medium text-gray-900")}>{o.label}</Text>
+            {o.description ? (
+              <Text style={twStyle("mt-0.5 text-xs leading-5 text-gray-500")}>{o.description}</Text>
+            ) : null}
           </TouchableOpacity>
         ))}
       </ScrollView>

@@ -3,6 +3,10 @@ import { requireRoleInApi, getProviderIdForUser, notFoundResponse, successRespon
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { dateRangeBoundsUtc } from "@/lib/dates/provider-tz";
 import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
+import {
+  handlePaystackTerminalPaymentsPost,
+  listPaystackTerminalPaymentsMobile,
+} from "@/lib/payments/paystack-terminal-provider-mobile-api";
 
 type BookingPaymentRow = {
   id: string;
@@ -62,6 +66,11 @@ function mapPaymentMethod(method: string | null) {
  */
 export async function GET(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url);
+    if (searchParams.get("paystack_terminal") === "1") {
+      return await listPaystackTerminalPaymentsMobile(request);
+    }
+
     const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
 
     const supabaseAdmin = getSupabaseAdmin();
@@ -71,8 +80,6 @@ export async function GET(request: NextRequest) {
 
     const { timezone: tz } = await getProviderReportContext(supabaseAdmin, providerId);
     const ymdParam = /^\d{4}-\d{2}-\d{2}$/;
-
-    const { searchParams } = new URL(request.url);
     
     // Parse query parameters
     const search = searchParams.get('search');
@@ -297,4 +304,12 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     return handleApiError(error, "Failed to fetch payment transactions");
   }
+}
+
+/**
+ * POST /api/provider/payments
+ * Paystack Terminal mobile fallback actions (`paystackTerminalAction`).
+ */
+export async function POST(request: NextRequest) {
+  return handlePaystackTerminalPaymentsPost(request);
 }

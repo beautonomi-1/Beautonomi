@@ -31,6 +31,7 @@ import { appendFormDataFileNative } from "@beautonomi/utils";
 import { invalidateSupportTicketsListCache } from "@/lib/api-response-cache";
 import { launchImageLibraryWithPermission } from "@/lib/native-permissions";
 import { supabase } from "@/lib/supabase/client";
+import { SUPPORT_TICKETS_API_PREFIX } from "@/lib/support-ticket-api";
 
 type Message = {
   id: string;
@@ -127,7 +128,7 @@ export default function SupportTicketDetailScreen() {
     setLoadError(null);
     try {
       const res = await api.get<{ ticket: Ticket; messages: Message[] }>(
-        `/api/provider/support-tickets/${id}`
+        `${SUPPORT_TICKETS_API_PREFIX}/${id}`
       ) as { data?: { ticket?: Ticket; messages?: Message[] }; error?: { message?: string } };
       if (res.error) {
         setTicket(null);
@@ -142,7 +143,7 @@ export default function SupportTicketDetailScreen() {
       setCsatComment(t?.csat_comment ?? "");
       setCsatExpanded(typeof t?.csat_score !== "number");
       setMessages(Array.isArray(payload?.messages) ? payload!.messages! : []);
-      void api.post(`/api/provider/support-tickets/${id}/seen`, {}).catch(() => {});
+      void api.post(`${SUPPORT_TICKETS_API_PREFIX}/${id}/seen`, {}).catch(() => {});
       if (t) trackSupportTicketDetailView(t.id, t.ticket_number);
     } catch (e) {
       setTicket(null);
@@ -227,7 +228,7 @@ export default function SupportTicketDetailScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSending(true);
     try {
-      const res = await api.post(`/api/provider/support-tickets/${id}/messages`, {
+      const res = await api.post(`${SUPPORT_TICKETS_API_PREFIX}/${id}/messages`, {
         message: msg,
         attachments: attachmentsToSend,
       }) as { data?: unknown; error?: { message?: string } };
@@ -285,7 +286,7 @@ export default function SupportTicketDetailScreen() {
         type: asset.mimeType || "image/jpeg",
       });
       const res = await api.fetch<{ attachments?: SupportAttachment[] }>(
-        `/api/provider/support-tickets/${id}/upload`,
+        `${SUPPORT_TICKETS_API_PREFIX}/${id}/upload`,
         { method: "POST", body: formData },
       ) as { data?: { attachments?: SupportAttachment[] }; error?: { message?: string } | string };
       if (res.error) {
@@ -310,7 +311,7 @@ export default function SupportTicketDetailScreen() {
     if (!id || !csatScore) return;
     setSubmittingCsat(true);
     try {
-      const res = await api.post(`/api/provider/support-tickets/${id}/csat`, {
+      const res = await api.post(`${SUPPORT_TICKETS_API_PREFIX}/${id}/csat`, {
         score: csatScore,
         comment: csatComment.trim() || null,
       }) as { error?: { message?: string } | string };

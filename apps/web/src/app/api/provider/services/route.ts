@@ -6,7 +6,7 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import type { OfferingCard } from "@/types/beautonomi";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
-import { syncVariantOfferings } from "./_helpers/sync-variants";
+import { shouldSyncPricingOptionVariants, syncVariantOfferings } from "./_helpers/sync-variants";
 
 /**
  * GET /api/provider/services
@@ -300,11 +300,17 @@ export async function POST(request: Request) {
     }
 
     // Sync child variant offerings from pricing_options so the booking flow can find them
-    if (pricing_options && Array.isArray(pricing_options) && pricing_options.length > 0) {
-      await syncVariantOfferings(supabase, service as Record<string, unknown>, pricing_options);
+    let variant_sync = null;
+    if (shouldSyncPricingOptionVariants(service_type)) {
+      const opts = Array.isArray(pricing_options) ? pricing_options : [];
+      variant_sync = await syncVariantOfferings(
+        supabase,
+        service as Record<string, unknown>,
+        opts,
+      );
     }
 
-    return successResponse(service as OfferingCard);
+    return successResponse({ ...(service as OfferingCard), variant_sync });
   } catch (error) {
     return handleApiError(error, "Failed to create service");
   }

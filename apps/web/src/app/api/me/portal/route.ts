@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getPortalForUser } from "@/lib/auth/role";
 import { getUserRoleServer, ensurePublicUserRowExists } from "@/lib/auth/role-server";
+import { bootstrapPreferredHomeTenantForAuthedUser } from "@/lib/tenant/assign-preferred-home-tenant-from-host";
 import {
   successResponse,
   handleApiError,
@@ -38,6 +39,8 @@ export async function GET(request: NextRequest) {
     if (!result) {
       return unauthorizedResponse("User profile not found");
     }
+
+    await bootstrapPreferredHomeTenantForAuthedUser(authUser.id, request);
 
     const portal = getPortalForUser({
       role: result.role,

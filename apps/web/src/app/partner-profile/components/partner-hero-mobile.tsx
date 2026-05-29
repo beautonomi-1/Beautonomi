@@ -187,7 +187,7 @@ const PartnerHeroMobile: React.FC<PartnerHeroMobileProps> = ({
   return (
     <div className="md:hidden">
       {/* Hero Image Section — uniform 4:5 portrait crop */}
-      <div className="relative w-full aspect-[4/5] overflow-hidden bg-gray-100">
+      <div className="relative z-0 w-full aspect-[4/5] overflow-hidden bg-gray-100">
         {/* Back Button - Top Left */}
         <Link
           href="/"
@@ -240,7 +240,7 @@ const PartnerHeroMobile: React.FC<PartnerHeroMobileProps> = ({
 
         {/* Bottom scrim — avatar + text legibility on photo */}
         <div
-          className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-32 bg-gradient-to-t from-black/60 via-black/25 to-transparent"
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-24 bg-gradient-to-t from-black/60 via-black/25 to-transparent"
           aria-hidden
         />
 
@@ -342,7 +342,7 @@ const PartnerHeroMobile: React.FC<PartnerHeroMobileProps> = ({
       </div>
 
       {/* Provider information — avatar straddles the gallery/card seam */}
-      <div className="relative -mt-6 rounded-t-3xl bg-white pb-4 pt-[52px] shadow-lg">
+      <div className="relative z-10 -mt-8 rounded-t-3xl bg-white pb-4 pt-[52px] shadow-[0_-8px_30px_rgba(0,0,0,0.12)]">
         {/* Avatar — top: -36px = half of 72px height, straddles the seam */}
         <div className="absolute -top-9 left-4 z-30">
           <div className="relative h-[72px] w-[72px] shrink-0">

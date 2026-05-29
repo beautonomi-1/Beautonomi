@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getPortalForUser, getDefaultRouteForPortal } from "@/lib/auth/role";
 import { getUserRoleServer } from "@/lib/auth/role-server";
+import { bootstrapPreferredHomeTenantForAuthedUser } from "@/lib/tenant/assign-preferred-home-tenant-from-host";
+import { createNextRequestFromHeaders } from "@/lib/server/create-next-request";
 import PortalLandingContent from "./PortalLandingContent";
 
 /**
@@ -14,6 +16,9 @@ export default async function PortalPage() {
   const result = await getUserRoleServer(supabase);
 
   if (result) {
+    const request = await createNextRequestFromHeaders("/portal");
+    await bootstrapPreferredHomeTenantForAuthedUser(result.userId, request);
+
     const portal = getPortalForUser({
       role: result.role,
       provider_status: result.provider_status,

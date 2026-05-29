@@ -196,7 +196,7 @@ export async function POST(request: NextRequest) {
         stage = "ensure_profile";
         // 2.5. Ensure user has a public profile (handles new sign-ins where trigger hasn't run yet)
         try {
-          await ensureUserProfileForAuthUser(supabaseAdmin, user, marketTenantId);
+          await ensureUserProfileForAuthUser(supabaseAdmin, user, marketTenantId, request);
         } catch (profileErr) {
           // §Risk-hardening 2026-04: ensureUserProfileForAuthUser raises
           // user-facing messages as plain Errors ("An account with this
@@ -343,7 +343,8 @@ export async function POST(request: NextRequest) {
           draft,
           validatedDraft,
           user.id,
-          marketTenantId
+          marketTenantId,
+          { skipMinNoticeCheck: true },
         );
 
         // If validation returned an error Response, forward it

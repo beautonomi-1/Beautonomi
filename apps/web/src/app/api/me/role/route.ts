@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getUserRoleServer } from "@/lib/auth/role-server";
 import { getPortalForUser, type Portal } from "@/lib/auth/role";
+import { bootstrapPreferredHomeTenantForAuthedUser } from "@/lib/tenant/assign-preferred-home-tenant-from-host";
 import { withRouteMetrics } from "@/lib/monitoring/route-metrics";
 import type { UserRole } from "@/types/beautonomi";
 
@@ -30,6 +31,8 @@ async function handleGetRole(request: NextRequest) {
       ["customer", "provider_owner", "provider_staff", "superadmin"],
       request
     );
+
+    await bootstrapPreferredHomeTenantForAuthedUser(user.id, request);
 
     let role = user.role;
 

@@ -2,6 +2,7 @@
   "build": {
     "env": {
       "NODE_OPTIONS": "--max-old-space-size=6144",
+      "NEXT_WEB_FORCE_WEBPACK": "1",
       "TURBO_CONCURRENCY": "1",
       "TURBO_DAEMON": "false",
       "NEXT_TELEMETRY_DISABLED": "1",

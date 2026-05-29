@@ -295,7 +295,10 @@ export default function SignupScreen() {
     try {
       await api.patch("/api/me/profile", profilePayload);
     } catch {
-      // Non-blocking
+      if (pending.signupSource) {
+        await AsyncStorage.setItem(PENDING_SIGNUP_SOURCE_KEY, pending.signupSource).catch(() => {});
+      }
+      await AsyncStorage.setItem(PENDING_PREFERRED_LANGUAGE_KEY, pending.preferredLanguage).catch(() => {});
     }
     try {
       await changeLanguage(pending.preferredLanguage);
@@ -429,7 +432,14 @@ export default function SignupScreen() {
         };
         if (fullPhone) profilePayload.phone = fullPhone;
         if (signupSource) profilePayload.signup_source = signupSource;
-        await api.patch("/api/me/profile", profilePayload).catch(() => {});
+        try {
+          await api.patch("/api/me/profile", profilePayload);
+        } catch {
+          if (signupSource) {
+            await AsyncStorage.setItem(PENDING_SIGNUP_SOURCE_KEY, signupSource).catch(() => {});
+          }
+          await AsyncStorage.setItem(PENDING_PREFERRED_LANGUAGE_KEY, preferredLanguage).catch(() => {});
+        }
         await changeLanguage(preferredLanguage);
         const refToAttach = referralCode ?? (await AsyncStorage.getItem(REFERRAL_REF_KEY));
         if (refToAttach?.trim()) {

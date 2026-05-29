@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { User } from "@supabase/supabase-js";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { bootstrapPreferredHomeTenantForAuthedUser } from "@/lib/tenant/assign-preferred-home-tenant-from-host";
 
 /** Placeholder email when auth has no email (e.g. phone-only). Must match trigger in 199_fix_handle_new_user_trigger_silent_errors.sql */
 const PLACEHOLDER_EMAIL_DOMAIN = "beautonomi.local";
@@ -15,7 +16,9 @@ export async function ensureUserProfileForAuthUser(
   adminSupabase: SupabaseClient,
   user: User,
   /** When set (e.g. public booking market), new wallets use this tenant's default currency. */
-  marketTenantId?: string | null
+  marketTenantId?: string | null,
+  /** Request used to resolve Host → tenant when marketTenantId is absent. */
+  request?: Request | null,
 ): Promise<void> {
   const { data: existing } = await adminSupabase
     .from("users")
@@ -23,7 +26,21 @@ export async function ensureUserProfileForAuthUser(
     .eq("id", user.id)
     .maybeSingle();
 
-  if (existing) return;
+  if (existing && request) {
+    await bootstrapPreferredHomeTenantForAuthedUser(user.id, request, marketTenantId ?? null);
+    return;
+  }
+
+  if (existing) {
+    if (marketTenantId) {
+      await bootstrapPreferredHomeTenantForAuthedUser(
+        user.id,
+        new Request("http://localhost"),
+        marketTenantId,
+      );
+    }
+    return;
+  }
 
   const rawEmail = user.email?.trim() || "";
   const email =
@@ -90,5 +107,15 @@ export async function ensureUserProfileForAuthUser(
     if (walletError && walletError.code !== "23505") {
       console.warn("ensureUserProfileForAuthUser: failed to create wallet", walletError);
     }
+  }
+
+  if (request) {
+    await bootstrapPreferredHomeTenantForAuthedUser(user.id, request, marketTenantId ?? null);
+  } else if (marketTenantId) {
+    await bootstrapPreferredHomeTenantForAuthedUser(
+      user.id,
+      new Request("http://localhost"),
+      marketTenantId,
+    );
   }
 }

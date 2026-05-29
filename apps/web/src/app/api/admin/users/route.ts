@@ -8,6 +8,7 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { z } from "zod";
 import type { UserRole } from "@/types/beautonomi";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { enrichAdminUserListRows } from "@/lib/admin/enrich-admin-user-list";
 
 /**
  * GET /api/admin/users
@@ -41,7 +42,8 @@ export async function GET(request: NextRequest) {
     }
 
     const box = payload as { total?: unknown; data?: unknown } | null;
-    const users = Array.isArray(box?.data) ? box.data : [];
+    const rawUsers = Array.isArray(box?.data) ? (box.data as Record<string, unknown>[]) : [];
+    const users = await enrichAdminUserListRows(admin, tenantId, rawUsers);
     const total = typeof box?.total === "number" ? box.total : Number(box?.total ?? 0);
     const hasMore = total > page * limit;
 

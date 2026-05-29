@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, successResponse, handleApiError, notFoundResponse  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { verificationAccessibleToAdminTenant } from "@/lib/admin/verification-tenant-access";
 
 /**
  * GET /api/admin/verifications/[id]/view
@@ -15,13 +16,12 @@ export async function GET(
   try {
     await requireAdminSection(ADMIN_SECTION_USERS_TRUST, request);
     const { id } = await params;
-    const supabase = await getSupabaseServer(request);
+    const admin = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);
 
-    // Get verification record
-    const { data: verification, error: verificationError } = await supabase
+    const { data: verification, error: verificationError } = await admin
       .from("user_verifications")
-      .select("document_url, tenant_id")
+      .select("document_url, tenant_id, user_id, id")
       .eq("id", id)
       .single();
 
@@ -32,7 +32,7 @@ export async function GET(
       throw verificationError;
     }
 
-    if ((verification as { tenant_id?: string }).tenant_id !== tenantId) {
+    if (!(await verificationAccessibleToAdminTenant(admin, tenantId, verification))) {
       return notFoundResponse("Verification not found");
     }
 
@@ -67,7 +67,7 @@ export async function GET(
     }
 
     // Generate signed URL (valid for 1 hour)
-    const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+    const { data: signedUrlData, error: signedUrlError } = await admin.storage
       .from('verification-documents')
       .createSignedUrl(filePath, 3600); // 1 hour expiry
 

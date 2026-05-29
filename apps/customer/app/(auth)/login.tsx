@@ -65,13 +65,13 @@ async function applyPendingSignupPreferences() {
   try {
     await api.patch("/api/me/profile", payload);
     if (pendingLang) await changeLanguage(pendingLang);
+    await Promise.all([
+      pendingSource ? AsyncStorage.removeItem(PENDING_SIGNUP_SOURCE_KEY) : Promise.resolve(),
+      pendingLang ? AsyncStorage.removeItem(PENDING_PREFERRED_LANGUAGE_KEY) : Promise.resolve(),
+    ]);
   } catch {
-    // Non-blocking
+    // Keep pending keys for a later login attempt
   }
-  await Promise.all([
-    pendingSource ? AsyncStorage.removeItem(PENDING_SIGNUP_SOURCE_KEY) : Promise.resolve(),
-    pendingLang ? AsyncStorage.removeItem(PENDING_PREFERRED_LANGUAGE_KEY) : Promise.resolve(),
-  ]);
 }
 
 const COUNTRY_CODES = [

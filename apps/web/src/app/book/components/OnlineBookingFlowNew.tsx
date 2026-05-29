@@ -66,6 +66,7 @@ import {
   BOOKING_TEXT_PRIMARY,
 } from "../constants";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { PUBLIC_BOOKING_MAX_ADVANCE_DAYS } from "@/lib/provider-booking/public-booking-slot-policy";
 
 /** Aligns with customer app `DEFAULT_SLOT_BUFFER_MINUTES` / `resolveOfferingBufferMinutes` fallback. */
 const DEFAULT_SLOT_BUFFER_MINUTES = 15;
@@ -444,7 +445,7 @@ export default function OnlineBookingFlowNew({
     staff_selection_mode: "client_chooses",
     require_auth_step: "checkout",
     min_notice_minutes: 0,
-    max_advance_days: 90,
+    max_advance_days: 365,
   });
 
   const [slots, setSlots] = useState<Array<{ start: string; end: string; staff_id?: string; is_available?: boolean }>>([]);
@@ -1105,7 +1106,7 @@ export default function OnlineBookingFlowNew({
     const { durationMinutes, bufferMinutes } = slotParams;
     const serviceId = bookingData.selectedServices[0].offering_id;
     setLoadingSlots(true);
-    const url = `/api/public/providers/${provider.slug}/availability?date=${dateStr}&service_id=${serviceId}&staff_id=${staffId}&duration_minutes=${durationMinutes}&buffer_minutes=${bufferMinutes}&location_id=${bookingData.selectedLocation?.id ?? ""}&min_notice_minutes=${settings.min_notice_minutes}&max_advance_days=${settings.max_advance_days}${multiServiceIdsParam}${excludeHoldParam}${travelBufferParam}${addonDurationParam}`;
+    const url = `/api/public/providers/${provider.slug}/availability?date=${dateStr}&service_id=${serviceId}&staff_id=${staffId}&duration_minutes=${durationMinutes}&buffer_minutes=${bufferMinutes}&location_id=${bookingData.selectedLocation?.id ?? ""}${multiServiceIdsParam}${excludeHoldParam}${travelBufferParam}${addonDurationParam}`;
     fetcher
       .get<{ data: any[] }>(url, AVAILABILITY_FETCH_OPTS)
       .then((res) => {
@@ -1130,8 +1131,6 @@ export default function OnlineBookingFlowNew({
     bookingData.selectedStaff,
     bookingData.selectedLocation,
     provider.slug,
-    settings.min_notice_minutes,
-    settings.max_advance_days,
     slotParams.durationMinutes,
     slotParams.bufferMinutes,
     multiServiceIdsParam,
@@ -1160,11 +1159,11 @@ export default function OnlineBookingFlowNew({
       const now = new Date();
       const tzForDates = provider.timezone ?? null;
       const dateStr = (d: Date) => formatBusinessDayYYYYMMDD(d, tzForDates);
-      for (let offset = 0; offset < Math.min(14, settings.max_advance_days); offset++) {
+      for (let offset = 0; offset < Math.min(14, PUBLIC_BOOKING_MAX_ADVANCE_DAYS); offset++) {
         // §Booking-slot-audit 2026-05: walk forward by provider business days.
         const d = startOfBusinessDayLocalDate(tzForDates, offset);
         try {
-          const url = `/api/public/providers/${provider.slug}/availability?date=${dateStr(d)}&service_id=${serviceId}&staff_id=${staffId}&duration_minutes=${durationMinutes}&buffer_minutes=${bufferMinutes}&location_id=${bookingData.selectedLocation?.id ?? ""}&min_notice_minutes=${settings.min_notice_minutes}&max_advance_days=${settings.max_advance_days}${multiServiceIdsParam}${excludeHoldParam}${travelBufferParam}${addonDurationParam}`;
+          const url = `/api/public/providers/${provider.slug}/availability?date=${dateStr(d)}&service_id=${serviceId}&staff_id=${staffId}&duration_minutes=${durationMinutes}&buffer_minutes=${bufferMinutes}&location_id=${bookingData.selectedLocation?.id ?? ""}${multiServiceIdsParam}${excludeHoldParam}${travelBufferParam}${addonDurationParam}`;
           const res = await fetcher.get<{ data: any[] }>(url, AVAILABILITY_FETCH_OPTS);
           if (cancelled) return;
           const raw = (res as any)?.data?.slots ?? (res as any)?.data ?? [];
@@ -1202,8 +1201,6 @@ export default function OnlineBookingFlowNew({
     bookingData.selectedLocation,
     provider.slug,
     provider.timezone,
-    settings.max_advance_days,
-    settings.min_notice_minutes,
     slotParams,
     multiServiceIdsParam,
     excludeHoldParam,
@@ -1232,10 +1229,10 @@ export default function OnlineBookingFlowNew({
     const serviceId = bookingData.selectedServices[0]?.offering_id;
     if (!serviceId) return;
     const now = new Date();
-    for (let offset = 0; offset < Math.min(14, settings.max_advance_days); offset++) {
+    for (let offset = 0; offset < Math.min(14, PUBLIC_BOOKING_MAX_ADVANCE_DAYS); offset++) {
       // §Booking-slot-audit 2026-05: walk by provider business days, not device-local.
       const d = startOfBusinessDayLocalDate(tzForDates, offset);
-      const url = `/api/public/providers/${provider.slug}/availability?date=${dateStr(d)}&service_id=${serviceId}&staff_id=${staffId}&duration_minutes=${durationMinutes}&buffer_minutes=${bufferMinutes}&location_id=${bookingData.selectedLocation?.id ?? ""}&min_notice_minutes=${settings.min_notice_minutes}&max_advance_days=${settings.max_advance_days}${multiServiceIdsParam}${excludeHoldParam}${travelBufferParam}${addonDurationParam}`;
+      const url = `/api/public/providers/${provider.slug}/availability?date=${dateStr(d)}&service_id=${serviceId}&staff_id=${staffId}&duration_minutes=${durationMinutes}&buffer_minutes=${bufferMinutes}&location_id=${bookingData.selectedLocation?.id ?? ""}${multiServiceIdsParam}${excludeHoldParam}${travelBufferParam}${addonDurationParam}`;
       const res = await fetcher.get<{ data: any[] }>(url, AVAILABILITY_FETCH_OPTS).catch(() => ({ data: [] }));
       const raw = (res as any)?.data?.slots ?? (res as any)?.data ?? [];
       const list = Array.isArray(raw) ? raw : [];
@@ -1651,8 +1648,7 @@ export default function OnlineBookingFlowNew({
             onSelectSlot={(slot) => updateData({ selectedSlot: slot, selectedResourceIds: [] })}
             onNextAvailable={handleNextAvailable}
             onNext={() => setStep("resources")}
-            maxAdvanceDays={settings.max_advance_days}
-            minNoticeMinutes={settings.min_notice_minutes}
+            maxAdvanceDays={365}
             providerId={provider.id}
             serviceId={bookingData.selectedServices[0]?.offering_id ?? null}
             providerTimeZone={provider.timezone ?? null}

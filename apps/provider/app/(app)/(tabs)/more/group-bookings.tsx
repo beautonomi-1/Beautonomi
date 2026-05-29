@@ -45,6 +45,10 @@ import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { buildZonedIsoForWallClock } from "@/lib/tz";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { api, getApiBaseUrl } from "@/lib/api-client";
+import {
+  PAYSTACK_TERMINAL_PAYMENTS_ACTION_PATH,
+  paystackTerminalCollectionIntentPayload,
+} from "@/lib/paystack-terminal-api";
 import { PROVIDER_PRODUCTS_CATALOG_CHANGED } from "@/lib/provider-products-catalog-events";
 import { AddressAutocomplete } from "@/components/ui/AddressAutocomplete";
 import { AddressMapPinModal } from "@/components/AddressMapPinModal";
@@ -1034,12 +1038,12 @@ export default function GroupBookingsScreen() {
         metadata?: unknown;
         instructions?: string;
       }>(
-        "/api/provider/paystack/terminal-payments",
-        {
+        PAYSTACK_TERMINAL_PAYMENTS_ACTION_PATH,
+        paystackTerminalCollectionIntentPayload({
           entity_type: "group_booking",
           entity_id: group.id,
           expected_amount: expectedAmount,
-        }
+        }),
       );
       if (res.error) {
         const errMsg = typeof res.error === "string" ? res.error : (res.error as any)?.message || "Terminal not ready";
@@ -1869,8 +1873,12 @@ export default function GroupBookingsScreen() {
           metadata?: unknown;
           instructions?: string;
         }>(
-          "/api/provider/paystack/terminal-payments",
-          { entity_type: "group_booking", entity_id: createdGroupId, expected_amount: totalAmt }
+          PAYSTACK_TERMINAL_PAYMENTS_ACTION_PATH,
+          paystackTerminalCollectionIntentPayload({
+            entity_type: "group_booking",
+            entity_id: createdGroupId,
+            expected_amount: totalAmt,
+          }),
         ).then((res) => {
           const terminal = res.data?.terminal;
           if (terminal) {

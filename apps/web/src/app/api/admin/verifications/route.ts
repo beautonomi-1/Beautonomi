@@ -1,10 +1,10 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { USER_VERIFICATION_QUEUE_STATUSES } from "@/lib/admin/verification-queue-statuses";
+import { filterVerificationsForAdminTenant } from "@/lib/admin/verification-tenant-access";
 
 /**
  * GET /api/admin/verifications
@@ -13,20 +13,17 @@ import { USER_VERIFICATION_QUEUE_STATUSES } from "@/lib/admin/verification-queue
 export async function GET(request: NextRequest) {
   try {
     await requireAdminSection(ADMIN_SECTION_USERS_TRUST, request);
-    const supabase = await getSupabaseServer(request);
+    const admin = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status") || "pending"; // Filter by status
 
-    if (!supabase) {
-      return successResponse([]);
-    }
-
-    // Fetch verifications
-    let query = supabase
+    // Service role: admin_trust is not is_superadmin() for user_verifications RLS.
+    // Include null tenant_id rows when the submitting user is in admin tenant scope.
+    let query = admin
       .from("user_verifications")
       .select("*")
-      .eq("tenant_id", tenantId)
+      .or(`tenant_id.eq.${tenantId},tenant_id.is.null`)
       .order("submitted_at", { ascending: false });
 
     if (status === "pending") {
@@ -35,14 +32,20 @@ export async function GET(request: NextRequest) {
       query = query.eq("status", status);
     }
 
-    const { data: verifications, error } = await query;
+    const { data: verificationsRaw, error } = await query;
 
     if (error) {
       console.error("Error fetching verifications:", error);
       return successResponse([]);
     }
 
-    if (!verifications || verifications.length === 0) {
+    const verifications = await filterVerificationsForAdminTenant(
+      admin,
+      tenantId,
+      verificationsRaw ?? [],
+    );
+
+    if (verifications.length === 0) {
       return successResponse([]);
     }
 
@@ -53,20 +56,19 @@ export async function GET(request: NextRequest) {
     const reviewerIds = [...new Set(vList.map((v) => v.reviewed_by).filter(Boolean))];
 
     const { data: users } = userIds.length > 0
-      ? await supabase
+      ? await admin
           .from("users")
           .select("id, full_name, email, phone, avatar_url")
           .in("id", userIds)
       : { data: [] };
 
     const { data: reviewers } = reviewerIds.length > 0
-      ? await supabase
+      ? await admin
           .from("users")
           .select("id, full_name, email")
           .in("id", reviewerIds)
       : { data: [] };
 
-    const admin = getSupabaseAdmin();
     const [ownerProvidersRes, staffProvidersRes] = await Promise.all([
       userIds.length > 0
         ? admin

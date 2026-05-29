@@ -13,6 +13,7 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Colors } from "@/constants/colors";
 import { trackSupportTicketCreated } from "@/lib/analytics";
+import { SUPPORT_TICKETS_API_PREFIX } from "@/lib/support-ticket-api";
 
 export default function ContactSupportScreen() {
   const router = useRouter();
@@ -30,7 +31,7 @@ export default function ContactSupportScreen() {
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const res = await createTicket("/api/provider/support-tickets", {
+    const res = await createTicket(SUPPORT_TICKETS_API_PREFIX, {
       subject: sub,
       message: msg,
       priority,

@@ -32,11 +32,9 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { calculateTravelFeeForHold } from "@/lib/travel/calculateTravelFeeForHold";
 import { zPublicBookingStaffIdOptional } from "@/lib/public-booking/zod-public-staff-id";
-import { loadEffectiveStaffShifts } from "@/lib/availability/load-constraints";
-import { segmentFitsAnyShift } from "@/lib/availability/shift-fit";
 import { normalizeProviderTimezone } from "@/lib/availability/time-utils";
 import { DEFAULT_BOOKING_DISPLAY_TIMEZONE } from "@/lib/bookings/display-invariants";
-import { formatInTimeZone } from "date-fns-tz";
+import { assertPublicSlotBookable } from "@/lib/provider-booking/assert-public-slot-bookable";
 
 const PUBLIC_BOOKING_HOLDS_ENDPOINT = "POST /api/public/booking-holds";
 
@@ -362,61 +360,6 @@ export async function POST(request: NextRequest) {
           .not("consuming_at", "is", null)
           .lt("consuming_at", staleConsumingBefore);
 
-        const { data: obSettings } = await supabase
-          .from("provider_online_booking_settings")
-          .select("min_notice_minutes, max_advance_days")
-          .eq("provider_id", provider_id)
-          .maybeSingle();
-        const rawNotice = obSettings?.min_notice_minutes;
-        const minNoticeMinutes =
-          typeof rawNotice === "number"
-            ? rawNotice
-            : typeof rawNotice === "string"
-              ? parseInt(rawNotice, 10)
-              : 0;
-        const effectiveMinNotice =
-          Number.isFinite(minNoticeMinutes) && minNoticeMinutes >= 0 ? minNoticeMinutes : 0;
-        if (effectiveMinNotice > 0) {
-          const cutoffMs = Date.now() + effectiveMinNotice * 60 * 1000;
-          if (startDate.getTime() < cutoffMs) {
-            return handleApiError(
-              new Error("Hold start violates minimum notice"),
-              `This provider requires at least ${effectiveMinNotice} minutes' notice. Please choose a later time.`,
-              "MIN_NOTICE_NOT_MET",
-              400
-            );
-          }
-        }
-
-        // §Release-audit 2026-04: mirror validate-booking's max_advance_days
-        // ceiling at hold creation so we fail fast instead of holding a
-        // slot the commit path will reject anyway.
-        const rawAdvance = (obSettings as { max_advance_days?: number | string | null } | null)
-          ?.max_advance_days;
-        const maxAdvanceRaw =
-          typeof rawAdvance === "number"
-            ? rawAdvance
-            : typeof rawAdvance === "string"
-              ? parseInt(rawAdvance, 10)
-              : null;
-        const effectiveMaxAdvance =
-          typeof maxAdvanceRaw === "number" &&
-          Number.isFinite(maxAdvanceRaw) &&
-          maxAdvanceRaw >= 1
-            ? Math.floor(maxAdvanceRaw)
-            : null;
-        if (effectiveMaxAdvance != null) {
-          const ceilingMs = Date.now() + effectiveMaxAdvance * 24 * 60 * 60 * 1000;
-          if (startDate.getTime() > ceilingMs) {
-            return handleApiError(
-              new Error("Hold start exceeds provider's max advance window"),
-              `This provider only accepts online bookings up to ${effectiveMaxAdvance} days in advance. Please choose a closer date.`,
-              "MAX_ADVANCE_EXCEEDED",
-              400
-            );
-          }
-        }
-
         const tenantRegion = await getTenantRegionConfig(tenantId);
         const currency = provider.currency || tenantRegion?.defaultCurrency || LAST_RESORT_CURRENCY;
 
@@ -618,91 +561,44 @@ export async function POST(request: NextRequest) {
         const locationIdForCalendar =
           location_type === "at_salon" ? location_id ?? null : null;
 
-        // ── Working-hours guard (fail-fast) ─────────────────────────────────────
-        // Mirror validate-booking's shift check here so customers get an immediate
-        // "slot unavailable" response instead of passing hold creation but failing at
-        // checkout with a confusing "outside working hours" error.
+        // Provider-portal parity: shared grid preflight (min-notice=0).
         {
-          const minutesFromInstantInZone = (instant: Date): number => {
-            const hm = formatInTimeZone(instant, providerTz, "HH:mm");
-            const [h, m] = hm.split(":").map((x) => parseInt(x, 10));
-            return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
-          };
-
-          const holdShiftCache = new Map<string, Awaited<ReturnType<typeof loadEffectiveStaffShifts>>>();
-          const OVERNIGHT_CUTOFF_MIN = 8 * 60;
-
-          for (let idx = 0; idx < bookingServicesSnapshot.length; idx++) {
-            const line = bookingServicesSnapshot[idx];
-            const segStart = new Date(line.scheduled_start_at);
-            const segEnd = new Date(line.scheduled_end_at);
-            const buf = offeringBufferMinutesById.get(line.offering_id) ?? 0;
-            const isLast = idx === bookingServicesSnapshot.length - 1;
-            const travelTail = isLast ? travelBufferMinsForHold : 0;
-            const effectiveEnd = new Date(segEnd.getTime() + (buf + travelTail) * 60000);
-
-            const staffIdForHoldGuard = line.staff_id ?? `provider-${provider_id}`;
-            const localDate = formatInTimeZone(segStart, providerTz, "yyyy-MM-dd");
-            const holdCacheKey = `${staffIdForHoldGuard}|${localDate}`;
-
-            let holdResolved = holdShiftCache.get(holdCacheKey);
-            if (!holdResolved) {
-              holdResolved = await loadEffectiveStaffShifts(
-                supabase as SupabaseClient,
-                staffIdForHoldGuard,
-                localDate,
-                provider_id,
-                locationIdForCalendar,
-              );
-              holdShiftCache.set(holdCacheKey, holdResolved);
-            }
-
-            const { staffShifts: holdShifts, workHoursEnabledEffective: holdWHEnabled } = holdResolved;
-            const segStartMin = minutesFromInstantInZone(segStart);
-            const segEndMin = minutesFromInstantInZone(effectiveEnd);
-
-            let holdFits = holdWHEnabled && holdShifts.length > 0 &&
-              segmentFitsAnyShift(segStartMin, segEndMin, holdShifts);
-
-            // Overnight fallback: slot before 08:00 may be continuation of prev-day overnight shift
-            if (!holdFits && segStartMin < OVERNIGHT_CUTOFF_MIN) {
-              const prevMs = new Date(`${localDate}T12:00:00.000Z`).getTime() - 86400000;
-              const prevDate = new Date(prevMs).toISOString().slice(0, 10);
-              const prevKey = `${staffIdForHoldGuard}|${prevDate}`;
-              let prevResolved = holdShiftCache.get(prevKey);
-              if (!prevResolved) {
-                prevResolved = await loadEffectiveStaffShifts(
-                  supabase as SupabaseClient,
-                  staffIdForHoldGuard,
-                  prevDate,
-                  provider_id,
-                  locationIdForCalendar,
-                );
-                holdShiftCache.set(prevKey, prevResolved);
-              }
-              if (prevResolved.workHoursEnabledEffective && prevResolved.staffShifts.length > 0) {
-                const overnightOnly = prevResolved.staffShifts.filter((s) => {
-                  const [sh, sm] = s.start_time.split(":").map(Number);
-                  const [eh, em] = s.end_time.split(":").map(Number);
-                  const sMin = (Number.isFinite(sh) ? sh : 0) * 60 + (Number.isFinite(sm) ? sm : 0);
-                  const eMin = (Number.isFinite(eh) ? eh : 0) * 60 + (Number.isFinite(em) ? em : 0);
-                  return eMin < sMin || s.end_time === "00:00" || s.end_time === "00:00:00";
-                });
-                if (overnightOnly.length > 0) {
-                  holdFits = segmentFitsAnyShift(segStartMin, segEndMin, overnightOnly);
-                }
-              }
-            }
-
-            if (!holdFits && (holdShifts.length > 0 || holdWHEnabled)) {
-              // Only reject if there are shifts configured but slot doesn't fit.
-              // If no shifts at all, allow — validate-booking will do the authoritative check.
-              console.warn(
-                `[booking-holds] shift-guard: segment ${segStart.toISOString()} outside shifts ` +
-                  `for staff ${staffIdForHoldGuard} on ${localDate}`,
-              );
-              return bookingHoldSlotUnavailableResponse("OUTSIDE_WORKING_HOURS");
-            }
+          const lastLine = bookingServicesSnapshot[bookingServicesSnapshot.length - 1];
+          const lastBuf = offeringBufferMinutesById.get(lastLine.offering_id) ?? 0;
+          const lastEnd = new Date(
+            new Date(lastLine.scheduled_end_at).getTime() +
+              (lastBuf + travelBufferMinsForHold) * 60000,
+          );
+          const gridDur = Math.max(
+            15,
+            Math.min(480, Math.round((lastEnd.getTime() - startDate.getTime()) / 60000)),
+          );
+          const staffSet = [
+            ...new Set(
+              bookingServicesSnapshot
+                .map((line) => line.staff_id)
+                .filter((id): id is string => Boolean(id)),
+            ),
+          ];
+          const slotEval = await assertPublicSlotBookable(supabase as SupabaseClient, {
+            providerId: provider_id,
+            scheduledAt: startDate,
+            durationMinutes: gridDur,
+            staffIdsCsv: staffSet.length > 0 ? staffSet.join(",") : null,
+            locationId: locationIdForCalendar,
+            excludeBookingId: exclude_booking_id || undefined,
+            mode: location_type === "at_home" ? "mobile" : "salon",
+            travelBufferRaw:
+              location_type === "at_home" ? String(travelBufferMinsForHold) : "0",
+            resourceOfferingIds: offeringIds,
+          });
+          if (!slotEval.ok) {
+            console.warn(
+              "[booking-holds] grid preflight failed:",
+              slotEval.conflicts,
+              { provider_id, start: startDate.toISOString(), gridDur },
+            );
+            return bookingHoldSlotUnavailableResponse("OUTSIDE_WORKING_HOURS");
           }
         }
         {

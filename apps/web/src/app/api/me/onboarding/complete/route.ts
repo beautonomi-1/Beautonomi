@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { bootstrapPreferredHomeTenantForAuthedUser } from "@/lib/tenant/assign-preferred-home-tenant-from-host";
 
 /**
  * POST /api/me/onboarding/complete
@@ -27,6 +28,8 @@ export async function POST(request: NextRequest) {
       ],
       request,
     );
+
+    await bootstrapPreferredHomeTenantForAuthedUser(user.id, request);
 
     if (user.role !== "customer") {
       return successResponse({ completed: true, portal: user.role });
@@ -72,6 +75,8 @@ export async function GET(request: NextRequest) {
       ],
       request,
     );
+
+    await bootstrapPreferredHomeTenantForAuthedUser(user.id, request);
 
     if (user.role !== "customer") {
       // §Graceful cross-role entry (2026-04-17): a non-customer user (provider

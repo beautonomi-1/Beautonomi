@@ -68,8 +68,66 @@ type UserRow = Record<string, unknown> & {
   created_at?: string;
   deactivated_at?: string | null;
   signup_source?: string | null;
+  last_active_at?: string | null;
+  last_sign_in_at?: string | null;
+  last_login_at?: string | null;
   stats?: { booking_count?: number; provider_count?: number };
+  verification?: {
+    email_verified?: boolean;
+    phone_verified?: boolean;
+    identity_verified?: boolean;
+    identity_verification_status?: string | null;
+  };
 };
+
+function formatWhen(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return Number.isFinite(d.getTime()) ? d.toLocaleString() : "—";
+}
+
+function VerificationBadges({ v }: { v: UserRow["verification"] }) {
+  if (!v) return <span className="text-xs text-gray-500">—</span>;
+  const identityStatus = v.identity_verification_status ?? "none";
+  const identityLabel =
+    v.identity_verified || identityStatus === "approved"
+      ? "ID ✓"
+      : identityStatus === "pending" ||
+          identityStatus === "in_progress" ||
+          identityStatus === "submitted" ||
+          identityStatus === "under_review"
+        ? "ID pending"
+        : identityStatus === "rejected"
+          ? "ID rejected"
+          : "ID —";
+  const identityClass =
+    v.identity_verified || identityStatus === "approved"
+      ? "bg-green-100 text-green-800"
+      : identityStatus === "rejected"
+        ? "bg-red-100 text-red-800"
+        : identityStatus === "pending" ||
+            identityStatus === "in_progress" ||
+            identityStatus === "submitted" ||
+            identityStatus === "under_review"
+          ? "bg-amber-100 text-amber-900"
+          : "bg-gray-100 text-gray-600";
+
+  return (
+    <div className="flex flex-wrap gap-1">
+      <span
+        className={`rounded-md px-1.5 py-0.5 text-[10px] font-medium ${v.email_verified ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-600"}`}
+      >
+        Email {v.email_verified ? "✓" : "—"}
+      </span>
+      <span
+        className={`rounded-md px-1.5 py-0.5 text-[10px] font-medium ${v.phone_verified ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-600"}`}
+      >
+        Phone {v.phone_verified ? "✓" : "—"}
+      </span>
+      <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-medium ${identityClass}`}>{identityLabel}</span>
+    </div>
+  );
+}
 
 type UsersPayload = {
   data: UserRow[];
@@ -368,7 +426,7 @@ export function UsersListPage() {
             <span className="text-gray-600">Search</span>
             <input
               type="search"
-              placeholder="Name, email, phone"
+              placeholder="Name, email, phone, or user ID"
               value={draftSearch}
               onChange={(e) => setDraftSearch(e.target.value)}
               className="mt-1 min-h-11 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm shadow-sm"
@@ -468,7 +526,9 @@ export function UsersListPage() {
               <AdminTh>User</AdminTh>
               <AdminTh>Phone</AdminTh>
               <AdminTh>Role / status</AdminTh>
+              <AdminTh>Verification</AdminTh>
               <AdminTh>Signup</AdminTh>
+              <AdminTh>Last active</AdminTh>
               <AdminTh>Stats</AdminTh>
               <AdminTh className="text-right">Actions</AdminTh>
             </tr>
@@ -522,8 +582,19 @@ export function UsersListPage() {
                       ) : null}
                     </div>
                   </AdminTd>
+                  <AdminTd>
+                    <VerificationBadges v={u.verification} />
+                  </AdminTd>
                   <AdminTd className="text-sm text-gray-600">
                     {u.signup_source ? SIGNUP_SOURCE_LABELS[str(u.signup_source)] ?? str(u.signup_source) : "—"}
+                  </AdminTd>
+                  <AdminTd className="text-xs text-gray-600 whitespace-nowrap">
+                    {formatWhen(
+                      str(u.last_active_at) ||
+                        str(u.last_sign_in_at) ||
+                        str(u.last_login_at) ||
+                        null,
+                    )}
                   </AdminTd>
                   <AdminTd className="text-xs text-gray-600">
                     {u.stats?.booking_count != null ? <div>Bookings: {String(u.stats.booking_count)}</div> : null}
