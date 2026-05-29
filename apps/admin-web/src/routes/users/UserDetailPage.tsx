@@ -26,6 +26,18 @@ import {
   AdminTh,
 } from "@/components/admin/AdminDataTable";
 
+const SIGNUP_SOURCE_LABELS: Record<string, string> = {
+  google: "Google",
+  social_instagram: "Instagram",
+  social_facebook: "Facebook",
+  social_twitter: "X",
+  friend_or_family: "Friend or family",
+  blog_or_article: "Blog or article",
+  app_store: "App Store",
+  provider_referral: "Provider referral",
+  other: "Other",
+};
+
 /** Must match `MANAGEABLE_USER_ROLES` in apps/web `api/admin/users/[id]/role/route.ts`. */
 const MANAGEABLE_USER_ROLES = [
   "customer",
@@ -79,6 +91,15 @@ type UserDetail = Record<string, unknown> & {
   wallet?: Record<string, unknown> | null;
   support_tickets?: Record<string, unknown>[];
   recent_product_orders?: Record<string, unknown>[];
+  signup_source?: string | null;
+  last_sign_in_at?: string | null;
+  last_active_at?: string | null;
+  verification?: {
+    email_verified?: boolean;
+    phone_verified?: boolean;
+    identity_verified?: boolean;
+    identity_verification_status?: string | null;
+  };
 };
 
 function str(v: unknown): string {
@@ -188,6 +209,16 @@ export function UserDetailPage() {
       ),
     onSuccess: () => adminToast.info("Impersonation session started"),
     onError: (e: Error) => adminToast.error(`Impersonation failed: ${e.message}`),
+  });
+
+  const identityResetPost = useMutation({
+    mutationFn: () =>
+      adminApi.postJson(`/api/admin/users/${encodeURIComponent(id)}/identity-verification/reset`, {}),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.userDetail(id) });
+      adminToast.success("Identity verification reset — user can submit again");
+    },
+    onError: (e: Error) => adminToast.error(`Failed to reset identity verification: ${e.message}`),
   });
 
   const walletTopUp = useMutation({
@@ -304,6 +335,7 @@ export function UserDetailPage() {
           passwordPut.error instanceof Error ? passwordPut.error : null,
           rolePut.error instanceof Error ? rolePut.error : null,
           impersonatePost.error instanceof Error ? impersonatePost.error : null,
+          identityResetPost.error instanceof Error ? identityResetPost.error : null,
           bookingsQ.error instanceof Error ? bookingsQ.error : null,
           walletTxQ.error instanceof Error ? walletTxQ.error : null,
           loyaltyQ.error instanceof Error ? loyaltyQ.error : null,
@@ -336,8 +368,26 @@ export function UserDetailPage() {
               <dd>{data.created_at ? new Date(String(data.created_at)).toLocaleString() : "—"}</dd>
             </div>
             <div>
-              <dt className="text-gray-500">Last login</dt>
-              <dd>{data.last_login_at ? new Date(String(data.last_login_at)).toLocaleString() : "—"}</dd>
+              <dt className="text-gray-500">Signup source</dt>
+              <dd>
+                {data.signup_source
+                  ? SIGNUP_SOURCE_LABELS[str(data.signup_source)] ?? str(data.signup_source)
+                  : "—"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-gray-500">Last sign-in (auth)</dt>
+              <dd>{data.last_sign_in_at ? new Date(String(data.last_sign_in_at)).toLocaleString() : "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-gray-500">Last active</dt>
+              <dd>
+                {data.last_active_at
+                  ? new Date(String(data.last_active_at)).toLocaleString()
+                  : data.last_login_at
+                    ? new Date(String(data.last_login_at)).toLocaleString()
+                    : "—"}
+              </dd>
             </div>
             <div>
               <dt className="text-gray-500">Date of birth</dt>
@@ -362,6 +412,63 @@ export function UserDetailPage() {
               </dd>
             </div>
           </dl>
+        </AdminPanel>
+
+        <AdminPanel>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <h2 className="text-lg font-semibold text-gray-900">Verification</h2>
+            <Link
+              className="text-sm font-medium text-primary underline"
+              to={adminSpaTo("/admin/verifications?status=pending")}
+            >
+              Open verification queue
+            </Link>
+          </div>
+          <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+            <div>
+              <dt className="text-gray-500">Email</dt>
+              <dd className={data.verification?.email_verified ? "text-green-700 font-medium" : "text-gray-700"}>
+                {data.verification?.email_verified ? "Verified" : "Not verified"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-gray-500">Phone</dt>
+              <dd className={data.verification?.phone_verified ? "text-green-700 font-medium" : "text-gray-700"}>
+                {data.verification?.phone_verified ? "Verified" : "Not verified"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-gray-500">Identity</dt>
+              <dd className="font-medium">
+                {data.verification?.identity_verified
+                  ? "Verified"
+                  : str(data.verification?.identity_verification_status) || "Not submitted"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-gray-500">Identity status</dt>
+              <dd>{str(data.verification?.identity_verification_status) || "—"}</dd>
+            </div>
+          </dl>
+          <div className="mt-4">
+            <button
+              type="button"
+              className={adminToolbarButtonClass(identityResetPost.isPending)}
+              disabled={identityResetPost.isPending}
+              onClick={() => {
+                if (
+                  !window.confirm(
+                    "Reset identity verification for this user? They can submit new documents; history is kept.",
+                  )
+                ) {
+                  return;
+                }
+                void identityResetPost.mutateAsync();
+              }}
+            >
+              {identityResetPost.isPending ? "Resetting…" : "Reset identity verification"}
+            </button>
+          </div>
         </AdminPanel>
 
         <AdminPanel>

@@ -2284,32 +2284,36 @@ function Step11Services() {
           placeholderTextColor="#94a3b8"
         />
         <View style={twStyle("flex-row gap-3")}>
-          <TextInput
-            value={pricingOptions[0]?.price > 0 ? String(pricingOptions[0].price) : ""}
-            onChangeText={(t) => {
-              const val = parseFloat(t) || 0;
-              setPricingOptions((prev) =>
-                prev.map((o, i) => (i === 0 ? { ...o, price: val } : o))
-              );
-            }}
-            placeholder={`Price (${tenantCurrency})`}
-            keyboardType="decimal-pad"
-            style={twStyle(`${inputCls} flex-1`)}
-            placeholderTextColor="#94a3b8"
-          />
-          <TextInput
-            value={pricingOptions[0]?.duration > 0 ? String(pricingOptions[0].duration) : ""}
-            onChangeText={(t) => {
-              const val = parseInt(t, 10) || 0;
-              setPricingOptions((prev) =>
-                prev.map((o, i) => (i === 0 ? { ...o, duration: val } : o))
-              );
-            }}
-            placeholder="Minutes"
-            keyboardType="number-pad"
-            style={twStyle(`${inputCls} w-32`)}
-            placeholderTextColor="#94a3b8"
-          />
+          {!showAdvanced ? (
+            <>
+              <TextInput
+                value={pricingOptions[0]?.price > 0 ? String(pricingOptions[0].price) : ""}
+                onChangeText={(t) => {
+                  const val = parseFloat(t) || 0;
+                  setPricingOptions((prev) =>
+                    prev.map((o, i) => (i === 0 ? { ...o, price: val } : o))
+                  );
+                }}
+                placeholder={`Price (${tenantCurrency})`}
+                keyboardType="decimal-pad"
+                style={twStyle(`${inputCls} flex-1`)}
+                placeholderTextColor="#94a3b8"
+              />
+              <TextInput
+                value={pricingOptions[0]?.duration > 0 ? String(pricingOptions[0].duration) : ""}
+                onChangeText={(t) => {
+                  const val = parseInt(t, 10) || 0;
+                  setPricingOptions((prev) =>
+                    prev.map((o, i) => (i === 0 ? { ...o, duration: val } : o))
+                  );
+                }}
+                placeholder="Minutes"
+                keyboardType="number-pad"
+                style={twStyle(`${inputCls} w-32`)}
+                placeholderTextColor="#94a3b8"
+              />
+            </>
+          ) : null}
         </View>
 
         {supportsAtHome ? (
@@ -2415,6 +2419,7 @@ function Step11Services() {
                 onChange={setPricingOptions}
                 durationOptions={[{ value: "60", label: "60 min" }, { value: "30", label: "30 min" }, { value: "90", label: "90 min" }]}
                 priceTypeOptions={[{ value: "fixed", label: "Fixed" }]}
+                serviceTitle={title.trim() || undefined}
               />
             </View>
 

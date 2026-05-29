@@ -11,6 +11,8 @@ import {
 import { getMapboxService } from "@/lib/mapbox/mapbox";
 import { resolveIdentityVerificationDisplay } from "@/lib/verification/resolve-identity-verification-display";
 import { getUserAuthSecurityState } from "@/lib/auth/user-auth-security-state";
+import { bootstrapPreferredHomeTenantForAuthedUser } from "@/lib/tenant/assign-preferred-home-tenant-from-host";
+import { syncUserAuthMetadataToPublicProfile } from "@/lib/auth/sync-user-auth-metadata";
 import type { User } from "@/types/beautonomi";
 
 /**
@@ -154,6 +156,14 @@ export async function GET(request: NextRequest) {
     );
     const supabase = await getSupabaseServer(request);
 
+    // Signup / first session: bind customer to Host-mapped market when still unset.
+    await bootstrapPreferredHomeTenantForAuthedUser(user.id, request);
+
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    if (authUser) {
+      await syncUserAuthMetadataToPublicProfile(getSupabaseAdmin(), user.id, authUser);
+    }
+
     const { data: userData, error } = await supabase
       .from("users")
       .select("*")
@@ -165,7 +175,6 @@ export async function GET(request: NextRequest) {
     }
 
     const u = userData as UserRow;
-    const { data: { user: authUser } } = await supabase.auth.getUser();
     const emailChangePending = Boolean(
       authUser && typeof (authUser as { new_email?: string | null }).new_email === "string" && (authUser as { new_email?: string | null }).new_email,
     );
@@ -295,6 +304,10 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json();
     const supabase = await getSupabaseServer(request);
 
+    if (body.preferred_home_tenant_id === undefined) {
+      await bootstrapPreferredHomeTenantForAuthedUser(user.id, request);
+    }
+
     const updates: Record<string, any> = {};
 
     // Handle first_name and last_name (combine into full_name)
@@ -368,7 +381,17 @@ export async function PATCH(request: NextRequest) {
         "friend_or_family", "blog_or_article", "app_store", "provider_referral", "other",
       ];
       const v = body.signup_source === null || body.signup_source === "" ? null : String(body.signup_source).trim();
-      updates.signup_source = v && allowed.includes(v) ? v : (v ? "other" : null);
+      const normalized = v && allowed.includes(v) ? v : (v ? "other" : null);
+      // First-write wins — do not overwrite an existing signup source.
+      const { data: existingSignup } = await supabase
+        .from("users")
+        .select("signup_source")
+        .eq("id", user.id)
+        .maybeSingle();
+      const currentSignup = (existingSignup as { signup_source?: string | null } | null)?.signup_source;
+      if (!currentSignup && normalized) {
+        updates.signup_source = normalized;
+      }
     }
     if (body.preferred_currency !== undefined) updates.preferred_currency = body.preferred_currency;
     if (body.timezone !== undefined) updates.timezone = body.timezone;

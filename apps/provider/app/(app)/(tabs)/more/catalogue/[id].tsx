@@ -302,7 +302,7 @@ export default function ServiceDetailScreen() {
       return;
     }
 
-    const payload = {
+    const payload: Record<string, unknown> = {
       title: form.title.trim(),
       description: form.description.trim() || null,
       duration_minutes: durationNum,
@@ -319,6 +319,24 @@ export default function ServiceDetailScreen() {
       provider_category_id: form.category_id.trim(),
       team_member_ids: form.team_member_ids,
     };
+
+    const tierCount = service.pricing_options?.length ?? 0;
+    if (tierCount > 1 && Array.isArray(service.pricing_options)) {
+      payload.pricing_options = service.pricing_options.map((opt, idx) => ({
+        id: (opt as { id?: string }).id ?? String(idx + 1),
+        duration: idx === 0 ? durationNum : (opt.duration ?? durationNum),
+        priceType:
+          (opt as { priceType?: string }).priceType ??
+          (opt as { price_type?: string }).price_type ??
+          service.price_type ??
+          "fixed",
+        price: idx === 0 ? priceNum : (opt.price ?? 0),
+        pricingName:
+          (opt as { pricingName?: string }).pricingName ??
+          (opt as { pricing_name?: string }).pricing_name ??
+          "",
+      }));
+    }
     const { error } = await updateService(
       `/api/provider/services/${id}`,
       payload
@@ -558,14 +576,25 @@ export default function ServiceDetailScreen() {
             {(service.pricing_options?.length ?? 0) > 1 && (
               <TouchableOpacity
                 onPress={() => router.push(`/(app)/(tabs)/more/service-form?id=${service.id}` as never)}
-                style={twStyle("mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3")}
+                style={twStyle("mb-3 overflow-hidden rounded-2xl border border-indigo-200 bg-indigo-50/90")}
                 accessibilityRole="button"
-                accessibilityLabel="This service has multiple pricing tiers. Open full editor."
+                accessibilityLabel={`${service.pricing_options!.length} booking options configured. Open full editor.`}
               >
-                <Text style={twStyle("text-sm font-medium text-amber-800")}>Multiple pricing tiers</Text>
-                <Text style={twStyle("mt-0.5 text-xs text-amber-700")}>
-                  Price & duration here reflect the primary tier only. Tap to open the full editor to manage all tiers.
-                </Text>
+                <View style={twStyle("flex-row items-start gap-3 px-4 py-3.5")}>
+                  <View style={twStyle("rounded-full bg-indigo-100 p-2")}>
+                    <Ionicons name="layers-outline" size={18} color="#4f46e5" />
+                  </View>
+                  <View style={twStyle("flex-1")}>
+                    <Text style={twStyle("text-sm font-semibold text-indigo-900")}>
+                      {service.pricing_options!.length} booking options
+                    </Text>
+                    <Text style={twStyle("mt-1 text-xs leading-5 text-indigo-700/90")}>
+                      Quick edit updates the default option only. Open the full editor to manage every
+                      price customers see at booking.
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color="#6366f1" />
+                </View>
               </TouchableOpacity>
             )}
             <View style={twStyle("flex-row")}>

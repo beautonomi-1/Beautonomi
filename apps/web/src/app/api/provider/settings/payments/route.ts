@@ -20,6 +20,10 @@ import {
 import type { UserRole } from "@/types/beautonomi";
 import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
 import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
+import {
+  handlePaystackTerminalSettingsPost,
+  loadPaystackTerminalMobileDetail,
+} from "@/lib/payments/paystack-terminal-provider-mobile-api";
 
 const PROVIDER_SETTINGS_ROLES = [
   "provider_owner",
@@ -36,6 +40,11 @@ const PROVIDER_SETTINGS_ROLES = [
  */
 export async function GET(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url);
+    if (searchParams.get("paystack_terminal_detail") === "1") {
+      return await loadPaystackTerminalMobileDetail(request);
+    }
+
     const { user } = await requireRoleInApi([...PROVIDER_SETTINGS_ROLES], request);
     const supabase = await getSupabaseServer(request);
     const hostTenantId = await resolveTenantIdWithZaFallback(request);
@@ -141,6 +150,14 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     return handleApiError(error, "Failed to load payment settings");
   }
+}
+
+/**
+ * POST /api/provider/settings/payments
+ * Paystack Terminal mobile fallback actions (`paystackTerminalAction`).
+ */
+export async function POST(request: NextRequest) {
+  return handlePaystackTerminalSettingsPost(request);
 }
 
 /**

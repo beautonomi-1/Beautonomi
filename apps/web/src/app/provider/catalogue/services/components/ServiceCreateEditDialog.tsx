@@ -29,7 +29,9 @@ import { handleError } from "@/lib/provider-portal/error-handler";
 import { invalidateSetupStatusCache } from "@/lib/provider-portal/setup-status-utils";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { isCompleteE164 } from "@/lib/phone";
-import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
+import { previewBookingTierName } from "@/app/api/provider/services/_helpers/sync-variants";
+import { BookingTierCustomerPreview } from "./BookingTierCustomerPreview";
+import { formatCurrency } from "@/lib/utils";
 
 interface ServiceCreateEditDialogProps {
   open: boolean;
@@ -461,6 +463,25 @@ export function ServiceCreateEditDialog({
         return;
       }
     }
+
+    if (pricingOptions.length > 1) {
+      for (let i = 1; i < pricingOptions.length; i += 1) {
+        const row = pricingOptions[i];
+        if (!row.duration || row.duration <= 0) {
+          toast.error(`Tier ${i + 1}: duration must be a positive number`);
+          return;
+        }
+        if (row.price == null || Number.isNaN(row.price) || row.price < 0) {
+          toast.error(`Tier ${i + 1}: price must be a valid number`);
+          return;
+        }
+      }
+      const explicitNames = pricingOptions.map((row) => row.pricingName.trim()).filter(Boolean);
+      if (new Set(explicitNames).size !== explicitNames.length) {
+        toast.error("Each booking tier name must be unique");
+        return;
+      }
+    }
     
     try {
       // Prepare service data with all fields
@@ -509,14 +530,28 @@ export function ServiceCreateEditDialog({
       };
       
       let savedServiceId: string;
+      let variantSync: { synced?: number; errors?: string[] } | undefined;
       if (service) {
-        await providerApi.updateService(service.id, serviceData);
+        const updated = await providerApi.updateService(service.id, serviceData) as ServiceItem & {
+          variant_sync?: { synced?: number; errors?: string[] };
+        };
         savedServiceId = service.id;
-        toast.success("Service updated successfully");
+        variantSync = updated.variant_sync;
       } else {
-        const created = await providerApi.createService(serviceData);
+        const created = await providerApi.createService(serviceData) as ServiceItem & {
+          variant_sync?: { synced?: number; errors?: string[] };
+        };
         savedServiceId = created.id;
-        toast.success("Service created successfully");
+        variantSync = created.variant_sync;
+      }
+      if (pricingOptions.length > 1 && variantSync?.errors?.length) {
+        toast.warning(`Service saved, but tier sync issue: ${variantSync.errors[0]}`);
+      } else if (pricingOptions.length > 1 && variantSync?.synced != null) {
+        toast.success(
+          `Service saved — ${variantSync.synced} booking tier${variantSync.synced === 1 ? "" : "s"} synced for customers`,
+        );
+      } else {
+        toast.success(service ? "Service updated successfully" : "Service created successfully");
       }
       if (formData.offeringResources?.length) {
         await providerApi.setServiceResources(savedServiceId, formData.offeringResources);
@@ -654,6 +689,15 @@ export function ServiceCreateEditDialog({
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-gray-500 mt-1.5">Choose how this service appears to clients in your booking system</p>
+                {formData.serviceType === "variant" ? (
+                  <p className="text-xs text-amber-700 mt-1.5">
+                    Tip: For multiple prices on one service, use Basic and add booking options below instead.
+                  </p>
+                ) : formData.serviceType === "basic" ? (
+                  <p className="text-xs text-gray-500 mt-1.5">
+                    Set price and duration below. Add more options if customers should choose (e.g. short vs long).
+                  </p>
+                ) : null}
               </div>
 
               {formData.serviceType === "package" && (
@@ -1194,31 +1238,80 @@ export function ServiceCreateEditDialog({
 
             <Separator />
 
-            {/* Pricing and Duration */}
+            {/* Price & booking options */}
             <div className="space-y-3 sm:space-y-4">
               <div>
-                <h3 className="text-base sm:text-lg font-semibold mb-1">Duration & Pricing</h3>
-                <p className="text-xs sm:text-sm text-gray-500">Set the default duration and price for this service. These can be customized later for individual staff members or locations.</p>
+                <h3 className="text-base sm:text-lg font-semibold mb-1">
+                  {formData.serviceType === "variant"
+                    ? "Price & duration"
+                    : pricingOptions.length > 1
+                      ? "Booking options"
+                      : "Price & duration"}
+                </h3>
+                <p className="text-xs sm:text-sm text-gray-500">
+                  {formData.serviceType === "variant"
+                    ? "Set the price and duration for this variant. It appears under the parent service at booking."
+                    : pricingOptions.length > 1
+                      ? "Each option has its own price and duration. Customers pick one when they book."
+                      : "One fixed price for this service. Customers book it directly — no option picker."}
+                </p>
               </div>
+
+              {formData.serviceType !== "variant" && pricingOptions.length > 1 ? (
+                <BookingTierCustomerPreview
+                  options={pricingOptions}
+                  primaryPricingName={primaryPricing.pricingName || null}
+                  serviceTitle={formData.name.trim() || undefined}
+                  currencyCode={currencyCode}
+                />
+              ) : null}
               
-              {pricingOptions.map((option, index) => (
-                <div key={option.id} className="border rounded-lg p-3 sm:p-4 space-y-3 sm:space-y-4 bg-gray-50/50">
-                  <div className="flex justify-between items-center">
-                    <h4 className="text-sm sm:text-base font-medium text-primary">
-                      {pricingOptions.length === 1 ? "Default Pricing" : `Pricing Option ${index + 1}`}
-                    </h4>
-                    {pricingOptions.length > 1 && (
+              {pricingOptions.map((option, index) => {
+                const previewName = previewBookingTierName(
+                  option,
+                  index,
+                  primaryPricing.pricingName || null,
+                );
+                return (
+                <div
+                  key={option.id}
+                  className={`border rounded-xl p-3 sm:p-4 space-y-3 sm:space-y-4 overflow-hidden ${
+                    pricingOptions.length > 1 && index === 0
+                      ? "border-indigo-200 bg-indigo-50/30"
+                      : "bg-gray-50/50"
+                  }`}
+                >
+                  {pricingOptions.length > 1 && formData.serviceType !== "variant" ? (
+                    <div
+                      className={`flex justify-between items-center gap-3 border-b pb-3 -mx-3 sm:-mx-4 px-3 sm:px-4 ${
+                        index === 0 ? "border-indigo-100" : "border-gray-100"
+                      }`}
+                    >
+                      <div className="min-w-0">
+                        <h4 className="text-sm sm:text-base font-semibold text-gray-900 truncate">
+                          {previewName}
+                          {index === 0 ? (
+                            <span className="text-xs font-normal text-gray-500"> · default in catalogue</span>
+                          ) : null}
+                        </h4>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          {option.duration} min · {formatCurrency(option.price, currencyCode)}
+                        </p>
+                      </div>
                       <Button
                         type="button"
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8 sm:h-6 sm:w-6 touch-manipulation"
+                        className="h-8 w-8 shrink-0 touch-manipulation text-red-500 hover:text-red-600 hover:bg-red-50"
                         onClick={() => handleRemovePricingOption(option.id)}
+                        aria-label={`Remove ${previewName}`}
                       >
                         <X className="h-4 w-4" />
                       </Button>
-                    )}
-                  </div>
+                    </div>
+                  ) : (
+                    <h4 className="text-sm sm:text-base font-medium text-gray-700 sr-only">Default pricing</h4>
+                  )}
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                     <div>
@@ -1274,21 +1367,31 @@ export function ServiceCreateEditDialog({
                         placeholder="0.00"
                       />
                     </div>
-                    <p className="text-xs text-gray-500 mt-1.5">This is the default price. You can customize pricing for different staff members or locations later.</p>
+                    {pricingOptions.length === 1 ? (
+                      <p className="text-xs text-gray-500 mt-1.5">
+                        Shown to customers at booking and in your catalogue.
+                      </p>
+                    ) : null}
                   </div>
 
-                  <div>
-                    <Label className="text-sm sm:text-base">Pricing name (Optional)</Label>
-                    <Input 
-                      placeholder="e.g., Long hair, Short hair"
-                      value={option.pricingName}
-                      onChange={(e) => handlePricingOptionChange(option.id, "pricingName", e.target.value)}
-                      className="mt-1.5"
-                    />
-                    <p className="text-xs text-gray-500 mt-1.5">Distinguish this pricing option from others</p>
-                  </div>
+                  {pricingOptions.length > 1 && formData.serviceType !== "variant" ? (
+                    <div>
+                      <Label className="text-sm sm:text-base">Customer-facing label</Label>
+                      <Input
+                        placeholder={previewName}
+                        value={option.pricingName}
+                        onChange={(e) => handlePricingOptionChange(option.id, "pricingName", e.target.value)}
+                        className="mt-1.5"
+                      />
+                      {!option.pricingName.trim() ? (
+                        <p className="text-xs text-gray-500 mt-1.5">
+                          Leave blank to use &ldquo;{previewName}&rdquo;
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
 
-                  {index === 0 && (
+                  {index === 0 && formData.serviceType !== "variant" && (
                     <Button 
                       type="button"
                       variant="link" 
@@ -1306,33 +1409,41 @@ export function ServiceCreateEditDialog({
                     </Button>
                   )}
                 </div>
-              ))}
+                );
+              })}
 
-              {pricingOptions.length === 1 && (
-                <Button 
+              {formData.serviceType !== "variant" && pricingOptions.length === 1 ? (
+                <button
+                  type="button"
+                  onClick={handleAddPricingOption}
+                  className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-4 text-left transition-colors hover:border-indigo-200 hover:bg-indigo-50/40 touch-manipulation min-h-[44px]"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="rounded-full border border-gray-200 bg-white p-2 text-indigo-600">
+                      <Plus className="h-5 w-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-gray-900">
+                        Offer multiple prices or durations?
+                      </p>
+                      <p className="mt-1 text-xs leading-5 text-gray-500">
+                        e.g. Short vs long hair, express vs full service. Each becomes a customer-facing
+                        option at booking.
+                      </p>
+                    </div>
+                  </div>
+                </button>
+              ) : formData.serviceType !== "variant" && pricingOptions.length > 1 ? (
+                <Button
                   type="button"
                   variant="outline"
-                  className="w-full text-sm sm:text-base min-h-[44px] touch-manipulation"
+                  className="w-full text-sm sm:text-base min-h-[44px] touch-manipulation border-dashed border-indigo-300 text-indigo-700 hover:bg-indigo-50/50"
                   onClick={handleAddPricingOption}
                 >
                   <Plus className="w-4 h-4 mr-2" />
-                  Add another pricing option
+                  Add another option
                 </Button>
-              )}
-              {pricingOptions.length > 1 && (
-                <div className="space-y-2">
-                  <Button 
-                    type="button"
-                    variant="outline"
-                    className="w-full text-sm sm:text-base min-h-[44px] touch-manipulation"
-                    onClick={handleAddPricingOption}
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Add pricing option
-                  </Button>
-                  <p className="text-xs text-gray-500 text-center">Use multiple pricing options for different service variations (e.g., long hair vs short hair)</p>
-                </div>
-              )}
+              ) : null}
             </div>
 
             <Separator />

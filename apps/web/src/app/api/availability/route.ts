@@ -7,6 +7,9 @@ import {
 import { parseSyntheticProviderStaffId } from "@/lib/availability/load-constraints";
 import { normalizeProviderTimezone } from "@/lib/availability/time-utils";
 import { DEFAULT_BOOKING_DISPLAY_TIMEZONE } from "@/lib/bookings/display-invariants";
+import {
+  PUBLIC_BOOKING_MAX_ADVANCE_DAYS,
+} from "@/lib/provider-booking/public-booking-slot-policy";
 import type { TimeSlot } from "@/lib/availability/types";
 import {
   getProviderIdForUser,
@@ -133,31 +136,14 @@ export async function GET(request: NextRequest) {
     // triggering "invalid time / slot taken" in non-UTC deployments.
     let providerTimeZone: string | null = null;
     let providerTimeZoneRaw: string | null = null;
-    let providerMinNotice: number | null = null;
-    let providerMaxAdvance: number | null = null;
     try {
       const admin = getSupabaseAdmin();
-      const [{ data: providerRow }, { data: onlineSettings }] = await Promise.all([
-        admin
-          .from("providers")
-          .select("timezone")
-          .eq("id", providerIdForEngine)
-          .maybeSingle(),
-        admin
-          .from("provider_online_booking_settings")
-          .select("min_notice_minutes, max_advance_days")
-          .eq("provider_id", providerIdForEngine)
-          .maybeSingle(),
-      ]);
+      const { data: providerRow } = await admin
+        .from("providers")
+        .select("timezone")
+        .eq("id", providerIdForEngine)
+        .maybeSingle();
       providerTimeZoneRaw = (providerRow as { timezone?: string | null } | null)?.timezone ?? null;
-      const rawNotice = (onlineSettings as { min_notice_minutes?: number | null } | null)?.min_notice_minutes;
-      const rawAdvance = (onlineSettings as { max_advance_days?: number | null } | null)?.max_advance_days;
-      if (typeof rawNotice === "number" && Number.isFinite(rawNotice) && rawNotice >= 0) {
-        providerMinNotice = Math.floor(rawNotice);
-      }
-      if (typeof rawAdvance === "number" && Number.isFinite(rawAdvance) && rawAdvance >= 1) {
-        providerMaxAdvance = Math.floor(rawAdvance);
-      }
       // `normalizeProviderTimezone` maps common offset forms (e.g. "GMT+2" →
       // "Etc/GMT-2"). If the provider has no usable timezone, use the same SA
       // marketplace default as `combineDateAndTime`; otherwise `public_slots`
@@ -176,24 +162,7 @@ export async function GET(request: NextRequest) {
       providerTimeZone = DEFAULT_BOOKING_DISPLAY_TIMEZONE;
     }
 
-    // Min-notice + max-advance parity with the slug route: provider policy
-    // is enforced server-side even if a client omits or tampers with params.
-    const clientMinNotice = parseInt(
-      searchParams.get("min_notice_minutes") || searchParams.get("minNoticeMinutes") || "0",
-      10
-    );
-    const clientMaxAdvance = parseInt(
-      searchParams.get("max_advance_days") || searchParams.get("maxAdvanceDays") || "365",
-      10
-    );
-    const safeClientMinNotice =
-      Number.isFinite(clientMinNotice) && clientMinNotice > 0 ? clientMinNotice : 0;
-    const safeClientMaxAdvance =
-      Number.isFinite(clientMaxAdvance) && clientMaxAdvance >= 1 ? clientMaxAdvance : 365;
-    const effectiveMinNotice =
-      providerMinNotice != null ? Math.max(safeClientMinNotice, providerMinNotice) : safeClientMinNotice;
-    const effectiveMaxAdvance =
-      providerMaxAdvance != null ? Math.min(safeClientMaxAdvance, providerMaxAdvance) : safeClientMaxAdvance;
+    const effectiveMaxAdvance = PUBLIC_BOOKING_MAX_ADVANCE_DAYS;
 
     // Max-advance guard (mirrors slug route).
     const now = new Date();
@@ -225,15 +194,6 @@ export async function GET(request: NextRequest) {
       excludeBookingId,
       providerTimeZone,
     });
-
-    // §Release-audit 2026-04: min-notice parity. Previously only the slug
-    // route applied this filter, so `/api/availability` surfaced slots that
-    // the hold route immediately rejected — visible as the "booking slot
-    // taken" error when a customer picked the first time of the day.
-    if (effectiveMinNotice > 0) {
-      const cutoff = new Date(Date.now() + effectiveMinNotice * 60 * 1000);
-      publicSlots = publicSlots.filter((s) => new Date(s.start) >= cutoff);
-    }
 
     // §Release-audit 2026-04: resource filtering parity. When the caller
     // passed service_ids / service_id we run the same resource-availability

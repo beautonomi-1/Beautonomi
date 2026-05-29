@@ -1997,6 +1997,7 @@ export class ProviderApiClient implements ProviderApi {
         price_type: service.price_type,
         included_services: service.included_services,
         service_cost_percentage: service.service_cost_percentage,
+        variant_sync: service.variant_sync,
       } as ServiceItem;
     } catch (error: any) {
       await this.handleApiError(
@@ -2082,6 +2083,7 @@ export class ProviderApiClient implements ProviderApi {
         price_type: service.price_type,
         included_services: service.included_services,
         service_cost_percentage: service.service_cost_percentage,
+        variant_sync: service.variant_sync,
       } as ServiceItem;
     } catch (error: any) {
       await this.handleApiError(

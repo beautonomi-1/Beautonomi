@@ -7,6 +7,7 @@ import { fetchAllProviderIdsForTenant } from "@/lib/tenant/admin-tenant-scope";
 import { fetchOrphanRefundPaymentTxsForTenant } from "@/lib/admin/payment-transactions-tenant-scope";
 import { countAllOpenSafetyEvents, countOpenSafetyEventsForTenant } from "@/lib/admin/safety-events-tenant-scope";
 import { USER_VERIFICATION_QUEUE_STATUSES } from "@/lib/admin/verification-queue-statuses";
+import { filterVerificationsForAdminTenant } from "@/lib/admin/verification-tenant-access";
 
 /**
  * GET /api/admin/nav-counts
@@ -41,11 +42,16 @@ export async function GET(request: NextRequest) {
       opsActivationResult,
       safetyOpenResult,
     ] = await Promise.all([
-      supabase
-        .from("user_verifications")
-        .select("id", { count: "exact", head: true })
-        .in("status", [...USER_VERIFICATION_QUEUE_STATUSES])
-        .eq("tenant_id", tenantId),
+      (async () => {
+        const { data: rows, error } = await supabase
+          .from("user_verifications")
+          .select("id, tenant_id, user_id, submitted_at")
+          .in("status", [...USER_VERIFICATION_QUEUE_STATUSES])
+          .or(`tenant_id.eq.${tenantId},tenant_id.is.null`);
+        if (error) return { count: 0 };
+        const scoped = await filterVerificationsForAdminTenant(supabase, tenantId, rows ?? []);
+        return { count: scoped.length };
+      })(),
       supabase
         .from("payouts")
         .select("id, providers!inner(tenant_id)", { count: "exact", head: true })

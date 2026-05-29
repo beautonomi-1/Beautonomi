@@ -304,13 +304,13 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
       </div>
 
       {/* Image Gallery */}
-      <div className="relative">
+      <div className="relative z-0">
         {/* Desktop Gallery - Enhanced Grid with Squircle */}
         <div className="hidden md:grid grid-cols-2 gap-2 px-4 md:px-10">
           <div className="row-span-2">
             <Link
               href={slug ? `/partner-profile/gallery?slug=${encodeURIComponent(slug)}` : "/partner-profile/gallery"}
-              className="relative block group overflow-hidden squircle cursor-pointer group-hover:opacity-90 transition-opacity"
+              className="relative block group overflow-hidden rounded-t-[28px] md:rounded-t-[32px] cursor-pointer group-hover:opacity-90 transition-opacity"
             >
               <ProviderGalleryImage
                 src={resolveGallerySrc(displayImages[0]?.src ?? images[0].src)}
@@ -352,7 +352,7 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
               </div>
               {/* Bottom scrim — avatar moved to info card below */}
               <div
-                className="pointer-events-none absolute inset-x-0 bottom-0 z-[5] h-32 bg-gradient-to-t from-black/55 via-black/20 to-transparent"
+                className="pointer-events-none absolute inset-x-0 bottom-0 z-[5] h-24 bg-gradient-to-t from-black/55 via-black/20 to-transparent"
                 aria-hidden
               />
             </Link>
@@ -422,7 +422,7 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
       </div>
 
       {/* Provider information — avatar straddles the gallery/card seam */}
-      <div className="relative -mt-6 rounded-t-3xl bg-white px-4 pb-6 pt-[60px] shadow-xl md:-mt-8 md:px-10 md:pb-8 md:pt-[68px]">
+      <div className="relative z-10 -mt-8 rounded-t-3xl bg-white px-4 pb-6 pt-[60px] shadow-[0_-8px_30px_rgba(0,0,0,0.12)] md:-mt-10 md:px-10 md:pb-8 md:pt-[68px]">
         {/* Avatar — -top-9 (mobile, 72px/2=36px) / md:-top-11 (desktop, 88px/2=44px) */}
         <div className="absolute -top-9 left-4 z-30 md:-top-11 md:left-10">
           <div className="relative h-[72px] w-[72px] shrink-0 md:h-[88px] md:w-[88px]">

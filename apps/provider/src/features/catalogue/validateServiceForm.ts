@@ -7,6 +7,7 @@ export interface ServiceFormValidationInput {
   parentServiceId: string;
   pricingOptions: PricingOption[];
   includedServices?: string[];
+  parentPricingName?: string | null;
 }
 
 export function validateServiceForm(input: ServiceFormValidationInput): string | null {
@@ -27,6 +28,27 @@ export function validateServiceForm(input: ServiceFormValidationInput): string |
   if (primary.price == null || Number.isNaN(primary.price) || primary.price < 0) {
     return "Price must be a valid number.";
   }
+
+  if (input.pricingOptions.length > 1) {
+    for (let i = 1; i < input.pricingOptions.length; i += 1) {
+      const row = input.pricingOptions[i];
+      if (!row.duration || row.duration <= 0) {
+        return `Tier ${i + 1}: duration must be a positive number (minutes).`;
+      }
+      if (row.price == null || Number.isNaN(row.price) || row.price < 0) {
+        return `Tier ${i + 1}: price must be a valid number.`;
+      }
+    }
+
+    const explicitNames = input.pricingOptions
+      .map((row) => row.pricingName.trim())
+      .filter(Boolean);
+    const unique = new Set(explicitNames);
+    if (unique.size !== explicitNames.length) {
+      return "Each booking tier name must be unique.";
+    }
+  }
+
   return null;
 }
 

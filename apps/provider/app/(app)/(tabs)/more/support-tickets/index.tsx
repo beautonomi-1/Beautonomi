@@ -10,6 +10,7 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { Colors } from "@/constants/colors";
 import { trackSupportTicketsView } from "@/lib/analytics";
 import { labelForSupportTicketCategory } from "@/lib/supportTicketCategoryPresets";
+import { SUPPORT_TICKETS_API_PREFIX } from "@/lib/support-ticket-api";
 
 type Ticket = {
   id: string;
@@ -81,7 +82,7 @@ function statusBgColor(status: string): string {
 export default function SupportTicketsListScreen() {
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
-  const { data, loading, error, refresh } = useApi<TicketsResponse>("/api/provider/support-tickets");
+  const { data, loading, error, refresh } = useApi<TicketsResponse>(SUPPORT_TICKETS_API_PREFIX);
   const skipNextListFocusRefresh = useRef(true);
 
   /** CSAT is submitted on the ticket detail screen; useApi caches this list — refetch when returning (skip first focus; useApi loads on mount). */

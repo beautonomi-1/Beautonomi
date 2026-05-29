@@ -91,13 +91,11 @@ function startOfLocalDay(d: Date): Date {
   return x;
 }
 
-/** Slot must be at least minNoticeMinutes after now (lead time). */
-function isSlotStartStillSelectable(startIso: string, _day: Date, minNoticeMinutes: number): boolean {
+/** Slot is selectable when still in the future (provider-portal parity — no min-notice lead time). */
+function isSlotStartStillSelectable(startIso: string): boolean {
   const slotTime = new Date(startIso);
   if (!Number.isFinite(slotTime.getTime())) return false;
-  const safeNotice = Number.isFinite(minNoticeMinutes) && minNoticeMinutes >= 0 ? minNoticeMinutes : 0;
-  const cutoff = Date.now() + safeNotice * 60 * 1000;
-  return slotTime.getTime() >= cutoff;
+  return slotTime.getTime() > Date.now();
 }
 
 export type ScheduleSlot = {
@@ -118,8 +116,6 @@ interface StepScheduleProps {
   onNextAvailable: () => void;
   onNext: () => void;
   maxAdvanceDays: number;
-  /** From provider_online_booking_settings — same as availability API */
-  minNoticeMinutes?: number;
   providerId?: string;
   serviceId?: string | null;
   providerTimeZone?: string | null;
@@ -137,7 +133,6 @@ export function StepSchedule({
   onNextAvailable,
   onNext,
   maxAdvanceDays,
-  minNoticeMinutes = 0,
   providerId = "",
   serviceId = null,
   providerTimeZone = null,
@@ -195,8 +190,8 @@ export function StepSchedule({
 
   const relevantSlots = useMemo(() => {
     if (!selectedDay) return slots;
-    return slots.filter((s) => isSlotStartStillSelectable(s.start, selectedDay, minNoticeMinutes));
-  }, [slots, selectedDay, minNoticeMinutes, slotClockTick]);
+    return slots.filter((s) => isSlotStartStillSelectable(s.start));
+  }, [slots, slotClockTick]);
 
   const morningSlots = relevantSlots.filter((s) => getSlotPeriod(s.start, providerTimeZone) === "morning");
   const afternoonSlots = relevantSlots.filter((s) => getSlotPeriod(s.start, providerTimeZone) === "afternoon");
@@ -226,10 +221,10 @@ export function StepSchedule({
 
   useEffect(() => {
     if (!selectedDay || !data.selectedSlot) return;
-    if (isSlotStartStillSelectable(data.selectedSlot.start, selectedDay, minNoticeMinutes)) return;
+    if (isSlotStartStillSelectable(data.selectedSlot.start)) return;
     onSelectSlot(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- parent passes inline updater; avoid infinite effect loops
-  }, [selectedDay, data.selectedSlot?.start, minNoticeMinutes, slotClockTick]);
+  }, [selectedDay, data.selectedSlot?.start, slotClockTick]);
 
   const timezoneLabel =
     typeof Intl !== "undefined"

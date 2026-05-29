@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, successResponse, handleApiError, notFoundResponse  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
@@ -13,6 +12,7 @@ import {
   resolveProviderIdForUser,
   syncProviderVerificationState,
 } from "@/lib/verification/sync-provider-verification";
+import { verificationAccessibleToAdminTenant } from "@/lib/admin/verification-tenant-access";
 import { z } from "zod";
 
 // Schema for verification review
@@ -32,9 +32,10 @@ export async function GET(
   try {
     await requireAdminSection(ADMIN_SECTION_USERS_TRUST, request);
     const { id } = await params;
-    const supabase = await getSupabaseServer(request);
+    const admin = getSupabaseAdmin();
+    const tenantId = await resolveAdminApiTenantId(request);
 
-    const { data: verification, error } = await supabase
+    const { data: verification, error } = await admin
       .from("user_verifications")
       .select(`
         *,
@@ -59,6 +60,10 @@ export async function GET(
         return notFoundResponse("Verification not found");
       }
       throw error;
+    }
+
+    if (!(await verificationAccessibleToAdminTenant(admin, tenantId, verification as { id?: string; tenant_id?: string | null; user_id?: string | null }))) {
+      return notFoundResponse("Verification not found");
     }
 
     // Enrich with provider linkage so the SPA can cross-link to the lifecycle page.
@@ -147,7 +152,7 @@ export async function PATCH(
     const { user } = await requireAdminSection(ADMIN_SECTION_USERS_TRUST, request);
     const { id } = await params;
     const body = await request.json();
-    const supabase = await getSupabaseServer(request);
+    const admin = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);
 
     const validationResult = reviewSchema.safeParse(body);
@@ -160,17 +165,30 @@ export async function PATCH(
 
     const { status, rejection_reason } = validationResult.data;
 
-    // Update verification
-    const { data: verification, error: updateError } = await supabase
+    const { data: existingVerification, error: existingError } = await admin
+      .from("user_verifications")
+      .select("id, tenant_id, user_id")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (existingError) throw existingError;
+    if (!(await verificationAccessibleToAdminTenant(admin, tenantId, existingVerification))) {
+      return notFoundResponse("Verification not found");
+    }
+
+    // Update verification (tenant_id may be null for Sumsub rows scoped via user)
+    const { data: verification, error: updateError } = await admin
       .from("user_verifications")
       .update({
         status,
         rejection_reason: status === 'rejected' ? rejection_reason : null,
         reviewed_at: new Date().toISOString(),
         reviewed_by: user.id,
+        ...(existingVerification?.tenant_id == null && tenantId
+          ? { tenant_id: tenantId }
+          : {}),
       })
       .eq("id", id)
-      .eq("tenant_id", tenantId)
       .select(`
         *,
         user:users!user_verifications_user_id_fkey (

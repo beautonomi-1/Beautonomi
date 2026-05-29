@@ -122,3 +122,36 @@ export function pricingOptionsToPayload(options: PricingOption[]) {
     pricingName: opt.pricingName,
   }));
 }
+
+/** Customer-facing tier label when pricingName is blank (matches server sync). */
+export function resolveBookingTierName(
+  opt: PricingOption,
+  index: number,
+  parentPricingName?: string | null,
+): string {
+  const trimmed = opt.pricingName.trim();
+  if (trimmed) return trimmed;
+  if (index === 0) return parentPricingName?.trim() || "Standard";
+  return `Option ${index + 1}`;
+}
+
+export interface CustomerBookingTierPreview {
+  name: string;
+  durationMinutes: number;
+  price: number;
+  priceType: string;
+}
+
+/** Lines shown in the “what customers see” preview (empty when single-tier). */
+export function buildCustomerBookingTierPreview(
+  options: PricingOption[],
+  parentPricingName?: string | null,
+): CustomerBookingTierPreview[] {
+  if (options.length <= 1) return [];
+  return options.map((opt, index) => ({
+    name: resolveBookingTierName(opt, index, parentPricingName),
+    durationMinutes: opt.duration,
+    price: opt.price,
+    priceType: opt.priceType,
+  }));
+}

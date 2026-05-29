@@ -25,6 +25,15 @@ vi.mock("@/lib/auth/post-login-return-path", () => ({
   resolvePortalAwareReturnPathname: (...args: any[]) =>
     mockResolvePortalAwareReturnPathname(...args),
 }));
+vi.mock("@/lib/tenant/assign-preferred-home-tenant-from-host", () => ({
+  bootstrapPreferredHomeTenantForAuthedUser: vi.fn().mockResolvedValue(null),
+}));
+vi.mock("@/lib/auth/sync-user-auth-metadata", () => ({
+  syncUserAuthMetadataToPublicProfile: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock("@/lib/supabase/admin", () => ({
+  getSupabaseAdmin: vi.fn(),
+}));
 
 describe("GET /auth/callback", () => {
   beforeEach(() => {
@@ -38,7 +47,7 @@ describe("GET /auth/callback", () => {
   });
 
   it("redirects to reset-password when token_hash and type=recovery and verifyOtp succeeds", async () => {
-    const mockVerifyOtp = vi.fn().mockResolvedValue({ error: null });
+    const mockVerifyOtp = vi.fn().mockResolvedValue({ data: { user: { id: "user-1" } }, error: null });
     mockGetSupabaseServer.mockResolvedValue({
       auth: {
         verifyOtp: mockVerifyOtp,
@@ -96,7 +105,7 @@ describe("GET /auth/callback", () => {
   });
 
   it("redirects to next param when token_hash and type=signup and verifyOtp succeeds", async () => {
-    const mockVerifyOtp = vi.fn().mockResolvedValue({ error: null });
+    const mockVerifyOtp = vi.fn().mockResolvedValue({ data: { user: { id: "user-1" } }, error: null });
     mockGetSupabaseServer.mockResolvedValue({
       auth: { verifyOtp: mockVerifyOtp },
     });
@@ -113,7 +122,7 @@ describe("GET /auth/callback", () => {
   });
 
   it("allows customer onboarding as an email confirmation destination", async () => {
-    const mockVerifyOtp = vi.fn().mockResolvedValue({ error: null });
+    const mockVerifyOtp = vi.fn().mockResolvedValue({ data: { user: { id: "user-1" } }, error: null });
     mockGetSupabaseServer.mockResolvedValue({
       auth: { verifyOtp: mockVerifyOtp },
     });

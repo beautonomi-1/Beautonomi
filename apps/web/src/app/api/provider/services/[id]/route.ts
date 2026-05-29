@@ -3,7 +3,12 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import type { OfferingCard } from "@/types/beautonomi";
-import { syncVariantOfferings } from "../_helpers/sync-variants";
+import {
+  mergePrimaryTierIntoStoredPricingOptions,
+  shouldSyncPricingOptionVariants,
+  syncVariantOfferings,
+  type RawPricingOption,
+} from "../_helpers/sync-variants";
 
 /**
  * GET /api/provider/services/[id]
@@ -149,13 +154,44 @@ export async function PATCH(
 
     if (updateError || !updatedService) throw updateError ?? new Error("Failed to update service");
 
-    // Sync child variant offerings when pricing_options are explicitly updated
-    if (body.pricing_options !== undefined) {
-      const opts = Array.isArray(body.pricing_options) ? body.pricing_options : [];
-      await syncVariantOfferings(supabase, updatedService as Record<string, unknown>, opts);
+    // Sync child variant offerings when pricing_options are explicitly updated,
+    // or when primary price/duration changed on a multi-tier service (quick-edit safety net).
+    let variant_sync = null;
+    if (shouldSyncPricingOptionVariants(updatedService.service_type)) {
+      if (body.pricing_options !== undefined) {
+        const opts = Array.isArray(body.pricing_options) ? body.pricing_options : [];
+        variant_sync = await syncVariantOfferings(
+          supabase,
+          updatedService as Record<string, unknown>,
+          opts,
+        );
+      } else if (body.price !== undefined || body.duration_minutes !== undefined) {
+        const merged = mergePrimaryTierIntoStoredPricingOptions(
+          updatedService.pricing_options as RawPricingOption[],
+          Number(updatedService.price),
+          Number(updatedService.duration_minutes),
+        );
+        if (merged) {
+          const { data: resynced, error: mergeError } = await supabase
+            .from("offerings")
+            .update({ pricing_options: merged })
+            .eq("id", id)
+            .select()
+            .single();
+          if (mergeError || !resynced) {
+            throw mergeError ?? new Error("Failed to update pricing_options for tier sync");
+          }
+          variant_sync = await syncVariantOfferings(
+            supabase,
+            resynced as Record<string, unknown>,
+            merged,
+          );
+          return successResponse({ ...(resynced as OfferingCard), variant_sync });
+        }
+      }
     }
 
-    return successResponse(updatedService as OfferingCard);
+    return successResponse({ ...(updatedService as OfferingCard), variant_sync });
   } catch (error) {
     return handleApiError(error, "Failed to update service");
   }

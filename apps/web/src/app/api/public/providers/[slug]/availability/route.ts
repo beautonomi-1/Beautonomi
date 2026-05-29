@@ -9,6 +9,9 @@ import {
 import { computePublicSlugAvailabilitySlots } from "@/lib/availability/public-slug-availability-engine";
 import { normalizeProviderTimezone } from "@/lib/availability/time-utils";
 import { DEFAULT_BOOKING_DISPLAY_TIMEZONE } from "@/lib/bookings/display-invariants";
+import {
+  PUBLIC_BOOKING_MAX_ADVANCE_DAYS,
+} from "@/lib/provider-booking/public-booking-slot-policy";
 
 /**
  * GET /api/public/providers/[slug]/availability
@@ -50,8 +53,6 @@ export async function GET(
     const paramDuration = searchParams.get("duration_minutes");
     const paramBuffer = searchParams.get("buffer_minutes");
     const addonDurationParam = parseInt(searchParams.get("addon_duration_minutes") || "0", 10);
-    const minNoticeMinutes = parseInt(searchParams.get("min_notice_minutes") || "0");
-    const maxAdvanceDays = parseInt(searchParams.get("max_advance_days") || "365");
     const excludeHoldId = searchParams.get("excludeHoldId")?.trim() || undefined;
     const excludeBookingId = searchParams.get("exclude_booking_id")?.trim() || undefined;
 
@@ -67,9 +68,6 @@ export async function GET(
         { status: 400 }
       );
     }
-
-    const clientMinNotice = Number.isNaN(minNoticeMinutes) || minNoticeMinutes < 0 ? 0 : minNoticeMinutes;
-    const clientMaxAdvance = Number.isNaN(maxAdvanceDays) || maxAdvanceDays < 1 ? 365 : maxAdvanceDays;
 
     // Use admin client to bypass RLS — consistent with the SSR profile loader
     const { data: provider, error: providerError } = await supabase
@@ -92,45 +90,9 @@ export async function GET(
       );
     }
 
-    // §Release-audit 2026-04: the public slot grid previously trusted
-    // `min_notice_minutes` / `max_advance_days` purely from the client
-    // query params (defaulting to 0 / 365). Providers configure a real
-    // policy in `provider_online_booking_settings` and expect the booking
-    // flow to honour it — a buggy / compromised customer client could
-    // otherwise request "slots today" with `min_notice_minutes=0` and
-    // book 5 minutes before a service starts. Enforce the provider's
-    // values as floor / ceiling so parity with the provider portal holds
-    // (the portal intentionally bypasses these because providers manage
-    // their own exceptions; public customers cannot).
-    let providerMinNotice: number | null = null;
-    let providerMaxAdvance: number | null = null;
-    try {
-      const { data: onlineSettings } = await supabase
-        .from("provider_online_booking_settings")
-        .select("min_notice_minutes, max_advance_days")
-        .eq("provider_id", provider.id)
-        .maybeSingle();
-      if (onlineSettings) {
-        const rawNotice = (onlineSettings as { min_notice_minutes?: number | null }).min_notice_minutes;
-        const rawAdvance = (onlineSettings as { max_advance_days?: number | null }).max_advance_days;
-        if (typeof rawNotice === "number" && Number.isFinite(rawNotice) && rawNotice >= 0) {
-          providerMinNotice = Math.floor(rawNotice);
-        }
-        if (typeof rawAdvance === "number" && Number.isFinite(rawAdvance) && rawAdvance >= 1) {
-          providerMaxAdvance = Math.floor(rawAdvance);
-        }
-      }
-    } catch (err) {
-      console.warn(
-        "[public-availability] provider_online_booking_settings lookup failed; falling back to client params",
-        err,
-      );
-    }
-
-    const effectiveMinNotice =
-      providerMinNotice != null ? Math.max(clientMinNotice, providerMinNotice) : clientMinNotice;
-    const effectiveMaxAdvance =
-      providerMaxAdvance != null ? Math.min(clientMaxAdvance, providerMaxAdvance) : clientMaxAdvance;
+    // Public customers follow provider-portal calendar rules (shifts, conflicts,
+    // resources) — not online min-notice / max-advance policy.
+    const effectiveMaxAdvance = PUBLIC_BOOKING_MAX_ADVANCE_DAYS;
 
     // Duration and buffer: prefer authoritative chain from `service_ids` + DB; else query params; else single offering.
     let durationMinutes = paramDuration != null ? parseInt(paramDuration, 10) : NaN;
@@ -264,13 +226,6 @@ export async function GET(
       excludeBookingId,
       providerTimeZone,
     });
-
-    // Filter by min_notice_minutes: exclude any slot that starts before now + lead time
-    // (must apply on every calendar date — e.g. tomorrow 8am can be invalid if it is <12h away)
-    if (effectiveMinNotice > 0) {
-      const cutoff = new Date(Date.now() + effectiveMinNotice * 60 * 1000);
-      slots = slots.filter((s) => new Date(s.start) >= cutoff);
-    }
 
     // Filter by resource availability: union required resources across offerings (multi-service).
     // Include at-home travel buffer in the occupancy window so resource checks match staff conflict windows.

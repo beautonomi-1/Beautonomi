@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api-client";
+import {
+  PAYSTACK_TERMINALS_ACTION_PATH,
+  PAYSTACK_TERMINALS_DETAIL_PATH,
+  PAYSTACK_TERMINAL_PAYMENTS_ACTION_PATH,
+  PAYSTACK_TERMINAL_PAYMENTS_LIST_PATH,
+  paystackTerminalAllocatePayload,
+} from "@/lib/paystack-terminal-api";
 
 export type PaystackTerminal = {
   id: string;
@@ -75,7 +82,7 @@ export function usePaystackTerminals() {
       const res = await api.get<{
         terminals?: PaystackTerminal[];
         setupRequests?: PaystackTerminalSetupRequest[];
-      }>("/api/provider/paystack/virtual-terminals");
+      }>(PAYSTACK_TERMINALS_DETAIL_PATH);
       if (res.error) throw new Error(res.error.message ?? "Failed to load Paystack terminals");
       setTerminals(res.data?.terminals ?? []);
       setSetupRequests(res.data?.setupRequests ?? []);
@@ -88,9 +95,13 @@ export function usePaystackTerminals() {
 
   const requestTerminalSetup = useCallback(
     async (name?: string | null) => {
-      const res = await api.post<PaystackTerminalSetupRequestResponse>("/api/provider/paystack/virtual-terminals", {
-        name,
-      });
+      const res = await api.post<PaystackTerminalSetupRequestResponse>(
+        PAYSTACK_TERMINALS_ACTION_PATH,
+        {
+          paystackTerminalAction: "request_setup",
+          name,
+        },
+      );
       if (res.error) throw new Error(res.error.message ?? "Failed to request Paystack Terminal setup");
       await refresh();
       return res.data;
@@ -101,8 +112,11 @@ export function usePaystackTerminals() {
   const requestAssets = useCallback(
     async (terminalId: string) => {
       const res = await api.post<{ terminal?: PaystackTerminal; message?: string }>(
-        `/api/provider/paystack/virtual-terminals/${terminalId}/request-assets`,
-        {},
+        PAYSTACK_TERMINALS_ACTION_PATH,
+        {
+          paystackTerminalAction: "request_assets",
+          terminalId,
+        },
       );
       if (res.error) throw new Error(res.error.message ?? "Failed to request branded assets");
       await refresh();
@@ -128,7 +142,7 @@ export function usePaystackTerminalPayments() {
     setError(null);
     try {
       const res = await api.get<{ items?: PaystackTerminalPayment[] }>(
-        "/api/provider/paystack/terminal-payments",
+        PAYSTACK_TERMINAL_PAYMENTS_LIST_PATH,
       );
       if (res.error) throw new Error(res.error.message ?? "Failed to load terminal payments");
       setPayments(res.data?.items ?? []);
@@ -154,8 +168,8 @@ export function usePaystackTerminalPayments() {
         | { action: "admin_review"; reason?: string },
     ) => {
       const res = await api.post(
-        `/api/provider/paystack/terminal-payments/${paymentId}/allocation`,
-        input,
+        PAYSTACK_TERMINAL_PAYMENTS_ACTION_PATH,
+        paystackTerminalAllocatePayload(paymentId, input),
       );
       if (res.error) throw new Error(res.error.message ?? "Failed to update allocation");
       await refresh();

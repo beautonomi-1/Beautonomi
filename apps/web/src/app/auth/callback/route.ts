@@ -9,6 +9,9 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getPortalForUser, getDefaultRouteForPortal } from "@/lib/auth/role";
 import { getUserRoleServer } from "@/lib/auth/role-server";
 import { resolvePortalAwareReturnPathname } from "@/lib/auth/post-login-return-path";
+import { bootstrapPreferredHomeTenantForAuthedUser } from "@/lib/tenant/assign-preferred-home-tenant-from-host";
+import { syncUserAuthMetadataToPublicProfile } from "@/lib/auth/sync-user-auth-metadata";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 const ALLOWED_NEXT_PREFIXES = [
   "/",
@@ -45,6 +48,26 @@ function authErrorRedirect(requestUrl: URL, message: string): NextResponse {
   return NextResponse.redirect(loginUrl);
 }
 
+async function tryBootstrapPreferredHomeTenant(userId: string, request: Request): Promise<void> {
+  try {
+    await bootstrapPreferredHomeTenantForAuthedUser(userId, request);
+  } catch (err) {
+    console.warn("[auth/callback] preferred home tenant bootstrap failed:", err);
+  }
+}
+
+async function trySyncAuthMetadata(userId: string, authUser: {
+  last_sign_in_at?: string | null;
+  email_confirmed_at?: string | null;
+  phone_confirmed_at?: string | null;
+}): Promise<void> {
+  try {
+    await syncUserAuthMetadataToPublicProfile(getSupabaseAdmin(), userId, authUser);
+  } catch (err) {
+    console.warn("[auth/callback] auth metadata sync failed:", err);
+  }
+}
+
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
@@ -63,13 +86,17 @@ export async function GET(request: NextRequest) {
 
   // Password recovery or magic link (e.g. from provider app forgot-password)
   if (tokenHash && (type === "recovery" || type === "signup" || type === "email")) {
-    const { error: verifyError } = await supabase.auth.verifyOtp({
+    const { data: verifyData, error: verifyError } = await supabase.auth.verifyOtp({
       token_hash: tokenHash,
       type: type as "recovery" | "signup" | "email",
     });
     if (verifyError) {
       console.error("Auth verifyOtp error:", verifyError);
       return authErrorRedirect(requestUrl, verifyError.message);
+    }
+    if (verifyData?.user?.id) {
+      await tryBootstrapPreferredHomeTenant(verifyData.user.id, request);
+      await trySyncAuthMetadata(verifyData.user.id, verifyData.user);
     }
     if (type === "recovery") {
       return NextResponse.redirect(
@@ -90,6 +117,11 @@ export async function GET(request: NextRequest) {
   if (exchangeError || !data.session) {
     console.error("Error exchanging code for session:", exchangeError);
     return authErrorRedirect(requestUrl, exchangeError?.message || "authentication_failed");
+  }
+
+  if (data.user?.id) {
+    await tryBootstrapPreferredHomeTenant(data.user.id, request);
+    await trySyncAuthMetadata(data.user.id, data.user);
   }
 
   // Update user profile with OAuth metadata if available

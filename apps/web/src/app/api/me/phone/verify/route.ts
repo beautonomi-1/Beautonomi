@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { bootstrapPreferredHomeTenantForAuthedUser } from "@/lib/tenant/assign-preferred-home-tenant-from-host";
 
 /**
  * POST /api/me/phone/verify
@@ -26,6 +27,9 @@ export async function POST(request: NextRequest) {
       ["customer", "provider_owner", "provider_staff", "superadmin"],
       request
     );
+
+    await bootstrapPreferredHomeTenantForAuthedUser(user.id, request);
+
     const supabase = await getSupabaseServer(request);
 
     // Read Supabase Auth's own user record — phone_confirmed_at is only

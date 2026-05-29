@@ -17,6 +17,7 @@ import { formatCurrency } from "@/lib/utils";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PUBLIC_BOOKING_MAX_ADVANCE_DAYS } from "@/lib/provider-booking/public-booking-slot-policy";
 
 interface Provider {
   id: string;
@@ -83,7 +84,7 @@ const defaultSettings: OnlineBookingSettings = {
   staff_selection_mode: "client_chooses",
   require_auth_step: "checkout",
   min_notice_minutes: 0,
-  max_advance_days: 90,
+  max_advance_days: PUBLIC_BOOKING_MAX_ADVANCE_DAYS,
 };
 
 export default function OnlineBookingFlow({
@@ -299,7 +300,7 @@ export default function OnlineBookingFlow({
     const staffParam = selectedStaff.id === "any" ? "any" : selectedStaff.id;
     fetcher
       .get<{ data: { slots?: any[] } }>(
-        `/api/public/providers/${provider.slug}/availability?date=${dateStr}&service_id=${selectedService.id}&staff_id=${staffParam}&duration_minutes=${selectedService.duration_minutes}&location_id=${selectedLocation?.id ?? ""}&min_notice_minutes=${settings.min_notice_minutes}&max_advance_days=${settings.max_advance_days}${excludeHoldParam}`,
+        `/api/public/providers/${provider.slug}/availability?date=${dateStr}&service_id=${selectedService.id}&staff_id=${staffParam}&duration_minutes=${selectedService.duration_minutes}&location_id=${selectedLocation?.id ?? ""}${excludeHoldParam}`,
         { staleTimeMs: 0 }
       )
       .then((res) => {
@@ -308,7 +309,7 @@ export default function OnlineBookingFlow({
       })
       .catch(() => setSlots([]))
       .finally(() => setLoadingSlots(false));
-  }, [step, selectedDay, selectedService, selectedStaff, selectedLocation, provider.slug, settings.min_notice_minutes, settings.max_advance_days, excludeHoldParam]);
+  }, [step, selectedDay, selectedService, selectedStaff, selectedLocation, provider.slug, excludeHoldParam]);
 
   const handleSecureSlot = async (
     slotStart: string,
@@ -603,7 +604,7 @@ export default function OnlineBookingFlow({
             </Button>
             <h2 className="font-medium">Pick a date</h2>
             <div className="grid grid-cols-7 gap-1">
-              {Array.from({ length: Math.min(settings.max_advance_days, 90) }, (_, i) => {
+              {Array.from({ length: Math.min(PUBLIC_BOOKING_MAX_ADVANCE_DAYS, 90) }, (_, i) => {
                 const d = new Date();
                 d.setDate(d.getDate() + i);
                 const isSelected =

@@ -945,11 +945,18 @@ export async function POST(request: NextRequest) {
         for (const offering of createdOfferings) {
           const pricingOpts = (offering as { pricing_options?: unknown[] }).pricing_options;
           if (Array.isArray(pricingOpts) && pricingOpts.length > 0) {
-            await syncVariantOfferings(
+            const syncResult = await syncVariantOfferings(
               supabaseAdmin,
               offering as Record<string, unknown>,
-              pricingOpts as Parameters<typeof syncVariantOfferings>[2],
+              pricingOpts,
             );
+            if (syncResult.errors.length > 0) {
+              console.error(
+                "[onboarding] variant sync failed for offering",
+                offering.id,
+                syncResult.errors,
+              );
+            }
           }
         }
 

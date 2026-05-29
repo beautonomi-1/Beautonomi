@@ -188,6 +188,8 @@ const CAL_MONTHS = [
   "July", "August", "September", "October", "November", "December",
 ];
 const CAL_WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+/** Calendar horizon — matches public server policy (provider-portal parity). */
+const PUBLIC_BOOKING_MAX_ADVANCE_DAYS = 365;
 
 function startOfLocalDay(d: Date): Date {
   const x = new Date(d);
@@ -195,13 +197,11 @@ function startOfLocalDay(d: Date): Date {
   return x;
 }
 
-/** Respect provider min notice (lead time) against the engine-emitted UTC instant. */
-function isSlotStartStillSelectable(startIso: string, _day: Date, minNoticeMinutes: number): boolean {
+/** Slot is selectable when it is still in the future (provider-portal parity — no min-notice lead time). */
+function isSlotStartStillSelectable(startIso: string): boolean {
   const slotTime = new Date(startIso);
   if (!Number.isFinite(slotTime.getTime())) return false;
-  const safeNotice = Number.isFinite(minNoticeMinutes) && minNoticeMinutes >= 0 ? minNoticeMinutes : 0;
-  const cutoff = Date.now() + safeNotice * 60 * 1000;
-  return slotTime.getTime() >= cutoff;
+  return slotTime.getTime() > Date.now();
 }
 
 function daysBetweenCalendar(a: Date, b: Date): number {
@@ -686,13 +686,7 @@ export default function BookScreen() {
 
   // Week navigation for date picker
   const [weekOffset, setWeekOffset] = useState(0);
-  /** Mirrors web `/online-booking-settings` so slot API applies min notice & max advance. */
-  const [onlineBookingSettings, setOnlineBookingSettings] = useState<{
-    min_notice_minutes: number;
-    max_advance_days: number;
-  } | null>(null);
-  const maxAdvanceDays = onlineBookingSettings?.max_advance_days ?? 90;
-  const minNoticeMinutes = onlineBookingSettings?.min_notice_minutes ?? 0;
+  const maxAdvanceDays = PUBLIC_BOOKING_MAX_ADVANCE_DAYS;
   const [slotClockTick, setSlotClockTick] = useState(0);
 
   useEffect(() => {
@@ -707,16 +701,16 @@ export default function BookScreen() {
     return slots.filter(
       (s) =>
         s.is_available !== false &&
-        isSlotStartStillSelectable(s.start, selectedDay, minNoticeMinutes),
+        isSlotStartStillSelectable(s.start),
     );
-  }, [slots, selectedDay, minNoticeMinutes, slotClockTick]);
+  }, [slots, selectedDay, slotClockTick]);
 
   // All future slots (available + unavailable) — used for the time grid so customers
   // can see which times are blocked rather than having them silently disappear.
   const displaySlots = useMemo(() => {
     if (!selectedDay) return [];
-    return slots.filter((s) => isSlotStartStillSelectable(s.start, selectedDay, minNoticeMinutes));
-  }, [slots, selectedDay, minNoticeMinutes, slotClockTick]);
+    return slots.filter((s) => isSlotStartStillSelectable(s.start));
+  }, [slots, selectedDay, slotClockTick]);
 
   const [calendarModalVisible, setCalendarModalVisible] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(() => new Date());
@@ -945,13 +939,10 @@ export default function BookScreen() {
     setCategoryFilterText("");
     setVisibleLimitByCategoryId({});
     try {
-      const [provRes, svcRes, staffRes, obRes, pkRes, prodRes] = await Promise.all([
+      const [provRes, svcRes, staffRes, pkRes, prodRes] = await Promise.all([
         api.get<PublicProviderDetail>(`/api/public/providers/${encodeURIComponent(slug)}`),
         api.get<ProviderServicesResponse>(`/api/public/providers/${encodeURIComponent(slug)}/services`),
         api.get<StaffMember[] | { data: StaffMember[] }>(`/api/public/providers/${encodeURIComponent(slug)}/staff`),
-        api.get<{ min_notice_minutes?: number; max_advance_days?: number }>(
-          `/api/public/providers/${encodeURIComponent(slug)}/online-booking-settings`
-        ),
         api.get<{ data?: unknown } | unknown[]>(`/api/public/providers/${encodeURIComponent(slug)}/packages`),
         api.get<unknown>(`/api/public/providers/${encodeURIComponent(slug)}/products`).catch(() => ({ error: true, data: null })),
       ]);
@@ -1195,22 +1186,8 @@ export default function BookScreen() {
       } else if (staffList.length === 1) {
         setSelectedStaff(staffList[0]);
       }
-
-      /* api client unwraps JSON `data` — settings object is obRes.data directly */
-      const merged = !obRes.error && obRes.data
-        ? (obRes.data as { min_notice_minutes?: number; max_advance_days?: number })
-        : null;
-      setOnlineBookingSettings(
-        merged
-          ? {
-              min_notice_minutes: merged.min_notice_minutes ?? 0,
-              max_advance_days: merged.max_advance_days ?? 90,
-            }
-          : { min_notice_minutes: 0, max_advance_days: 90 },
-      );
     } catch (e) {
       setError(getApiErrorMessage(e, t("booking.failedToLoad")));
-      setOnlineBookingSettings({ min_notice_minutes: 0, max_advance_days: 90 });
     } finally {
       setLoading(false);
     }
@@ -1378,8 +1355,6 @@ export default function BookScreen() {
         staff_id: staffQ,
         duration_minutes: String(slotParams.durationMinutes),
         buffer_minutes: String(slotParams.bufferMinutes),
-        min_notice_minutes: String(minNoticeMinutes),
-        max_advance_days: String(maxAdvanceDays),
       });
       if (locationType === "at_salon" && selectedLocation?.id) {
         params.set("location_id", selectedLocation.id);
@@ -1425,7 +1400,6 @@ export default function BookScreen() {
     locationType,
     selectedLocation,
     atHomeTravelBufferMinutes,
-    minNoticeMinutes,
     maxAdvanceDays,
     selectedServices,
     excludeHoldIdForSlots,
@@ -1465,9 +1439,9 @@ export default function BookScreen() {
 
   useEffect(() => {
     if (!selectedSlot || !selectedDay) return;
-    if (isSlotStartStillSelectable(selectedSlot.start, selectedDay, minNoticeMinutes)) return;
+    if (isSlotStartStillSelectable(selectedSlot.start)) return;
     setSelectedSlot(null);
-  }, [selectedSlot, selectedDay, slots, minNoticeMinutes, slotClockTick]);
+  }, [selectedSlot, selectedDay, slots, slotClockTick]);
 
   useEffect(() => {
     const getPeriod = (iso: string) => {
@@ -1524,8 +1498,6 @@ export default function BookScreen() {
           staff_id: staffQ,
           duration_minutes: String(slotParams.durationMinutes),
           buffer_minutes: String(slotParams.bufferMinutes),
-          min_notice_minutes: String(minNoticeMinutes),
-          max_advance_days: String(maxAdvanceDays),
         });
         if (locationType === "at_salon" && selectedLocation?.id) {
           params.set("location_id", selectedLocation.id);
@@ -1553,7 +1525,7 @@ export default function BookScreen() {
             const start = s.start;
             if (!start) return false;
             if (s.is_available === false) return false;
-            return isSlotStartStillSelectable(start, d, minNoticeMinutes) && new Date(start).getTime() > now.getTime();
+            return isSlotStartStillSelectable(start);
           });
           if (hasBookable) {
             setSelectedDate(d);
@@ -1581,7 +1553,6 @@ export default function BookScreen() {
     slotParams.bufferMinutes,
     locationType,
     selectedLocation,
-    minNoticeMinutes,
     maxAdvanceDays,
     selectedServices,
     excludeHoldIdForSlots,

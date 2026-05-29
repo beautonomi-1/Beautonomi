@@ -22,6 +22,7 @@ import {
   SUPPORT_TICKET_PRIORITIES,
 } from "@/lib/supportTicketCategoryPresets";
 import { SupportTicketCategoryPicker } from "@/components/SupportTicketCategoryPicker";
+import { SUPPORT_TICKETS_API_PREFIX } from "@/lib/support-ticket-api";
 
 const SUPPORT_CONTEXT_OPTIONS = [
   { value: "booking", label: "Booking" },
@@ -84,7 +85,7 @@ export default function NewSupportTicketScreen() {
     setSubmitting(true);
     try {
       const res = await api.post<{ ticket?: { id?: string; ticket_number?: string } }>(
-        "/api/provider/support-tickets",
+        SUPPORT_TICKETS_API_PREFIX,
         {
           subject: subjectTrimmed,
           message: messageTrimmed,

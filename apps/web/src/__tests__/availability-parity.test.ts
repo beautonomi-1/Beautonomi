@@ -239,4 +239,66 @@ describe("Availability parity: public engine vs /api/availability engine", () =>
       expect(result).toContain("16:00");
     });
   });
+
+  describe("public booking parity — earliest slot and overnight shift", () => {
+    it("returns shift-open as earliest slot (no min-notice lead time in engine)", () => {
+      const staffId = "staff-a";
+      const constraints: AvailabilityConstraints & { workHoursEnabled?: boolean } = {
+        staffShifts: [makeShift(staffId, "09:00", "17:00")],
+        timeBlocks: [],
+        existingBookings: [],
+        workHoursEnabled: true,
+      };
+      const result = availableSlotTimes(constraints);
+      expect(result[0]).toBe("09:00");
+    });
+
+    it("includes early-morning slots within an overnight shift window", () => {
+      const staffId = "staff-a";
+      const constraints: AvailabilityConstraints & { workHoursEnabled?: boolean } = {
+        staffShifts: [
+          {
+            id: "shift-overnight",
+            staff_id: staffId,
+            date: TEST_DATE,
+            start_time: "18:00:00",
+            end_time: "06:00:00",
+            is_recurring: false,
+          },
+        ],
+        timeBlocks: [],
+        existingBookings: [],
+        workHoursEnabled: true,
+      };
+      const result = availableSlotTimes(constraints);
+      expect(result).toContain("05:00");
+      expect(result).toContain("04:00");
+    });
+
+    it("any-staff union exposes earliest bookable time from available staff", () => {
+      const staffA = "staff-a";
+      const staffB = "staff-b";
+
+      const constraintsA: AvailabilityConstraints & { workHoursEnabled?: boolean } = {
+        staffShifts: [makeShift(staffA, "08:00", "12:00")],
+        timeBlocks: [],
+        existingBookings: [makeDayOffParityBooking(staffA)],
+        workHoursEnabled: true,
+      };
+      const constraintsB: AvailabilityConstraints & { workHoursEnabled?: boolean } = {
+        staffShifts: [makeShift(staffB, "09:00", "17:00")],
+        timeBlocks: [],
+        existingBookings: [],
+        workHoursEnabled: true,
+      };
+
+      const slotsA = calculateAvailableSlots(constraintsA, DURATION, TEST_DATE, { slotInterval: 15 });
+      const slotsB = calculateAvailableSlots(constraintsB, DURATION, TEST_DATE, { slotInterval: 15 });
+      const merged = mergeUnionAnyStaffSlots([slotsA, slotsB]);
+      const availableTimes = merged.filter((s) => s.available).map((s) => s.time);
+
+      expect(availableTimes).toContain("09:00");
+      expect(availableTimes[0]).toBe("09:00");
+    });
+  });
 });

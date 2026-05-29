@@ -1785,7 +1785,7 @@ export default function PartnerProfileScreen() {
       <View style={{ flex: 1, backgroundColor: "#fff" }}>
         <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
           {/* ═══════════ HERO GALLERY (4:5) ═══════════ */}
-          <View style={{ width: screenWidth, height: heroHeight, backgroundColor: "#E5E7EB" }}>
+          <View style={{ width: screenWidth, height: heroHeight, backgroundColor: "#E5E7EB", zIndex: 0 }}>
             {images.length > 0 ? (
               <FlatList
                 {...horizontalFlatListPerf}
@@ -1862,7 +1862,7 @@ export default function PartnerProfileScreen() {
                 left: 0,
                 right: 0,
                 bottom: 0,
-                height: 120,
+                height: 96,
                 zIndex: 4,
               }}
               pointerEvents="none"
@@ -1883,7 +1883,7 @@ export default function PartnerProfileScreen() {
           </View>
 
           {/* ═══════════ PROVIDER INFO CARD ═══════════ */}
-          <View style={{ position: "relative", backgroundColor: "#fff", borderTopLeftRadius: 24, borderTopRightRadius: 24, marginTop: -24, paddingTop: 52, paddingBottom: 4 }}>
+          <View style={{ position: "relative", zIndex: 10, backgroundColor: "#fff", borderTopLeftRadius: 24, borderTopRightRadius: 24, marginTop: -32, paddingTop: 52, paddingBottom: 4, ...Shadows.card }}>
             {/* Avatar — straddles the gallery/card seam (top: -36 = half of 72px) */}
             <View style={{ position: "absolute", top: -36, left: 16, zIndex: 20 }}>
               <View

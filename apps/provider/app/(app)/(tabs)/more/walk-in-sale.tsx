@@ -26,6 +26,10 @@ import { SearchBar } from "@/components/ui/SearchBar";
 import { YocoPaymentSheet } from "@/components/YocoPaymentSheet";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { api } from "@/lib/api-client";
+import {
+  PAYSTACK_TERMINAL_PAYMENTS_ACTION_PATH,
+  paystackTerminalCollectionIntentPayload,
+} from "@/lib/paystack-terminal-api";
 import { E164PhoneField } from "@/components/E164PhoneField";
 import { validateE164Phone } from "@/lib/phone-country-codes";
 import { Colors } from "@/constants/colors";
@@ -544,11 +548,11 @@ export default function WalkInSaleScreen() {
         const res = await api.post<{
           terminal?: { terminal_code?: string; payment_link?: string | null; terminal_url?: string | null; qr_url?: string | null };
           expectedAmount?: number | null;
-        }>("/api/provider/paystack/terminal-payments", {
+        }>(PAYSTACK_TERMINAL_PAYMENTS_ACTION_PATH, paystackTerminalCollectionIntentPayload({
           entity_type: "other",
           expected_amount: Number(cartTotalDue.toFixed(2)),
           customer_reference: customerReference,
-        });
+        }));
         if (res.error) {
           Alert.alert("Paystack Terminal", res.error.message ?? "Failed to prepare terminal payment.");
           return;
