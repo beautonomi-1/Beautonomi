@@ -85,13 +85,16 @@ function slotTimeOnSelectedDay(timeStr: string, day: Date, providerTz?: string |
   return parseSelectedDatetimeInProviderTz(`${y}-${m}-${d}`, timeStr, providerTz);
 }
 
-function isSlotTimeStillSelectable(timeStr: string, day: Date, providerTz?: string | null): boolean {
-  const now = new Date();
-  const ds = startOfLocalDay(day).getTime();
-  const ts = startOfLocalDay(now).getTime();
-  if (ds < ts) return false;
-  if (ds > ts) return true;
-  return slotTimeOnSelectedDay(timeStr, day, providerTz).getTime() > now.getTime();
+function isSlotTimeStillSelectable(
+  timeStr: string,
+  day: Date,
+  providerTz?: string | null,
+  minNoticeMinutes = 0,
+): boolean {
+  const slotTime = slotTimeOnSelectedDay(timeStr, day, providerTz);
+  const safeNotice = Number.isFinite(minNoticeMinutes) && minNoticeMinutes >= 0 ? minNoticeMinutes : 0;
+  const cutoff = Date.now() + safeNotice * 60 * 1000;
+  return Number.isFinite(slotTime.getTime()) && slotTime.getTime() >= cutoff;
 }
 
 function formatDuration(minutes: number): string {
@@ -186,6 +189,7 @@ export default function StepCalendar({
   const [availability, setAvailability] = useState<AvailabilityData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showMonthCalendar, setShowMonthCalendar] = useState(false);
+  const [slotClockTick, setSlotClockTick] = useState(0);
   const [monthViewDate, setMonthViewDate] = useState(() => {
     const n = new Date();
     return new Date(n.getFullYear(), n.getMonth(), 1);
@@ -240,12 +244,19 @@ export default function StepCalendar({
     };
   }, [bookingState.providerId]);
 
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setSlotClockTick((value) => value + 1);
+    }, 30_000);
+    return () => window.clearInterval(interval);
+  }, []);
+
   const selectableSlots = useMemo(() => {
     if (!availability?.slots?.length || !selectedDay) return [];
     return availability.slots.filter((s) =>
-      isSlotTimeStillSelectable(s.time, selectedDay, bookingState.providerTimezone),
+      isSlotTimeStillSelectable(s.time, selectedDay, bookingState.providerTimezone, minNoticeMinutes),
     );
-  }, [availability, selectedDay, bookingState.providerTimezone]);
+  }, [availability, selectedDay, bookingState.providerTimezone, minNoticeMinutes, slotClockTick]);
 
   const availableCount = useMemo(
     () => selectableSlots.filter((s) => s.available).length,
@@ -256,10 +267,10 @@ export default function StepCalendar({
     if (!selectedDay || !bookingState.selectedTimeSlot || !availability?.slots) return;
     const row = availability.slots.find((s) => s.time === bookingState.selectedTimeSlot);
     if (!row) return;
-    if (isSlotTimeStillSelectable(row.time, selectedDay, bookingState.providerTimezone)) return;
+    if (isSlotTimeStillSelectable(row.time, selectedDay, bookingState.providerTimezone, minNoticeMinutes)) return;
     updateBookingState({ selectedTimeSlot: null });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDay, bookingState.selectedTimeSlot, availability?.date]);
+  }, [selectedDay, bookingState.selectedTimeSlot, availability?.date, minNoticeMinutes, slotClockTick]);
 
   /** Offering id → duration for group participants (matches OnlineBookingFlowNew maxDur logic). */
   const [offeringDurationById, setOfferingDurationById] = useState<Record<string, number>>({});

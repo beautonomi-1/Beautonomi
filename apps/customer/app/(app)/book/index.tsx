@@ -195,15 +195,12 @@ function startOfLocalDay(d: Date): Date {
   return x;
 }
 
-/** Matches web `StepSchedule`: respect provider min notice (lead time) on every calendar day. */
-function isSlotStartStillSelectable(startIso: string, day: Date, minNoticeMinutes: number): boolean {
+/** Respect provider min notice (lead time) against the engine-emitted UTC instant. */
+function isSlotStartStillSelectable(startIso: string, _day: Date, minNoticeMinutes: number): boolean {
   const slotTime = new Date(startIso);
-  const now = new Date();
-  const dayStart = startOfLocalDay(day).getTime();
-  const todayStart = startOfLocalDay(now).getTime();
-  if (dayStart < todayStart) return false;
+  if (!Number.isFinite(slotTime.getTime())) return false;
   const safeNotice = Number.isFinite(minNoticeMinutes) && minNoticeMinutes >= 0 ? minNoticeMinutes : 0;
-  const cutoff = now.getTime() + safeNotice * 60 * 1000;
+  const cutoff = Date.now() + safeNotice * 60 * 1000;
   return slotTime.getTime() >= cutoff;
 }
 
@@ -696,6 +693,14 @@ export default function BookScreen() {
   } | null>(null);
   const maxAdvanceDays = onlineBookingSettings?.max_advance_days ?? 90;
   const minNoticeMinutes = onlineBookingSettings?.min_notice_minutes ?? 0;
+  const [slotClockTick, setSlotClockTick] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setSlotClockTick((value) => value + 1);
+    }, 30_000);
+    return () => clearInterval(interval);
+  }, []);
 
   const selectableSlots = useMemo(() => {
     if (!selectedDay) return [];
@@ -704,14 +709,14 @@ export default function BookScreen() {
         s.is_available !== false &&
         isSlotStartStillSelectable(s.start, selectedDay, minNoticeMinutes),
     );
-  }, [slots, selectedDay, minNoticeMinutes]);
+  }, [slots, selectedDay, minNoticeMinutes, slotClockTick]);
 
   // All future slots (available + unavailable) — used for the time grid so customers
   // can see which times are blocked rather than having them silently disappear.
   const displaySlots = useMemo(() => {
     if (!selectedDay) return [];
     return slots.filter((s) => isSlotStartStillSelectable(s.start, selectedDay, minNoticeMinutes));
-  }, [slots, selectedDay, minNoticeMinutes]);
+  }, [slots, selectedDay, minNoticeMinutes, slotClockTick]);
 
   const [calendarModalVisible, setCalendarModalVisible] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(() => new Date());
@@ -1462,7 +1467,7 @@ export default function BookScreen() {
     if (!selectedSlot || !selectedDay) return;
     if (isSlotStartStillSelectable(selectedSlot.start, selectedDay, minNoticeMinutes)) return;
     setSelectedSlot(null);
-  }, [selectedSlot, selectedDay, slots, minNoticeMinutes]);
+  }, [selectedSlot, selectedDay, slots, minNoticeMinutes, slotClockTick]);
 
   useEffect(() => {
     const getPeriod = (iso: string) => {

@@ -140,7 +140,7 @@ export default function SupportTicketsListScreen() {
   return (
     <ScreenContainer>
       <ScreenHeader
-        title="Support tickets"
+        title="My support tickets"
         onBack={() => router.back()}
         rightAction={
           <TouchableOpacity
@@ -179,7 +179,7 @@ export default function SupportTicketsListScreen() {
             </TouchableOpacity>
           </View>
         ) : (
-          <View style={{ paddingHorizontal: 8, paddingBottom: 16 }}>
+          <View style={{ paddingBottom: 16 }}>
             {tickets.map((t) => (
               <TouchableOpacity
                 key={t.id}

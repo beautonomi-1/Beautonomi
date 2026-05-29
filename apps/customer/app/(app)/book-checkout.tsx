@@ -450,13 +450,28 @@ function CancellationPolicy({
             style={{ marginTop: 1, marginRight: 8 }}
           />
           <Text style={{ fontSize: 13, color: "#374151", flex: 1, lineHeight: 20 }}>
-            {Number(latePct) <= 0
-              ? windowLabel
-                ? `Within ${windowLabel}: no refund will be issued.`
-                : t("checkout.lateCancellationNoRefund")
-              : windowLabel
-                ? `Within ${windowLabel}: ${Math.round(Number(latePct))}% refund.`
-                : t("checkout.lateCancellationRefund", { percent: Math.round(Number(latePct)) })}
+            {(() => {
+              const pct = Math.round(Number(latePct));
+              const hrs = windowHrs;
+              const hourWord = hrs === 1 ? t("checkout.hour") : t("checkout.hours");
+              // When there's a free-cancellation window: show "Within X hours: …"
+              if (hrs != null && hrs > 0) {
+                return pct <= 0
+                  ? t("checkout.lateCancellationWithinWindowNoRefund", {
+                      hours: hrs,
+                      hourWord,
+                    })
+                  : t("checkout.lateCancellationWithinWindowRefund", {
+                      hours: hrs,
+                      hourWord,
+                      percent: pct,
+                    });
+              }
+              // No free window: show whether refund applies at all
+              return pct <= 0
+                ? t("checkout.noRefundOnCancellation")
+                : t("checkout.lateCancellationRefund", { percent: pct });
+            })()}
           </Text>
         </View>
       ) : null}
@@ -478,7 +493,7 @@ function CancellationPolicy({
       <View style={{ flexDirection: "row", alignItems: "center", marginTop: 6, paddingTop: 8, borderTopWidth: 1, borderTopColor: "#E5E7EB" }}>
         <Ionicons name="lock-closed-outline" size={12} color="#9CA3AF" style={{ marginRight: 4 }} />
         <Text style={{ fontSize: 11, color: "#9CA3AF", lineHeight: 16 }}>
-          This policy is enforced automatically at the time of cancellation.
+          {t("checkout.policyEnforcedAutomatically")}
         </Text>
       </View>
     </View>
@@ -750,6 +765,75 @@ const CHECKOUT_MANY_PRODUCTS = 12;
 const CHECKOUT_MANY_PACKAGES = 8;
 const CHECKOUT_MANY_CATEGORY_PILLS = 10;
 
+/** Addons: show all inline below this count; collapse above it */
+const ADDONS_INLINE_THRESHOLD = 4;
+/** Products: auto-collapse the section when the grid would be very long */
+const PRODUCTS_COLLAPSE_THRESHOLD = 6;
+
+/**
+ * Compact collapsible section header for checkout.
+ * Renders a pressable row with a label, optional badge text (e.g. "3 selected"),
+ * and a chevron that rotates based on `expanded`.
+ */
+function CollapsibleCheckoutSection({
+  label,
+  badge,
+  expanded,
+  onToggle,
+  children,
+}: {
+  label: string;
+  badge?: string;
+  expanded: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <View style={{ marginBottom: 16 }}>
+      <Pressable
+        onPress={onToggle}
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          paddingVertical: 10,
+          paddingHorizontal: 12,
+          backgroundColor: "#F9FAFB",
+          borderRadius: 12,
+          borderWidth: 1,
+          borderColor: "#E5E7EB",
+          marginBottom: expanded ? 10 : 0,
+        }}
+        accessibilityRole="button"
+        accessibilityState={{ expanded }}
+        accessibilityLabel={`${label}${badge ? ` — ${badge}` : ""}`}
+      >
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>{label}</Text>
+          {badge ? (
+            <View
+              style={{
+                backgroundColor: "#7C3AED",
+                paddingHorizontal: 7,
+                paddingVertical: 2,
+                borderRadius: 99,
+              }}
+            >
+              <Text style={{ fontSize: 11, fontWeight: "700", color: "#FFF" }}>{badge}</Text>
+            </View>
+          ) : null}
+        </View>
+        <Ionicons
+          name={expanded ? "chevron-up" : "chevron-down"}
+          size={18}
+          color="#6B7280"
+        />
+      </Pressable>
+      {expanded ? children : null}
+    </View>
+  );
+}
+
 /* ═══════════════════════════════════════════
    Main Screen
    ═══════════════════════════════════════════ */
@@ -1009,6 +1093,9 @@ export default function BookCheckoutScreen() {
   const [checkoutVisibleProducts, setCheckoutVisibleProducts] = useState(CHECKOUT_PRODUCT_PAGE);
   const [checkoutPackageSearch, setCheckoutPackageSearch] = useState("");
   const [checkoutVisiblePackages, setCheckoutVisiblePackages] = useState(CHECKOUT_PACKAGE_PAGE);
+  // Collapsible sections: start collapsed when above threshold, expanded otherwise
+  const [addonsExpanded, setAddonsExpanded] = useState(true);
+  const [productsExpanded, setProductsExpanded] = useState(true);
 
   useEffect(() => {
     if (defaultCard && !selectedCardId && !useNewCard) {
@@ -1299,6 +1386,10 @@ export default function BookCheckoutScreen() {
       const valid = prev.filter((id) => addonsList.some((a) => a.id === id));
       return valid.length === prev.length ? prev : valid;
     });
+    // Auto-collapse add-ons when many are available
+    if (addonsList.length > ADDONS_INLINE_THRESHOLD) {
+      setAddonsExpanded(false);
+    }
   }, [addonsList]);
 
   // Fetch provider products when we have slug (for add-to-booking products)
@@ -1388,6 +1479,13 @@ export default function BookCheckoutScreen() {
       })
       .catch(() => setProductsList([]));
   }, [effectiveProviderSlug]);
+
+  // Auto-collapse sections when many items load
+  useEffect(() => {
+    if (productsList.length > PRODUCTS_COLLAPSE_THRESHOLD) {
+      setProductsExpanded(false);
+    }
+  }, [productsList.length]);
 
   // Default variant per product card when catalog loads (web parity).
   useEffect(() => {
@@ -3281,92 +3379,113 @@ export default function BookCheckoutScreen() {
             </View>
 
             {/* Add-ons */}
-            {addonsList.length > 0 && (
-              <View style={{ marginBottom: 16 }}>
-                <Text
-                  style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 10 }}
-                >
-                  {t("checkout.addonsOptional")}
-                </Text>
-                {addonsList.map((addon) => {
-                  const label = addon.name ?? addon.title ?? "Add-on";
-                  const price = Number(addon.price) || 0;
-                  const addonCurrency = addon.currency ?? currency;
-                  const selected = selectedAddonIds.includes(addon.id);
-                  return (
-                    <Pressable
-                      key={addon.id}
-                      onPress={() => {
-                        haptic.selection();
-                        setSelectedAddonIds((prev) =>
-                          prev.includes(addon.id)
-                            ? prev.filter((id) => id !== addon.id)
-                            : [...prev, addon.id]
-                        );
-                      }}
-                      style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        paddingVertical: 12,
-                        paddingHorizontal: 12,
-                        borderWidth: 1,
-                        borderColor: selected ? "#7C3AED" : "#E5E7EB",
-                        borderRadius: 12,
-                        backgroundColor: selected ? "#F5F3FF" : "#F9FAFB",
-                        marginBottom: 8,
-                      }}
-                    >
-                      <View style={{ flex: 1, flexDirection: "row", alignItems: "center" }}>
-                        <View
-                          style={{
-                            width: 22,
-                            height: 22,
-                            borderRadius: 6,
-                            borderWidth: 2,
-                            borderColor: selected ? "#7C3AED" : "#9CA3AF",
-                            backgroundColor: selected ? "#7C3AED" : "transparent",
-                            marginRight: 10,
-                            alignItems: "center",
-                            justifyContent: "center",
-                          }}
-                        >
-                          {selected && <Ionicons name="checkmark" size={14} color="#FFF" />}
-                        </View>
-                        <View>
-                          <Text style={{ fontSize: 14, fontWeight: "500", color: "#111827" }}>
-                            {label}
-                          </Text>
-                          {addon.duration_minutes != null && addon.duration_minutes > 0 && (
-                            <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>
-                              +{addon.duration_minutes} min
-                            </Text>
-                          )}
-                        </View>
-                        {addon.is_recommended && (
+            {addonsList.length > 0 && (() => {
+              const selectedCount = selectedAddonIds.length;
+              const addonsBadge =
+                addonsList.length > ADDONS_INLINE_THRESHOLD
+                  ? selectedCount > 0
+                    ? `${selectedCount} selected`
+                    : `${addonsList.length} available`
+                  : undefined;
+              const addonItems = (
+                <>
+                  {addonsList.map((addon) => {
+                    const label = addon.name ?? addon.title ?? "Add-on";
+                    const price = Number(addon.price) || 0;
+                    const addonCurrency = addon.currency ?? currency;
+                    const selected = selectedAddonIds.includes(addon.id);
+                    return (
+                      <Pressable
+                        key={addon.id}
+                        onPress={() => {
+                          haptic.selection();
+                          setSelectedAddonIds((prev) =>
+                            prev.includes(addon.id)
+                              ? prev.filter((id) => id !== addon.id)
+                              : [...prev, addon.id]
+                          );
+                        }}
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          paddingVertical: 12,
+                          paddingHorizontal: 12,
+                          borderWidth: 1,
+                          borderColor: selected ? "#7C3AED" : "#E5E7EB",
+                          borderRadius: 12,
+                          backgroundColor: selected ? "#F5F3FF" : "#F9FAFB",
+                          marginBottom: 8,
+                        }}
+                      >
+                        <View style={{ flex: 1, flexDirection: "row", alignItems: "center" }}>
                           <View
                             style={{
-                              backgroundColor: "#FEF3C7",
-                              paddingHorizontal: 6,
-                              paddingVertical: 2,
+                              width: 22,
+                              height: 22,
                               borderRadius: 6,
-                              marginLeft: 8,
+                              borderWidth: 2,
+                              borderColor: selected ? "#7C3AED" : "#9CA3AF",
+                              backgroundColor: selected ? "#7C3AED" : "transparent",
+                              marginRight: 10,
+                              alignItems: "center",
+                              justifyContent: "center",
                             }}
                           >
-                            <Text style={{ fontSize: 10, fontWeight: "600", color: "#92400E" }}>
-                              Recommended
-                            </Text>
+                            {selected && <Ionicons name="checkmark" size={14} color="#FFF" />}
                           </View>
-                        )}
-                      </View>
-                      <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>
-                        {formatCurrency(price, addonCurrency)}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            )}
+                          <View>
+                            <Text style={{ fontSize: 14, fontWeight: "500", color: "#111827" }}>
+                              {label}
+                            </Text>
+                            {addon.duration_minutes != null && addon.duration_minutes > 0 && (
+                              <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>
+                                +{addon.duration_minutes} min
+                              </Text>
+                            )}
+                          </View>
+                          {addon.is_recommended && (
+                            <View
+                              style={{
+                                backgroundColor: "#FEF3C7",
+                                paddingHorizontal: 6,
+                                paddingVertical: 2,
+                                borderRadius: 6,
+                                marginLeft: 8,
+                              }}
+                            >
+                              <Text style={{ fontSize: 10, fontWeight: "600", color: "#92400E" }}>
+                                Recommended
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                        <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>
+                          {formatCurrency(price, addonCurrency)}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </>
+              );
+              return addonsBadge ? (
+                <CollapsibleCheckoutSection
+                  label={t("checkout.addonsOptional")}
+                  badge={addonsBadge}
+                  expanded={addonsExpanded}
+                  onToggle={() => { haptic.selection(); setAddonsExpanded((v) => !v); }}
+                >
+                  {addonItems}
+                </CollapsibleCheckoutSection>
+              ) : (
+                <View style={{ marginBottom: 16 }}>
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 10 }}>
+                    {t("checkout.addonsOptional")}
+                  </Text>
+                  {addonItems}
+                </View>
+              );
+            })()}
 
             {/* Group booking — only shown when provider enables online group booking */}
             {groupBookingEnabled && (
@@ -3637,13 +3756,22 @@ export default function BookCheckoutScreen() {
             )}
 
             {/* Products (add to booking) */}
-            {productsList.length > 0 && (
-              <View style={{ marginBottom: 16 }}>
-                <Text
-                  style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 10 }}
-                >
+            {productsList.length > 0 && (() => {
+              const selectedProductCount = selectedProducts.reduce((s, p) => s + p.quantity, 0);
+              const productsBadge =
+                productsList.length > PRODUCTS_COLLAPSE_THRESHOLD
+                  ? selectedProductCount > 0
+                    ? `${selectedProductCount} in cart`
+                    : `${productsList.length} items`
+                  : undefined;
+              const productsSectionHeader = productsBadge ? null : (
+                <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 10 }}>
                   {t("checkout.productsOptional")}
                 </Text>
+              );
+              const productsInner = (
+                <View>
+                  {productsSectionHeader}
                 {productCategoryPills.length > 1 && (
                   <View style={{ marginBottom: 12 }}>
                     {showCheckoutCategoryFilter && (
@@ -4091,8 +4219,21 @@ export default function BookCheckoutScreen() {
                     )}
                   </>
                 )}
-              </View>
-            )}
+                </View>
+              );
+              return productsBadge ? (
+                <CollapsibleCheckoutSection
+                  label={t("checkout.productsOptional")}
+                  badge={productsBadge}
+                  expanded={productsExpanded}
+                  onToggle={() => { haptic.selection(); setProductsExpanded((v) => !v); }}
+                >
+                  {productsInner}
+                </CollapsibleCheckoutSection>
+              ) : (
+                <View style={{ marginBottom: 16 }}>{productsInner}</View>
+              );
+            })()}
 
             {/* Package selector — only packages that include at least one booked service */}
             {packagesMatchingSelection.length > 0 && (

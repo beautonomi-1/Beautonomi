@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import * as Haptics from "expo-haptics";
+import { Ionicons } from "@expo/vector-icons";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -83,6 +84,7 @@ function FormField({
   placeholder,
   keyboardType,
   multiline,
+  hint,
 }: {
   label: string;
   value: string;
@@ -90,10 +92,14 @@ function FormField({
   placeholder?: string;
   keyboardType?: "default" | "numeric" | "decimal-pad";
   multiline?: boolean;
+  hint?: string;
 }) {
   return (
     <View style={twStyle("mb-3")}>
       <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{label}</Text>
+      {hint ? (
+        <Text style={twStyle("mb-2 text-xs text-gray-400")}>{hint}</Text>
+      ) : null}
       <TextInput
         style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
         placeholder={placeholder}
@@ -251,6 +257,7 @@ export default function ServiceFormScreen() {
   const [pricingOptions, setPricingOptions] = useState<PricingOption[]>([DEFAULT_PRICING_OPTION()]);
   const [advancedPricingRules, setAdvancedPricingRules] = useState<AdvancedPricingRule[]>([]);
   const [offeringResources, setOfferingResources] = useState<OfferingResourceEntry[]>([]);
+  const [formValidationError, setFormValidationError] = useState<string | null>(null);
 
   const [serviceTypeSheetOpen, setServiceTypeSheetOpen] = useState(false);
   const [availabilitySheetOpen, setAvailabilitySheetOpen] = useState(false);
@@ -423,6 +430,7 @@ export default function ServiceFormScreen() {
   }, [serviceId, form.name, deleteService, router, handleDeactivate]);
 
   const handleSave = useCallback(async () => {
+    setFormValidationError(null);
     const validationError = validateServiceForm({
       name: form.name,
       categoryId: form.categoryId,
@@ -432,13 +440,13 @@ export default function ServiceFormScreen() {
       includedServices: form.includedServices,
     });
     if (validationError) {
-      Alert.alert("Validation", validationError);
+      setFormValidationError(validationError);
       return;
     }
 
     const advError = validateAdvancedPricingRules(advancedPricingRules);
     if (advError) {
-      Alert.alert("Validation", advError);
+      setFormValidationError(advError);
       return;
     }
 
@@ -567,8 +575,9 @@ export default function ServiceFormScreen() {
             <FormField
               label="Service name *"
               value={form.name}
-              onChangeText={(t) => setForm((p) => ({ ...p, name: t }))}
+              onChangeText={(t) => { setFormValidationError(null); setForm((p) => ({ ...p, name: t })); }}
               placeholder="e.g. Signature Haircut"
+              hint="This is what customers will see when browsing your services."
             />
 
             <View style={twStyle("mb-3")}>
@@ -642,7 +651,7 @@ export default function ServiceFormScreen() {
               <ChipCombobox
                 singleSelect
                 value={form.categoryId || null}
-                onChange={(v) => setForm((p) => ({ ...p, categoryId: v ?? "" }))}
+                onChange={(v) => { setFormValidationError(null); setForm((p) => ({ ...p, categoryId: v ?? "" })); }}
                 staticSuggestions={categories.map((c) => ({ value: c.id, label: c.name }))}
                 onCreateNew={handleCreateCategory}
                 placeholder="Select or add category"
@@ -832,6 +841,12 @@ export default function ServiceFormScreen() {
         </ScrollView>
 
         <View style={twStyle("border-t border-gray-100 bg-white px-4 py-3")}>
+          {formValidationError ? (
+            <View style={twStyle("mb-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 flex-row items-start gap-2")}>
+              <Ionicons name="alert-circle-outline" size={18} color="#dc2626" style={{ marginTop: 1 }} />
+              <Text style={twStyle("text-sm font-medium text-red-700 flex-1")}>{formValidationError}</Text>
+            </View>
+          ) : null}
           {isEdit && (
             <TouchableOpacity
               onPress={handleDelete}

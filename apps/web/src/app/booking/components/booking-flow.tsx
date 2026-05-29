@@ -28,6 +28,7 @@ import { toast } from "sonner";
 import { getGuestFingerprintHash } from "@/lib/public-booking/guest-fingerprint";
 import { formatLocalDateYYYYMMDD } from "@/lib/dates/format-local-date-yyyymmdd";
 import { reconcileBookingInstantWithSlotLabel } from "@/lib/bookings/reconcile-booking-instant-with-slot-label";
+import { getTravelBuffer } from "@/lib/config/house-call-config";
 import {
   BOOKING_STATE_STORAGE_KEY,
   clearBookingFlowStorage,
@@ -908,6 +909,10 @@ export default function BookingFlow() {
         bookingState.selectedSlotStart && bookingState.selectedSlotEnd
           ? new Date(bookingState.selectedSlotEnd)
           : new Date(bookingDateTime.getTime() + totalMs);
+      const availabilityTravelBufferMinutes =
+        bookingState.mode === "mobile"
+          ? getTravelBuffer("mobile", bookingState.address?.travelTimeMinutes)
+          : 0;
       const cachedPackage = selectedPackageCatalogRef.current;
       const packageIdForHold =
         bookingState.selectedPackage?.id &&
@@ -952,6 +957,9 @@ export default function BookingFlow() {
           location_id: bookingState.selectedLocationId ?? null,
           previous_hold_id: bookingState.holdId || null,
           guest_fingerprint_hash: getGuestFingerprintHash(),
+          ...(bookingState.mode === "mobile"
+            ? { availability_travel_buffer_minutes: availabilityTravelBufferMinutes }
+            : {}),
           // §Release-audit 2026-04: when the slot came from an any-staff
           // union, forward the engine's list of free staff so the hold
           // resolver prefers the exact staff the calendar surfaced.

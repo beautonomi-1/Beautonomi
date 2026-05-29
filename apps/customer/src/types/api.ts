@@ -9,6 +9,7 @@ export interface ProviderBadge {
   slug?: string;
   description?: string | null;
   color?: string | null;
+  icon_url?: string | null;
 }
 
 export interface PublicProviderCard {

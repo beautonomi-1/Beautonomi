@@ -10,6 +10,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { checkBookingSnapshotSegmentConflicts } from "./conflict-check";
 import { isProviderCalendarWindowBlocked } from "@/lib/public-booking/provider-calendar-block-overlap";
+import { loadEffectiveStaffShifts } from "@/lib/availability/load-constraints";
+import { segmentFitsAnyShift } from "@/lib/availability/shift-fit";
+import { DEFAULT_BOOKING_DISPLAY_TIMEZONE } from "@/lib/bookings/display-invariants";
+import { formatInTimeZone } from "date-fns-tz";
 
 type BookingServiceLine = {
   offering_id: string;
@@ -32,6 +36,8 @@ export async function pickFirstStaffForNullStaffLines(args: {
   locationId: string | null;
   bookingServicesData: BookingServiceLine[];
   offeringBufferMinutesById: Map<string, number>;
+  providerTimeZone?: string | null;
+  travelBufferMinutes?: number;
   /**
    * §Release-audit 2026-04: the any-staff union in the public slug engine
    * returns every staff who was free at the surfaced wall-clock time in
@@ -50,8 +56,33 @@ export async function pickFirstStaffForNullStaffLines(args: {
     locationId,
     bookingServicesData,
     offeringBufferMinutesById,
+    providerTimeZone,
+    travelBufferMinutes = 0,
     preferredStaffIds,
   } = args;
+  const providerTz = providerTimeZone || DEFAULT_BOOKING_DISPLAY_TIMEZONE;
+  const minutesFromInstantInZone = (instant: Date): number => {
+    const hm = formatInTimeZone(instant, providerTz, "HH:mm");
+    const [h, m] = hm.split(":").map((x) => parseInt(x, 10));
+    return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
+  };
+  const shiftCache = new Map<string, Awaited<ReturnType<typeof loadEffectiveStaffShifts>>>();
+  const getShiftsForDate = async (staffId: string, date: string) => {
+    const key = `${staffId}|${date}`;
+    let resolved = shiftCache.get(key);
+    if (!resolved) {
+      resolved = await loadEffectiveStaffShifts(
+        supabaseAdmin,
+        staffId,
+        date,
+        providerId,
+        locationId,
+      );
+      shiftCache.set(key, resolved);
+    }
+    return resolved;
+  };
+  const OVERNIGHT_CUTOFF_MIN = 8 * 60;
 
   const { data: staffRows } = await supabaseAdmin
     .from("provider_staff")
@@ -98,6 +129,48 @@ export async function pickFirstStaffForNullStaffLines(args: {
       }
     }
     if (!calendarOk) continue;
+
+    let shiftOk = true;
+    for (let idx = 0; idx < withStaff.length; idx++) {
+      const line = withStaff[idx];
+      const segStart = new Date(line.scheduled_start_at);
+      const segEnd = new Date(line.scheduled_end_at);
+      const buf = offeringBufferMinutesById.get(line.offering_id) ?? 0;
+      const isLast = idx === withStaff.length - 1;
+      const travelTail = isLast ? travelBufferMinutes : 0;
+      const effectiveEnd = new Date(segEnd.getTime() + (buf + travelTail) * 60000);
+      const localDate = formatInTimeZone(segStart, providerTz, "yyyy-MM-dd");
+      const segStartMin = minutesFromInstantInZone(segStart);
+      const segEndMin = minutesFromInstantInZone(effectiveEnd);
+      const resolved = await getShiftsForDate(cid, localDate);
+      let fits =
+        resolved.workHoursEnabledEffective &&
+        resolved.staffShifts.length > 0 &&
+        segmentFitsAnyShift(segStartMin, segEndMin, resolved.staffShifts);
+
+      if (!fits && segStartMin < OVERNIGHT_CUTOFF_MIN) {
+        const prevDateMs = new Date(`${localDate}T12:00:00.000Z`).getTime() - 24 * 60 * 60 * 1000;
+        const prevDate = new Date(prevDateMs).toISOString().slice(0, 10);
+        const prevResolved = await getShiftsForDate(cid, prevDate);
+        const overnightShifts = prevResolved.staffShifts.filter((s) => {
+          const [sh, sm] = s.start_time.split(":").map(Number);
+          const [eh, em] = s.end_time.split(":").map(Number);
+          const sMin = (Number.isFinite(sh) ? sh : 0) * 60 + (Number.isFinite(sm) ? sm : 0);
+          const eMin = (Number.isFinite(eh) ? eh : 0) * 60 + (Number.isFinite(em) ? em : 0);
+          return eMin < sMin || s.end_time === "00:00" || s.end_time === "00:00:00";
+        });
+        fits =
+          prevResolved.workHoursEnabledEffective &&
+          overnightShifts.length > 0 &&
+          segmentFitsAnyShift(segStartMin, segEndMin, overnightShifts);
+      }
+
+      if (!fits) {
+        shiftOk = false;
+        break;
+      }
+    }
+    if (!shiftOk) continue;
 
     const segConflict = await checkBookingSnapshotSegmentConflicts(
       supabaseAdmin,

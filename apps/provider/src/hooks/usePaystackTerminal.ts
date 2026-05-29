@@ -43,14 +43,28 @@ export type PaystackTerminalPayment = {
 };
 
 export type PaystackTerminalSetupRequest = {
+  id: string;
+  status: "requested" | "in_progress";
+  requested_display_name?: string | null;
+  suggested_paystack_name?: string | null;
+  destination_target?: string | null;
+  request_notes?: string | null;
+  created_at: string;
+  updated_at?: string | null;
+};
+
+export type PaystackTerminalSetupRequestResponse = {
   requested: boolean;
-  status: "admin_setup_required";
-  suggested_name?: string | null;
-  message?: string | null;
+  status: string;
+  setup_request: PaystackTerminalSetupRequest;
+  suggested_name: string;
+  destination_target?: string | null;
+  message: string;
 };
 
 export function usePaystackTerminals() {
   const [terminals, setTerminals] = useState<PaystackTerminal[]>([]);
+  const [setupRequests, setSetupRequests] = useState<PaystackTerminalSetupRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -58,11 +72,13 @@ export function usePaystackTerminals() {
     setLoading(true);
     setError(null);
     try {
-      const res = await api.get<{ terminals?: PaystackTerminal[] }>(
-        "/api/provider/paystack/virtual-terminals",
-      );
+      const res = await api.get<{
+        terminals?: PaystackTerminal[];
+        setupRequests?: PaystackTerminalSetupRequest[];
+      }>("/api/provider/paystack/virtual-terminals");
       if (res.error) throw new Error(res.error.message ?? "Failed to load Paystack terminals");
       setTerminals(res.data?.terminals ?? []);
+      setSetupRequests(res.data?.setupRequests ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load Paystack terminals");
     } finally {
@@ -72,7 +88,7 @@ export function usePaystackTerminals() {
 
   const requestTerminalSetup = useCallback(
     async (name?: string | null) => {
-      const res = await api.post<PaystackTerminalSetupRequest>("/api/provider/paystack/virtual-terminals", {
+      const res = await api.post<PaystackTerminalSetupRequestResponse>("/api/provider/paystack/virtual-terminals", {
         name,
       });
       if (res.error) throw new Error(res.error.message ?? "Failed to request Paystack Terminal setup");
@@ -99,7 +115,7 @@ export function usePaystackTerminals() {
     void refresh();
   }, [refresh]);
 
-  return { terminals, loading, error, refresh, requestTerminalSetup, requestAssets };
+  return { terminals, setupRequests, loading, error, refresh, requestTerminalSetup, requestAssets };
 }
 
 export function usePaystackTerminalPayments() {

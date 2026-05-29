@@ -446,24 +446,28 @@ export default function HomeScreen() {
 
   const navTabPadH = windowWidth < 360 ? 6 : 10;
 
-  const { data, loading, refreshing, error, refetch } = useHomeData(
+  const { data, loading, refreshing, error, refetch, silentRefetch } = useHomeData(
     effectiveLat,
     effectiveLng,
     activeCategorySlug
   );
 
-  // Refresh provider list whenever the Home tab gains focus so newly registered
-  // or deleted providers appear without requiring a manual pull-to-refresh.
+  // When the Home tab regains focus, refresh the feed silently (no spinner,
+  // no scroll reset) and skip the refresh if data was fetched very recently.
   const hasMountedRef = useRef(false);
   useFocusEffect(
     useCallback(() => {
       if (hasMountedRef.current) {
-        refetch();
+        silentRefetch();
       } else {
         hasMountedRef.current = true;
       }
-    }, [refetch])
+    }, [silentRefetch])
   );
+
+  // Tracks whether the entry animation has already played so focus-triggered
+  // background refreshes don't re-animate the feed.
+  const hasAnimatedRef = useRef(false);
 
   const adsDisclosureLabel = useMemo(
     () => (String(data?.ads_disclosure_label ?? "Sponsored").trim() || "Sponsored"),
@@ -751,8 +755,10 @@ export default function HomeScreen() {
               </TouchableOpacity>
             </View>
           ) : null}
-          {data ? (
-            <FadeIn delay={100} duration={400}>
+          {data ? (() => {
+            const shouldAnimate = !hasAnimatedRef.current;
+            if (shouldAnimate) hasAnimatedRef.current = true;
+            const sections = (
               <View>
                 <ProviderSection
                   title="Top Rated"
@@ -807,8 +813,11 @@ export default function HomeScreen() {
                   onViewMore={() => router.push("/(app)/more-providers/upcoming")}
                 />
               </View>
-            </FadeIn>
-          ) : null}
+            );
+            return shouldAnimate ? (
+              <FadeIn delay={100} duration={400}>{sections}</FadeIn>
+            ) : sections;
+          })() : null}
         </ScrollView>
       </View>
 

@@ -397,6 +397,7 @@ export default function GroupBookingsScreen() {
   }>();
   const { provider, selectedLocationId } = useProvider();
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
+  const yocoEnabled = useFeatureFlag("payment_yoco");
   const providerTz = provider?.timezone ?? null;
   const locations = provider?.locations ?? [];
 
@@ -623,6 +624,12 @@ export default function GroupBookingsScreen() {
     terminal: { qr_url?: string | null; payment_link?: string | null; terminal_url?: string | null; name?: string | null };
   } | null>(null);
   const [isPreparingTerminal, setIsPreparingTerminal] = useState(false);
+
+  // Reset payment method to "pay_later" if the selected method is gated off.
+  useEffect(() => {
+    if (createPaymentMethod === "yoco_pos" && !yocoEnabled) setCreatePaymentMethod("pay_later");
+    if (createPaymentMethod === "paystack_terminal" && !paystackTerminalEnabled) setCreatePaymentMethod("pay_later");
+  }, [yocoEnabled, paystackTerminalEnabled, createPaymentMethod]);
 
   useEffect(() => {
     setExtraGroups([]);
@@ -1901,6 +1908,25 @@ export default function GroupBookingsScreen() {
     setShowCreate(false);
     InteractionManager.runAfterInteractions(() => {
       void refresh();
+      const paymentNote =
+        createPaymentMethod === "pay_later"
+          ? "Payment is due from participants."
+          : createPaymentMethod === "payment_link"
+            ? "Send payment links to each participant from their booking."
+            : "Session has been marked paid.";
+      Alert.alert(
+        "Group session created",
+        `${groupRef ? `Ref: ${groupRef}\n\n` : ""}${createParticipants.length} participant${createParticipants.length !== 1 ? "s" : ""} added.\n\n${paymentNote}`,
+        [
+          {
+            text: "View session",
+            onPress: () => {
+              if (createdGroupId) router.setParams({ open_group_id: createdGroupId } as never);
+            },
+          },
+          { text: "Done" },
+        ],
+      );
     });
   }
 
@@ -2823,7 +2849,7 @@ export default function GroupBookingsScreen() {
                           ) : null}
                         </View>
                       )}
-                      {p.booking_id ? (
+                      {p.booking_id && (Number(p.total_paid ?? 0) - Number(p.total_refunded ?? 0) > 0) ? (
                         <TouchableOpacity
                           onPress={() => openParticipantRefund(p)}
                           style={twStyle(
@@ -2857,30 +2883,29 @@ export default function GroupBookingsScreen() {
               portal.  This routes them to the filtered bookings list
               where the existing per-booking refund action lives.
             */}
-            {selectedGroup.status !== "cancelled" ? (
+            {selectedGroup.status !== "cancelled" && (selectedGroup.participants ?? []).some(
+              (participant) =>
+                !!participant.booking_id &&
+                Number(participant.total_paid ?? 0) - Number(participant.total_refunded ?? 0) > 0
+            ) ? (
               <TouchableOpacity
                 style={twStyle(
                   "mb-3 flex-row items-center justify-center rounded-lg bg-amber-50 py-2.5"
                 )}
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  const participantsWithBooking = (selectedGroup.participants ?? []).filter(
-                    (participant) => !!participant.booking_id
+                  const refundableParticipants = (selectedGroup.participants ?? []).filter(
+                    (participant) =>
+                      !!participant.booking_id &&
+                      Number(participant.total_paid ?? 0) - Number(participant.total_refunded ?? 0) > 0
                   );
-                  if (participantsWithBooking.length === 0) {
-                    Alert.alert(
-                      "Refund participant",
-                      "No participants in this group have linked bookings yet, so refunds are not available."
-                    );
-                    return;
-                  }
-                  if (participantsWithBooking.length === 1) {
-                    openParticipantRefund(participantsWithBooking[0]);
+                  if (refundableParticipants.length === 1) {
+                    openParticipantRefund(refundableParticipants[0]);
                     return;
                   }
                   Alert.alert(
                     "Refund participant",
-                    "Use the Refund participant button on the specific participant row below to refund the correct booking."
+                    "Use the Refund participant button on the specific participant row to refund the correct booking."
                   );
                 }}
                 accessibilityRole="button"
@@ -2956,12 +2981,33 @@ export default function GroupBookingsScreen() {
                 </TouchableOpacity>
               </View>
             )}
-            {/* Record payment — only for non-cancelled sessions */}
-            {selectedGroup.status !== "cancelled" && (
+            {/* Record payment — only when there is outstanding balance */}
+            {(() => {
+              const participants = selectedGroup.participants ?? [];
+              const hasParticipantsWithBookings = participants.some((p) => !!p.booking_id);
+              // Group is paid when all participants with bookings have no remaining balance_due.
+              const isFullyPaid =
+                hasParticipantsWithBookings &&
+                participants
+                  .filter((p) => !!p.booking_id)
+                  .every((p) => {
+                    if (p.payment_status === "paid") return true;
+                    const balanceDue = Number(p.balance_due ?? 0);
+                    const totalPaid = Number(p.total_paid ?? 0);
+                    const price = Number(p.price ?? 0);
+                    return balanceDue <= 0 && (totalPaid >= price || totalPaid > 0);
+                  });
+              return !isFullyPaid && selectedGroup.status !== "cancelled" ? (
               <View style={twStyle("mt-2")}>
+                <View style={twStyle("mb-2 flex-row items-center rounded-lg bg-amber-50 p-2")}>
+                  <Ionicons name="alert-circle-outline" size={14} color="#b45309" style={{ marginRight: 6 }} />
+                  <Text style={twStyle("text-xs text-amber-700 flex-1")}>Payment outstanding — record when collected</Text>
+                </View>
                 <Text style={twStyle("mb-2 text-xs font-medium text-gray-500")}>Record payment</Text>
                 <View style={twStyle("flex-row flex-wrap")}>
-                  {(["cash", "card", "yoco", "bank_transfer"] as const).map((method) => (
+                  {(["cash", "card", "yoco", "bank_transfer"] as const)
+                    .filter((method) => method !== "yoco" || yocoEnabled)
+                    .map((method) => (
                     <TouchableOpacity
                       key={method}
                       style={[
@@ -3011,7 +3057,8 @@ export default function GroupBookingsScreen() {
                   </View>
                 )}
               </View>
-            )}
+              ) : null;
+            })()}
           </View>
         )}
       </BottomSheet>
@@ -4715,14 +4762,14 @@ export default function GroupBookingsScreen() {
                   { value: "pay_later", label: "Pay later", icon: "time-outline" as const },
                   { value: "cash", label: "Cash", icon: "cash-outline" as const },
                   { value: "card", label: "Manual card", icon: "card-outline" as const },
-                  {
-                    value: "yoco_pos",
-                    label: "Yoco terminal",
-                    icon: "phone-portrait-outline" as const,
-                  },
+                  yocoEnabled
+                    ? { value: "yoco_pos", label: "Yoco (recorded)", icon: "phone-portrait-outline" as const }
+                    : null,
                   { value: "payment_link", label: "Payment link", icon: "send-outline" as const },
-                  { value: "paystack_terminal", label: "Paystack Terminal", icon: "qr-code-outline" as const },
-                ] as const
+                  paystackTerminalEnabled
+                    ? { value: "paystack_terminal", label: "Paystack Terminal", icon: "qr-code-outline" as const }
+                    : null,
+                ].filter(Boolean) as { value: "pay_later" | "cash" | "card" | "yoco_pos" | "payment_link" | "paystack_terminal"; label: string; icon: string }[]
               ).map((m) => {
                 const active = createPaymentMethod === m.value;
                 return (
@@ -4735,7 +4782,7 @@ export default function GroupBookingsScreen() {
                     accessibilityRole="radio"
                     accessibilityState={{ selected: active }}
                   >
-                    <Ionicons name={m.icon} size={16} color={active ? "#db2777" : "#475569"} />
+                    <Ionicons name={m.icon as keyof typeof Ionicons.glyphMap} size={16} color={active ? "#db2777" : "#475569"} />
                     <Text
                       style={twStyle(
                         `ml-2 text-sm font-medium ${active ? "text-pink-700" : "text-gray-700"}`

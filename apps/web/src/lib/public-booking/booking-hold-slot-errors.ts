@@ -8,7 +8,8 @@ export type BookingHoldSlotErrorCode =
   | "SLOT_TAKEN_BY_HOLD"
   | "NO_STAFF_AVAILABLE"
   | "CALENDAR_BLOCKED"
-  | "CONFLICT_SNAPSHOT";
+  | "CONFLICT_SNAPSHOT"
+  | "OUTSIDE_WORKING_HOURS";
 
 export function bookingHoldSlotUnavailableResponse(
   slotErrorCode: BookingHoldSlotErrorCode,

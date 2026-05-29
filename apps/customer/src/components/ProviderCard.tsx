@@ -78,9 +78,34 @@ export const ProviderCard = React.memo(function ProviderCard({
     router.push({ pathname: "/(app)/partner-profile", params });
   };
 
-  const badgeStyle = { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 9999, marginTop: 4 };
-  const badgeStyleFirst = { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 9999 };
-  const badgeTextStyle = { color: Colors.white, fontSize: 10, fontWeight: "500" as const };
+  const badgeTextStyle = { color: Colors.white, fontSize: 11, fontWeight: "600" as const };
+  const MAX_VISIBLE_BADGES = 3;
+
+  // Build ordered badge list: sponsored/ad disclosure FIRST (transparency), then earned tier
+  // badge, then contextual section badge (Top Rated/Hottest/etc.), then capability badges.
+  // This ensures ad disclosure is never buried.
+  const allBadges: Array<{ key: string; bg: string; label: string; iconUri?: string }> = [];
+  if (provider.is_sponsored) {
+    allBadges.push({ key: "spon", bg: "#D97706", label: sponsoredListingLabel });
+  }
+  if (provider.current_badge) {
+    allBadges.push({
+      key: "badge",
+      bg: provider.current_badge.color ?? "#6366f1",
+      label: provider.current_badge.name,
+      iconUri: provider.current_badge.icon_url ?? undefined,
+    });
+  }
+  if (showTopRatedBadge) allBadges.push({ key: "top", bg: Colors.primary, label: "Top Rated" });
+  if (showHottestBadge) allBadges.push({ key: "hot", bg: "#EA580C", label: "Hottest" });
+  if (showNearestBadge) allBadges.push({ key: "near", bg: "#2563EB", label: "Nearest" });
+  if (showUpcomingBadge) allBadges.push({ key: "up", bg: "#9333EA", label: "Rising Star" });
+  if (provider.business_type === "freelancer") allBadges.push({ key: "free", bg: "#F97316", label: "Freelancer" });
+  if (provider.supports_house_calls) allBadges.push({ key: "house", bg: "#22C55E", label: "House Calls" });
+  if (provider.supports_salon) allBadges.push({ key: "salon", bg: "#A855F7", label: "At Salon" });
+
+  const visibleBadges = allBadges.slice(0, MAX_VISIBLE_BADGES);
+  const overflowCount = allBadges.length - MAX_VISIBLE_BADGES;
 
   return (
     <AnimatedPressable
@@ -101,22 +126,42 @@ export const ProviderCard = React.memo(function ProviderCard({
           cachePolicy="memory-disk"
           accessibilityLabel={`${provider.business_name} listing photo`}
         />
-        <View style={{ position: "absolute", top: 8, left: 8, flexDirection: "column" }}>
-          {[
-            showTopRatedBadge && <View key="top" style={[badgeStyleFirst, { backgroundColor: Colors.primary }]}><Text style={badgeTextStyle}>Top Rated</Text></View>,
-            showHottestBadge && <View key="hot" style={[badgeStyle, { backgroundColor: "#EA580C" }]}><Text style={badgeTextStyle}>Hottest</Text></View>,
-            showNearestBadge && <View key="near" style={[badgeStyle, { backgroundColor: "#2563EB" }]}><Text style={badgeTextStyle}>Nearest</Text></View>,
-            showUpcomingBadge && <View key="up" style={[badgeStyle, { backgroundColor: "#9333EA" }]}><Text style={badgeTextStyle}>Rising Star</Text></View>,
-            provider.business_type === "freelancer" && <View key="free" style={[badgeStyle, { backgroundColor: "#F97316" }]}><Text style={badgeTextStyle}>Freelancer</Text></View>,
-            provider.supports_house_calls && <View key="house" style={[badgeStyle, { backgroundColor: "#22C55E" }]}><Text style={badgeTextStyle}>House Calls</Text></View>,
-            provider.supports_salon && <View key="salon" style={[badgeStyle, { backgroundColor: "#A855F7" }]}><Text style={badgeTextStyle}>At Salon</Text></View>,
-            provider.current_badge && <View key="badge" style={[badgeStyle, { backgroundColor: provider.current_badge.color ?? "#6366f1" }]}><Text style={badgeTextStyle}>{provider.current_badge.name}</Text></View>,
-            provider.is_sponsored && (
-              <View key="spon" style={[badgeStyle, { backgroundColor: "#D97706" }]}>
-                <Text style={badgeTextStyle}>{sponsoredListingLabel}</Text>
-              </View>
-            ),
-          ].filter(Boolean)}
+        <View style={{ position: "absolute", top: 8, left: 8, flexDirection: "column", gap: 4 }}>
+          {visibleBadges.map((b, idx) => (
+            <View
+              key={b.key}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                paddingHorizontal: 8,
+                paddingVertical: 4,
+                borderRadius: 9999,
+                backgroundColor: b.bg,
+                marginTop: idx === 0 ? 0 : 0,
+              }}
+            >
+              {b.iconUri ? (
+                <Image
+                  source={{ uri: b.iconUri }}
+                  style={{ width: 10, height: 10, marginRight: 4 }}
+                  contentFit="contain"
+                />
+              ) : null}
+              <Text style={badgeTextStyle}>{b.label}</Text>
+            </View>
+          ))}
+          {overflowCount > 0 && (
+            <View
+              style={{
+                paddingHorizontal: 8,
+                paddingVertical: 4,
+                borderRadius: 9999,
+                backgroundColor: "rgba(0,0,0,0.55)",
+              }}
+            >
+              <Text style={badgeTextStyle}>+{overflowCount} more</Text>
+            </View>
+          )}
         </View>
         <View style={[{ position: "absolute", top: 8, right: 8, backgroundColor: Colors.white, borderRadius: 9999, padding: 6 }, Shadows.cardSubtle]}>
           <Ionicons name="heart" size={14} color={Colors.primary} />

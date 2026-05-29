@@ -6,6 +6,7 @@ import {
 } from "@/lib/availability/public-slug-availability-engine";
 import { parseSyntheticProviderStaffId } from "@/lib/availability/load-constraints";
 import { normalizeProviderTimezone } from "@/lib/availability/time-utils";
+import { DEFAULT_BOOKING_DISPLAY_TIMEZONE } from "@/lib/bookings/display-invariants";
 import type { TimeSlot } from "@/lib/availability/types";
 import {
   getProviderIdForUser,
@@ -157,24 +158,22 @@ export async function GET(request: NextRequest) {
       if (typeof rawAdvance === "number" && Number.isFinite(rawAdvance) && rawAdvance >= 1) {
         providerMaxAdvance = Math.floor(rawAdvance);
       }
-      // §Launch-audit 2026-04-18: reject invalid / legacy offset-style
-      // timezones so the availability engine never throws RangeError on
-      // Intl.DateTimeFormat. `normalizeProviderTimezone` maps common
-      // offset forms (e.g. "GMT+2" → "Etc/GMT-2") and returns null for
-      // unparseable input. When null, the engine falls back to UTC
-      // interpretation of HH:MM, which still keeps slots internally
-      // consistent even if labels drift from the provider's wall clock.
-      providerTimeZone = normalizeProviderTimezone(providerTimeZoneRaw);
-      if (providerTimeZoneRaw && !providerTimeZone) {
+      // `normalizeProviderTimezone` maps common offset forms (e.g. "GMT+2" →
+      // "Etc/GMT-2"). If the provider has no usable timezone, use the same SA
+      // marketplace default as `combineDateAndTime`; otherwise `public_slots`
+      // would be generated in Africa/Johannesburg while legacy `slots[].time`
+      // labels were recovered as raw UTC, creating the visible +2h/-2h drift.
+      const normalizedProviderTimeZone = normalizeProviderTimezone(providerTimeZoneRaw);
+      providerTimeZone = normalizedProviderTimeZone ?? DEFAULT_BOOKING_DISPLAY_TIMEZONE;
+      if (providerTimeZoneRaw && !normalizedProviderTimeZone) {
         console.warn(
           `[availability] provider ${providerIdForEngine} has invalid timezone ` +
-            `"${providerTimeZoneRaw}"; falling back to UTC. ` +
+            `"${providerTimeZoneRaw}"; falling back to ${DEFAULT_BOOKING_DISPLAY_TIMEZONE}. ` +
             `Update providers.timezone to an IANA identifier (e.g. Africa/Johannesburg).`
         );
       }
     } catch {
-      // Best-effort: if the lookup fails the engine falls back to legacy
-      // behaviour (UTC interpretation of HH:MM).
+      providerTimeZone = DEFAULT_BOOKING_DISPLAY_TIMEZONE;
     }
 
     // Min-notice + max-advance parity with the slug route: provider policy

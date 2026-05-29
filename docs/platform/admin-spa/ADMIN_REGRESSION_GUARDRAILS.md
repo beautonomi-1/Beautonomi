@@ -121,7 +121,7 @@ Workflow: `.github/workflows/ci.yml`
 |--------|--------|
 | After typecheck | `pnpm --filter admin-web test` (includes regression Vitest) |
 | After typecheck | `node apps/admin-web/scripts/check-admin-api-routes-in-taxonomy.mjs` |
-| After admin-web build | `playwright install chromium --with-deps` then `pnpm exec playwright test` from `apps/admin-web` |
+| Parallel with web build (`admin-e2e-smoke` job) | `playwright test` in `apps/admin-web` via Playwright Docker image (no browser download) |
 
 ### 3.1 Admin API route ↔ taxonomy alignment
 

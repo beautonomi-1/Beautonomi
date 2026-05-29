@@ -1032,6 +1032,10 @@ export default function OnlineBookingFlowNew({
   // Total slot span = sum(durations) + sum(buffers) so slots match hold/booking block. For group booking use max across primary and all participants.
   const slotParams = (() => {
     const offeringsList = offerings as Array<{ id: string; duration_minutes?: number; buffer_minutes?: number }>;
+    const addonDurationMinutes = bookingData.selectedAddonIds.reduce((total, addonId) => {
+      const addon = addons.find((item) => item.id === addonId);
+      return total + Math.max(0, Number(addon?.duration_minutes ?? 0) || 0);
+    }, 0);
     const spanForOfferingIds = (ids: string[]) => {
       let total = 0;
       for (let i = 0; i < ids.length; i++) {
@@ -1053,15 +1057,16 @@ export default function OnlineBookingFlowNew({
       const lastBuf = lastId
         ? resolveOfferingDurationBufferForSlot(lastId, offeringsList, variantsByServiceId).buffer
         : DEFAULT_SLOT_BUFFER_MINUTES;
-      const durationMinutes = primaryIds.length ? primarySpan - lastBuf : primarySpan - DEFAULT_SLOT_BUFFER_MINUTES;
-      return { durationMinutes: durationMinutes || 60, bufferMinutes: lastBuf };
+      const durationMinutes =
+        primaryIds.length ? primarySpan - lastBuf : primarySpan - DEFAULT_SLOT_BUFFER_MINUTES;
+      return { durationMinutes: durationMinutes || 60, bufferMinutes: lastBuf, addonDurationMinutes };
     }
     let maxSpan = primarySpan;
     for (const p of bookingData.groupParticipants) {
       const ids = p.service_ids ?? (p as any).serviceIds ?? [];
       if (ids.length) maxSpan = Math.max(maxSpan, spanForOfferingIds(ids));
     }
-    return { durationMinutes: maxSpan || 60, bufferMinutes: 0 };
+    return { durationMinutes: maxSpan || 60, bufferMinutes: 0, addonDurationMinutes };
   })();
 
   const primaryOfferingIds = useMemo(
@@ -1085,6 +1090,10 @@ export default function OnlineBookingFlowNew({
     bookingData.venueType === "at_home"
       ? `&travel_buffer_minutes=${HOUSE_CALL_CONFIG.DEFAULT_TRAVEL_BUFFER_MINUTES}`
       : "";
+  const addonDurationParam =
+    slotParams.addonDurationMinutes > 0
+      ? `&addon_duration_minutes=${encodeURIComponent(String(slotParams.addonDurationMinutes))}`
+      : "";
 
   useEffect(() => {
     const day = coerceSelectedDate(bookingData.selectedDate);
@@ -1096,7 +1105,7 @@ export default function OnlineBookingFlowNew({
     const { durationMinutes, bufferMinutes } = slotParams;
     const serviceId = bookingData.selectedServices[0].offering_id;
     setLoadingSlots(true);
-    const url = `/api/public/providers/${provider.slug}/availability?date=${dateStr}&service_id=${serviceId}&staff_id=${staffId}&duration_minutes=${durationMinutes}&buffer_minutes=${bufferMinutes}&location_id=${bookingData.selectedLocation?.id ?? ""}&min_notice_minutes=${settings.min_notice_minutes}&max_advance_days=${settings.max_advance_days}${multiServiceIdsParam}${excludeHoldParam}${travelBufferParam}`;
+    const url = `/api/public/providers/${provider.slug}/availability?date=${dateStr}&service_id=${serviceId}&staff_id=${staffId}&duration_minutes=${durationMinutes}&buffer_minutes=${bufferMinutes}&location_id=${bookingData.selectedLocation?.id ?? ""}&min_notice_minutes=${settings.min_notice_minutes}&max_advance_days=${settings.max_advance_days}${multiServiceIdsParam}${excludeHoldParam}${travelBufferParam}${addonDurationParam}`;
     fetcher
       .get<{ data: any[] }>(url, AVAILABILITY_FETCH_OPTS)
       .then((res) => {
@@ -1128,6 +1137,7 @@ export default function OnlineBookingFlowNew({
     multiServiceIdsParam,
     excludeHoldParam,
     travelBufferParam,
+    addonDurationParam,
     variantsByServiceId,
   ]);
 
@@ -1154,7 +1164,7 @@ export default function OnlineBookingFlowNew({
         // §Booking-slot-audit 2026-05: walk forward by provider business days.
         const d = startOfBusinessDayLocalDate(tzForDates, offset);
         try {
-          const url = `/api/public/providers/${provider.slug}/availability?date=${dateStr(d)}&service_id=${serviceId}&staff_id=${staffId}&duration_minutes=${durationMinutes}&buffer_minutes=${bufferMinutes}&location_id=${bookingData.selectedLocation?.id ?? ""}&min_notice_minutes=${settings.min_notice_minutes}&max_advance_days=${settings.max_advance_days}${multiServiceIdsParam}${excludeHoldParam}${travelBufferParam}`;
+          const url = `/api/public/providers/${provider.slug}/availability?date=${dateStr(d)}&service_id=${serviceId}&staff_id=${staffId}&duration_minutes=${durationMinutes}&buffer_minutes=${bufferMinutes}&location_id=${bookingData.selectedLocation?.id ?? ""}&min_notice_minutes=${settings.min_notice_minutes}&max_advance_days=${settings.max_advance_days}${multiServiceIdsParam}${excludeHoldParam}${travelBufferParam}${addonDurationParam}`;
           const res = await fetcher.get<{ data: any[] }>(url, AVAILABILITY_FETCH_OPTS);
           if (cancelled) return;
           const raw = (res as any)?.data?.slots ?? (res as any)?.data ?? [];
@@ -1197,6 +1207,8 @@ export default function OnlineBookingFlowNew({
     slotParams,
     multiServiceIdsParam,
     excludeHoldParam,
+    travelBufferParam,
+    addonDurationParam,
   ]);
 
   const stepsOrder: BookingStep[] = (() => {
@@ -1223,7 +1235,7 @@ export default function OnlineBookingFlowNew({
     for (let offset = 0; offset < Math.min(14, settings.max_advance_days); offset++) {
       // §Booking-slot-audit 2026-05: walk by provider business days, not device-local.
       const d = startOfBusinessDayLocalDate(tzForDates, offset);
-      const url = `/api/public/providers/${provider.slug}/availability?date=${dateStr(d)}&service_id=${serviceId}&staff_id=${staffId}&duration_minutes=${durationMinutes}&buffer_minutes=${bufferMinutes}&location_id=${bookingData.selectedLocation?.id ?? ""}&min_notice_minutes=${settings.min_notice_minutes}&max_advance_days=${settings.max_advance_days}${multiServiceIdsParam}${excludeHoldParam}${travelBufferParam}`;
+      const url = `/api/public/providers/${provider.slug}/availability?date=${dateStr(d)}&service_id=${serviceId}&staff_id=${staffId}&duration_minutes=${durationMinutes}&buffer_minutes=${bufferMinutes}&location_id=${bookingData.selectedLocation?.id ?? ""}&min_notice_minutes=${settings.min_notice_minutes}&max_advance_days=${settings.max_advance_days}${multiServiceIdsParam}${excludeHoldParam}${travelBufferParam}${addonDurationParam}`;
       const res = await fetcher.get<{ data: any[] }>(url, AVAILABILITY_FETCH_OPTS).catch(() => ({ data: [] }));
       const raw = (res as any)?.data?.slots ?? (res as any)?.data ?? [];
       const list = Array.isArray(raw) ? raw : [];

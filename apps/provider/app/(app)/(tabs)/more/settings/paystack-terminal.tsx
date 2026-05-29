@@ -1,7 +1,7 @@
-import { View, Text, ScrollView, TouchableOpacity, Alert, Share, Linking } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { View, Text, TouchableOpacity, Alert, Share, Linking } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useState } from "react";
+import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { twStyle } from "@/lib/twStyle";
@@ -10,7 +10,7 @@ import { usePaystackTerminals, usePaystackTerminalPayments, type PaystackTermina
 
 export default function PaystackTerminalSettingsScreen() {
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
-  const { terminals, loading, error, refresh, requestTerminalSetup, requestAssets } = usePaystackTerminals();
+  const { terminals, setupRequests, loading, error, refresh, requestTerminalSetup, requestAssets } = usePaystackTerminals();
   const { payments, refresh: refreshPayments, allocate } = usePaystackTerminalPayments();
   const [creating, setCreating] = useState(false);
   const [requestingAssetsId, setRequestingAssetsId] = useState<string | null>(null);
@@ -137,60 +137,95 @@ export default function PaystackTerminalSettingsScreen() {
     await Linking.openURL(url);
   };
 
+  const hasPendingRequest = setupRequests.length > 0;
+
   if (!paystackTerminalEnabled) {
     return (
-      <SafeAreaView style={twStyle("flex-1 bg-gray-50")}>
+      <ScreenContainer edges={["top"]} scrollable={false} reserveTabBarSpace={false}>
         <ScreenHeader title="Paystack Terminal" showBack />
         <EmptyState
           icon="qr-code-outline"
           title="Paystack Terminal unavailable"
           description="Paystack Terminal payments are not enabled for this market."
         />
-      </SafeAreaView>
+      </ScreenContainer>
     );
   }
 
   return (
-    <SafeAreaView style={twStyle("flex-1 bg-gray-50")}>
-      <ScreenHeader title="Paystack Terminal" />
-      <ScrollView style={twStyle("flex-1")} contentContainerStyle={twStyle("p-4 pb-8")}>
-        <View style={twStyle("rounded-2xl bg-white p-4 mb-4")}>
+    <ScreenContainer edges={["top"]} onRefresh={refresh} refreshing={loading} reserveTabBarSpace={false}>
+      <ScreenHeader title="Paystack Terminal" showBack />
+
+      {/* Pending setup request banner */}
+      {hasPendingRequest && terminals.length === 0 ? (
+        <View style={twStyle("rounded-2xl border border-amber-200 bg-amber-50 p-4 mb-4")}>
+          <View style={twStyle("flex-row items-center gap-2 mb-2")}>
+            <Ionicons name="time-outline" size={20} color="#92400e" />
+            <Text style={twStyle("text-sm font-semibold text-amber-900")}>Setup request received</Text>
+          </View>
+          <Text style={twStyle("text-sm text-amber-800")}>
+            Beautonomi Ops has been notified and will create your Paystack Virtual Terminal shortly. Your terminal, payment link, QR, and poster will appear here once ready.
+          </Text>
+          {setupRequests[0]?.request_notes ? (
+            <View style={twStyle("mt-3 rounded-xl bg-white/60 p-3")}>
+              <Text style={twStyle("text-xs text-amber-800 font-medium")}>Note from your request:</Text>
+              <Text style={twStyle("text-xs text-amber-700 mt-1")}>{setupRequests[0].request_notes}</Text>
+            </View>
+          ) : null}
+          <View style={twStyle("mt-3 flex-row items-center gap-2")}>
+            <TouchableOpacity
+              onPress={refresh}
+              style={twStyle("rounded-xl border border-amber-400 px-4 py-2")}
+            >
+              <Text style={twStyle("text-amber-900 font-semibold text-sm")}>Check for updates</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : null}
+
+      {/* Request setup — hidden when a request is already pending */}
+      {!hasPendingRequest ? (
+        <View style={twStyle("rounded-2xl border border-gray-100 bg-white p-4 mb-4")}>
           <Text style={twStyle("text-base font-semibold text-gray-900")}>Request terminal setup</Text>
           <Text style={twStyle("text-sm text-gray-600 mt-1")}>
-            Beautonomi Ops creates or fetches your Virtual Terminal in Paystack, then adds the Paystack-generated code, payment link, QR, and poster here.
+            Beautonomi Ops will create your Virtual Terminal in Paystack and add the terminal code, payment link, QR, and poster here once ready.
           </Text>
-          <Text style={twStyle("text-xs text-gray-500 mt-3")}>
-            Paystack generates the terminal code and payment references. Once Ops imports the terminal, you can share its payment link and manually allocate incoming payments.
-          </Text>
-          <Text style={twStyle("text-xs text-gray-500 mt-2")}>
-            WhatsApp alerts go to the configured destination number, but Beautonomi maps payments by terminal code and shows them in this inbox after webhook or admin reconciliation.
+          <Text style={twStyle("text-xs text-gray-400 mt-2")}>
+            WhatsApp payment alerts go to your registered phone number. Payments appear in the inbox below after Paystack webhook reconciliation.
           </Text>
           <TouchableOpacity
             disabled={creating}
             onPress={onRequestSetup}
-            style={twStyle(
-              `mt-3 rounded-xl px-4 py-3 ${creating ? "bg-gray-300" : "bg-green-600"}`,
-            )}
+            style={twStyle(`mt-4 rounded-xl px-4 py-3 items-center ${creating ? "bg-gray-300" : "bg-green-600"}`)}
           >
             <Text style={twStyle("text-center text-white font-semibold")}>
-              {creating ? "Requesting..." : "Request Paystack Terminal setup"}
+              {creating ? "Requesting…" : "Request Paystack Terminal setup"}
             </Text>
           </TouchableOpacity>
         </View>
+      ) : null}
 
-        <View style={twStyle("rounded-2xl bg-white p-4 mb-4")}>
-          <View style={twStyle("flex-row justify-between items-center")}>
-            <Text style={twStyle("text-base font-semibold text-gray-900")}>Terminals</Text>
-            <TouchableOpacity onPress={refresh}>
-              <Ionicons name="refresh-outline" size={22} color="#16a34a" />
-            </TouchableOpacity>
+      <View style={twStyle("rounded-2xl border border-gray-100 bg-white p-4 mb-4")}>
+        <View style={twStyle("flex-row justify-between items-center")}>
+          <Text style={twStyle("text-base font-semibold text-gray-900")}>My terminals</Text>
+          <TouchableOpacity onPress={refresh} hitSlop={8}>
+            <Ionicons name="refresh-outline" size={22} color="#16a34a" />
+          </TouchableOpacity>
+        </View>
+        {error ? (
+          <View style={twStyle("mt-3 rounded-xl bg-red-50 border border-red-100 p-3")}>
+            <Text style={twStyle("text-sm text-red-700")}>{error}</Text>
           </View>
-          {error ? <Text style={twStyle("text-sm text-red-600 mt-2")}>{error}</Text> : null}
-          {loading ? (
-            <Text style={twStyle("text-sm text-gray-500 mt-3")}>Loading terminals...</Text>
-          ) : terminals.length === 0 ? (
-            <Text style={twStyle("text-sm text-gray-500 mt-3")}>No Paystack Terminals yet.</Text>
-          ) : (
+        ) : null}
+        {loading ? (
+          <Text style={twStyle("text-sm text-gray-400 mt-3")}>Loading terminals…</Text>
+        ) : terminals.length === 0 ? (
+          <Text style={twStyle("text-sm text-gray-400 mt-3")}>
+            {hasPendingRequest
+              ? "Your terminal will appear here once Ops has completed the setup."
+              : "No Paystack Terminals yet. Request a setup above."}
+          </Text>
+        ) : (
             terminals.map((terminal) => (
               <View key={terminal.id} style={twStyle("border border-gray-100 rounded-xl p-3 mt-3")}>
                 <View style={twStyle("flex-row items-center justify-between")}>
@@ -268,15 +303,15 @@ export default function PaystackTerminalSettingsScreen() {
                     style={twStyle("mt-2 rounded-xl bg-amber-100 px-3 py-2")}
                   >
                     <Text style={twStyle("text-center text-amber-900 font-semibold")}>
-                      {requestingAssetsId === terminal.id ? "Requesting..." : "Request branded QR/poster"}
+                      {requestingAssetsId === terminal.id ? "Requesting…" : "Request branded QR/poster"}
                     </Text>
                   </TouchableOpacity>
                 ) : null}
               </View>
             ))
           )}
-        </View>
-        {reviewPayment ? (
+      </View>
+      {reviewPayment ? (
           <View style={twStyle("rounded-2xl border border-emerald-200 bg-emerald-50 p-4 mb-4")}>
             <View style={twStyle("flex-row items-start justify-between")}>
               <View style={twStyle("flex-1 pr-3")}>
@@ -339,15 +374,15 @@ export default function PaystackTerminalSettingsScreen() {
           </View>
         ) : null}
 
-        <View style={twStyle("rounded-2xl bg-white p-4")}>
+      <View style={twStyle("rounded-2xl border border-gray-100 bg-white p-4 mb-4")}>
           <View style={twStyle("flex-row justify-between items-center")}>
             <Text style={twStyle("text-base font-semibold text-gray-900")}>Payment inbox</Text>
-            <TouchableOpacity onPress={refreshPayments}>
+            <TouchableOpacity onPress={refreshPayments} hitSlop={8}>
               <Ionicons name="refresh-outline" size={22} color="#16a34a" />
             </TouchableOpacity>
           </View>
           {payments.length === 0 ? (
-            <Text style={twStyle("text-sm text-gray-500 mt-3")}>No terminal payments yet.</Text>
+            <Text style={twStyle("text-sm text-gray-400 mt-3")}>No terminal payments yet.</Text>
           ) : (
             payments.slice(0, 10).map((payment) => (
               <View key={payment.id} style={twStyle("border border-gray-100 rounded-xl p-3 mt-3")}>
@@ -361,7 +396,7 @@ export default function PaystackTerminalSettingsScreen() {
                   {payment.paystack_reference}
                 </Text>
                 <Text style={twStyle("text-xs text-gray-500 mt-1")}>
-                Booking/order note: {payment.customer_reference || "Not supplied"}
+                  Booking/order note: {payment.customer_reference || "Not supplied"}
                 </Text>
                 {["suggested", "unmatched", "admin_review"].includes(payment.allocation_status) ? (
                   <TouchableOpacity
@@ -374,8 +409,7 @@ export default function PaystackTerminalSettingsScreen() {
               </View>
             ))
           )}
-        </View>
-      </ScrollView>
-    </SafeAreaView>
+      </View>
+    </ScreenContainer>
   );
 }

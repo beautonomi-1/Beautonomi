@@ -8,6 +8,7 @@ import {
 } from "@/lib/booking-slot-math/blocked-window-minutes";
 import { computePublicSlugAvailabilitySlots } from "@/lib/availability/public-slug-availability-engine";
 import { normalizeProviderTimezone } from "@/lib/availability/time-utils";
+import { DEFAULT_BOOKING_DISPLAY_TIMEZONE } from "@/lib/bookings/display-invariants";
 
 /**
  * GET /api/public/providers/[slug]/availability
@@ -48,6 +49,7 @@ export async function GET(
     const locationId = searchParams.get("location_id");
     const paramDuration = searchParams.get("duration_minutes");
     const paramBuffer = searchParams.get("buffer_minutes");
+    const addonDurationParam = parseInt(searchParams.get("addon_duration_minutes") || "0", 10);
     const minNoticeMinutes = parseInt(searchParams.get("min_notice_minutes") || "0");
     const maxAdvanceDays = parseInt(searchParams.get("max_advance_days") || "365");
     const excludeHoldId = searchParams.get("excludeHoldId")?.trim() || undefined;
@@ -181,12 +183,20 @@ export async function GET(
       if (!offeringError && offering && offering.provider_id === provider.id && offering.is_active) {
         if (Number.isNaN(durationMinutes) || durationMinutes <= 0)
           durationMinutes = Number(offering.duration_minutes) || 60;
-        if (Number.isNaN(bufferMinutes) || bufferMinutes < 0)
-          bufferMinutes = Number(offering.buffer_minutes) || 0;
+        // Always use the authoritative DB buffer when a service_id is resolved so the
+        // listing engine and validate-booking agree on the effective segment end.
+        // Client-supplied buffer_minutes is only trusted when no offering can be resolved
+        // (e.g. custom multi-service params without a leading service_id).
+        bufferMinutes = Number(offering.buffer_minutes) || 0;
       }
     }
     if (Number.isNaN(durationMinutes) || durationMinutes <= 0) durationMinutes = 60;
     if (Number.isNaN(bufferMinutes) || bufferMinutes < 0) bufferMinutes = 0;
+    const addonDurationMinutes =
+      Number.isFinite(addonDurationParam) && addonDurationParam > 0
+        ? Math.min(24 * 60, addonDurationParam)
+        : 0;
+    durationMinutes += addonDurationMinutes;
 
     const anyoneMode =
       staffId === "any" ||
@@ -232,11 +242,12 @@ export async function GET(
       typeof (provider as { timezone?: string | null }).timezone === "string"
         ? (provider as { timezone?: string | null }).timezone
         : null;
-    const providerTimeZone = normalizeProviderTimezone(rawProviderTimeZone);
-    if (rawProviderTimeZone && !providerTimeZone) {
+    const normalizedProviderTimeZone = normalizeProviderTimezone(rawProviderTimeZone);
+    const providerTimeZone = normalizedProviderTimeZone ?? DEFAULT_BOOKING_DISPLAY_TIMEZONE;
+    if (rawProviderTimeZone && !normalizedProviderTimeZone) {
       console.warn(
         `[public-availability] provider ${provider.id} has invalid timezone ` +
-          `"${rawProviderTimeZone}"; falling back to UTC.`
+          `"${rawProviderTimeZone}"; falling back to ${DEFAULT_BOOKING_DISPLAY_TIMEZONE}.`
       );
     }
 

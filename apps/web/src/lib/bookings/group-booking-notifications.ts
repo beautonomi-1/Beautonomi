@@ -85,6 +85,7 @@ export async function sendGroupBookingNotifications(
         provider,
         participant.is_primary_contact,
         channels,
+        groupBookingId,
       );
       continue;
     }
@@ -284,7 +285,8 @@ async function sendGroupBookingConfirmation(
   },
   provider: { business_name?: string | null } | null,
   isPrimary: boolean,
-  channels: { email: boolean; sms: boolean }
+  channels: { email: boolean; sms: boolean },
+  groupBookingId?: string | null
 ): Promise<void> {
   const { title, message } = buildGroupConfirmationCopy(
     name,
@@ -311,8 +313,11 @@ async function sendGroupBookingConfirmation(
           booking_id: booking.id,
           booking_number: booking.booking_number ?? null,
           group_booking: true,
+          group_booking_id: groupBookingId ?? null,
         },
-        url: `${appUrl}/account-settings/bookings`,
+        url: groupBookingId
+          ? `${appUrl}/account-settings/bookings?group_booking_id=${groupBookingId}`
+          : `${appUrl}/account-settings/bookings`,
       },
       deliveryChannels,
       { appType: 'customer' }

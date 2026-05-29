@@ -274,10 +274,17 @@ export default function ServiceDetailScreen() {
   function validate(): boolean {
     const newErrors: Record<string, string> = {};
     if (!form!.title.trim()) newErrors.title = "Title is required";
-    if (!form!.price || Number(form!.price) <= 0)
-      newErrors.price = "Valid price required";
-    if (!form!.duration_minutes || Number(form!.duration_minutes) <= 0)
-      newErrors.duration_minutes = "Valid duration required";
+
+    const priceNum = Number(form!.price?.toString().trim());
+    if (!form!.price?.toString().trim() || !Number.isFinite(priceNum) || priceNum < 0) {
+      newErrors.price = "Enter a valid price (e.g. 150 or 0 for free)";
+    }
+
+    const durationNum = Number(form!.duration_minutes?.toString().trim());
+    if (!form!.duration_minutes?.toString().trim() || !Number.isFinite(durationNum) || durationNum <= 0) {
+      newErrors.duration_minutes = "Enter duration in minutes (e.g. 60)";
+    }
+
     if (!form!.category_id.trim()) newErrors.category_id = "Category is required";
     if (!form!.supports_at_home && !form!.supports_at_salon)
       newErrors.location = "Select at least one location type";
@@ -287,11 +294,19 @@ export default function ServiceDetailScreen() {
 
   async function handleSave() {
     if (!form || !validate()) return;
+
+    const priceNum = Number(form.price?.toString().trim());
+    const durationNum = Number(form.duration_minutes?.toString().trim());
+    if (!Number.isFinite(priceNum) || !Number.isFinite(durationNum) || durationNum <= 0) {
+      Alert.alert("Invalid values", "Price and duration must be valid numbers before saving.");
+      return;
+    }
+
     const payload = {
       title: form.title.trim(),
       description: form.description.trim() || null,
-      duration_minutes: Number(form.duration_minutes),
-      price: Number(form.price),
+      duration_minutes: durationNum,
+      price: priceNum,
       supports_at_home: form.supports_at_home,
       supports_at_salon: form.supports_at_salon,
       at_home_price_adjustment: form.supports_at_home
