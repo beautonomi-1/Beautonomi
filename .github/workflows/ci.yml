@@ -148,8 +148,10 @@ jobs:
       - name: Build admin SPA (artifacts copied into web via next-build)
         run: pnpm exec turbo run build --filter=admin-web
 
-      - name: Install Playwright (Chromium) for admin E2E
-        run: pnpm --filter admin-web exec playwright install chromium --with-deps
+      - name: Setup Playwright Chromium for admin E2E
+        uses: ./.github/actions/setup-playwright-chromium
+        with:
+          package-filter: admin-web
 
       - name: Admin SPA E2E smoke (login shell, auth redirect)
         working-directory: apps/admin-web
