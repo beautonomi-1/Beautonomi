@@ -28,7 +28,7 @@ interface PartnerProductsProps {
   slug: string;
 }
 
-const PRODUCT_GRID_PAGE_SIZE = 24;
+const PRODUCTS_PER_PAGE = 12;
 const MANY_PRODUCTS = 16;
 const MANY_CATEGORY_PILLS = 10;
 
@@ -39,9 +39,10 @@ export default function PartnerProducts({ slug }: PartnerProductsProps) {
   const [activeCategory, setActiveCategory] = useState<string>("All");
   const [productSearch, setProductSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
-  const [visibleGridCount, setVisibleGridCount] = useState(PRODUCT_GRID_PAGE_SIZE);
+  const [productPage, setProductPage] = useState(1);
   const scrollRef = useRef<HTMLDivElement>(null);
   const categoryBtnRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
+  const shopHeadingRef = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -104,18 +105,28 @@ export default function PartnerProducts({ slug }: PartnerProductsProps) {
     return list;
   }, [categoryPills, categoryFilter, activeCategory]);
 
-  const visibleProducts = useMemo(
-    () => filtered.slice(0, visibleGridCount),
-    [filtered, visibleGridCount],
+  const totalPages = useMemo(
+    () => Math.max(1, Math.ceil(filtered.length / PRODUCTS_PER_PAGE)),
+    [filtered.length],
   );
 
-  const hasMoreGrid = visibleGridCount < filtered.length;
+  const effectivePage = Math.min(productPage, totalPages);
+
+  const pagedProducts = useMemo(() => {
+    const start = (effectivePage - 1) * PRODUCTS_PER_PAGE;
+    return filtered.slice(start, start + PRODUCTS_PER_PAGE);
+  }, [filtered, effectivePage]);
+
   const showProductSearch = products.length >= MANY_PRODUCTS || filtered.length >= MANY_PRODUCTS;
   const showCategoryFilter = categoryPills.length >= MANY_CATEGORY_PILLS;
 
   useEffect(() => {
-    setVisibleGridCount(PRODUCT_GRID_PAGE_SIZE);
+    setProductPage(1);
   }, [activeCategory, productSearch]);
+
+  useEffect(() => {
+    if (productPage > totalPages) setProductPage(totalPages);
+  }, [productPage, totalPages]);
 
   useLayoutEffect(() => {
     if (categoryPills.length <= 1) return;
@@ -127,6 +138,12 @@ export default function PartnerProducts({ slug }: PartnerProductsProps) {
     if (scrollRef.current) {
       scrollRef.current.scrollBy({ left: direction === "left" ? -200 : 200, behavior: "smooth" });
     }
+  };
+
+  const handlePageChange = (page: number) => {
+    const next = Math.max(1, Math.min(page, totalPages));
+    setProductPage(next);
+    shopHeadingRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   if (loading) {
@@ -148,7 +165,9 @@ export default function PartnerProducts({ slug }: PartnerProductsProps) {
 
   return (
     <div className="max-w-[2340px] mx-auto px-4 md:px-10 py-6 md:py-8">
-      <h2 className="text-xl md:text-2xl font-semibold mb-4 md:mb-6">Shop</h2>
+      <h2 ref={shopHeadingRef} className="text-xl md:text-2xl font-semibold mb-4 md:mb-6">
+        Shop
+      </h2>
 
       {categoryPills.length > 1 && (
         <div className="relative mb-6 md:mb-8 space-y-3">
@@ -234,67 +253,80 @@ export default function PartnerProducts({ slug }: PartnerProductsProps) {
         <p className="text-sm text-gray-500 py-8 text-center">No products in this category.</p>
       ) : (
         <>
-        {visibleProducts.length < filtered.length && (
-          <p className="text-xs text-gray-500 mb-3">
-            {t("booking.servicesPaginationSummary", { shown: visibleProducts.length, total: filtered.length })}
-          </p>
-        )}
-        <div className="rounded-3xl border border-gray-100 bg-gradient-to-b from-gray-50/80 to-white p-4 md:p-6 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-x-4 gap-y-6 md:gap-x-5 md:gap-y-8">
-          {visibleProducts.map((p) => (
-            <Link
-              key={p.id}
-              href={`/shop/${p.id}?provider=${encodeURIComponent(slug)}`}
-              className="group rounded-3xl border border-gray-200/90 bg-white overflow-hidden shadow-sm hover:border-[#FF0077]/40 hover:shadow-md transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF0077]/30"
-            >
-              <div className="aspect-square bg-white relative ring-1 ring-inset ring-gray-100 rounded-t-2xl">
-                {p.imageUrl ? (
-                  <Image
-                    src={p.imageUrl}
-                    alt={p.name}
-                    fill
-                    className="object-contain p-3 group-hover:scale-[1.02] transition-transform"
-                    sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, 25vw"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <ShoppingBag className="h-10 w-10 text-gray-300" />
-                  </div>
-                )}
-                {!p.inStock && (
-                  <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                    <span className="text-white text-sm font-medium">Out of stock</span>
-                  </div>
-                )}
-              </div>
-              <div className="p-3">
-                {p.category ? (
-                  <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400 mb-0.5 line-clamp-1">
-                    {p.category}
+          <div className="rounded-3xl border border-gray-100 bg-gradient-to-b from-gray-50/80 to-white p-4 md:p-6 grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 sm:gap-x-4 sm:gap-y-8">
+            {pagedProducts.map((p) => (
+              <Link
+                key={p.id}
+                href={`/shop/${p.id}?provider=${encodeURIComponent(slug)}`}
+                className="group rounded-3xl border border-gray-200/90 bg-white overflow-hidden shadow-sm hover:border-[#FF0077]/40 hover:shadow-md transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF0077]/30"
+              >
+                <div className="aspect-square bg-white relative ring-1 ring-inset ring-gray-100 rounded-t-2xl">
+                  {p.imageUrl ? (
+                    <Image
+                      src={p.imageUrl}
+                      alt={p.name}
+                      fill
+                      className="object-contain p-3 group-hover:scale-[1.02] transition-transform"
+                      sizes="(max-width: 640px) 50vw, 33vw"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <ShoppingBag className="h-10 w-10 text-gray-300" />
+                    </div>
+                  )}
+                  {!p.inStock && (
+                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                      <span className="text-white text-sm font-medium">Out of stock</span>
+                    </div>
+                  )}
+                </div>
+                <div className="p-3">
+                  {p.category ? (
+                    <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400 mb-0.5 line-clamp-1">
+                      {p.category}
+                    </p>
+                  ) : null}
+                  <p className="font-medium text-gray-900 text-sm line-clamp-2">{p.name}</p>
+                  <p className="mt-1 text-sm font-semibold text-[#FF0077]">
+                    {p.hasVariants ? "From " : ""}
+                    {p.currency} {p.price.toFixed(2)}
                   </p>
-                ) : null}
-                <p className="font-medium text-gray-900 text-sm line-clamp-2">{p.name}</p>
-                <p className="mt-1 text-sm font-semibold text-[#FF0077]">
-                  {p.hasVariants ? "From " : ""}
-                  {p.currency} {p.price.toFixed(2)}
-                </p>
-              </div>
-            </Link>
-          ))}
-        </div>
-        {hasMoreGrid && (
-          <div className="flex justify-center mt-6">
-            <Button
-              type="button"
-              variant="outline"
-              className="min-h-[44px] px-8"
-              onClick={() =>
-                setVisibleGridCount((c) => Math.min(c + PRODUCT_GRID_PAGE_SIZE, filtered.length))
-              }
-            >
-              {t("booking.loadMoreProducts")}
-            </Button>
+                </div>
+              </Link>
+            ))}
           </div>
-        )}
+          {totalPages > 1 && (
+            <nav
+              className="mt-6 flex flex-wrap items-center justify-center gap-2"
+              aria-label="Product list pagination"
+            >
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="min-h-[44px]"
+                disabled={effectivePage <= 1}
+                onClick={() => handlePageChange(effectivePage - 1)}
+                aria-label={t("booking.productsPaginationPrevious")}
+              >
+                {t("booking.productsPaginationPrevious")}
+              </Button>
+              <span className="px-2 text-sm text-gray-500" aria-live="polite">
+                {t("booking.productsPageOf", { page: effectivePage, totalPages })}
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="min-h-[44px]"
+                disabled={effectivePage >= totalPages}
+                onClick={() => handlePageChange(effectivePage + 1)}
+                aria-label={t("booking.productsPaginationNext")}
+              >
+                {t("booking.productsPaginationNext")}
+              </Button>
+            </nav>
+          )}
         </>
       )}
     </div>

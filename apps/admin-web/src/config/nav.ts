@@ -146,7 +146,7 @@ export const NAV_GROUPS: NavGroupConfig[] = [
       { title: "Provider Subscriptions", href: "/admin/provider-subscriptions", icon: CreditCard, superadminOnly: true },
       { title: "Subscription Revenue", href: "/admin/subscription-revenue", icon: TrendingUp, superadminOnly: true },
       { title: "Wallet Reconciliation", href: "/admin/wallet-reconciliation", icon: Wallet },
-      { title: "Paystack Terminal", href: "/admin/paystack-terminal", icon: CreditCard, superadminOnly: true },
+      { title: "Paystack Terminal", href: "/admin/paystack-terminal", icon: CreditCard },
       { title: "Billing", href: "/admin/billing", icon: CreditCard, superadminOnly: true },
     ],
   },

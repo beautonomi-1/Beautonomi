@@ -32,6 +32,7 @@ import { ChipCombobox } from "@/components/ui/ChipCombobox";
 import { formatDuration, formatCurrency } from "@/lib/format";
 import { normalizeProductsList } from "@/lib/unpack-provider-api";
 import { PROVIDER_PRODUCTS_CATALOG_CHANGED } from "@/lib/provider-products-catalog-events";
+import { PROVIDER_SERVICES_CATALOG_CHANGED } from "@/lib/provider-services-catalog-events";
 import { buildZonedIsoForWallClock } from "@/lib/tz";
 import { api } from "@/lib/api-client";
 import { twStyle } from "@/lib/twStyle";
@@ -502,7 +503,7 @@ export default function NewBookingScreen() {
       : "ZA";
 
   // --- API data ---
-  const { data: services, loading: servicesLoading, error: servicesError } = useApi<Service[]>(
+  const { data: services, loading: servicesLoading, error: servicesError, refresh: refreshServices } = useApi<Service[]>(
     "/api/provider/services?include_variants=true&include_offering_resources=true",
   );
   const teamUrl = selectedLocationId
@@ -586,11 +587,17 @@ export default function NewBookingScreen() {
   const [showProductPicker, setShowProductPicker] = useState(false);
 
   useEffect(() => {
-    const sub = DeviceEventEmitter.addListener(PROVIDER_PRODUCTS_CATALOG_CHANGED, () => {
+    const subProducts = DeviceEventEmitter.addListener(PROVIDER_PRODUCTS_CATALOG_CHANGED, () => {
       void refreshProducts();
     });
-    return () => sub.remove();
-  }, [refreshProducts]);
+    const subServices = DeviceEventEmitter.addListener(PROVIDER_SERVICES_CATALOG_CHANGED, () => {
+      void refreshServices();
+    });
+    return () => {
+      subProducts.remove();
+      subServices.remove();
+    };
+  }, [refreshProducts, refreshServices]);
 
   useEffect(() => {
     if (productsList.length === 0 || selectedProducts.length === 0) return;

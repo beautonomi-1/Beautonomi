@@ -99,10 +99,15 @@ export function ConfigBundleProvider({
   children,
   platform = "web",
   environment = typeof window !== "undefined" && process.env.NODE_ENV === "development" ? "development" : "production",
+  userId,
+  role,
 }: {
   children: React.ReactNode;
   platform?: Platform;
   environment?: Environment;
+  /** When set, rollout_percent bucketing uses this user (provider portal). */
+  userId?: string | null;
+  role?: string | null;
 }) {
   const [bundle, setBundle] = useState<PublicConfigBundle | null>(null);
   const [isLoading, setLoading] = useState(true);
@@ -112,7 +117,13 @@ export function ConfigBundleProvider({
     try {
       setLoading(true);
       setError(null);
-      const url = `/api/public/config-bundle?platform=${platform}&environment=${environment}`;
+      const params = new URLSearchParams({
+        platform,
+        environment,
+      });
+      if (userId) params.set("user_id", userId);
+      if (role) params.set("role", role);
+      const url = `/api/public/config-bundle?${params.toString()}`;
       const data = await fetcher.get<PublicConfigBundle>(url);
       setBundle(data ?? defaultBundle);
     } catch (e) {
@@ -121,7 +132,7 @@ export function ConfigBundleProvider({
     } finally {
       setLoading(false);
     }
-  }, [platform, environment]);
+  }, [platform, environment, userId, role]);
 
   useEffect(() => {
     refresh();

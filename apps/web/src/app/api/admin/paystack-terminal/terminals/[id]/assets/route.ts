@@ -4,9 +4,10 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   errorResponse,
   handleApiError,
-  requireSuperadmin,
+  requireAdminSection,
   successResponse,
 } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import {
   assignPaystackVirtualTerminalDestinations,
   unassignPaystackVirtualTerminalDestinations,
@@ -45,7 +46,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { user } = await requireSuperadmin(request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_FINANCE, request);
     const { id } = await params;
     const body = assetUpdateSchema.parse(await request.json());
     const badUrl = validateTrustedUrls(body);

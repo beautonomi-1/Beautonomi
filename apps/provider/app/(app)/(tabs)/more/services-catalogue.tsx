@@ -1,10 +1,11 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   View,
   Text,
   TouchableOpacity,
   FlatList,
   RefreshControl,
+  DeviceEventEmitter,
 } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -19,6 +20,7 @@ import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatCurrency } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
+import { PROVIDER_SERVICES_CATALOG_CHANGED } from "@/lib/provider-services-catalog-events";
 
 interface ServiceCategory {
   id: string;
@@ -76,6 +78,14 @@ export default function ServicesCatalogueScreen() {
       refreshSvc();
     }, [refreshCat, refreshSvc])
   );
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(PROVIDER_SERVICES_CATALOG_CHANGED, () => {
+      void refreshCat();
+      void refreshSvc();
+    });
+    return () => sub.remove();
+  }, [refreshCat, refreshSvc]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);

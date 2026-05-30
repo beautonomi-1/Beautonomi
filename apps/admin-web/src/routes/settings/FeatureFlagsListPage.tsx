@@ -80,6 +80,28 @@ export function FeatureFlagsListPage() {
     enabled: allowed,
   });
 
+  const effectivePreviewQ = useQuery({
+    queryKey: [...adminQueryKeys.featureFlags(), "effective-preview"],
+    enabled: allowed,
+    queryFn: async () => {
+      const [webRes, providerRes] = await Promise.all([
+        adminApi.postJson<{ resolved?: Record<string, { enabled?: boolean }> }>(
+          "/api/admin/control-plane/flags-preview",
+          { platform: "web" },
+        ),
+        adminApi.postJson<{ resolved?: Record<string, { enabled?: boolean }> }>(
+          "/api/admin/control-plane/flags-preview",
+          { platform: "provider" },
+        ),
+      ]);
+      return {
+        web: webRes.resolved ?? {},
+        provider: providerRes.resolved ?? {},
+      };
+    },
+    staleTime: 60_000,
+  });
+
   const rows: FlagRow[] = (Array.isArray(q.data) ? q.data : []).filter((r) =>
     !search ||
     r.feature_name.toLowerCase().includes(search.toLowerCase()) ||
@@ -168,6 +190,15 @@ export function FeatureFlagsListPage() {
         <Link to={adminSpaTo("/admin/control-plane/feature-flags")} className="font-medium text-gray-900 underline">
           Control plane tools (preview &amp; resolver) →
         </Link>
+        {" · "}
+        <Link to={adminSpaTo("/admin/paystack-terminal")} className="font-medium text-gray-900 underline">
+          Paystack Terminal ops →
+        </Link>
+      </p>
+      <p className="text-xs text-gray-500">
+        The <strong>Enabled</strong> toggle is the raw database value. For payment flags, <strong>Effective</strong> shows
+        what provider web (<code className="rounded bg-gray-100 px-1">platform=web</code>) and native app (
+        <code className="rounded bg-gray-100 px-1">platform=provider</code>) actually receive after tenant merge and platform filters.
       </p>
 
       {/* Search */}
@@ -269,6 +300,7 @@ export function FeatureFlagsListPage() {
                   <AdminTh>Description</AdminTh>
                   <AdminTh>Scope</AdminTh>
                   <AdminTh>Enabled</AdminTh>
+                  {cat === "payments" ? <AdminTh>Effective (web / provider)</AdminTh> : null}
                   <AdminTh>Actions</AdminTh>
                 </tr>
               </AdminTableHead>
@@ -295,6 +327,23 @@ export function FeatureFlagsListPage() {
                         <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition ${r.enabled ? "translate-x-4" : "translate-x-0"}`} />
                       </button>
                     </AdminTd>
+                    {cat === "payments" ? (
+                      <AdminTd className="text-xs">
+                        {r.feature_key ? (
+                          <>
+                            <span className={effectivePreviewQ.data?.web[r.feature_key]?.enabled ? "text-emerald-700" : "text-gray-400"}>
+                              web: {effectivePreviewQ.data?.web[r.feature_key]?.enabled ? "on" : "off"}
+                            </span>
+                            {" · "}
+                            <span className={effectivePreviewQ.data?.provider[r.feature_key]?.enabled ? "text-emerald-700" : "text-gray-400"}>
+                              provider: {effectivePreviewQ.data?.provider[r.feature_key]?.enabled ? "on" : "off"}
+                            </span>
+                          </>
+                        ) : (
+                          "—"
+                        )}
+                      </AdminTd>
+                    ) : null}
                     <AdminTd>
                       <button
                         type="button"

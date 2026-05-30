@@ -5,13 +5,18 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { twStyle } from "@/lib/twStyle";
-import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
+import { useFeatureFlag, useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { usePaystackTerminals, usePaystackTerminalPayments, type PaystackTerminalPayment } from "@/hooks/usePaystackTerminal";
 
 export default function PaystackTerminalSettingsScreen() {
+  const { isLoading: bundleLoading } = useConfigBundle();
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
-  const { terminals, setupRequests, loading, error, refresh, requestTerminalSetup, requestAssets } = usePaystackTerminals();
-  const { payments, refresh: refreshPayments, allocate } = usePaystackTerminalPayments();
+  const terminalDataEnabled = paystackTerminalEnabled && !bundleLoading;
+  const { terminals, setupRequests, canRequestSetup, loading, error, refresh, requestTerminalSetup, requestAssets } =
+    usePaystackTerminals({ enabled: terminalDataEnabled });
+  const { payments, refresh: refreshPayments, allocate } = usePaystackTerminalPayments({
+    enabled: terminalDataEnabled,
+  });
   const [creating, setCreating] = useState(false);
   const [requestingAssetsId, setRequestingAssetsId] = useState<string | null>(null);
   const [reviewPayment, setReviewPayment] = useState<PaystackTerminalPayment | null>(null);
@@ -69,11 +74,12 @@ export default function PaystackTerminalSettingsScreen() {
   }, [actionablePayment, reviewPayment]);
 
   useEffect(() => {
+    if (!terminalDataEnabled) return;
     const interval = setInterval(() => {
       void refreshPayments();
     }, 15_000);
     return () => clearInterval(interval);
-  }, [refreshPayments]);
+  }, [refreshPayments, terminalDataEnabled]);
 
   const closeReview = () => {
     if (reviewPayment) setReviewDismissedId(reviewPayment.id);
@@ -139,6 +145,15 @@ export default function PaystackTerminalSettingsScreen() {
 
   const hasPendingRequest = setupRequests.length > 0;
 
+  if (bundleLoading) {
+    return (
+      <ScreenContainer edges={["top"]} scrollable={false} reserveTabBarSpace={false}>
+        <ScreenHeader title="Paystack Terminal" showBack />
+        <Text style={twStyle("text-sm text-gray-500 px-4")}>Loading…</Text>
+      </ScreenContainer>
+    );
+  }
+
   if (!paystackTerminalEnabled) {
     return (
       <ScreenContainer edges={["top"]} scrollable={false} reserveTabBarSpace={false}>
@@ -187,19 +202,27 @@ export default function PaystackTerminalSettingsScreen() {
       {!hasPendingRequest ? (
         <View style={twStyle("rounded-2xl border border-gray-100 bg-white p-4 mb-4")}>
           <Text style={twStyle("text-base font-semibold text-gray-900")}>Request terminal setup</Text>
-          <Text style={twStyle("text-sm text-gray-600 mt-1")}>
-            Beautonomi Ops will create your Virtual Terminal in Paystack and add the terminal code, payment link, QR, and poster here once ready.
-          </Text>
-          <Text style={twStyle("text-xs text-gray-400 mt-2")}>
-            WhatsApp payment alerts go to your registered phone number. Payments appear in the inbox below after Paystack webhook reconciliation.
-          </Text>
+          {!canRequestSetup ? (
+            <Text style={twStyle("text-sm text-red-700 mt-2")}>
+              Your plan does not include Paystack Terminal. Contact support or upgrade your subscription.
+            </Text>
+          ) : (
+            <>
+              <Text style={twStyle("text-sm text-gray-600 mt-1")}>
+                Beautonomi Ops will create your Virtual Terminal in Paystack and add the terminal code, payment link, QR, and poster here once ready.
+              </Text>
+              <Text style={twStyle("text-xs text-gray-400 mt-2")}>
+                WhatsApp payment alerts go to your registered phone number. Payments appear in the inbox below after Paystack webhook reconciliation.
+              </Text>
+            </>
+          )}
           <TouchableOpacity
-            disabled={creating}
+            disabled={creating || !canRequestSetup}
             onPress={onRequestSetup}
-            style={twStyle(`mt-4 rounded-xl px-4 py-3 items-center ${creating ? "bg-gray-300" : "bg-green-600"}`)}
+            style={twStyle(`mt-4 rounded-xl px-4 py-3 items-center ${creating || !canRequestSetup ? "bg-gray-300" : "bg-green-600"}`)}
           >
             <Text style={twStyle("text-center text-white font-semibold")}>
-              {creating ? "Requesting…" : "Request Paystack Terminal setup"}
+              {creating ? "Requesting…" : !canRequestSetup ? "Not available on your plan" : "Request Paystack Terminal setup"}
             </Text>
           </TouchableOpacity>
         </View>

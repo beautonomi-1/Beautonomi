@@ -22,6 +22,8 @@ type Ticket = {
   support_context_type?: string | null;
   support_context_label?: string | null;
   csat_score?: number | null;
+  last_message_from?: string | null;
+  has_unread_staff_reply?: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -192,10 +194,17 @@ export default function SupportTicketsListScreen() {
               >
                 <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
                   <Text style={{ fontFamily: "monospace", fontSize: 12, color: Colors.gray[500] }}>{t.ticket_number}</Text>
-                  <View style={{ borderRadius: 9999, paddingHorizontal: 8, paddingVertical: 2, backgroundColor: statusBgColor(t.status) }}>
-                    <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[800] }}>
-                      {t.status.replace("_", " ")}
-                    </Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                    {t.has_unread_staff_reply || t.last_message_from === "staff" ? (
+                      <View style={{ borderRadius: 9999, paddingHorizontal: 8, paddingVertical: 2, backgroundColor: "#dbeafe" }}>
+                        <Text style={{ fontSize: 11, fontWeight: "600", color: "#1d4ed8" }}>New reply</Text>
+                      </View>
+                    ) : null}
+                    <View style={{ borderRadius: 9999, paddingHorizontal: 8, paddingVertical: 2, backgroundColor: statusBgColor(t.status) }}>
+                      <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[800] }}>
+                        {t.status.replace("_", " ")}
+                      </Text>
+                    </View>
                   </View>
                 </View>
                 <Text style={{ fontWeight: "600", color: Colors.gray[900] }} numberOfLines={2}>

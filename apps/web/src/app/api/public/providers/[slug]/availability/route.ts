@@ -10,8 +10,10 @@ import { computePublicSlugAvailabilitySlots } from "@/lib/availability/public-sl
 import { normalizeProviderTimezone } from "@/lib/availability/time-utils";
 import { DEFAULT_BOOKING_DISPLAY_TIMEZONE } from "@/lib/bookings/display-invariants";
 import {
-  PUBLIC_BOOKING_MAX_ADVANCE_DAYS,
-} from "@/lib/provider-booking/public-booking-slot-policy";
+  filterPublicSlotsByMinNotice,
+  isDateBeyondMaxAdvance,
+  loadEffectiveOnlineBookingWindows,
+} from "@/lib/provider-booking/public-online-booking-windows";
 
 /**
  * GET /api/public/providers/[slug]/availability
@@ -23,6 +25,7 @@ import {
  * `service_id` alone is used for resource rules.
  * Uses the same engine as portal and `/api/availability`:
  * `loadAvailabilityConstraints` + `calculateAvailableSlots` (see /api/portal/availability).
+ * Applies provider online-booking min-notice / max-advance windows when listing slots.
  * Optional `travel_buffer_minutes` (at-home) is passed through like `/api/availability`.
  *
  * When `service_ids` (comma-separated offering UUIDs) is present, **duration_minutes** and
@@ -90,9 +93,9 @@ export async function GET(
       );
     }
 
-    // Public customers follow provider-portal calendar rules (shifts, conflicts,
-    // resources) — not online min-notice / max-advance policy.
-    const effectiveMaxAdvance = PUBLIC_BOOKING_MAX_ADVANCE_DAYS;
+    // Online booking windows from provider settings (fallback: public policy).
+    const onlineWindows = await loadEffectiveOnlineBookingWindows(supabase, provider.id);
+    const effectiveMaxAdvance = onlineWindows.maxAdvanceDays;
 
     // Duration and buffer: prefer authoritative chain from `service_ids` + DB; else query params; else single offering.
     let durationMinutes = paramDuration != null ? parseInt(paramDuration, 10) : NaN;
@@ -179,27 +182,6 @@ export async function GET(
       }
     }
 
-    const now = new Date();
-    const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-    const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
-    const requestedDate = dateMatch
-      ? Date.UTC(Number(dateMatch[1]), Number(dateMatch[2]) - 1, Number(dateMatch[3]))
-      : NaN;
-    const daysFromToday = Math.floor((requestedDate - today) / (24 * 60 * 60 * 1000));
-    if (Number.isFinite(daysFromToday) && daysFromToday > effectiveMaxAdvance) {
-      return NextResponse.json({ data: { slots: [] }, error: null });
-    }
-
-    const totalBlockedMinutes = durationMinutes + bufferMinutes;
-    const travelBufferParam = parseInt(searchParams.get("travel_buffer_minutes") || "0", 10);
-    const travelBufferMinutes =
-      Number.isFinite(travelBufferParam) && travelBufferParam >= 0 ? Math.min(360, travelBufferParam) : 0;
-
-    // §Launch-audit 2026-04-18: providers.timezone has historically
-    // accepted non-IANA values ("GMT+2", "UTC-5"). Normalise before
-    // handing to the engine so Intl.DateTimeFormat never throws and
-    // /api/public/providers/[slug]/availability stays in lockstep with
-    // /api/availability — the two routes MUST agree on slot instants.
     const rawProviderTimeZone =
       typeof (provider as { timezone?: string | null }).timezone === "string"
         ? (provider as { timezone?: string | null }).timezone
@@ -212,6 +194,15 @@ export async function GET(
           `"${rawProviderTimeZone}"; falling back to ${DEFAULT_BOOKING_DISPLAY_TIMEZONE}.`
       );
     }
+
+    if (isDateBeyondMaxAdvance(date, effectiveMaxAdvance, providerTimeZone)) {
+      return NextResponse.json({ data: { slots: [] }, error: null });
+    }
+
+    const totalBlockedMinutes = durationMinutes + bufferMinutes;
+    const travelBufferParam = parseInt(searchParams.get("travel_buffer_minutes") || "0", 10);
+    const travelBufferMinutes =
+      Number.isFinite(travelBufferParam) && travelBufferParam >= 0 ? Math.min(360, travelBufferParam) : 0;
 
     let slots = await computePublicSlugAvailabilitySlots({
       supabase,
@@ -226,6 +217,8 @@ export async function GET(
       excludeBookingId,
       providerTimeZone,
     });
+
+    slots = filterPublicSlotsByMinNotice(slots, onlineWindows.minNoticeMinutes);
 
     // Filter by resource availability: union required resources across offerings (multi-service).
     // Include at-home travel buffer in the occupancy window so resource checks match staff conflict windows.

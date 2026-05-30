@@ -99,8 +99,8 @@ function addDays(d: Date, n: number) {
   return out;
 }
 
-/** Default buffer after the last service segment; matches web booking when variant buffer is unknown. */
-const DEFAULT_SLOT_BUFFER_MINUTES = 15;
+/** Default buffer when offering buffer is unknown; matches server `buffer_minutes || 0`. */
+const DEFAULT_SLOT_BUFFER_MINUTES = 0;
 
 /** Mirrors web `OnlineBookingFlowNew` `slotParams`: total span = Σ(duration + buffer) per line; API gets duration + last buffer. */
 function buildSlotParamsFromSelectedServices(items: SelectedServiceItem[]): {

@@ -53,10 +53,12 @@ import { APP_URL } from "@/config/public-env";
 import { webTermsOfServiceUrl } from "@/lib/legal-web";
 import {
   bookingCheckoutLineDisplayName,
-  labelForVariantOptionValues,
+  type CheckoutCatalogProduct,
   type CheckoutProductVariant,
-  variantOptionTypeLabel,
+  type SelectedCheckoutProduct,
 } from "@/lib/booking-checkout-products";
+import { SelectedProductChips } from "@/features/checkout/SelectedProductChips";
+import { BookingProductPickerSheet } from "@/features/checkout/BookingProductPickerSheet";
 import { markReferenceProcessing } from "@/lib/paystack-verify-guard";
 import { pollBookingPaymentSettled } from "@/hooks/usePaystackPayment";
 import { getAnalyticsClient } from "@/lib/analytics-rn";
@@ -200,24 +202,6 @@ interface AddonOption {
   currency?: string;
   duration_minutes?: number;
   is_recommended?: boolean;
-}
-
-interface CheckoutCatalogProduct {
-  id: string;
-  name: string;
-  description?: string | null;
-  category?: string | null;
-  retail_price: number;
-  currency: string;
-  hasVariants: boolean;
-  defaultVariantId: string | null;
-  defaultVariantPrice?: number;
-  variants?: CheckoutProductVariant[];
-  /** Mirrors web `variantOptionTypes` — strings or `{ name }` from DB JSON. */
-  variantOptionTypes: Array<string | { name: string }>;
-  track_stock_quantity: boolean;
-  /** Aggregate stock (variant sum or parent); used when `!hasVariants`. */
-  quantity: number;
 }
 
 /* ─── Helpers ─── */
@@ -759,16 +743,11 @@ function SaveCardToggle({ enabled, onToggle }: { enabled: boolean; onToggle: () 
   );
 }
 
-const CHECKOUT_PRODUCT_PAGE = 16;
 const CHECKOUT_PACKAGE_PAGE = 12;
-const CHECKOUT_MANY_PRODUCTS = 12;
 const CHECKOUT_MANY_PACKAGES = 8;
-const CHECKOUT_MANY_CATEGORY_PILLS = 10;
 
 /** Addons: show all inline below this count; collapse above it */
 const ADDONS_INLINE_THRESHOLD = 4;
-/** Products: auto-collapse the section when the grid would be very long */
-const PRODUCTS_COLLAPSE_THRESHOLD = 6;
 
 /**
  * Compact collapsible section header for checkout.
@@ -1064,16 +1043,10 @@ export default function BookCheckoutScreen() {
   const [selectedVariantIdByProduct, setSelectedVariantIdByProduct] = useState<
     Record<string, string>
   >({});
-  const [selectedProducts, setSelectedProducts] = useState<
-    {
-      productId: string;
-      productVariantId?: string | null;
-      name: string;
-      price: number;
-      quantity: number;
-      currency: string;
-    }[]
-  >([]);
+  const [selectedProducts, setSelectedProducts] = useState<SelectedCheckoutProduct[]>([]);
+  const [productPickerVisible, setProductPickerVisible] = useState(false);
+  const [productPickerFocusId, setProductPickerFocusId] = useState<string | null>(null);
+  const [productPickerFocusVariantId, setProductPickerFocusVariantId] = useState<string | null>(null);
   const [packagesList, setPackagesList] = useState<
     {
       id: string;
@@ -1087,15 +1060,10 @@ export default function BookCheckoutScreen() {
   const [selectedPackageId, setSelectedPackageId] = useState<string | null>(() =>
     initialPackageIdFromRoute?.trim() ? initialPackageIdFromRoute.trim() : null
   );
-  const [checkoutProductCategory, setCheckoutProductCategory] = useState<string>("All");
-  const [checkoutProductSearch, setCheckoutProductSearch] = useState("");
-  const [checkoutProductCategoryFilter, setCheckoutProductCategoryFilter] = useState("");
-  const [checkoutVisibleProducts, setCheckoutVisibleProducts] = useState(CHECKOUT_PRODUCT_PAGE);
   const [checkoutPackageSearch, setCheckoutPackageSearch] = useState("");
   const [checkoutVisiblePackages, setCheckoutVisiblePackages] = useState(CHECKOUT_PACKAGE_PAGE);
   // Collapsible sections: start collapsed when above threshold, expanded otherwise
   const [addonsExpanded, setAddonsExpanded] = useState(true);
-  const [productsExpanded, setProductsExpanded] = useState(true);
 
   useEffect(() => {
     if (defaultCard && !selectedCardId && !useNewCard) {
@@ -1465,6 +1433,12 @@ export default function BookCheckoutScreen() {
                   category: categoryStr,
                   retail_price: defaultVariantPrice ?? (Number(p.price ?? p.retail_price) || 0),
                   currency: p.currency || getTenantDefaultCurrency(),
+                  imageUrl:
+                    typeof p.imageUrl === "string"
+                      ? p.imageUrl
+                      : Array.isArray(p.image_urls) && p.image_urls[0]
+                        ? String(p.image_urls[0])
+                        : null,
                   hasVariants: Boolean(p.hasVariants) && variants.length > 0,
                   defaultVariantId,
                   defaultVariantPrice,
@@ -1480,14 +1454,7 @@ export default function BookCheckoutScreen() {
       .catch(() => setProductsList([]));
   }, [effectiveProviderSlug]);
 
-  // Auto-collapse sections when many items load
-  useEffect(() => {
-    if (productsList.length > PRODUCTS_COLLAPSE_THRESHOLD) {
-      setProductsExpanded(false);
-    }
-  }, [productsList.length]);
-
-  // Default variant per product card when catalog loads (web parity).
+  // Default variant per product when catalog loads (web parity).
   useEffect(() => {
     if (productsList.length === 0) return;
     setSelectedVariantIdByProduct((prev) => {
@@ -1604,67 +1571,9 @@ export default function BookCheckoutScreen() {
       .catch(() => setPackagesList([]));
   }, [effectiveProviderSlug, hold?.location_id]);
 
-  const productCategoryPills = useMemo(() => {
-    const named = new Set<string>();
-    let hasUncat = false;
-    for (const p of productsList) {
-      const c = p.category?.trim();
-      if (c) named.add(c);
-      else hasUncat = true;
-    }
-    const sorted = [...named].sort((a, b) => a.localeCompare(b));
-    return ["All", ...sorted, ...(hasUncat ? ["Other"] : [])] as string[];
-  }, [productsList]);
-
-  useEffect(() => {
-    if (productCategoryPills.length <= 1) return;
-    if (!productCategoryPills.includes(checkoutProductCategory)) {
-      setCheckoutProductCategory("All");
-    }
-  }, [productCategoryPills, checkoutProductCategory]);
-
-  useEffect(() => {
-    setCheckoutVisibleProducts(CHECKOUT_PRODUCT_PAGE);
-  }, [checkoutProductCategory, checkoutProductSearch]);
-
   useEffect(() => {
     setCheckoutVisiblePackages(CHECKOUT_PACKAGE_PAGE);
   }, [checkoutPackageSearch]);
-
-  const filteredCheckoutProducts = useMemo(() => {
-    let list =
-      checkoutProductCategory === "All"
-        ? productsList
-        : checkoutProductCategory === "Other"
-          ? productsList.filter((p) => !p.category?.trim())
-          : productsList.filter((p) => (p.category || "").trim() === checkoutProductCategory);
-    const q = checkoutProductSearch.trim().toLowerCase();
-    if (q) {
-      list = list.filter(
-        (p) =>
-          p.name.toLowerCase().includes(q) ||
-          (p.description && p.description.toLowerCase().includes(q))
-      );
-    }
-    return list;
-  }, [productsList, checkoutProductCategory, checkoutProductSearch]);
-
-  const displayedCheckoutCategoryPills = useMemo(() => {
-    const q = checkoutProductCategoryFilter.trim().toLowerCase();
-    let list = productCategoryPills;
-    if (q && productCategoryPills.length >= CHECKOUT_MANY_CATEGORY_PILLS) {
-      list = productCategoryPills.filter((label) => label.toLowerCase().includes(q));
-    }
-    if (checkoutProductCategory !== "All" && !list.includes(checkoutProductCategory)) {
-      list = [checkoutProductCategory, ...list];
-    }
-    return list;
-  }, [productCategoryPills, checkoutProductCategoryFilter, checkoutProductCategory]);
-
-  const visibleCheckoutProductRows = useMemo(
-    () => filteredCheckoutProducts.slice(0, checkoutVisibleProducts),
-    [filteredCheckoutProducts, checkoutVisibleProducts]
-  );
 
   const snapshotOfferingIds =
     (hold?.booking_services_snapshot
@@ -1708,10 +1617,6 @@ export default function BookCheckoutScreen() {
     [filteredCheckoutPackages, checkoutVisiblePackages]
   );
 
-  const showCheckoutProductSearch =
-    productsList.length >= CHECKOUT_MANY_PRODUCTS ||
-    filteredCheckoutProducts.length >= CHECKOUT_MANY_PRODUCTS;
-  const showCheckoutCategoryFilter = productCategoryPills.length >= CHECKOUT_MANY_CATEGORY_PILLS;
   const showCheckoutPackageSearch =
     packagesMatchingSelection.length >= CHECKOUT_MANY_PACKAGES ||
     filteredCheckoutPackages.length >= CHECKOUT_MANY_PACKAGES;
@@ -3755,485 +3660,88 @@ export default function BookCheckoutScreen() {
               </View>
             )}
 
-            {/* Products (add to booking) */}
-            {productsList.length > 0 && (() => {
-              const selectedProductCount = selectedProducts.reduce((s, p) => s + p.quantity, 0);
-              const productsBadge =
-                productsList.length > PRODUCTS_COLLAPSE_THRESHOLD
-                  ? selectedProductCount > 0
-                    ? `${selectedProductCount} in cart`
-                    : `${productsList.length} items`
-                  : undefined;
-              const productsSectionHeader = productsBadge ? null : (
-                <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 10 }}>
+            {/* Products (add to booking) — compact summary; browse in sheet */}
+            {productsList.length > 0 && (
+              <View
+                style={{
+                  marginBottom: 16,
+                  padding: 12,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: "#E5E7EB",
+                  backgroundColor: "#F9FAFB",
+                }}
+              >
+                <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 8 }}>
                   {t("checkout.productsOptional")}
                 </Text>
-              );
-              const productsInner = (
-                <View>
-                  {productsSectionHeader}
-                {productCategoryPills.length > 1 && (
-                  <View style={{ marginBottom: 12 }}>
-                    {showCheckoutCategoryFilter && (
-                      <TextInput
-                        value={checkoutProductCategoryFilter}
-                        onChangeText={setCheckoutProductCategoryFilter}
-                        placeholder={t("booking.filterCategoriesPlaceholder")}
-                        placeholderTextColor="#9CA3AF"
-                        style={{
-                          backgroundColor: "#FFF",
-                          borderWidth: 1,
-                          borderColor: "#E5E7EB",
-                          borderRadius: 10,
-                          paddingHorizontal: 12,
-                          paddingVertical: 10,
-                          fontSize: 14,
-                          color: "#111827",
-                          marginBottom: 10,
-                        }}
-                      />
-                    )}
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={{
-                        flexDirection: "row",
-                        flexWrap: "nowrap",
-                        paddingVertical: 4,
-                      }}
-                    >
-                      {displayedCheckoutCategoryPills.map((label) => {
-                        const active = checkoutProductCategory === label;
-                        return (
-                          <TouchableOpacity
-                            key={label}
-                            onPress={() => {
-                              haptic.selection();
-                              setCheckoutProductCategory(label);
-                              setCheckoutProductSearch("");
-                            }}
-                            style={{
-                              paddingHorizontal: 16,
-                              paddingVertical: 8,
-                              borderRadius: 999,
-                              marginRight: 8,
-                              backgroundColor: active ? Colors.primary : "#FFF",
-                              borderWidth: 1,
-                              borderColor: active ? Colors.primary : "#E5E7EB",
-                            }}
-                          >
-                            <Text
-                              style={{
-                                fontSize: 13,
-                                fontWeight: "600",
-                                color: active ? "#FFF" : "#374151",
-                              }}
-                            >
-                              {label}
-                            </Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </ScrollView>
-                  </View>
-                )}
-                {showCheckoutProductSearch && (
-                  <TextInput
-                    value={checkoutProductSearch}
-                    onChangeText={setCheckoutProductSearch}
-                    placeholder={t("booking.searchProductsPlaceholder")}
-                    placeholderTextColor="#9CA3AF"
-                    style={{
-                      backgroundColor: "#FFF",
-                      borderWidth: 1,
-                      borderColor: "#E5E7EB",
-                      borderRadius: 10,
-                      paddingHorizontal: 12,
-                      paddingVertical: 10,
-                      fontSize: 14,
-                      color: "#111827",
-                      marginBottom: 12,
-                    }}
-                  />
-                )}
-                {filteredCheckoutProducts.length === 0 ? (
-                  <Text style={{ fontSize: 13, color: "#6B7280", paddingVertical: 8 }}>
-                    {t("checkout.noMatchingProducts")}
-                  </Text>
-                ) : (
-                  <>
-                    {visibleCheckoutProductRows.length < filteredCheckoutProducts.length && (
-                      <Text style={{ fontSize: 11, color: "#6B7280", marginBottom: 8 }}>
-                        {t("booking.servicesPaginationSummary", {
-                          shown: visibleCheckoutProductRows.length,
-                          total: filteredCheckoutProducts.length,
-                        })}
-                      </Text>
-                    )}
-                    {visibleCheckoutProductRows.map((prod) => {
-                      const chosenVid =
-                        selectedVariantIdByProduct[prod.id] ?? prod.defaultVariantId ?? null;
-                      const vRow =
-                        prod.hasVariants && chosenVid
-                          ? prod.variants?.find((v) => v.id === chosenVid)
-                          : undefined;
-                      const lineVariantKey = prod.hasVariants ? chosenVid : null;
-                      const cur = selectedProducts.find(
+                <SelectedProductChips
+                  items={selectedProducts}
+                  formatCurrency={formatCurrency}
+                  onEdit={(productId, variantId) => {
+                    setProductPickerFocusId(productId);
+                    setProductPickerFocusVariantId(variantId ?? null);
+                    setProductPickerVisible(true);
+                  }}
+                  onRemove={(productId, variantId) => {
+                    haptic.selection();
+                    const key = String(variantId ?? "");
+                    setSelectedProducts((prev) =>
+                      prev.filter(
                         (s) =>
-                          s.productId === prod.id &&
-                          String(s.productVariantId ?? "") === String(lineVariantKey ?? "")
-                      );
-                      const qty = cur?.quantity ?? 0;
-                      const unitPrice =
-                        prod.hasVariants && vRow ? vRow.retail_price : prod.retail_price;
-                      const track = prod.track_stock_quantity;
-                      const stock = prod.hasVariants && vRow ? vRow.quantity : prod.quantity;
-                      const isOut = track && stock <= 0;
-                      const atMax = track && qty > 0 && qty >= stock;
-
-                      return (
-                        <View
-                          key={prod.id}
-                          style={{
-                            paddingVertical: 10,
-                            paddingHorizontal: 12,
-                            backgroundColor: "#F9FAFB",
-                            borderRadius: 12,
-                            marginBottom: 8,
-                            borderWidth: 1,
-                            borderColor: "#E5E7EB",
-                          }}
-                        >
-                          {prod.category?.trim() ? (
-                            <Text
-                              style={{
-                                fontSize: 10,
-                                fontWeight: "700",
-                                color: "#9CA3AF",
-                                textTransform: "uppercase",
-                                letterSpacing: 0.5,
-                                marginBottom: 2,
-                              }}
-                              numberOfLines={1}
-                            >
-                              {prod.category.trim()}
-                            </Text>
-                          ) : null}
-                          <Text style={{ fontSize: 14, fontWeight: "500", color: "#111827" }}>
-                            {prod.name}
-                          </Text>
-                          <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }}>
-                            {formatCurrency(unitPrice, prod.currency)}
-                            {track && stock > 0 ? (
-                              <Text style={{ fontSize: 11, color: "#9CA3AF" }}>
-                                {` · ${t("booking.productInStock", { count: stock })}`}
-                              </Text>
-                            ) : null}
-                          </Text>
-
-                          {prod.hasVariants &&
-                          prod.variants &&
-                          prod.variants.length > 0 &&
-                          prod.variantOptionTypes.length > 0 ? (
-                            <View style={{ marginTop: 10 }}>
-                              {prod.variantOptionTypes.map((rawOpt) => {
-                                const optTypeName = variantOptionTypeLabel(rawOpt);
-                                if (!optTypeName) return null;
-                                const uniqueVals = Array.from(
-                                  new Set(
-                                    prod
-                                      .variants!.map((v) => v.option_values?.[optTypeName])
-                                      .filter((x): x is string => Boolean(x))
-                                  )
-                                );
-                                if (uniqueVals.length === 0) return null;
-                                return (
-                                  <View key={optTypeName} style={{ marginBottom: 10 }}>
-                                    <Text
-                                      style={{
-                                        fontSize: 11,
-                                        fontWeight: "600",
-                                        color: "#6B7280",
-                                        marginBottom: 6,
-                                        textTransform: "capitalize",
-                                      }}
-                                    >
-                                      {optTypeName}
-                                    </Text>
-                                    <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
-                                      {uniqueVals.map((val) => {
-                                        const matchingVariant = prod.variants!.find(
-                                          (v) => v.option_values?.[optTypeName] === val
-                                        );
-                                        const isChosen = chosenVid
-                                          ? prod.variants!.find((v) => v.id === chosenVid)
-                                              ?.option_values?.[optTypeName] === val
-                                          : matchingVariant?.id === prod.variants![0]?.id;
-                                        const variantOos =
-                                          track && (matchingVariant?.quantity ?? 0) === 0;
-                                        return (
-                                          <TouchableOpacity
-                                            key={`${optTypeName}-${val}`}
-                                            disabled={variantOos}
-                                            onPress={() => {
-                                              haptic.selection();
-                                              const target = prod.variants!.find(
-                                                (v) => v.option_values?.[optTypeName] === val
-                                              );
-                                              if (target) {
-                                                setSelectedVariantIdByProduct((prev) => ({
-                                                  ...prev,
-                                                  [prod.id]: target.id,
-                                                }));
-                                              }
-                                            }}
-                                            style={{
-                                              paddingHorizontal: 12,
-                                              paddingVertical: 6,
-                                              borderRadius: 999,
-                                              borderWidth: 1,
-                                              borderColor: isChosen ? Colors.primary : "#E5E7EB",
-                                              backgroundColor: isChosen
-                                                ? Colors.primaryLight
-                                                : "#FFF",
-                                              marginRight: 8,
-                                              marginBottom: 6,
-                                              opacity: variantOos ? 0.4 : 1,
-                                            }}
-                                          >
-                                            <Text
-                                              style={{
-                                                fontSize: 12,
-                                                fontWeight: "500",
-                                                color: isChosen ? Colors.primary : "#374151",
-                                              }}
-                                            >
-                                              {val}
-                                            </Text>
-                                          </TouchableOpacity>
-                                        );
-                                      })}
-                                    </View>
-                                  </View>
-                                );
-                              })}
-                            </View>
-                          ) : prod.hasVariants && prod.variants && prod.variants.length > 0 ? (
-                            <View style={{ marginTop: 10 }}>
-                              <Text
-                                style={{
-                                  fontSize: 11,
-                                  fontWeight: "600",
-                                  color: "#6B7280",
-                                  marginBottom: 6,
-                                }}
-                              >
-                                {t("booking.productVariantOptionsHeading")}
-                              </Text>
-                              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                                <View style={{ flexDirection: "row", alignItems: "center" }}>
-                                  {prod.variants.map((v) => {
-                                    const lab =
-                                      labelForVariantOptionValues(v.option_values) ||
-                                      t("booking.productVariantFallback");
-                                    const isChosen = chosenVid === v.id;
-                                    const variantOos = track && (v.quantity ?? 0) === 0;
-                                    return (
-                                      <TouchableOpacity
-                                        key={v.id}
-                                        disabled={variantOos}
-                                        onPress={() => {
-                                          haptic.selection();
-                                          setSelectedVariantIdByProduct((prev) => ({
-                                            ...prev,
-                                            [prod.id]: v.id,
-                                          }));
-                                        }}
-                                        style={{
-                                          paddingHorizontal: 12,
-                                          paddingVertical: 6,
-                                          borderRadius: 999,
-                                          borderWidth: 1,
-                                          borderColor: isChosen ? Colors.primary : "#E5E7EB",
-                                          backgroundColor: isChosen ? Colors.primaryLight : "#FFF",
-                                          marginRight: 8,
-                                          opacity: variantOos ? 0.4 : 1,
-                                        }}
-                                      >
-                                        <Text
-                                          style={{
-                                            fontSize: 12,
-                                            fontWeight: "500",
-                                            color: isChosen ? Colors.primary : "#374151",
-                                          }}
-                                        >
-                                          {lab}
-                                        </Text>
-                                      </TouchableOpacity>
-                                    );
-                                  })}
-                                </View>
-                              </ScrollView>
-                            </View>
-                          ) : null}
-
-                          <View
-                            style={{
-                              flexDirection: "row",
-                              alignItems: "center",
-                              justifyContent: "flex-end",
-                              marginTop: 8,
-                            }}
-                          >
-                            {isOut ? (
-                              <Text style={{ fontSize: 13, color: "#9CA3AF", fontWeight: "600" }}>
-                                {t("booking.productOutOfStock")}
-                              </Text>
-                            ) : (
-                              <View style={{ flexDirection: "row", alignItems: "center" }}>
-                                <TouchableOpacity
-                                  onPress={() => {
-                                    haptic.selection();
-                                    if (qty <= 0) return;
-                                    setSelectedProducts((prev) => {
-                                      const key = String(lineVariantKey ?? "");
-                                      const matchesLine = (s: (typeof prev)[number]) =>
-                                        s.productId === prod.id &&
-                                        String(s.productVariantId ?? "") === key;
-                                      const line = prev.find(matchesLine);
-                                      if (!line || line.quantity <= 0) return prev;
-                                      if (line.quantity === 1)
-                                        return prev.filter((s) => !matchesLine(s));
-                                      return prev.map((s) =>
-                                        matchesLine(s) ? { ...s, quantity: s.quantity - 1 } : s
-                                      );
-                                    });
-                                  }}
-                                  style={{
-                                    width: 32,
-                                    height: 32,
-                                    borderRadius: 8,
-                                    backgroundColor: "#E5E7EB",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    opacity: qty <= 0 ? 0.5 : 1,
-                                  }}
-                                  disabled={qty <= 0}
-                                >
-                                  <Ionicons name="remove" size={18} color="#374151" />
-                                </TouchableOpacity>
-                                <Text
-                                  style={{
-                                    minWidth: 28,
-                                    textAlign: "center",
-                                    fontSize: 14,
-                                    fontWeight: "600",
-                                    color: "#111827",
-                                  }}
-                                >
-                                  {qty}
-                                </Text>
-                                <TouchableOpacity
-                                  onPress={() => {
-                                    haptic.selection();
-                                    if (isOut || atMax) return;
-                                    if (qty === 0) {
-                                      const vidForLine = prod.hasVariants
-                                        ? (chosenVid ?? prod.defaultVariantId)
-                                        : null;
-                                      const priceAdd =
-                                        prod.hasVariants &&
-                                        prod.variants?.find((x) => x.id === vidForLine)
-                                          ? prod.variants.find((x) => x.id === vidForLine)!
-                                              .retail_price
-                                          : prod.retail_price;
-                                      setSelectedProducts((prev) => [
-                                        ...prev,
-                                        {
-                                          productId: prod.id,
-                                          productVariantId: vidForLine ?? null,
-                                          name: bookingCheckoutLineDisplayName(
-                                            prod.name,
-                                            vidForLine,
-                                            prod.variants
-                                          ),
-                                          price: priceAdd,
-                                          quantity: 1,
-                                          currency: prod.currency,
-                                        },
-                                      ]);
-                                    } else {
-                                      setSelectedProducts((prev) => {
-                                        const key = String(lineVariantKey ?? "");
-                                        const matchesLine = (s: (typeof prev)[number]) =>
-                                          s.productId === prod.id &&
-                                          String(s.productVariantId ?? "") === key;
-                                        return prev.map((s) =>
-                                          matchesLine(s) ? { ...s, quantity: s.quantity + 1 } : s
-                                        );
-                                      });
-                                    }
-                                  }}
-                                  disabled={isOut || atMax}
-                                  style={{
-                                    width: 32,
-                                    height: 32,
-                                    borderRadius: 8,
-                                    backgroundColor: Colors.primaryLight,
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    opacity: isOut || atMax ? 0.45 : 1,
-                                  }}
-                                >
-                                  <Ionicons name="add" size={18} color={Colors.primary} />
-                                </TouchableOpacity>
-                              </View>
-                            )}
-                          </View>
-                        </View>
-                      );
-                    })}
-                    {checkoutVisibleProducts < filteredCheckoutProducts.length && (
-                      <TouchableOpacity
-                        onPress={() => {
-                          haptic.selection();
-                          setCheckoutVisibleProducts((c) =>
-                            Math.min(c + CHECKOUT_PRODUCT_PAGE, filteredCheckoutProducts.length)
-                          );
-                        }}
-                        style={{
-                          marginTop: 4,
-                          paddingVertical: 12,
-                          paddingHorizontal: 16,
-                          borderRadius: 12,
-                          borderWidth: 1,
-                          borderColor: "#E5E7EB",
-                          backgroundColor: "#FFF",
-                          alignItems: "center",
-                        }}
-                      >
-                        <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>
-                          {t("booking.loadMoreProducts")}
-                        </Text>
-                      </TouchableOpacity>
-                    )}
-                  </>
+                          !(s.productId === productId && String(s.productVariantId ?? "") === key),
+                      ),
+                    );
+                  }}
+                  editLabel={(name, count) =>
+                    t("checkout.editProductA11y", { name, count })
+                  }
+                  removeLabel={(name) => t("checkout.removeProductA11y", { name })}
+                />
+                {selectedProducts.length > 0 && (
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 10 }}>
+                    {formatCurrency(productsSubtotal, currency)}
+                  </Text>
                 )}
-                </View>
-              );
-              return productsBadge ? (
-                <CollapsibleCheckoutSection
-                  label={t("checkout.productsOptional")}
-                  badge={productsBadge}
-                  expanded={productsExpanded}
-                  onToggle={() => { haptic.selection(); setProductsExpanded((v) => !v); }}
+                <TouchableOpacity
+                  onPress={() => {
+                    haptic.selection();
+                    setProductPickerFocusId(null);
+                    setProductPickerFocusVariantId(null);
+                    setProductPickerVisible(true);
+                  }}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    paddingVertical: 12,
+                    borderRadius: 10,
+                    backgroundColor: "#FFF",
+                    borderWidth: 1,
+                    borderColor: Colors.primary,
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    selectedProducts.length > 0
+                      ? t("checkout.addMoreProducts")
+                      : t("checkout.browseProducts", { count: productsList.length })
+                  }
                 >
-                  {productsInner}
-                </CollapsibleCheckoutSection>
-              ) : (
-                <View style={{ marginBottom: 16 }}>{productsInner}</View>
-              );
-            })()}
+                  <Ionicons
+                    name="cart-outline"
+                    size={18}
+                    color={Colors.primary}
+                    style={{ marginRight: 6 }}
+                  />
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>
+                    {selectedProducts.length > 0
+                      ? t("checkout.addMoreProducts")
+                      : t("checkout.browseProducts", { count: productsList.length })}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
 
             {/* Package selector — only packages that include at least one booked service */}
             {packagesMatchingSelection.length > 0 && (
@@ -5953,6 +5461,23 @@ export default function BookCheckoutScreen() {
       </View>
 
       <PaymentProcessingOverlay visible={processingPayment} message={processingMessage} />
+
+      <BookingProductPickerSheet
+        visible={productPickerVisible}
+        onClose={() => {
+          setProductPickerVisible(false);
+          setProductPickerFocusId(null);
+          setProductPickerFocusVariantId(null);
+        }}
+        productsList={productsList}
+        selectedProducts={selectedProducts}
+        onSelectedProductsChange={setSelectedProducts}
+        selectedVariantIdByProduct={selectedVariantIdByProduct}
+        onSelectedVariantIdByProductChange={setSelectedVariantIdByProduct}
+        formatCurrency={formatCurrency}
+        focusProductId={productPickerFocusId}
+        focusProductVariantId={productPickerFocusVariantId}
+      />
 
       {/* ── BOOKING CONFIRMED SUCCESS OVERLAY ── */}
       {bookingConfirmedData && (

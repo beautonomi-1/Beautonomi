@@ -556,11 +556,12 @@ function AutoYocoCollectGate({ shouldRun, onTrigger }: { shouldRun: boolean; onT
 
 export default function BookingDetailScreen() {
   const router = useRouter();
-  const { id, focusPayment, collectYoco, collectPaystack } = useLocalSearchParams<{
+  const { id, focusPayment, collectYoco, collectPaystack, return_group_id } = useLocalSearchParams<{
     id: string;
     focusPayment?: string;
     collectYoco?: string;
     collectPaystack?: string;
+    return_group_id?: string;
   }>();
   const [etaMinutes, setEtaMinutes] = useState<number | null>(null);
   const { data, loading, error, refresh } = useApi<BookingDetail>(`/api/provider/bookings/${id}`);
@@ -2370,6 +2371,21 @@ export default function BookingDetailScreen() {
           </TouchableOpacity>
         }
       />
+      {typeof return_group_id === "string" && return_group_id.trim() ? (
+        <TouchableOpacity
+          style={twStyle("mx-4 mb-2 flex-row items-center rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2.5")}
+          onPress={() => {
+            router.push({
+              pathname: "/(app)/(tabs)/more/group-bookings",
+              params: { open_group_id: return_group_id.trim() },
+            } as never);
+          }}
+          accessibilityRole="button"
+        >
+          <Ionicons name="arrow-back-outline" size={16} color="#4338ca" style={{ marginRight: 8 }} />
+          <Text style={twStyle("text-sm font-medium text-indigo-800")}>Return to group session</Text>
+        </TouchableOpacity>
+      ) : null}
       <ScrollView
         ref={mainScrollRef}
         style={twStyle("flex-1")}

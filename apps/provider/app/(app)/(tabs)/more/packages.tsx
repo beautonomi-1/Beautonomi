@@ -25,6 +25,7 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatCurrency } from "@/lib/format";
 import { PROVIDER_PRODUCTS_CATALOG_CHANGED } from "@/lib/provider-products-catalog-events";
+import { PROVIDER_SERVICES_CATALOG_CHANGED } from "@/lib/provider-services-catalog-events";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { Colors } from "@/constants/colors";
 import { normalizePackagesList, normalizeProductsList } from "@/lib/unpack-provider-api";
@@ -138,11 +139,17 @@ export default function PackagesScreen() {
   }, [refreshPackages, refreshServices, refreshProducts]);
 
   useEffect(() => {
-    const sub = DeviceEventEmitter.addListener(PROVIDER_PRODUCTS_CATALOG_CHANGED, () => {
+    const subProducts = DeviceEventEmitter.addListener(PROVIDER_PRODUCTS_CATALOG_CHANGED, () => {
       void refreshProducts();
     });
-    return () => sub.remove();
-  }, [refreshProducts]);
+    const subServices = DeviceEventEmitter.addListener(PROVIDER_SERVICES_CATALOG_CHANGED, () => {
+      void refreshServices();
+    });
+    return () => {
+      subProducts.remove();
+      subServices.remove();
+    };
+  }, [refreshProducts, refreshServices]);
 
   const filtered = useMemo(() => {
     let list = packages;

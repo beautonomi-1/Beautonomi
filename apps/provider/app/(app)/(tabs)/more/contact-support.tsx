@@ -14,6 +14,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Colors } from "@/constants/colors";
 import { trackSupportTicketCreated } from "@/lib/analytics";
 import { SUPPORT_TICKETS_API_PREFIX } from "@/lib/support-ticket-api";
+import { invalidateSupportTicketsListCache } from "@/lib/api-response-cache";
 
 export default function ContactSupportScreen() {
   const router = useRouter();
@@ -38,6 +39,7 @@ export default function ContactSupportScreen() {
       category,
     });
     if (!res.error) {
+      invalidateSupportTicketsListCache();
       const ticketNumber = (res as { data?: { ticket?: { ticket_number?: string } } })?.data?.ticket?.ticket_number;
       if (ticketNumber) trackSupportTicketCreated(ticketNumber);
       setSubject("");

@@ -116,7 +116,7 @@ export async function GET(
           description: service.description,
           price: service.price,
           duration_minutes: service.duration_minutes,
-          buffer_minutes: service.buffer_minutes ?? 15,
+          buffer_minutes: service.buffer_minutes ?? 0,
           currency: service.currency,
           variant_sort_order: service.variant_sort_order,
         });
@@ -138,7 +138,7 @@ export async function GET(
         description: service.description,
         price: service.price,
         duration_minutes: service.duration_minutes,
-        buffer_minutes: service.buffer_minutes ?? 15,
+        buffer_minutes: service.buffer_minutes ?? 0,
         currency: service.currency,
         service_type: service.service_type,
         service_available_for: service.service_available_for,

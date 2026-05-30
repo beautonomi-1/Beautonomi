@@ -5,9 +5,10 @@ import {
   errorResponse,
   getOffsetPaginationParams,
   handleApiError,
-  requireSuperadmin,
+  requireAdminSection,
   successResponse,
 } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { listPaystackVirtualTerminals } from "@/lib/payments/paystack-virtual-terminal";
 import {
   buildPaystackTerminalName,
@@ -73,7 +74,7 @@ function buildSummary(rows: any[]) {
 
 export async function GET(request: NextRequest) {
   try {
-    await requireSuperadmin(request);
+    await requireAdminSection(ADMIN_SECTION_FINANCE, request);
     const supabase = getSupabaseAdmin();
     const { searchParams } = new URL(request.url);
     const { limit, offset } = getOffsetPaginationParams(request, { defaultLimit: 50, maxLimit: 200 });
@@ -136,7 +137,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    await requireSuperadmin(request);
+    await requireAdminSection(ADMIN_SECTION_FINANCE, request);
     const supabase = getSupabaseAdmin();
     const body = await request.json();
     if (body?.action === "sync") {

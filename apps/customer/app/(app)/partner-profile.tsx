@@ -1050,7 +1050,9 @@ function MembershipCard({
   );
 }
 
-const PROFILE_PRODUCT_PAGE = 12;
+const PRODUCTS_PER_PAGE = 12;
+const PRODUCT_GRID_GAP = 8;
+const PRODUCT_GRID_SM_BREAKPOINT = 360;
 const PROFILE_MANY_PRODUCTS = 12;
 const PROFILE_MANY_CAT_PILLS = 10;
 
@@ -1137,7 +1139,7 @@ export default function PartnerProfileScreen() {
   const [productListCategory, setProductListCategory] = useState<string>("All");
   const [productListSearch, setProductListSearch] = useState("");
   const [productCategoryQuery, setProductCategoryQuery] = useState("");
-  const [productListVisible, setProductListVisible] = useState(PROFILE_PRODUCT_PAGE);
+  const [productPage, setProductPage] = useState(1);
 
   const { selectedAddress } = useSelectedAddress();
   const { coords } = useLocation();
@@ -1662,8 +1664,14 @@ export default function PartnerProfileScreen() {
   }, [productCategoryPills, productListCategory]);
 
   useEffect(() => {
-    setProductListVisible(PROFILE_PRODUCT_PAGE);
+    setProductPage(1);
   }, [productListCategory, productListSearch]);
+
+  const productGridNumCols = screenWidth >= PRODUCT_GRID_SM_BREAKPOINT ? 3 : 2;
+  const productGridCardWidth = Math.max(
+    96,
+    (screenWidth - contentPadding * 2 - PRODUCT_GRID_GAP * (productGridNumCols - 1)) / productGridNumCols,
+  );
 
   const filteredProfileProducts = useMemo(() => {
     let list =
@@ -1695,10 +1703,21 @@ export default function PartnerProfileScreen() {
     return list;
   }, [productCategoryPills, productCategoryQuery, productListCategory]);
 
-  const visibleProfileProducts = useMemo(
-    () => filteredProfileProducts.slice(0, productListVisible),
-    [filteredProfileProducts, productListVisible],
+  const productTotalPages = useMemo(
+    () => Math.max(1, Math.ceil(filteredProfileProducts.length / PRODUCTS_PER_PAGE)),
+    [filteredProfileProducts.length],
   );
+
+  const effectiveProductPage = Math.min(productPage, productTotalPages);
+
+  const pagedProfileProducts = useMemo(() => {
+    const start = (effectiveProductPage - 1) * PRODUCTS_PER_PAGE;
+    return filteredProfileProducts.slice(start, start + PRODUCTS_PER_PAGE);
+  }, [filteredProfileProducts, effectiveProductPage]);
+
+  useEffect(() => {
+    if (productPage > productTotalPages) setProductPage(productTotalPages);
+  }, [productPage, productTotalPages]);
 
   const showProductSearch =
     providerProducts.length >= PROFILE_MANY_PRODUCTS || filteredProfileProducts.length >= PROFILE_MANY_PRODUCTS;
@@ -2100,9 +2119,17 @@ export default function PartnerProfileScreen() {
                 <View>
                   <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 12 }}>Products</Text>
                   {providerProductsLoading ? (
-                    <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
-                      {[1, 2, 3, 4].map((i) => (
-                        <View key={i} style={{ width: (screenWidth - 44) / 2, backgroundColor: "#F9FAFB", borderRadius: 12, padding: 12, marginRight: 12, marginBottom: 12 }}>
+                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: PRODUCT_GRID_GAP }}>
+                      {Array.from({ length: productGridNumCols * 2 }, (_, i) => i + 1).map((i) => (
+                        <View
+                          key={i}
+                          style={{
+                            width: productGridCardWidth,
+                            backgroundColor: "#F9FAFB",
+                            borderRadius: 12,
+                            padding: 12,
+                          }}
+                        >
                           <Skeleton width="100%" height={120} borderRadius={10} />
                           <Skeleton width="70%" height={14} style={{ marginTop: 10 }} />
                           <Skeleton width="40%" height={12} style={{ marginTop: 6 }} />
@@ -2188,25 +2215,18 @@ export default function PartnerProfileScreen() {
                         <Text style={{ fontSize: 13, color: "#6B7280", paddingVertical: 8 }}>{t("checkout.noMatchingProducts")}</Text>
                       ) : (
                         <>
-                          {visibleProfileProducts.length < filteredProfileProducts.length && (
-                            <Text style={{ fontSize: 11, color: "#6B7280", marginBottom: 8 }}>
-                              {t("booking.servicesPaginationSummary", { shown: visibleProfileProducts.length, total: filteredProfileProducts.length })}
-                            </Text>
-                          )}
-                          <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
-                            {visibleProfileProducts.map((prod) => (
+                          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: PRODUCT_GRID_GAP }}>
+                            {pagedProfileProducts.map((prod) => (
                               <TouchableOpacity
                                 key={prod.id}
                                 onPress={() => router.push(`/(app)/product-detail?id=${prod.id}` as any)}
                                 style={{
-                                  width: (screenWidth - 44) / 2,
+                                  width: productGridCardWidth,
                                   borderRadius: 14,
                                   backgroundColor: "#fff",
                                   overflow: "hidden",
                                   borderWidth: 1,
                                   borderColor: "#F3F4F6",
-                                  marginRight: 12,
-                                  marginBottom: 12,
                                   ...Shadows.cardSmall,
                                 }}
                                 activeOpacity={0.85}
@@ -2255,25 +2275,67 @@ export default function PartnerProfileScreen() {
                               </TouchableOpacity>
                             ))}
                           </View>
-                          {productListVisible < filteredProfileProducts.length && (
-                            <TouchableOpacity
-                              onPress={() => {
-                                haptic.selection();
-                                setProductListVisible((c) => Math.min(c + PROFILE_PRODUCT_PAGE, filteredProfileProducts.length));
-                              }}
+                          {productTotalPages > 1 && (
+                            <View
+                              accessibilityLabel="Product list pagination"
                               style={{
-                                paddingVertical: 12,
-                                paddingHorizontal: 16,
-                                borderRadius: 12,
-                                borderWidth: 1,
-                                borderColor: "#E5E7EB",
-                                backgroundColor: "#FFF",
+                                flexDirection: "row",
                                 alignItems: "center",
-                                marginTop: 4,
+                                justifyContent: "center",
+                                flexWrap: "wrap",
+                                gap: 8,
+                                marginTop: 12,
                               }}
                             >
-                              <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>{t("booking.loadMoreProducts")}</Text>
-                            </TouchableOpacity>
+                              <TouchableOpacity
+                                onPress={() => {
+                                  if (effectiveProductPage <= 1) return;
+                                  haptic.selection();
+                                  setProductPage(effectiveProductPage - 1);
+                                }}
+                                disabled={effectiveProductPage <= 1}
+                                style={{
+                                  paddingVertical: 12,
+                                  paddingHorizontal: 16,
+                                  borderRadius: 12,
+                                  borderWidth: 1,
+                                  borderColor: "#E5E7EB",
+                                  backgroundColor: "#FFF",
+                                  opacity: effectiveProductPage <= 1 ? 0.45 : 1,
+                                }}
+                              >
+                                <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>
+                                  {t("booking.productsPaginationPrevious")}
+                                </Text>
+                              </TouchableOpacity>
+                              <Text style={{ fontSize: 13, color: "#6B7280", paddingHorizontal: 4 }}>
+                                {t("booking.productsPageOf", {
+                                  page: effectiveProductPage,
+                                  totalPages: productTotalPages,
+                                })}
+                              </Text>
+                              <TouchableOpacity
+                                onPress={() => {
+                                  if (effectiveProductPage >= productTotalPages) return;
+                                  haptic.selection();
+                                  setProductPage(effectiveProductPage + 1);
+                                }}
+                                disabled={effectiveProductPage >= productTotalPages}
+                                style={{
+                                  paddingVertical: 12,
+                                  paddingHorizontal: 16,
+                                  borderRadius: 12,
+                                  borderWidth: 1,
+                                  borderColor: "#E5E7EB",
+                                  backgroundColor: "#FFF",
+                                  opacity: effectiveProductPage >= productTotalPages ? 0.45 : 1,
+                                }}
+                              >
+                                <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>
+                                  {t("booking.productsPaginationNext")}
+                                </Text>
+                              </TouchableOpacity>
+                            </View>
                           )}
                         </>
                       )}

@@ -5,9 +5,10 @@ import {
   errorResponse,
   getOffsetPaginationParams,
   handleApiError,
-  requireSuperadmin,
+  requireAdminSection,
   successResponse,
 } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { createPaystackVirtualTerminal } from "@/lib/payments/paystack-virtual-terminal";
 import {
   buildPaystackTerminalPaymentUrl,
@@ -22,7 +23,7 @@ const createFromRequestSchema = z.object({
 
 export async function GET(request: NextRequest) {
   try {
-    await requireSuperadmin(request);
+    await requireAdminSection(ADMIN_SECTION_FINANCE, request);
     const supabase = getSupabaseAdmin();
     const { searchParams } = new URL(request.url);
     const { limit, offset } = getOffsetPaginationParams(request, { defaultLimit: 50, maxLimit: 100 });
@@ -60,7 +61,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireSuperadmin(request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_FINANCE, request);
     const supabase = getSupabaseAdmin();
     const body = createFromRequestSchema.parse(await request.json());
 

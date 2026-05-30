@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   TextInput,
   FlatList,
   Alert,
+  DeviceEventEmitter,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -26,6 +27,7 @@ import { formatCurrency, formatDuration } from "@/lib/format";
 import { Colors } from "@/constants/colors";
 import { tabScreenScrollBottomPadding } from "@/constants/layout";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
+import { PROVIDER_SERVICES_CATALOG_CHANGED } from "@/lib/provider-services-catalog-events";
 import { groupServicesIntoSections } from "@/features/catalogue/groupServicesIntoSections";
 import type { CatalogueServiceItem, CategoryOption as SharedCategoryOption, ServiceSection } from "@/features/catalogue/types";
 
@@ -63,7 +65,7 @@ export default function CatalogueScreen() {
   const { isTablet } = useResponsive();
 
   // --- Data ---
-  const { data: services, loading, error: servicesError, refresh } = useApi<ServiceItem[]>(
+  const { data: services, loading, error: servicesError, refresh, mutate } = useApi<ServiceItem[]>(
     "/api/provider/services?include_inactive=true&include_variants=true",
   );
   const { data: categoriesResponse, refresh: refreshCategories } = useApi<
@@ -110,6 +112,14 @@ export default function CatalogueScreen() {
     } finally {
       setRefreshing(false);
     }
+  }, [refresh, refreshCategories]);
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(PROVIDER_SERVICES_CATALOG_CHANGED, () => {
+      void refresh();
+      void refreshCategories();
+    });
+    return () => sub.remove();
   }, [refresh, refreshCategories]);
 
   // --- Category CRUD ---
@@ -212,9 +222,13 @@ export default function CatalogueScreen() {
         text: "Delete",
         style: "destructive",
         onPress: async () => {
+          const previous = services ?? [];
+          mutate(previous.filter((s) => s.id !== service.id && s.parent_service_id !== service.id));
           const { error } = await deleteService(`/api/provider/services/${service.id}`);
-          if (error) Alert.alert("Error", error);
-          else refresh();
+          if (error) {
+            mutate(previous);
+            Alert.alert("Error", error);
+          }
         },
       },
     ]);

@@ -300,40 +300,65 @@ export async function registerDevice(
   };
 
   // Same physical device can switch accounts — reassign the subscription row for this app.
-  await supabase
+  const { error: reassignDeleteError } = await supabase
     .from("user_devices")
     .delete()
     .eq("onesignal_player_id", normalizedPlayerId)
     .eq("app_type", appType)
     .neq("user_id", userId);
 
-  const { error } = await supabase
-    .from("user_devices")
-    .upsert(row, { onConflict: "onesignal_player_id,app_type" });
+  if (reassignDeleteError) {
+    console.error("Error reassigning device:", reassignDeleteError);
+    return { success: false, error: reassignDeleteError.message };
+  }
 
-  if (!error) {
+  const { data: updated, error: updateError } = await supabase
+    .from("user_devices")
+    .update({ platform, last_seen: row.last_seen })
+    .eq("user_id", userId)
+    .eq("onesignal_player_id", normalizedPlayerId)
+    .eq("app_type", appType)
+    .select("id")
+    .maybeSingle();
+
+  if (updateError) {
+    console.error("Error updating device:", updateError);
+    return { success: false, error: updateError.message };
+  }
+
+  if (updated) {
     return { success: true };
   }
 
-  // Fallback when upsert races (e.g. concurrent login on two tabs).
-  const { error: deleteError } = await supabase
-    .from("user_devices")
-    .delete()
-    .eq("onesignal_player_id", normalizedPlayerId)
-    .eq("app_type", appType);
-
-  if (deleteError) {
-    console.error("Error registering device:", error);
-    return { success: false, error: error.message };
-  }
-
   const { error: insertError } = await supabase.from("user_devices").insert(row);
-  if (insertError) {
-    console.error("Error registering device (insert fallback):", insertError);
-    return { success: false, error: insertError.message };
+  if (!insertError) {
+    return { success: true };
   }
 
-  return { success: true };
+  // Unique violation: concurrent registration or legacy row under old single-column unique.
+  if (insertError.code === "23505") {
+    const { error: deleteError } = await supabase
+      .from("user_devices")
+      .delete()
+      .eq("onesignal_player_id", normalizedPlayerId)
+      .eq("app_type", appType);
+
+    if (deleteError) {
+      console.error("Error clearing conflicting device:", deleteError);
+      return { success: false, error: deleteError.message };
+    }
+
+    const { error: retryError } = await supabase.from("user_devices").insert(row);
+    if (retryError) {
+      console.error("Error registering device (insert retry):", retryError);
+      return { success: false, error: retryError.message };
+    }
+
+    return { success: true };
+  }
+
+  console.error("Error registering device:", insertError);
+  return { success: false, error: insertError.message };
 }
 
 /** Options for which OneSignal app to use (multi-app support). */

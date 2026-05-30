@@ -1,8 +1,24 @@
 import {
   bookingCheckoutLineDisplayName,
+  findSelectedLine,
+  isCatalogLineOutOfStock,
   labelForVariantOptionValues,
+  unitPriceForCatalogLine,
   variantOptionTypeLabel,
+  type CheckoutCatalogProduct,
 } from "@/lib/booking-checkout-products";
+
+const baseProduct: CheckoutCatalogProduct = {
+  id: "p1",
+  name: "Serum",
+  retail_price: 100,
+  currency: "ZAR",
+  hasVariants: false,
+  defaultVariantId: null,
+  variantOptionTypes: [],
+  track_stock_quantity: true,
+  quantity: 5,
+};
 
 describe("variantOptionTypeLabel", () => {
   it("returns string as-is", () => {
@@ -56,5 +72,40 @@ describe("bookingCheckoutLineDisplayName", () => {
 
   it("returns product name when id not found", () => {
     expect(bookingCheckoutLineDisplayName("Cream", "missing", variants)).toBe("Cream");
+  });
+});
+
+describe("catalog line helpers", () => {
+  it("unitPriceForCatalogLine uses variant price when set", () => {
+    const prod: CheckoutCatalogProduct = {
+      ...baseProduct,
+      hasVariants: true,
+      variants: [{ id: "v1", retail_price: 80, quantity: 2, option_values: { Size: "S" } }],
+    };
+    expect(unitPriceForCatalogLine(prod, "v1")).toBe(80);
+    expect(unitPriceForCatalogLine(prod, null)).toBe(100);
+  });
+
+  it("isCatalogLineOutOfStock respects track_stock_quantity", () => {
+    expect(isCatalogLineOutOfStock(baseProduct, null)).toBe(false);
+    expect(isCatalogLineOutOfStock({ ...baseProduct, quantity: 0 }, null)).toBe(true);
+    expect(isCatalogLineOutOfStock({ ...baseProduct, track_stock_quantity: false, quantity: 0 }, null)).toBe(
+      false,
+    );
+  });
+
+  it("findSelectedLine matches product and variant key", () => {
+    const selected = [
+      {
+        productId: "p1",
+        productVariantId: "v1",
+        name: "Serum — S",
+        price: 80,
+        quantity: 2,
+        currency: "ZAR",
+      },
+    ];
+    expect(findSelectedLine(selected, "p1", "v1")?.quantity).toBe(2);
+    expect(findSelectedLine(selected, "p1", null)).toBeUndefined();
   });
 });

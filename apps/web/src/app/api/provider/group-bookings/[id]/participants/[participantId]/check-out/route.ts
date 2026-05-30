@@ -118,6 +118,12 @@ export async function POST(
       }
     }
 
+    await admin
+      .from("group_bookings")
+      .update({ updated_at: now })
+      .eq("id", id)
+      .eq("provider_id", group.provider_id);
+
     const { count, error: remainingError } = await admin
       .from("booking_participants")
       .select("id", { count: "exact", head: true })

@@ -7,6 +7,7 @@ import {
   PAYSTACK_TERMINAL_PAYMENTS_LIST_PATH,
   paystackTerminalAllocatePayload,
 } from "@/lib/paystack-terminal-api";
+import { paystackTerminalErrorMessage } from "@/lib/paystack-terminal-errors";
 
 export type PaystackTerminal = {
   id: string;
@@ -69,9 +70,19 @@ export type PaystackTerminalSetupRequestResponse = {
   message: string;
 };
 
-export function usePaystackTerminals() {
+export type PaystackTerminalSubscriptionAccess = {
+  enabled: boolean;
+  maxTerminals?: number | null;
+  perLocationTerminals?: boolean;
+  advancedReconciliation?: boolean;
+  splitSettlement?: boolean;
+};
+
+export function usePaystackTerminals(options?: { enabled?: boolean }) {
+  const enabled = options?.enabled ?? true;
   const [terminals, setTerminals] = useState<PaystackTerminal[]>([]);
   const [setupRequests, setSetupRequests] = useState<PaystackTerminalSetupRequest[]>([]);
+  const [canRequestSetup, setCanRequestSetup] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -82,10 +93,13 @@ export function usePaystackTerminals() {
       const res = await api.get<{
         terminals?: PaystackTerminal[];
         setupRequests?: PaystackTerminalSetupRequest[];
+        subscription?: PaystackTerminalSubscriptionAccess;
+        canRequestSetup?: boolean;
       }>(PAYSTACK_TERMINALS_DETAIL_PATH);
       if (res.error) throw new Error(res.error.message ?? "Failed to load Paystack terminals");
       setTerminals(res.data?.terminals ?? []);
       setSetupRequests(res.data?.setupRequests ?? []);
+      setCanRequestSetup(res.data?.canRequestSetup ?? res.data?.subscription?.enabled ?? true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load Paystack terminals");
     } finally {
@@ -102,7 +116,11 @@ export function usePaystackTerminals() {
           name,
         },
       );
-      if (res.error) throw new Error(res.error.message ?? "Failed to request Paystack Terminal setup");
+      if (res.error) {
+        throw new Error(
+          paystackTerminalErrorMessage(res.error.message, (res.error as { code?: string }).code),
+        );
+      }
       await refresh();
       return res.data;
     },
@@ -126,13 +144,18 @@ export function usePaystackTerminals() {
   );
 
   useEffect(() => {
+    if (!enabled) {
+      setLoading(false);
+      return;
+    }
     void refresh();
-  }, [refresh]);
+  }, [refresh, enabled]);
 
-  return { terminals, setupRequests, loading, error, refresh, requestTerminalSetup, requestAssets };
+  return { terminals, setupRequests, canRequestSetup, loading, error, refresh, requestTerminalSetup, requestAssets };
 }
 
-export function usePaystackTerminalPayments() {
+export function usePaystackTerminalPayments(options?: { enabled?: boolean }) {
+  const enabled = options?.enabled ?? true;
   const [payments, setPayments] = useState<PaystackTerminalPayment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -179,8 +202,12 @@ export function usePaystackTerminalPayments() {
   );
 
   useEffect(() => {
+    if (!enabled) {
+      setLoading(false);
+      return;
+    }
     void refresh();
-  }, [refresh]);
+  }, [refresh, enabled]);
 
   return { payments, loading, error, refresh, allocate };
 }

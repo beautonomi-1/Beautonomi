@@ -38,7 +38,7 @@ export function slicesFromBookingServiceRows(
 ): OfferingTimingSlice[] {
   return rows.map((bs) => {
     const dur = Number(bs.duration_minutes ?? bs.offerings?.duration_minutes ?? 60);
-    const buf = Number(bs.offerings?.buffer_minutes ?? 15);
+    const buf = Number(bs.offerings?.buffer_minutes ?? 0);
     return { durationMinutes: dur, bufferAfterMinutes: buf };
   });
 }
@@ -87,4 +87,22 @@ export function publicSlugSpanParamsFromSlices(slices: OfferingTimingSlice[]): {
  */
 export function availabilityRouteDurationMinutes(slices: OfferingTimingSlice[]): number {
   return sumChainedBlockedMinutes(slices);
+}
+
+/**
+ * Blocked minutes for hold grid preflight — matches listing `totalBlockedMinutes`
+ * (duration + buffers, **no** travel). Travel is passed separately via
+ * `travelBufferRaw` on {@link assertPublicSlotBookable}.
+ */
+export function holdGridDurationMinutesFromSnapshot(args: {
+  startAt: Date;
+  snapshotLines: Array<{ offering_id: string; scheduled_end_at: string }>;
+  bufferMinutesByOfferingId: Map<string, number>;
+}): number {
+  const last = args.snapshotLines[args.snapshotLines.length - 1];
+  if (!last) return 60;
+  const lastBuf = args.bufferMinutesByOfferingId.get(last.offering_id) ?? 0;
+  const lastEndMs = new Date(last.scheduled_end_at).getTime() + lastBuf * 60000;
+  const dur = Math.round((lastEndMs - args.startAt.getTime()) / 60000);
+  return Math.max(15, Math.min(480, dur));
 }

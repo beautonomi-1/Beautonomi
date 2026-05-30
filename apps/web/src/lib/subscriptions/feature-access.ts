@@ -146,9 +146,8 @@ async function getProviderSubscriptionTier(
   // For past_due: only allow if within 3-day grace period from when status changed
   if (subscription?.status === "past_due") {
     const updatedAt = (subscription as any).updated_at;
-    if (updatedAt && updatedAt < graceCutoff) {
-      // Past grace period — treat as no subscription
-    } else if (subscription?.plan) {
+    const pastGrace = updatedAt && updatedAt < graceCutoff;
+    if (!pastGrace && subscription?.plan) {
       const plan = subscription.plan as any;
       return {
         planId: plan.id,
@@ -157,9 +156,7 @@ async function getProviderSubscriptionTier(
         isFree: plan.is_free || false,
       };
     }
-  }
-
-  if (subscription?.plan) {
+  } else if (subscription?.plan) {
     const plan = subscription.plan as any;
     return {
       planId: plan.id,
@@ -194,7 +191,18 @@ async function getProviderSubscriptionTier(
     return {
       planId: undefined,
       planName: "Badge benefit",
-      features: { booking_online: true, reviews_ratings: true, basic_analytics: true },
+      features: {
+        booking_online: true,
+        reviews_ratings: true,
+        basic_analytics: true,
+        paystack_virtual_terminal: {
+          enabled: true,
+          max_terminals: null,
+          per_location_terminals: true,
+          advanced_reconciliation: true,
+          split_settlement: true,
+        },
+      },
       isFree: true,
     };
   }

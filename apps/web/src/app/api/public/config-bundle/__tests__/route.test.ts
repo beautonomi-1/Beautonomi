@@ -135,4 +135,61 @@ describe("resolveFlagsForUser", () => {
     });
     expect(result["off"].enabled).toBe(false);
   });
+
+  it("payment_paystack_virtual_terminal resolves per platform when platforms_allowed is provider-only", () => {
+    const flags = [
+      {
+        feature_key: "payment_paystack_virtual_terminal",
+        enabled: true,
+        rollout_percent: 100,
+        platforms_allowed: ["provider"],
+        roles_allowed: null,
+        min_app_version: null,
+        environments_allowed: null,
+      },
+    ];
+    const providerResult = resolveFlagsForUser({
+      flags,
+      userId: "provider-owner-1",
+      role: "provider_owner",
+      platform: "provider",
+      appVersion: null,
+      environment: "production",
+    });
+    const webResult = resolveFlagsForUser({
+      flags,
+      userId: "provider-owner-1",
+      role: "provider_owner",
+      platform: "web",
+      appVersion: null,
+      environment: "production",
+    });
+    expect(providerResult["payment_paystack_virtual_terminal"].enabled).toBe(true);
+    expect(webResult["payment_paystack_virtual_terminal"].enabled).toBe(false);
+  });
+
+  it("payment_paystack_virtual_terminal resolves on both web and provider when both are allowed", () => {
+    const flags = [
+      {
+        feature_key: "payment_paystack_virtual_terminal",
+        enabled: true,
+        rollout_percent: 100,
+        platforms_allowed: ["web", "provider"],
+        roles_allowed: null,
+        min_app_version: null,
+        environments_allowed: null,
+      },
+    ];
+    for (const platform of ["web", "provider"] as const) {
+      const result = resolveFlagsForUser({
+        flags,
+        userId: "provider-owner-1",
+        role: "provider_owner",
+        platform,
+        appVersion: null,
+        environment: "production",
+      });
+      expect(result["payment_paystack_virtual_terminal"].enabled).toBe(true);
+    }
+  });
 });

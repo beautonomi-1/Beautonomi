@@ -34,6 +34,7 @@ import { calculateTravelFeeForHold } from "@/lib/travel/calculateTravelFeeForHol
 import { zPublicBookingStaffIdOptional } from "@/lib/public-booking/zod-public-staff-id";
 import { normalizeProviderTimezone } from "@/lib/availability/time-utils";
 import { DEFAULT_BOOKING_DISPLAY_TIMEZONE } from "@/lib/bookings/display-invariants";
+import { holdGridDurationMinutesFromSnapshot } from "@/lib/booking-slot-math/blocked-window-minutes";
 import { assertPublicSlotBookable } from "@/lib/provider-booking/assert-public-slot-bookable";
 
 const PUBLIC_BOOKING_HOLDS_ENDPOINT = "POST /api/public/booking-holds";
@@ -562,17 +563,13 @@ export async function POST(request: NextRequest) {
           location_type === "at_salon" ? location_id ?? null : null;
 
         // Provider-portal parity: shared grid preflight (min-notice=0).
+        // Blocked span = duration + buffers only; travel via travelBufferRaw (not doubled).
         {
-          const lastLine = bookingServicesSnapshot[bookingServicesSnapshot.length - 1];
-          const lastBuf = offeringBufferMinutesById.get(lastLine.offering_id) ?? 0;
-          const lastEnd = new Date(
-            new Date(lastLine.scheduled_end_at).getTime() +
-              (lastBuf + travelBufferMinsForHold) * 60000,
-          );
-          const gridDur = Math.max(
-            15,
-            Math.min(480, Math.round((lastEnd.getTime() - startDate.getTime()) / 60000)),
-          );
+          const gridDur = holdGridDurationMinutesFromSnapshot({
+            startAt: startDate,
+            snapshotLines: bookingServicesSnapshot,
+            bufferMinutesByOfferingId: offeringBufferMinutesById,
+          });
           const staffSet = [
             ...new Set(
               bookingServicesSnapshot

@@ -38,6 +38,7 @@ import { Colors } from "@/constants/colors";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { api } from "@/lib/api-client";
 import { PROVIDER_PRODUCTS_CATALOG_CHANGED } from "@/lib/provider-products-catalog-events";
+import { PROVIDER_SERVICES_CATALOG_CHANGED } from "@/lib/provider-services-catalog-events";
 import { isProductSellable, maxSellableUnits } from "@/features/products/cartItem";
 import type { ProductItem as PosProductItem } from "@/features/products/types";
 import { pt } from "@/lib/provider-translate";
@@ -320,7 +321,7 @@ export default function SalesScreen() {
   );
   const sales = salesResponse?.data ?? [];
 
-  const { data: catalogue } = useApi<CatalogueService[]>(
+  const { data: catalogue, refresh: refreshCatalogue } = useApi<CatalogueService[]>(
     "/api/provider/services?is_active=true",
     { enabled: isFocused, staleTimeMs: 60_000 },
   );
@@ -335,11 +336,17 @@ export default function SalesScreen() {
   }, [productsResponse]);
 
   useEffect(() => {
-    const sub = DeviceEventEmitter.addListener(PROVIDER_PRODUCTS_CATALOG_CHANGED, () => {
+    const subProducts = DeviceEventEmitter.addListener(PROVIDER_PRODUCTS_CATALOG_CHANGED, () => {
       void refreshProducts();
     });
-    return () => sub.remove();
-  }, [refreshProducts]);
+    const subServices = DeviceEventEmitter.addListener(PROVIDER_SERVICES_CATALOG_CHANGED, () => {
+      void refreshCatalogue();
+    });
+    return () => {
+      subProducts.remove();
+      subServices.remove();
+    };
+  }, [refreshProducts, refreshCatalogue]);
 
   const { data: staffMembers } = useApi<StaffMember[]>(
     selectedLocationId ? `/api/provider/staff?location_id=${selectedLocationId}` : "/api/provider/staff",

@@ -14,7 +14,9 @@ import {
   pruneResponseCache,
   clearApiCache,
   invalidateApiCacheForPath,
+  invalidateServicesCache,
 } from "@/lib/api-response-cache";
+import { emitProviderServicesCatalogChanged } from "@/lib/provider-services-catalog-events";
 import { useAuth } from "@/providers/AuthProvider";
 
 export { clearApiCache };
@@ -323,7 +325,12 @@ export function useApiMutation<TRes>(method: "put" | "patch" | "post" | "delete"
           if (mountedRef.current) setError(msg);
           return { data: null, error: msg, errorCode: apiErr.code ?? null };
         }
-        invalidateApiCacheForPath(path);
+        if (path.includes("/api/provider/services")) {
+          invalidateServicesCache();
+          emitProviderServicesCatalogChanged();
+        } else {
+          invalidateApiCacheForPath(path);
+        }
         return { data: result.data, error: null, errorCode: null };
       } catch (err) {
         const msg = getApiErrorMessage(err, "Request failed");

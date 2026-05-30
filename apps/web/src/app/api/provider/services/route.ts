@@ -7,6 +7,10 @@ import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-
 import type { OfferingCard } from "@/types/beautonomi";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { shouldSyncPricingOptionVariants, syncVariantOfferings } from "./_helpers/sync-variants";
+import {
+  isMissingColumnError,
+  normalizeAdvancedPricingRules,
+} from "./_helpers/advanced-pricing-rules";
 
 /**
  * GET /api/provider/services
@@ -246,9 +250,9 @@ export async function POST(request: Request) {
     // Use provider_category_id if provided, otherwise fall back to category_id
     const finalCategoryId = provider_category_id || category_id || null;
 
-    const { data: service, error } = await supabase
-      .from("offerings")
-      .insert({
+    const normalizedAdvancedRules = normalizeAdvancedPricingRules(advanced_pricing_rules);
+
+    const insertPayload: Record<string, unknown> = {
         provider_id: providerId,
         title: serviceTitle,
         service_type: service_type || 'basic',
@@ -281,7 +285,7 @@ export async function POST(request: Request) {
         included_services: included_services || [],
         team_member_ids: team_member_ids && Array.isArray(team_member_ids) ? team_member_ids : [],
         pricing_options: pricing_options && Array.isArray(pricing_options) ? pricing_options : [],
-        advanced_pricing_rules: Array.isArray(advanced_pricing_rules) ? advanced_pricing_rules : [],
+        advanced_pricing_rules: normalizedAdvancedRules,
         display_order: display_order || 0,
         // Add-on fields
         addon_category: service_type === 'addon' ? (addon_category || 'general') : null,
@@ -291,9 +295,25 @@ export async function POST(request: Request) {
         parent_service_id: service_type === 'variant' ? (parent_service_id || null) : null,
         variant_name: service_type === 'variant' ? (variant_name || null) : null,
         variant_sort_order: variant_sort_order || 0,
-      })
+      };
+
+    let { data: service, error } = await supabase
+      .from("offerings")
+      .insert(insertPayload)
       .select()
       .single();
+
+    if (error && isMissingColumnError(error, "advanced_pricing_rules")) {
+      console.warn(
+        "[POST /api/provider/services] advanced_pricing_rules column missing — creating without rules. Apply migration 638_offerings_advanced_pricing_rules.sql.",
+      );
+      const { advanced_pricing_rules: _dropped, ...insertWithoutRules } = insertPayload;
+      ({ data: service, error } = await supabase
+        .from("offerings")
+        .insert(insertWithoutRules)
+        .select()
+        .single());
+    }
 
     if (error || !service) {
       throw error || new Error("Failed to create service");

@@ -69,4 +69,25 @@ describe("mobile parity: 09:00 availability -> hold -> payment guard", () => {
     const segEndMin = minutes("17:30");
     expect(segmentFitsAnyShift(segStartMin, segEndMin, [SHIFT])).toBe(false);
   });
+
+  it("holdGridDurationMinutesFromSnapshot matches listing blocked span (no travel)", async () => {
+    const { holdGridDurationMinutesFromSnapshot } = await import(
+      "@/lib/booking-slot-math/blocked-window-minutes"
+    );
+    const startAt = new Date(`${DATE}T07:00:00.000Z`);
+    const gridDur = holdGridDurationMinutesFromSnapshot({
+      startAt,
+      snapshotLines: [
+        {
+          offering_id: "o1",
+          scheduled_end_at: new Date(startAt.getTime() + 60 * 60000).toISOString(),
+        },
+      ],
+      bufferMinutesByOfferingId: new Map([["o1", 0]]),
+    });
+    expect(gridDur).toBe(60);
+    const segStartMin = minutes("09:00");
+    const segEndMin = segStartMin + gridDur;
+    expect(segmentFitsAnyShift(segStartMin, segEndMin, [SHIFT])).toBe(true);
+  });
 });
