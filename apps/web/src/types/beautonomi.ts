@@ -599,6 +599,13 @@ export interface Conversation {
   customer_avatar?: string | null;
 }
 
+export interface MessageReplyTo {
+  id: string;
+  sender_id: string;
+  sender_name: string;
+  content_preview: string;
+}
+
 export interface Message {
   id: string;
   conversation_id: string;
@@ -607,6 +614,8 @@ export interface Message {
   content: string;
   is_read: boolean;
   created_at: string;
+  reply_to_message_id?: string | null;
+  reply_to?: MessageReplyTo | null;
 }
 
 // Review Types

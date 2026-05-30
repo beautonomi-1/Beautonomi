@@ -870,6 +870,10 @@
     },
     "chatScreen": {
       "messagePlaceholder": "Message...",
+      "replyToMessage": "Reply",
+      "replyingToYou": "You",
+      "cancelReply": "Cancel reply",
+      "replySwipeHint": "Long-press a message to reply",
       "sendFailedTitle": "Send failed",
       "sendFailedBody": "Your message could not be sent. Please try again.",
       "uploadFailedTitle": "Upload failed",

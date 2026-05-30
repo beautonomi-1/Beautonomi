@@ -139,4 +139,35 @@ describe("POST /api/provider/conversations/[id]/messages", () => {
       action_url: "/account-settings/messages?conversation=conversation-1",
     });
   });
+
+  it("rejects reply_to_message_id when parent is not in the conversation", async () => {
+    const parentId = "550e8400-e29b-41d4-a716-446655440000";
+    const admin = {
+      from: vi.fn((table: string) => {
+        if (table === "conversations") {
+          return createQuery({ id: "conversation-1", provider_id: "provider-1", customer_id: "customer-1" });
+        }
+        if (table === "messages") {
+          return createQuery(null);
+        }
+        if (table === "providers") {
+          return createQuery({ business_name: "Glow Studio" });
+        }
+        throw new Error(`Unexpected table ${table}`);
+      }),
+    };
+    mockGetSupabaseAdmin.mockReturnValue(admin);
+
+    const { POST } = await import("../route");
+    const req = new NextRequest("http://localhost/api/provider/conversations/conversation-1/messages", {
+      method: "POST",
+      body: JSON.stringify({ content: "A reply", reply_to_message_id: parentId }),
+    });
+
+    const res = await POST(req, { params: Promise.resolve({ id: "conversation-1" }) });
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error?.message).toContain("Reply target");
+  });
 });
