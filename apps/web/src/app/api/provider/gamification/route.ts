@@ -169,7 +169,6 @@ export async function GET(request: NextRequest) {
       const nextBadgeCandidate = allBadges.find(b => b.tier > currentTier);
       
       if (nextBadgeCandidate) {
-        const _nextBadge = nextBadgeCandidate;
         const requiredPoints = (nextBadgeCandidate.requirements as any)?.points || 0;
         const currentPoints = effectivePointsData?.total_points || 0;
         const progress = requiredPoints > 0 
@@ -185,6 +184,37 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    const currentTier = badge?.tier || 0;
+    const currentBadgeId = badge?.id || null;
+    const nextBadgeId = progressToNextBadge?.badge?.id || null;
+
+    const badgeLadder = (allBadges || []).map((row) => {
+      const requirements = row.requirements as { points?: number } | null;
+      let status: "current" | "earned" | "next" | "locked";
+      if (currentBadgeId && row.id === currentBadgeId) {
+        status = "current";
+      } else if (row.tier < currentTier) {
+        status = "earned";
+      } else if (nextBadgeId && row.id === nextBadgeId) {
+        status = "next";
+      } else {
+        status = "locked";
+      }
+      return {
+        id: row.id,
+        name: row.name,
+        slug: row.slug,
+        description: row.description,
+        tier: row.tier,
+        color: row.color,
+        icon_url: row.icon_url,
+        requirements: row.requirements,
+        benefits: row.benefits,
+        status,
+        points_required: requirements?.points ?? 0,
+      };
+    });
+
     return successResponse({
       points: {
         total: effectivePointsData?.total_points || 0,
@@ -192,6 +222,7 @@ export async function GET(request: NextRequest) {
         current_tier: effectivePointsData?.current_tier_points || 0,
         last_calculated: effectivePointsData?.last_calculated_at,
       },
+      badge_ladder: badgeLadder,
       current_badge: badge ? {
         id: badge.id,
         name: badge.name,

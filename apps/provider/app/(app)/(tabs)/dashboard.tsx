@@ -1190,40 +1190,40 @@ export default function DashboardScreen() {
         }}
       />
       <TouchableOpacity
-        style={{ borderRadius: 16, borderWidth: 1, borderColor: "#c7d2fe", backgroundColor: "#eef2ff", padding: 16 }}
+        style={{ borderRadius: 16, borderWidth: 1, borderColor: Colors.primaryRing, backgroundColor: Colors.primaryLight, padding: 16 }}
         onPress={() => router.push("/(app)/(tabs)/more/rewards-hub" as never)}
         activeOpacity={0.7}
         accessibilityLabel={`Rewards: ${gam?.total_points ?? 0} points`}
       >
         <View style={{ flexDirection: "row", alignItems: "center" }}>
-          <View style={{ height: 48, width: 48, alignItems: "center", justifyContent: "center", borderRadius: 24, backgroundColor: "#e0e7ff" }}>
-            <Ionicons name="trophy" size={24} color="#6366f1" />
+          <View style={{ height: 48, width: 48, alignItems: "center", justifyContent: "center", borderRadius: 24, backgroundColor: Colors.primaryLight }}>
+            <Ionicons name="trophy" size={24} color={Colors.primary} />
           </View>
           <View style={{ marginLeft: 12, flex: 1 }}>
-            <Text style={{ fontWeight: "600", color: "#312e81" }}>
+            <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>
               {gam?.current_badge?.name ?? "Getting Started"}
             </Text>
-            <Text style={{ marginTop: 2, fontSize: 14, color: "#4338ca" }}>
+            <Text style={{ marginTop: 2, fontSize: 14, color: Colors.gray[600] }}>
               {(gam?.total_points ?? 0).toLocaleString()} points earned
             </Text>
           </View>
-          <Ionicons name="chevron-forward" size={18} color="#6366f1" />
+          <Ionicons name="chevron-forward" size={18} color={Colors.gray[400]} />
         </View>
         {nextBadge && (
           <View style={{ marginTop: 12 }}>
             <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
-              <Text style={{ fontSize: 12, color: "#4338ca" }}>
+              <Text style={{ fontSize: 12, color: Colors.gray[700] }}>
                 Next: {nextBadge.badge.name}
               </Text>
-              <Text style={{ fontSize: 12, color: "#4f46e5" }}>
+              <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.primary }}>
                 {nextBadge.progress_percentage}%
               </Text>
             </View>
-            <View style={{ height: 8, borderRadius: 9999, backgroundColor: "#c7d2fe", overflow: "hidden" }}>
-              <View style={{ height: "100%", borderRadius: 9999, backgroundColor: "#4f46e5", width: `${nextBadge.progress_percentage}%` }} />
+            <View style={{ height: 8, borderRadius: 9999, backgroundColor: Colors.primaryLight, overflow: "hidden" }}>
+              <View style={{ height: "100%", borderRadius: 9999, backgroundColor: Colors.primary, width: `${nextBadge.progress_percentage}%` }} />
             </View>
-            <Text style={{ marginTop: 4, fontSize: 10, color: "#6366f1" }}>
-              {nextBadge.points_needed.toLocaleString()} pts to go
+            <Text style={{ marginTop: 4, fontSize: 10, color: Colors.gray[600] }}>
+              {nextBadge.points_needed.toLocaleString()} pts to level up
             </Text>
           </View>
         )}
