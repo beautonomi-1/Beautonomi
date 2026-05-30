@@ -24,6 +24,9 @@ import {
 } from "@/lib/bookings/group-booking-package-pricing";
 import { evaluateGroupCapacity, normalizeGroupCapacity } from "@/lib/bookings/group-capacity";
 import { computeWalletGiftCoverageOutstanding } from "@/lib/bookings/provider-booking-finance";
+import { autoInvoiceInlineGroupParticipants } from "@/lib/bookings/create-group-participant-booking";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import {
   PROVIDER_GROUP_DETAIL_SELECT,
   PROVIDER_GROUP_DETAIL_SELECT_FALLBACK,
@@ -761,15 +764,44 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }
 
       const tenantId = await resolveTenantIdWithZaFallback(request);
-      const { data: bookings, error: bookingsError } = await admin
+      const childBookingsSelect =
+        "id, tenant_id, location_id, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, status, additional_charges(amount,status)";
+      let { data: bookings, error: bookingsError } = await admin
         .from("bookings")
-        .select(
-          "id, tenant_id, location_id, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, status, additional_charges(amount,status)"
-        )
+        .select(childBookingsSelect)
         .eq("group_booking_id", id)
         .eq("provider_id", providerId)
         .not("status", "in", "(cancelled,no_show)");
       if (bookingsError) throw bookingsError;
+
+      // §Group-booking self-heal 2026-05: a group with ZERO child bookings but
+      // roster-only participants (booking_participants w/ booking_id null — web
+      // walk-in / inline adds) previously dead-ended at NOT_INVOICED with no way
+      // for the provider to proceed. Auto-create the per-participant invoices so
+      // recording payment works end-to-end. Scoped to zero-child-booking groups
+      // so customer online group bookings (primary child booking + guest roster)
+      // are never charged per-guest.
+      if ((bookings ?? []).length === 0) {
+        const tenantRegion = await getTenantRegionConfig(tenantId);
+        const groupCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+        const healed = await autoInvoiceInlineGroupParticipants(admin, {
+          groupId: id,
+          providerId,
+          staffUserId: user.id,
+          tenantId,
+          currency: groupCurrency,
+        });
+        if (healed.createdCount > 0) {
+          const reload = await admin
+            .from("bookings")
+            .select(childBookingsSelect)
+            .eq("group_booking_id", id)
+            .eq("provider_id", providerId)
+            .not("status", "in", "(cancelled,no_show)");
+          if (reload.error) throw reload.error;
+          bookings = reload.data;
+        }
+      }
 
       for (const booking of bookings ?? []) {
         const bookingMarketMismatch = bookingTenantMismatchResponse(
@@ -840,7 +872,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             .eq("group_booking_id", id);
           if ((participantCount ?? 0) > 0) {
             return errorResponse(
-              "Participants are not invoiced yet. Create a participant booking before marking the session paid.",
+              "These participants couldn't be invoiced automatically. Make sure each participant has a service selected, then record payment again.",
               "NOT_INVOICED",
               400
             );

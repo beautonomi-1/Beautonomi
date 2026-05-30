@@ -48,6 +48,20 @@ export async function PATCH(
 
     const { status, reason } = validationResult.data;
 
+    // Map request-level lifecycle values to the actual `provider_status` enum
+    // (draft | pending_approval | active | suspended). The API historically
+    // accepts synonyms (approved/pending) and "rejected" which have no enum
+    // member — writing them raw fails the Postgres enum check (500). Rejection
+    // is stored as `suspended` + `status_reason` (no dedicated rejected state).
+    const PROVIDER_STATUS_DB_MAP: Record<string, "pending_approval" | "active" | "suspended"> = {
+      pending: "pending_approval",
+      approved: "active",
+      active: "active",
+      suspended: "suspended",
+      rejected: "suspended",
+    };
+    const dbStatus = PROVIDER_STATUS_DB_MAP[status];
+
     // Verify provider exists
     const { data: provider } = await supabase
       .from("providers")
@@ -61,13 +75,11 @@ export async function PATCH(
     }
 
     const updateData: Record<string, unknown> = {
-      status,
+      status: dbStatus,
       updated_at: new Date().toISOString(),
     };
-
-    if (reason) {
-      updateData.status_reason = reason;
-    }
+    // NOTE: `providers` has no `status_reason` column; the reason is persisted
+    // via the audit log below (and surfaced to the provider in the notification).
 
     const { data: updatedProvider, error: updateError } = await supabase
       .from("providers")

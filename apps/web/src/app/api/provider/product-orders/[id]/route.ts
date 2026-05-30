@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   requireRoleInApi,
   getProviderIdForUser,
@@ -8,6 +9,7 @@ import {
   errorResponse,
   handleApiError,
 } from "@/lib/supabase/api-helpers";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { z } from "zod";
 
 const updateSchema = z.object({
@@ -31,6 +33,13 @@ const updateSchema = z.object({
   tracking_url: z.string().url().max(500).optional().or(z.literal("")),
   estimated_delivery_date: z.string().optional(),
   cancellation_reason: z.string().max(500).optional(),
+  // §Refund-audit 2026-05: when marking an order refunded, capture how the money
+  // was returned. "cash" = handed back in person (walk-in counter sale), no
+  // wallet movement. "store_credit" = added to the customer's wallet (requires a
+  // platform customer). Defaults to store_credit for parity with booking refunds.
+  refund_method: z.enum(["cash", "store_credit"]).optional(),
+  refund_amount: z.number().min(0).optional(),
+  refund_reason: z.string().max(500).optional(),
 });
 
 const TERMINAL_STATUSES = new Set(["cancelled", "refunded"]);
@@ -103,7 +112,9 @@ export async function PATCH(
 
     // Get current order
     const { data: order, error: fetchErr } = await (supabase.from("product_orders") as any)
-      .select("id, status, provider_id, payment_status, total_amount")
+      .select(
+        "id, status, provider_id, payment_status, total_amount, customer_id, currency, tenant_id, order_number",
+      )
       .eq("id", id)
       .eq("provider_id", providerId)
       .single();
@@ -111,6 +122,14 @@ export async function PATCH(
     if (fetchErr || !order) {
       return notFoundResponse("Order not found");
     }
+
+    // Resolve refund method/amount up front so we can validate before mutating.
+    const refundMethod: "cash" | "store_credit" =
+      parsed.refund_method ?? "store_credit";
+    const refundAmount =
+      parsed.refund_amount != null
+        ? parsed.refund_amount
+        : Number(order.total_amount ?? 0);
 
     // Flexible operational status management with guardrails for destructive states.
     if (parsed.status) {
@@ -135,6 +154,24 @@ export async function PATCH(
           400,
         );
       }
+      if (parsed.status === "refunded") {
+        if (refundAmount <= 0 || refundAmount > Number(order.total_amount ?? 0) + 0.01) {
+          return errorResponse(
+            `Refund amount must be between 0 and ${Number(order.total_amount ?? 0).toFixed(2)}.`,
+            "INVALID_REFUND_AMOUNT",
+            400,
+          );
+        }
+        // Store credit needs a platform customer to credit. Walk-in sales
+        // (customer_id NULL) must be refunded in person instead.
+        if (refundMethod === "store_credit" && !order.customer_id) {
+          return errorResponse(
+            "This order has no customer account to credit. Refund in person (cash) instead.",
+            "NO_WALLET_CUSTOMER",
+            400,
+          );
+        }
+      }
     }
 
     // Build update payload
@@ -150,6 +187,10 @@ export async function PATCH(
       }
       if (parsed.status === "refunded") {
         updatePayload.payment_status = "refunded";
+        updatePayload.refund_method = refundMethod;
+        updatePayload.refunded_amount = refundAmount;
+        updatePayload.refunded_at = new Date().toISOString();
+        if (parsed.refund_reason) updatePayload.refund_reason = parsed.refund_reason;
       }
     }
     if (parsed.tracking_number) updatePayload.tracking_number = parsed.tracking_number;
@@ -216,6 +257,88 @@ export async function PATCH(
 
     if (updateErr) throw updateErr;
 
+    // Store-credit refunds add the amount to the customer's wallet. Cash refunds
+    // are simply recorded (the money is handed back in person). Mirrors the
+    // booking refund flow so reports/ledgers reconcile across services + products.
+    if (parsed.status === "refunded" && refundMethod === "store_credit" && order.customer_id) {
+      const admin = getSupabaseAdmin();
+      const { error: walletError } = await (admin.rpc as any)("wallet_credit_admin", {
+        p_user_id: order.customer_id,
+        p_amount: refundAmount,
+        p_currency: order.currency || LAST_RESORT_CURRENCY,
+        p_description: `Refund for order ${order.order_number || id.slice(0, 8)}${parsed.refund_reason ? `: ${parsed.refund_reason}` : ""}`,
+        p_reference_id: id,
+        p_reference_type: "product_order_refund",
+        p_tenant_id: order.tenant_id ?? null,
+      });
+      if (walletError) {
+        // Roll back the refund flags so the operator can retry; the order stays
+        // in its prior paid state rather than being marked refunded with no
+        // wallet credit actually issued.
+        await (supabase.from("product_orders") as any)
+          .update({
+            payment_status: order.payment_status,
+            status: order.status,
+            refund_method: null,
+            refunded_amount: null,
+            refunded_at: null,
+            refund_reason: null,
+          })
+          .eq("id", id);
+        return errorResponse(
+          "Could not credit the customer's wallet. The refund was not recorded.",
+          "WALLET_CREDIT_FAILED",
+          500,
+        );
+      }
+    }
+
+    // Reverse platform-held revenue on the ledger so provider earnings, payouts,
+    // and refund reporting stay correct (not overstated). Only platform-held
+    // orders (paystack/wallet) created finance rows; provider-collected cash/POS
+    // sales were intentionally excluded from the ledger (see
+    // record-product-order-payment) and the product sales report already drops
+    // refunded orders via payment_status, so they need no reversal. We post a
+    // single `refund` row keyed to the product order — matching the booking
+    // refund trigger's shape — regardless of cash vs wallet, because the
+    // recognised revenue is reversed either way.
+    if (parsed.status === "refunded") {
+      const admin = getSupabaseAdmin();
+      const { data: ledgerRows } = await (admin.from("finance_transactions") as any)
+        .select("id, tenant_id")
+        .eq("product_order_id", id)
+        .in("transaction_type", ["payment", "provider_earnings", "platform_fee"])
+        .limit(1);
+      const isPlatformHeld = Array.isArray(ledgerRows) && ledgerRows.length > 0;
+      if (isPlatformHeld) {
+        const ledgerTenantId =
+          (ledgerRows[0] as { tenant_id?: string | null })?.tenant_id ?? order.tenant_id ?? null;
+        const { data: existingRefund } = await (admin.from("finance_transactions") as any)
+          .select("id")
+          .eq("product_order_id", id)
+          .eq("transaction_type", "refund")
+          .limit(1);
+        const alreadyReversed = Array.isArray(existingRefund) && existingRefund.length > 0;
+        if (!alreadyReversed) {
+          await (admin.from("finance_transactions") as any).insert({
+            booking_id: null,
+            product_order_id: id,
+            provider_id: providerId,
+            tenant_id: ledgerTenantId,
+            transaction_type: "refund",
+            refund_component: "_legacy",
+            amount: refundAmount,
+            fees: 0,
+            commission: 0,
+            net: -refundAmount,
+            currency: order.currency || LAST_RESORT_CURRENCY,
+            description: `Refund for product order ${order.order_number || id.slice(0, 8)}${parsed.refund_reason ? ` (${parsed.refund_reason})` : ""}`,
+            created_at: new Date().toISOString(),
+          });
+        }
+      }
+    }
+
     // Dispatch notification to customer based on status change
     if (parsed.status && updated?.customer?.id) {
       const notificationMap: Record<string, { type: string; title: string; message: string }> = {
@@ -243,6 +366,14 @@ export async function PATCH(
           type: "product_order_cancelled",
           title: "Order Cancelled",
           message: `Your order ${updated.order_number} has been cancelled.${parsed.cancellation_reason ? ` Reason: ${parsed.cancellation_reason}` : ""}`,
+        },
+        refunded: {
+          type: "product_order_refunded",
+          title: refundMethod === "cash" ? "Refund Processed" : "Refund Added to Wallet",
+          message:
+            refundMethod === "cash"
+              ? `Your refund for order ${updated.order_number} has been processed and returned to you in person.`
+              : `Your refund for order ${updated.order_number} has been added to your wallet.`,
         },
       };
 

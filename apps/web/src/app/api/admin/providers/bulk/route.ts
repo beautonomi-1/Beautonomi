@@ -87,7 +87,9 @@ export async function POST(request: NextRequest) {
           updateData = { status: "suspended" };
           break;
         case "reject":
-          updateData = { status: "rejected" };
+          // `provider_status` has no `rejected` member; store as suspended.
+          // The rejection reason is persisted via the audit log below.
+          updateData = { status: "suspended" };
           break;
       }
 

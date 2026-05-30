@@ -59,5 +59,12 @@ describe("GET /api/admin/paystack-terminal/setup-requests", () => {
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body.data).toBeDefined();
+    const selectCall = (fromMock.mock.results[0]?.value as { select?: ReturnType<typeof vi.fn> })?.select;
+    expect(selectCall).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "users!provider_paystack_virtual_terminal_setup_requests_requested_by_fkey",
+      ),
+      expect.any(Object),
+    );
   });
 });

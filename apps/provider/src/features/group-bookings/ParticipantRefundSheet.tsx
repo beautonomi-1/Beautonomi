@@ -37,6 +37,7 @@ export function ParticipantRefundSheet({
   const { execute: postRefund, loading: refunding } = useApiMutation("post");
   const [refundAmount, setRefundAmount] = useState("");
   const [refundReason, setRefundReason] = useState("");
+  const [refundMethod, setRefundMethod] = useState<"cash" | "store_credit">("cash");
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
@@ -49,6 +50,7 @@ export function ParticipantRefundSheet({
     if (!visible || !participant) return;
     setRefundAmount(maxRefundable > 0 ? maxRefundable.toFixed(2) : "");
     setRefundReason("");
+    setRefundMethod("cash");
     setError(null);
     setSuccessMessage(null);
   }, [visible, participant, maxRefundable]);
@@ -76,12 +78,17 @@ export function ParticipantRefundSheet({
     const res = await postRefund(`/api/provider/bookings/${participant.booking_id}/refund`, {
       amount,
       reason,
+      refund_method: refundMethod,
     });
     if (res.error) {
       setError(res.error);
       return;
     }
-    setSuccessMessage(`Refunded ${formatCurrency(amount, currency)} to wallet credit.`);
+    setSuccessMessage(
+      refundMethod === "cash"
+        ? `Recorded ${formatCurrency(amount, currency)} refunded in person.`
+        : `Refunded ${formatCurrency(amount, currency)} to wallet credit.`
+    );
     onSuccess(participant.id, amount);
     setTimeout(() => {
       onClose();
@@ -130,7 +137,39 @@ export function ParticipantRefundSheet({
           {totalRefunded > 0
             ? ` (paid ${formatCurrency(totalPaid, currency)}, refunded ${formatCurrency(totalRefunded, currency)})`
             : ""}
-          . Refunds are issued as wallet credit on the participant booking.
+          .
+        </Text>
+        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Refund method</Text>
+        <View style={twStyle("mb-3 flex-row rounded-xl border border-gray-200 bg-gray-50 p-1")}>
+          {([
+            { key: "cash" as const, label: "In person (cash)" },
+            { key: "store_credit" as const, label: "Wallet credit" },
+          ]).map((opt) => {
+            const active = refundMethod === opt.key;
+            return (
+              <TouchableOpacity
+                key={opt.key}
+                onPress={() => setRefundMethod(opt.key)}
+                accessibilityRole="button"
+                style={twStyle(
+                  `flex-1 items-center rounded-lg px-3 py-2 ${active ? "bg-white" : ""}`
+                )}
+              >
+                <Text
+                  style={twStyle(
+                    `text-sm font-medium ${active ? "text-indigo-600" : "text-gray-500"}`
+                  )}
+                >
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+        <Text style={twStyle("mb-3 text-xs text-gray-500")}>
+          {refundMethod === "cash"
+            ? "Hand the money back to the customer at the salon. Recorded for your books; no wallet credit is issued."
+            : "Adds wallet store credit to the participant's account (requires a customer account)."}
         </Text>
         <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Refund amount</Text>
         <TextInput

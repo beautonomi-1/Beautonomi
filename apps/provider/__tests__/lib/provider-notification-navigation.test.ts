@@ -43,7 +43,9 @@ describe("navigateFromProviderNotification", () => {
       link: "/provider/calendar?date=2026-05-02&booking_id=booking-123",
     });
 
-    expect(router.push).toHaveBeenCalledWith("/(app)/(tabs)/bookings/booking-123");
+    expect(router.push).toHaveBeenCalledWith(
+      "/(app)/(tabs)/bookings?date=2026-05-02&booking_id=booking-123",
+    );
   });
 
   it("routes pending bookings to Front Desk with highlight params", () => {
@@ -68,7 +70,9 @@ describe("navigateFromProviderNotification", () => {
       data: { booking_id: "booking-456" },
     });
 
-    expect(router.push).toHaveBeenCalledWith("/(app)/(tabs)/bookings/booking-456");
+    expect(router.push).toHaveBeenCalledWith(
+      "/(app)/(tabs)/bookings?date=2026-05-02&booking_id=booking-456",
+    );
   });
 
   it("routes provider group booking links to the group booking sheet", () => {
@@ -82,6 +86,20 @@ describe("navigateFromProviderNotification", () => {
 
     expect(router.push).toHaveBeenCalledWith(
       `/(app)/(tabs)/more/group-bookings?open_group_id=${id}`,
+    );
+  });
+
+  it("routes booking notifications with date to bookings hub before detail", () => {
+    const router = { push: jest.fn() };
+
+    navigateFromProviderNotification(router as never, {
+      id: "notification-booking",
+      link: "/provider/calendar?date=2026-06-05",
+      data: { booking_id: "booking-789", db_status: "confirmed" },
+    });
+
+    expect(router.push).toHaveBeenCalledWith(
+      "/(app)/(tabs)/bookings?date=2026-06-05&booking_id=booking-789",
     );
   });
 

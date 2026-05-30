@@ -41,6 +41,7 @@ export async function GET(request: NextRequest) {
       opsStalledResult,
       opsActivationResult,
       safetyOpenResult,
+      paystackTerminalSetupResult,
     ] = await Promise.all([
       (async () => {
         const { data: rows, error } = await supabase
@@ -200,6 +201,21 @@ export async function GET(request: NextRequest) {
           return { count: 0 };
         }
       })(),
+      // Paystack Virtual Terminal: provider-submitted setup requests awaiting Ops fulfilment
+      (async () => {
+        if (tenantProviderIds.length === 0) return { count: 0 };
+        try {
+          const { count, error } = await (supabase
+            .from("provider_paystack_virtual_terminal_setup_requests") as any)
+            .select("id", { count: "exact", head: true })
+            .in("status", ["requested", "in_progress"])
+            .in("provider_id", tenantProviderIds);
+          if (error) return { count: 0 };
+          return { count: count ?? 0 };
+        } catch {
+          return { count: 0 };
+        }
+      })(),
     ]);
 
     const counts: Record<string, number> = {
@@ -219,6 +235,7 @@ export async function GET(request: NextRequest) {
       "/admin/provider-ops/tracker": opsStalledResult.count ?? 0,
       "/admin/provider-ops/activation": opsActivationResult.count ?? 0,
       "/admin/control-plane/safety-logs": safetyOpenResult.count ?? 0,
+      "/admin/paystack-terminal": paystackTerminalSetupResult.count ?? 0,
     };
 
     return successResponse(counts);

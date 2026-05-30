@@ -166,6 +166,7 @@ export default function ProviderBookingDetail() {
   const [showRefund, setShowRefund] = useState(false);
   const [refundAmount, setRefundAmount] = useState("");
   const [refundReason, setRefundReason] = useState("");
+  const [refundMethod, setRefundMethod] = useState<"cash" | "store_credit">("store_credit");
   const [isRefunding, setIsRefunding] = useState(false);
 
   // Yoco (parity with provider app: pending sale → terminal → sale PATCH + mark-paid)
@@ -604,8 +605,11 @@ export default function ProviderBookingDetail() {
       await fetcher.post(`/api/provider/bookings/${bookingId}/refund`, {
         amount,
         reason,
+        refund_method: refundMethod,
       });
-      toast.success("Refund processed");
+      toast.success(
+        refundMethod === "cash" ? "Refund recorded (returned in person)" : "Refund added to wallet",
+      );
       setShowRefund(false);
       setRefundAmount("");
       setRefundReason("");
@@ -2314,6 +2318,11 @@ export default function ProviderBookingDetail() {
               onClick={() => {
                 setRefundAmount(maxRefundable.toFixed(2));
                 setRefundReason("");
+                // Smart default: online bookings refund to wallet; provider/
+                // walk-in bookings (and any without a platform customer) refund
+                // in person (cash). No wallet exists for an unlinked customer.
+                const isOnline = (booking as any)?.booking_source === "online";
+                setRefundMethod(isOnline && booking?.customer_id ? "store_credit" : "cash");
                 setShowRefund(true);
               }}
               disabled={isUpdating}
@@ -2730,6 +2739,45 @@ export default function ProviderBookingDetail() {
                   rows={3}
                   className="resize-y min-h-[72px]"
                 />
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-1 block">Refund method</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setRefundMethod("cash")}
+                    className={`min-h-[44px] rounded-md border px-3 text-sm font-medium transition ${
+                      refundMethod === "cash"
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                    }`}
+                  >
+                    In person (cash)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!booking?.customer_id) {
+                        toast.error("This customer has no wallet. Refund in person instead.");
+                        return;
+                      }
+                      setRefundMethod("store_credit");
+                    }}
+                    disabled={!booking?.customer_id}
+                    className={`min-h-[44px] rounded-md border px-3 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                      refundMethod === "store_credit"
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                    }`}
+                  >
+                    Wallet credit
+                  </button>
+                </div>
+                <p className="mt-1.5 text-xs text-gray-500">
+                  {refundMethod === "cash"
+                    ? "Records the refund as returned to the customer in person. No wallet credit is issued."
+                    : "Adds store credit to the customer's wallet for use on a future booking."}
+                </p>
               </div>
               <div className="flex gap-3">
                 <Button variant="destructive" onClick={handleRefund} disabled={isRefunding} className="flex-1">

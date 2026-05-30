@@ -96,7 +96,7 @@ interface Order {
   cancellation_reason?: string | null;
   created_at: string;
   items?: OrderItem[];
-  customer?: { full_name?: string | null; email?: string | null; phone?: string | null } | null;
+  customer?: { id?: string | null; full_name?: string | null; email?: string | null; phone?: string | null } | null;
   customer_name?: string | null;
   customer_phone?: string | null;
   delivery_address?: OrderAddress | OrderAddress[] | null;
@@ -373,7 +373,13 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
     async (
       orderId: string,
       status: string,
-      extra?: { tracking_number?: string; carrier?: string; tracking_url?: string; cancellation_reason?: string },
+      extra?: {
+        tracking_number?: string;
+        carrier?: string;
+        tracking_url?: string;
+        cancellation_reason?: string;
+        refund_method?: "cash" | "store_credit";
+      },
     ) => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       const { error: err } = await patchOrder(`/api/provider/product-orders/${orderId}`, {
@@ -425,13 +431,29 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
           ]
         );
       } else if (status === "refunded") {
+        const order = (orderDetail?.id === orderId ? orderDetail : viewOrder?.id === orderId ? viewOrder : allOrders.find((o) => o.id === orderId)) ?? null;
+        // Wallet credit needs a platform customer; walk-in sales have none, so
+        // those (and any order without a linked customer) are refunded in person.
+        const canWallet = order?.order_source !== "walk_in" && !!order?.customer?.id;
+        const buttons: Parameters<typeof Alert.alert>[2] = [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "In person (cash)",
+            onPress: () => doUpdateStatus(orderId, status, { refund_method: "cash" }),
+          },
+        ];
+        if (canWallet) {
+          buttons.push({
+            text: "Wallet credit",
+            onPress: () => doUpdateStatus(orderId, status, { refund_method: "store_credit" }),
+          });
+        }
         Alert.alert(
-          "Mark as refunded",
-          "Confirm that this order has been refunded to the customer.",
-          [
-            { text: "No", style: "cancel" },
-            { text: "Mark refunded", style: "destructive", onPress: () => doUpdateStatus(orderId, status) },
-          ]
+          "Refund order",
+          canWallet
+            ? "How was this refund returned to the customer?"
+            : "Confirm this order was refunded to the customer in person. No platform wallet is linked to this sale.",
+          buttons,
         );
       } else {
         doUpdateStatus(orderId, status);

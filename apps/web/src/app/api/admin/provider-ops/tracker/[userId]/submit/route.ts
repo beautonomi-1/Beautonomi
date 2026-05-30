@@ -77,7 +77,11 @@ export async function POST(
         business_name: businessName,
         slug,
         description: (draftData.description as string) || "",
-        business_type: (draftData.business_type as string) || "freelancer",
+        // `business_type` DB enum is only ('freelancer','salon'); the wizard uses
+        // salon/mobile/both. Mirror the self-serve mapping: mobile -> freelancer,
+        // salon/both -> salon.
+        business_type:
+          (draftData.business_type as string) === "mobile" ? "freelancer" : "salon",
         team_size: (draftData.team_size as string) || "just_me",
         status: "pending_approval",
         onboarding_state: "ready_for_activation",
@@ -86,7 +90,7 @@ export async function POST(
           (typeof targetUser.phone === "string" ? targetUser.phone : null) ||
           (draftData.owner_phone as string),
         is_verified: false,
-        yoco_machine_id: (draftData.yoco_machine as string) || null,
+        yoco_machine: (draftData.yoco_machine as string) || null,
       })
       .select()
       .single();
@@ -153,14 +157,18 @@ export async function POST(
       | Array<Record<string, unknown>>
       | undefined;
     if (services?.length) {
+      // Draft services follow the canonical self-serve shape
+      // ({ title, duration_minutes, price, category_id }). Map to the actual
+      // `offerings` columns (title / duration_minutes / category_id); fall back
+      // to legacy keys for older drafts.
       const svcRows = services.map((svc) => ({
         provider_id: provider.id,
-        name: svc.name,
-        description: svc.description || null,
-        price: svc.price || 0,
-        duration: svc.duration || 60,
+        title: (svc.title ?? svc.name) as string,
+        description: (svc.description as string) || null,
+        price: (svc.price as number) || 0,
+        duration_minutes: (svc.duration_minutes ?? svc.duration ?? 60) as number,
         is_active: true,
-        global_category_id: svc.category_id || null,
+        category_id: (svc.category_id as string) || null,
       }));
       const { error: svcErr } = await supabase.from("offerings").insert(svcRows);
       if (svcErr) throw svcErr;

@@ -581,6 +581,13 @@ export async function POST(request: NextRequest) {
 
       const participantsWithBookings = [...normalizedParticipants] as any[];
       const newlyCreatedBookingIds: string[] = [];
+      // The at-home travel fee is charged once, on the primary (key payer's)
+      // child booking, so it's collected via mark_paid and refundable. Track
+      // whether it landed; if the primary never gets a child booking (e.g. a
+      // walk-in with no customer_id) we attach it to the first created booking
+      // below so it's never stranded on the group row uncollected.
+      const wantsTravelFee = location_type === "at_home" && Number(serverTravelFee) > 0;
+      let travelFeeApplied = false;
       for (let idx = 0; idx < participantsWithBookings.length; idx++) {
         const p = participantsWithBookings[idx];
         if (p.booking_id) continue;
@@ -592,6 +599,7 @@ export async function POST(request: NextRequest) {
         const svcId = p.service_id || service_id || null;
         if (!svcId) continue;
 
+        const carriesTravelFee = wantsTravelFee && idx === primaryIdxResolved;
         const created = await createGroupParticipantChildBooking(admin, sessionContext, {
           customerId,
           serviceId: String(svcId),
@@ -602,6 +610,7 @@ export async function POST(request: NextRequest) {
               ? p.duration_minutes
               : duration_minutes || 60,
           addons: Array.isArray(p.addons) ? p.addons : [],
+          includeSessionTravelFee: carriesTravelFee,
         });
         if ("error" in created) {
           console.error("Failed to create participant booking for group", groupBooking.id, created.error);
@@ -616,8 +625,29 @@ export async function POST(request: NextRequest) {
             400
           );
         }
+        if (carriesTravelFee) travelFeeApplied = true;
         newlyCreatedBookingIds.push(created.bookingId);
         participantsWithBookings[idx] = { ...p, booking_id: created.bookingId };
+      }
+
+      // Fallback: the primary participant didn't produce a child booking, so
+      // attach the travel fee to the first created booking instead.
+      if (wantsTravelFee && !travelFeeApplied && newlyCreatedBookingIds.length > 0) {
+        const fallbackId = newlyCreatedBookingIds[0];
+        const { data: fb } = await admin
+          .from("bookings")
+          .select("total_amount")
+          .eq("id", fallbackId)
+          .maybeSingle();
+        const currentTotal = Number((fb as { total_amount?: number } | null)?.total_amount ?? 0);
+        await admin
+          .from("bookings")
+          .update({
+            travel_fee: Number(serverTravelFee),
+            total_amount: currentTotal + Number(serverTravelFee),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", fallbackId);
       }
 
       const participantRows = participantsWithBookings.map((p: any, idx: number) => ({

@@ -2,49 +2,56 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { registerDevice } from "@/lib/notifications/onesignal";
 
 type MockHandlers = {
-  delete?: ReturnType<typeof vi.fn>;
-  update?: ReturnType<typeof vi.fn>;
-  insert?: ReturnType<typeof vi.fn>;
+  legacyDelete?: ReturnType<typeof vi.fn>;
+  upsert?: ReturnType<typeof vi.fn>;
+  clearDelete?: ReturnType<typeof vi.fn>;
+  select?: ReturnType<typeof vi.fn>;
 };
 
 function mockSupabase(handlers: MockHandlers = {}) {
-  const deleteResult = handlers.delete ?? vi.fn().mockResolvedValue({ error: null });
-  const updateFn =
-    handlers.update ??
-    vi.fn().mockReturnValue({
-      eq: vi.fn().mockReturnValue({
-        eq: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            select: vi.fn().mockReturnValue({
-              maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
-            }),
-          }),
-        }),
-      }),
-    });
-  const insertFn = handlers.insert ?? vi.fn().mockResolvedValue({ error: null });
+  const legacyDeleteResult = handlers.legacyDelete ?? vi.fn().mockResolvedValue({ error: null });
+  const upsertFn = handlers.upsert ?? vi.fn().mockResolvedValue({ error: null });
+  const clearDeleteResult = handlers.clearDelete ?? vi.fn().mockResolvedValue({ error: null });
+  const selectMaybeSingle =
+    handlers.select ??
+    vi.fn().mockResolvedValue({ data: null, error: null });
 
-  const deleteChain = {
-    eq: vi.fn(function (this: unknown, _col: string, _val: string) {
-      return {
-        eq: vi.fn().mockReturnValue({ neq: deleteResult }),
-        neq: deleteResult,
-      };
+  const legacyDeleteChain = {
+    eq: vi.fn().mockReturnValue({
+      is: legacyDeleteResult,
+    }),
+  };
+
+  const clearDeleteChain = {
+    eq: vi.fn().mockReturnValue({
+      eq: clearDeleteResult,
+    }),
+  };
+
+  const selectChain = {
+    eq: vi.fn().mockReturnValue({
+      eq: vi.fn().mockReturnValue({
+        maybeSingle: selectMaybeSingle,
+      }),
     }),
   };
 
   const chain = {
-    delete: vi.fn().mockReturnValue(deleteChain),
-    update: updateFn,
-    insert: insertFn,
+    delete: vi
+      .fn()
+      .mockReturnValueOnce(legacyDeleteChain)
+      .mockReturnValue(clearDeleteChain),
+    upsert: upsertFn,
+    select: vi.fn().mockReturnValue(selectChain),
   };
 
   return {
     from: vi.fn().mockReturnValue(chain),
     chain,
-    deleteResult,
-    updateFn,
-    insertFn,
+    upsertFn,
+    legacyDeleteResult,
+    clearDeleteResult,
+    selectMaybeSingle,
   };
 }
 
@@ -53,7 +60,7 @@ describe("registerDevice", () => {
     vi.clearAllMocks();
   });
 
-  it("inserts a new device row when no existing row for the user", async () => {
+  it("upserts a device row on first registration", async () => {
     const supabase = mockSupabase({});
     const result = await registerDevice(
       supabase as never,
@@ -64,30 +71,61 @@ describe("registerDevice", () => {
     );
 
     expect(result.success).toBe(true);
-    expect(supabase.chain.insert).toHaveBeenCalledWith(
+    expect(supabase.upsertFn).toHaveBeenCalledWith(
       expect.objectContaining({
         user_id: "user-1",
         onesignal_player_id: "sub-abc",
         app_type: "provider",
         platform: "ios",
       }),
+      { onConflict: "onesignal_player_id,app_type" },
     );
-    expect(supabase.chain.update).toHaveBeenCalled();
   });
 
-  it("updates existing row when user already registered this player id", async () => {
+  it("clears legacy NULL app_type rows before upsert", async () => {
+    const supabase = mockSupabase({});
+    await registerDevice(supabase as never, "user-1", "sub-abc", "ios", "customer");
+
+    expect(supabase.legacyDeleteResult).toHaveBeenCalledWith("app_type", null);
+  });
+
+  it("retries upsert after unique violation by clearing conflicting row", async () => {
+    const upsertFn = vi
+      .fn()
+      .mockResolvedValueOnce({
+        error: {
+          code: "23505",
+          message: 'duplicate key value violates unique constraint "user_devices_player_app_type_key"',
+        },
+      })
+      .mockResolvedValueOnce({ error: null });
+
+    const supabase = mockSupabase({ upsert: upsertFn });
+
+    const result = await registerDevice(
+      supabase as never,
+      "user-2",
+      "sub-abc",
+      "android",
+      "provider",
+    );
+
+    expect(result.success).toBe(true);
+    expect(upsertFn).toHaveBeenCalledTimes(2);
+    expect(supabase.clearDeleteResult).toHaveBeenCalled();
+  });
+
+  it("returns success when concurrent request already registered the device for this user", async () => {
+    const upsertFn = vi.fn().mockResolvedValue({
+      error: {
+        code: "23505",
+        message: 'duplicate key value violates unique constraint "user_devices_player_app_type_key"',
+      },
+    });
+
     const supabase = mockSupabase({
-      update: vi.fn().mockReturnValue({
-        eq: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              select: vi.fn().mockReturnValue({
-                maybeSingle: vi.fn().mockResolvedValue({ data: { id: "dev-1" }, error: null }),
-              }),
-            }),
-          }),
-        }),
-      }),
+      upsert: upsertFn,
+      select: vi.fn().mockResolvedValue({ data: { user_id: "user-1" }, error: null }),
     });
 
     const result = await registerDevice(
@@ -99,49 +137,20 @@ describe("registerDevice", () => {
     );
 
     expect(result.success).toBe(true);
-    expect(supabase.chain.insert).not.toHaveBeenCalled();
-    expect(supabase.updateFn).toHaveBeenCalledWith(
-      expect.objectContaining({ platform: "ios" }),
-    );
+    expect(upsertFn).toHaveBeenCalledTimes(2);
   });
 
-  it("retries insert after unique violation by clearing conflicting row", async () => {
-    const insertFn = vi
-      .fn()
-      .mockResolvedValueOnce({ error: { code: "23505", message: "duplicate key" } })
-      .mockResolvedValueOnce({ error: null });
+  it("returns upsert error when registration fails for another user", async () => {
+    const upsertFn = vi.fn().mockResolvedValue({
+      error: {
+        code: "23505",
+        message: 'duplicate key value violates unique constraint "user_devices_player_app_type_key"',
+      },
+    });
 
-    const supabase = mockSupabase({ insert: insertFn });
-
-    const result = await registerDevice(
-      supabase as never,
-      "user-2",
-      "sub-abc",
-      "android",
-      "provider",
-    );
-
-    expect(result.success).toBe(true);
-    expect(insertFn).toHaveBeenCalledTimes(2);
-    expect(supabase.chain.delete).toHaveBeenCalledTimes(2);
-  });
-
-  it("returns update error when update fails", async () => {
     const supabase = mockSupabase({
-      update: vi.fn().mockReturnValue({
-        eq: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              select: vi.fn().mockReturnValue({
-                maybeSingle: vi.fn().mockResolvedValue({
-                  data: null,
-                  error: { message: "update failed" },
-                }),
-              }),
-            }),
-          }),
-        }),
-      }),
+      upsert: upsertFn,
+      select: vi.fn().mockResolvedValue({ data: { user_id: "other-user" }, error: null }),
     });
 
     const result = await registerDevice(
@@ -153,12 +162,12 @@ describe("registerDevice", () => {
     );
 
     expect(result.success).toBe(false);
-    expect(result.error).toBe("update failed");
+    expect(result.error).toContain("duplicate key");
   });
 
-  it("returns insert error when insert fails with non-unique error", async () => {
+  it("returns upsert error when upsert fails with non-unique error", async () => {
     const supabase = mockSupabase({
-      insert: vi.fn().mockResolvedValue({ error: { code: "42501", message: "permission denied" } }),
+      upsert: vi.fn().mockResolvedValue({ error: { code: "42501", message: "permission denied" } }),
     });
 
     const result = await registerDevice(

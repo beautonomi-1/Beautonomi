@@ -42,7 +42,7 @@ export async function GET(
 
     const { data: messages, error: messagesError } = await supabase
       .from("support_ticket_messages")
-      .select("id, message, is_internal, created_at, user_id, attachments, author:profiles(id, full_name, display_name)")
+      .select("id, message, is_internal, created_at, user_id, attachments, author:users!support_ticket_messages_user_id_fkey(id, full_name, display_name)")
       .eq("ticket_id", id)
       .eq("is_internal", false)
       .order("created_at", { ascending: true });
