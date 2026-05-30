@@ -1,0 +1,57 @@
+# Trigger Vercel builds via Deploy Hooks when the GitHub App integration does not.
+# Setup: docs/VERCEL_DEPLOY_HOOKS.md
+name: Vercel Deploy
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "apps/web/**"
+      - "apps/admin-web/**"
+      - "packages/**"
+      - "pnpm-lock.yaml"
+      - "package.json"
+      - "pnpm-workspace.yaml"
+      - "turbo.json"
+      - ".github/workflows/vercel-deploy.yml"
+
+concurrency:
+  group: vercel-deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy-preview:
+    name: Vercel Preview (develop)
+    if: github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger Vercel Preview deployment
+        env:
+          DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_DEVELOP }}
+        run: |
+          if [ -z "$DEPLOY_HOOK_URL" ]; then
+            echo "::warning::Secret VERCEL_DEPLOY_HOOK_DEVELOP is not set. Create a Deploy Hook for branch develop in Vercel → Settings → Git, then add the URL as a repository secret. See docs/VERCEL_DEPLOY_HOOKS.md"
+            exit 0
+          fi
+          echo "Triggering Vercel Preview deploy for develop..."
+          curl -fsS -X POST "$DEPLOY_HOOK_URL"
+          echo "Deploy hook accepted."
+
+  deploy-production:
+    name: Vercel Production (main)
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger Vercel Production deployment
+        env:
+          DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_MAIN }}
+        run: |
+          if [ -z "$DEPLOY_HOOK_URL" ]; then
+            echo "::warning::Secret VERCEL_DEPLOY_HOOK_MAIN is not set. Create a Deploy Hook for branch main in Vercel → Settings → Git, then add the URL as a repository secret. See docs/VERCEL_DEPLOY_HOOKS.md"
+            exit 0
+          fi
+          echo "Triggering Vercel Production deploy for main..."
+          curl -fsS -X POST "$DEPLOY_HOOK_URL"
+          echo "Deploy hook accepted."

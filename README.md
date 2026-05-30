@@ -165,7 +165,7 @@ Translations live in `packages/i18n/src/locales/`. The web app auto-detects brow
 ## Deployment
 
 - **Go live (ordered steps)**: **[docs/GO_LIVE_NOW.md](./docs/GO_LIVE_NOW.md)** — CI → Supabase → Vercel env (incl. `CRON_SECRET` / `CSRF_SECRET`) → EAS → smoke tests.
-- **Web**: Vercel; `apps/web/vercel.json` (crons, headers). Use **Node.js 24** and pnpm version from root `package.json` `packageManager`.
+- **Web**: Vercel; `apps/web/vercel.json` (crons, headers). Use **Node.js 24** and pnpm version from root `package.json` `packageManager`. GitHub → Vercel via [docs/VERCEL_DEPLOY_HOOKS.md](./docs/VERCEL_DEPLOY_HOOKS.md) when the Vercel GitHub App does not auto-deploy.
 - **Mobile**: EAS — [docs/DEPLOYMENT_EAS.md](./docs/DEPLOYMENT_EAS.md).
 - **Database**: `supabase/migrations/` — [supabase/README.md](./supabase/README.md).
 

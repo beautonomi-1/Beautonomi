@@ -31,7 +31,8 @@ For a full local build before deploy: `pnpm run prepare:production`.
    - **CRON_SECRET** (or **INTERNAL_API_SECRET**): required for Vercel **crons** in `apps/web/vercel.json` and secured cron routes.
    - Global / ZA platform copy-paste tables: [SECRETS_BOOTSTRAP.md](./SECRETS_BOOTSTRAP.md), [ENVIRONMENT_MATRIX.md](./ENVIRONMENT_MATRIX.md).
 4. **Domains**: production host(s) assigned; `tenant_domains` rows match real Host headers ([DOMAIN_TENANT_ROUTING_RUNBOOK.md](./DOMAIN_TENANT_ROUTING_RUNBOOK.md)).
-5. Deploy production; run **smoke tests** from [RELEASE_CHECKLIST.md](./RELEASE_CHECKLIST.md) § Smoke tests.
+5. **GitHub → Vercel**: If pushes do not create deployments, set up Deploy Hooks and Actions secrets per [VERCEL_DEPLOY_HOOKS.md](./VERCEL_DEPLOY_HOOKS.md) (`VERCEL_DEPLOY_HOOK_DEVELOP`, `VERCEL_DEPLOY_HOOK_MAIN`).
+6. Deploy production; run **smoke tests** from [RELEASE_CHECKLIST.md](./RELEASE_CHECKLIST.md) § Smoke tests.
 
 ## 4. Mobile (EAS)
 
