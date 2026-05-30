@@ -144,6 +144,7 @@ interface ConversationDetail {
   customer_avatar_url: string | null;
   customer_phone?: string | null;
   customer_email?: string | null;
+  is_pinned?: boolean;
   messages: Message[];
 }
 
@@ -689,14 +690,27 @@ export default function ChatScreen() {
   const customerPhone = (conversation as ConversationDetail | undefined)?.customer_phone;
   const customerEmail = (conversation as ConversationDetail | undefined)?.customer_email;
 
+  const togglePin = useCallback(async () => {
+    if (!conversationId) return;
+    const next = !conversation?.is_pinned;
+    const res = await api.patch<{ is_pinned?: boolean }>(
+      `/api/provider/conversations/${conversationId}/pin`,
+      { pinned: next },
+    );
+    if (res.error) Alert.alert("Error", res.error.message || "Could not update pin");
+    else void refresh();
+  }, [conversation?.is_pinned, conversationId, refresh]);
+
   const showClientMenu = useCallback(() => {
     const options: string[] = [];
     if (customerId) options.push("View booking history");
     if (customerPhone) options.push("Call client");
     if (customerPhone) options.push("Copy phone");
     if (customerEmail) options.push("Copy email");
+    options.push(conversation?.is_pinned ? "Unpin chat" : "Pin chat");
     options.push("Delete conversation");
     options.push("Cancel");
+    const pinIndex = options.length - 3;
     const deleteIndex = options.length - 2;
     const cancelIndex = options.length - 1;
     const runDelete = () => {
@@ -719,6 +733,10 @@ export default function ChatScreen() {
       if (idx === cancelIndex) return;
       if (idx === deleteIndex) {
         runDelete();
+        return;
+      }
+      if (idx === pinIndex) {
+        void togglePin();
         return;
       }
       let i = 0;
@@ -746,11 +764,15 @@ export default function ChatScreen() {
           ...(customerPhone ? [{ text: "Call", onPress: () => Linking.openURL(`tel:${customerPhone}`) }] : []),
           ...(customerPhone ? [{ text: "Copy phone", onPress: () => Clipboard.setStringAsync(customerPhone) }] : []),
           ...(customerEmail ? [{ text: "Copy email", onPress: () => Clipboard.setStringAsync(customerEmail) }] : []),
+          {
+            text: conversation?.is_pinned ? "Unpin chat" : "Pin chat",
+            onPress: () => void togglePin(),
+          },
           { text: "Delete conversation", style: "destructive", onPress: runDelete },
         ].filter(Boolean) as { text: string; style?: "cancel" | "destructive"; onPress?: () => void }[]
       );
     }
-  }, [conversationId, customerId, customerPhone, customerEmail, deleteConv, router]);
+  }, [conversationId, customerId, customerPhone, customerEmail, conversation?.is_pinned, deleteConv, router, togglePin]);
 
   // No conversation id (invalid or list opened without id)
   if (!conversationId) {

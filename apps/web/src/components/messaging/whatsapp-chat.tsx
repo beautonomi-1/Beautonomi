@@ -1,7 +1,7 @@
 "use client";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useClientMounted } from "@/hooks/use-client-mounted";
-import { Send, ArrowLeft, MoreVertical, Phone, Tag, User, Mail, Copy, Check, Paperclip, X, File, Play, Trash2, Undo2, Info, Loader2, ExternalLink, Clock, MapPin, FileText, CornerDownRight } from "lucide-react";
+import { Send, ArrowLeft, MoreVertical, Phone, Tag, User, Mail, Copy, Check, Paperclip, X, File, Play, Trash2, Undo2, Info, Loader2, ExternalLink, Clock, MapPin, FileText, CornerDownRight, Pin, PinOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -100,6 +100,7 @@ interface Conversation {
   booking_number?: string;
   avatar?: string;
   customer_avatar?: string;
+  is_pinned?: boolean;
 }
 
 interface WhatsAppChatProps {
@@ -268,6 +269,25 @@ export default function WhatsAppChat({
         return;
       }
       window.location.href = `/partner-profile?slug=${conversation.provider_id}`;
+    }
+  };
+
+  const handleTogglePin = async () => {
+    if (!conversation?.id) {
+      toast.error("Cannot pin: Conversation ID is missing");
+      return;
+    }
+    const nextPinned = !conversation.is_pinned;
+    try {
+      const endpoint = isProviderChat
+        ? `/api/provider/conversations/${conversation.id}/pin`
+        : `/api/me/conversations/${conversation.id}/pin`;
+      await fetcher.patch(endpoint, { pinned: nextPinned });
+      toast.success(nextPinned ? "Chat pinned" : "Chat unpinned");
+      onConversationUpdate?.();
+    } catch (err) {
+      const message = err instanceof FetchError ? err.message : "Failed to update pin";
+      toast.error(message);
     }
   };
 
@@ -1093,6 +1113,19 @@ export default function WhatsAppChat({
               {conversation.id && (
                 <>
                   <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => void handleTogglePin()}>
+                    {conversation.is_pinned ? (
+                      <>
+                        <PinOff className="w-4 h-4 mr-2" />
+                        Unpin chat
+                      </>
+                    ) : (
+                      <>
+                        <Pin className="w-4 h-4 mr-2" />
+                        Pin chat
+                      </>
+                    )}
+                  </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={() => setShowDeleteDialog(true)}
                     className="text-red-600 focus:text-red-600 focus:bg-red-50"

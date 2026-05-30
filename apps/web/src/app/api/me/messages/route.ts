@@ -5,6 +5,7 @@ import { requireRoleInApi, successResponse, handleApiError, errorResponse } from
 import { sanitizeMessageAttachmentsForResponse } from "@/lib/messaging/message-attachments";
 import {
   enrichMessagesWithReplyTo,
+  isProviderMessageRole,
   mapMessageWithReplyFields,
   validateReplyToMessageId,
 } from "@/lib/messaging/message-replies";
@@ -108,7 +109,7 @@ export async function GET(request: NextRequest) {
         conversation_id: m.conversation_id,
         sender_id: m.sender_id,
         sender_name:
-          m.sender_role === "provider" && providerBusinessName
+          isProviderMessageRole(m.sender_role) && providerBusinessName
             ? providerBusinessName
             : m.sender?.full_name || "User",
         sender_role: m.sender_role,

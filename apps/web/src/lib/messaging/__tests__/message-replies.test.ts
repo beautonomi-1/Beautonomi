@@ -3,7 +3,16 @@ import {
   buildMessageContentPreview,
   validateReplyToMessageId,
   enrichMessagesWithReplyTo,
+  isProviderMessageRole,
 } from "../message-replies";
+
+describe("isProviderMessageRole", () => {
+  it("treats provider_owner and provider_staff as provider", () => {
+    expect(isProviderMessageRole("provider_owner")).toBe(true);
+    expect(isProviderMessageRole("provider_staff")).toBe(true);
+    expect(isProviderMessageRole("customer")).toBe(false);
+  });
+});
 
 describe("buildMessageContentPreview", () => {
   it("returns trimmed text", () => {
@@ -57,6 +66,36 @@ describe("validateReplyToMessageId", () => {
 });
 
 describe("enrichMessagesWithReplyTo", () => {
+  it("uses provider business name for provider_owner reply parents", async () => {
+    const parentId = "11111111-1111-1111-1111-111111111111";
+    const admin = {
+      from: vi.fn(() => ({
+        select: vi.fn().mockReturnThis(),
+        in: vi.fn(async () => ({
+          data: [
+            {
+              id: parentId,
+              sender_id: "user-p",
+              sender_role: "provider_owner",
+              content: "Offer sent",
+              attachments: [],
+              created_at: "2026-01-01T00:00:00.000Z",
+              sender: { full_name: "Staff Person" },
+            },
+          ],
+          error: null,
+        })),
+      })),
+    } as unknown as Parameters<typeof enrichMessagesWithReplyTo>[0];
+
+    const enriched = await enrichMessagesWithReplyTo(
+      admin,
+      [{ id: "2", sender_id: "c", reply_to_message_id: parentId, content: "ok" }],
+      { providerBusinessName: "Glow Studio" }
+    );
+    expect(enriched[0].reply_to?.sender_name).toBe("Glow Studio");
+  });
+
   it("attaches reply_to preview from parent rows", async () => {
     const parentId = "11111111-1111-1111-1111-111111111111";
     const admin = {

@@ -291,6 +291,10 @@ export function MessagesPageClient({ initial }: MessagesPageClientProps) {
       
       const deduplicated = dedupeCustomerConversations(conversationsData);
       setConversations(deduplicated);
+      setSelectedConversation((prev) => {
+        if (!prev) return prev;
+        return deduplicated.find((c) => c.id === prev.id) ?? prev;
+      });
       return deduplicated;
     } catch (err) {
       let errorMessage = "Failed to load conversations";

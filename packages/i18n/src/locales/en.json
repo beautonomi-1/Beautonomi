@@ -1204,6 +1204,8 @@
           "conversationActionsMessage": "Choose an action",
           "conversationActionsA11y": "Conversation actions",
           "markAsRead": "Mark as read",
+          "pinConversation": "Pin chat",
+          "unpinConversation": "Unpin chat",
           "deleteConversation": "Delete conversation",
           "deleteConfirmTitle": "Delete conversation?",
           "deleteConfirmBody": "This will remove the conversation from your list.",

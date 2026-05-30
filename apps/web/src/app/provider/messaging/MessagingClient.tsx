@@ -28,6 +28,7 @@ interface Conversation {
   last_message_at: string;
   last_message_preview?: string;
   avatar?: string; // For backward compatibility
+  is_pinned?: boolean;
 }
 
 function mapConversationRows(rows: Conversation[]): Conversation[] {
@@ -154,6 +155,10 @@ export function MessagingClient({
       const transformed = mapConversationRows((response.data || []) as Conversation[]);
       
       setConversations(transformed);
+      setSelectedConversation((prev) => {
+        if (!prev) return prev;
+        return transformed.find((c) => c.id === prev.id) ?? prev;
+      });
     } catch (err) {
       let errorMessage = "Failed to load conversations";
       

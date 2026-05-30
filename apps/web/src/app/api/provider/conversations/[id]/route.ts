@@ -38,7 +38,7 @@ export async function GET(
 
     const { data: conversation, error: convError } = await supabaseAdmin
       .from("conversations")
-      .select("id, customer_id, provider_id, booking_id, last_message_at, last_message_preview, unread_count_provider, created_at")
+      .select("id, customer_id, provider_id, booking_id, last_message_at, last_message_preview, unread_count_provider, is_starred_provider, created_at")
       .eq("id", conversationId)
       .eq("provider_id", providerId)
       .single();
@@ -110,6 +110,7 @@ export async function GET(
       customer_avatar_url: customer?.avatar_url || null,
       customer_phone: (customer as any)?.phone ?? null,
       customer_email: customer?.email ?? null,
+      is_pinned: Boolean((conversation as { is_starred_provider?: boolean }).is_starred_provider),
       messages: transformedMessages,
     });
   } catch (error) {

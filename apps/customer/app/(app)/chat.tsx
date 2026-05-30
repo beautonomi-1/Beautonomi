@@ -198,6 +198,7 @@ type ConversationSummary = {
    * `apps/customer/app/(app)/(tabs)/chats.tsx`), so reuse that shape.
    */
   provider?: { business_name?: string | null; thumbnail_url?: string | null } | null;
+  is_pinned?: boolean;
 };
 
 function normalizeAttachmentForPreview(a: string | Record<string, unknown>): NormalizedAttachment {
@@ -1053,6 +1054,48 @@ export default function ChatScreen() {
     partnerFromMessages ||
     t("customer.chatScreen.fallbackTitle");
   const providerThumbnail = conversationMeta?.provider?.thumbnail_url ?? null;
+  const isChatPinned = Boolean(conversationMeta?.is_pinned);
+
+  const toggleChatPin = useCallback(async () => {
+    if (!id) return;
+    const next = !isChatPinned;
+    const res = await api.patch<{ is_pinned?: boolean }>(
+      `/api/me/conversations/${id}/pin`,
+      { pinned: next },
+    );
+    if (res.error) {
+      Alert.alert(
+        t("customer.chatScreen.sendFailedTitle"),
+        getApiErrorMessage(res.error, t("customer.chatScreen.sendFailedBody")),
+      );
+      return;
+    }
+    setConversationMeta((prev) => (prev ? { ...prev, is_pinned: next } : prev));
+  }, [id, isChatPinned, t]);
+
+  const openChatHeaderMenu = useCallback(() => {
+    Alert.alert(t("customer.chatScreen.conversationActionsTitle"), undefined, [
+      {
+        text: isChatPinned ? t("customer.chatScreen.unpinConversation") : t("customer.chatScreen.pinConversation"),
+        onPress: () => void toggleChatPin(),
+      },
+      { text: t("common.cancel"), style: "cancel" },
+    ]);
+  }, [isChatPinned, toggleChatPin, t]);
+
+  const chatHeaderRight = useCallback(
+    () => (
+      <TouchableOpacity
+        onPress={openChatHeaderMenu}
+        style={{ marginRight: 8, padding: 8 }}
+        accessibilityRole="button"
+        accessibilityLabel={t("customer.chatScreen.conversationActionsA11y")}
+      >
+        <Ionicons name="ellipsis-horizontal" size={22} color={Colors.gray[700]} />
+      </TouchableOpacity>
+    ),
+    [openChatHeaderMenu, t],
+  );
 
   // §UI-audit 2026-05: render the provider's avatar next to the title
   // in the chat header so the customer can confirm they're chatting with
@@ -1125,7 +1168,12 @@ export default function ChatScreen() {
     return (
       <>
         <Stack.Screen
-          options={{ title: chatTitle, headerTitle: renderHeaderTitle, headerBackTitle: "Back" }}
+          options={{
+            title: chatTitle,
+            headerTitle: renderHeaderTitle,
+            headerBackTitle: "Back",
+            headerRight: chatHeaderRight,
+          }}
         />
         <View style={{ flex: 1, backgroundColor: Colors.white, justifyContent: "center", alignItems: "center", padding: 24 }}>
           <Ionicons name="chatbubble-ellipses-outline" size={48} color={Colors.gray[300]} />
@@ -1144,7 +1192,12 @@ export default function ChatScreen() {
   return (
     <>
       <Stack.Screen
-        options={{ title: chatTitle, headerTitle: renderHeaderTitle, headerBackTitle: "Back" }}
+        options={{
+          title: chatTitle,
+          headerTitle: renderHeaderTitle,
+          headerBackTitle: "Back",
+          headerRight: chatHeaderRight,
+        }}
       />
       <KeyboardAvoidingView
         style={{ flex: 1, backgroundColor: Colors.white }}

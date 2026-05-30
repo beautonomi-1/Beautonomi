@@ -1,6 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { sanitizeMessageAttachmentsForResponse } from "@/lib/messaging/message-attachments";
 
+/** Provider-side roles stored on `messages.sender_role` (not the literal string "provider"). */
+export function isProviderMessageRole(role: string | null | undefined): boolean {
+  return role != null && role !== "customer";
+}
+
 export type MessageReplyTo = {
   id: string;
   sender_id: string;
@@ -110,7 +115,7 @@ export async function enrichMessagesWithReplyTo<T extends RawMessageRow>(
     sender?: { full_name?: string | null } | null;
   }>) {
     const senderName =
-      row.sender_role !== "customer" && providerName
+      isProviderMessageRole(row.sender_role) && providerName
         ? providerName
         : row.sender?.full_name?.trim() || "User";
     parentById.set(row.id, {

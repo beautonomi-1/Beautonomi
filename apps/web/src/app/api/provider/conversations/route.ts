@@ -58,6 +58,7 @@ export async function GET(request: NextRequest) {
         last_message_preview,
         unread_count_provider,
         is_archived_provider,
+        is_starred_provider,
         created_at,
         booking:bookings!conversations_booking_id_fkey(id, booking_number)
       `
@@ -70,6 +71,7 @@ export async function GET(request: NextRequest) {
     }
     
     const { data: conversations, error } = await query
+      .order("is_starred_provider", { ascending: false })
       .order("last_message_at", { ascending: false, nullsFirst: false });
 
     if (error) {
@@ -177,6 +179,7 @@ export async function GET(request: NextRequest) {
         // For provider portal, avatar should be customer avatar
         avatar: customer?.avatar_url || null,
         provider_id: conv.provider_id, // Include provider_id for consistency
+        is_pinned: Boolean(conv.is_starred_provider),
       };
     });
 

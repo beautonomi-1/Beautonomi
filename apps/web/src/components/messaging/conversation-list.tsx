@@ -1,7 +1,8 @@
 "use client";
 import { useState } from "react";
 import { useClientMounted } from "@/hooks/use-client-mounted";
-import { Search, MessageSquare } from "lucide-react";
+import { Search, MessageSquare, Pin } from "lucide-react";
+import { sortConversationsPinFirst } from "@/lib/messaging/conversation-pin";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { format, isToday, isYesterday } from "date-fns";
@@ -20,6 +21,7 @@ interface Conversation {
   booking_number?: string;
   avatar?: string;
   last_message_preview?: string;
+  is_pinned?: boolean;
 }
 
 interface ConversationListProps {
@@ -42,7 +44,8 @@ export default function ConversationList({
   const [searchQuery, setSearchQuery] = useState("");
   const clientMounted = useClientMounted();
 
-  const filteredConversations = conversations.filter((conv) => {
+  const filteredConversations = sortConversationsPinFirst(
+    conversations.filter((conv) => {
     if (!searchQuery.trim()) return true;
     
     const searchLower = searchQuery.toLowerCase();
@@ -62,7 +65,8 @@ export default function ConversationList({
       email.includes(searchLower) ||
       preview.includes(searchLower)
     );
-  });
+    })
+  );
 
   const formatTime = (dateString: string) => {
     if (!clientMounted) return "\u2013";
@@ -136,8 +140,11 @@ export default function ConversationList({
                   </Avatar>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-1">
-                      <h3 className="font-semibold text-sm md:text-base text-[#111b21] truncate">
-                        {getConversationName(conversation)}
+                      <h3 className="font-semibold text-sm md:text-base text-[#111b21] truncate flex items-center gap-1 min-w-0">
+                        {conversation.is_pinned ? (
+                          <Pin className="w-3.5 h-3.5 text-primary shrink-0" aria-label="Pinned" />
+                        ) : null}
+                        <span className="truncate">{getConversationName(conversation)}</span>
                       </h3>
                       <span className="text-xs text-[#667781] flex-shrink-0 ml-2">
                         {formatTime(conversation.last_message_at)}

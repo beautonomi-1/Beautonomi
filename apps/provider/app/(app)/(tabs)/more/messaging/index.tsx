@@ -6,10 +6,12 @@ import {
   ScrollView,
   RefreshControl,
   TextInput,
+  Alert,
 } from "react-native";
 import { useRouter, useLocalSearchParams, useNavigation, useFocusEffect, usePathname } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
+import { api } from "@/lib/api-client";
 import { useResponsive } from "@/hooks/useResponsive";
 import { supabase } from "@/lib/supabase/client";
 import { useProvider } from "@/providers/ProviderContext";
@@ -32,6 +34,7 @@ interface Conversation {
   unread_count: number;
   booking_number: string | null;
   booking_id?: string | null;
+  is_pinned?: boolean;
 }
 
 let conversationsRealtimeGen = 0;
@@ -120,6 +123,7 @@ export default function MessagingListScreen() {
     }
     const onePer: Conversation[] = [];
     byCustomer.forEach((threads) => {
+      const pinned = threads.find((t) => t.is_pinned);
       const general = threads.find((t) => t.booking_id == null);
       const latest = threads
         .slice()
@@ -127,17 +131,22 @@ export default function MessagingListScreen() {
           (a, b) =>
             new Date(b.last_message_at ?? 0).getTime() - new Date(a.last_message_at ?? 0).getTime()
         )[0];
-      const display = general ?? latest;
+      const display = pinned ?? general ?? latest;
       const unreadTotal = threads.reduce((s, t) => s + (t.unread_count ?? 0), 0);
       onePer.push({
         ...display,
         id: display.id,
         unread_count: unreadTotal,
+        is_pinned: threads.some((t) => t.is_pinned),
       });
     });
-    onePer.sort(
-      (a, b) => new Date(b.last_message_at ?? 0).getTime() - new Date(a.last_message_at ?? 0).getTime()
-    );
+    onePer.sort((a, b) => {
+      const pinDiff = (b.is_pinned ? 1 : 0) - (a.is_pinned ? 1 : 0);
+      if (pinDiff !== 0) return pinDiff;
+      return (
+        new Date(b.last_message_at ?? 0).getTime() - new Date(a.last_message_at ?? 0).getTime()
+      );
+    });
     return onePer;
   }, [data]);
 
@@ -165,6 +174,22 @@ export default function MessagingListScreen() {
     useCallback(() => {
       refresh();
     }, [refresh])
+  );
+
+  const togglePin = useCallback(
+    async (conv: Conversation) => {
+      const next = !conv.is_pinned;
+      const res = await api.patch<{ is_pinned?: boolean }>(
+        `/api/provider/conversations/${conv.id}/pin`,
+        { pinned: next },
+      );
+      if (res.error) {
+        Alert.alert("Error", res.error.message || "Could not update pin");
+        return;
+      }
+      void refresh();
+    },
+    [refresh],
   );
 
   const onRefresh = useCallback(async () => {
@@ -271,6 +296,15 @@ export default function MessagingListScreen() {
               onPress={() =>
                 router.push(`${threadBase}/${conv.id}` as never)
               }
+              onLongPress={() => {
+                Alert.alert(conv.customer_name, undefined, [
+                  {
+                    text: conv.is_pinned ? "Unpin chat" : "Pin chat",
+                    onPress: () => void togglePin(conv),
+                  },
+                  { text: "Cancel", style: "cancel" },
+                ]);
+              }}
               style={{ marginBottom: 8, flexDirection: "row", alignItems: "center", borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16 }}
               activeOpacity={0.7}
             >
@@ -281,9 +315,14 @@ export default function MessagingListScreen() {
               />
               <View style={{ marginLeft: 12, flex: 1 }}>
                 <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                  <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }} numberOfLines={1}>
-                    {conv.customer_name}
-                  </Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flex: 1, minWidth: 0 }}>
+                    {conv.is_pinned ? (
+                      <Ionicons name="pin" size={14} color={Colors.primary} style={{ transform: [{ rotate: "45deg" }] }} />
+                    ) : null}
+                    <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }} numberOfLines={1}>
+                      {conv.customer_name}
+                    </Text>
+                  </View>
                   {conv.unread_count > 0 && (
                     <View style={{ borderRadius: 9999, backgroundColor: "#4f46e5", paddingHorizontal: 8, paddingVertical: 2 }}>
                       <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.white }}>
