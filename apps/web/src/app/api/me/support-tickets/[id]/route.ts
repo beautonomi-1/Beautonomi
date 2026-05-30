@@ -6,6 +6,10 @@ import {
   handleApiError,
   notFoundResponse,
 } from "@/lib/supabase/api-helpers";
+import {
+  enrichSupportTicketMessageForViewer,
+  prependSupportTicketDescriptionIfNeeded,
+} from "@/lib/support/support-ticket-thread";
 
 /**
  * GET /api/me/support-tickets/[id]
@@ -27,7 +31,7 @@ export async function GET(
 
     const { data: ticket, error: ticketError } = await supabase
       .from("support_tickets")
-      .select("id, ticket_number, subject, status, priority, category, requester_type, support_context_type, support_context_id, support_context_label, csat_score, csat_comment, csat_submitted_at, last_message_at, last_message_from, last_customer_view_at, created_at, updated_at")
+      .select("id, ticket_number, subject, description, user_id, status, priority, category, requester_type, support_context_type, support_context_id, support_context_label, csat_score, csat_comment, csat_submitted_at, last_message_at, last_message_from, last_customer_view_at, created_at, updated_at")
       .eq("id", id)
       .eq("user_id", user.id)
       .single();
@@ -45,20 +49,15 @@ export async function GET(
 
     if (messagesError) throw messagesError;
 
-    // Resolve author names: current user = "You", staff/admin = display name or "Support Team"
-    const enrichedMessages = (messages || []).map((m: any) => {
-      const authorProfile = Array.isArray(m.author) ? m.author[0] : m.author;
-      const isCurrentUser = m.user_id === user.id;
-      const authorName = isCurrentUser
-        ? "You"
-        : (authorProfile?.display_name || authorProfile?.full_name || "Support Team");
-      const { author: _drop, ...rest } = m;
-      return { ...rest, author_name: authorName, is_mine: isCurrentUser };
-    });
+    const enrichedMessages = (messages || []).map((m) =>
+      enrichSupportTicketMessageForViewer(m as { user_id: string; author?: unknown; [key: string]: unknown }, user.id),
+    );
+
+    const { description: _description, user_id: _userId, ...ticketForClient } = ticket;
 
     return successResponse({
-      ticket,
-      messages: enrichedMessages,
+      ticket: ticketForClient,
+      messages: prependSupportTicketDescriptionIfNeeded(ticket, enrichedMessages, user.id),
     });
   } catch (error) {
     return handleApiError(error, "Failed to fetch support ticket");

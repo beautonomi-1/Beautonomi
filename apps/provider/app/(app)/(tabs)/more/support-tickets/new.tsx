@@ -23,6 +23,7 @@ import {
 } from "@/lib/supportTicketCategoryPresets";
 import { SupportTicketCategoryPicker } from "@/components/SupportTicketCategoryPicker";
 import { SUPPORT_TICKETS_API_PREFIX } from "@/lib/support-ticket-api";
+import { invalidateSupportTicketsListCache } from "@/lib/api-response-cache";
 
 const SUPPORT_CONTEXT_OPTIONS = [
   { value: "booking", label: "Booking" },
@@ -100,6 +101,7 @@ export default function NewSupportTicketScreen() {
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      invalidateSupportTicketsListCache();
       const ticketId = res.data?.ticket?.id;
       if (ticketId) {
         // Navigate to the created ticket so the provider can track replies.

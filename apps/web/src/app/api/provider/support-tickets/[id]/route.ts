@@ -5,6 +5,10 @@ import {
   PROVIDER_SUPPORT_TICKET_DETAIL_SELECT,
   requireProviderSupportTicketAccess,
 } from "@/lib/support/provider-support-ticket-access";
+import {
+  enrichSupportTicketMessageForViewer,
+  prependSupportTicketDescriptionIfNeeded,
+} from "@/lib/support/support-ticket-thread";
 
 type SupportMessageRow = {
   id: string;
@@ -19,48 +23,6 @@ type SupportMessageRow = {
     display_name?: string | null;
   }> | null;
 };
-
-function enrichProviderSupportMessage(
-  m: SupportMessageRow,
-  currentUserId: string,
-): Record<string, unknown> {
-  const authorProfile = Array.isArray(m.author) ? m.author[0] : m.author;
-  const isCurrentUser = m.user_id === currentUserId;
-  const authorName = isCurrentUser
-    ? "You"
-    : (authorProfile?.display_name || authorProfile?.full_name || "Support Team");
-  const { author: _drop, ...rest } = m;
-  return { ...rest, author_name: authorName, is_mine: isCurrentUser };
-}
-
-function prependDescriptionIfNeeded(
-  ticket: { id: string; description?: string | null; created_at?: string | null; user_id?: string | null },
-  messages: Record<string, unknown>[],
-): Record<string, unknown>[] {
-  const description = typeof ticket.description === "string" ? ticket.description.trim() : "";
-  if (!description) return messages;
-
-  const firstMessageText =
-    messages.length > 0 && typeof messages[0]?.message === "string"
-      ? String(messages[0].message).trim()
-      : "";
-
-  if (firstMessageText === description) return messages;
-
-  const synthetic: Record<string, unknown> = {
-    id: `ticket-description-${ticket.id}`,
-    message: description,
-    is_internal: false,
-    created_at: ticket.created_at ?? new Date().toISOString(),
-    user_id: ticket.user_id ?? "",
-    author_name: "You",
-    is_mine: true,
-    attachments: [],
-    is_ticket_description: true,
-  };
-
-  return [synthetic, ...messages];
-}
 
 export async function GET(
   request: NextRequest,
@@ -85,7 +47,7 @@ export async function GET(
     if (messagesError) throw messagesError;
 
     const enrichedMessages = (messages || []).map((m) =>
-      enrichProviderSupportMessage(m as SupportMessageRow, user.id),
+      enrichSupportTicketMessageForViewer(m as SupportMessageRow, user.id),
     );
 
     const ticket = access.ticket as {
@@ -99,7 +61,7 @@ export async function GET(
 
     return successResponse({
       ticket: ticketForClient,
-      messages: prependDescriptionIfNeeded(ticket, enrichedMessages),
+      messages: prependSupportTicketDescriptionIfNeeded(ticket, enrichedMessages, user.id),
     });
   } catch (error) {
     return handleApiError(error, "Failed to fetch provider support ticket");
