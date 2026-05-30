@@ -1,3 +1,8 @@
+import {
+  pickDisplayConversationThread,
+  sortConversationsPinFirst,
+} from "@/lib/messaging/conversation-pin";
+
 export type CustomerConversationListItem = {
   id: string;
   booking_id?: string;
@@ -12,6 +17,7 @@ export type CustomerConversationListItem = {
   booking_number?: string;
   avatar?: string;
   last_message_preview?: string;
+  is_pinned?: boolean;
 };
 
 /**
@@ -20,22 +26,27 @@ export type CustomerConversationListItem = {
  */
 export function dedupeCustomerConversations<T extends CustomerConversationListItem>(conversationsData: T[]): T[] {
   const deduplicated: T[] = [];
-  const providerMap = new Map<string, T>();
+  const threadsByProvider = new Map<string, CustomerConversationListItem[]>();
 
   for (const conv of conversationsData) {
     if (!conv.booking_id && conv.provider_id) {
-      const existing = providerMap.get(conv.provider_id);
-      if (!existing || new Date(conv.last_message_at) > new Date(existing.last_message_at)) {
-        providerMap.set(conv.provider_id, conv);
-      }
+      const list = threadsByProvider.get(conv.provider_id) ?? [];
+      list.push(conv);
+      threadsByProvider.set(conv.provider_id, list);
     } else {
       deduplicated.push(conv);
     }
   }
 
-  providerMap.forEach((conv) => deduplicated.push(conv));
+  threadsByProvider.forEach((threads) => {
+    const display = pickDisplayConversationThread(threads);
+    const unreadTotal = threads.reduce((s, t) => s + (t.unread_count ?? 0), 0);
+    deduplicated.push({
+      ...display,
+      unread_count: unreadTotal,
+      is_pinned: threads.some((t) => t.is_pinned),
+    } as T);
+  });
 
-  deduplicated.sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime());
-
-  return deduplicated;
+  return sortConversationsPinFirst(deduplicated);
 }

@@ -34,6 +34,7 @@ interface Conversation {
   last_message_preview?: string | null;
   last_message_at?: string | null;
   unread_count_customer?: number;
+  is_pinned?: boolean;
 }
 
 function formatTime(iso: string | null | undefined) {
@@ -90,22 +91,27 @@ export default function ChatsScreen() {
         }
         const onePerProvider: Conversation[] = [];
         byProvider.forEach((threads) => {
+          const pinned = threads.find((t) => t.is_pinned);
           const general = threads.find((t) => t.booking_id == null);
           const latest = threads.sort(
             (a, b) => new Date(b.last_message_at ?? 0).getTime() - new Date(a.last_message_at ?? 0).getTime()
           )[0];
-          const display = general ?? latest;
+          const display = pinned ?? general ?? latest;
           const unreadTotal = threads.reduce((s, t) => s + (t.unread_count_customer ?? 0), 0);
           onePerProvider.push({
             ...display,
             id: display.id,
             unread_count_customer: unreadTotal,
+            is_pinned: threads.some((t) => t.is_pinned),
           });
         });
-        // Sort by last message time (most recent first)
-        onePerProvider.sort(
-          (a, b) => new Date(b.last_message_at ?? 0).getTime() - new Date(a.last_message_at ?? 0).getTime()
-        );
+        onePerProvider.sort((a, b) => {
+          const pinDiff = (b.is_pinned ? 1 : 0) - (a.is_pinned ? 1 : 0);
+          if (pinDiff !== 0) return pinDiff;
+          return (
+            new Date(b.last_message_at ?? 0).getTime() - new Date(a.last_message_at ?? 0).getTime()
+          );
+        });
         setConversations(onePerProvider);
       }
     } catch (e) {
@@ -192,6 +198,31 @@ export default function ChatsScreen() {
     }
   }, [load]);
 
+  const togglePinConversation = useCallback(
+    async (conversationId: string, pinned: boolean) => {
+      const res = await api.patch<{ is_pinned?: boolean }>(
+        `/api/me/conversations/${conversationId}/pin`,
+        { pinned },
+      );
+      if (res.error) {
+        setError(getApiErrorMessage(res.error, "Failed to update pin"));
+        return;
+      }
+      setConversations((prev) =>
+        prev
+          .map((c) => (c.id === conversationId ? { ...c, is_pinned: pinned } : c))
+          .sort((a, b) => {
+            const pinDiff = (b.is_pinned ? 1 : 0) - (a.is_pinned ? 1 : 0);
+            if (pinDiff !== 0) return pinDiff;
+            return (
+              new Date(b.last_message_at ?? 0).getTime() - new Date(a.last_message_at ?? 0).getTime()
+            );
+          }),
+      );
+    },
+    [],
+  );
+
   const deleteConversation = useCallback(async (conversationId: string) => {
     const previous = conversations;
     setConversations((prev) => prev.filter((c) => c.id !== conversationId));
@@ -227,6 +258,10 @@ export default function ChatsScreen() {
           ...(unread > 0
             ? [{ text: tc("markAsRead"), onPress: () => void markConversationRead(item.id) }]
             : []),
+          {
+            text: item.is_pinned ? tc("unpinConversation") : tc("pinConversation"),
+            onPress: () => void togglePinConversation(item.id, !item.is_pinned),
+          },
           {
             text: tc("deleteConversation"),
             style: "destructive",
@@ -276,9 +311,14 @@ export default function ChatsScreen() {
           )}
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>
-            {item.provider?.business_name || tc("providerFallback")}
-          </Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            {item.is_pinned ? (
+              <Ionicons name="pin" size={14} color={Colors.primary} style={{ transform: [{ rotate: "45deg" }] }} />
+            ) : null}
+            <Text style={{ fontWeight: "600", color: Colors.gray[900], flex: 1 }} numberOfLines={1}>
+              {item.provider?.business_name || tc("providerFallback")}
+            </Text>
+          </View>
           <Text style={{ fontSize: 14, color: Colors.gray[500], marginTop: 2 }} numberOfLines={1}>
             {item.last_message_preview || tc("noMessages")}
           </Text>
@@ -302,7 +342,7 @@ export default function ChatsScreen() {
       </Pressable>
       );
     },
-    [deleteConversation, markConversationRead, tc]
+    [deleteConversation, markConversationRead, togglePinConversation, tc]
   );
 
   if (authLoading) {

@@ -3,6 +3,12 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { sanitizeMessageAttachmentsForResponse } from "@/lib/messaging/message-attachments";
+import {
+  enrichMessagesWithReplyTo,
+  isProviderMessageRole,
+  mapMessageWithReplyFields,
+  validateReplyToMessageId,
+} from "@/lib/messaging/message-replies";
 
 /**
  * Verify the caller has access to a conversation. Returns the role ("customer" | "provider").
@@ -71,7 +77,7 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from("messages")
       .select(
-        `id, conversation_id, sender_id, sender_role, content, attachments, is_read, read_at, created_at,
+        `id, conversation_id, sender_id, sender_role, content, attachments, is_read, read_at, created_at, reply_to_message_id,
          sender:users!messages_sender_id_fkey(id, full_name, avatar_url)`
       )
       .eq("conversation_id", conversationId)
@@ -92,21 +98,28 @@ export async function GET(request: NextRequest) {
     const messages = slice.reverse();
     const nextCursor = hasMore ? slice[0]?.created_at : undefined;
 
-    const transformed = messages.map((m: any) => ({
-      id: m.id,
-      conversation_id: m.conversation_id,
-      sender_id: m.sender_id,
-      sender_name:
-        m.sender_role === "provider" && providerBusinessName
-          ? providerBusinessName
-          : m.sender?.full_name || "User",
-      sender_role: m.sender_role,
-      content: m.content,
-      attachments: sanitizeMessageAttachmentsForResponse(m.attachments || [], m.created_at),
-      is_read: Boolean(m.is_read),
-      created_at: m.created_at,
-      read_at: m.read_at,
-    }));
+    const admin = getSupabaseAdmin();
+    const withReplies = await enrichMessagesWithReplyTo(admin, messages, {
+      providerBusinessName,
+    });
+
+    const transformed = withReplies.map((m: any) =>
+      mapMessageWithReplyFields(m, {
+        id: m.id,
+        conversation_id: m.conversation_id,
+        sender_id: m.sender_id,
+        sender_name:
+          isProviderMessageRole(m.sender_role) && providerBusinessName
+            ? providerBusinessName
+            : m.sender?.full_name || "User",
+        sender_role: m.sender_role,
+        content: m.content,
+        attachments: sanitizeMessageAttachmentsForResponse(m.attachments || [], m.created_at),
+        is_read: Boolean(m.is_read),
+        created_at: m.created_at,
+        read_at: m.read_at,
+      })
+    );
 
     // Fire-and-forget: mark unread messages as read so sender sees read receipt (use admin to bypass RLS)
     markAsRead(conversationId, user.id, role).catch(() => {});
@@ -152,7 +165,7 @@ export async function POST(request: NextRequest) {
     const supabase = await getSupabaseServer(request);
 
     const body = await request.json();
-    const { conversation_id, content, attachments } = body;
+    const { conversation_id, content, attachments, reply_to_message_id } = body;
 
     if (!conversation_id) return errorResponse("conversation_id is required", "VALIDATION_ERROR", 400);
     if (!content && (!attachments || attachments.length === 0)) {
@@ -162,6 +175,19 @@ export async function POST(request: NextRequest) {
     const { conv, role } = await verifyConversationAccess(supabase, conversation_id, user.id);
     const isCustomer = role === "customer";
 
+    let replyToId: string | null = null;
+    if (reply_to_message_id != null && String(reply_to_message_id).trim()) {
+      replyToId = String(reply_to_message_id).trim();
+      const replyCheck = await validateReplyToMessageId(
+        getSupabaseAdmin(),
+        conversation_id,
+        replyToId
+      );
+      if (replyCheck.ok === false) {
+        return errorResponse(replyCheck.message, "VALIDATION_ERROR", 400);
+      }
+    }
+
     const { data: msg, error } = await (supabase.from("messages") as any)
       .insert({
         conversation_id,
@@ -169,6 +195,7 @@ export async function POST(request: NextRequest) {
         sender_role: user.role,
         content: content ? String(content) : "",
         attachments: attachments || [],
+        reply_to_message_id: replyToId,
         is_read: false,
         created_at: new Date().toISOString(),
       })
@@ -192,6 +219,7 @@ export async function POST(request: NextRequest) {
       sender_id: msg.sender_id,
       sender_role: msg.sender_role,
       content: msg.content,
+      reply_to_message_id: msg.reply_to_message_id ?? null,
       created_at: msg.created_at,
     });
   } catch (error: any) {

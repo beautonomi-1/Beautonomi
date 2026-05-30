@@ -40,7 +40,6 @@ import { twStyle } from "@/lib/twStyle";
 import { E164PhoneField } from "@/components/E164PhoneField";
 import { validateE164Phone } from "@/lib/phone-country-codes";
 import {
-  validateGroupBookingCreateStep,
   validateGroupBookingCreateStepDetailed,
   type GroupBookingCreateValidationField,
 } from "@/features/group-bookings/validateGroupBookingCreate";
@@ -1332,10 +1331,6 @@ export default function GroupBookingsScreen() {
         .filter((p) => p.name.length > 0 || p.phone.length > 0 || p.email.length > 0),
       validatePhone: validateE164Phone,
     };
-  }
-
-  function validateCreateFormParticipants(): string | null {
-    return validateGroupBookingCreateStep(buildCreateValidationInput());
   }
 
   function validationFieldSectionKey(field: GroupBookingCreateValidationField): string {

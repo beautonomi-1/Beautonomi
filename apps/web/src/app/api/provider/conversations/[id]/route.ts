@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderIdForUser, successResponse, handleApiError, notFoundResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { sanitizeMessageAttachmentsForResponse } from "@/lib/messaging/message-attachments";
+import { enrichMessagesWithReplyTo, mapMessageWithReplyFields } from "@/lib/messaging/message-replies";
 
 // All conversation data reads use the admin client so provider_staff are not
 // blocked by RLS policies that scope reads to the authenticated JWT's user_id.
@@ -37,7 +38,7 @@ export async function GET(
 
     const { data: conversation, error: convError } = await supabaseAdmin
       .from("conversations")
-      .select("id, customer_id, provider_id, booking_id, last_message_at, last_message_preview, unread_count_provider, created_at")
+      .select("id, customer_id, provider_id, booking_id, last_message_at, last_message_preview, unread_count_provider, is_starred_provider, created_at")
       .eq("id", conversationId)
       .eq("provider_id", providerId)
       .single();
@@ -59,13 +60,25 @@ export async function GET(
       customerName = customer.email;
     }
 
+    const { data: providerMeta } = await supabaseAdmin
+      .from("providers")
+      .select("business_name")
+      .eq("id", providerId)
+      .maybeSingle();
+    const providerBusinessName =
+      typeof providerMeta?.business_name === "string" ? providerMeta.business_name.trim() : null;
+
     const { data: messages, error: msgError } = await supabaseAdmin
       .from("messages")
-      .select("id, conversation_id, sender_id, sender_role, content, attachments, is_read, read_at, created_at")
+      .select("id, conversation_id, sender_id, sender_role, content, attachments, is_read, read_at, created_at, reply_to_message_id")
       .eq("conversation_id", conversationId)
       .order("created_at", { ascending: true });
 
     if (msgError) throw msgError;
+
+    const withReplies = await enrichMessagesWithReplyTo(supabaseAdmin, messages || [], {
+      providerBusinessName,
+    });
 
     await supabaseAdmin
       .from("messages")
@@ -79,14 +92,16 @@ export async function GET(
       .update({ unread_count_provider: 0 })
       .eq("id", conversationId);
 
-    const transformedMessages = (messages || []).map((msg: any) => ({
-      id: msg.id,
-      content: msg.content,
-      sender_type: msg.sender_role === "customer" ? "customer" : "provider",
-      created_at: msg.created_at,
-      read_at: msg.read_at,
-      attachments: sanitizeMessageAttachmentsForResponse(msg.attachments ?? [], msg.created_at),
-    }));
+    const transformedMessages = withReplies.map((msg: any) =>
+      mapMessageWithReplyFields(msg, {
+        id: msg.id,
+        content: msg.content,
+        sender_type: msg.sender_role === "customer" ? "customer" : "provider",
+        created_at: msg.created_at,
+        read_at: msg.read_at,
+        attachments: sanitizeMessageAttachmentsForResponse(msg.attachments ?? [], msg.created_at),
+      })
+    );
 
     return successResponse({
       id: conversation.id,
@@ -95,6 +110,7 @@ export async function GET(
       customer_avatar_url: customer?.avatar_url || null,
       customer_phone: (customer as any)?.phone ?? null,
       customer_email: customer?.email ?? null,
+      is_pinned: Boolean((conversation as { is_starred_provider?: boolean }).is_starred_provider),
       messages: transformedMessages,
     });
   } catch (error) {

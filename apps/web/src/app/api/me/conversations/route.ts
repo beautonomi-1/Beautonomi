@@ -32,6 +32,7 @@ export async function GET(request: NextRequest) {
         last_message_preview,
         unread_count_customer,
         unread_count_provider,
+        is_starred_customer,
         provider:providers(id, slug, business_name, thumbnail_url, avatar_url, phone, email),
         booking:bookings(id, booking_number)
       `,
@@ -39,6 +40,7 @@ export async function GET(request: NextRequest) {
       )
       .eq("customer_id", user.id)
       .not("last_message_at", "is", null)
+      .order("is_starred_customer", { ascending: false })
       .order("last_message_at", { ascending: false, nullsFirst: false });
 
     if (bookingId) {
@@ -79,6 +81,7 @@ export async function GET(request: NextRequest) {
         : undefined,
       provider_slug: c.provider?.slug ?? null,
       unread_count_customer: c.unread_count_customer ?? 0,
+      is_pinned: Boolean(c.is_starred_customer),
     }));
 
     if (!wantsPaginated) {

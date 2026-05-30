@@ -51,7 +51,7 @@ export function ParticipantRefundSheet({
     setRefundReason("");
     setError(null);
     setSuccessMessage(null);
-  }, [visible, participant?.id, maxRefundable]);
+  }, [visible, participant, maxRefundable]);
 
   async function handleRefund() {
     if (!participant?.booking_id) return;

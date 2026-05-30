@@ -5,6 +5,11 @@ import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { checkMessageLimit, formatLimitError } from "@/lib/subscriptions/limit-checker";
 import { sanitizeMessageAttachmentsForResponse } from "@/lib/messaging/message-attachments";
+import {
+  enrichMessagesWithReplyTo,
+  mapMessageWithReplyFields,
+  validateReplyToMessageId,
+} from "@/lib/messaging/message-replies";
 import { insertNotification } from "@/lib/notifications/insert-notification";
 import { z } from "zod";
 
@@ -51,7 +56,8 @@ export async function GET(
         attachments,
         is_read,
         read_at,
-        created_at
+        created_at,
+        reply_to_message_id
       `)
       .eq("conversation_id", id)
       .order("created_at", { ascending: true });
@@ -89,7 +95,19 @@ export async function GET(
       }
     }
 
-    const transformed = (messages || []).map((msg: any) => {
+    const { data: providerRow } = await supabaseAdmin
+      .from("providers")
+      .select("business_name")
+      .eq("id", providerId)
+      .maybeSingle();
+    const providerBusinessName =
+      typeof providerRow?.business_name === "string" ? providerRow.business_name.trim() : null;
+
+    const withReplies = await enrichMessagesWithReplyTo(supabaseAdmin, messages || [], {
+      providerBusinessName,
+    });
+
+    const transformed = withReplies.map((msg: any) => {
       const sender = senderMap[msg.sender_id];
       
       // Determine sender name - prioritize full_name, then email, then fallback
@@ -102,7 +120,7 @@ export async function GET(
         }
       }
       
-      return {
+      return mapMessageWithReplyFields(msg, {
         id: msg.id,
         conversation_id: msg.conversation_id,
         sender_id: msg.sender_id,
@@ -111,10 +129,10 @@ export async function GET(
         content: msg.content,
         attachments: sanitizeMessageAttachmentsForResponse(msg.attachments || [], msg.created_at),
         is_read: msg.is_read,
-        read_at: msg.read_at, // Include read_at for read receipts
+        read_at: msg.read_at,
         sender_type: msg.sender_role === "customer" ? "customer" : "provider",
         created_at: msg.created_at,
-      };
+      });
     });
 
     return successResponse(transformed);
@@ -136,6 +154,7 @@ const sendMessageSchema = z.object({
     name: z.string().optional(),
     size: z.number().optional(),
   })).optional(),
+  reply_to_message_id: z.string().uuid().optional(),
 }).refine((data) => data.content || (data.attachments && data.attachments.length > 0), {
   message: "Either content or attachments must be provided",
 });
@@ -201,6 +220,19 @@ export async function POST(
     const body = await request.json();
     const validated = sendMessageSchema.parse(body);
 
+    let replyToId: string | null = null;
+    if (validated.reply_to_message_id) {
+      const replyCheck = await validateReplyToMessageId(
+        supabaseAdmin,
+        id,
+        validated.reply_to_message_id
+      );
+      if (replyCheck.ok === false) {
+        return errorResponse(replyCheck.message, "VALIDATION_ERROR", 400);
+      }
+      replyToId = validated.reply_to_message_id;
+    }
+
     const { data: message, error: messageError } = await supabaseAdmin
       .from("messages")
       .insert({
@@ -209,6 +241,7 @@ export async function POST(
         sender_role: user.role,
         content: validated.content || "",
         attachments: validated.attachments || [],
+        reply_to_message_id: replyToId,
         is_read: false,
         created_at: new Date().toISOString(),
       })
@@ -302,6 +335,7 @@ export async function POST(
       conversation_id: id,
       sender_id: user.id,
       content: validated.content,
+      reply_to_message_id: message.reply_to_message_id ?? null,
       is_read: false,
       sender_type: "provider",
       created_at: message.created_at,

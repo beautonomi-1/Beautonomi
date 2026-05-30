@@ -32,7 +32,7 @@ export default function RewardsHubScreen() {
 
   return (
     <ScreenContainer scrollable={false}>
-      <ScreenHeader title="Rewards & badges" showBack subtitle="Points, achievements & milestones" />
+      <ScreenHeader title="Rewards & badges" showBack subtitle="Earn points, unlock levels, grow your profile" />
       <View style={{ marginBottom: 16 }}>
         <SegmentTabs tabs={TABS} activeKey={activeKey} onSelect={(k) => setActiveKey(k as "points" | "badges")} />
       </View>

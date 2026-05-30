@@ -91,6 +91,13 @@ interface FileLikeAttachment {
   expired?: boolean;
 }
 
+interface MessageReplyTo {
+  id: string;
+  sender_id: string;
+  sender_name: string;
+  content_preview: string;
+}
+
 interface Message {
   id: string;
   content: string;
@@ -98,6 +105,8 @@ interface Message {
   created_at: string;
   read_at: string | null;
   attachments?: (CustomOfferAttachment | FileLikeAttachment | { type?: string })[];
+  reply_to_message_id?: string | null;
+  reply_to?: MessageReplyTo | null;
 }
 
 /** Supabase Realtime `payload.new` for `public.messages` (fields used in this screen). */
@@ -108,6 +117,7 @@ interface RealtimeMessageRow {
   created_at?: string;
   read_at?: string | null;
   attachments?: unknown;
+  reply_to_message_id?: string | null;
 }
 
 function isImageMime(t?: string) {
@@ -134,6 +144,7 @@ interface ConversationDetail {
   customer_avatar_url: string | null;
   customer_phone?: string | null;
   customer_email?: string | null;
+  is_pinned?: boolean;
   messages: Message[];
 }
 
@@ -180,6 +191,7 @@ export default function ChatScreen() {
 
   const [realtimeMessages, setRealtimeMessages] = useState<Message[]>([]);
   const [optimisticMessage, setOptimisticMessage] = useState<Message | null>(null);
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const fromConv = conversation?.messages ?? [];
   const convIds = new Set(fromConv.map((m) => m.id));
   const fromRealtime = realtimeMessages.filter((m) => !convIds.has(m.id));
@@ -188,6 +200,43 @@ export default function ChatScreen() {
     combined.push(optimisticMessage);
   const allMessages = combined.sort(
     (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  );
+
+  useEffect(() => {
+    setReplyingTo(null);
+  }, [conversationId]);
+
+  const getMessagePreviewText = useCallback((msg: Message): string => {
+    const text = (msg.content || "").trim();
+    if (text) return text.length > 120 ? `${text.slice(0, 120)}…` : text;
+    const att = msg.attachments?.[0] as { type?: string; name?: string } | undefined;
+    if (!att) return "";
+    if (att.type === "custom_offer") return "Custom offer";
+    if (att.type === "custom_request") return "Custom request";
+    if (att.type === "custom_offer_paid") return "Payment received";
+    if (att.type?.startsWith("image/")) return "Photo";
+    if (att.type?.startsWith("video/")) return "Video";
+    return att.name || "Attachment";
+  }, []);
+
+  const resolveReplyTo = useCallback(
+    (msg: Message): MessageReplyTo | null => {
+      if (msg.reply_to) return msg.reply_to;
+      const parentId = msg.reply_to_message_id;
+      if (!parentId) return null;
+      const parent = allMessages.find((m) => m.id === parentId);
+      if (!parent) return null;
+      return {
+        id: parent.id,
+        sender_id: parent.sender_type === "provider" ? "provider" : "customer",
+        sender_name:
+          parent.sender_type === "provider"
+            ? "You"
+            : conversation?.customer_name || "Customer",
+        content_preview: getMessagePreviewText(parent),
+      };
+    },
+    [allMessages, conversation?.customer_name, getMessagePreviewText],
   );
 
   const refreshRef = useRef(refresh);
@@ -299,6 +348,7 @@ export default function ChatScreen() {
                   created_at: rowCreatedAt,
                   read_at: m.read_at ?? null,
                   attachments: att as Message["attachments"],
+                  reply_to_message_id: m.reply_to_message_id ?? null,
                 },
               ];
             });
@@ -374,7 +424,9 @@ export default function ChatScreen() {
   const handleSend = useCallback(async () => {
     const text = message.trim();
     if (!text || !conversationId || sending) return;
+    const replyTarget = replyingTo;
     setMessage("");
+    setReplyingTo(null);
     const optId = `opt-${Date.now()}`;
     setOptimisticMessage({
       id: optId,
@@ -382,16 +434,32 @@ export default function ChatScreen() {
       sender_type: "provider",
       created_at: new Date().toISOString(),
       read_at: null,
+      reply_to_message_id: replyTarget?.id ?? null,
+      reply_to: replyTarget
+        ? {
+            id: replyTarget.id,
+            sender_id: "provider",
+            sender_name:
+              replyTarget.sender_type === "provider"
+                ? "You"
+                : conversation?.customer_name || "Customer",
+            content_preview: getMessagePreviewText(replyTarget),
+          }
+        : null,
     });
-    const { error } = await sendMessage({ content: text });
+    const { error } = await sendMessage({
+      content: text,
+      ...(replyTarget?.id ? { reply_to_message_id: replyTarget.id } : {}),
+    });
     if (!error) {
       refresh().then(() => setOptimisticMessage(null));
     } else {
       setOptimisticMessage(null);
       setMessage(text);
+      if (replyTarget) setReplyingTo(replyTarget);
       Alert.alert("Send failed", typeof error === "string" ? error : "Message could not be sent. Please try again.");
     }
-  }, [message, conversationId, sending, sendMessage, refresh]);
+  }, [message, conversationId, sending, sendMessage, refresh, replyingTo, conversation?.customer_name, getMessagePreviewText]);
 
   const uploadNativeFile = useCallback(
     async (file: { uri: string; name: string; type: string }) => {
@@ -419,14 +487,21 @@ export default function ChatScreen() {
           Alert.alert("Upload failed", "No file was uploaded.");
           return;
         }
-        const { error } = await sendMessage({ attachments: atts } as never);
+        const replyTarget = replyingTo;
+        const { error } = await sendMessage({
+          attachments: atts,
+          ...(replyTarget?.id ? { reply_to_message_id: replyTarget.id } : {}),
+        } as never);
         if (error) Alert.alert("Error", error);
-        else await refresh();
+        else {
+          setReplyingTo(null);
+          await refresh();
+        }
       } finally {
         setUploading(false);
       }
     },
-    [conversationId, sending, uploading, sendMessage, refresh],
+    [conversationId, sending, uploading, sendMessage, refresh, replyingTo],
   );
 
   const openAttachmentMenu = useCallback(() => {
@@ -615,14 +690,27 @@ export default function ChatScreen() {
   const customerPhone = (conversation as ConversationDetail | undefined)?.customer_phone;
   const customerEmail = (conversation as ConversationDetail | undefined)?.customer_email;
 
+  const togglePin = useCallback(async () => {
+    if (!conversationId) return;
+    const next = !conversation?.is_pinned;
+    const res = await api.patch<{ is_pinned?: boolean }>(
+      `/api/provider/conversations/${conversationId}/pin`,
+      { pinned: next },
+    );
+    if (res.error) Alert.alert("Error", res.error.message || "Could not update pin");
+    else void refresh();
+  }, [conversation?.is_pinned, conversationId, refresh]);
+
   const showClientMenu = useCallback(() => {
     const options: string[] = [];
     if (customerId) options.push("View booking history");
     if (customerPhone) options.push("Call client");
     if (customerPhone) options.push("Copy phone");
     if (customerEmail) options.push("Copy email");
+    options.push(conversation?.is_pinned ? "Unpin chat" : "Pin chat");
     options.push("Delete conversation");
     options.push("Cancel");
+    const pinIndex = options.length - 3;
     const deleteIndex = options.length - 2;
     const cancelIndex = options.length - 1;
     const runDelete = () => {
@@ -645,6 +733,10 @@ export default function ChatScreen() {
       if (idx === cancelIndex) return;
       if (idx === deleteIndex) {
         runDelete();
+        return;
+      }
+      if (idx === pinIndex) {
+        void togglePin();
         return;
       }
       let i = 0;
@@ -672,11 +764,15 @@ export default function ChatScreen() {
           ...(customerPhone ? [{ text: "Call", onPress: () => Linking.openURL(`tel:${customerPhone}`) }] : []),
           ...(customerPhone ? [{ text: "Copy phone", onPress: () => Clipboard.setStringAsync(customerPhone) }] : []),
           ...(customerEmail ? [{ text: "Copy email", onPress: () => Clipboard.setStringAsync(customerEmail) }] : []),
+          {
+            text: conversation?.is_pinned ? "Unpin chat" : "Pin chat",
+            onPress: () => void togglePin(),
+          },
           { text: "Delete conversation", style: "destructive", onPress: runDelete },
         ].filter(Boolean) as { text: string; style?: "cancel" | "destructive"; onPress?: () => void }[]
       );
     }
-  }, [conversationId, customerId, customerPhone, customerEmail, deleteConv, router]);
+  }, [conversationId, customerId, customerPhone, customerEmail, conversation?.is_pinned, deleteConv, router, togglePin]);
 
   // No conversation id (invalid or list opened without id)
   if (!conversationId) {
@@ -828,6 +924,7 @@ export default function ChatScreen() {
                 const customRequestNavId = customRequestAtt?.request_id ?? customRequestAtt?.id;
                 const files = fileLikeAttachments(msg.attachments);
                 const hasText = !!(msg.content && msg.content.trim());
+                const quotedReply = resolveReplyTo(msg);
 
                 const renderFileRow = (att: FileLikeAttachment, idx: number) => {
                   const key = `${msg.id}-f-${idx}-${att.name || att.url || idx}`;
@@ -894,7 +991,34 @@ export default function ChatScreen() {
                 };
 
                 return (
-                  <View style={twStyle(`mb-3 ${isMe ? "items-end" : "items-start"}`)}>
+                  <Pressable
+                    onLongPress={() => setReplyingTo(msg)}
+                    delayLongPress={280}
+                    style={twStyle(`mb-3 ${isMe ? "items-end" : "items-start"}`)}
+                    accessibilityLabel="Reply to message"
+                  >
+                    {quotedReply ? (
+                      <View
+                        style={{
+                          maxWidth: "85%",
+                          marginBottom: 4,
+                          paddingLeft: 8,
+                          paddingVertical: 6,
+                          borderLeftWidth: 3,
+                          borderLeftColor: Colors.primary,
+                          backgroundColor: isMe ? "rgba(255,255,255,0.9)" : "#f3f4f6",
+                          borderRadius: 8,
+                          alignSelf: isMe ? "flex-end" : "flex-start",
+                        }}
+                      >
+                        <Text style={{ fontSize: 12, fontWeight: "700", color: Colors.primary }} numberOfLines={1}>
+                          {quotedReply.sender_name}
+                        </Text>
+                        <Text style={{ fontSize: 12, color: "#6b7280" }} numberOfLines={2}>
+                          {quotedReply.content_preview}
+                        </Text>
+                      </View>
+                    ) : null}
                     {showOfferCard ? (
                       <CustomOfferCard
                         attachment={offer}
@@ -1010,7 +1134,7 @@ export default function ChatScreen() {
                         </View>
                       </View>
                     ) : null}
-                  </View>
+                  </Pressable>
                 );
               }}
             />
@@ -1021,7 +1145,7 @@ export default function ChatScreen() {
                 onPress={() => flatListRef.current?.scrollToEnd({ animated: true })}
                 style={{
                   position: "absolute",
-                  bottom: 76 + insets.bottom,
+                  bottom: (replyingTo ? 132 : 76) + insets.bottom,
                   right: 16,
                   width: 44,
                   height: 44,
@@ -1048,6 +1172,35 @@ export default function ChatScreen() {
                 composer stays above the home indicator whether or not
                 the keyboard is open. The trailing SafeAreaView below
                 was ineffective because it rendered outside KAV. */}
+            {replyingTo ? (
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  borderTopWidth: 1,
+                  borderTopColor: "#e5e7eb",
+                  backgroundColor: "#f9fafb",
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
+                }}
+              >
+                <View style={{ width: 3, alignSelf: "stretch", backgroundColor: Colors.primary, borderRadius: 2, marginRight: 10 }} />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ fontSize: 12, fontWeight: "700", color: Colors.primary }} numberOfLines={1}>
+                    {replyingTo.sender_type === "provider"
+                      ? "You"
+                      : conversation?.customer_name || "Customer"}
+                  </Text>
+                  <Text style={{ fontSize: 12, color: "#6b7280" }} numberOfLines={2}>
+                    {getMessagePreviewText(replyingTo)}
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={() => setReplyingTo(null)} style={{ padding: 6 }} accessibilityLabel="Cancel reply">
+                  <Ionicons name="close" size={20} color="#6b7280" />
+                </TouchableOpacity>
+              </View>
+            ) : null}
+
             <View
               style={[
                 twStyle("border-t border-gray-100 px-3 flex-row items-end"),

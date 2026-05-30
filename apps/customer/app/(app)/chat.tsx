@@ -33,6 +33,13 @@ import { CustomOfferCard } from "@beautonomi/ui/native";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { useTranslation, i18n } from "@beautonomi/i18n";
 
+interface MessageReplyTo {
+  id: string;
+  sender_id: string;
+  sender_name: string;
+  content_preview: string;
+}
+
 interface Message {
   id: string;
   sender_id: string;
@@ -42,6 +49,8 @@ interface Message {
   created_at: string;
   is_read?: boolean;
   read_at?: string | null;
+  reply_to_message_id?: string | null;
+  reply_to?: MessageReplyTo | null;
 }
 type MessageAttachment = {
   url?: string;
@@ -107,6 +116,25 @@ function parseApiMessage(m: unknown): Message | null {
     created_at: m.created_at,
     is_read: typeof m.is_read === "boolean" ? m.is_read : undefined,
     read_at: m.read_at === null ? null : typeof m.read_at === "string" ? m.read_at : null,
+    reply_to_message_id:
+      m.reply_to_message_id === null
+        ? null
+        : typeof m.reply_to_message_id === "string"
+          ? m.reply_to_message_id
+          : undefined,
+    reply_to:
+      isRecord(m.reply_to) &&
+      typeof m.reply_to.id === "string" &&
+      typeof m.reply_to.sender_id === "string"
+        ? {
+            id: m.reply_to.id,
+            sender_id: m.reply_to.sender_id,
+            sender_name:
+              typeof m.reply_to.sender_name === "string" ? m.reply_to.sender_name : "",
+            content_preview:
+              typeof m.reply_to.content_preview === "string" ? m.reply_to.content_preview : "",
+          }
+        : null,
   };
 }
 
@@ -138,6 +166,12 @@ function parseRealtimeInsert(row: unknown): Message | null {
     created_at: row.created_at,
     is_read: typeof row.is_read === "boolean" ? row.is_read : undefined,
     read_at: row.read_at === null ? null : typeof row.read_at === "string" ? row.read_at : null,
+    reply_to_message_id:
+      row.reply_to_message_id === null
+        ? null
+        : typeof row.reply_to_message_id === "string"
+          ? row.reply_to_message_id
+          : undefined,
   };
 }
 
@@ -164,6 +198,7 @@ type ConversationSummary = {
    * `apps/customer/app/(app)/(tabs)/chats.tsx`), so reuse that shape.
    */
   provider?: { business_name?: string | null; thumbnail_url?: string | null } | null;
+  is_pinned?: boolean;
 };
 
 function normalizeAttachmentForPreview(a: string | Record<string, unknown>): NormalizedAttachment {
@@ -244,8 +279,52 @@ export default function ChatScreen() {
   const messagesRealtimeGenRef = useRef(0);
   const offersRealtimeGenRef = useRef(0);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const { pickFromLibrary, pickFromCamera } = useImagePicker();
   const { t } = useTranslation();
+
+  useEffect(() => {
+    setReplyingTo(null);
+  }, [id]);
+
+  const getMessagePreviewText = useCallback((msg: Message): string => {
+    const text = (msg.content || "").trim();
+    if (text) return text.length > 120 ? `${text.slice(0, 120)}…` : text;
+    const att = Array.isArray(msg.attachments) ? msg.attachments[0] : undefined;
+    const type =
+      att && typeof att === "object" && att !== null && "type" in att
+        ? String((att as { type?: string }).type ?? "")
+        : "";
+    if (type === "custom_offer") return t("customer.chatScreen.customOfferTitle");
+    if (type === "custom_request") return t("customer.chatScreen.customRequestLabel");
+    if (type === "custom_offer_paid") return t("customer.chatScreen.paymentReceivedBookingConfirmed");
+    if (type.startsWith("image/")) return t("customer.chatScreen.attachmentCamera");
+    if (type.startsWith("video/")) return t("customer.chatScreen.attachmentVideoTap");
+    const name =
+      att && typeof att === "object" && att !== null && "name" in att
+        ? String((att as { name?: string }).name ?? "")
+        : "";
+    return name || t("customer.chatScreen.attachmentDocumentTap");
+  }, [t]);
+
+  const resolveReplyTo = useCallback(
+    (msg: Message, list: Message[]): MessageReplyTo | null => {
+      if (msg.reply_to) return msg.reply_to;
+      const parentId = msg.reply_to_message_id;
+      if (!parentId) return null;
+      const parent = list.find((m) => m.id === parentId);
+      if (!parent) return null;
+      return {
+        id: parent.id,
+        sender_id: parent.sender_id,
+        sender_name:
+          parent.sender_name ||
+          (parent.sender_id === user?.id ? t("customer.chatScreen.replyingToYou") : providerName || ""),
+        content_preview: getMessagePreviewText(parent),
+      };
+    },
+    [getMessagePreviewText, providerName, t, user?.id],
+  );
 
   const openUrlOrAlert = useCallback(
     (url: string) => {
@@ -500,7 +579,20 @@ export default function ChatScreen() {
           if (!newMsg || newMsg.sender_id === user?.id) return;
           setMessages((prev) => {
             if (prev.some((m) => m.id === newMsg.id)) return prev;
-            return [...prev, newMsg];
+            const parentId = newMsg.reply_to_message_id;
+            let reply_to = newMsg.reply_to ?? null;
+            if (!reply_to && parentId) {
+              const parent = prev.find((m) => m.id === parentId);
+              if (parent) {
+                reply_to = {
+                  id: parent.id,
+                  sender_id: parent.sender_id,
+                  sender_name: parent.sender_name,
+                  content_preview: (parent.content || "").trim().slice(0, 120) || "Attachment",
+                };
+              }
+            }
+            return [...prev, { ...newMsg, reply_to }];
           });
           requestAnimationFrame(() => {
             flatListRef.current?.scrollToEnd({ animated: true });
@@ -654,6 +746,8 @@ export default function ChatScreen() {
       return;
     setSending(true);
     setInput("");
+    const replyTarget = replyingTo;
+    setReplyingTo(null);
 
     const optimisticId = `temp-${Date.now()}`;
     const optimisticMsg: Message = {
@@ -665,6 +759,18 @@ export default function ChatScreen() {
       created_at: new Date().toISOString(),
       is_read: false,
       read_at: null,
+      reply_to_message_id: replyTarget?.id ?? null,
+      reply_to: replyTarget
+        ? {
+            id: replyTarget.id,
+            sender_id: replyTarget.sender_id,
+            sender_name:
+              replyTarget.sender_id === user?.id
+                ? t("customer.chatScreen.replyingToYou")
+                : replyTarget.sender_name,
+            content_preview: getMessagePreviewText(replyTarget),
+          }
+        : null,
     };
     setMessages((prev) => [...prev, optimisticMsg]);
     requestAnimationFrame(() => {
@@ -676,6 +782,7 @@ export default function ChatScreen() {
         conversation_id: id,
         content: text || "",
         attachments: attachments || [],
+        ...(replyTarget?.id ? { reply_to_message_id: replyTarget.id } : {}),
       });
       if (!res.error && res.data) {
         const msg = res.data;
@@ -689,6 +796,7 @@ export default function ChatScreen() {
       } else {
         setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
         setInput(text);
+        if (replyTarget) setReplyingTo(replyTarget);
         Alert.alert(
           t("customer.chatScreen.sendFailedTitle"),
           getApiErrorMessage(res.error, t("customer.chatScreen.sendFailedBody")),
@@ -697,6 +805,7 @@ export default function ChatScreen() {
     } catch {
       setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
       setInput(text);
+      if (replyTarget) setReplyingTo(replyTarget);
       Alert.alert(
         t("customer.chatScreen.sendFailedTitle"),
         t("customer.chatScreen.sendFailedBody"),
@@ -945,6 +1054,48 @@ export default function ChatScreen() {
     partnerFromMessages ||
     t("customer.chatScreen.fallbackTitle");
   const providerThumbnail = conversationMeta?.provider?.thumbnail_url ?? null;
+  const isChatPinned = Boolean(conversationMeta?.is_pinned);
+
+  const toggleChatPin = useCallback(async () => {
+    if (!id) return;
+    const next = !isChatPinned;
+    const res = await api.patch<{ is_pinned?: boolean }>(
+      `/api/me/conversations/${id}/pin`,
+      { pinned: next },
+    );
+    if (res.error) {
+      Alert.alert(
+        t("customer.chatScreen.sendFailedTitle"),
+        getApiErrorMessage(res.error, t("customer.chatScreen.sendFailedBody")),
+      );
+      return;
+    }
+    setConversationMeta((prev) => (prev ? { ...prev, is_pinned: next } : prev));
+  }, [id, isChatPinned, t]);
+
+  const openChatHeaderMenu = useCallback(() => {
+    Alert.alert(t("customer.chatScreen.conversationActionsTitle"), undefined, [
+      {
+        text: isChatPinned ? t("customer.chatScreen.unpinConversation") : t("customer.chatScreen.pinConversation"),
+        onPress: () => void toggleChatPin(),
+      },
+      { text: t("common.cancel"), style: "cancel" },
+    ]);
+  }, [isChatPinned, toggleChatPin, t]);
+
+  const chatHeaderRight = useCallback(
+    () => (
+      <TouchableOpacity
+        onPress={openChatHeaderMenu}
+        style={{ marginRight: 8, padding: 8 }}
+        accessibilityRole="button"
+        accessibilityLabel={t("customer.chatScreen.conversationActionsA11y")}
+      >
+        <Ionicons name="ellipsis-horizontal" size={22} color={Colors.gray[700]} />
+      </TouchableOpacity>
+    ),
+    [openChatHeaderMenu, t],
+  );
 
   // §UI-audit 2026-05: render the provider's avatar next to the title
   // in the chat header so the customer can confirm they're chatting with
@@ -1017,7 +1168,12 @@ export default function ChatScreen() {
     return (
       <>
         <Stack.Screen
-          options={{ title: chatTitle, headerTitle: renderHeaderTitle, headerBackTitle: "Back" }}
+          options={{
+            title: chatTitle,
+            headerTitle: renderHeaderTitle,
+            headerBackTitle: "Back",
+            headerRight: chatHeaderRight,
+          }}
         />
         <View style={{ flex: 1, backgroundColor: Colors.white, justifyContent: "center", alignItems: "center", padding: 24 }}>
           <Ionicons name="chatbubble-ellipses-outline" size={48} color={Colors.gray[300]} />
@@ -1036,7 +1192,12 @@ export default function ChatScreen() {
   return (
     <>
       <Stack.Screen
-        options={{ title: chatTitle, headerTitle: renderHeaderTitle, headerBackTitle: "Back" }}
+        options={{
+          title: chatTitle,
+          headerTitle: renderHeaderTitle,
+          headerBackTitle: "Back",
+          headerRight: chatHeaderRight,
+        }}
       />
       <KeyboardAvoidingView
         style={{ flex: 1, backgroundColor: Colors.white }}
@@ -1182,9 +1343,12 @@ export default function ChatScreen() {
                 const customRequestAttachment = attachmentRecords.find((a) => a.type === "custom_request");
                 const customOfferPaidAttachment = attachmentRecords.find((a) => a.type === "custom_offer_paid");
                 const hasRenderableAttachments = attachmentItems.some((a) => a.expired || a.url);
+                const quotedReply = resolveReplyTo(msg, messages);
                 return (
                   <View style={{ marginBottom: 12, alignItems: isMe ? "flex-end" : "flex-start" }}>
-                    <View
+                    <Pressable
+                      onLongPress={() => setReplyingTo(msg)}
+                      delayLongPress={280}
                       style={{
                         maxWidth: "80%",
                         borderRadius: 16,
@@ -1199,7 +1363,44 @@ export default function ChatScreen() {
                         shadowRadius: 2,
                         elevation: 1,
                       }}
+                      accessibilityLabel={t("customer.chatScreen.replyToMessage")}
                     >
+                      {quotedReply ? (
+                        <Pressable
+                          onPress={() => {
+                            const idx = listItems.findIndex(
+                              (li) => li.type === "message" && li.message.id === quotedReply.id,
+                            );
+                            if (idx >= 0) flatListRef.current?.scrollToIndex({ index: idx, animated: true });
+                          }}
+                          style={{
+                            marginBottom: 8,
+                            paddingLeft: 8,
+                            borderLeftWidth: 3,
+                            borderLeftColor: isMe ? "rgba(255,255,255,0.85)" : Colors.primary,
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 12,
+                              fontWeight: "700",
+                              color: isMe ? Colors.white : Colors.primary,
+                            }}
+                            numberOfLines={1}
+                          >
+                            {quotedReply.sender_name}
+                          </Text>
+                          <Text
+                            style={{
+                              fontSize: 12,
+                              color: isMe ? "rgba(255,255,255,0.85)" : Colors.gray[600],
+                            }}
+                            numberOfLines={2}
+                          >
+                            {quotedReply.content_preview}
+                          </Text>
+                        </Pressable>
+                      ) : null}
                       {hasRenderableAttachments && (
                         <View style={{ marginBottom: 8 }}>
                           {attachmentItems.map((att, i) => {
@@ -1408,7 +1609,7 @@ export default function ChatScreen() {
                           <Ionicons name="checkmark" size={14} color="rgba(255,255,255,0.6)" />
                         ) : null}
                       </View>
-                    </View>
+                    </Pressable>
                   </View>
                 );
               }}
@@ -1441,6 +1642,47 @@ export default function ChatScreen() {
                 <Ionicons name="chevron-down" size={24} color={Colors.gray[600]} />
               </TouchableOpacity>
             )}
+
+            {replyingTo ? (
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  borderTopWidth: 1,
+                  borderTopColor: Colors.gray[200],
+                  backgroundColor: Colors.gray[50],
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
+                }}
+              >
+                <View
+                  style={{
+                    width: 3,
+                    alignSelf: "stretch",
+                    backgroundColor: Colors.primary,
+                    borderRadius: 2,
+                    marginRight: 10,
+                  }}
+                />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ fontSize: 12, fontWeight: "700", color: Colors.primary }} numberOfLines={1}>
+                    {replyingTo.sender_id === user?.id
+                      ? t("customer.chatScreen.replyingToYou")
+                      : replyingTo.sender_name}
+                  </Text>
+                  <Text style={{ fontSize: 12, color: Colors.gray[600] }} numberOfLines={2}>
+                    {getMessagePreviewText(replyingTo)}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => setReplyingTo(null)}
+                  accessibilityLabel={t("customer.chatScreen.cancelReply")}
+                  style={{ padding: 6 }}
+                >
+                  <Ionicons name="close" size={20} color={Colors.gray[500]} />
+                </TouchableOpacity>
+              </View>
+            ) : null}
 
             {/* Input bar — respects the iOS home indicator via `insets.bottom`. */}
             <View

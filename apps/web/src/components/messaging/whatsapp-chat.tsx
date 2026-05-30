@@ -1,7 +1,7 @@
 "use client";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useClientMounted } from "@/hooks/use-client-mounted";
-import { Send, ArrowLeft, MoreVertical, Phone, Tag, User, Mail, Copy, Check, Paperclip, X, File, Play, Trash2, Undo2, Info, Loader2, ExternalLink, Clock, MapPin, FileText } from "lucide-react";
+import { Send, ArrowLeft, MoreVertical, Phone, Tag, User, Mail, Copy, Check, Paperclip, X, File, Play, Trash2, Undo2, Info, Loader2, ExternalLink, Clock, MapPin, FileText, CornerDownRight, Pin, PinOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -62,6 +62,13 @@ interface Attachment {
   request_id?: string | null;
 }
 
+interface MessageReplyTo {
+  id: string;
+  sender_id: string;
+  sender_name: string;
+  content_preview: string;
+}
+
 interface Message {
   id: string;
   conversation_id: string;
@@ -73,6 +80,8 @@ interface Message {
   created_at: string;
   read_at?: string;
   is_read?: boolean;
+  reply_to_message_id?: string | null;
+  reply_to?: MessageReplyTo | null;
 }
 
 interface Conversation {
@@ -91,6 +100,7 @@ interface Conversation {
   booking_number?: string;
   avatar?: string;
   customer_avatar?: string;
+  is_pinned?: boolean;
 }
 
 interface WhatsAppChatProps {
@@ -152,6 +162,7 @@ export default function WhatsAppChat({
   const [paymentOfferCurrency, setPaymentOfferCurrency] = useState<string | undefined>(undefined);
   const [decliningOfferId, setDecliningOfferId] = useState<string | null>(null);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   /** When message attachment JSON lags behind DB (e.g. after payment). */
   const [offerStatusById, setOfferStatusById] = useState<
     Record<string, { status: string; booking_id: string | null }>
@@ -163,9 +174,43 @@ export default function WhatsAppChat({
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isNearBottomRef = useRef(true);
-  
+
+  useEffect(() => {
+    setReplyingTo(null);
+  }, [conversation?.id]);
+
   // Determine if this is a provider chat (provider uses messagesEndpoint)
   const isProviderChat = !!messagesEndpoint;
+
+  const getMessagePreviewText = (msg: Message): string => {
+    const text = (msg.content || "").trim();
+    if (text) return text.length > 120 ? `${text.slice(0, 120)}…` : text;
+    const att = msg.attachments?.[0];
+    if (!att) return "";
+    if (att.type === "custom_offer") return "Custom offer";
+    if (att.type === "custom_request") return "Custom request";
+    if (att.type === "custom_offer_paid") return "Payment received";
+    if (att.type?.startsWith("image/")) return "Photo";
+    if (att.type?.startsWith("video/")) return "Video";
+    return att.name || "Attachment";
+  };
+
+  const buildReplyPreview = (msg: Message): MessageReplyTo => ({
+    id: msg.id,
+    sender_id: msg.sender_id,
+    sender_name:
+      msg.sender_name ||
+      (msg.sender_id === currentUserId ? "You" : isProviderChat ? "Customer" : "Provider"),
+    content_preview: getMessagePreviewText(msg),
+  });
+
+  const resolveReplyTo = (msg: Message, list: Message[]): MessageReplyTo | null => {
+    if (msg.reply_to) return msg.reply_to;
+    const parentId = msg.reply_to_message_id;
+    if (!parentId) return null;
+    const parent = list.find((m) => m.id === parentId);
+    return parent ? buildReplyPreview(parent) : null;
+  };
   
   // In provider view use customer contact; in customer view use provider contact
   const contactPhone = isProviderChat ? conversation?.customer_phone : conversation?.provider_phone;
@@ -224,6 +269,25 @@ export default function WhatsAppChat({
         return;
       }
       window.location.href = `/partner-profile?slug=${conversation.provider_id}`;
+    }
+  };
+
+  const handleTogglePin = async () => {
+    if (!conversation?.id) {
+      toast.error("Cannot pin: Conversation ID is missing");
+      return;
+    }
+    const nextPinned = !conversation.is_pinned;
+    try {
+      const endpoint = isProviderChat
+        ? `/api/provider/conversations/${conversation.id}/pin`
+        : `/api/me/conversations/${conversation.id}/pin`;
+      await fetcher.patch(endpoint, { pinned: nextPinned });
+      toast.success(nextPinned ? "Chat pinned" : "Chat unpinned");
+      onConversationUpdate?.();
+    } catch (err) {
+      const message = err instanceof FetchError ? err.message : "Failed to update pin";
+      toast.error(message);
     }
   };
 
@@ -670,9 +734,14 @@ export default function WhatsAppChat({
             if (filtered.some((m) => m.id === newMessage.id)) {
               return filtered;
             }
+
+            const withReply: Message = {
+              ...newMessage,
+              reply_to: resolveReplyTo(newMessage, filtered),
+            };
             
             // Add new message and sort to maintain order
-            const updated = [...filtered, newMessage];
+            const updated = [...filtered, withReply];
             updated.sort((a, b) => 
               new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
             );
@@ -805,6 +874,7 @@ export default function WhatsAppChat({
     }
 
     // Optimistic UI update - show message immediately
+    const replyTarget = replyingTo;
     const optimisticMessage: Message = {
       id: tempId,
       conversation_id: conversation.id,
@@ -813,6 +883,8 @@ export default function WhatsAppChat({
       attachments: uploadedAttachments,
       created_at: new Date().toISOString(),
       read_at: undefined,
+      reply_to_message_id: replyTarget?.id ?? null,
+      reply_to: replyTarget ? buildReplyPreview(replyTarget) : null,
     };
     
     setMessages((prev) => {
@@ -825,16 +897,19 @@ export default function WhatsAppChat({
     });
     setMessageInput("");
     clearFiles();
+    setReplyingTo(null);
     setShouldAutoScroll(true); // Auto-scroll for own messages
     
     try {
       setIsSending(true);
+      const replyPayload = replyTarget?.id ? { reply_to_message_id: replyTarget.id } : {};
       // Use custom endpoint if provided, otherwise use default
       if (messagesEndpoint) {
         // For provider endpoint: /api/provider/conversations/[id]/messages
         await fetcher.post(`/api/provider/conversations/${conversation.id}/messages`, {
           content: messageContent || "",
           attachments: uploadedAttachments,
+          ...replyPayload,
         });
       } else {
         // For customer endpoint: /api/me/messages
@@ -842,6 +917,7 @@ export default function WhatsAppChat({
           conversation_id: conversation.id,
           content: messageContent || "",
           attachments: uploadedAttachments,
+          ...replyPayload,
         });
       }
       // Real-time subscription will update with actual message (replacing temp one)
@@ -862,8 +938,9 @@ export default function WhatsAppChat({
       
       toast.error(errorMessage);
       console.error("Error sending message:", err);
-      // Restore message input and files
+      // Restore message input, reply target, and files
       setMessageInput(messageContent);
+      if (replyTarget) setReplyingTo(replyTarget);
       setSelectedFiles(selectedFiles);
     } finally {
       setIsSending(false);
@@ -1036,6 +1113,19 @@ export default function WhatsAppChat({
               {conversation.id && (
                 <>
                   <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => void handleTogglePin()}>
+                    {conversation.is_pinned ? (
+                      <>
+                        <PinOff className="w-4 h-4 mr-2" />
+                        Unpin chat
+                      </>
+                    ) : (
+                      <>
+                        <Pin className="w-4 h-4 mr-2" />
+                        Pin chat
+                      </>
+                    )}
+                  </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={() => setShowDeleteDialog(true)}
                     className="text-red-600 focus:text-red-600 focus:bg-red-50"
@@ -1097,6 +1187,7 @@ export default function WhatsAppChat({
           ) : (
           messageList.map((message, index) => {
             const isOwnMessage = message.sender_id === currentUserId;
+            const quotedReply = resolveReplyTo(message, messageList);
             const _showTime =
               index === messageList.length - 1 ||
               new Date(message.created_at).getTime() -
@@ -1106,9 +1197,27 @@ export default function WhatsAppChat({
             return (
               <div
                 key={message.id}
-                className={`flex ${isOwnMessage ? "justify-end" : "justify-start"}`}
+                className={`group flex items-end gap-1 ${isOwnMessage ? "justify-end" : "justify-start"}`}
               >
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReplyingTo(message);
+                    inputRef.current?.focus();
+                  }}
+                  className={cn(
+                    "shrink-0 p-1.5 rounded-full text-[#667781] hover:bg-white/80 hover:text-primary transition-opacity",
+                    "opacity-100 md:opacity-0 md:group-hover:opacity-100",
+                    "focus:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+                    isOwnMessage ? "order-first" : "order-last"
+                  )}
+                  title="Reply"
+                  aria-label="Reply to message"
+                >
+                  <CornerDownRight className="w-4 h-4" />
+                </button>
                 <div
+                  id={`msg-${message.id}`}
                   className={`max-w-[85%] md:max-w-[60%] rounded-lg px-3 py-2 shadow-sm ${
                     isOwnMessage
                       ? "bg-[#FFE5F0] rounded-tr-none"
@@ -1120,6 +1229,34 @@ export default function WhatsAppChat({
                       {message.sender_name}
                     </p>
                   )}
+                  {quotedReply ? (
+                    <div
+                      className={cn(
+                        "mb-2 rounded-md border-l-4 pl-2 py-1 pr-1 text-xs cursor-pointer",
+                        quotedReply.sender_id === currentUserId
+                          ? "border-primary/60 bg-primary/5"
+                          : "border-primary bg-[#f5f6f6]"
+                      )}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => {
+                        const el = document.getElementById(`msg-${quotedReply.id}`);
+                        el?.scrollIntoView({ behavior: "smooth", block: "center" });
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          document.getElementById(`msg-${quotedReply.id}`)?.scrollIntoView({
+                            behavior: "smooth",
+                            block: "center",
+                          });
+                        }
+                      }}
+                    >
+                      <p className="font-semibold text-primary truncate">{quotedReply.sender_name}</p>
+                      <p className="text-[#667781] line-clamp-2 break-words">{quotedReply.content_preview}</p>
+                    </div>
+                  ) : null}
                   {Array.isArray(message.attachments) &&
                   message.attachments.length > 0 &&
                   message.attachments[0]?.type === "custom_offer" ? (() => {
@@ -1381,6 +1518,31 @@ export default function WhatsAppChat({
           </div>
         </div>
       )}
+
+      {/* Reply composer preview */}
+      {replyingTo ? (
+        <div className="bg-[#f0f2f5] px-3 md:px-4 py-2 border-t border-gray-200 flex items-start gap-2 flex-shrink-0 relative z-10">
+          <div className="w-1 self-stretch rounded-full bg-primary shrink-0" aria-hidden />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-primary truncate">
+              {replyingTo.sender_id === currentUserId
+                ? "You"
+                : replyingTo.sender_name || getContactName()}
+            </p>
+            <p className="text-xs text-[#667781] line-clamp-2 break-words">
+              {getMessagePreviewText(replyingTo)}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setReplyingTo(null)}
+            className="p-1 rounded-full text-[#667781] hover:bg-white/80 shrink-0"
+            aria-label="Cancel reply"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      ) : null}
 
       {/* Input area: in-flow footer; provider shell adds bottom padding for mobile nav */}
       <div
