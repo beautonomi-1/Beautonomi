@@ -13,7 +13,6 @@ import {
   Pressable,
   Image,
   useWindowDimensions,
-  Platform,
 } from "react-native";
 import { Image as ExpoImage } from "expo-image";
 import * as ImagePicker from "expo-image-picker";

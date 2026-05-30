@@ -87,7 +87,7 @@ interface GamificationResponse {
   provider_stats?: { total_bookings: number; review_count: number; rating_average?: number };
 }
 
-const EARN_TIPS: Array<{ icon: IoniconName; title: string; body: string }> = [
+const EARN_TIPS: { icon: IoniconName; title: string; body: string }[] = [
   {
     icon: "calendar-outline",
     title: "Complete bookings",
@@ -291,7 +291,7 @@ function ProgressToNextCard({ progress }: { progress: ProgressToNext }) {
         </Text>
       ) : (
         <Text style={{ marginTop: 10, fontSize: 14, fontWeight: "600", color: Colors.success }}>
-          You've hit the point threshold — badge updates after the next sync.
+          You&apos;ve hit the point threshold — badge updates after the next sync.
         </Text>
       )}
     </View>
@@ -305,7 +305,7 @@ function BadgeLadderSection({ ladder }: { ladder: LadderBadge[] }) {
     <View style={{ marginBottom: 24 }}>
       <Text style={{ marginBottom: 4, fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>Badge journey</Text>
       <Text style={{ marginBottom: 12, fontSize: 13, color: Colors.gray[500] }}>
-        See every level and what you're working toward.
+        See every level and what you&apos;re working toward.
       </Text>
       <View style={{ borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, overflow: "hidden" }}>
         {ladder.map((item, idx) => {
@@ -562,7 +562,7 @@ export function GamificationBadgesContent() {
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 15, fontWeight: "700", color: Colors.gray[900] }}>Top tier unlocked</Text>
             <Text style={{ marginTop: 4, fontSize: 13, lineHeight: 19, color: Colors.gray[600] }}>
-              You're at the highest badge level. Keep delivering great service to stay featured and retain your perks.
+              You&apos;re at the highest badge level. Keep delivering great service to stay featured and retain your perks.
             </Text>
           </View>
         </View>
