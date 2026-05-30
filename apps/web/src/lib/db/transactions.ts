@@ -86,7 +86,7 @@ export async function checkAndLockBookingSlot(
   const actualConflicts = conflicts.filter((c: any) => {
     const conflictStart = new Date(c.scheduled_start_at);
     const conflictEnd = new Date(c.scheduled_end_at);
-    const conflictBuffer = c.offerings?.buffer_minutes || 15;
+    const conflictBuffer = c.offerings?.buffer_minutes ?? 0;
     const conflictEffectiveEnd = new Date(conflictEnd.getTime() + conflictBuffer * 60000);
 
     return startAt < conflictEffectiveEnd && effectiveEndAt > conflictStart;

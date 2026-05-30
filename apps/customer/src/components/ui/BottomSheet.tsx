@@ -132,7 +132,13 @@ export function BottomSheet({
   }));
 
   return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={closeSheet}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="none"
+      onRequestClose={closeSheet}
+      accessibilityViewIsModal
+    >
       <GestureRoot style={{ flex: 1 }}>
         <View style={{ flex: 1 }}>
           <Animated.View style={[{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0 }, backdropAnimatedStyle]}>

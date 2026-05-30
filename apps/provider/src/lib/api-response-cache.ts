@@ -35,6 +35,17 @@ export function invalidateSupportTicketsListCache(): void {
   }
 }
 
+/** Drop cached GET responses for all provider service list/detail endpoints. */
+export function invalidateServicesCache(): void {
+  const needle = "/api/provider/services";
+  for (const key of responseCache.keys()) {
+    if (key.includes(needle)) responseCache.delete(key);
+  }
+  for (const key of inflightRequests.keys()) {
+    if (key.includes(needle)) inflightRequests.delete(key);
+  }
+}
+
 /** Drop cached GET responses whose key contains `path` (e.g. after PATCH/POST mutations). */
 export function invalidateApiCacheForPath(path: string): void {
   const needle = path.trim();

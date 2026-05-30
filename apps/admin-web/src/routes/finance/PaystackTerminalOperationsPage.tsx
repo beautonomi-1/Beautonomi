@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -16,8 +16,9 @@ import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { adminToast } from "@/lib/adminToast";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminTabButtonClass, adminToolbarButtonClass } from "@/lib/adminUi";
+import { ADMIN_SECTION_FINANCE } from "@beautonomi/admin-access";
 import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
-import { useSuperadminPage } from "@/hooks/useSuperadminPage";
+import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import {
@@ -214,9 +215,13 @@ async function uploadPoster(id: string, file: File) {
 
 export function PaystackTerminalOperationsPage() {
   useAdminDocumentTitle("Paystack Terminal Operations");
-  const { allowed, denied } = useSuperadminPage("Paystack Terminal operations are restricted to Superadmin.");
+  const { allowed, denied } = useAdminSectionPage(
+    ADMIN_SECTION_FINANCE,
+    "Finance access is required to manage Paystack Terminal operations.",
+  );
   const qc = useQueryClient();
   const [tab, setTab] = useState<"exceptions" | "terminals" | "setup">("exceptions");
+  const [tabInitialized, setTabInitialized] = useState(false);
   const [allocationStatus, setAllocationStatus] = useState("admin_review");
   const [setupFilter, setSetupFilter] = useState<"requested" | "needs_assets" | "ready" | "all">("requested");
   const [resolveFor, setResolveFor] = useState<AdminTerminalPayment | null>(null);
@@ -265,6 +270,22 @@ export function PaystackTerminalOperationsPage() {
       };
     },
   });
+
+  useEffect(() => {
+    if (tabInitialized || !q.data) return;
+    const pendingSetup =
+      (q.data.summary?.requested ?? 0) > 0 ||
+      (q.data.setupRequests?.filter((r) => r.status === "requested" || r.status === "in_progress").length ?? 0) > 0;
+    if (pendingSetup) setTab("setup");
+    setTabInitialized(true);
+  }, [q.data, tabInitialized]);
+
+  const pendingSetupCount = useMemo(() => {
+    const fromSummary = q.data?.summary?.requested ?? 0;
+    const fromRequests =
+      q.data?.setupRequests?.filter((r) => r.status === "requested" || r.status === "in_progress").length ?? 0;
+    return Math.max(fromSummary, fromRequests);
+  }, [q.data]);
 
   const actionMut = useMutation({
     mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) =>
@@ -439,7 +460,7 @@ export function PaystackTerminalOperationsPage() {
     <div className="space-y-6">
       <AdminPageHeader
         title="Paystack Terminal Operations"
-        description="Superadmin registry, payment exceptions, payout holds, disputes, and manual allocation resolution for Paystack Virtual Terminal in-person payments."
+        description="Registry, payment exceptions, payout holds, disputes, and manual allocation resolution for Paystack Virtual Terminal in-person payments."
         actions={
           <>
             <button
@@ -533,6 +554,11 @@ export function PaystackTerminalOperationsPage() {
         </button>
         <button type="button" className={adminTabButtonClass(tab === "setup")} onClick={() => setTab("setup")}>
           Terminal setup
+          {pendingSetupCount > 0 ? (
+            <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
+              {pendingSetupCount}
+            </span>
+          ) : null}
         </button>
       </div>
 

@@ -700,7 +700,7 @@ export async function loadExistingBookings(
     })
     .map((bs: any) => {
       // Apply staff overrides if they exist, otherwise use service defaults
-      const bufferMinutes = staffData?.buffer_minutes_override ?? bs.offerings?.buffer_minutes ?? 15;
+      const bufferMinutes = staffData?.buffer_minutes_override ?? bs.offerings?.buffer_minutes ?? 0;
       const processingMinutes = staffData?.processing_minutes_override ?? bs.offerings?.processing_minutes ?? 0;
       const finishingMinutes = staffData?.finishing_minutes_override ?? bs.offerings?.finishing_minutes ?? 0;
 
@@ -772,7 +772,7 @@ async function loadExistingBookingsForProviderOnDate(
   return bookingServices
     .filter((bs: any) => bs.bookings?.status !== 'cancelled')
     .map((bs: any) => {
-      const bufferMinutes = bs.offerings?.buffer_minutes ?? 15;
+      const bufferMinutes = bs.offerings?.buffer_minutes ?? 0;
       const processingMinutes = bs.offerings?.processing_minutes ?? 0;
       const finishingMinutes = bs.offerings?.finishing_minutes ?? 0;
 

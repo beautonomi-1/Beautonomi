@@ -68,8 +68,8 @@ import {
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { PUBLIC_BOOKING_MAX_ADVANCE_DAYS } from "@/lib/provider-booking/public-booking-slot-policy";
 
-/** Aligns with customer app `DEFAULT_SLOT_BUFFER_MINUTES` / `resolveOfferingBufferMinutes` fallback. */
-const DEFAULT_SLOT_BUFFER_MINUTES = 15;
+/** Aligns with server `buffer_minutes || 0` when offering buffer is unknown. */
+const DEFAULT_SLOT_BUFFER_MINUTES = 0;
 
 function buildProviderServicesLikeMenu(
   baseServices: ServiceOption[],

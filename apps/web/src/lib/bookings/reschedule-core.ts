@@ -230,7 +230,7 @@ export async function executeReschedule(
   let totalDuration = 0;
   bookingServices.forEach((bs) => {
     const dur = bs.duration_minutes ?? bs.offerings?.duration_minutes ?? 60;
-    const buf = bs.offerings?.buffer_minutes ?? 15;
+    const buf = bs.offerings?.buffer_minutes ?? 0;
     totalDuration += dur + buf;
   });
 
@@ -464,7 +464,7 @@ export async function executeReschedule(
     const start = new Date(cursor);
     const duration = bs.duration_minutes ?? bs.offerings?.duration_minutes ?? 60;
     const end = new Date(start.getTime() + duration * 60000);
-    const buffer = bs.offerings?.buffer_minutes ?? 15;
+    const buffer = bs.offerings?.buffer_minutes ?? 0;
 
     const { error } = await adminSupabase
       .from("booking_services")

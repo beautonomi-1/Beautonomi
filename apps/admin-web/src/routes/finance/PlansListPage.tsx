@@ -676,7 +676,11 @@ export function PlansListPage() {
             </p>
             <p>
               <strong>Entitlements (feature permissions)</strong> are the <code className="rounded bg-white px-1">features</code>{" "}
-              JSON on <code className="rounded bg-white px-1">subscription_plans</code> (gating, limits, integrations). This is
+              JSON on <code className="rounded bg-white px-1">subscription_plans</code> (gating, limits, integrations). Include{" "}
+              <code className="rounded bg-white px-1">paystack_virtual_terminal</code> with{" "}
+              <code className="rounded bg-white px-1">enabled: true</code>,{" "}
+              <code className="rounded bg-white px-1">max_terminals: null</code> (unlimited), and capability flags alongside{" "}
+              <code className="rounded bg-white px-1">yoco_integration</code>. This is
               not the same as the bullet list below — that list is marketing copy.
             </p>
             <p>

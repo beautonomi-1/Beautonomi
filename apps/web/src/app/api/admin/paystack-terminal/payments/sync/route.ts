@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { errorResponse, handleApiError, requireSuperadmin, successResponse } from "@/lib/supabase/api-helpers";
+import { errorResponse, handleApiError, requireAdminSection, successResponse } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { listTransactions } from "@/lib/payments/paystack-complete";
 import {
   isPaystackTerminalCharge,
@@ -55,7 +56,7 @@ function transactionRecord(transaction: unknown): Record<string, unknown> {
 
 export async function POST(request: NextRequest) {
   try {
-    await requireSuperadmin(request);
+    await requireAdminSection(ADMIN_SECTION_FINANCE, request);
     const supabase = getSupabaseAdmin();
     const body = await request.json().catch(() => ({}));
     const from = typeof body?.from === "string" && body.from.trim() ? body.from.trim() : defaultFromIso();

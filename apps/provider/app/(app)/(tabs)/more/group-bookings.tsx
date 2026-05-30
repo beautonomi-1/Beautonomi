@@ -39,7 +39,22 @@ import { formatCurrency, formatDate } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 import { E164PhoneField } from "@/components/E164PhoneField";
 import { validateE164Phone } from "@/lib/phone-country-codes";
-import { validateGroupBookingCreateStep } from "@/features/group-bookings/validateGroupBookingCreate";
+import {
+  validateGroupBookingCreateStep,
+  validateGroupBookingCreateStepDetailed,
+  type GroupBookingCreateValidationField,
+} from "@/features/group-bookings/validateGroupBookingCreate";
+import {
+  participantsEqual,
+  patchGroupMarkPaid,
+  patchParticipantCheckIn,
+  patchParticipantCheckOut,
+  patchParticipantRefund,
+} from "@/features/group-bookings/optimisticGroupPatch";
+import {
+  ParticipantRefundSheet,
+  type ParticipantRefundTarget,
+} from "@/features/group-bookings/ParticipantRefundSheet";
 import { useProvider } from "@/providers/ProviderContext";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { buildZonedIsoForWallClock } from "@/lib/tz";
@@ -50,6 +65,7 @@ import {
   paystackTerminalCollectionIntentPayload,
 } from "@/lib/paystack-terminal-api";
 import { PROVIDER_PRODUCTS_CATALOG_CHANGED } from "@/lib/provider-products-catalog-events";
+import { PROVIDER_SERVICES_CATALOG_CHANGED } from "@/lib/provider-services-catalog-events";
 import { AddressAutocomplete } from "@/components/ui/AddressAutocomplete";
 import { AddressMapPinModal } from "@/components/AddressMapPinModal";
 import { pushInAppBrowser } from "@/lib/in-app-web";
@@ -405,7 +421,7 @@ export default function GroupBookingsScreen() {
   const providerTz = provider?.timezone ?? null;
   const locations = provider?.locations ?? [];
 
-  const { data: servicesRaw } = useApi<ServiceRow[]>(
+  const { data: servicesRaw, refresh: refreshServices } = useApi<ServiceRow[]>(
     "/api/provider/services?include_variants=true"
   );
   const { data: productsRaw, refresh: refreshProducts } = useApi<unknown>(
@@ -433,11 +449,17 @@ export default function GroupBookingsScreen() {
   );
 
   useEffect(() => {
-    const sub = DeviceEventEmitter.addListener(PROVIDER_PRODUCTS_CATALOG_CHANGED, () => {
+    const subProducts = DeviceEventEmitter.addListener(PROVIDER_PRODUCTS_CATALOG_CHANGED, () => {
       void refreshProducts();
     });
-    return () => sub.remove();
-  }, [refreshProducts]);
+    const subServices = DeviceEventEmitter.addListener(PROVIDER_SERVICES_CATALOG_CHANGED, () => {
+      void refreshServices();
+    });
+    return () => {
+      subProducts.remove();
+      subServices.remove();
+    };
+  }, [refreshProducts, refreshServices]);
 
   const teamMembers = useMemo(() => (Array.isArray(teamRaw) ? teamRaw : []), [teamRaw]);
   const [selectedServiceCategory, setSelectedServiceCategory] = useState("all");
@@ -588,6 +610,7 @@ export default function GroupBookingsScreen() {
     loading,
     error: groupError,
     refresh,
+    mutate: mutateGroupList,
   } = useApi<GroupBookingsResponse>(
     `/api/provider/group-bookings?limit=${GROUP_PAGE_LIMIT}&page=1${statusParam}`
   );
@@ -619,6 +642,15 @@ export default function GroupBookingsScreen() {
   // explicitly opt into recording money received at create time.
   const [createStep, setCreateStep] = useState<"form" | "review">("form");
   const [createReviewError, setCreateReviewError] = useState<string | null>(null);
+  const [createFieldError, setCreateFieldError] =
+    useState<GroupBookingCreateValidationField | null>(null);
+  const [checkingCreateReview, setCheckingCreateReview] = useState(false);
+  const createFormScrollRef = useRef<ScrollView>(null);
+  const createSectionY = useRef<Partial<Record<string, number>>>({});
+  const [pendingParticipantId, setPendingParticipantId] = useState<string | null>(null);
+  const [refundParticipant, setRefundParticipant] = useState<ParticipantRefundTarget | null>(null);
+  const [paymentRecordedNotice, setPaymentRecordedNotice] = useState<string | null>(null);
+  const previousGroupRef = useRef<GroupBooking | null>(null);
   const [createPaymentMethod, setCreatePaymentMethod] = useState<
     "pay_later" | "cash" | "card" | "yoco_pos" | "payment_link" | "paystack_terminal"
   >("pay_later");
@@ -756,17 +788,29 @@ export default function GroupBookingsScreen() {
     return [] as AvailableSlotsApiRow[];
   }, [editSlotsData]);
 
-  // §Provider-audit 2026-04 (round 6): keep `selectedGroup` in sync with
-  // the refreshed list. Previously the detail sheet stored a snapshot, so
-  // after a check-in / add-participant / cancel the sheet still rendered
-  // the stale participant list until the user closed & reopened it.
+  // Keep `selectedGroup` in sync when participant payment/check-in data changes,
+  // not only when `group_bookings.updated_at` bumps (mark_paid often skips that).
+  // Skip while an optimistic mutation is in flight so a stale list refresh cannot
+  // flash the detail sheet back to pre-action state.
   useEffect(() => {
     if (!selectedGroup) return;
+    if (pendingParticipantId || groupActionLoading || previousGroupRef.current) return;
     const fresh = groups.find((g) => g.id === selectedGroup.id);
-    if (fresh && fresh.updated_at !== selectedGroup.updated_at) {
+    if (!fresh) return;
+    const metaChanged =
+      fresh.updated_at !== selectedGroup.updated_at || fresh.status !== selectedGroup.status;
+    const participantsChanged = !participantsEqual(
+      fresh.participants,
+      selectedGroup.participants
+    );
+    if (metaChanged || participantsChanged) {
       setSelectedGroup(fresh);
     }
-  }, [groups, selectedGroup]);
+  }, [groups, selectedGroup, pendingParticipantId, groupActionLoading]);
+
+  useEffect(() => {
+    setPaymentRecordedNotice(null);
+  }, [selectedGroup?.id]);
 
   useEffect(() => {
     const openId = typeof params.open_group_id === "string" ? params.open_group_id.trim() : "";
@@ -1003,6 +1047,11 @@ export default function GroupBookingsScreen() {
       Alert.alert("Error", "Group booking has no id yet — refresh and try again.");
       return;
     }
+    previousGroupRef.current = group;
+    const now = new Date().toISOString();
+    applyGroupPatch(group.id, (current) => patchGroupMarkPaid(current, now) as GroupBooking);
+    setPaymentRecordedNotice(null);
+
     const { error } = await postGroupAction(
       `/api/provider/group-bookings/${encodeURIComponent(group.id)}?action=mark_paid`,
       {
@@ -1010,9 +1059,7 @@ export default function GroupBookingsScreen() {
       }
     );
     if (error) {
-      // §Group-booking-audit 2026-05: surface NOT_INVOICED separately from
-      // generic payment failures so providers know participants still need
-      // bookings before marking the session paid.
+      rollbackGroupPatch();
       const isNotInvoiced = /not.*invoiced|no.*invoice/i.test(error);
       Alert.alert(
         isNotInvoiced ? "Participants not invoiced yet" : "Payment not recorded",
@@ -1020,9 +1067,10 @@ export default function GroupBookingsScreen() {
       );
       return;
     }
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    Alert.alert("Payment recorded", "Group participant bookings were marked paid.");
-    refresh();
+    previousGroupRef.current = null;
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setPaymentRecordedNotice("Payment recorded for all participant bookings.");
+    await refresh();
   }
 
   async function handleRequestPaystackTerminal(group: GroupBooking, expectedAmount: number) {
@@ -1243,6 +1291,7 @@ export default function GroupBookingsScreen() {
     // intercepts touches on the underlying "Review & Create" button.
     setCreateStep("form");
     setCreateReviewError(null);
+    setCreateFieldError(null);
     setCreatePaymentMethod("pay_later");
     setCreateSendNotification(true);
     setValidatingCreateAddress(false);
@@ -1262,8 +1311,8 @@ export default function GroupBookingsScreen() {
     router.setParams({ openCreate: "" } as never);
   }, [params.openCreate, router]);
 
-  function validateCreateFormParticipants(): string | null {
-    return validateGroupBookingCreateStep({
+  function buildCreateValidationInput() {
+    return {
       date: createForm.date,
       time: createForm.time,
       duration: createForm.duration,
@@ -1282,7 +1331,67 @@ export default function GroupBookingsScreen() {
         }))
         .filter((p) => p.name.length > 0 || p.phone.length > 0 || p.email.length > 0),
       validatePhone: validateE164Phone,
+    };
+  }
+
+  function validateCreateFormParticipants(): string | null {
+    return validateGroupBookingCreateStep(buildCreateValidationInput());
+  }
+
+  function validationFieldSectionKey(field: GroupBookingCreateValidationField): string {
+    if (field.startsWith("participant:")) return "participants";
+    return field;
+  }
+
+  function scrollToCreateField(field: GroupBookingCreateValidationField) {
+    const sectionKey = validationFieldSectionKey(field);
+    if (sectionKey === "participants") {
+      createFormScrollRef.current?.scrollToEnd({ animated: true });
+      return;
+    }
+    const y = createSectionY.current[sectionKey];
+    if (y != null) {
+      createFormScrollRef.current?.scrollTo({ y: Math.max(0, y - 12), animated: true });
+    }
+  }
+
+  function clearCreateFieldError(field?: GroupBookingCreateValidationField) {
+    if (!field || createFieldError === field) {
+      setCreateFieldError(null);
+    }
+    setCreateReviewError(null);
+  }
+
+  function registerCreateSection(sectionKey: string, y: number) {
+    createSectionY.current[sectionKey] = y;
+  }
+
+  function applyGroupPatch(groupId: string, patchFn: (group: GroupBooking) => GroupBooking) {
+    const source =
+      selectedGroup?.id === groupId ? selectedGroup : groups.find((g) => g.id === groupId);
+    if (!source) return null;
+    const patched = patchFn({
+      ...source,
+      participants: (source.participants ?? []).map((p) => ({ ...p })),
     });
+    if (selectedGroup?.id === groupId) {
+      setSelectedGroup(patched);
+    }
+    if (groupData?.data) {
+      mutateGroupList({
+        ...groupData,
+        data: groupData.data.map((g) => (g.id === groupId ? patched : g)),
+      });
+    }
+    setExtraGroups((prev) => prev.map((g) => (g.id === groupId ? patched : g)));
+    return patched;
+  }
+
+  function rollbackGroupPatch() {
+    const snap = previousGroupRef.current;
+    if (!snap) return;
+    applyGroupPatch(snap.id, () => snap);
+    previousGroupRef.current = null;
   }
 
   function addCreateParticipantRow() {
@@ -1597,23 +1706,52 @@ export default function GroupBookingsScreen() {
   // review sheet only opens when the form is committable. Same checks as
   // handleCreate, just without the actual POST.
   async function handleOpenCreateReview() {
-    const fail = (message: string) => {
+    const fail = (message: string, field: GroupBookingCreateValidationField) => {
       setCreateReviewError(message);
+      setCreateFieldError(field);
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      requestAnimationFrame(() => scrollToCreateField(field));
     };
     setCreateReviewError(null);
-    const validationErr = validateCreateFormParticipants();
+    setCreateFieldError(null);
+    const validationErr = validateGroupBookingCreateStepDetailed(buildCreateValidationInput());
     if (validationErr) {
-      fail(validationErr);
+      fail(validationErr.message, validationErr.field);
       return;
     }
-    setCreateStep("review");
+    setCheckingCreateReview(true);
+    try {
+      const duration = Number(createForm.duration);
+      const createAvailabilityError = await verifyGroupSlotAvailability({
+        date: createForm.date,
+        time: createForm.time,
+        durationMinutes: duration,
+        staffId: createForm.staffId,
+        locationId:
+          createForm.locationType === "at_home"
+            ? null
+            : createForm.locationId || selectedLocationId || null,
+        serviceId: createForm.serviceId,
+        locationType: createForm.locationType,
+      });
+      if (createAvailabilityError) {
+        fail(createAvailabilityError, "time");
+        return;
+      }
+      setCreateStep("review");
+    } finally {
+      setCheckingCreateReview(false);
+    }
   }
 
   async function handleCreate() {
-    const validationErr = validateCreateFormParticipants();
+    const validationErr = validateGroupBookingCreateStepDetailed(buildCreateValidationInput());
     if (validationErr) {
-      Alert.alert("Validation", validationErr);
+      setCreateStep("form");
+      setCreateReviewError(validationErr.message);
+      setCreateFieldError(validationErr.field);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      requestAnimationFrame(() => scrollToCreateField(validationErr.field));
       return;
     }
     const duration = Number(createForm.duration);
@@ -1634,7 +1772,11 @@ export default function GroupBookingsScreen() {
       locationType: createForm.locationType,
     });
     if (createAvailabilityError) {
-      Alert.alert("Time not available", createAvailabilityError);
+      setCreateStep("form");
+      setCreateReviewError(createAvailabilityError);
+      setCreateFieldError("time");
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      requestAnimationFrame(() => scrollToCreateField("time"));
       return;
     }
     const participantsToCreate = createParticipants
@@ -1914,8 +2056,8 @@ export default function GroupBookingsScreen() {
     setCreateStep("form");
     setCreateReviewError(null);
     setShowCreate(false);
-    InteractionManager.runAfterInteractions(() => {
-      void refresh();
+    InteractionManager.runAfterInteractions(async () => {
+      await refresh();
       const paymentNote =
         createPaymentMethod === "pay_later"
           ? "Payment is due from participants."
@@ -1959,6 +2101,7 @@ export default function GroupBookingsScreen() {
       addressLatitude: parsed.latitude,
       addressLongitude: parsed.longitude,
     }));
+    clearCreateFieldError("address");
 
     const addressString =
       parsed.full_address || `${parsed.address_line1}, ${parsed.city}, ${parsed.country}`;
@@ -2171,30 +2314,54 @@ export default function GroupBookingsScreen() {
 
   async function handleCheckIn(participant: Participant) {
     if (!selectedGroup?.id || !participant?.id) return;
+    if (pendingParticipantId === participant.id) return;
+    previousGroupRef.current = selectedGroup;
+    const now = new Date().toISOString();
+    applyGroupPatch(
+      selectedGroup.id,
+      (current) => patchParticipantCheckIn(current, participant.id, now) as GroupBooking
+    );
+    setPendingParticipantId(participant.id);
+
     const { error } = await checkInParticipant(
       `/api/provider/group-bookings/${encodeURIComponent(selectedGroup.id)}/participants/${encodeURIComponent(participant.id)}/check-in`,
       {}
     );
+    setPendingParticipantId(null);
     if (error) {
+      rollbackGroupPatch();
       Alert.alert("Check-in failed", error);
       return;
     }
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    refresh();
+    previousGroupRef.current = null;
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    await refresh();
   }
 
   async function handleCheckOut(participant: Participant) {
     if (!selectedGroup?.id || !participant?.id) return;
+    if (pendingParticipantId === participant.id) return;
+    previousGroupRef.current = selectedGroup;
+    const now = new Date().toISOString();
+    applyGroupPatch(
+      selectedGroup.id,
+      (current) => patchParticipantCheckOut(current, participant.id, now) as GroupBooking
+    );
+    setPendingParticipantId(participant.id);
+
     const { error } = await checkOutParticipant(
       `/api/provider/group-bookings/${encodeURIComponent(selectedGroup.id)}/participants/${encodeURIComponent(participant.id)}/check-out`,
       {}
     );
+    setPendingParticipantId(null);
     if (error) {
+      rollbackGroupPatch();
       Alert.alert("Check-out failed", error);
       return;
     }
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    refresh();
+    previousGroupRef.current = null;
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    await refresh();
   }
 
   async function openGroupReceipt(group: GroupBooking) {
@@ -2291,12 +2458,30 @@ export default function GroupBookingsScreen() {
       );
       return;
     }
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setSelectedGroup(null);
-    router.push({
-      pathname: "/(app)/(tabs)/more/bookings/[id]",
-      params: { id: bookingId },
-    } as never);
+    const displayName =
+      participant.customer_name ||
+      participant.client_name ||
+      participant.participant_name ||
+      "Guest";
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setRefundParticipant({
+      id: participant.id,
+      booking_id: bookingId,
+      displayName,
+      total_paid: participant.total_paid,
+      total_refunded: participant.total_refunded,
+      price: participant.price,
+    });
+  }
+
+  function handleParticipantRefundSuccess(participantId: string, refundAmount: number) {
+    if (!selectedGroup?.id) return;
+    const now = new Date().toISOString();
+    applyGroupPatch(
+      selectedGroup.id,
+      (current) => patchParticipantRefund(current, participantId, refundAmount, now) as GroupBooking
+    );
+    void refresh();
   }
 
   async function handleRemoveParticipant(participant: Participant) {
@@ -2763,17 +2948,17 @@ export default function GroupBookingsScreen() {
                           <View
                             style={[
                               twStyle(
-                                `rounded-full px-2 py-0.5 ${p.paid ? "bg-emerald-50" : Number(p.total_paid ?? 0) > 0 ? "bg-amber-50" : "bg-gray-100"}`
+                                `rounded-full px-2 py-0.5 ${p.paid || p.payment_status === "paid" ? "bg-emerald-50" : Number(p.total_paid ?? 0) > 0 ? "bg-amber-50" : "bg-gray-100"}`
                               ),
                               { marginRight: 8 },
                             ]}
                           >
                             <Text
                               style={twStyle(
-                                `text-[10px] font-medium ${p.paid ? "text-emerald-700" : Number(p.total_paid ?? 0) > 0 ? "text-amber-700" : "text-gray-600"}`
+                                `text-[10px] font-medium ${p.paid || p.payment_status === "paid" ? "text-emerald-700" : Number(p.total_paid ?? 0) > 0 ? "text-amber-700" : "text-gray-600"}`
                               )}
                             >
-                              {p.paid
+                              {p.paid || p.payment_status === "paid"
                                 ? "Paid"
                                 : Number(p.total_paid ?? 0) > 0
                                   ? `${formatCurrency(Math.max(0, Number(p.balance_due ?? 0)))} due`
@@ -2795,21 +2980,26 @@ export default function GroupBookingsScreen() {
                           {!isCheckedIn && !isCheckedOut ? (
                             <TouchableOpacity
                               onPress={() => handleCheckIn(p)}
+                              disabled={pendingParticipantId === p.id}
                               style={[
                                 twStyle(
                                   "flex-1 flex-row items-center justify-center rounded-md bg-blue-50 py-2"
                                 ),
-                                { marginRight: 8 },
+                                { marginRight: 8, opacity: pendingParticipantId === p.id ? 0.6 : 1 },
                               ]}
                               accessibilityRole="button"
                               accessibilityLabel={`Check in ${p.customer_name}`}
                             >
-                              <Ionicons
-                                name="log-in-outline"
-                                size={14}
-                                color="#1d4ed8"
-                                style={{ marginRight: 4 }}
-                              />
+                              {pendingParticipantId === p.id ? (
+                                <ActivityIndicator size="small" color="#1d4ed8" style={{ marginRight: 4 }} />
+                              ) : (
+                                <Ionicons
+                                  name="log-in-outline"
+                                  size={14}
+                                  color="#1d4ed8"
+                                  style={{ marginRight: 4 }}
+                                />
+                              )}
                               <Text style={twStyle("text-xs font-semibold text-blue-700")}>
                                 Check in
                               </Text>
@@ -2818,21 +3008,26 @@ export default function GroupBookingsScreen() {
                           {isCheckedIn ? (
                             <TouchableOpacity
                               onPress={() => handleCheckOut(p)}
+                              disabled={pendingParticipantId === p.id}
                               style={[
                                 twStyle(
                                   "flex-1 flex-row items-center justify-center rounded-md bg-green-50 py-2"
                                 ),
-                                { marginRight: 8 },
+                                { marginRight: 8, opacity: pendingParticipantId === p.id ? 0.6 : 1 },
                               ]}
                               accessibilityRole="button"
                               accessibilityLabel={`Check out ${p.customer_name}`}
                             >
-                              <Ionicons
-                                name="log-out-outline"
-                                size={14}
-                                color="#15803d"
-                                style={{ marginRight: 4 }}
-                              />
+                              {pendingParticipantId === p.id ? (
+                                <ActivityIndicator size="small" color="#15803d" style={{ marginRight: 4 }} />
+                              ) : (
+                                <Ionicons
+                                  name="log-out-outline"
+                                  size={14}
+                                  color="#15803d"
+                                  style={{ marginRight: 4 }}
+                                />
+                              )}
                               <Text style={twStyle("text-xs font-semibold text-green-700")}>
                                 Check out
                               </Text>
@@ -2989,6 +3184,12 @@ export default function GroupBookingsScreen() {
                 </TouchableOpacity>
               </View>
             )}
+            {paymentRecordedNotice ? (
+              <View style={twStyle("mb-2 flex-row items-center rounded-lg bg-green-50 p-2")}>
+                <Ionicons name="checkmark-circle-outline" size={14} color="#15803d" style={{ marginRight: 6 }} />
+                <Text style={twStyle("text-xs text-green-800 flex-1")}>{paymentRecordedNotice}</Text>
+              </View>
+            ) : null}
             {/* Record payment — only when there is outstanding balance */}
             {(() => {
               const participants = selectedGroup.participants ?? [];
@@ -2999,7 +3200,7 @@ export default function GroupBookingsScreen() {
                 participants
                   .filter((p) => !!p.booking_id)
                   .every((p) => {
-                    if (p.payment_status === "paid") return true;
+                    if (p.payment_status === "paid" || p.paid) return true;
                     const balanceDue = Number(p.balance_due ?? 0);
                     const totalPaid = Number(p.total_paid ?? 0);
                     const price = Number(p.price ?? 0);
@@ -3640,6 +3841,7 @@ export default function GroupBookingsScreen() {
           setShowCreate(false);
           setCreateStep("form");
           setCreateReviewError(null);
+          setCreateFieldError(null);
           setValidatingCreateAddress(false);
         }}
         title={createStep === "form" ? "New Group Booking" : "Review group booking"}
@@ -3649,7 +3851,7 @@ export default function GroupBookingsScreen() {
             <ActionButton
               label={validatingCreateAddress ? "Checking address..." : "Review & Create"}
               onPress={handleOpenCreateReview}
-              loading={validatingCreateAddress}
+              loading={validatingCreateAddress || checkingCreateReview}
               fullWidth
             />
           ) : (
@@ -3659,6 +3861,7 @@ export default function GroupBookingsScreen() {
                 onPress={() => {
                   setCreateStep("form");
                   setCreateReviewError(null);
+                  setCreateFieldError(null);
                 }}
                 variant="secondary"
                 style={{ flex: 1, marginRight: 8 }}
@@ -3677,7 +3880,16 @@ export default function GroupBookingsScreen() {
         }
       >
         {createStep === "form" ? (
-        <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        <ScrollView
+          ref={createFormScrollRef}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          {createReviewError ? (
+            <View style={twStyle("mb-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3")}>
+              <Text style={twStyle("text-sm font-medium text-red-800")}>{createReviewError}</Text>
+            </View>
+          ) : null}
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Title</Text>
           <TextInput
             style={twStyle(
@@ -3742,7 +3954,10 @@ export default function GroupBookingsScreen() {
             ) : null}
 
             {createForm.locationType === "at_home" ? (
-              <View style={twStyle("rounded-2xl border border-blue-100 bg-blue-50 p-3")}>
+              <View
+                style={twStyle("rounded-2xl border border-blue-100 bg-blue-50 p-3")}
+                onLayout={(e) => registerCreateSection("address", e.nativeEvent.layout.y)}
+              >
                 <Text style={twStyle("mb-2 text-xs text-blue-800")}>
                   Search, drop a pin, or use current location — coordinates are used for travel
                   buffer and fee accuracy.
@@ -3885,6 +4100,11 @@ export default function GroupBookingsScreen() {
                   placeholder="0"
                   placeholderTextColor="#9ca3af"
                 />
+                {createFieldError === "address" ? (
+                  <Text style={twStyle("mt-2 text-xs font-medium text-red-600")}>
+                    Complete the client address and map pin to continue.
+                  </Text>
+                ) : null}
               </View>
             ) : null}
           </View>
@@ -3949,8 +4169,13 @@ export default function GroupBookingsScreen() {
           ) : null}
 
           {services.length > 0 ? (
-            <View style={twStyle("mb-3")}>
-              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Default service</Text>
+            <View
+              style={twStyle("mb-3")}
+              onLayout={(e) => registerCreateSection("serviceId", e.nativeEvent.layout.y)}
+            >
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
+                Default service <Text style={twStyle("text-red-600")}>*</Text>
+              </Text>
               <Text style={twStyle("mb-2 text-xs text-gray-500")}>
                 This pre-fills participants. Each participant can still choose a different service
                 below.
@@ -3991,6 +4216,7 @@ export default function GroupBookingsScreen() {
                       label={serviceLabel(choice)}
                       selected={createForm.serviceId === choice.id}
                       onPress={() => {
+                        clearCreateFieldError("serviceId");
                         setCreateForm((p) => {
                           const next = { ...p, serviceId: choice.id };
                           if (choice.duration_minutes && choice.duration_minutes > 0) {
@@ -4010,12 +4236,22 @@ export default function GroupBookingsScreen() {
                   ));
                 })}
               </ScrollView>
+              {createFieldError === "serviceId" ? (
+                <Text style={twStyle("mt-2 text-xs font-medium text-red-600")}>
+                  Select a default service to continue.
+                </Text>
+              ) : null}
             </View>
           ) : null}
 
           {teamMembers.length > 0 ? (
-            <View style={twStyle("mb-3")}>
-              <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Staff</Text>
+            <View
+              style={twStyle("mb-3")}
+              onLayout={(e) => registerCreateSection("staffId", e.nativeEvent.layout.y)}
+            >
+              <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>
+                Staff <Text style={twStyle("text-red-600")}>*</Text>
+              </Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 <SelectChip
                   label="None"
@@ -4027,10 +4263,18 @@ export default function GroupBookingsScreen() {
                     key={m.id}
                     label={m.name?.trim() || "Team member"}
                     selected={createForm.staffId === m.id}
-                    onPress={() => setCreateForm((p) => ({ ...p, staffId: m.id }))}
+                    onPress={() => {
+                      clearCreateFieldError("staffId");
+                      setCreateForm((p) => ({ ...p, staffId: m.id }));
+                    }}
                   />
                 ))}
               </ScrollView>
+              {createFieldError === "staffId" ? (
+                <Text style={twStyle("mt-2 text-xs font-medium text-red-600")}>
+                  Select a team member to continue.
+                </Text>
+              ) : null}
             </View>
           ) : null}
 
@@ -4145,7 +4389,10 @@ export default function GroupBookingsScreen() {
               );
             })}
           </ScrollView>
-          <View style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 p-3")}>
+          <View
+            style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 p-3")}
+            onLayout={(e) => registerCreateSection("time", e.nativeEvent.layout.y)}
+          >
             <View style={twStyle("mb-2 flex-row items-center justify-between")}>
               <Text style={twStyle("text-sm font-medium text-gray-700")}>Time slot *</Text>
               {createSlotsLoading ? <ActivityIndicator size="small" color="#059669" /> : null}
@@ -4281,7 +4528,10 @@ export default function GroupBookingsScreen() {
             multiline
           />
 
-          <View style={twStyle("mb-4 rounded-2xl border border-purple-100 bg-purple-50 p-3")}>
+          <View
+            style={twStyle("mb-4 rounded-2xl border border-purple-100 bg-purple-50 p-3")}
+            onLayout={(e) => registerCreateSection("participants", e.nativeEvent.layout.y)}
+          >
             <View style={twStyle("mb-2 flex-row items-center justify-between")}>
               <View style={twStyle("flex-row items-center")}>
                 <Ionicons
@@ -4308,6 +4558,12 @@ export default function GroupBookingsScreen() {
               These people become real bookings immediately, so calendar availability and accounting
               stay aligned.
             </Text>
+            {createFieldError === "participants" ||
+            (typeof createFieldError === "string" && createFieldError.startsWith("participant:")) ? (
+              <Text style={twStyle("mb-3 text-xs font-medium text-red-600")}>
+                {createReviewError ?? "Complete participant details to continue."}
+              </Text>
+            ) : null}
 
             {createParticipants.map((participant, idx) => {
               const search = participantSearchMap[participant.id] || {
@@ -5152,6 +5408,14 @@ export default function GroupBookingsScreen() {
           </ScrollView>
         )}
       </BottomSheet>
+
+      <ParticipantRefundSheet
+        visible={!!refundParticipant}
+        participant={refundParticipant}
+        groupId={selectedGroup?.id ?? ""}
+        onClose={() => setRefundParticipant(null)}
+        onSuccess={handleParticipantRefundSuccess}
+      />
     </ScreenContainer>
   );
 }

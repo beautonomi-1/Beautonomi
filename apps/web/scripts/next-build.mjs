@@ -39,6 +39,14 @@ if (shouldEnsureAdminSpa) {
   }
 }
 
+const syncNativeVersions = spawnSync(process.execPath, [join(root, "scripts", "sync-native-app-versions.mjs")], {
+  cwd: root,
+  stdio: "inherit",
+});
+if (syncNativeVersions.status !== 0 && syncNativeVersions.status !== null) {
+  process.exit(syncNativeVersions.status);
+}
+
 const syncAdmin = spawnSync(process.execPath, [join(root, "scripts", "sync-admin-spa.mjs")], {
   cwd: root,
   stdio: "inherit",

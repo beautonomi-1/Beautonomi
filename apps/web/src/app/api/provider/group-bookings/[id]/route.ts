@@ -859,6 +859,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         .insert(rows)
         .select();
       if (paymentsError) throw paymentsError;
+
+      const paidAt = new Date().toISOString();
+      await admin
+        .from("group_bookings")
+        .update({ updated_at: paidAt })
+        .eq("id", id)
+        .eq("provider_id", providerId);
+
       return successResponse({ payments, message: "Group booking payments recorded" });
     }
 

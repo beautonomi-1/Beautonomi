@@ -8,8 +8,10 @@ import { parseSyntheticProviderStaffId } from "@/lib/availability/load-constrain
 import { normalizeProviderTimezone } from "@/lib/availability/time-utils";
 import { DEFAULT_BOOKING_DISPLAY_TIMEZONE } from "@/lib/bookings/display-invariants";
 import {
-  PUBLIC_BOOKING_MAX_ADVANCE_DAYS,
-} from "@/lib/provider-booking/public-booking-slot-policy";
+  filterPublicSlotsByMinNotice,
+  isDateBeyondMaxAdvance,
+  loadEffectiveOnlineBookingWindows,
+} from "@/lib/provider-booking/public-online-booking-windows";
 import type { TimeSlot } from "@/lib/availability/types";
 import {
   getProviderIdForUser,
@@ -162,19 +164,15 @@ export async function GET(request: NextRequest) {
       providerTimeZone = DEFAULT_BOOKING_DISPLAY_TIMEZONE;
     }
 
-    const effectiveMaxAdvance = PUBLIC_BOOKING_MAX_ADVANCE_DAYS;
-
-    // Max-advance guard (mirrors slug route).
-    const now = new Date();
-    const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
-    const dateObj = match
-      ? Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
-      : NaN;
-    const daysFromToday = Math.floor(
-      (dateObj - today) / (24 * 60 * 60 * 1000)
+    const adminForWindows = getSupabaseAdmin();
+    const onlineWindows = await loadEffectiveOnlineBookingWindows(
+      adminForWindows,
+      providerIdForEngine,
     );
-    if (Number.isFinite(daysFromToday) && daysFromToday > effectiveMaxAdvance) {
+    const effectiveMaxAdvance = onlineWindows.maxAdvanceDays;
+
+    // Max-advance guard (provider business-day math).
+    if (isDateBeyondMaxAdvance(date, effectiveMaxAdvance, providerTimeZone)) {
       return successResponse({ date, slots: [] });
     }
 
@@ -194,6 +192,8 @@ export async function GET(request: NextRequest) {
       excludeBookingId,
       providerTimeZone,
     });
+
+    publicSlots = filterPublicSlotsByMinNotice(publicSlots, onlineWindows.minNoticeMinutes);
 
     // §Release-audit 2026-04: resource filtering parity. When the caller
     // passed service_ids / service_id we run the same resource-availability

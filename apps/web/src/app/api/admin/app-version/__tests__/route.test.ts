@@ -20,6 +20,13 @@ vi.mock("@/lib/supabase/admin", () => ({
   getSupabaseAdmin: () => mockGetSupabaseAdmin(),
 }));
 
+vi.mock("@/lib/store/native-app-version", () => ({
+  getNativeAppCodebaseVersions: () => ({
+    customer: "1.0.48",
+    provider: "1.0.48",
+  }),
+}));
+
 const validPair = {
   ios: {
     min_version: "2.0.0",
@@ -105,6 +112,8 @@ describe("/api/admin/app-version", () => {
       expect(body.data.customer.ios.min_version).toBe("1.2.0");
       expect(body.data.customer.android.force_update).toBe(true);
       expect(body.data.provider.ios.min_version).toBe("3.0.0");
+      expect(body.data.codebase_versions.customer).toBe("1.0.48");
+      expect(body.data.codebase_versions.provider).toBe("1.0.48");
     });
 
     it("returns defaults when select errors (e.g. missing table)", async () => {
@@ -199,6 +208,69 @@ describe("/api/admin/app-version", () => {
       expect(body.error).toBeNull();
       expect(body.data.customer.ios.min_version).toBe("1.2.0");
       expect(body.data.provider.ios.min_version).toBe("3.0.0");
+      expect(body.data.codebase_versions.customer).toBe("1.0.48");
+    });
+
+    it("ignores codebase_versions in PATCH body", async () => {
+      const updatedRows = [
+        {
+          app: "customer",
+          platform: "ios",
+          min_version: validBody.customer.ios.min_version,
+          latest_version: validBody.customer.ios.latest_version,
+          force_update: validBody.customer.ios.force_update,
+          update_url: validBody.customer.ios.update_url,
+        },
+        {
+          app: "customer",
+          platform: "android",
+          min_version: validBody.customer.android.min_version,
+          latest_version: validBody.customer.android.latest_version,
+          force_update: validBody.customer.android.force_update,
+          update_url: validBody.customer.android.update_url,
+        },
+        {
+          app: "provider",
+          platform: "ios",
+          min_version: validBody.provider.ios.min_version,
+          latest_version: validBody.provider.ios.latest_version,
+          force_update: validBody.provider.ios.force_update,
+          update_url: validBody.provider.ios.update_url,
+        },
+        {
+          app: "provider",
+          platform: "android",
+          min_version: validBody.provider.android.min_version,
+          latest_version: validBody.provider.android.latest_version,
+          force_update: validBody.provider.android.force_update,
+          update_url: validBody.provider.android.update_url,
+        },
+      ];
+      mockGetSupabaseAdmin.mockReturnValue({
+        from: vi
+          .fn()
+          .mockReturnValueOnce({
+            upsert: vi.fn().mockResolvedValue({ error: null }),
+          })
+          .mockReturnValueOnce({
+            select: vi.fn().mockResolvedValue({ data: updatedRows, error: null }),
+          }),
+      });
+
+      const { PATCH } = await import("../route");
+      const req = new NextRequest("http://localhost/api/admin/app-version", {
+        method: "PATCH",
+        body: JSON.stringify({
+          ...validBody,
+          codebase_versions: { customer: "9.9.9", provider: "9.9.9" },
+        }),
+        headers: { "Content-Type": "application/json" },
+      });
+      const res = await PATCH(req);
+      const body = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(body.data.codebase_versions.customer).toBe("1.0.48");
     });
 
     it("returns 400 when body has invalid update_url", async () => {

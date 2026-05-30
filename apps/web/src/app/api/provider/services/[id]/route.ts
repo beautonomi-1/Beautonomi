@@ -9,6 +9,10 @@ import {
   syncVariantOfferings,
   type RawPricingOption,
 } from "../_helpers/sync-variants";
+import {
+  isMissingColumnError,
+  normalizeAdvancedPricingRules,
+} from "../_helpers/advanced-pricing-rules";
 
 /**
  * GET /api/provider/services/[id]
@@ -142,15 +146,34 @@ export async function PATCH(
     if (body.applicable_service_ids !== undefined) updateData.applicable_service_ids = body.applicable_service_ids || null;
     if (body.is_recommended !== undefined) updateData.is_recommended = body.is_recommended || false;
     // Advanced pricing
-    if (body.advanced_pricing_rules !== undefined) updateData.advanced_pricing_rules = Array.isArray(body.advanced_pricing_rules) ? body.advanced_pricing_rules : [];
+    if (body.advanced_pricing_rules !== undefined) {
+      updateData.advanced_pricing_rules = normalizeAdvancedPricingRules(body.advanced_pricing_rules);
+    }
     if (body.image_url !== undefined) updateData.image_url = body.image_url;
 
-    const { data: updatedService, error: updateError } = await supabase
+    let { data: updatedService, error: updateError } = await supabase
       .from("offerings")
       .update(updateData)
       .eq("id", id)
       .select()
       .single();
+
+    if (
+      updateError &&
+      isMissingColumnError(updateError, "advanced_pricing_rules") &&
+      "advanced_pricing_rules" in updateData
+    ) {
+      console.warn(
+        "[PATCH /api/provider/services] advanced_pricing_rules column missing — saving without rules. Apply migration 638_offerings_advanced_pricing_rules.sql.",
+      );
+      const { advanced_pricing_rules: _dropped, ...updateWithoutRules } = updateData;
+      ({ data: updatedService, error: updateError } = await supabase
+        .from("offerings")
+        .update(updateWithoutRules)
+        .eq("id", id)
+        .select()
+        .single());
+    }
 
     if (updateError || !updatedService) throw updateError ?? new Error("Failed to update service");
 

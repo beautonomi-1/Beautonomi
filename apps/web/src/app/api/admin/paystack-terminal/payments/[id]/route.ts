@@ -4,9 +4,10 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   errorResponse,
   handleApiError,
-  requireSuperadmin,
+  requireAdminSection,
   successResponse,
 } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { recordBookingPaystackPayment } from "@/lib/bookings/record-booking-paystack-payment";
 import { syncBookingAfterPaystackSuccess } from "@/lib/bookings/sync-booking-after-paystack-success";
 import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
@@ -41,7 +42,7 @@ export async function PATCH(
     const { id } = await params;
     const body = adminUpdateSchema.parse(await request.json());
     const supabase = getSupabaseAdmin();
-    const { user } = await requireSuperadmin(request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_FINANCE, request);
 
     const patch: Record<string, unknown> = {
       metadata: {

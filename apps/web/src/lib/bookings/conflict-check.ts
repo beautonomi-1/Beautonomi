@@ -105,7 +105,7 @@ export async function checkBookingConflict(
   const actualConflicts = conflictingServices.filter((cs: any) => {
     const conflictStart = new Date(cs.scheduled_start_at);
     const conflictEnd = new Date(cs.scheduled_end_at);
-    const conflictBuffer = staffBufferOverride ?? cs.offerings?.buffer_minutes ?? 15;
+    const conflictBuffer = staffBufferOverride ?? cs.offerings?.buffer_minutes ?? 0;
     const conflictEffectiveEnd = new Date(conflictEnd.getTime() + conflictBuffer * 60000);
 
     return startAt < conflictEffectiveEnd && effectiveEndAt > conflictStart;
@@ -146,7 +146,7 @@ export async function checkBookingSnapshotSegmentConflicts(
   for (const line of snapshot) {
     const segStart = new Date(line.scheduled_start_at);
     const segEnd = new Date(line.scheduled_end_at);
-    const buf = offeringBufferMinutesById.get(line.offering_id) ?? 15;
+    const buf = offeringBufferMinutesById.get(line.offering_id) ?? 0;
     if (line.staff_id) {
       const r = await checkBookingConflict(
         supabase,
@@ -229,7 +229,7 @@ export async function checkBookingConflictForProvider(
   const actualConflicts = conflictingServices.filter((cs: any) => {
     const conflictStart = new Date(cs.scheduled_start_at);
     const conflictEnd = new Date(cs.scheduled_end_at);
-    const conflictBuffer = cs.offerings?.buffer_minutes || 15;
+    const conflictBuffer = cs.offerings?.buffer_minutes ?? 0;
     const conflictEffectiveEnd = new Date(conflictEnd.getTime() + conflictBuffer * 60000);
 
     return startAt < conflictEffectiveEnd && effectiveEndAt > conflictStart;

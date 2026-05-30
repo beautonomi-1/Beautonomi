@@ -2,6 +2,10 @@ import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PLATFORM_CONFIG } from "@/lib/admin-sections";
+import {
+  getNativeAppCodebaseVersions,
+  type NativeAppCodebaseVersions,
+} from "@/lib/store/native-app-version";
 import { z } from "zod";
 
 const APP_KEYS = ["customer", "provider"] as const;
@@ -35,6 +39,9 @@ const fullBodySchema = z.object({
 type PlatformVersion = z.infer<typeof platformSchema>;
 type AppPair = z.infer<typeof appPairSchema>;
 type FullPayload = z.infer<typeof fullBodySchema>;
+type AdminAppVersionResponse = FullPayload & {
+  codebase_versions: NativeAppCodebaseVersions;
+};
 
 type AppVersionSettingRow = {
   app?: string;
@@ -123,6 +130,20 @@ function payloadFromRows(rows: AppVersionSettingRow[]): FullPayload {
   return out;
 }
 
+function adminResponseFromRows(rows: AppVersionSettingRow[]): AdminAppVersionResponse {
+  return {
+    ...payloadFromRows(rows),
+    codebase_versions: getNativeAppCodebaseVersions(),
+  };
+}
+
+function adminResponseFromPayload(payload: FullPayload): AdminAppVersionResponse {
+  return {
+    ...payload,
+    codebase_versions: getNativeAppCodebaseVersions(),
+  };
+}
+
 /**
  * GET /api/admin/app-version
  *
@@ -136,11 +157,11 @@ export async function GET(request: NextRequest) {
     const { data: versionSettings, error } = await supabase.from("app_version_settings").select("*");
 
     if (error) {
-      return successResponse(defaultFullPayload());
+      return successResponse(adminResponseFromPayload(defaultFullPayload()));
     }
 
     const settings = (versionSettings ?? []) as AppVersionSettingRow[];
-    return successResponse(payloadFromRows(settings));
+    return successResponse(adminResponseFromRows(settings));
   } catch (error) {
     return handleApiError(error, "Failed to fetch app version settings");
   }
@@ -208,7 +229,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     const { data: updatedSettings } = await supabase.from("app_version_settings").select("*");
-    return successResponse(payloadFromRows((updatedSettings ?? []) as AppVersionSettingRow[]));
+    return successResponse(adminResponseFromRows((updatedSettings ?? []) as AppVersionSettingRow[]));
   } catch (error) {
     if (error instanceof z.ZodError) {
       return handleApiError(

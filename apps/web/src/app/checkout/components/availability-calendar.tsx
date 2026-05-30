@@ -209,14 +209,9 @@ const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
   };
 
   const isPastTime = (slot: TimeSlot): boolean => {
-    const now = new Date();
     const slotTime = new Date(slot.start);
-    
-    // Compare with current time (with 15 minute buffer to allow for booking processing time)
-    const bufferMinutes = 15;
-    const nowWithBuffer = new Date(now.getTime() + bufferMinutes * 60 * 1000);
-    
-    return slotTime < nowWithBuffer;
+    if (!Number.isFinite(slotTime.getTime())) return true;
+    return slotTime.getTime() <= Date.now();
   };
 
   const handleTimeSelection = (slot: TimeSlot) => {

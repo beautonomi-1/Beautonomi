@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Key, Shield, AlertTriangle } from "lucide-react";
 import { ADMIN_SECTION_INTEGRATIONS_DEV } from "@beautonomi/admin-access";
@@ -15,6 +16,7 @@ import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminMutationAlert } from "@/components/admin/AdminMutationAlert";
 import { adminToast } from "@/lib/adminToast";
+import { adminSpaTo } from "@/lib/adminSpaPath";
 
 interface PaystackConfig {
   configured: boolean;
@@ -111,6 +113,14 @@ export function PaystackConfigPage() {
       <AdminPageHeader
         title="Paystack integration"
         description="Manage Paystack API keys for payment processing. Keys are stored encrypted and never returned in full."
+        actions={
+          <Link
+            to={adminSpaTo("/admin/paystack-terminal")}
+            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-900 hover:bg-gray-50"
+          >
+            Paystack Terminal ops →
+          </Link>
+        }
       />
 
       <AdminMutationAlert

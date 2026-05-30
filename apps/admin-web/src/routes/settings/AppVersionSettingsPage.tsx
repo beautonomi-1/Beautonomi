@@ -28,6 +28,10 @@ type AppPair = {
 type FullAppVersionData = {
   customer: AppPair;
   provider: AppPair;
+  codebase_versions?: {
+    customer: string | null;
+    provider: string | null;
+  };
 };
 
 const DEFAULT_PAIR: AppPair = {
@@ -57,7 +61,6 @@ const DEFAULTS: FullAppVersionData = {
 };
 
 const SEMVER_PATTERN = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
-const CURRENT_NATIVE_VERSION = "1.0.41";
 
 function compareVersions(a: string, b: string): number {
   const parse = (value: string) =>
@@ -116,40 +119,49 @@ function validateForm(form: FullAppVersionData): string[] {
   ];
 }
 
-function rolloutState(value: PlatformVersion) {
-  const belowMin = compareVersions(CURRENT_NATIVE_VERSION, value.min_version) < 0;
-  const belowLatest = compareVersions(CURRENT_NATIVE_VERSION, value.latest_version) < 0;
+function rolloutState(value: PlatformVersion, nativeVersion: string | null) {
+  if (!nativeVersion) {
+    return {
+      tone: "warn" as const,
+      label: "Codebase version unavailable",
+      detail: "Could not read this app's version from app.config.js.",
+    };
+  }
+  const belowMin = compareVersions(nativeVersion, value.min_version) < 0;
+  const belowLatest = compareVersions(nativeVersion, value.latest_version) < 0;
   if (value.force_update && belowMin) {
     return {
       tone: "danger" as const,
       label: "Current store build would be blocked",
-      detail: `v${CURRENT_NATIVE_VERSION} is below minimum v${value.min_version}.`,
+      detail: `v${nativeVersion} is below minimum v${value.min_version}.`,
     };
   }
   if (belowLatest) {
     return {
       tone: "warn" as const,
       label: "Optional update prompt",
-      detail: `v${CURRENT_NATIVE_VERSION} is below latest v${value.latest_version}.`,
+      detail: `v${nativeVersion} is below latest v${value.latest_version}.`,
     };
   }
   return {
     tone: "ok" as const,
     label: "No prompt for current build",
-    detail: `v${CURRENT_NATIVE_VERSION} satisfies this policy.`,
+    detail: `v${nativeVersion} satisfies this policy.`,
   };
 }
 
 function PlatformForm({
   platform,
   value,
+  nativeVersion,
   onChange,
 }: {
   platform: "iOS" | "Android";
   value: PlatformVersion;
+  nativeVersion: string | null;
   onChange: (v: PlatformVersion) => void;
 }) {
-  const state = rolloutState(value);
+  const state = rolloutState(value, nativeVersion);
   const field = (label: string, key: keyof PlatformVersion, type = "text", help?: string) => (
     <div key={key}>
       <label className="mb-1 block text-xs font-medium text-gray-700">{label}</label>
@@ -200,11 +212,13 @@ function PlatformForm({
 function AppBlock({
   title,
   subtitle,
+  nativeVersion,
   pair,
   onChange,
 }: {
   title: string;
   subtitle: string;
+  nativeVersion: string | null;
   pair: AppPair;
   onChange: (next: AppPair) => void;
 }) {
@@ -213,15 +227,21 @@ function AppBlock({
       <div>
         <h2 className="text-base font-semibold text-gray-900">{title}</h2>
         <p className="text-xs text-gray-600">{subtitle}</p>
+        <p className="mt-1 text-xs text-gray-500">
+          Codebase version (app.config.js):{" "}
+          <span className="font-medium text-gray-800">{nativeVersion ?? "unknown"}</span>
+        </p>
       </div>
       <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
         <PlatformForm
           platform="iOS"
+          nativeVersion={nativeVersion}
           value={pair.ios}
           onChange={(v) => onChange({ ...pair, ios: v })}
         />
         <PlatformForm
           platform="Android"
+          nativeVersion={nativeVersion}
           value={pair.android}
           onChange={(v) => onChange({ ...pair, android: v })}
         />
@@ -296,6 +316,8 @@ export function AppVersionSettingsPage() {
     return <AdminRetryBlock message={q.error.message} onRetry={() => void q.refetch()} />;
   }
 
+  const codebaseVersions = q.data?.codebase_versions ?? { customer: null, provider: null };
+
   return (
     <div className="space-y-6">
       <AdminPageHeader
@@ -316,19 +338,23 @@ export function AppVersionSettingsPage() {
         <div className="mb-6 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
           <p className="font-semibold">Release safety guide</p>
           <p className="mt-1 leading-relaxed">
-            Current native app version is tracked as v{CURRENT_NATIVE_VERSION}. Set Latest first for soft prompts; raise Minimum and enable Force update only after the new build is live in both stores.
+            Codebase versions are read from each app&apos;s <code className="rounded bg-blue-100 px-1">app.config.js</code>
+            {" "}(customer v{codebaseVersions.customer ?? "?"}, provider v{codebaseVersions.provider ?? "?"}).
+            Set Latest first for soft prompts; raise Minimum and enable Force update only after the new build is live in both stores.
           </p>
         </div>
         <div className="space-y-8">
           <AppBlock
             title="Customer app"
             subtitle="Used when the customer Expo app calls /api/public/app-version?app=customer"
+            nativeVersion={codebaseVersions.customer}
             pair={form.customer}
             onChange={(next) => setForm((p) => ({ ...p, customer: next }))}
           />
           <AppBlock
             title="Provider app"
             subtitle="Used when the provider Expo app calls /api/public/app-version?app=provider"
+            nativeVersion={codebaseVersions.provider}
             pair={form.provider}
             onChange={(next) => setForm((p) => ({ ...p, provider: next }))}
           />

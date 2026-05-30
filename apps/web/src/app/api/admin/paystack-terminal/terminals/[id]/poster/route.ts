@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { errorResponse, handleApiError, requireSuperadmin, successResponse } from "@/lib/supabase/api-helpers";
+import { errorResponse, handleApiError, requireAdminSection, successResponse } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { computePaystackTerminalAssetStatus } from "@/lib/payments/paystack-terminal-assets";
 
 const POSTER_UPLOAD_MAX_BYTES = 10 * 1024 * 1024;
@@ -21,7 +22,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { user } = await requireSuperadmin(request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_FINANCE, request);
     const { id } = await params;
     const form = await request.formData();
     const file = form.get("file");
