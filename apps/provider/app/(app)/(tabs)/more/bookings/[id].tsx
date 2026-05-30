@@ -808,6 +808,7 @@ export default function BookingDetailScreen() {
   const [showRefund, setShowRefund] = useState(false);
   const [refundAmount, setRefundAmount] = useState("");
   const [refundReason, setRefundReason] = useState("");
+  const [refundMethod, setRefundMethod] = useState<"cash" | "store_credit">("store_credit");
   const [refunding, setRefunding] = useState(false);
   const [paymentExcellenceDismissed, setPaymentExcellenceDismissed] = useState(false);
 
@@ -1960,7 +1961,7 @@ export default function BookingDetailScreen() {
     }
     if (!id) return;
     setRefunding(true);
-    const res = await postMutation(`/api/provider/bookings/${id}/refund`, { amount, reason });
+    const res = await postMutation(`/api/provider/bookings/${id}/refund`, { amount, reason, refund_method: refundMethod });
     setRefunding(false);
     if (res.error) {
       Alert.alert("Error", res.error);
@@ -3453,6 +3454,12 @@ export default function BookingDetailScreen() {
                 <TouchableOpacity
                   onPress={() => {
                     setRefundAmount(maxRefundable.toFixed(2));
+                    // Provider-taken bookings (walk-in / provider-created) are
+                    // usually paid in person, so default to a cash refund;
+                    // online bookings default to wallet credit.
+                    setRefundMethod(
+                      b.booking_source === "online" ? "store_credit" : "cash"
+                    );
                     setShowRefund(true);
                   }}
                   style={twStyle("rounded-xl border border-red-300 py-2.5 px-4")}
@@ -3901,10 +3908,30 @@ export default function BookingDetailScreen() {
             multiline
             textAlignVertical="top"
           />
+          <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Refund method</Text>
+          <View style={twStyle("flex-row rounded-xl border border-gray-200 bg-gray-50 p-1 mb-2")}>
+            {([
+              { key: "cash" as const, label: "In person (cash)" },
+              { key: "store_credit" as const, label: "Wallet credit" },
+            ]).map((opt) => {
+              const active = refundMethod === opt.key;
+              return (
+                <TouchableOpacity
+                  key={opt.key}
+                  onPress={() => setRefundMethod(opt.key)}
+                  style={twStyle(`flex-1 items-center rounded-lg px-3 py-2 ${active ? "bg-white" : ""}`)}
+                >
+                  <Text style={twStyle(`text-sm font-medium ${active ? "text-indigo-600" : "text-gray-500"}`)}>
+                    {opt.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
           <Text style={twStyle("text-xs text-gray-500 mb-3")}>
-            {
-              "The refund amount will be credited to the customer's wallet balance. The booking balance will update after this succeeds."
-            }
+            {refundMethod === "cash"
+              ? "Hand the money back to the customer in person. Recorded for your books; no wallet credit is issued. The booking balance updates after this succeeds."
+              : "The refund amount will be credited to the customer's wallet balance. The booking balance will update after this succeeds."}
           </Text>
           <ActionButton label={refunding ? "Processing…" : "Confirm refund"} onPress={handleRefund} loading={refunding} fullWidth />
         </View>

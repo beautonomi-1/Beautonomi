@@ -83,8 +83,16 @@ export function navigateFromProviderNotification(router: Router, n: ProviderNoti
       getLinkParam(link, "booking_id") ||
       getLinkParam(link, "booking") ||
       "";
+    const dateParam = getLinkParam(link, "date");
     if (calendarBookingId) {
-      router.push(`/(app)/(tabs)/bookings/${calendarBookingId}` as never);
+      if (dateParam) {
+        const params = new URLSearchParams();
+        params.set("date", dateParam);
+        params.set("booking_id", calendarBookingId);
+        router.push(`/(app)/(tabs)/bookings?${params.toString()}` as never);
+      } else {
+        router.push(`/(app)/(tabs)/bookings/${calendarBookingId}` as never);
+      }
     } else {
       router.push("/(app)/(tabs)/bookings" as never);
     }
@@ -130,6 +138,8 @@ export function navigateFromProviderNotification(router: Router, n: ProviderNoti
       bookingIdFromPayload ||
       getLinkParam(link, "pending_booking_id") ||
       getLinkParam(link, "highlight");
+    const dateParam = getLinkParam(link, "date");
+    if (dateParam) params.set("date", dateParam);
     if (highlightId) {
       params.set("highlight", highlightId);
       if (pendingBooking || dbStatus === "pending") {
@@ -179,7 +189,12 @@ export function navigateFromProviderNotification(router: Router, n: ProviderNoti
   }
 
   if (data.booking_id) {
-    router.push(`/(app)/(tabs)/bookings/${data.booking_id}` as never);
+    const dateParam = getLinkParam(link, "date");
+    const params = new URLSearchParams();
+    if (dateParam) params.set("date", dateParam);
+    params.set("booking_id", String(data.booking_id));
+    const q = params.toString();
+    router.push((q ? `/(app)/(tabs)/bookings?${q}` : `/(app)/(tabs)/bookings/${data.booking_id}`) as never);
     return;
   }
   if (data.conversation_id) {

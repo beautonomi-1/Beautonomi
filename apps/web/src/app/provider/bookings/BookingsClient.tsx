@@ -218,12 +218,41 @@ export function BookingsClient({
       if (start_date) params.set("start_date", start_date);
       if (end_date) params.set("end_date", end_date);
 
-      const response = await fetcher.get<{ data: ProviderBookingListItem[] }>(
-        `/api/provider/bookings?${params.toString()}`,
-        { timeoutMs: 10000, staleTimeMs: 0 },
-      );
+      const atHomeParams = new URLSearchParams(params);
+      atHomeParams.delete("location_id");
+      atHomeParams.set("location_type", "at_home");
 
-      setBookings(response.data);
+      // GET /api/provider/bookings caps each response at 1000 rows. Walk
+      // server offset pages until a short page so the table shows EVERY
+      // booking for the selected range (incl. "All time" / high volume),
+      // matching the provider app's paged fetch.
+      const fetchAllPages = async (
+        baseParams: URLSearchParams,
+      ): Promise<ProviderBookingListItem[]> => {
+        const PAGE_SIZE = 1000;
+        const acc: ProviderBookingListItem[] = [];
+        for (let offset = 0; offset < 1_000_000; offset += PAGE_SIZE) {
+          const pageParams = new URLSearchParams(baseParams);
+          pageParams.set("limit", String(PAGE_SIZE));
+          pageParams.set("offset", String(offset));
+          const res = await fetcher.get<{ data: ProviderBookingListItem[] }>(
+            `/api/provider/bookings?${pageParams.toString()}`,
+            { timeoutMs: 15000, staleTimeMs: 0 },
+          );
+          const rows = res.data ?? [];
+          acc.push(...rows);
+          if (rows.length < PAGE_SIZE) break;
+        }
+        return acc;
+      };
+
+      const [main, extra] = await Promise.all([
+        fetchAllPages(params),
+        loc ? fetchAllPages(atHomeParams) : Promise.resolve([] as ProviderBookingListItem[]),
+      ]);
+
+      const seen = new Set(main.map((b) => b.id));
+      setBookings([...main, ...extra.filter((b) => !seen.has(b.id))]);
       setLastSynced(new Date());
       setPage(1);
     } catch (err) {

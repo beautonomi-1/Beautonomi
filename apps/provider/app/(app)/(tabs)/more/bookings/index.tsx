@@ -10,7 +10,16 @@ import {
   AppState,
   Animated,
 } from "react-native";
-import { useFocusEffect, useRouter } from "expo-router";
+import {
+  bookingLifecycleStatus,
+  bookingScheduleYmd,
+  effectiveScheduleAt,
+  formatBusinessDayYYYYMMDD,
+  isPendingOrQueueBooking,
+  isTerminalScheduleBooking,
+  resolveBookingDisplayTimezone,
+} from "@beautonomi/utils";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -20,19 +29,7 @@ import AnimatedRe, {
   withSpring,
   withTiming,
 } from "react-native-reanimated";
-import {
-  format,
-  addDays,
-  startOfDay,
-  endOfDay,
-  startOfWeek,
-  endOfWeek,
-  startOfMonth,
-  endOfMonth,
-  isSameDay,
-  isToday,
-  isTomorrow,
-} from "date-fns";
+import { addDays, endOfMonth, endOfWeek, format, isSameDay, isToday, isTomorrow, startOfDay, startOfMonth, startOfWeek } from "date-fns";
 import { usePagedProviderBookings } from "@/hooks/usePagedProviderBookings";
 import { useProvider } from "@/providers/ProviderContext";
 import { useApi } from "@/hooks/useApi";
@@ -55,6 +52,14 @@ import { SegmentTabs } from "@/components/ui/SegmentTabs";
 import { FilterChipGroup } from "@/components/ui/FilterChip";
 import { BookingScheduleCard } from "@/components/bookings/BookingScheduleCard";
 import { mapProviderBookingActionError } from "@/lib/provider-booking-action-policy";
+import {
+  appendBookingsQueryParts,
+  buildDateStripInfo,
+  buildOverviewDateParams,
+  buildStripDateParams,
+  filterBookingsForDayKey,
+  mergeAtHomeBookings,
+} from "@/lib/bookings-list-query";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -74,6 +79,7 @@ interface BookingService {
   duration_minutes?: number;
   price?: number;
   staff_name?: string | null;
+  scheduled_start_at?: string | null;
 }
 
 interface Booking {
@@ -169,30 +175,9 @@ const STATUS_OPTIONS = [
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
 
-function buildDateParams(range: DateRange): { start_date?: string; end_date?: string } {
-  const now = new Date();
-  switch (range) {
-    case "today":
-      return {
-        start_date: format(startOfDay(now), "yyyy-MM-dd"),
-        end_date: format(endOfDay(now), "yyyy-MM-dd"),
-      };
-    case "week":
-      return {
-        start_date: format(startOfWeek(now, { weekStartsOn: 1 }), "yyyy-MM-dd"),
-        end_date: format(endOfWeek(now, { weekStartsOn: 1 }), "yyyy-MM-dd"),
-      };
-    case "month":
-      return {
-        start_date: format(startOfMonth(now), "yyyy-MM-dd"),
-        end_date: format(endOfMonth(now), "yyyy-MM-dd"),
-      };
-    case "upcoming":
-      return { start_date: format(now, "yyyy-MM-dd") };
-    case "all":
-    default:
-      return {};
-  }
+function isNonTerminalScheduleBooking(b: Pick<Booking, "status" | "db_status">): boolean {
+  if (isTerminalScheduleBooking(b)) return false;
+  return bookingLifecycleStatus(b) !== "completed";
 }
 
 function formatBookingTime(value: string | null | undefined): string {
@@ -211,24 +196,6 @@ function formatHHMM(time: string): string {
   const d = new Date();
   d.setHours(Number(h), Number(m), 0, 0);
   return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", hour12: true });
-}
-
-function normalizeBookingStatus(s: string): string {
-  const x = (s || "").trim().toLowerCase();
-  if (x === "booked") return "confirmed";
-  if (x === "started") return "in_progress";
-  return x;
-}
-
-/** Prefer `db_status` when the list API denormalises a display `status` (parity with schedule cards). */
-function bookingLifecycleStatus(b: Pick<Booking, "status" | "db_status">): string {
-  return normalizeBookingStatus((b.db_status?.trim() || b.status || "").trim());
-}
-
-const TERMINAL_SCHEDULE_STATUSES = new Set(["cancelled", "canceled", "completed", "no_show"]);
-
-function isNonTerminalScheduleBooking(b: Pick<Booking, "status" | "db_status">): boolean {
-  return !TERMINAL_SCHEDULE_STATUSES.has(bookingLifecycleStatus(b));
 }
 
 const BLOCK_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
@@ -285,6 +252,7 @@ function ScheduleBlockRow({ block, onPress }: { block: TimeBlockRow; onPress: ()
 
 export default function BookingsListScreen() {
   const router = useRouter();
+  const routeParams = useLocalSearchParams<{ date?: string; booking_id?: string }>();
   const insets = useSafeAreaInsets();
   const listBottomPadding = tabScreenScrollBottomPadding(insets.bottom, 16);
   const { screenPadding } = useResponsive();
@@ -299,6 +267,32 @@ export default function BookingsListScreen() {
   const [listSort, setListSort] = useState<BookingsListSort>("appointment");
   const [viewMode, setViewMode] = useState<ViewMode>("day");
   const [selectedDate, setSelectedDate] = useState(() => startOfDay(new Date()));
+  const providerTimezone = provider?.timezone?.trim() || null;
+
+  useEffect(() => {
+    const rawDate = typeof routeParams.date === "string" ? routeParams.date.trim() : "";
+    if (/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
+      const [y, m, d] = rawDate.split("-").map(Number);
+      const parsed = new Date(y, (m || 1) - 1, d || 1);
+      if (Number.isFinite(parsed.getTime())) {
+        setSelectedDate(startOfDay(parsed));
+        setViewMode("day");
+      }
+    }
+  }, [routeParams.date]);
+
+  const selectedDateKey = useMemo(() => {
+    return formatBusinessDayYYYYMMDD(selectedDate, providerTimezone);
+  }, [selectedDate, providerTimezone]);
+
+  useEffect(() => {
+    const bookingId =
+      typeof routeParams.booking_id === "string" ? routeParams.booking_id.trim() : "";
+    if (bookingId && /^[0-9a-f-]{36}$/i.test(bookingId)) {
+      router.push(`/(app)/(tabs)/bookings/${bookingId}` as never);
+    }
+  }, [routeParams.booking_id, router]);
+
   const [newBookingFlash, setNewBookingFlash] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const flashY = useSharedValue(-64);
@@ -340,51 +334,113 @@ export default function BookingsListScreen() {
     return () => clearTimeout(timer);
   }, [search]);
 
-  const effectiveDateRange: DateRange = viewMode === "day" ? "month" : dateRange;
-  const dateParams = useMemo(() => buildDateParams(effectiveDateRange), [effectiveDateRange]);
+  const stripDateParams = useMemo(
+    () => buildStripDateParams(providerTimezone),
+    [providerTimezone],
+  );
 
-  const bookingsListQueryParts = useMemo(() => {
-    const parts: string[] = [];
-    if (dateParams.start_date) parts.push(`start_date=${dateParams.start_date}`);
-    if (dateParams.end_date) parts.push(`end_date=${dateParams.end_date}`);
-    if (statusFilter) parts.push(`status=${encodeURIComponent(statusFilter)}`);
-    if (debouncedSearch.length > 0) parts.push(`search=${encodeURIComponent(debouncedSearch)}`);
-    // §Launch-audit 2026-04: default remains appointment order (soonest
-    // first). Optional "Booked" switches to `created_at` desc so recent
-    // intake appears on top — matches GET /api/me/bookings sort_by.
-    if (listSort === "booked_at") {
-      parts.push("sort=created_at");
-      parts.push("order=desc");
-    } else {
-      parts.push("sort=scheduled_at");
-      parts.push("order=asc");
-    }
-    return parts;
-  }, [dateParams.start_date, dateParams.end_date, statusFilter, debouncedSearch, listSort]);
+  const stripUrl = useMemo(
+    () =>
+      appendBookingsQueryParts(new URLSearchParams(), {
+        ...stripDateParams,
+        sort: "scheduled_at",
+        order: "asc",
+        location_id: selectedLocationId,
+      }),
+    [stripDateParams, selectedLocationId],
+  );
 
-  const url = useMemo(() => {
-    const parts = [...bookingsListQueryParts];
-    if (selectedLocationId) parts.push(`location_id=${encodeURIComponent(selectedLocationId)}`);
-    return `/api/provider/bookings?${parts.join("&")}`;
-  }, [bookingsListQueryParts, selectedLocationId]);
-
-  const atHomeListUrl = useMemo(() => {
+  const stripAtHomeUrl = useMemo(() => {
     if (!selectedLocationId) return "";
-    const parts = [...bookingsListQueryParts, "location_type=at_home"];
-    return `/api/provider/bookings?${parts.join("&")}`;
-  }, [bookingsListQueryParts, selectedLocationId]);
+    return appendBookingsQueryParts(new URLSearchParams(), {
+      ...stripDateParams,
+      sort: "scheduled_at",
+      order: "asc",
+      location_type: "at_home",
+    });
+  }, [stripDateParams, selectedLocationId]);
 
-  const { data, loading, error, refresh, mutate: mutateMain } = usePagedProviderBookings<Booking>(url, {
+  const overviewDateParams = useMemo(
+    () => buildOverviewDateParams(dateRange, providerTimezone),
+    [dateRange, providerTimezone],
+  );
+
+  const overviewUrl = useMemo(() => {
+    if (viewMode !== "overview") return "";
+    return appendBookingsQueryParts(new URLSearchParams(), {
+      ...overviewDateParams,
+      status: statusFilter || undefined,
+      search: debouncedSearch || undefined,
+      sort: listSort === "booked_at" ? "created_at" : "scheduled_at",
+      order: listSort === "booked_at" ? "desc" : "asc",
+      location_id: selectedLocationId,
+    });
+  }, [
+    viewMode,
+    overviewDateParams,
+    statusFilter,
+    debouncedSearch,
+    listSort,
+    selectedLocationId,
+  ]);
+
+  const overviewAtHomeUrl = useMemo(() => {
+    if (viewMode !== "overview" || !selectedLocationId) return "";
+    return appendBookingsQueryParts(new URLSearchParams(), {
+      ...overviewDateParams,
+      status: statusFilter || undefined,
+      search: debouncedSearch || undefined,
+      sort: listSort === "booked_at" ? "created_at" : "scheduled_at",
+      order: listSort === "booked_at" ? "desc" : "asc",
+      location_type: "at_home",
+    });
+  }, [
+    viewMode,
+    overviewDateParams,
+    statusFilter,
+    debouncedSearch,
+    listSort,
+    selectedLocationId,
+  ]);
+
+  const {
+    data: stripData,
+    loading: stripLoading,
+    error: stripMainError,
+    refresh: refreshStrip,
+    mutate: mutateStrip,
+  } = usePagedProviderBookings<Booking>(stripUrl, { timeoutMs: 60_000 });
+
+  const {
+    data: stripAtHomeData,
+    loading: stripAtHomeLoading,
+    error: stripAtHomeError,
+    refresh: refreshStripAtHome,
+    mutate: mutateStripAtHome,
+  } = usePagedProviderBookings<Booking>(stripAtHomeUrl, {
+    enabled: Boolean(selectedLocationId && stripAtHomeUrl),
     timeoutMs: 60_000,
   });
+
   const {
-    data: atHomeData,
-    loading: atHomeLoading,
-    error: atHomeError,
-    refresh: refreshAtHome,
-    mutate: mutateAtHome,
-  } = usePagedProviderBookings<Booking>(atHomeListUrl, {
-    enabled: Boolean(selectedLocationId && atHomeListUrl),
+    data: overviewData,
+    loading: overviewLoading,
+    error: overviewError,
+    refresh: refreshOverview,
+    mutate: mutateOverview,
+  } = usePagedProviderBookings<Booking>(overviewUrl, {
+    enabled: viewMode === "overview" && Boolean(overviewUrl),
+    timeoutMs: 60_000,
+  });
+
+  const {
+    data: overviewAtHomeData,
+    loading: overviewAtHomeLoading,
+    error: overviewAtHomeError,
+    refresh: refreshOverviewAtHome,
+    mutate: mutateOverviewAtHome,
+  } = usePagedProviderBookings<Booking>(overviewAtHomeUrl, {
+    enabled: viewMode === "overview" && Boolean(selectedLocationId && overviewAtHomeUrl),
     timeoutMs: 60_000,
   });
 
@@ -406,21 +462,40 @@ export default function BookingsListScreen() {
 
   const timeBlocks = useMemo(() => (Array.isArray(timeBlocksRaw) ? timeBlocksRaw : []), [timeBlocksRaw]);
 
-  const mergedBookingsData = useMemo(() => {
-    const main = Array.isArray(data) ? data : [];
-    if (!selectedLocationId) return main;
-    const extra = Array.isArray(atHomeData) ? atHomeData : [];
-    const seen = new Set(main.map((b) => b.id));
-    return [...main, ...extra.filter((b) => !seen.has(b.id))];
-  }, [data, atHomeData, selectedLocationId]);
+  const stripBookingsMerged = useMemo(() => {
+    const main = Array.isArray(stripData) ? stripData : [];
+    const extra = Array.isArray(stripAtHomeData) ? stripAtHomeData : [];
+    return mergeAtHomeBookings(main, extra);
+  }, [stripData, stripAtHomeData]);
 
-  const listLoading = loading || (Boolean(selectedLocationId) && atHomeLoading);
-  const listError = error ?? (selectedLocationId ? atHomeError : null);
+  const overviewBookingsMerged = useMemo(() => {
+    const main = Array.isArray(overviewData) ? overviewData : [];
+    const extra = Array.isArray(overviewAtHomeData) ? overviewAtHomeData : [];
+    return mergeAtHomeBookings(main, extra);
+  }, [overviewData, overviewAtHomeData]);
+
+  const stripLoadingAny = stripLoading || (Boolean(selectedLocationId) && stripAtHomeLoading);
+  const overviewLoadingAny =
+    viewMode === "overview" &&
+    (overviewLoading || (Boolean(selectedLocationId) && overviewAtHomeLoading));
+  const stripError = stripMainError ?? (selectedLocationId ? stripAtHomeError : null);
+  const overviewListError = overviewError ?? (selectedLocationId ? overviewAtHomeError : null);
 
   const refreshAllBookings = useCallback(async () => {
-    await refresh();
-    if (selectedLocationId) await refreshAtHome();
-  }, [refresh, refreshAtHome, selectedLocationId]);
+    await refreshStrip();
+    if (selectedLocationId) await refreshStripAtHome();
+    if (viewMode === "overview") {
+      await refreshOverview();
+      if (selectedLocationId) await refreshOverviewAtHome();
+    }
+  }, [
+    refreshStrip,
+    refreshStripAtHome,
+    refreshOverview,
+    refreshOverviewAtHome,
+    selectedLocationId,
+    viewMode,
+  ]);
 
   const refreshOverlays = useCallback(async () => {
     await refreshTimeBlocks();
@@ -431,14 +506,25 @@ export default function BookingsListScreen() {
     (next: Booking[] | null) => {
       if (next === null) return;
       const byId = new Map(next.map((b) => [b.id, b]));
-      if (data) mutateMain(data.map((b) => byId.get(b.id) ?? b));
-      if (atHomeData) mutateAtHome(atHomeData.map((b) => byId.get(b.id) ?? b));
+      if (stripData) mutateStrip(stripData.map((b) => byId.get(b.id) ?? b));
+      if (stripAtHomeData) mutateStripAtHome(stripAtHomeData.map((b) => byId.get(b.id) ?? b));
+      if (overviewData) mutateOverview(overviewData.map((b) => byId.get(b.id) ?? b));
+      if (overviewAtHomeData) mutateOverviewAtHome(overviewAtHomeData.map((b) => byId.get(b.id) ?? b));
     },
-    [data, atHomeData, mutateMain, mutateAtHome],
+    [
+      stripData,
+      stripAtHomeData,
+      overviewData,
+      overviewAtHomeData,
+      mutateStrip,
+      mutateStripAtHome,
+      mutateOverview,
+      mutateOverviewAtHome,
+    ],
   );
 
   const { applyStatus, pendingIds } = useBookingStatusActions({
-    bookings: mergedBookingsData,
+    bookings: stripBookingsMerged,
     mutate: mutateMerged,
     refresh: refreshAllBookings,
   });
@@ -563,33 +649,13 @@ export default function BookingsListScreen() {
     [],
   );
 
-  const dateStripInfo = useMemo(() => {
-    const map = new Map<string, { bookings: number; hasPending: boolean; blocks: number; isClosed: boolean }>();
-    for (const b of mergedBookingsData) {
-      if (!b.scheduled_at) continue;
-      const key = format(new Date(b.scheduled_at), "yyyy-MM-dd");
-      const prev = map.get(key) ?? { bookings: 0, hasPending: false, blocks: 0, isClosed: false };
-      map.set(key, {
-        bookings: prev.bookings + 1,
-        hasPending: prev.hasPending || ["pending", "pending_payment", "waiting"].includes(bookingLifecycleStatus(b)),
-        blocks: prev.blocks,
-        isClosed: prev.isClosed,
-      });
-    }
-    for (const tb of timeBlocks) {
-      if (!tb.is_active) continue;
-      const prev = map.get(tb.date) ?? { bookings: 0, hasPending: false, blocks: 0, isClosed: false };
-      map.set(tb.date, { ...prev, blocks: prev.blocks + 1 });
-    }
-    for (const key of closedDateKeys) {
-      const prev = map.get(key) ?? { bookings: 0, hasPending: false, blocks: 0, isClosed: false };
-      map.set(key, { ...prev, isClosed: true });
-    }
-    return map;
-  }, [mergedBookingsData, timeBlocks, closedDateKeys]);
+  const dateStripInfo = useMemo(
+    () => buildDateStripInfo(stripBookingsMerged, timeBlocks, closedDateKeys, providerTimezone),
+    [stripBookingsMerged, timeBlocks, closedDateKeys, providerTimezone],
+  );
 
-  const filtered = useMemo(() => {
-    const allBookings: Booking[] = mergedBookingsData;
+  const overviewFiltered = useMemo(() => {
+    const allBookings: Booking[] = overviewBookingsMerged;
     const q = search.trim().toLowerCase();
     if (!q) return allBookings;
     return allBookings.filter((b) => {
@@ -598,20 +664,42 @@ export default function BookingsListScreen() {
       const service = (b.services?.[0]?.name ?? b.services?.[0]?.offering_name ?? "").toLowerCase();
       return name.includes(q) || num.includes(q) || service.includes(q);
     });
-  }, [mergedBookingsData, search]);
+  }, [overviewBookingsMerged, search]);
+
+  const daySearchFiltered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return stripBookingsMerged;
+    return stripBookingsMerged.filter((b) => {
+      const name = (b.customers?.full_name ?? "").toLowerCase();
+      const num = (b.booking_number ?? "").toLowerCase();
+      const service = (b.services?.[0]?.name ?? b.services?.[0]?.offering_name ?? "").toLowerCase();
+      return name.includes(q) || num.includes(q) || service.includes(q);
+    });
+  }, [stripBookingsMerged, search]);
+
+  const filtered = viewMode === "overview" ? overviewFiltered : daySearchFiltered;
 
   const nextUpcomingId = useMemo(() => {
     const now = Date.now();
-    const sorted = [...mergedBookingsData]
-      .filter((b) => b.scheduled_at && isNonTerminalScheduleBooking(b))
-      .sort((a, b) => new Date(a.scheduled_at!).getTime() - new Date(b.scheduled_at!).getTime());
-    return sorted.find((b) => new Date(b.scheduled_at!).getTime() > now)?.id ?? null;
-  }, [mergedBookingsData]);
+    const sorted = [...stripBookingsMerged]
+      .filter((b) => effectiveScheduleAt(b) && isNonTerminalScheduleBooking(b))
+      .sort(
+        (a, b) =>
+          (effectiveScheduleAt(a)?.getTime() ?? 0) - (effectiveScheduleAt(b)?.getTime() ?? 0),
+      );
+    return (
+      sorted.find((b) => (effectiveScheduleAt(b)?.getTime() ?? 0) > now)?.id ?? null
+    );
+  }, [stripBookingsMerged]);
 
   const dayBookings = useMemo(() => {
-    if (viewMode !== "day") return filtered;
-    return filtered.filter((b) => b.scheduled_at && isSameDay(new Date(b.scheduled_at), selectedDate));
-  }, [filtered, viewMode, selectedDate]);
+    if (viewMode !== "day") return [];
+    const dayRows = filterBookingsForDayKey(daySearchFiltered, selectedDateKey, providerTimezone);
+    // Status chip narrows the day list client-side (the strip stays full —
+    // dateStripInfo is derived from the unfiltered strip dataset).
+    if (!statusFilter) return dayRows;
+    return dayRows.filter((b) => bookingLifecycleStatus(b) === statusFilter);
+  }, [viewMode, daySearchFiltered, selectedDateKey, providerTimezone, statusFilter]);
 
   const dayBlocksForSelected = useMemo(() => {
     const key = format(selectedDate, "yyyy-MM-dd");
@@ -625,8 +713,9 @@ export default function BookingsListScreen() {
     }
     const sortKey = (it: ScheduleItem) => {
       if (it.kind === "booking") {
-        if (!it.booking.scheduled_at) return Number.POSITIVE_INFINITY;
-        return new Date(it.booking.scheduled_at).getTime();
+        const at = effectiveScheduleAt(it.booking);
+        if (!at) return Number.POSITIVE_INFINITY;
+        return at.getTime();
       }
       const [h = 0, m = 0] = it.block.start_time.split(":").map(Number);
       const d = new Date(selectedDate);
@@ -645,8 +734,8 @@ export default function BookingsListScreen() {
     }
     const hourOf = (it: ScheduleItem) => {
       if (it.kind === "booking") {
-        if (!it.booking.scheduled_at) return 0;
-        return new Date(it.booking.scheduled_at).getHours();
+        const at = effectiveScheduleAt(it.booking);
+        return at ? at.getHours() : 0;
       }
       const [h = 0] = it.block.start_time.split(":").map(Number);
       return h;
@@ -668,24 +757,25 @@ export default function BookingsListScreen() {
     return sections.length ? sections : [{ title: "", data: [] as ScheduleItem[] }];
   }, [viewMode, listSort, filtered, daySchedule]);
 
-  const selectedDateKey = format(selectedDate, "yyyy-MM-dd");
-
   const daySummary = useMemo(() => {
-    const dayB = mergedBookingsData.filter(
-      (b) => b.scheduled_at && format(new Date(b.scheduled_at), "yyyy-MM-dd") === selectedDateKey,
+    const dayB = stripBookingsMerged.filter(
+      (b) => bookingScheduleYmd(b, providerTimezone) === selectedDateKey,
     );
-    const active = dayB.filter((b) => !["cancelled", "canceled", "no_show"].includes(bookingLifecycleStatus(b)));
+    const active = dayB.filter((b) => !isTerminalScheduleBooking(b));
     const blockCount = timeBlocks.filter((t) => t.date === selectedDateKey && t.is_active).length;
-    const pending = dayB.filter((b) => ["pending", "pending_payment"].includes(bookingLifecycleStatus(b))).length;
+    const pending = dayB.filter((b) => isPendingOrQueueBooking(b)).length;
     const closed = closedDateKeys.has(selectedDateKey);
     const nextUp = dayB
       .filter(
         (b) =>
-          b.scheduled_at &&
-          new Date(b.scheduled_at).getTime() > Date.now() &&
+          effectiveScheduleAt(b) &&
+          (effectiveScheduleAt(b)?.getTime() ?? 0) > Date.now() &&
           isNonTerminalScheduleBooking(b),
       )
-      .sort((a, b) => new Date(a.scheduled_at!).getTime() - new Date(b.scheduled_at!).getTime())[0];
+      .sort(
+        (a, b) =>
+          (effectiveScheduleAt(a)?.getTime() ?? 0) - (effectiveScheduleAt(b)?.getTime() ?? 0),
+      )[0];
     return {
       label: isToday(selectedDate) ? "Today" : isTomorrow(selectedDate) ? "Tomorrow" : format(selectedDate, "EEE, MMM d"),
       count: active.length,
@@ -696,7 +786,7 @@ export default function BookingsListScreen() {
       hasBookingsOnClosed: closed && dayB.length > 0,
       nextUp,
     };
-  }, [mergedBookingsData, selectedDateKey, timeBlocks, closedDateKeys, selectedDate]);
+  }, [stripBookingsMerged, selectedDateKey, timeBlocks, closedDateKeys, selectedDate, providerTimezone]);
 
   const handleApplyStatus = useCallback(
     async (bookingId: string, action: import("@/lib/provider-booking-action-policy").ProviderBookingAction, successMessage: string) => {
@@ -716,7 +806,7 @@ export default function BookingsListScreen() {
   // returned result set. Independent of the list's date range so the
   // numbers still make sense when the list is filtered.
   const statsSnapshot = useMemo(() => {
-    const allBookings: Booking[] = mergedBookingsData;
+    const allBookings: Booking[] = overviewBookingsMerged;
     const now = new Date();
     let start = 0;
     let end = Number.POSITIVE_INFINITY;
@@ -752,7 +842,7 @@ export default function BookingsListScreen() {
       }
     }
     return { count, revenue, pendingCount, inProgressCount, completedCount };
-  }, [mergedBookingsData, statsRange]);
+  }, [overviewBookingsMerged, statsRange]);
 
   const statsRangeLabel = useMemo(() => {
     if (statsRange === "today") return "Today";
@@ -923,11 +1013,13 @@ export default function BookingsListScreen() {
               })}
               contentContainerStyle={{ paddingHorizontal: 0, paddingBottom: 8 }}
               renderItem={({ item: day }: { item: Date }) => {
-                const key = format(day, "yyyy-MM-dd");
+                const key = formatBusinessDayYYYYMMDD(day, providerTimezone);
                 const info = dateStripInfo.get(key);
                 const selected = isSameDay(day, selectedDate);
                 const todayCell = isToday(day);
                 const dotColor = info?.hasPending ? "#f59e0b" : Colors.primary;
+                const totalCount = (info?.bookings ?? 0) + (info?.blocks ?? 0);
+                const indicatorColor = selected ? "#ffffff" : dotColor;
                 return (
                   <TouchableOpacity
                     onPress={() => {
@@ -942,6 +1034,11 @@ export default function BookingsListScreen() {
                     ]}
                     accessibilityRole="button"
                     accessibilityState={{ selected }}
+                    accessibilityLabel={
+                      totalCount > 0
+                        ? `${format(day, "EEEE MMMM d")}, ${totalCount} scheduled`
+                        : format(day, "EEEE MMMM d")
+                    }
                   >
                     <Text
                       style={twStyle(`text-[11px] font-semibold ${selected ? "text-white" : "text-gray-500"}`)}
@@ -956,16 +1053,21 @@ export default function BookingsListScreen() {
                     {info?.isClosed && !selected ? (
                       <Text style={twStyle("mt-0.5 text-[10px] text-gray-400")}>×</Text>
                     ) : null}
-                    {info && info.bookings + info.blocks > 0 && !selected ? (
+                    {totalCount > 0 ? (
                       <View style={twStyle("mt-1 flex-row items-center gap-0.5")}>
-                        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: dotColor }} />
-                        {info.bookings + info.blocks > 1 ? (
-                          <Text style={[twStyle("text-[8px] font-bold"), { color: dotColor }]}>
-                            {info.bookings + info.blocks > 9 ? "9+" : info.bookings + info.blocks}
-                          </Text>
-                        ) : null}
+                        <View
+                          style={{
+                            width: 6,
+                            height: 6,
+                            borderRadius: 3,
+                            backgroundColor: indicatorColor,
+                          }}
+                        />
+                        <Text style={[twStyle("text-[8px] font-bold"), { color: indicatorColor }]}>
+                          {totalCount > 9 ? "9+" : totalCount}
+                        </Text>
                       </View>
-                    ) : info && info.blocks > 0 && info.bookings === 0 && !selected ? (
+                    ) : info && info.blocks > 0 && info.bookings === 0 ? (
                       <View style={twStyle("mt-1 h-1.5 w-1.5 rounded-full bg-gray-400")} />
                     ) : null}
                   </TouchableOpacity>
@@ -1204,7 +1306,7 @@ export default function BookingsListScreen() {
     ],
   );
 
-  if (listLoading && mergedBookingsData.length === 0) {
+  if (stripLoadingAny && stripBookingsMerged.length === 0) {
     return (
       <ScreenContainer scrollable={false} noPadding>
         <View style={{ paddingHorizontal: screenPadding }}>
@@ -1234,14 +1336,14 @@ export default function BookingsListScreen() {
     );
   }
 
-  if (listError && mergedBookingsData.length === 0) {
+  if (stripError && stripBookingsMerged.length === 0) {
     return (
       <ScreenContainer scrollable={false} noPadding>
         <View style={{ paddingHorizontal: screenPadding }}>
           <ScreenHeader title="Bookings" showBack />
         </View>
         <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: screenPadding }}>
-          <ErrorState message={listError} onRetry={() => void refreshAllBookings()} />
+          <ErrorState message={stripError} onRetry={() => void refreshAllBookings()} />
         </View>
       </ScreenContainer>
     );
@@ -1253,7 +1355,7 @@ export default function BookingsListScreen() {
         <ScreenHeader
           title="Bookings"
           showBack
-          subtitle={`${viewMode === "day" ? daySummary.label : dateRangeLabel} · ${filtered.length}`}
+          subtitle={`${viewMode === "day" ? daySummary.label : dateRangeLabel} · ${viewMode === "day" ? dayBookings.length : filtered.length}`}
           rightAction={
             <ActionButton
               label="New"
@@ -1302,23 +1404,39 @@ export default function BookingsListScreen() {
           }
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
-            <EmptyState
-              icon="calendar-outline"
-              title={search || statusFilter ? "No bookings match" : "Nothing scheduled"}
-              description={
-                search || statusFilter
-                  ? "Try adjusting your search or filters."
-                  : viewMode === "day"
-                    ? "No appointments or blocks for this day."
-                    : "Create a new booking to get started."
-              }
-              actionLabel={!search && !statusFilter && viewMode === "overview" ? "New booking" : undefined}
-              onAction={
-                !search && !statusFilter && viewMode === "overview"
-                  ? () => router.push("/(app)/(tabs)/bookings/new" as never)
-                  : undefined
-              }
-            />
+            viewMode === "overview" && overviewListError ? (
+              <ErrorState message={overviewListError} onRetry={() => void refreshAllBookings()} />
+            ) : viewMode === "overview" && overviewLoadingAny ? (
+              <View style={{ paddingHorizontal: 4, paddingTop: 16, gap: 12 }}>
+                {[0, 1, 2].map((k) => (
+                  <Animated.View
+                    key={k}
+                    style={[
+                      twStyle("rounded-2xl bg-gray-100"),
+                      { opacity: skeletonOpacity, height: 96 },
+                    ]}
+                  />
+                ))}
+              </View>
+            ) : (
+              <EmptyState
+                icon="calendar-outline"
+                title={search || statusFilter ? "No bookings match" : "Nothing scheduled"}
+                description={
+                  search || statusFilter
+                    ? "Try adjusting your search or filters."
+                    : viewMode === "day"
+                      ? "No appointments or blocks for this day."
+                      : "Create a new booking to get started."
+                }
+                actionLabel={!search && !statusFilter && viewMode === "overview" ? "New booking" : undefined}
+                onAction={
+                  !search && !statusFilter && viewMode === "overview"
+                    ? () => router.push("/(app)/(tabs)/bookings/new" as never)
+                    : undefined
+                }
+              />
+            )
           }
         />
       </View>

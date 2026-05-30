@@ -127,6 +127,13 @@ export default function ProviderProductOrdersPage() {
   const [yocoDialogOpen, setYocoDialogOpen] = useState(false);
   const [yocoOrder, setYocoOrder] = useState<ProductOrder | null>(null);
 
+  // Refund dialog: capture method (cash vs wallet), amount, and reason so
+  // product-sale refunds match the in-person/wallet split used for bookings.
+  const [refundDialog, setRefundDialog] = useState<ProductOrder | null>(null);
+  const [refundMethodInput, setRefundMethodInput] = useState<"cash" | "store_credit">("cash");
+  const [refundAmountInput, setRefundAmountInput] = useState("");
+  const [refundReasonInput, setRefundReasonInput] = useState("");
+
   const fetchOrders = useCallback(async () => {
     setLoading(true);
     try {
@@ -215,6 +222,18 @@ export default function ProviderProductOrdersPage() {
       setTrackingUrlInput("");
       return;
     }
+    if (newStatus === "refunded") {
+      const order = orders.find((o) => o.id === orderId) ?? prefetchedFocusOrder;
+      if (!order) return;
+      setRefundDialog(order);
+      setRefundAmountInput(Number(order.total_amount ?? 0).toFixed(2));
+      setRefundReasonInput("");
+      // Online orders with a platform customer default to wallet credit;
+      // walk-in / unlinked sales default to in-person cash.
+      const isOnline = order.order_source === "online";
+      setRefundMethodInput(isOnline && order.customer?.id ? "store_credit" : "cash");
+      return;
+    }
     if (newStatus === "cancelled") {
       const order = orders.find((o) => o.id === orderId) ?? prefetchedFocusOrder;
       if (order?.payment_status === "paid") {
@@ -234,6 +253,7 @@ export default function ProviderProductOrdersPage() {
     orderId: string,
     newStatus: string,
     shipping?: { tracking_number?: string; carrier?: string; tracking_url?: string; cancellation_reason?: string },
+    refund?: { refund_method?: "cash" | "store_credit"; refund_amount?: number; refund_reason?: string },
   ) => {
     setUpdating(orderId);
     setError("");
@@ -243,6 +263,9 @@ export default function ProviderProductOrdersPage() {
       if (shipping?.carrier) payload.carrier = shipping.carrier;
       if (shipping?.tracking_url) payload.tracking_url = shipping.tracking_url;
       if (shipping?.cancellation_reason) payload.cancellation_reason = shipping.cancellation_reason;
+      if (refund?.refund_method) payload.refund_method = refund.refund_method;
+      if (refund?.refund_amount != null) payload.refund_amount = refund.refund_amount;
+      if (refund?.refund_reason) payload.refund_reason = refund.refund_reason;
       const res = await fetcher.patch<{ data?: { order?: ProductOrder } }>(`/api/provider/product-orders/${orderId}`, payload);
       const updatedOrder = res?.data?.order;
       if (updatedOrder) {
@@ -250,8 +273,9 @@ export default function ProviderProductOrdersPage() {
       }
       clearFetcherCache();
       fetchOrders();
-    } catch {
-      setError("Failed to update order status");
+      setRefundDialog(null);
+    } catch (e: any) {
+      setError(e?.message || "Failed to update order status");
     }
     setUpdating(null);
     setTrackingDialog(null);
@@ -562,6 +586,105 @@ export default function ProviderProductOrdersPage() {
                 className="px-4 py-2 text-sm font-medium text-white bg-pink-600 rounded-lg hover:bg-pink-700 disabled:opacity-50"
               >
                 {updating ? "Updating..." : "Confirm & Ship"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {refundDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl space-y-4">
+            <div>
+              <h3 className="text-lg font-bold text-gray-900">Refund order</h3>
+              <p className="text-sm text-gray-500">
+                Order {refundDialog.order_number} · Paid {formatMoney(Number(refundDialog.total_amount ?? 0))}
+              </p>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Refund amount</label>
+              <Input
+                type="number"
+                value={refundAmountInput}
+                onChange={(e) => setRefundAmountInput(e.target.value)}
+                min="0"
+                max={Number(refundDialog.total_amount ?? 0)}
+                step="0.01"
+                placeholder="0.00"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Refund method</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setRefundMethodInput("cash")}
+                  className={`min-h-[44px] rounded-lg border px-3 text-sm font-medium transition ${
+                    refundMethodInput === "cash"
+                      ? "border-pink-600 bg-pink-50 text-pink-700"
+                      : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                  }`}
+                >
+                  In person (cash)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!refundDialog.customer?.id) {
+                      setError("This order has no customer account to credit. Refund in person instead.");
+                      return;
+                    }
+                    setRefundMethodInput("store_credit");
+                  }}
+                  disabled={!refundDialog.customer?.id}
+                  className={`min-h-[44px] rounded-lg border px-3 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                    refundMethodInput === "store_credit"
+                      ? "border-pink-600 bg-pink-50 text-pink-700"
+                      : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                  }`}
+                >
+                  Wallet credit
+                </button>
+              </div>
+              <p className="mt-1.5 text-xs text-gray-500">
+                {refundMethodInput === "cash"
+                  ? "Records the refund as returned to the customer in person. No wallet credit is issued."
+                  : "Adds store credit to the customer's wallet for a future purchase."}
+              </p>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Reason (optional)</label>
+              <Input
+                value={refundReasonInput}
+                onChange={(e) => setRefundReasonInput(e.target.value)}
+                placeholder="e.g. Damaged item, customer request"
+              />
+            </div>
+            <div className="flex gap-3 justify-end pt-1">
+              <button
+                onClick={() => setRefundDialog(null)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 border rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  const amount = parseFloat(refundAmountInput);
+                  const total = Number(refundDialog.total_amount ?? 0);
+                  if (!Number.isFinite(amount) || amount <= 0 || amount > total + 0.01) {
+                    setError(`Refund amount must be between 0 and ${formatMoney(total)}.`);
+                    return;
+                  }
+                  submitStatusUpdate(refundDialog.id, "refunded", undefined, {
+                    refund_method: refundMethodInput,
+                    refund_amount: amount,
+                    refund_reason: refundReasonInput.trim() || undefined,
+                  });
+                }}
+                disabled={updating === refundDialog.id}
+                className="px-4 py-2 text-sm font-medium text-white bg-pink-600 rounded-lg hover:bg-pink-700 disabled:opacity-50"
+              >
+                {updating === refundDialog.id ? "Processing..." : "Confirm refund"}
               </button>
             </div>
           </div>

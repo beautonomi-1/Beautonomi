@@ -9,6 +9,7 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { useProvider } from "@/providers/ProviderContext";
 import { useModuleConfig } from "@/providers/ConfigBundleProvider";
 import { formatFrontDeskRangeCaption, getMetricRangeParams, type FrontDeskMetricRange } from "@beautonomi/utils";
+import { buildStripDateParams } from "@/lib/bookings-list-query";
 import { playRingtone } from "@/lib/on-demand/ringtone";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -121,8 +122,16 @@ export default function WaitingRoomScreen() {
         /* keep device-local range */
       }
     }
+    if (highlightTarget) {
+      const strip = buildStripDateParams(provider?.timezone);
+      dates = {
+        start:
+          !dates.start || dates.start > strip.start_date ? strip.start_date : dates.start,
+        end: !dates.end || dates.end < strip.end_date ? strip.end_date : dates.end,
+      };
+    }
     return dates;
-  }, [metricRange, provider?.timezone]);
+  }, [metricRange, provider?.timezone, highlightTarget]);
 
   const bookingsRangeUrl = useMemo(() => {
     const params = new URLSearchParams();

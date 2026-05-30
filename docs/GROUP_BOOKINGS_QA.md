@@ -140,7 +140,8 @@ confirmed
 
 | Scenario | Expected |
 |----------|---------|
-| Group with inline-only participants (no `booking_id`) | `400 NOT_INVOICED` — link participant bookings first |
+| Group with inline-only participants (no `booking_id`) **that each have a service** | `200` — `mark_paid` self-heals: it auto-creates a child booking per participant (walk-in customer created from name/phone when no `customer_id`), then records `booking_payments` for each. Scoped to groups with **zero** existing child bookings, so customer online group bookings (primary child booking + guest roster) are never charged per-guest. |
+| Group with inline-only participants where a participant has **no service** | `400 NOT_INVOICED` — that participant can't be invoiced; add a service, then record payment again |
 | Group with all child bookings already settled | `400 ALREADY_PAID` |
 | Group with outstanding balance on one or more child bookings | `200` — `booking_payments` row inserted for each outstanding booking |
 
@@ -218,7 +219,7 @@ confirmed
 | 3 | Provider reschedules group (PATCH `scheduled_at`) with child bookings | All non-terminal child bookings get the same new `scheduled_at`; `booking_services` rescheduled sequentially. |
 | 4 | PATCH with `allow_override: true` | Slot availability check skipped — for admin overrides. |
 | 5 | Package attached to group | `validateAndPriceGroupPackage` runs; discount reflected in `total_price`; `package_name` returned in GET. |
-| 6 | At-home group (`location_type = at_home`) | `travel_fee` included in total; address fields persisted; `location_id` set to null. |
+| 6 | At-home group (`location_type = at_home`) | `travel_fee` included in `group_bookings.total_price`; address fields persisted; `location_id` set to null. The fee is also charged **once**, on the **primary participant's** child booking (`bookings.travel_fee`), so it's collected via `mark_paid` and refundable. If the primary never gets a child booking (walk-in with no `customer_id`), it falls back to the first created child booking — both at create time and during `mark_paid` self-heal — so an at-home travel fee is never stranded uncollected. |
 | 7 | GET receipt with signed download token | Token parsed with `parseReceiptDownloadToken`; correct `kind = provider_group_booking_receipt` validated. |
 | 8 | Search by partial title | `GET /api/provider/group-bookings?search=yoga` matches both `ref_number` and `title`. |
 

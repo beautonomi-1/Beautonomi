@@ -272,6 +272,13 @@ async function logNotification(entry: NotificationLogEntry) {
 
 type UserScopedSupabase = SupabaseClient<Database>;
 
+function isUserDevicesUniqueViolation(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  if (error.code === "23505") return true;
+  const message = error.message ?? "";
+  return /unique constraint|duplicate key/i.test(message);
+}
+
 /**
  * Register a device for push notifications.
  * @param supabase — Prefer `getSupabaseAdmin()` from API routes after auth checks.
@@ -299,66 +306,56 @@ export async function registerDevice(
     last_seen: new Date().toISOString(),
   };
 
-  // Same physical device can switch accounts — reassign the subscription row for this app.
-  const { error: reassignDeleteError } = await supabase
+  // Legacy rows with NULL app_type bypass composite lookups elsewhere in this flow.
+  const { error: legacyDeleteError } = await supabase
     .from("user_devices")
     .delete()
     .eq("onesignal_player_id", normalizedPlayerId)
-    .eq("app_type", appType)
-    .neq("user_id", userId);
+    .is("app_type", null);
 
-  if (reassignDeleteError) {
-    console.error("Error reassigning device:", reassignDeleteError);
-    return { success: false, error: reassignDeleteError.message };
+  if (legacyDeleteError) {
+    console.error("Error clearing legacy device row:", legacyDeleteError);
+    return { success: false, error: legacyDeleteError.message };
   }
 
-  const { data: updated, error: updateError } = await supabase
-    .from("user_devices")
-    .update({ platform, last_seen: row.last_seen })
-    .eq("user_id", userId)
-    .eq("onesignal_player_id", normalizedPlayerId)
-    .eq("app_type", appType)
-    .select("id")
-    .maybeSingle();
+  const upsertDevice = () =>
+    supabase.from("user_devices").upsert(row, { onConflict: "onesignal_player_id,app_type" });
 
-  if (updateError) {
-    console.error("Error updating device:", updateError);
-    return { success: false, error: updateError.message };
-  }
+  let { error: upsertError } = await upsertDevice();
 
-  if (updated) {
-    return { success: true };
-  }
-
-  const { error: insertError } = await supabase.from("user_devices").insert(row);
-  if (!insertError) {
-    return { success: true };
-  }
-
-  // Unique violation: concurrent registration or legacy row under old single-column unique.
-  if (insertError.code === "23505") {
-    const { error: deleteError } = await supabase
+  // Concurrent registrations can still race the upsert; clear and retry once.
+  if (isUserDevicesUniqueViolation(upsertError)) {
+    const { error: clearError } = await supabase
       .from("user_devices")
       .delete()
       .eq("onesignal_player_id", normalizedPlayerId)
       .eq("app_type", appType);
 
-    if (deleteError) {
-      console.error("Error clearing conflicting device:", deleteError);
-      return { success: false, error: deleteError.message };
+    if (clearError) {
+      console.error("Error clearing conflicting device:", clearError);
+      return { success: false, error: clearError.message };
     }
 
-    const { error: retryError } = await supabase.from("user_devices").insert(row);
-    if (retryError) {
-      console.error("Error registering device (insert retry):", retryError);
-      return { success: false, error: retryError.message };
-    }
-
-    return { success: true };
+    ({ error: upsertError } = await upsertDevice());
   }
 
-  console.error("Error registering device:", insertError);
-  return { success: false, error: insertError.message };
+  if (upsertError) {
+    const { data: existing, error: selectError } = await supabase
+      .from("user_devices")
+      .select("user_id")
+      .eq("onesignal_player_id", normalizedPlayerId)
+      .eq("app_type", appType)
+      .maybeSingle();
+
+    if (!selectError && existing?.user_id === userId) {
+      return { success: true };
+    }
+
+    console.error("Error registering device:", upsertError);
+    return { success: false, error: upsertError.message };
+  }
+
+  return { success: true };
 }
 
 /** Options for which OneSignal app to use (multi-app support). */

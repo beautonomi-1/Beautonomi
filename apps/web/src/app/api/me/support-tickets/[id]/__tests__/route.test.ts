@@ -118,6 +118,44 @@ describe("GET /api/me/support-tickets/[id]", () => {
     });
   });
 
+  it("embeds the author via the users FK (not a non-existent profiles relationship)", async () => {
+    const messageSelect = vi.fn(() => ({
+      eq: vi.fn(() => ({
+        eq: vi.fn(() => ({
+          order: vi.fn(async () => ({ data: [], error: null })),
+        })),
+      })),
+    }));
+    const supabase = {
+      from: vi.fn((table: string) => {
+        if (table === "support_tickets") {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  single: vi.fn(async () => ({
+                    data: { id: "ticket-1", description: "", user_id: "provider-user-1" },
+                    error: null,
+                  })),
+                })),
+              })),
+            })),
+          };
+        }
+        return { select: messageSelect };
+      }),
+    };
+    mockGetSupabaseServer.mockResolvedValue(supabase);
+
+    const { GET } = await import("../route");
+    const req = new NextRequest("http://localhost/api/me/support-tickets/ticket-1");
+    await GET(req, { params: Promise.resolve({ id: "ticket-1" }) });
+
+    const selectArg = String(messageSelect.mock.calls[0]?.[0] ?? "");
+    expect(selectArg).toContain("author:users!support_ticket_messages_user_id_fkey");
+    expect(selectArg).not.toContain("profiles");
+  });
+
   it("prepends legacy description when no message rows exist", async () => {
     mockGetSupabaseServer.mockResolvedValue(
       createSupabase({ messages: [], description: "Legacy ticket body only" }),
