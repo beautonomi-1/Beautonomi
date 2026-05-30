@@ -78,13 +78,23 @@ export function RewardsCard({ gamification }: RewardsCardProps) {
             </div>
           </div>
 
+          {/* Max tier — has badge, no next level */}
+          {currentBadge && !showProgress && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50/90 px-4 py-3 mb-4">
+              <p className="text-sm font-bold text-gray-900">Top tier unlocked</p>
+              <p className="text-xs sm:text-sm text-gray-600 mt-1 leading-relaxed">
+                You&apos;re at the highest badge level. Keep delivering great service to stay featured.
+              </p>
+            </div>
+          )}
+
           {/* Progress Section */}
           {showProgress && (
             <div className="space-y-4">
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-sm sm:text-base font-medium text-gray-700">
-                    Progress to Next Badge
+                    Level up next
                   </p>
                   <span className="text-xs sm:text-sm text-gray-600 font-semibold">
                     {showProgress.progress_percentage}%
@@ -175,7 +185,7 @@ export function RewardsCard({ gamification }: RewardsCardProps) {
               className="w-full sm:w-auto border-[#FF0077] text-[#FF0077] hover:bg-[#FF0077] hover:text-white transition-colors"
             >
               <Sparkles className="w-4 h-4 mr-2" />
-              Details
+              View badges & journey
             </Button>
           </div>
         </div>
