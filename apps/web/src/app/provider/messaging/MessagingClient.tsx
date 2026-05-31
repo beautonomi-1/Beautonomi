@@ -16,6 +16,7 @@ interface Conversation {
   id: string;
   customer_id: string;
   customer_name: string;
+  customer_identity_verified?: boolean | null;
   customer_phone?: string | null;
   customer_email?: string | null;
   customer_avatar?: string;

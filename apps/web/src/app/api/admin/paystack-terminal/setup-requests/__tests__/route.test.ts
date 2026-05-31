@@ -29,6 +29,18 @@ vi.mock("@/lib/payments/paystack-terminal-assets", () => ({
   computePaystackTerminalAssetStatus: vi.fn(),
 }));
 
+vi.mock("@/lib/admin/paystack-terminal-tenant-scope", () => ({
+  resolvePaystackTerminalTenantScope: vi.fn().mockResolvedValue({
+    tenantId: "tenant-1",
+    providerIds: ["provider-1"],
+  }),
+  providerBelongsToTenantScope: vi.fn().mockReturnValue(true),
+}));
+
+vi.mock("@/lib/integrations/slack/ops-triggers", () => ({
+  slackNotifyPaystackTerminalAssetRequested: vi.fn(),
+}));
+
 describe("GET /api/admin/paystack-terminal/setup-requests", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -62,7 +74,7 @@ describe("GET /api/admin/paystack-terminal/setup-requests", () => {
     const selectCall = (fromMock.mock.results[0]?.value as { select?: ReturnType<typeof vi.fn> })?.select;
     expect(selectCall).toHaveBeenCalledWith(
       expect.stringContaining(
-        "users!provider_paystack_virtual_terminal_setup_requests_requested_by_fkey",
+        "users!requested_by",
       ),
       expect.any(Object),
     );

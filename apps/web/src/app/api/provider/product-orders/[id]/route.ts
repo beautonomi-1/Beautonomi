@@ -68,7 +68,7 @@ export async function GET(
           product_variant:product_variants(id, option_values)
         ),
         customer:users!product_orders_customer_id_fkey (
-          id, full_name, email, avatar_url, phone
+          id, full_name, email, avatar_url, phone, identity_verified
         ),
         delivery_address:user_addresses (
           id, label, address_line1, address_line2, city, state, postal_code, country,

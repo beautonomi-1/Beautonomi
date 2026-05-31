@@ -7,16 +7,28 @@ import {
   successResponse,
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
+import { resolvePaystackTerminalTenantScope } from "@/lib/admin/paystack-terminal-tenant-scope";
 
 export async function GET(request: NextRequest) {
   try {
     await requireAdminSection(ADMIN_SECTION_FINANCE, request);
     const supabase = getSupabaseAdmin();
+    const tenantScope = await resolvePaystackTerminalTenantScope(supabase, request);
     const { searchParams } = new URL(request.url);
     const { limit, offset } = getOffsetPaginationParams(request, { defaultLimit: 50, maxLimit: 200 });
     const allocationStatus = searchParams.get("allocation_status");
     const payoutStatus = searchParams.get("payout_status");
     const providerId = searchParams.get("provider_id");
+
+    if (tenantScope.providerIds.length === 0) {
+      return successResponse({
+        items: [],
+        total: 0,
+        limit,
+        offset,
+        hasMore: false,
+      });
+    }
 
     let query = (supabase.from("provider_paystack_terminal_payments") as any)
       .select(
@@ -28,6 +40,7 @@ export async function GET(request: NextRequest) {
         `,
         { count: "exact" },
       )
+      .in("provider_id", tenantScope.providerIds)
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
 

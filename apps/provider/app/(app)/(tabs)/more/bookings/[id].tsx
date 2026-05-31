@@ -26,6 +26,7 @@ import { YocoPaymentSheet } from "@/components/YocoPaymentSheet";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { VerifiedBadge } from "@/components/ui/VerifiedBadge";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { BottomSheet } from "@/components/ui/BottomSheet";
@@ -500,15 +501,16 @@ const DEFAULT_RESCHEDULE_TRAVEL_BUFFER_MINUTES = 30;
 
 type MarkPaidPaymentMethod = "cash" | "card" | "bank_transfer" | "other" | "paystack_terminal";
 
-const BASE_PAYMENT_METHODS: { label: string; value: MarkPaidPaymentMethod }[] = [
-  { label: "Cash", value: "cash" },
-  { label: "Card (Yoco / terminal)", value: "card" },
-  { label: "EFT", value: "bank_transfer" },
-  { label: "Other", value: "other" },
-];
-
-function buildMarkPaidPaymentMethods(paystackTerminalEnabled: boolean) {
-  const methods = [...BASE_PAYMENT_METHODS];
+function buildMarkPaidPaymentMethods(paystackTerminalEnabled: boolean, yocoEnabled: boolean) {
+  const methods: { label: string; value: MarkPaidPaymentMethod }[] = [
+    { label: "Cash", value: "cash" },
+    {
+      label: yocoEnabled ? "Card (Yoco / terminal)" : "Card (terminal)",
+      value: "card",
+    },
+    { label: "EFT", value: "bank_transfer" },
+    { label: "Other", value: "other" },
+  ];
   if (paystackTerminalEnabled) {
     methods.splice(2, 0, { label: "Paystack Terminal", value: "paystack_terminal" });
   }
@@ -816,9 +818,10 @@ export default function BookingDetailScreen() {
   const [showYocoPayment, setShowYocoPayment] = useState(false);
   const { integration: yocoIntegration } = useYocoIntegration();
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
+  const yocoEnabled = useFeatureFlag("payment_yoco");
   const markPaidPaymentMethods = useMemo(
-    () => buildMarkPaidPaymentMethods(paystackTerminalEnabled),
-    [paystackTerminalEnabled],
+    () => buildMarkPaidPaymentMethods(paystackTerminalEnabled, yocoEnabled),
+    [paystackTerminalEnabled, yocoEnabled],
   );
   const [preparingPaystackTerminal, setPreparingPaystackTerminal] = useState(false);
   const [paystackTerminalPrompt, setPaystackTerminalPrompt] = useState<{
@@ -2468,6 +2471,9 @@ export default function BookingDetailScreen() {
           <View style={twStyle("flex-row items-center justify-between mb-3")}>
             <View style={twStyle("flex-row items-center flex-1")}>
               <Text style={twStyle("font-semibold text-gray-900")}>{customerName}</Text>
+              {(b.customers as { identity_verified?: boolean | null } | null)?.identity_verified ? (
+                <VerifiedBadge verified style={{ marginLeft: 8 }} />
+              ) : null}
               {typeof b.customers?.rating_average === "number" && b.customers.rating_average > 0 ? (
                 <Text style={twStyle("ml-2 text-xs font-semibold text-amber-700")}>
                   {`${b.customers.rating_average.toFixed(1)}${b.customers.review_count ? ` (${b.customers.review_count})` : ""} ★`}
@@ -3394,7 +3400,7 @@ export default function BookingDetailScreen() {
                       <Text style={twStyle("font-medium text-white")}>Mark paid</Text>
                     )}
                   </TouchableOpacity>
-                  {canCreateSales && yocoIntegration?.is_enabled && yocoIntegration?.api_key_set && outstanding > 0 && (
+                  {canCreateSales && yocoEnabled && yocoIntegration?.is_enabled && yocoIntegration?.api_key_set && outstanding > 0 && (
                     <TouchableOpacity
                       onPress={() => void openYocoCheckout()}
                       disabled={preparingYocoSale}

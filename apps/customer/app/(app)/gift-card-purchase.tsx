@@ -12,6 +12,7 @@ import {
   Linking,
 } from "react-native";
 import { Stack, useRouter, useLocalSearchParams } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
 import {
   extractPaystackReferenceFromUrl,
@@ -34,6 +35,7 @@ import { usePaystackPayment } from "@/hooks/usePaystackPayment";
 import { PaymentProcessingOverlay } from "@/components/payment/PaymentProcessingOverlay";
 import { PaymentSuccessOverlay, type PaymentSuccessSummaryRow } from "@/components/payment/PaymentSuccessOverlay";
 import { GiftCardPaymentConfirmSheet } from "@/components/payment/GiftCardPaymentConfirmSheet";
+import { shareGiftCard } from "@/lib/gift-card-share";
 
 const AMOUNTS = [100, 250, 500, 1000, 2500, 5000];
 
@@ -60,7 +62,10 @@ export default function GiftCardPurchaseScreen() {
   const [amount, setAmount] = useState<number>(250);
   const [customAmount, setCustomAmount] = useState("");
   const [quantity, setQuantity] = useState(1);
+  const [isGift, setIsGift] = useState(false);
   const [recipientEmail, setRecipientEmail] = useState("");
+  const [recipientName, setRecipientName] = useState("");
+  const [giftMessage, setGiftMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const { cards: savedCards, defaultCard } = useSavedCards(!!user);
   const { payWithSavedCard } = usePaystackPayment();
@@ -140,8 +145,10 @@ export default function GiftCardPurchaseScreen() {
             .filter((id): id is string => typeof id === "string" && id.length > 0),
         );
         const body: Record<string, unknown> = { amount: finalAmount, quantity, currency: tenantCurrency };
-        if (recipientEmail.trim()) {
+        if (isGift && recipientEmail.trim()) {
           body.recipient_email = recipientEmail.trim();
+          if (recipientName.trim()) body.recipient_name = recipientName.trim();
+          if (giftMessage.trim()) body.message = giftMessage.trim();
         }
         if (Platform.OS !== "web") {
           body.callback_url = ExpoLinking.createURL("account-settings/payments");
@@ -295,9 +302,12 @@ export default function GiftCardPurchaseScreen() {
           : gc("codeRowLabel"),
       value: code,
       valueSelectable: true,
+      copyable: true,
+      onShare: () =>
+        void shareGiftCard({ code, balance: finalAmount, currency: tenantCurrency }),
     }));
     return [...codeRows, ...qtyTotalRows];
-  }, [issuedGiftCardCodes, quantity, total, tenantCurrency, gc]);
+  }, [issuedGiftCardCodes, quantity, total, finalAmount, tenantCurrency, gc]);
 
   return (
     <>
@@ -313,9 +323,11 @@ export default function GiftCardPurchaseScreen() {
         title={successState === "issued" ? gc("giftCardReadyTitle") : gc("paymentPendingTitle")}
         subtitle={
           successState === "issued"
-            ? issuedGiftCardCodes.length > 0
-              ? gc("giftCardReadyBodyWithCodes")
-              : gc("giftCardReadyBody")
+            ? isGift && recipientEmail.trim()
+              ? `We've emailed the gift card to ${recipientEmail.trim()} with steps to redeem.${issuedGiftCardCodes.length > 0 ? " You can also copy or share the code below." : ""}`
+              : issuedGiftCardCodes.length > 0
+                ? gc("giftCardReadyBodyWithCodes")
+                : gc("giftCardReadyBody")
             : gc("paymentPendingBody")
         }
         status={successState === "issued" ? "success" : "pending"}
@@ -384,16 +396,72 @@ export default function GiftCardPurchaseScreen() {
               <Text style={{ fontSize: 20, color: Colors.gray[700] }}>+</Text>
             </TouchableOpacity>
           </View>
-          <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 8 }}>Recipient Email (Optional)</Text>
-          <TextInput
-            style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, marginBottom: 24 }}
-            placeholder="Send directly to a friend"
-            placeholderTextColor={Colors.gray[400]}
-            value={recipientEmail}
-            onChangeText={setRecipientEmail}
-            keyboardType="email-address"
-            autoCapitalize="none"
-          />
+          {/* Who is this for? Clear choice between keeping it and gifting it. */}
+          <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>
+            Who is this for?
+          </Text>
+          <View style={{ flexDirection: "row", marginBottom: 12 }}>
+            <TouchableOpacity
+              onPress={() => setIsGift(false)}
+              style={{ flex: 1, padding: 12, borderWidth: 1, borderColor: !isGift ? Colors.primary : Colors.gray[200], borderRadius: 12, backgroundColor: !isGift ? "#FDF2F8" : Colors.white, marginRight: 8, alignItems: "center" }}
+            >
+              <Text style={{ fontSize: 13, fontWeight: "600", color: !isGift ? Colors.primary : Colors.gray[700] }}>For myself</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setIsGift(true)}
+              style={{ flex: 1, padding: 12, borderWidth: 1, borderColor: isGift ? Colors.primary : Colors.gray[200], borderRadius: 12, backgroundColor: isGift ? "#FDF2F8" : Colors.white, alignItems: "center" }}
+            >
+              <Text style={{ fontSize: 13, fontWeight: "600", color: isGift ? Colors.primary : Colors.gray[700] }}>Send as a gift</Text>
+            </TouchableOpacity>
+          </View>
+
+          {isGift ? (
+            <View style={{ marginBottom: 16 }}>
+              <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 6 }}>Recipient email</Text>
+              <TextInput
+                style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, marginBottom: 10 }}
+                placeholder="friend@email.com"
+                placeholderTextColor={Colors.gray[400]}
+                value={recipientEmail}
+                onChangeText={setRecipientEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 6 }}>Recipient name (optional)</Text>
+              <TextInput
+                style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, marginBottom: 10 }}
+                placeholder="e.g. Thandi"
+                placeholderTextColor={Colors.gray[400]}
+                value={recipientName}
+                onChangeText={setRecipientName}
+              />
+              <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 6 }}>Personal message (optional)</Text>
+              <TextInput
+                style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, minHeight: 72, textAlignVertical: "top" }}
+                placeholder="Happy birthday! Enjoy a treat on me 💛"
+                placeholderTextColor={Colors.gray[400]}
+                value={giftMessage}
+                onChangeText={setGiftMessage}
+                multiline
+                maxLength={500}
+              />
+              <View style={{ flexDirection: "row", alignItems: "flex-start", marginTop: 10, backgroundColor: "#FDF2F8", borderRadius: 10, padding: 12 }}>
+                <Ionicons name="mail-outline" size={16} color={Colors.primary} style={{ marginTop: 1 }} />
+                <Text style={{ flex: 1, marginLeft: 8, fontSize: 12, color: Colors.gray[600], lineHeight: 18 }}>
+                  We&apos;ll email the code straight to {recipientEmail.trim() ? recipientEmail.trim() : "your recipient"} after payment, with simple steps to redeem it. If they already have a Beautonomi account, it also appears in their wallet automatically.
+                </Text>
+              </View>
+            </View>
+          ) : (
+            <View style={{ flexDirection: "row", alignItems: "flex-start", marginBottom: 16, backgroundColor: Colors.gray[50], borderRadius: 10, padding: 12 }}>
+              <Ionicons name="information-circle-outline" size={16} color={Colors.gray[500]} style={{ marginTop: 1 }} />
+              <Text style={{ flex: 1, marginLeft: 8, fontSize: 12, color: Colors.gray[600], lineHeight: 18 }}>
+                The code{quantity > 1 ? "s" : ""} will be shown right after payment — you can copy or share {quantity > 1 ? "them" : "it"} anytime from Payments, or redeem to your wallet.
+              </Text>
+            </View>
+          )}
+
           <View style={{ backgroundColor: Colors.gray[50], borderRadius: 12, padding: 16, marginBottom: 24 }}>
             <Text style={{ color: Colors.gray[600] }}>{gc("totalLabel")}</Text>
             <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>{formatMoney(total, tenantCurrency)}</Text>

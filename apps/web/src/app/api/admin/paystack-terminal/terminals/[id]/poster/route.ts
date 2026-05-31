@@ -3,6 +3,10 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { errorResponse, handleApiError, requireAdminSection, successResponse } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { computePaystackTerminalAssetStatus } from "@/lib/payments/paystack-terminal-assets";
+import {
+  providerBelongsToTenantScope,
+  resolvePaystackTerminalTenantScope,
+} from "@/lib/admin/paystack-terminal-tenant-scope";
 
 const POSTER_UPLOAD_MAX_BYTES = 10 * 1024 * 1024;
 
@@ -37,13 +41,16 @@ export async function POST(
     }
 
     const supabase = getSupabaseAdmin();
+    const tenantScope = await resolvePaystackTerminalTenantScope(supabase, request);
     const { data: terminal, error: terminalError } = await (supabase
       .from("provider_paystack_virtual_terminals") as any)
       .select("id, provider_id, terminal_code, payment_link, terminal_url, qr_url")
       .eq("id", id)
       .maybeSingle();
     if (terminalError) throw terminalError;
-    if (!terminal) return errorResponse("Terminal not found", "NOT_FOUND", 404);
+    if (!terminal || !providerBelongsToTenantScope(terminal.provider_id, tenantScope)) {
+      return errorResponse("Terminal not found", "NOT_FOUND", 404);
+    }
 
     const fileExt =
       file.name.split(".").pop()?.toLowerCase() ||

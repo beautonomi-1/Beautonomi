@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
     // Manual (user_verifications) — most recent record for this user
     const { data: manualRow } = await supabase
       .from("user_verifications")
-      .select("id, status, document_type, submitted_at")
+      .select("id, status, document_type, submitted_at, rejection_reason")
       .eq("user_id", identityUserId)
       .order("submitted_at", { ascending: false })
       .limit(1)
@@ -140,8 +140,16 @@ export async function GET(request: NextRequest) {
             status: manualRow.status,
             document_type: manualRow.document_type,
             submitted_at: manualRow.submitted_at,
+            rejection_reason:
+              (manualRow as { rejection_reason?: string | null }).rejection_reason ?? null,
           }
         : null,
+      // Most recent reviewer note (why a submission was declined), surfaced so
+      // the provider knows exactly what to fix before resubmitting.
+      rejection_reason:
+        effectiveStatus === "rejected"
+          ? (manualRow as { rejection_reason?: string | null } | null)?.rejection_reason ?? null
+          : null,
       // Whether SumSub is available for this environment
       sumsub_available: sumsubAvailable,
     });

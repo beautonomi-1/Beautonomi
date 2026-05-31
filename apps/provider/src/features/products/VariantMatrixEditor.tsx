@@ -20,6 +20,7 @@ import { launchImageLibraryWithPermission } from "@/lib/native-permissions";
 import type { ProductVariantRow, VariantOptionType } from "./types";
 import { generateVariantMatrixRows } from "./variantMatrix";
 import { computeMarkupFromPrices, computeRetailFromMarkup } from "./markupCalc";
+import { BarcodeScannerModal } from "./BarcodeScannerModal";
 
 type Props = {
   variantOptionTypes: VariantOptionType[];
@@ -37,6 +38,7 @@ export function VariantMatrixEditor({
   onChangeRows,
 }: Props) {
   const [uploadingIndex, setUploadingIndex] = useState<number | null>(null);
+  const [barcodeScanRowIndex, setBarcodeScanRowIndex] = useState<number | null>(null);
 
   const uploadVariantImage = useCallback(async (rowIndex: number, asset: { uri: string; mimeType?: string | null; fileName?: string | null }) => {
     setUploadingIndex(rowIndex);
@@ -180,7 +182,20 @@ export function VariantMatrixEditor({
               </View>
               {(["sku", "barcode", "measure"] as const).map((field) => (
                 <View key={field} style={twStyle("mb-1")}>
-                  <Text style={twStyle("text-[10px] uppercase text-gray-500")}>{field}</Text>
+                  <View style={twStyle("flex-row items-center justify-between")}>
+                    <Text style={twStyle("text-[10px] uppercase text-gray-500")}>{field}</Text>
+                    {field === "barcode" ? (
+                      <TouchableOpacity
+                        onPress={() => setBarcodeScanRowIndex(idx)}
+                        style={twStyle("flex-row items-center py-0.5")}
+                        accessibilityLabel={`Scan barcode for variant ${idx + 1}`}
+                        accessibilityRole="button"
+                      >
+                        <Ionicons name="barcode-outline" size={14} color="#7c3aed" />
+                        <Text style={twStyle("ml-0.5 text-[10px] font-medium text-violet-700")}>Scan</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
                   <TextInput
                     style={twStyle("rounded border border-gray-200 px-2 py-1 text-sm")}
                     keyboardType={field === "measure" ? "default" : undefined}
@@ -221,6 +236,19 @@ export function VariantMatrixEditor({
           ))}
         </ScrollView>
       )}
+
+      <BarcodeScannerModal
+        visible={barcodeScanRowIndex !== null}
+        onClose={() => setBarcodeScanRowIndex(null)}
+        title="Scan variant barcode"
+        onScanned={(code) => {
+          if (barcodeScanRowIndex !== null) {
+            updateRow(barcodeScanRowIndex, { barcode: code });
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          }
+          setBarcodeScanRowIndex(null);
+        }}
+      />
     </View>
   );
 }

@@ -37,7 +37,7 @@ vi.mock("@/lib/supabase/admin", () => ({
     from: vi.fn((table: string) => {
       if (table === "product_orders") return productOrdersQuery(adminProductOrderRow);
       if (table === "ads_budget_orders") return adsBudgetOrdersEmptyByReference();
-      if (table === "provider_subscription_orders") {
+      if (table === "provider_subscription_orders" || table === "wallet_topups") {
         return {
           select: vi.fn(() => ({
             eq: vi.fn(() => ({

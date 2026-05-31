@@ -81,9 +81,12 @@ export async function GET(
     if (verifiedUserId) {
       try {
         const admin = getSupabaseAdmin();
+        // `providers` has no `verification_status` column — read the marketplace
+        // flag here and resolve the canonical KYC status from
+        // `provider_verification_status` below.
         const { data: ownerProvider } = await admin
           .from("providers")
-          .select("id, business_name, slug, verification_status")
+          .select("id, business_name, slug, is_verified")
           .eq("user_id", verifiedUserId)
           .limit(1)
           .maybeSingle();
@@ -92,20 +95,20 @@ export async function GET(
             id: string;
             business_name?: string | null;
             slug?: string | null;
-            verification_status?: string | null;
+            is_verified?: boolean | null;
           };
           provider = {
             id: p.id,
             business_name: p.business_name ?? null,
             slug: p.slug ?? null,
-            verification_status: p.verification_status ?? null,
+            verification_status: p.is_verified ? "approved" : null,
             relationship: "owner",
           };
         } else {
           const { data: staffRow } = await admin
             .from("provider_staff")
             .select(
-              "providers:providers!provider_staff_provider_id_fkey(id, business_name, slug, verification_status)"
+              "providers:providers!provider_staff_provider_id_fkey(id, business_name, slug, is_verified)"
             )
             .eq("user_id", verifiedUserId)
             .eq("is_active", true)
@@ -118,16 +121,27 @@ export async function GET(
               id: string;
               business_name?: string | null;
               slug?: string | null;
-              verification_status?: string | null;
+              is_verified?: boolean | null;
             };
             provider = {
               id: pp.id,
               business_name: pp.business_name ?? null,
               slug: pp.slug ?? null,
-              verification_status: pp.verification_status ?? null,
+              verification_status: pp.is_verified ? "approved" : null,
               relationship: "staff",
             };
           }
+        }
+
+        // Canonical KYC status overrides the marketplace flag when present.
+        if (provider?.id) {
+          const { data: kycRow } = await admin
+            .from("provider_verification_status")
+            .select("status")
+            .eq("provider_id", provider.id)
+            .maybeSingle();
+          const kycStatus = (kycRow as { status?: string | null } | null)?.status ?? null;
+          if (kycStatus) provider.verification_status = kycStatus;
         }
       } catch (enrichErr) {
         console.error("[verifications/:id] provider enrichment failed:", enrichErr);

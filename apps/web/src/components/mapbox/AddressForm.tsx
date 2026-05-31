@@ -208,7 +208,6 @@ export default function AddressForm({
           placeholder="Start typing an address..."
           country={formData.country || country}
           proximity={proximity}
-          geocodeTypes={["address"]}
           required
         />
         <div className="mt-2 flex flex-col gap-2 sm:flex-row">

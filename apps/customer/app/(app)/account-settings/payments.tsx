@@ -13,18 +13,11 @@ import { useTranslation } from "@beautonomi/i18n";
 import { api } from "@/lib/api-client";
 import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
 import { ScreenFrame } from "@/components/ScreenFrame";
+import { GiftCardRow } from "@/components/payment/GiftCardRow";
 import { Colors } from "@/constants/colors";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
-import { getTenantLocaleTag } from "@/lib/locale";
 import { formatMoney } from "@beautonomi/utils";
-
-function formatDateSafe(value: unknown): string {
-  if (typeof value !== "string" || !value) return "—";
-  const parsed = new Date(value);
-  if (!Number.isFinite(parsed.getTime())) return "—";
-  return parsed.toLocaleDateString(getTenantLocaleTag());
-}
 
 function formatCardExpiry(method: any): string | null {
   if (typeof method?.expiry_label === "string" && method.expiry_label) return method.expiry_label;
@@ -425,38 +418,19 @@ export default function PaymentsScreen() {
                     {t("customer.paymentsScreen.noGiftCards")}
                   </Text>
                 )
-              : giftCards.map((g) => {
-                  const gc = String(g.currency ?? tenantCur);
-                  const bal = formatMoney(Number(g.balance ?? 0), gc);
-                  const exp = g.expires_at
-                    ? t("customer.paymentsScreen.expiresSuffix", {
-                        date: formatDateSafe(g.expires_at),
+              : giftCards.map((g) => (
+                  <GiftCardRow
+                    key={g.id}
+                    card={g}
+                    fallbackCurrency={tenantCur}
+                    onRedeemToWallet={() =>
+                      router.push({
+                        pathname: "/account-settings/wallet",
+                        params: g.code ? { giftCode: String(g.code) } : {},
                       })
-                    : "";
-                  return (
-                    <View
-                      key={g.id}
-                      style={{
-                        backgroundColor: Colors.gray[50],
-                        borderRadius: 12,
-                        padding: 16,
-                        marginBottom: 8,
-                      }}
-                    >
-                      <Text style={{ fontWeight: "500", color: Colors.gray[900] }}>
-                        {g.code
-                          ? `•••• ${String(g.code).slice(-6)}`
-                          : t("customer.paymentsScreen.giftCard")}
-                      </Text>
-                      <Text style={{ fontSize: 14, color: Colors.gray[500] }}>
-                        {t("customer.paymentsScreen.giftBalanceExpires", {
-                          balance: bal,
-                          expires: exp,
-                        })}
-                      </Text>
-                    </View>
-                  );
-                })}
+                    }
+                  />
+                ))}
           </View>
 
           {/* Coupon redemption (parity with web payments). */}

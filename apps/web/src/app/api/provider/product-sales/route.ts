@@ -21,6 +21,7 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
 import { ensureWalkInCustomerLinkedForProductSale } from "@/lib/provider/ensure-walk-in-customer-for-product-sale";
 import { hasProviderCustomerActivityRelationship } from "@/lib/provider/client-access";
+import { requireYocoPlatformEnabledForProvider } from "@/lib/payments/yoco-feature-gate";
 
 /**
  * GET /api/provider/product-sales — list walk-in sales history
@@ -132,6 +133,11 @@ export async function POST(request: NextRequest) {
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");
+
+    if (parsed.payment_method === "yoco") {
+      const yocoGate = await requireYocoPlatformEnabledForProvider(supabase, providerId);
+      if (yocoGate) return yocoGate;
+    }
 
     const { data: providerRow, error: provTenantErr } = await supabase
       .from("providers")

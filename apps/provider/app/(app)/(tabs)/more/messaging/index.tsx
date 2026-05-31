@@ -18,6 +18,7 @@ import { useProvider } from "@/providers/ProviderContext";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Avatar } from "@/components/ui/Avatar";
+import { VerifiedBadge } from "@/components/ui/VerifiedBadge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
@@ -29,6 +30,7 @@ interface Conversation {
   customer_id: string;
   customer_name: string;
   customer_avatar: string | null;
+  customer_identity_verified?: boolean | null;
   last_message_preview: string;
   last_message_at: string;
   unread_count: number;
@@ -322,6 +324,9 @@ export default function MessagingListScreen() {
                     <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }} numberOfLines={1}>
                       {conv.customer_name}
                     </Text>
+                    {conv.customer_identity_verified ? (
+                      <VerifiedBadge verified iconOnly />
+                    ) : null}
                   </View>
                   {conv.unread_count > 0 && (
                     <View style={{ borderRadius: 9999, backgroundColor: "#4f46e5", paddingHorizontal: 8, paddingVertical: 2 }}>

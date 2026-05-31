@@ -118,7 +118,7 @@ export async function GET(request: NextRequest) {
       const supabaseAdmin = getSupabaseAdmin();
       const { data: customers, error: customerError } = await supabaseAdmin
         .from("users")
-        .select("id, full_name, email, phone, avatar_url")
+        .select("id, full_name, email, phone, avatar_url, identity_verified")
         .in("id", customerIds);
       
       if (customerError) {
@@ -168,6 +168,7 @@ export async function GET(request: NextRequest) {
         customer_avatar: customer?.avatar_url || null,
         customer_email: customer?.email || null,
         customer_phone: customer?.phone || null,
+        customer_identity_verified: Boolean((customer as any)?.identity_verified),
         last_message: conv.last_message_preview || "",
         last_message_time: conv.last_message_at || conv.created_at,
         last_message_at: conv.last_message_at || conv.created_at, // Ensure last_message_at is set

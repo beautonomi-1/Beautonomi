@@ -6,6 +6,7 @@ import RoleGuard from "@/components/auth/RoleGuard";
 import { formatBookingDateInTimeZone, formatBookingTimeInTimeZone } from "@/lib/bookings/display-datetime";
 import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
 import { Button } from "@/components/ui/button";
+import { VerifiedBadge } from "@/components/ui/verified-badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -1320,7 +1321,13 @@ export default function ProviderBookingDetail() {
             <div className="space-y-4">
               <div>
                 <p className="text-sm text-gray-600">Name</p>
-                <p className="font-medium">{booking.customer_name || booking.customers?.full_name || "Guest"}</p>
+                <p className="font-medium flex items-center gap-2">
+                  <span>{booking.customer_name || booking.customers?.full_name || "Guest"}</span>
+                  {(booking.customers as { identity_verified?: boolean | null } | null)
+                    ?.identity_verified ? (
+                    <VerifiedBadge verified />
+                  ) : null}
+                </p>
               </div>
               {booking.customers?.rating_average != null && Number(booking.customers?.rating_average) > 0 && (
                 <div className="flex items-center gap-2">

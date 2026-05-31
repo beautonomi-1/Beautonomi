@@ -17,6 +17,10 @@ import {
   normalizeWhatsAppTarget,
   scorePaystackTerminalProviderMatch,
 } from "@/lib/payments/paystack-terminal-assets";
+import {
+  providerBelongsToTenantScope,
+  resolvePaystackTerminalTenantScope,
+} from "@/lib/admin/paystack-terminal-tenant-scope";
 
 const importTerminalSchema = z.object({
   action: z.literal("import"),
@@ -76,6 +80,7 @@ export async function GET(request: NextRequest) {
   try {
     await requireAdminSection(ADMIN_SECTION_FINANCE, request);
     const supabase = getSupabaseAdmin();
+    const tenantScope = await resolvePaystackTerminalTenantScope(supabase, request);
     const { searchParams } = new URL(request.url);
     const { limit, offset } = getOffsetPaginationParams(request, { defaultLimit: 50, maxLimit: 200 });
     const status = searchParams.get("status");
@@ -87,6 +92,17 @@ export async function GET(request: NextRequest) {
     const requestedAssets = searchParams.get("requested_assets") === "true";
     const search = searchParams.get("search")?.trim();
 
+    if (tenantScope.providerIds.length === 0) {
+      return successResponse({
+        items: [],
+        total: 0,
+        limit,
+        offset,
+        hasMore: false,
+        summary: buildSummary([]),
+      });
+    }
+
     let query = (supabase.from("provider_paystack_virtual_terminals") as any)
       .select(
         `
@@ -95,6 +111,8 @@ export async function GET(request: NextRequest) {
         `,
         { count: "exact" },
       )
+      .is("deleted_at", null)
+      .in("provider_id", tenantScope.providerIds)
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -139,6 +157,7 @@ export async function POST(request: NextRequest) {
   try {
     await requireAdminSection(ADMIN_SECTION_FINANCE, request);
     const supabase = getSupabaseAdmin();
+    const tenantScope = await resolvePaystackTerminalTenantScope(supabase, request);
     const body = await request.json();
     if (body?.action === "sync") {
       const parsed = syncSchema.parse(body);
@@ -146,6 +165,7 @@ export async function POST(request: NextRequest) {
         status: parsed.status,
         search: parsed.search,
         perPage: 100,
+        tenantId: tenantScope.tenantId,
       });
       const terminals = remote.data ?? [];
       const codes = terminals.map((terminal) => terminal.code).filter(Boolean);
@@ -160,6 +180,7 @@ export async function POST(request: NextRequest) {
       const { data: providers } = await supabase
         .from("providers")
         .select("id, business_name, phone, billing_phone, tenant_id")
+        .eq("tenant_id", tenantScope.tenantId)
         .limit(1000);
       const suggestions = terminals.map((terminal) => {
         const local = localByCode.get(terminal.code) as { id?: string; terminal_code?: string } | undefined;
@@ -193,6 +214,9 @@ export async function POST(request: NextRequest) {
     }
 
     const parsed = importTerminalSchema.parse(body);
+    if (!providerBelongsToTenantScope(parsed.provider_id, tenantScope)) {
+      return errorResponse("Provider not found.", "PROVIDER_NOT_FOUND", 404);
+    }
     if (!parsed.payment_link && !parsed.terminal_url) {
       return errorResponse(
         "Import the Paystack-hosted payment page URL from the Paystack dashboard before assigning this terminal to a provider.",
@@ -205,7 +229,11 @@ export async function POST(request: NextRequest) {
         return errorResponse(`${key} must be an HTTPS Paystack or trusted storage URL.`, "UNTRUSTED_TERMINAL_ASSET_URL", 400);
       }
     }
-    const remote = await listPaystackVirtualTerminals({ search: parsed.terminal_code, perPage: 100 });
+    const remote = await listPaystackVirtualTerminals({
+      search: parsed.terminal_code,
+      perPage: 100,
+      tenantId: tenantScope.tenantId,
+    });
     const terminal = (remote.data ?? []).find((item) => item.code === parsed.terminal_code);
     if (!terminal) return errorResponse("Paystack terminal not found for this integration.", "NOT_FOUND", 404);
     const { data: provider } = await supabase

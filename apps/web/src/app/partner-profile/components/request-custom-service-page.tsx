@@ -591,7 +591,6 @@ export default function RequestCustomServicePage({ providerId, acceptsCustomRequ
                     placeholder="Start typing your street address…"
                     country={mapboxCountryIso}
                     defaultCountryName={defaultCountryName}
-                    geocodeTypes={["address"]}
                     onInputChange={(value) => {
                       setAddressPlaceName(value);
                       setAddressLine1(value);

@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 
 const mockRequireRoleInApi = vi.fn();
 const mockGetSupabaseServer = vi.fn();
+const mockGetSupabaseAdmin = vi.fn();
 
 vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/supabase/api-helpers")>();
@@ -16,6 +17,28 @@ vi.mock("@/lib/supabase/server", () => ({
   getSupabaseServer: (...args: unknown[]) => mockGetSupabaseServer(...args),
 }));
 
+vi.mock("@/lib/supabase/admin", () => ({
+  getSupabaseAdmin: (...args: unknown[]) => mockGetSupabaseAdmin(...args),
+}));
+
+/** Service-role lookup that maps message user_ids to display names. */
+function createAdminUsersClient(rows: { id: string; full_name: string | null }[] = [
+  { id: "support-1", full_name: "Support Agent" },
+]) {
+  return {
+    from: vi.fn((table: string) => {
+      if (table === "users") {
+        return {
+          select: vi.fn(() => ({
+            in: vi.fn(async () => ({ data: rows, error: null })),
+          })),
+        };
+      }
+      throw new Error(`Unexpected admin table ${table}`);
+    }),
+  };
+}
+
 function createSupabase(options?: { messages?: unknown[]; description?: string }) {
   const messages = options?.messages ?? [
     {
@@ -25,7 +48,6 @@ function createSupabase(options?: { messages?: unknown[]; description?: string }
       created_at: "2026-05-01T10:00:00.000Z",
       user_id: "provider-user-1",
       attachments: [],
-      author: { display_name: "Provider Owner" },
     },
     {
       id: "message-2",
@@ -34,7 +56,6 @@ function createSupabase(options?: { messages?: unknown[]; description?: string }
       created_at: "2026-05-01T10:05:00.000Z",
       user_id: "support-1",
       attachments: [],
-      author: { display_name: "Support Agent" },
     },
   ];
 
@@ -96,6 +117,7 @@ describe("GET /api/me/support-tickets/[id]", () => {
     vi.resetModules();
     vi.clearAllMocks();
     mockRequireRoleInApi.mockResolvedValue({ user: { id: "provider-user-1", role: "provider_owner" } });
+    mockGetSupabaseAdmin.mockReturnValue(createAdminUsersClient());
   });
 
   it("returns the full visible thread for the ticket owner", async () => {
@@ -118,7 +140,7 @@ describe("GET /api/me/support-tickets/[id]", () => {
     });
   });
 
-  it("embeds the author via the users FK (not a non-existent profiles relationship)", async () => {
+  it("selects messages without a fragile users embed (owner RLS cannot read staff rows)", async () => {
     const messageSelect = vi.fn(() => ({
       eq: vi.fn(() => ({
         eq: vi.fn(() => ({
@@ -152,8 +174,27 @@ describe("GET /api/me/support-tickets/[id]", () => {
     await GET(req, { params: Promise.resolve({ id: "ticket-1" }) });
 
     const selectArg = String(messageSelect.mock.calls[0]?.[0] ?? "");
-    expect(selectArg).toContain("author:users!support_ticket_messages_user_id_fkey");
+    expect(selectArg).not.toContain("author:users");
     expect(selectArg).not.toContain("profiles");
+    expect(selectArg).toContain("user_id");
+  });
+
+  it("resolves staff author names through the service-role client", async () => {
+    mockGetSupabaseServer.mockResolvedValue(createSupabase());
+    mockGetSupabaseAdmin.mockReturnValue(
+      createAdminUsersClient([{ id: "support-1", full_name: "Nadia from Support" }]),
+    );
+
+    const { GET } = await import("../route");
+    const req = new NextRequest("http://localhost/api/me/support-tickets/ticket-1");
+    const res = await GET(req, { params: Promise.resolve({ id: "ticket-1" }) });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.data.messages[1]).toMatchObject({
+      author_name: "Nadia from Support",
+      is_mine: false,
+    });
   });
 
   it("prepends legacy description when no message rows exist", async () => {

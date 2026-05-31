@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { fetcher } from "@/lib/http/fetcher";
 import BackButton from "@/components/ui/back-button";
 import Breadcrumb from "@/components/ui/breadcrumb";
@@ -19,6 +20,7 @@ export default function WalletPage({
   initialWallet: WalletInitialPayload | null;
 }) {
   const { format } = usePlatformCurrency();
+  const searchParams = useSearchParams();
   const [wallet, setWallet] = useState<WalletData | null>(() => initialWallet?.wallet ?? null);
   const [transactions, setTransactions] = useState<WalletTx[]>(() => initialWallet?.transactions ?? []);
   const [isLoading, setIsLoading] = useState(() => !initialWallet);
@@ -65,6 +67,15 @@ export default function WalletPage({
     }
     void load();
   }, []);
+
+  // Prefill the gift card code when arriving from a redeem link (e.g. the email
+  // we send a recipient: /account-settings/wallet?giftCode=GC-XXXX).
+  useEffect(() => {
+    const incoming = searchParams.get("giftCode");
+    if (incoming && incoming.trim()) {
+      setGiftCardCode(incoming.trim().toUpperCase());
+    }
+  }, [searchParams]);
 
   const startTopup = async () => {
     const amount = Number(topupAmount);
@@ -223,6 +234,9 @@ export default function WalletPage({
                             {isRedeeming ? "Redeeming…" : "Redeem"}
                           </button>
                         </div>
+                        <p className="text-xs text-gray-500 mt-2">
+                          Enter a code you bought or that someone shared with you. The full balance is added to your wallet instantly.
+                        </p>
                       </div>
                     </div>
                   </div>

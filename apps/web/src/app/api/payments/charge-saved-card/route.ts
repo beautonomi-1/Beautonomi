@@ -21,6 +21,7 @@ import {
 } from "@/lib/payments/resolve-paystack-initialize-amount";
 import { revalidateBookingSlotBeforePayment } from "@/lib/bookings/revalidate-booking-slot-before-payment";
 import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
+import { applyWalletTopupFromSuccessfulPaystackCharge } from "@/lib/wallet/apply-wallet-topup-from-paystack-success";
 import { z } from "zod";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { isPaymentMethodExpired } from "@/lib/payments/payment-method-expiry";
@@ -139,6 +140,10 @@ export async function POST(request: NextRequest) {
     const giftCardOrderIdFromMeta =
       typeof meta.gift_card_order_id === "string" && meta.gift_card_order_id.trim()
         ? meta.gift_card_order_id.trim()
+        : null;
+    const walletTopupIdFromMeta =
+      typeof meta.wallet_topup_id === "string" && meta.wallet_topup_id.trim()
+        ? meta.wallet_topup_id.trim()
         : null;
 
     if (productOrderIdFromMeta) {
@@ -344,6 +349,41 @@ export async function POST(request: NextRequest) {
         });
       } catch (syncErr) {
         console.error("[charge-saved-card] Failed to sync booking after charge:", syncErr);
+      }
+    }
+
+    // Wallet top-up via saved card: credit the wallet immediately on a successful
+    // charge so the customer sees their balance update right away, instead of
+    // waiting on the async webhook (the charge reference differs from the
+    // wallet_topup_* reference set at initialize, so webhook-only crediting was
+    // fragile). applyWalletTopup is idempotent, so verify/webhook can run later
+    // without double-crediting.
+    if (
+      walletTopupIdFromMeta &&
+      !productOrderIdFromMeta &&
+      !bookingIdFromMeta &&
+      !giftCardOrderIdFromMeta &&
+      String(chargeResult.data?.status ?? "") === "success"
+    ) {
+      const { data: wtRow } = await (supabaseAdmin.from("wallet_topups") as any)
+        .select("id, user_id")
+        .eq("id", walletTopupIdFromMeta)
+        .maybeSingle();
+      if (wtRow && (wtRow as { user_id?: string }).user_id === user.id) {
+        try {
+          const chargeData = chargeResult.data as { reference?: string; amount?: number };
+          await applyWalletTopupFromSuccessfulPaystackCharge(
+            {
+              reference: String(chargeData.reference ?? chargeReference),
+              metadata: { ...meta, wallet_topup_id: walletTopupIdFromMeta, user_id: user.id },
+              amount:
+                typeof chargeData.amount === "number" ? chargeData.amount : amountInSmallestUnit,
+            },
+            supabaseAdmin,
+          );
+        } catch (walletErr) {
+          console.error("[charge-saved-card] Failed to credit wallet top-up after charge:", walletErr);
+        }
       }
     }
 

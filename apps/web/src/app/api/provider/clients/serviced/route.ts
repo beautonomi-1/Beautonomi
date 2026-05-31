@@ -92,7 +92,7 @@ export async function GET(request: NextRequest) {
     const { data: customers, error: customersError } = await supabaseAdmin
       .from("users")
       .select(
-        "id, full_name, email, phone, avatar_url, rating_average, review_count, customer_review_rating_avg, customer_review_rating_count, customer_booking_rating_avg, customer_booking_rating_count, date_of_birth, email_notifications_enabled, sms_notifications_enabled",
+        "id, full_name, email, phone, avatar_url, identity_verified, identity_verification_status, rating_average, review_count, customer_review_rating_avg, customer_review_rating_count, customer_booking_rating_avg, customer_booking_rating_count, date_of_birth, email_notifications_enabled, sms_notifications_enabled",
       )
       .in("id", customerIds);
 

@@ -37,6 +37,8 @@ export interface MergedProviderClient {
   relationship_source?: string;
   privacy_level?: string;
   is_limited_platform_link?: boolean;
+  /** True when the customer has completed identity verification. */
+  identity_verified?: boolean | null;
 }
 
 export function mergeProviderClientsListFromSources(
@@ -90,6 +92,7 @@ export function mergeProviderClientsListFromSources(
       relationship_source: client.relationship_source,
       privacy_level: client.privacy_level,
       is_limited_platform_link: Boolean(client.customer?.is_limited_platform_link),
+      identity_verified: Boolean(client.customer?.identity_verified),
     };
   });
 
@@ -122,6 +125,7 @@ export function mergeProviderClientsListFromSources(
         is_saved: false,
         customer_id: client.customer_id,
         is_limited_platform_link: false,
+        identity_verified: Boolean(client.customer?.identity_verified),
       };
     });
 
@@ -158,6 +162,9 @@ export function mergeProviderClientsListFromSources(
         is_saved: false,
         customer_id: client.customer_id,
         is_limited_platform_link: false,
+        identity_verified: Boolean(
+          client.customer?.identity_verified || client.customer_identity_verified,
+        ),
       };
     });
 

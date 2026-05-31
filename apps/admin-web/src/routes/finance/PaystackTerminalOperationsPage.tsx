@@ -143,6 +143,13 @@ type SyncTerminal = {
 
 const QK = [...adminQueryKeys.finance.all(), "paystack-terminal"] as const;
 
+async function invalidatePaystackTerminalQueries(
+  qc: ReturnType<typeof useQueryClient>,
+) {
+  await qc.invalidateQueries({ queryKey: QK });
+  void qc.invalidateQueries({ queryKey: adminQueryKeys.navCounts() });
+}
+
 function money(amount: number | string | null | undefined, currency = "ZAR") {
   return `${currency} ${Number(amount ?? 0).toFixed(2)}`;
 }
@@ -295,7 +302,7 @@ export function PaystackTerminalOperationsPage() {
       setResolveFor(null);
       setResolveEntityId("");
       setResolveReason("");
-      await qc.invalidateQueries({ queryKey: QK });
+      await invalidatePaystackTerminalQueries(qc);
     },
     onError: (err: Error) => adminToast.error(err.message || "Failed to update terminal payment"),
   });
@@ -306,7 +313,7 @@ export function PaystackTerminalOperationsPage() {
     onSuccess: async () => {
       adminToast.success("Terminal assets updated.");
       setAssetFor(null);
-      await qc.invalidateQueries({ queryKey: QK });
+      await invalidatePaystackTerminalQueries(qc);
     },
     onError: (err: Error) => adminToast.error(err.message || "Failed to update terminal assets"),
   });
@@ -333,7 +340,7 @@ export function PaystackTerminalOperationsPage() {
       adminToast.success(
         `Checked ${data.checked ?? 0} Paystack transactions; recorded ${data.recorded ?? 0} terminal payments.`,
       );
-      await qc.invalidateQueries({ queryKey: QK });
+      await invalidatePaystackTerminalQueries(qc);
     },
     onError: (err: Error) => adminToast.error(err.message || "Failed to sync Paystack Terminal payments"),
   });
@@ -343,7 +350,7 @@ export function PaystackTerminalOperationsPage() {
       adminApi.postJson("/api/admin/paystack-terminal/terminals", { action: "import", ...body }),
     onSuccess: async () => {
       adminToast.success("Paystack terminal imported.");
-      await qc.invalidateQueries({ queryKey: QK });
+      await invalidatePaystackTerminalQueries(qc);
       syncMut.mutate();
     },
     onError: (err: Error) => adminToast.error(err.message || "Failed to import Paystack terminal"),
@@ -357,7 +364,7 @@ export function PaystackTerminalOperationsPage() {
       }),
     onSuccess: async () => {
       adminToast.success("Paystack terminal created from setup request.");
-      await qc.invalidateQueries({ queryKey: QK });
+      await invalidatePaystackTerminalQueries(qc);
       syncMut.mutate();
     },
     onError: (err: Error) => adminToast.error(err.message || "Failed to create Paystack terminal"),
@@ -368,7 +375,7 @@ export function PaystackTerminalOperationsPage() {
     onSuccess: async () => {
       adminToast.success("Poster uploaded.");
       setAssetFor(null);
-      await qc.invalidateQueries({ queryKey: QK });
+      await invalidatePaystackTerminalQueries(qc);
     },
     onError: (err: Error) => adminToast.error(err.message || "Failed to upload poster"),
   });

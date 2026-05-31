@@ -31,6 +31,7 @@ import { useProvider } from "@/providers/ProviderContext";
 import { Colors } from "@/constants/colors";
 import { tabScreenScrollBottomPadding } from "@/constants/layout";
 import { E164PhoneField } from "@/components/E164PhoneField";
+import { VerifiedBadge } from "@/components/ui/VerifiedBadge";
 import { validateE164Phone } from "@/lib/phone-country-codes";
 import { useDefaultPhoneDial } from "@/hooks/useDefaultPhoneDial";
 import { shouldShowCancelledMembershipBadge } from "@beautonomi/utils";
@@ -69,6 +70,7 @@ interface ApiClient {
     phone?: string;
     avatar_url?: string | null;
     is_limited_platform_link?: boolean;
+    identity_verified?: boolean | null;
   };
   relationship_source?: string | null;
   privacy_level?: string | null;
@@ -96,6 +98,7 @@ interface Client {
    */
   is_registered?: boolean;
   is_limited_platform_link?: boolean;
+  identity_verified?: boolean | null;
   salon_membership?: ApiClient["salon_membership"];
 }
 
@@ -237,6 +240,9 @@ const ClientCard = React.memo(function ClientCard({ client, onPress, onBook, onM
               <Text style={{ fontSize: 16, fontWeight: "500", color: Colors.gray[900] }} numberOfLines={1}>
                 {client.full_name}
               </Text>
+              {client.identity_verified && (
+                <VerifiedBadge verified style={{ marginLeft: 8 }} />
+              )}
               {isVip && (
                 <View style={{ marginLeft: 8, borderRadius: 9999, backgroundColor: "#fef3c7", paddingHorizontal: 8, paddingVertical: 2 }}>
                   <Text style={{ fontSize: 10, fontWeight: "700", color: "#b45309" }}>VIP</Text>
@@ -481,6 +487,7 @@ export default function ClientsScreen() {
         tags: c.tags ?? [],
         is_registered: isRegistered,
         is_limited_platform_link: Boolean(c.customer?.is_limited_platform_link || c.privacy_level === "limited"),
+        identity_verified: Boolean(c.customer?.identity_verified),
         salon_membership: c.salon_membership ?? null,
       });
     };

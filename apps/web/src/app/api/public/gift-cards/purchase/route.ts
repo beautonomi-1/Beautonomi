@@ -16,6 +16,8 @@ const purchaseSchema = z.object({
   quantity: z.number().int().positive().min(1).max(1000).default(1),
   currency: z.string().min(3).max(6).optional(),
   recipient_email: z.string().email().optional().nullable(),
+  recipient_name: z.string().trim().min(1).max(120).optional().nullable(),
+  message: z.string().trim().max(500).optional().nullable(),
   template_id: z.string().trim().min(1).max(120).optional(),
   template_name: z.string().trim().min(1).max(160).optional(),
   template_image_url: z.string().trim().min(1).max(2000).optional(),
@@ -144,6 +146,8 @@ export async function POST(request: NextRequest) {
         metadata: {
           source: resolvedSource,
           attribution,
+          recipient_name: parsed.data.recipient_name || undefined,
+          message: parsed.data.message || undefined,
           ...templateMetadata,
         },
       })

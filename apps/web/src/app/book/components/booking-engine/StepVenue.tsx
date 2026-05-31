@@ -343,7 +343,6 @@ export function StepVenue({
               })
             }
             placeholder="Start typing your street address..."
-            geocodeTypes={["address"]}
             className="rounded-xl h-12 border bg-white/80 w-full"
           />
           <div className="grid grid-cols-2 gap-3">

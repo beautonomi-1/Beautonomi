@@ -201,17 +201,25 @@ export async function GET(request: NextRequest) {
           return { count: 0 };
         }
       })(),
-      // Paystack Virtual Terminal: provider-submitted setup requests awaiting Ops fulfilment
+      // Paystack Virtual Terminal: setup requests + asset completion queue
       (async () => {
         if (tenantProviderIds.length === 0) return { count: 0 };
         try {
-          const { count, error } = await (supabase
-            .from("provider_paystack_virtual_terminal_setup_requests") as any)
-            .select("id", { count: "exact", head: true })
-            .in("status", ["requested", "in_progress"])
-            .in("provider_id", tenantProviderIds);
-          if (error) return { count: 0 };
-          return { count: count ?? 0 };
+          const [setupResult, assetResult] = await Promise.all([
+            (supabase.from("provider_paystack_virtual_terminal_setup_requests") as any)
+              .select("id", { count: "exact", head: true })
+              .in("status", ["requested", "in_progress"])
+              .in("provider_id", tenantProviderIds),
+            (supabase.from("provider_paystack_virtual_terminals") as any)
+              .select("id", { count: "exact", head: true })
+              .in("provider_id", tenantProviderIds)
+              .in("asset_request_status", ["requested", "in_progress"])
+              .is("deleted_at", null),
+          ]);
+          if (setupResult.error && assetResult.error) return { count: 0 };
+          return {
+            count: (setupResult.count ?? 0) + (assetResult.count ?? 0),
+          };
         } catch {
           return { count: 0 };
         }

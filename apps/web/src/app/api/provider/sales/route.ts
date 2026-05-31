@@ -9,6 +9,7 @@ import {
 } from "@/lib/provider-sales/pos-product-stock";
 import { dateRangeBoundsUtc } from "@/lib/dates/provider-tz";
 import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
+import { requireYocoPlatformEnabledForProvider } from "@/lib/payments/yoco-feature-gate";
 
 /** Values allowed by `sales.payment_method` CHECK (see migration 129). */
 const DB_SALE_PAYMENT_METHODS = new Set([
@@ -392,6 +393,11 @@ export async function POST(request: NextRequest) {
 
     const resolvedPaymentStatus = payment_status || "completed";
     const normalizedPaymentMethod = normalizeSalePaymentMethodForDb(payment_method);
+
+    if (normalizedPaymentMethod === "yoco") {
+      const yocoGate = await requireYocoPlatformEnabledForProvider(supabase, providerId);
+      if (yocoGate) return yocoGate;
+    }
 
     const stockError = await validatePosProductStock(supabase, providerId, items);
     if (stockError) {

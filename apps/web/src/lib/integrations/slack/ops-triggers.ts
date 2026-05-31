@@ -201,7 +201,9 @@ export function slackNotifyPaystackTerminalSetupRequested(params: {
     tenantId: params.tenantId ?? "platform",
     environment: eventEnv(),
     eventKey: SLACK_EVENT_KEYS.FINANCE_PAYSTACK_TERMINAL_SETUP_REQUESTED,
-    dedupeKey: `provider:${params.providerId}:paystack_terminal_setup_requested`,
+    dedupeKey: params.requestId
+      ? `paystack_terminal_setup:${params.requestId}:requested`
+      : `provider:${params.providerId}:paystack_terminal_setup_requested`,
     entityType: "provider_paystack_virtual_terminal_setup_request",
     entityId: params.requestId ?? params.providerId,
     title: "Paystack Terminal setup requested",

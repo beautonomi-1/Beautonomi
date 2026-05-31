@@ -6,10 +6,12 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import Constants from "expo-constants";
 import { useAuth } from "@/providers/AuthProvider";
+import { useProvider } from "@/providers/ProviderContext";
 import { useTranslation } from "@beautonomi/i18n";
 import { useApi } from "@/hooks/useApi";
 import { Colors } from "@/constants/colors";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
+import { VerifiedBadge } from "@/components/ui/VerifiedBadge";
 import { openNativeStoreReview } from "@/lib/open-store-review";
 import { getAnalyticsClient } from "@/lib/analytics-rn";
 import { formatCurrency } from "@/lib/format";
@@ -234,6 +236,7 @@ export default function MoreScreen() {
     provider_review_count?: number | null;
   };
   const { data: meProfile, refresh: refreshMeProfile } = useApi<MeProfileLite>("/api/me/profile", { staleTimeMs: 45_000 });
+  const { provider } = useProvider();
   const { data: financeSummary, refresh: refreshFinanceSummary } = useApi<FinanceSummaryData>("/api/provider/finance?range=month", { staleTimeMs: 30_000 });
   const { data: payoutAccounts, loading: payoutAccountsLoading, refresh: refreshPayoutAccounts } = useApi<PayoutAccountSummary[]>("/api/provider/payout-accounts", { staleTimeMs: 30_000 });
   const { data: payoutSchedule, refresh: refreshPayoutSchedule } = useApi<PayoutScheduleData>("/api/provider/payouts/next-date", { staleTimeMs: 60_000 });
@@ -458,6 +461,9 @@ export default function MoreScreen() {
               >
                 My profile
               </Text>
+              {provider?.is_verified ? (
+                <VerifiedBadge verified size="md" />
+              ) : null}
               {meProfile?.provider_rating_average != null && (
                 <TouchableOpacity
                   onPress={() => {

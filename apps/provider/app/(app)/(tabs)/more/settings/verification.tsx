@@ -41,11 +41,13 @@ interface VerificationStatusResponse {
   status: VerificationStatus;
   sumsub_available: boolean;
   sumsub_applicant_id?: string | null;
+  rejection_reason?: string | null;
   manual_verification?: {
     id: string;
     status: string;
     document_type: string;
     submitted_at: string;
+    rejection_reason?: string | null;
   } | null;
   last_reviewed_at?: string | null;
   updated_at?: string | null;
@@ -257,6 +259,19 @@ export default function VerificationScreen() {
             </Text>
           </View>
 
+          {/* Rejection reason — tells the provider exactly what to fix */}
+          {status === "rejected" && statusData?.rejection_reason ? (
+            <View style={twStyle("mt-4 rounded-2xl bg-red-50 p-4")}>
+              <View style={twStyle("flex-row items-start gap-2")}>
+                <Ionicons name="alert-circle-outline" size={18} color="#ef4444" style={{ marginTop: 1 }} />
+                <View style={twStyle("flex-1")}>
+                  <Text style={twStyle("text-sm font-semibold text-red-800 mb-1")}>Why it was declined</Text>
+                  <Text style={twStyle("text-sm text-red-700")}>{statusData.rejection_reason}</Text>
+                </View>
+              </View>
+            </View>
+          ) : null}
+
           {/* SumSub button — only when available and action is needed */}
           {sumsubAvailable && canAct && (
             <View style={twStyle("mt-6")}>
@@ -276,15 +291,25 @@ export default function VerificationScreen() {
             </View>
           )}
 
-          {/* Manual upload — shown when SumSub is not available AND can act */}
-          {!sumsubAvailable && canAct && (
+          {/* Manual upload — always available so providers have a fallback even
+              when SumSub is offered (camera issues, unsupported document, etc.). */}
+          {canAct && (
             <View style={twStyle("mt-6")}>
+              {sumsubAvailable && (
+                <View style={twStyle("flex-row items-center mb-5")}>
+                  <View style={twStyle("flex-1 h-px bg-gray-200")} />
+                  <Text style={twStyle("mx-3 text-xs font-medium text-gray-400")}>OR UPLOAD MANUALLY</Text>
+                  <View style={twStyle("flex-1 h-px bg-gray-200")} />
+                </View>
+              )}
               {/* Info banner */}
               <View style={twStyle("bg-blue-50 rounded-xl p-4 mb-5")}>
                 <View style={twStyle("flex-row items-start gap-3")}>
                   <Ionicons name="information-circle-outline" size={20} color="#3b82f6" />
                   <Text style={twStyle("flex-1 text-sm text-blue-700")}>
-                    Our automated verification is being set up. Upload a copy of your ID and our team will review it within 1–2 business days.
+                    {sumsubAvailable
+                      ? "Prefer to upload your ID instead? Submit a copy and our team will review it within 1–2 business days."
+                      : "Our automated verification is being set up. Upload a copy of your ID and our team will review it within 1–2 business days."}
                   </Text>
                 </View>
               </View>

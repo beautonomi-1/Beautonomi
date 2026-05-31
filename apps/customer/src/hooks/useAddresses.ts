@@ -167,9 +167,15 @@ export async function searchAddress(
     const body: Record<string, unknown> = {
       query: query.trim(),
       country: options?.country ?? getDeviceRegionCountryIso(),
-      types: ["address"],
-      limit: 5,
+      limit: options?.limit ?? 10,
     };
+    // Omit `types` by default so Mapbox returns the full fuzzy result set
+    // (addresses, places, suburbs/localities, neighborhoods, POIs) — matching
+    // the working provider autocomplete. Restricting to ["address"] hid most
+    // South African suburb/estate/place searches and looked like "no matches".
+    if (options?.types?.length) {
+      body.types = options.types;
+    }
     if (options?.proximity) {
       body.proximity = {
         longitude: options.proximity.longitude,

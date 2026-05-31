@@ -7,6 +7,7 @@ import { assertProviderUserCanAccessBookingBranch } from "@/lib/provider-booking
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { bookingTenantMismatchResponse } from "@/lib/tenant/provider-matches-host";
 import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
+import { requireYocoPlatformEnabledForProvider } from "@/lib/payments/yoco-feature-gate";
 
 /**
  * POST /api/provider/bookings/[id]/mark-paid
@@ -66,6 +67,11 @@ export async function POST(
         "PAYSTACK_TERMINAL_ALLOCATION_REQUIRED",
         400,
       );
+    }
+
+    if (payment_provider === "yoco") {
+      const yocoGate = await requireYocoPlatformEnabledForProvider(supabase, providerId);
+      if (yocoGate) return yocoGate;
     }
 
     const validPaymentMethods = ['cash', 'card', 'bank_transfer', 'other'];

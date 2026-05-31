@@ -1,9 +1,10 @@
-import { type ComponentProps } from "react";
+import { useState, type ComponentProps } from "react";
 import { View, Text, Modal, TouchableOpacity, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useTranslation } from "@beautonomi/i18n";
 import { Colors } from "@/constants/colors";
 import { formatMoney } from "@beautonomi/utils";
+import { copyGiftCardCode } from "@/lib/gift-card-share";
 
 type IoniconName = ComponentProps<typeof Ionicons>["name"];
 
@@ -13,6 +14,10 @@ export interface PaymentSuccessSummaryRow {
   value: string;
   /** Press-and-hold to copy (e.g. gift card codes). */
   valueSelectable?: boolean;
+  /** Render a Copy button that copies `value` to the clipboard. */
+  copyable?: boolean;
+  /** Render a Share button that invokes `onShare`. */
+  onShare?: () => void;
 }
 
 export interface PaymentSuccessOverlayProps {
@@ -44,6 +49,7 @@ export function PaymentSuccessOverlay({
   footerHint,
 }: PaymentSuccessOverlayProps) {
   const { t } = useTranslation();
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const isWaiting = status === "pending" || status === "processing";
   const iconName = isWaiting ? "time-outline" : "checkmark-circle";
   const iconColor = isWaiting ? "#F59E0B" : Colors.primary;
@@ -71,6 +77,52 @@ export function PaymentSuccessOverlay({
                   <View style={{ flex: 1 }}>
                     <Text style={styles.summaryLabel}>{row.label}</Text>
                     <Text style={styles.summaryValue} selectable={row.valueSelectable}>{row.value}</Text>
+                    {row.copyable || row.onShare ? (
+                      <View style={styles.rowActions}>
+                        {row.copyable ? (
+                          <TouchableOpacity
+                            style={styles.rowActionBtn}
+                            onPress={() =>
+                              void copyGiftCardCode(row.value, () => {
+                                setCopiedIndex(i);
+                                setTimeout(() => setCopiedIndex((c) => (c === i ? null : c)), 1800);
+                              })
+                            }
+                            accessibilityRole="button"
+                            accessibilityLabel={t("customer.paymentsScreen.giftCardCopy", "Copy code") as string}
+                          >
+                            <Ionicons
+                              name={copiedIndex === i ? "checkmark" : "copy-outline"}
+                              size={14}
+                              color={copiedIndex === i ? "#16a34a" : Colors.primary}
+                            />
+                            <Text
+                              style={[
+                                styles.rowActionText,
+                                copiedIndex === i && { color: "#16a34a" },
+                              ]}
+                            >
+                              {copiedIndex === i
+                                ? (t("customer.paymentsScreen.giftCardCopied", "Copied") as string)
+                                : (t("customer.paymentsScreen.giftCardCopy", "Copy code") as string)}
+                            </Text>
+                          </TouchableOpacity>
+                        ) : null}
+                        {row.onShare ? (
+                          <TouchableOpacity
+                            style={styles.rowActionBtn}
+                            onPress={row.onShare}
+                            accessibilityRole="button"
+                            accessibilityLabel={t("customer.paymentsScreen.giftCardShare", "Share gift card") as string}
+                          >
+                            <Ionicons name="share-social-outline" size={14} color={Colors.primary} />
+                            <Text style={styles.rowActionText}>
+                              {t("customer.paymentsScreen.giftCardShare", "Share")}
+                            </Text>
+                          </TouchableOpacity>
+                        ) : null}
+                      </View>
+                    ) : null}
                   </View>
                 </View>
               ))}
@@ -185,6 +237,26 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#111827",
     marginTop: 2,
+  },
+  rowActions: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 8,
+  },
+  rowActionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: `${Colors.primary}40`,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  rowActionText: {
+    marginLeft: 5,
+    fontSize: 12,
+    fontWeight: "700",
+    color: Colors.primary,
   },
   amountLine: {
     fontSize: 12,

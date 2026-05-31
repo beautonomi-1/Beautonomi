@@ -24,6 +24,7 @@ import * as Clipboard from "expo-clipboard";
 import { useApi, useApiPost, useApiMutation } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { VerifiedBadge } from "@/components/ui/VerifiedBadge";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { CustomOfferSheet } from "@/components/CustomOfferSheet";
@@ -142,6 +143,7 @@ interface ConversationDetail {
   customer_id?: string;
   customer_name: string;
   customer_avatar_url: string | null;
+  customer_identity_verified?: boolean | null;
   customer_phone?: string | null;
   customer_email?: string | null;
   is_pinned?: boolean;
@@ -806,6 +808,9 @@ export default function ChatScreen() {
         <ScreenHeader
           title={conversation?.customer_name ?? "Chat"}
           showBack
+          titleAccessory={
+            conversation?.customer_identity_verified ? <VerifiedBadge verified /> : null
+          }
           leadingContent={
             conversation?.customer_avatar_url ? (
               <Image

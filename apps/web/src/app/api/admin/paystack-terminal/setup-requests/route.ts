@@ -15,6 +15,11 @@ import {
   buildTerminalBusinessSnapshot,
   computePaystackTerminalAssetStatus,
 } from "@/lib/payments/paystack-terminal-assets";
+import {
+  providerBelongsToTenantScope,
+  resolvePaystackTerminalTenantScope,
+} from "@/lib/admin/paystack-terminal-tenant-scope";
+import { slackNotifyPaystackTerminalAssetRequested } from "@/lib/integrations/slack/ops-triggers";
 
 const createFromRequestSchema = z.object({
   action: z.literal("create_from_request"),
@@ -25,9 +30,20 @@ export async function GET(request: NextRequest) {
   try {
     await requireAdminSection(ADMIN_SECTION_FINANCE, request);
     const supabase = getSupabaseAdmin();
+    const tenantScope = await resolvePaystackTerminalTenantScope(supabase, request);
     const { searchParams } = new URL(request.url);
     const { limit, offset } = getOffsetPaginationParams(request, { defaultLimit: 50, maxLimit: 100 });
     const status = searchParams.get("status") ?? "requested";
+
+    if (tenantScope.providerIds.length === 0) {
+      return successResponse({
+        items: [],
+        total: 0,
+        limit,
+        offset,
+        hasMore: false,
+      });
+    }
 
     let query = (supabase.from("provider_paystack_virtual_terminal_setup_requests") as any)
       .select(
@@ -35,11 +51,12 @@ export async function GET(request: NextRequest) {
           *,
           provider:providers(id, business_name, tenant_id, phone, billing_phone, billing_email, user_id),
           location:provider_locations(id, name, city),
-          requested_by_user:users!provider_paystack_virtual_terminal_setup_requests_requested_by_fkey(id, email, full_name)
+          requested_by_user:users!requested_by(id, email, full_name)
         `,
         { count: "exact" },
       )
       .order("created_at", { ascending: false })
+      .in("provider_id", tenantScope.providerIds)
       .range(offset, offset + limit - 1);
 
     if (status !== "all") query = query.eq("status", status);
@@ -63,6 +80,7 @@ export async function POST(request: NextRequest) {
   try {
     const { user } = await requireAdminSection(ADMIN_SECTION_FINANCE, request);
     const supabase = getSupabaseAdmin();
+    const tenantScope = await resolvePaystackTerminalTenantScope(supabase, request);
     const body = createFromRequestSchema.parse(await request.json());
 
     const { data: setupRequest, error: requestError } = await (supabase
@@ -79,6 +97,9 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
     if (requestError) throw requestError;
     if (!setupRequest) return errorResponse("Setup request not found or already fulfilled.", "NOT_FOUND", 404);
+    if (!providerBelongsToTenantScope(setupRequest.provider_id, tenantScope)) {
+      return errorResponse("Setup request not found or already fulfilled.", "NOT_FOUND", 404);
+    }
 
     const destinations = Array.isArray(setupRequest.destinations) ? setupRequest.destinations : [];
     if (destinations.length === 0) {
@@ -166,6 +187,17 @@ export async function POST(request: NextRequest) {
       .select()
       .single();
     if (updateError) throw updateError;
+
+    slackNotifyPaystackTerminalAssetRequested({
+      tenantId: tenantId ?? tenantScope.tenantId,
+      terminalId: localTerminal.id,
+      terminalCode: terminal.code,
+      providerName: setupRequest.provider?.business_name ?? null,
+      terminalName: terminal.name ?? setupRequest.suggested_paystack_name,
+      paymentLink: terminalUrl,
+      requestedBy: user.email ?? user.id,
+      autoRequested: true,
+    });
 
     return successResponse({ terminal: localTerminal, setup_request: updatedRequest }, 201);
   } catch (error) {

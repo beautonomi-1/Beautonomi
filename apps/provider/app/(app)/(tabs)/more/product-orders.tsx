@@ -24,6 +24,7 @@ import { pushInAppBrowser } from "@/lib/in-app-web";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { VerifiedBadge } from "@/components/ui/VerifiedBadge";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { BottomSheet } from "@/components/ui/BottomSheet";
@@ -96,7 +97,7 @@ interface Order {
   cancellation_reason?: string | null;
   created_at: string;
   items?: OrderItem[];
-  customer?: { id?: string | null; full_name?: string | null; email?: string | null; phone?: string | null } | null;
+  customer?: { id?: string | null; full_name?: string | null; email?: string | null; phone?: string | null; identity_verified?: boolean | null } | null;
   customer_name?: string | null;
   customer_phone?: string | null;
   delivery_address?: OrderAddress | OrderAddress[] | null;
@@ -686,6 +687,9 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                       · {formatCurrency(Number(order.total_amount), currency)}
                     </Text>
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2, flexWrap: "wrap" }}>
+                      {order.customer?.identity_verified && (
+                        <VerifiedBadge verified size="xs" />
+                      )}
                       {order.order_source === "walk_in" && (
                         <View style={twStyle("rounded-full bg-amber-100 px-2 py-0.5")}>
                           <Text style={twStyle("text-xs font-medium text-amber-800")}>Walk-in</Text>
@@ -891,7 +895,14 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                   </Text>
                   {(() => {
                     const nm = (activeOrder.customer?.full_name ?? activeOrder.customer_name ?? "").trim();
-                    return nm ? <Text style={twStyle("text-sm font-medium text-gray-900")}>{nm}</Text> : null;
+                    return nm ? (
+                      <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap" }}>
+                        <Text style={twStyle("text-sm font-medium text-gray-900")}>{nm}</Text>
+                        {activeOrder.customer?.identity_verified ? (
+                          <VerifiedBadge verified style={{ marginLeft: 8 }} />
+                        ) : null}
+                      </View>
+                    ) : null;
                   })()}
                   {(activeOrder.customer?.phone?.trim() || activeOrder.customer_phone?.trim()) ? (
                     <Text style={twStyle("text-sm text-gray-700")}>

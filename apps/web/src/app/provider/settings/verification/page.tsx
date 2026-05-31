@@ -27,11 +27,13 @@ interface StatusResponse {
   status: VerificationStatus;
   sumsub_available: boolean;
   sumsub_applicant_id?: string | null;
+  rejection_reason?: string | null;
   manual_verification?: {
     id: string;
     status: string;
     document_type: string;
     submitted_at: string;
+    rejection_reason?: string | null;
   } | null;
 }
 
@@ -78,6 +80,16 @@ export default function VerificationPage() {
 
   useEffect(() => {
     loadStatus();
+  }, [loadStatus]);
+
+  // Reload when the provider returns to the tab (e.g. after an admin review or a
+  // Sumsub webhook lands) so the status reflects without a manual refresh.
+  useEffect(() => {
+    const onFocus = () => {
+      void loadStatus();
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
   }, [loadStatus]);
 
   const status = statusData?.status ?? "pending";
@@ -212,6 +224,16 @@ export default function VerificationPage() {
           </div>
           <Badge variant={badgeCfg.variant}>{badgeCfg.label}</Badge>
         </div>
+
+        {status === "rejected" && statusData?.rejection_reason ? (
+          <Alert variant="destructive" className="mb-4">
+            <XCircle className="h-4 w-4" />
+            <AlertDescription>
+              <span className="font-medium">Reason: </span>
+              {statusData.rejection_reason}
+            </AlertDescription>
+          </Alert>
+        ) : null}
 
         {/* SumSub flow (when available and not yet verified) */}
         {sumsubAvailable && !isApproved && !sdkReady && (

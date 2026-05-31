@@ -15,6 +15,10 @@ import {
   applyPosProductStockDecrements,
   validatePosProductStock,
 } from "@/lib/provider-sales/pos-product-stock";
+import {
+  providerBelongsToTenantScope,
+  resolvePaystackTerminalTenantScope,
+} from "@/lib/admin/paystack-terminal-tenant-scope";
 
 const adminUpdateSchema = z.object({
   action: z.enum([
@@ -43,6 +47,17 @@ export async function PATCH(
     const body = adminUpdateSchema.parse(await request.json());
     const supabase = getSupabaseAdmin();
     const { user } = await requireAdminSection(ADMIN_SECTION_FINANCE, request);
+    const tenantScope = await resolvePaystackTerminalTenantScope(supabase, request);
+
+    const { data: scopedPayment, error: scopedPaymentError } = await (supabase
+      .from("provider_paystack_terminal_payments") as any)
+      .select("id, provider_id")
+      .eq("id", id)
+      .maybeSingle();
+    if (scopedPaymentError) throw scopedPaymentError;
+    if (!scopedPayment || !providerBelongsToTenantScope(scopedPayment.provider_id, tenantScope)) {
+      return errorResponse("Terminal payment not found", "NOT_FOUND", 404);
+    }
 
     const patch: Record<string, unknown> = {
       metadata: {
