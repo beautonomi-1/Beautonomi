@@ -34,31 +34,65 @@ export async function GET(request: NextRequest) {
       .single();
     if (walletError) throw walletError;
 
-    // Reconcile balance using a DB-side aggregate (O(1) index scan, not a full row fetch).
-    // wallet.balance is trigger-maintained; we verify it and self-heal if it drifted.
-    const { data: aggRows } = await supabaseAdmin
-      .from("wallet_transactions")
-      .select("type, amount.sum()")
-      .eq("wallet_id", wallet.id);
-    const aggList = (aggRows ?? []) as { type: string; sum: number }[];
-    const creditSum = aggList.find((r) => r.type === "credit")?.sum ?? 0;
-    const debitSum = aggList.find((r) => r.type === "debit")?.sum ?? 0;
-    const normalizedLedgerBalance = Math.round((Number(creditSum) - Number(debitSum)) * 100) / 100;
+    // Reconcile the trigger-maintained balance against the transaction ledger.
+    //
+    // IMPORTANT: we sum the actual ledger rows here (credits minus debits) rather
+    // than a PostgREST `amount.sum()` aggregate. The aggregate path was unreliable
+    // (aggregates can be disabled at the PostgREST layer, and a null/unexpected
+    // result silently summed to 0) — it then "healed" the stored balance DOWN to
+    // 0 while the ledger rows remained, which is exactly the "I see the
+    // transaction but my balance is still 0" / "top-up did nothing" symptom.
+    //
+    // We only ever self-heal when we have confidently computed the FULL ledger
+    // (query succeeded AND was not truncated). Otherwise we leave the stored
+    // balance untouched.
     const storedBalance = Math.round(Number(wallet.balance || 0) * 100) / 100;
     const walletForResponse = { ...wallet, balance: storedBalance };
 
-    if (Math.abs(normalizedLedgerBalance - storedBalance) > 0.01) {
+    const { data: ledgerRows, error: ledgerError, count: ledgerCount } = await supabaseAdmin
+      .from("wallet_transactions")
+      .select("type, amount", { count: "exact" })
+      .eq("wallet_id", wallet.id)
+      .range(0, 9999);
+
+    const ledgerComplete =
+      !ledgerError &&
+      Array.isArray(ledgerRows) &&
+      (ledgerCount == null || ledgerRows.length >= ledgerCount);
+
+    if (ledgerComplete) {
+      let creditSum = 0;
+      let debitSum = 0;
+      for (const tx of ledgerRows as { type?: string; amount?: number }[]) {
+        const amt = Number(tx.amount ?? 0);
+        if (tx.type === "debit") debitSum += amt;
+        else creditSum += amt;
+      }
+      const normalizedLedgerBalance = Math.round((creditSum - debitSum) * 100) / 100;
+
+      if (Math.abs(normalizedLedgerBalance - storedBalance) > 0.01) {
+        console.warn(
+          `Wallet balance drift for user ${user.id}: stored=${storedBalance}, ledger=${normalizedLedgerBalance}. Healing.`,
+        );
+        const { data: reconciledWallet, error: reconcileError } = await supabaseAdmin
+          .from("user_wallets")
+          .update({ balance: normalizedLedgerBalance })
+          .eq("id", wallet.id)
+          .select("id, user_id, balance, currency, updated_at, created_at")
+          .single();
+        // A failed heal must never block the read or zero the balance — keep the
+        // trigger-maintained stored balance and surface that instead.
+        if (reconcileError) {
+          console.warn(`Wallet self-heal update failed for user ${user.id}:`, reconcileError.message);
+        } else if (reconciledWallet) {
+          Object.assign(walletForResponse, reconciledWallet);
+        }
+      }
+    } else if (ledgerError) {
       console.warn(
-        `Wallet balance drift for user ${user.id}: stored=${storedBalance}, ledger=${normalizedLedgerBalance}. Healing.`,
+        `Wallet ledger read failed for user ${user.id}; skipping self-heal:`,
+        ledgerError.message,
       );
-      const { data: reconciledWallet, error: reconcileError } = await supabaseAdmin
-        .from("user_wallets")
-        .update({ balance: normalizedLedgerBalance })
-        .eq("id", wallet.id)
-        .select("id, user_id, balance, currency, updated_at, created_at")
-        .single();
-      if (reconcileError) throw reconcileError;
-      Object.assign(walletForResponse, reconciledWallet);
     }
 
     const { data: txs, error: txError, count: txCount } = await supabaseAdmin

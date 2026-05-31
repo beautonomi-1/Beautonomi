@@ -544,7 +544,9 @@ export default function AdsSettingsScreen() {
         if (provisioned.state === "provisioned") {
           const copy = adsSuccessCopy(provisioned.campaign, tenantCurrency);
           setPaymentOutcome({ phase: "provisioned", campaignId, ...copy });
-          router.push({
+          // replace (not push) so the Paystack auth-session history is reset and
+          // the back gesture lands the user cleanly back in the app.
+          router.replace({
             pathname: "/(app)/(tabs)/more/settings/ads-payment-success",
             params: { campaign_id: campaignId, title: copy.title, body: copy.body },
           });

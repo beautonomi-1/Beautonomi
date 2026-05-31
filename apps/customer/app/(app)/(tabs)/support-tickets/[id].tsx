@@ -116,6 +116,8 @@ export default function SupportTicketDetailScreen() {
   const [csatScore, setCsatScore] = useState<number | null>(null);
   const [csatComment, setCsatComment] = useState("");
   const [submittingCsat, setSubmittingCsat] = useState(false);
+  /** True once the user touches the rating, so background refreshes don't wipe an unsaved selection. */
+  const csatDirtyRef = useRef(false);
   const scrollViewRef = useRef<ScrollView>(null);
   const knownMessageIdsRef = useRef<Set<string>>(new Set());
   const loadedOnceRef = useRef(false);
@@ -142,8 +144,13 @@ export default function SupportTicketDetailScreen() {
         return !isMine && !knownMessageIdsRef.current.has(m.id);
       });
       setTicket(loadedTicket);
-      setCsatScore(loadedTicket?.csat_score ?? null);
-      setCsatComment(loadedTicket?.csat_comment ?? "");
+      // Don't clobber an in-progress, unsaved rating on a background refresh
+      // (30s poll / realtime). Without this, tapping a star then waiting a moment
+      // would silently reset the selection — making rating feel like "nothing happens".
+      if (!csatDirtyRef.current) {
+        setCsatScore(loadedTicket?.csat_score ?? null);
+        setCsatComment(loadedTicket?.csat_comment ?? "");
+      }
       setMessages(loadedMessages);
       if (loadedOnceRef.current && newStaffMessage) {
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -337,6 +344,9 @@ export default function SupportTicketDetailScreen() {
         return;
       }
       invalidateSupportTicketsListCache();
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      // Persisted — allow the next load to sync the saved value from the server.
+      csatDirtyRef.current = false;
       Alert.alert("Thanks", "Your rating helps us improve support.");
       await loadTicket();
     } catch (e) {
@@ -542,7 +552,13 @@ export default function SupportTicketDetailScreen() {
                 {[1, 2, 3, 4, 5].map((score) => (
                   <TouchableOpacity
                     key={score}
-                    onPress={() => setCsatScore(score)}
+                    onPress={() => {
+                      void Haptics.selectionAsync();
+                      csatDirtyRef.current = true;
+                      setCsatScore(score);
+                      // Bring the Submit button into view so the second step is obvious.
+                      setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
+                    }}
                     style={[styles.csatChip, csatScore === score && styles.csatChipActive]}
                     accessibilityRole="button"
                     accessibilityState={{ selected: csatScore === score }}
@@ -551,12 +567,18 @@ export default function SupportTicketDetailScreen() {
                   </TouchableOpacity>
                 ))}
               </View>
+              {csatScore && typeof ticket.csat_score !== "number" ? (
+                <Text style={styles.csatHint}>Tap “Submit rating” below to send your {csatScore}/5 rating.</Text>
+              ) : null}
               <TextInput
                 style={styles.csatInput}
                 placeholder="Optional comment"
                 placeholderTextColor="#9ca3af"
                 value={csatComment}
-                onChangeText={setCsatComment}
+                onChangeText={(text) => {
+                  csatDirtyRef.current = true;
+                  setCsatComment(text);
+                }}
                 multiline
                 maxLength={1000}
               />
@@ -679,6 +701,7 @@ const styles = StyleSheet.create({
   csatChipActive: { borderColor: Colors.primary, backgroundColor: Colors.primary },
   csatText: { fontWeight: "700", color: Colors.gray[700] },
   csatTextActive: { color: "#fff" },
+  csatHint: { marginBottom: 10, fontSize: 13, color: Colors.primary, fontWeight: "600" },
   csatInput: {
     marginBottom: 10,
     minHeight: 72,

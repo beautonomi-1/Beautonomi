@@ -104,12 +104,6 @@ export default function AppLayout() {
   const stackTitle = useCallback((key: string) => t(`customer.mobile.stackTitles.${key}`), [t]);
   const { session, loading: authLoading } = useAuth();
 
-  useEffect(() => {
-    if (!authLoading && !session) {
-      router.replace("/(auth)/login" as never);
-    }
-  }, [authLoading, session]);
-
   /** Stable per signed-in user — do NOT key on access_token (it changes on refresh and caused repeat router.replace / “swiping” on iOS). */
   const userId = session?.user?.id ?? null;
   /** Last user id we ran the onboarding deep-link guard for (token refresh keeps same id → no re-run). */
@@ -118,6 +112,24 @@ export default function AppLayout() {
   const pathname = usePathname();
   const pathnameRef = useRef(pathname);
   pathnameRef.current = pathname;
+
+  useEffect(() => {
+    if (!authLoading && !session) {
+      // Preserve an in-flight express booking link (e.g. a provider's custom
+      // shortlink opened while signed out) so it resumes after authentication
+      // instead of being dropped on the floor. Native booking still requires a
+      // session, so we round-trip through login and replay the deep link.
+      const current = pathnameRef.current || "";
+      const isBookingDeepLink =
+        current.startsWith("/book/l/") || current.startsWith("/book");
+      const returnTo = isBookingDeepLink ? `/(app)${current}` : undefined;
+      router.replace(
+        returnTo
+          ? ({ pathname: "/(auth)/login", params: { return_to: returnTo } } as never)
+          : ("/(auth)/login" as never),
+      );
+    }
+  }, [authLoading, session]);
 
   // Attach pending referral after login (e.g. post email verification)
   useEffect(() => {

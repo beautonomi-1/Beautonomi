@@ -1295,25 +1295,32 @@ export default function BookCheckoutScreen() {
       .catch(() => setBookingCustomDefinitions([]));
   }, [hold]);
 
-  useEffect(() => {
+  const refreshWalletBalance = useCallback(async () => {
     if (!user) return;
-    api
-      .get<{ wallet?: { balance: number }; data?: { wallet?: { balance: number } } }>(
+    try {
+      const res = await api.get<{ wallet?: { balance: number }; data?: { wallet?: { balance: number } } }>(
         "/api/me/wallet"
-      )
-      .then((res) => {
-        if (res.error) {
-          console.warn("[Checkout] Failed to fetch wallet balance:", res.error);
-          return;
-        }
-        const raw = res.data as any;
-        const wallet = raw?.data?.wallet ?? raw?.wallet;
-        if (wallet?.balance != null) setWalletBalance(Number(wallet.balance) || 0);
-      })
-      .catch((e) => {
-        console.warn("[Checkout] Wallet fetch error:", e);
-      });
+      );
+      if (res.error) {
+        console.warn("[Checkout] Failed to fetch wallet balance:", res.error);
+        return;
+      }
+      const raw = res.data as any;
+      const wallet = raw?.data?.wallet ?? raw?.wallet;
+      if (wallet?.balance != null) setWalletBalance(Number(wallet.balance) || 0);
+    } catch (e) {
+      console.warn("[Checkout] Wallet fetch error:", e);
+    }
   }, [user]);
+
+  // Refetch on focus (not just mount) so a top-up / gift-card redeem done
+  // elsewhere in the session is reflected here and the "use wallet" option
+  // appears with the up-to-date balance.
+  useFocusEffect(
+    useCallback(() => {
+      void refreshWalletBalance();
+    }, [refreshWalletBalance])
+  );
 
   // Fetch addons for every service in the hold and merge (dedupe by id) for multi-service bookings
   useEffect(() => {

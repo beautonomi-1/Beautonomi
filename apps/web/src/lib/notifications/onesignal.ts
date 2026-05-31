@@ -210,7 +210,7 @@ export interface NotificationLogEntry {
   event_type: string;
   recipients: string[]; // user_ids or player_ids
   payload: unknown;
-  status: "sent" | "failed" | "pending";
+  status: "sent" | "failed" | "pending" | "suppressed";
   provider_response: unknown;
   error_message?: string;
   channels?: NotificationChannel[];
@@ -955,6 +955,11 @@ export async function sendTemplateNotification(
         })
       : requestedFilter;
 
+  // Track what was originally requested so we can observe (and log) any push
+  // that gets silently dropped by preference gating or quiet hours below.
+  const pushRequested = activeChannels.includes("push");
+  let quietHoursSuppressedPush = false;
+
   let channelsToSend: NotificationChannel[] = [...activeChannels];
   if (options?.appType === "customer" && userIds.length > 0) {
     const { intersectChannelsForCustomerRecipients } = await import(
@@ -1002,6 +1007,7 @@ export async function sendTemplateNotification(
         });
         if (allInQuietHours) {
           channelsToSend = channelsToSend.filter((c) => c !== "push");
+          quietHoursSuppressedPush = true;
         }
       }
     } catch {
@@ -1009,8 +1015,33 @@ export async function sendTemplateNotification(
     }
   }
 
+  // Observability: if push was requested but dropped by gating, record it so we
+  // can tell suppression apart from delivery failures or "nothing fired" in logs.
+  if (pushRequested && !channelsToSend.includes("push")) {
+    const reason = quietHoursSuppressedPush ? "quiet_hours" : "customer_preferences";
+    void logNotification({
+      event_type: templateKey,
+      recipients: userIds,
+      payload: {
+        template_key: templateKey,
+        channels_requested: activeChannels,
+        channels_after_gating: channelsToSend,
+      },
+      status: "suppressed",
+      provider_response: { reason },
+      error_message: `push suppressed (${reason})`,
+      channels: ["push"],
+    });
+  }
+
   if (channelsToSend.length === 0) {
-    return { success: true, notification_id: "suppressed-quiet-hours" };
+    return {
+      success: true,
+      notification_id: quietHoursSuppressedPush ? "suppressed-quiet-hours" : "suppressed-preferences",
+      message: quietHoursSuppressedPush
+        ? "Push suppressed: all recipients in quiet hours"
+        : "No external channels enabled for recipients (preferences)",
+    };
   }
 
   const notificationPayload: Record<string, unknown> = {
@@ -1022,11 +1053,13 @@ export async function sendTemplateNotification(
   };
 
   if (channelsToSend.includes("push")) {
-    // Set default high-priority alerting parameters for iOS and Android
+    // Set default high-priority alerting parameters for iOS and Android.
+    // NOTE: we deliberately do NOT set `content_available: true` here. That flag
+    // turns the push into a silent/background content-available delivery on iOS,
+    // which is why template events never surfaced a banner while the super-admin
+    // broadcast (which omits the flag) did. Keep this a normal visible alert.
     notificationPayload.ios_sound = "default";
     notificationPayload.priority = 10;
-    // Wake up the device
-    notificationPayload.content_available = true;
     notificationPayload.ios_interruption_level = "time_sensitive";
   }
 

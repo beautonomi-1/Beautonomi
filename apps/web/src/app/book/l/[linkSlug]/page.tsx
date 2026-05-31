@@ -182,15 +182,33 @@ export default function ExpressBookLinkPage() {
         if (pf?.gift_card_code?.trim()) q.set("gift_card", pf.gift_card_code.trim());
         if (pf?.product_cart?.length) q.set("products", productCartToQueryParam(pf.product_cart));
 
-        // Logged-in customers (non-embed) get the richer `/booking` flow:
-        // auto-hydrated profile, saved addresses, saved cards, loyalty + saved
-        // gift cards, recurring subscribe. Guests and embeds stay on the express
-        // `/book/[slug]` surface for deep-link prefill parity.
-        if (user && !isEmbed) {
+        // The legacy `/booking` flow only honors a single pre-selected `service`;
+        // it ignores staff, venue/location, multi-service, promo, gift card,
+        // addons and product cart. If a custom link carries any of that "rich"
+        // prefill we must keep the user on the express `/book/[slug]` surface
+        // (which honors all of it) — otherwise their selections silently vanish.
+        const hasRichPrefill =
+          q.has("staff") ||
+          q.has("services") ||
+          q.has("location") ||
+          q.get("location_type") === "at_home" ||
+          q.has("addons") ||
+          q.has("promo") ||
+          q.has("gift_card") ||
+          q.has("products");
+
+        // Logged-in customers (non-embed) with only a simple link get the richer
+        // `/booking` flow: auto-hydrated profile, saved addresses, saved cards,
+        // loyalty + saved gift cards, recurring subscribe. Guests, embeds, and
+        // logged-in users with rich prefill stay on express for deep-link parity.
+        if (user && !isEmbed && !hasRichPrefill) {
           q.set("slug", data.provider_slug);
           const query = q.toString();
           router.replace(`/booking${query ? `?${query}` : ""}`);
         } else {
+          // Signed-in users need `express=1` so the server doesn't bounce them
+          // back to /booking and drop the rich prefill.
+          if (user && !isEmbed) q.set("express", "1");
           const query = q.toString();
           router.replace(`/book/${encodeURIComponent(data.provider_slug)}${query ? `?${query}` : ""}`);
         }
