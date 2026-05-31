@@ -132,7 +132,14 @@ function normalizeArray<T>(raw: unknown): T[] {
 }
 
 function normalizeExpressSlug(value: string): string {
-  return value.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/^-+|-+$/g, "");
+  // Keep in sync with apps/web express-booking create/preview so an identically
+  // typed short code produces the same slug on web and mobile.
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-");
 }
 
 function formatDateInputFromIso(value?: string | null): string {
@@ -796,7 +803,10 @@ export default function ExpressBookingScreen() {
             <>
               <View>
                 {expressLinks.map((el, idx) => {
-                      const fullUrl = `${(APP_URL || "").replace(/\/$/, "")}/book/l/${encodeURIComponent(el.slug)}`;
+                      // Never produce a relative URL (broken when copied/shared):
+                      // fall back to the public site when EXPO_PUBLIC_APP_URL is unset.
+                      const shareBase = (APP_URL || "https://beautonomi.com").replace(/\/$/, "");
+                      const fullUrl = `${shareBase}/book/l/${encodeURIComponent(el.slug)}`;
                       const embedUrl = `${fullUrl}?embed=1`;
                       const isCopied = copiedShortId === el.id;
                       const expiresLabel = el.expires_at ? formatDateInputFromIso(el.expires_at) : null;

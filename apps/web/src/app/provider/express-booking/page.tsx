@@ -518,7 +518,16 @@ function ExpressBookingLinkDialog({
     setIsLoading(true);
 
     try {
-      const slug = formData.short_code.trim().toLowerCase().replace(/[^a-z0-9-]/g, "") || undefined;
+      // Match the provider mobile app's normalization (spaces/invalid chars → hyphen,
+      // trim stray hyphens) so an identically-typed short code yields the SAME slug
+      // on both platforms instead of "summerpromo" (web) vs "summer-promo" (mobile).
+      const slug =
+        formData.short_code
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9-]/g, "-")
+          .replace(/^-+|-+$/g, "")
+          .replace(/-{2,}/g, "-") || undefined;
       if (!slug) {
         toast.error("Short code must contain at least one letter or number");
         setIsLoading(false);
@@ -620,7 +629,13 @@ function ExpressBookingLinkDialog({
             </div>
             <p className="text-xs text-gray-500 mt-1">
               URL: {typeof window !== "undefined" && window.location.origin}/book/l/
-              {formData.short_code ? formData.short_code.toLowerCase().replace(/[^a-z0-9-]/g, "") : "…"}
+              {formData.short_code
+                ? formData.short_code
+                    .toLowerCase()
+                    .replace(/[^a-z0-9-]/g, "-")
+                    .replace(/^-+|-+$/g, "")
+                    .replace(/-{2,}/g, "-")
+                : "…"}
             </p>
           </div>
 

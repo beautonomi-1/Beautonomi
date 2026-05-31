@@ -99,7 +99,7 @@ export async function applyWalletTopupFromSuccessfulPaystackCharge(
     console.warn(`[wallet_topup] Healing stranded paid top-up without credit: ${topupId}`);
   }
 
-  await supabase.rpc("wallet_credit_admin", {
+  const { error: creditError } = await supabase.rpc("wallet_credit_admin", {
     p_user_id: topupRow.user_id,
     p_amount: amountInCurrency,
     p_currency: currency,
@@ -108,6 +108,17 @@ export async function applyWalletTopupFromSuccessfulPaystackCharge(
     p_reference_type: "wallet_topup",
     p_tenant_id: topupWalletTenantId,
   });
+  // Do NOT swallow a failed credit. The top-up is already marked paid above, so
+  // a silent failure here is the "I paid but my balance never moved" bug. Throw
+  // so the verify endpoint / webhook reports failure and retries — the ledger
+  // idempotency guard + stranded-paid healing above re-credit safely on retry.
+  if (creditError) {
+    console.error(
+      `[wallet_topup] wallet_credit_admin failed for top-up ${topupId}:`,
+      creditError.message,
+    );
+    throw new Error(`Wallet credit failed for top-up ${topupId}: ${creditError.message}`);
+  }
 
   // Record the actual payment receipt for reconciliation (skip if already recorded).
   const { data: existingReceipt } = await supabase

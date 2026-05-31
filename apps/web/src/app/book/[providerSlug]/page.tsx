@@ -31,7 +31,14 @@ export default async function BookProviderPage({ params, searchParams }: PagePro
   const sp = (await searchParams) ?? {};
   const embed = readParam(sp, "embed") === "1";
   const authReturn = (readParam(sp, "auth_return") ?? "").trim();
-  const keepOnNewBookingFlow = bookingUrlNeedsOnlineBookingFlowNew(searchParamsToURLSearchParams(sp));
+  // `express=1` keeps a logged-in customer on the express surface (set by the
+  // /book/l/[slug] resolver for custom links carrying rich prefill that the
+  // legacy /booking flow drops, e.g. staff, venue, multi-service, promo, gift
+  // card, addons, product cart). Without this they would be bounced to /booking
+  // and lose those selections.
+  const forceExpress = readParam(sp, "express") === "1";
+  const keepOnNewBookingFlow =
+    forceExpress || bookingUrlNeedsOnlineBookingFlowNew(searchParamsToURLSearchParams(sp));
 
   // (3) Bare /book/[slug] (no deep-link params) → permanent redirect to /booking?slug=…
   if (!keepOnNewBookingFlow) {
@@ -43,8 +50,9 @@ export default async function BookProviderPage({ params, searchParams }: PagePro
   // We probe `auth.getUser()` server-side so there's no client flash of the express UI
   // before the bounce. `embed=1` skips this so iframe deep links keep working. `auth_return`
   // skips it so the express OAuth round-trip can finish bridging session storage before any
-  // re-routing happens (BeautonomiGateModal / preAuthGateOpen flow).
-  if (!embed && !authReturn) {
+  // re-routing happens (BeautonomiGateModal / preAuthGateOpen flow). `express=1` skips it so
+  // rich custom-link prefill survives for signed-in customers.
+  if (!embed && !authReturn && !forceExpress) {
     try {
       const supabase = await getSupabaseServer();
       const { data } = await supabase.auth.getUser();

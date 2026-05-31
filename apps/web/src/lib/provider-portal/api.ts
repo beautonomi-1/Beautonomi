@@ -3621,7 +3621,11 @@ export class ProviderApiClient implements ProviderApi {
     use_count?: number | null;
     created_at?: string;
   }): ExpressBookingLink {
-    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    // Prefer the configured canonical public base so copied links always point
+    // at the customer-facing site, even when the provider portal is opened on a
+    // non-canonical host (admin/staging origin). Falls back to the current origin.
+    const configuredBase = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
+    const origin = configuredBase || (typeof window !== "undefined" ? window.location.origin : "");
     return {
       id: row.id,
       name: row.name,

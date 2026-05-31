@@ -5,8 +5,8 @@
  * Ads screen so the same outcome card surfaces whether the auth-session
  * resolved in-foreground or the app was killed mid-3DS.
  */
-import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Text, View } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -39,13 +39,12 @@ export default function AdsPaymentReturnScreen() {
   const initialStatus: ReturnStatus =
     cancelFlag === "1" ? "cancel" : reference ? "verifying" : "pending";
   const [status, setStatus] = useState<ReturnStatus>(initialStatus);
+  const navigatedRef = useRef(false);
 
-  useEffect(() => {
-    let aborted = false;
-
-    const navigateBack = (
-      flag: "payment_success" | "payment_failed" | "payment_pending" | "payment_cancelled" | null
-    ) => {
+  const navigateBack = useCallback(
+    (flag: "payment_success" | "payment_failed" | "payment_pending" | "payment_cancelled" | null) => {
+      if (navigatedRef.current) return;
+      navigatedRef.current = true;
       const query: Record<string, string> = {};
       if (flag === "payment_success") query.payment_success = "1";
       if (flag === "payment_failed") query.payment_failed = "1";
@@ -55,20 +54,35 @@ export default function AdsPaymentReturnScreen() {
         pathname: "/(app)/(tabs)/more/settings/ads",
         params: query,
       });
+    },
+    [campaignId, router],
+  );
+
+  const navigateSuccess = useCallback(() => {
+    if (navigatedRef.current) return;
+    navigatedRef.current = true;
+    const query: Record<string, string> = {
+      title: "Payment successful",
+      body: campaignId
+        ? "Your ad payment was confirmed. We are opening your live campaign now."
+        : "Your ad payment was confirmed. We are activating your campaign now.",
     };
-    const navigateSuccess = () => {
-      const query: Record<string, string> = {
-        title: "Payment successful",
-        body: campaignId
-          ? "Your ad payment was confirmed. We are opening your live campaign now."
-          : "Your ad payment was confirmed. We are activating your campaign now.",
-      };
-      if (campaignId) query.campaign_id = campaignId;
-      router.replace({
-        pathname: "/(app)/(tabs)/more/settings/ads-payment-success",
-        params: query,
-      });
-    };
+    if (campaignId) query.campaign_id = campaignId;
+    router.replace({
+      pathname: "/(app)/(tabs)/more/settings/ads-payment-success",
+      params: query,
+    });
+  }, [campaignId, router]);
+
+  // Manual fallback so the user is never stranded if the auto-redirect stalls.
+  const continueNow = useCallback(() => {
+    if (status === "success") navigateSuccess();
+    else if (status === "failed" || status === "cancel") navigateBack("payment_failed");
+    else navigateBack("payment_pending");
+  }, [status, navigateSuccess, navigateBack]);
+
+  useEffect(() => {
+    let aborted = false;
 
     if (cancelFlag === "1") {
       const t = setTimeout(() => {
@@ -106,13 +120,15 @@ export default function AdsPaymentReturnScreen() {
     return () => {
       aborted = true;
     };
-  }, [reference, cancelFlag, successFlag, campaignId, router]);
+  }, [reference, cancelFlag, successFlag, navigateBack, navigateSuccess]);
 
   const isSuccess = status === "success";
   const isCancel = status === "cancel";
   const isFailed = status === "failed";
   const isPending = status === "pending";
   const isVerifying = status === "verifying";
+  // Once a terminal-ish state is known, offer an explicit way back in case auto-nav stalls.
+  const showContinue = !isVerifying;
 
   return (
     <ScreenContainer scrollable={false}>
@@ -163,6 +179,22 @@ export default function AdsPaymentReturnScreen() {
                     ? "No charge was made. You can try again from the ads dashboard."
                     : "Hang tight while we hand you back to your campaigns."}
           </Text>
+          {showContinue ? (
+            <TouchableOpacity
+              onPress={continueNow}
+              style={twStyle(
+                `mt-6 w-full items-center rounded-2xl px-5 py-3.5 ${
+                  isSuccess ? "bg-emerald-600" : isFailed || isCancel ? "bg-rose-600" : "bg-indigo-600"
+                }`,
+              )}
+              accessibilityRole="button"
+              accessibilityLabel="Continue to ads"
+            >
+              <Text style={twStyle("text-sm font-bold text-white")}>
+                {isSuccess ? "Continue" : "Back to ads"}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       </View>
     </ScreenContainer>

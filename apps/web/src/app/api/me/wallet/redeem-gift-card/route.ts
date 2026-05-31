@@ -84,18 +84,32 @@ export async function POST(request: NextRequest) {
       return errorResponse("Failed to credit wallet. Please try again.", "WALLET_CREDIT_FAILED", 500);
     }
 
-    // Record Redemption
-    await supabaseAdmin.from("gift_card_redemptions").insert({
+    // Record Redemption (booking_id is NULL — this is a wallet redemption, not a
+    // booking redemption; migration 642 made booking_id nullable). Captured
+    // immediately since the funds have already moved into the wallet.
+    const { error: redemptionError } = await supabaseAdmin.from("gift_card_redemptions").insert({
       gift_card_id: giftCard.id,
+      booking_id: null,
       user_id: user.id,
       amount: redeemAmount,
+      currency: userCurrency,
+      status: "captured",
+      captured_at: new Date().toISOString(),
     });
+    // The wallet was already credited, so a failed audit insert must not fail the
+    // request — but log it loudly so the gap is visible in reconciliation.
+    if (redemptionError) {
+      console.error("[redeem-gift-card] Failed to record redemption audit row:", redemptionError);
+    }
 
-    // Zero out Gift Card balance
-    await supabaseAdmin
+    // Zero out Gift Card balance so it cannot be redeemed again.
+    const { error: zeroError } = await supabaseAdmin
       .from("gift_cards")
       .update({ balance: 0 })
       .eq("id", giftCard.id);
+    if (zeroError) {
+      console.error("[redeem-gift-card] Failed to zero gift card balance:", zeroError);
+    }
 
     return successResponse({
       amount: redeemAmount,
