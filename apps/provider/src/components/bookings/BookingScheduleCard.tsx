@@ -9,12 +9,14 @@ import AnimatedRe, {
   withTiming,
 } from "react-native-reanimated";
 import { twStyle } from "@/lib/twStyle";
+import { VerifiedBadge } from "@/components/ui/VerifiedBadge";
 import { formatCurrency } from "@/lib/format";
 import { Colors, Shadows } from "@/constants/colors";
 import { buildProviderBookingActionModel, type ProviderBookingAction } from "@/lib/provider-booking-action-policy";
 
 export interface BookingScheduleCardCustomer {
   full_name: string | null;
+  identity_verified?: boolean | null;
 }
 
 export interface BookingScheduleCardService {
@@ -268,9 +270,17 @@ export function BookingScheduleCard({
           <View style={twStyle("min-w-0 flex-1")}>
             <View style={twStyle("flex-row items-start justify-between gap-2")}>
               <View style={twStyle("min-w-0 flex-1")}>
-                <Text style={twStyle("text-base font-extrabold text-gray-950")} numberOfLines={1}>
-                  {customerName}
-                </Text>
+                <View style={twStyle("flex-row items-center gap-2")}>
+                  <Text
+                    style={twStyle("flex-shrink text-base font-extrabold text-gray-950")}
+                    numberOfLines={1}
+                  >
+                    {customerName}
+                  </Text>
+                  {booking.customers?.identity_verified ? (
+                    <VerifiedBadge verified iconOnly />
+                  ) : null}
+                </View>
                 <Text style={twStyle("mt-1 text-sm font-medium text-gray-600")} numberOfLines={1}>
                   {serviceName}
                   {staffName ? ` · with ${staffName}` : ""}

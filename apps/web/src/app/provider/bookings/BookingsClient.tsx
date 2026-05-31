@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef, useDeferredValue } from "react";
 import RoleGuard from "@/components/auth/RoleGuard";
 import { Button } from "@/components/ui/button";
+import { VerifiedBadge } from "@/components/ui/verified-badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -883,6 +884,9 @@ export function BookingsClient({
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-1.5">
                         <h3 className="font-semibold text-gray-900 truncate">{b.customer_name || "Customer"}</h3>
+                        {b.customer_identity_verified ? (
+                          <VerifiedBadge verified iconOnly />
+                        ) : null}
                         {(b as any).is_group_booking ? (
                           <span className="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800">
                             Group

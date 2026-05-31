@@ -49,7 +49,7 @@ export async function GET(
 
     const { data: customer } = await supabaseAdmin
       .from("users")
-      .select("id, full_name, email, phone, avatar_url")
+      .select("id, full_name, email, phone, avatar_url, identity_verified")
       .eq("id", conversation.customer_id)
       .single();
 
@@ -110,6 +110,7 @@ export async function GET(
       customer_avatar_url: customer?.avatar_url || null,
       customer_phone: (customer as any)?.phone ?? null,
       customer_email: customer?.email ?? null,
+      customer_identity_verified: Boolean((customer as any)?.identity_verified),
       is_pinned: Boolean((conversation as { is_starred_provider?: boolean }).is_starred_provider),
       messages: transformedMessages,
     });

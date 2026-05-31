@@ -7,6 +7,7 @@ import { fetcher, clearFetcherCache } from "@/lib/http/fetcher";
 import { cn } from "@/lib/utils";
 import type { YocoPayment } from "@/lib/provider-portal/types";
 import { Badge } from "@/components/ui/badge";
+import { VerifiedBadge } from "@/components/ui/verified-badge";
 import { Input } from "@/components/ui/input";
 import { YocoPaymentDialog } from "@/components/provider-portal/YocoPaymentDialog";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
@@ -34,7 +35,7 @@ interface ProductOrder {
   customer_name?: string | null;
   tracking_number: string | null;
   created_at: string;
-  customer?: { id: string; full_name: string; email: string } | null;
+  customer?: { id: string; full_name: string; email: string; identity_verified?: boolean | null } | null;
   items: {
     id: string;
     product_name: string;
@@ -412,8 +413,11 @@ export default function ProviderProductOrdersPage() {
                           <Badge variant="outline">appointment pickup</Badge>
                         )}
                       </div>
-                      <p className="text-sm text-gray-700 break-words">
-                        <span className="font-medium">{o.customer?.full_name || o.customer_name || "Appointment customer"}</span>{" "}
+                      <p className="text-sm text-gray-700 break-words inline-flex items-center gap-1.5 flex-wrap">
+                        <span className="font-medium">{o.customer?.full_name || o.customer_name || "Appointment customer"}</span>
+                        {o.customer?.identity_verified ? (
+                          <VerifiedBadge verified iconOnly />
+                        ) : null}
                         {o.customer?.email && <span className="text-gray-400">({o.customer.email})</span>}
                       </p>
                       <div className="mt-2 space-y-1">

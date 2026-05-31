@@ -7,6 +7,8 @@ import {
   Alert,
   ActivityIndicator,
   DeviceEventEmitter,
+  Linking,
+  Share,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -37,6 +39,10 @@ import {
 import { Colors } from "@/constants/colors";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { api } from "@/lib/api-client";
+import {
+  PAYSTACK_TERMINAL_PAYMENTS_ACTION_PATH,
+  paystackTerminalCollectionIntentPayload,
+} from "@/lib/paystack-terminal-api";
 import { PROVIDER_PRODUCTS_CATALOG_CHANGED } from "@/lib/provider-products-catalog-events";
 import { PROVIDER_SERVICES_CATALOG_CHANGED } from "@/lib/provider-services-catalog-events";
 import { isProductSellable, maxSellableUnits } from "@/features/products/cartItem";
@@ -224,22 +230,26 @@ export default function SalesScreen() {
   const adsModule = useModuleConfig("ads") as { enabled?: boolean } | undefined;
   const adsFeatureOn = useFeatureFlag("ads.enabled");
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
+  const yocoEnabled = useFeatureFlag("payment_yoco");
   const paymentMethodOptions = useMemo(() => {
     const base: { label: string; value: PaymentMethod; icon: keyof typeof Ionicons.glyphMap }[] = [
       { label: "Cash", value: "cash", icon: "cash-outline" },
-      { label: "Yoco terminal", value: "yoco", icon: "card-outline" },
+      ...(yocoEnabled
+        ? [{ label: "Yoco terminal", value: "yoco" as const, icon: "card-outline" as const }]
+        : []),
       { label: "Card manual", value: "card", icon: "reader-outline" },
       { label: "EFT", value: "eft", icon: "swap-horizontal-outline" },
     ];
     if (paystackTerminalEnabled) {
-      base.splice(3, 0, {
+      const insertAt = yocoEnabled ? 3 : 2;
+      base.splice(insertAt, 0, {
         label: "Paystack Terminal",
         value: "paystack_terminal",
         icon: "qr-code-outline",
       });
     }
     return base;
-  }, [paystackTerminalEnabled]);
+  }, [paystackTerminalEnabled, yocoEnabled]);
   const adsSelfServeAvailable = Boolean(adsModule?.enabled) || adsFeatureOn;
   const { selectedLocationId } = useProvider();
   const locQ = selectedLocationId ? `&location_id=${selectedLocationId}` : "";
@@ -281,6 +291,13 @@ export default function SalesScreen() {
   const yocoPendingSaleIdRef = useRef<string | null>(null);
   const [yocoLinkedSaleId, setYocoLinkedSaleId] = useState<string | null>(null);
   const [showYocoPayment, setShowYocoPayment] = useState(false);
+  const [preparingPaystackTerminal, setPreparingPaystackTerminal] = useState(false);
+  const [paystackTerminalPrompt, setPaystackTerminalPrompt] = useState<{
+    code: string;
+    link?: string | null;
+    reference?: string | null;
+    expectedAmount: number;
+  } | null>(null);
 
   const { isFocused } = useFocusedApi();
 
@@ -666,7 +683,85 @@ export default function SalesScreen() {
     refreshMetrics();
   }
 
+  async function preparePaystackTerminalSale() {
+    if (preparingPaystackTerminal) return;
+    setPreparingPaystackTerminal(true);
+    try {
+      const { data, error } = await createSale(
+        buildSalePayload({
+          payment_method: "paystack_terminal",
+          payment_status: "pending",
+        }),
+      );
+      if (error) {
+        Alert.alert("Error", error);
+        return;
+      }
+      if (!data?.id) {
+        Alert.alert("Error", "Could not prepare Paystack Terminal sale");
+        return;
+      }
+      const res = await api.post<{
+        terminal?: {
+          terminal_code?: string;
+          payment_link?: string | null;
+          terminal_url?: string | null;
+          qr_url?: string | null;
+        };
+        expectedAmount?: number | null;
+      }>(
+        PAYSTACK_TERMINAL_PAYMENTS_ACTION_PATH,
+        paystackTerminalCollectionIntentPayload({
+          entity_type: "sale",
+          entity_id: data.id,
+          expected_amount: Number(grandTotal.toFixed(2)),
+          customer_reference: selectedClient?.full_name
+            ? `Sale for ${selectedClient.full_name}`
+            : "Walk-in sale",
+        }),
+      );
+      if (res.error) {
+        Alert.alert("Paystack Terminal", res.error.message ?? "Failed to prepare terminal payment.");
+        return;
+      }
+      const terminal = res.data?.terminal;
+      if (!terminal?.terminal_code) {
+        Alert.alert("Paystack Terminal", "No active Paystack Terminal is available. Create one first.");
+        return;
+      }
+      setPaystackTerminalPrompt({
+        code: terminal.terminal_code,
+        link: terminal.payment_link ?? terminal.terminal_url ?? terminal.qr_url ?? null,
+        reference: selectedClient?.full_name ? `Sale for ${selectedClient.full_name}` : "Walk-in sale",
+        expectedAmount: Number(res.data?.expectedAmount ?? grandTotal),
+      });
+      refreshSales();
+      refreshMetrics();
+    } catch (err) {
+      Alert.alert("Paystack Terminal", err instanceof Error ? err.message : "Failed to prepare terminal payment.");
+    } finally {
+      setPreparingPaystackTerminal(false);
+    }
+  }
+
+  function handleClosePaystackTerminalPrompt() {
+    setPaystackTerminalPrompt(null);
+    setCheckoutStep("idle");
+    setCart([]);
+    setSelectedClient(null);
+    setIsWalkIn(false);
+    setDiscount("");
+    setTip("");
+    setPaymentMethod("cash");
+    refreshSales();
+    refreshMetrics();
+  }
+
   async function handleCompleteSale() {
+    if (paymentMethod === "paystack_terminal") {
+      await preparePaystackTerminalSale();
+      return;
+    }
     if (paymentMethod === "yoco") {
       let saleId = yocoPendingSaleIdRef.current ?? yocoLinkedSaleId;
       if (!saleId) {
@@ -1258,10 +1353,14 @@ export default function SalesScreen() {
 
         <View style={{ marginTop: 16 }}>
           <ActionButton
-            label={`Complete Sale - ${formatCurrency(grandTotal)}`}
+            label={
+              paymentMethod === "paystack_terminal"
+                ? `Collect via Paystack Terminal - ${formatCurrency(grandTotal)}`
+                : `Complete Sale - ${formatCurrency(grandTotal)}`
+            }
             variant="secondary"
             onPress={handleCompleteSale}
-            loading={creatingSale}
+            loading={creatingSale || preparingPaystackTerminal}
             fullWidth
             disabled={cart.length === 0}
           />
@@ -1534,6 +1633,65 @@ export default function SalesScreen() {
         description={`POS Sale for ${selectedClient?.full_name ?? "Walk-in"}`}
         onPaymentSuccess={(result) => finalizeYocoSale(result)}
       />
+
+      <BottomSheet
+        visible={!!paystackTerminalPrompt}
+        onClose={handleClosePaystackTerminalPrompt}
+        title="Paystack Terminal"
+      >
+        {paystackTerminalPrompt ? (
+          <View>
+            <Text style={{ marginBottom: 12, fontSize: 14, color: Colors.gray[600], lineHeight: 20 }}>
+              Ask the customer to pay using this Paystack link. Paystack generates the transaction reference; this sale stays pending until you allocate the webhooked payment.
+            </Text>
+            <View style={{ marginBottom: 12, borderRadius: 16, borderWidth: 1, borderColor: "#bbf7d0", backgroundColor: "#ecfdf5", padding: 16 }}>
+              <Text style={{ fontSize: 12, fontWeight: "700", color: "#047857", textTransform: "uppercase" }}>
+                Terminal code
+              </Text>
+              <Text style={{ marginTop: 6, fontFamily: "monospace", fontSize: 24, fontWeight: "800", color: "#064e3b" }}>
+                {paystackTerminalPrompt.code}
+              </Text>
+              <Text style={{ marginTop: 8, fontSize: 14, color: "#047857" }}>
+                Expected: {formatCurrency(paystackTerminalPrompt.expectedAmount, tenantCurrency)}
+              </Text>
+              {paystackTerminalPrompt.reference ? (
+                <Text style={{ marginTop: 4, fontSize: 12, color: "#047857" }}>
+                  Note: {paystackTerminalPrompt.reference}
+                </Text>
+              ) : null}
+            </View>
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              <TouchableOpacity
+                onPress={() => {
+                  void Share.share({
+                    title: "Paystack Terminal",
+                    message: paystackTerminalPrompt.link
+                      ? `Pay ${formatCurrency(paystackTerminalPrompt.expectedAmount, tenantCurrency)} using this Paystack Terminal link: ${paystackTerminalPrompt.link}${paystackTerminalPrompt.reference ? ` Note: ${paystackTerminalPrompt.reference}` : ""}`
+                      : `Pay ${formatCurrency(paystackTerminalPrompt.expectedAmount, tenantCurrency)} using Paystack Terminal code ${paystackTerminalPrompt.code}${paystackTerminalPrompt.reference ? `. Note: ${paystackTerminalPrompt.reference}` : ""}.`,
+                  });
+                }}
+                style={{ flex: 1, borderRadius: 12, backgroundColor: "#16a34a", paddingVertical: 12 }}
+              >
+                <Text style={{ textAlign: "center", fontWeight: "700", color: "#fff" }}>Share</Text>
+              </TouchableOpacity>
+              {paystackTerminalPrompt.link ? (
+                <TouchableOpacity
+                  onPress={() => void Linking.openURL(paystackTerminalPrompt.link || "")}
+                  style={{ flex: 1, borderRadius: 12, borderWidth: 1, borderColor: "#16a34a", paddingVertical: 12 }}
+                >
+                  <Text style={{ textAlign: "center", fontWeight: "700", color: "#15803d" }}>Open link</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+            <TouchableOpacity
+              style={{ marginTop: 12, alignItems: "center", paddingVertical: 8 }}
+              onPress={handleClosePaystackTerminalPrompt}
+            >
+              <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Done</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+      </BottomSheet>
 
       <View style={{ height: 32 }} />
     </ScreenContainer>

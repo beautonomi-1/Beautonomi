@@ -5,6 +5,7 @@ import { Send, ArrowLeft, MoreVertical, Phone, Tag, User, Mail, Copy, Check, Pap
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { VerifiedBadge } from "@/components/ui/verified-badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -95,6 +96,7 @@ interface Conversation {
   provider_phone?: string;
   provider_email?: string;
   customer_name?: string;
+  customer_identity_verified?: boolean | null;
   customer_phone?: string | null;
   customer_email?: string | null;
   booking_number?: string;
@@ -1012,7 +1014,12 @@ export default function WhatsAppChat({
           </AvatarFallback>
         </Avatar>
         <div className="flex-1 min-w-0">
-          <h2 className="font-semibold text-sm md:text-base truncate">{getContactName()}</h2>
+          <h2 className="font-semibold text-sm md:text-base truncate flex items-center gap-1.5">
+            <span className="truncate">{getContactName()}</span>
+            {isProviderChat && conversation.customer_identity_verified ? (
+              <VerifiedBadge verified iconOnly className="text-white" />
+            ) : null}
+          </h2>
           {conversation.booking_number && (
             <p className="text-xs text-white/80 truncate">Booking #{conversation.booking_number}</p>
           )}

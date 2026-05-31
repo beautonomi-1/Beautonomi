@@ -54,6 +54,8 @@ const EVENT_LABELS: Record<string, string> = {
   "finance.payout.exception": "Finance: payout exception",
   "finance.refund.manual_review": "Finance: refund/manual review",
   "finance.reconciliation.warning": "Finance: reconciliation warning",
+  "finance.paystack_terminal.setup_requested": "Finance: Paystack Terminal setup requested",
+  "finance.paystack_terminal.asset_requested": "Finance: Paystack Terminal QR/poster setup needed",
   "dispute.new": "Disputes: new dispute",
   "dispute.overdue": "Disputes: overdue dispute",
   "safety.user_report.pending": "Safety: user report pending",

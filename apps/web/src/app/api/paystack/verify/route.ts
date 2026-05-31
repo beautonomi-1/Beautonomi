@@ -121,6 +121,26 @@ export async function GET(request: NextRequest) {
           }
         }
       }
+      // Paystack verify can omit custom metadata, which previously left wallet
+      // top-ups stuck (balance never credited until the webhook arrived). We
+      // persist `paystack_reference` on `wallet_topups` at init (new card) and
+      // update it to the charge reference (saved card), so resolve by reference
+      // to recover the wallet_topup_id and credit synchronously on verify.
+      if (reference && !metadata.wallet_topup_id) {
+        const adminWt = getSupabaseAdmin();
+        const { data: topupByRef } = await adminWt
+          .from("wallet_topups")
+          .select("id")
+          .eq("paystack_reference", reference)
+          .maybeSingle();
+        if (topupByRef) {
+          const wid = (topupByRef as { id?: unknown }).id;
+          const widStr = wid != null && wid !== "" ? String(wid) : "";
+          if (widStr) {
+            metadata = { ...metadata, wallet_topup_id: widStr };
+          }
+        }
+      }
       const verifiedChargeData = { ...data.data, metadata };
       // Keep server/client refs for role-aware lookups + service-role writes.
       const admin = getSupabaseAdmin();

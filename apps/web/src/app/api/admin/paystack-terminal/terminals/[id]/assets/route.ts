@@ -18,6 +18,10 @@ import {
   isTrustedPaystackTerminalAssetUrl,
   normalizeWhatsAppTarget,
 } from "@/lib/payments/paystack-terminal-assets";
+import {
+  providerBelongsToTenantScope,
+  resolvePaystackTerminalTenantScope,
+} from "@/lib/admin/paystack-terminal-tenant-scope";
 
 const assetUpdateSchema = z.object({
   payment_link: z.string().trim().url().optional().nullable(),
@@ -59,13 +63,16 @@ export async function PATCH(
     }
 
     const supabase = getSupabaseAdmin();
+    const tenantScope = await resolvePaystackTerminalTenantScope(supabase, request);
     const { data: terminal, error: terminalError } = await (supabase
       .from("provider_paystack_virtual_terminals") as any)
       .select("*, provider:providers(tenant_id)")
       .eq("id", id)
       .maybeSingle();
     if (terminalError) throw terminalError;
-    if (!terminal) return errorResponse("Terminal not found", "NOT_FOUND", 404);
+    if (!terminal || !providerBelongsToTenantScope(terminal.provider_id, tenantScope)) {
+      return errorResponse("Terminal not found", "NOT_FOUND", 404);
+    }
 
     const tenantId = (terminal as { provider?: { tenant_id?: string | null } | null }).provider?.tenant_id ?? null;
     const nextPaymentLink = body.payment_link ?? terminal.payment_link ?? terminal.terminal_url ?? null;

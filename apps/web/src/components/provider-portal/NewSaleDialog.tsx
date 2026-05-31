@@ -1251,7 +1251,6 @@ export function NewSaleDialog({
                           inputId="house_call_address"
                           value={houseCallAddress.place_name || houseCallAddress.address_line1}
                           placeholder="Search customer address…"
-                          geocodeTypes={["address"]}
                           onInputChange={(val) =>
                             setHouseCallAddress((prev) => ({ ...prev, place_name: val, address_line1: val }))
                           }

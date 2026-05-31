@@ -36,7 +36,19 @@ export async function applyWalletTopupFromSuccessfulPaystackCharge(
 
   type TopupRow = { status?: string; currency?: string; user_id?: string; tenant_id?: string | null };
   const topupRow = topup as TopupRow;
-  if (topupRow.status === "paid") return;
+  const enteredPaid = topupRow.status === "paid";
+
+  // Primary idempotency guard: if the wallet was already credited for this
+  // top-up (ledger row exists), there is nothing to do. This is reliable even
+  // when verify and the webhook race each other after a successful charge.
+  const { data: existingCredit } = await supabase
+    .from("wallet_transactions")
+    .select("id")
+    .eq("reference_id", topupId)
+    .eq("reference_type", "wallet_topup")
+    .limit(1)
+    .maybeSingle();
+  if (existingCredit) return;
 
   let resolvedTenantId = topupRow.tenant_id ?? null;
   const metaTenant = payload.metadata?.tenant_id as string | undefined;
@@ -58,7 +70,8 @@ export async function applyWalletTopupFromSuccessfulPaystackCharge(
     provider_id: null,
   });
 
-  const { data: markedPaid, error: markError } = await supabase
+  // Atomically claim the pending -> paid transition. The single winner credits.
+  const { data: claimed } = await supabase
     .from("wallet_topups")
     .update({
       status: "paid",
@@ -72,9 +85,18 @@ export async function applyWalletTopupFromSuccessfulPaystackCharge(
     .select("id")
     .maybeSingle();
 
-  if (markError || !markedPaid) {
-    console.log(`Wallet topup ${topupId} already processed or update failed, skipping credit`);
-    return;
+  if (!claimed) {
+    // We lost the atomic claim. If the top-up was still pending on entry, a
+    // concurrent caller (verify vs webhook) won the race and will credit — so
+    // we must NOT credit again. Only heal a genuinely stranded top-up that was
+    // already marked paid on entry but, due to an earlier failure, never got a
+    // wallet credit (the ledger guard above already proved none exists).
+    if (!enteredPaid) return;
+    await supabase
+      .from("wallet_topups")
+      .update({ paystack_reference: payload.reference, updated_at: new Date().toISOString() })
+      .eq("id", topupId);
+    console.warn(`[wallet_topup] Healing stranded paid top-up without credit: ${topupId}`);
   }
 
   await supabase.rpc("wallet_credit_admin", {
@@ -87,19 +109,28 @@ export async function applyWalletTopupFromSuccessfulPaystackCharge(
     p_tenant_id: topupWalletTenantId,
   });
 
-  // Record the actual payment receipt for reconciliation
-  await supabase.from("payment_transactions").insert({
-    booking_id: null,
-    reference: payload.reference,
-    amount: amountInCurrency,
-    fees: 0,
-    net_amount: amountInCurrency,
-    status: "success",
-    provider: "paystack",
-    transaction_type: "wallet_topup",
-    metadata: payload.metadata,
-    created_at: new Date().toISOString(),
-  });
+  // Record the actual payment receipt for reconciliation (skip if already recorded).
+  const { data: existingReceipt } = await supabase
+    .from("payment_transactions")
+    .select("id")
+    .eq("reference", payload.reference)
+    .eq("transaction_type", "wallet_topup")
+    .limit(1)
+    .maybeSingle();
+  if (!existingReceipt) {
+    await supabase.from("payment_transactions").insert({
+      booking_id: null,
+      reference: payload.reference,
+      amount: amountInCurrency,
+      fees: 0,
+      net_amount: amountInCurrency,
+      status: "success",
+      provider: "paystack",
+      transaction_type: "wallet_topup",
+      metadata: payload.metadata,
+      created_at: new Date().toISOString(),
+    });
+  }
 
   // Record in finance_transactions so the double-entry shadow ledger posts DR Cash / CR Wallet Liability.
   // F21: unique index on description — concurrent webhooks treat 23505 as benign.

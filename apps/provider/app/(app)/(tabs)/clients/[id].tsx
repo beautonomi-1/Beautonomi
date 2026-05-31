@@ -21,6 +21,7 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ChipCombobox } from "@/components/ui/ChipCombobox";
 import { Avatar } from "@/components/ui/Avatar";
+import { VerifiedBadge } from "@/components/ui/VerifiedBadge";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
@@ -49,6 +50,7 @@ interface ClientCustomer {
   email: string | null;
   phone: string | null;
   avatar_url: string | null;
+  identity_verified?: boolean | null;
   date_of_birth?: string | null;
   email_notifications_enabled?: boolean | null;
   sms_notifications_enabled?: boolean | null;
@@ -514,7 +516,12 @@ export default function ClientDetailScreen() {
             <View style={twStyle("flex-row items-center")}>
               <Avatar name={name} imageUrl={customer.avatar_url ?? undefined} size="lg" />
               <View style={twStyle("ml-4 flex-1")}>
-                <Text style={twStyle("text-lg font-bold text-gray-900")}>{name}</Text>
+                <View style={twStyle("flex-row items-center flex-wrap")}>
+                  <Text style={twStyle("text-lg font-bold text-gray-900")}>{name}</Text>
+                  {customer.identity_verified ? (
+                    <VerifiedBadge verified size="md" style={{ marginLeft: 8 }} />
+                  ) : null}
+                </View>
                 {customer.phone ? (
                   <Text style={twStyle("text-sm text-gray-500 mt-0.5")}>{customer.phone}</Text>
                 ) : null}

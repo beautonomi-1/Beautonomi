@@ -25,6 +25,8 @@ import { validateProductForm } from "@/features/products/validateProductForm";
 import { computeMarkupFromPrices, computeRetailFromMarkup } from "@/features/products/markupCalc";
 import { ProductGalleryUpload } from "@/features/products/ProductGalleryUpload";
 import { VariantMatrixEditor } from "@/features/products/VariantMatrixEditor";
+import { BarcodeScannerModal } from "@/features/products/BarcodeScannerModal";
+import { Ionicons } from "@expo/vector-icons";
 
 interface ProductVariantRow {
   id?: string;
@@ -201,6 +203,7 @@ export default function ProductFormScreen() {
   const [newBrandName, setNewBrandName] = useState("");
   const [newCategoryName, setNewCategoryName] = useState("");
   const [newSupplierName, setNewSupplierName] = useState("");
+  const [barcodeScanOpen, setBarcodeScanOpen] = useState(false);
 
   const handleCreateBrand = useCallback(async () => {
     const name = newBrandName.trim();
@@ -504,12 +507,28 @@ export default function ProductFormScreen() {
                 accessibilityLabel="SKU"
               />
             </View>
-            <FormField
-              label="Barcode"
-              value={form.barcode}
-              onChangeText={(t) => setForm((p) => ({ ...p, barcode: t }))}
-              placeholder="Optional"
-            />
+            <View style={twStyle("mb-3")}>
+              <View style={twStyle("mb-1 flex-row items-center justify-between")}>
+                <Text style={twStyle("text-sm font-medium text-gray-700")}>Barcode</Text>
+                <TouchableOpacity
+                  onPress={() => setBarcodeScanOpen(true)}
+                  style={twStyle("flex-row items-center py-1")}
+                  accessibilityLabel="Scan barcode"
+                  accessibilityRole="button"
+                >
+                  <Ionicons name="barcode-outline" size={18} color="#4f46e5" />
+                  <Text style={twStyle("ml-1 text-sm font-medium text-indigo-600")}>Scan</Text>
+                </TouchableOpacity>
+              </View>
+              <TextInput
+                style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+                placeholder="Optional — scan packaging or type manually"
+                placeholderTextColor="#9ca3af"
+                value={form.barcode}
+                onChangeText={(t) => setForm((p) => ({ ...p, barcode: t }))}
+                accessibilityLabel="Barcode"
+              />
+            </View>
 
             <View style={twStyle("mb-3")}>
               <View style={twStyle("mb-1 flex-row items-center justify-between")}>
@@ -1006,6 +1025,17 @@ export default function ProductFormScreen() {
           ))}
         </ScrollView>
       </BottomSheet>
+
+      <BarcodeScannerModal
+        visible={barcodeScanOpen}
+        onClose={() => setBarcodeScanOpen(false)}
+        title="Scan product barcode"
+        onScanned={(code) => {
+          setForm((p) => ({ ...p, barcode: code }));
+          setBarcodeScanOpen(false);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }}
+      />
     </ScreenContainer>
   );
 }

@@ -54,7 +54,11 @@ export async function POST(request: NextRequest) {
     }
 
     if (giftCard.currency !== userCurrency) {
-      return errorResponse(`This gift card is in ${giftCard.currency}, but your wallet is in ${userCurrency}`, "CURRENCY_MISMATCH", 400);
+      return errorResponse(
+        `This gift card is in ${giftCard.currency}, but your wallet is in ${userCurrency}. It can be redeemed by an account in the ${giftCard.currency} region, or used at checkout where ${giftCard.currency} is accepted.`,
+        "CURRENCY_MISMATCH",
+        400,
+      );
     }
 
     const redeemAmount = Number(giftCard.balance);

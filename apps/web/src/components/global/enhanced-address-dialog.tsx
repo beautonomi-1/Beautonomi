@@ -132,7 +132,6 @@ export default function EnhancedAddressDialog({
             <AddressAutocomplete
               onChange={handleAddressSelect}
               placeholder="Search for an address..."
-              geocodeTypes={["address"]}
               className="w-full"
             />
           </div>

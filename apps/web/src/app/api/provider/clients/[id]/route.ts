@@ -156,7 +156,7 @@ export async function GET(
     const { data: customer, error: customerError } = await supabaseAdmin
       .from("users")
       .select(
-        "id, full_name, email, phone, avatar_url, rating_average, review_count, customer_review_rating_avg, customer_review_rating_count, customer_booking_rating_avg, customer_booking_rating_count, created_at, date_of_birth, email_notifications_enabled, sms_notifications_enabled",
+        "id, full_name, email, phone, avatar_url, identity_verified, identity_verification_status, rating_average, review_count, customer_review_rating_avg, customer_review_rating_count, customer_booking_rating_avg, customer_booking_rating_count, created_at, date_of_birth, email_notifications_enabled, sms_notifications_enabled",
       )
       .eq("id", customerId)
       .single();

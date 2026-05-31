@@ -69,34 +69,46 @@ export async function GET(request: NextRequest) {
           .in("id", reviewerIds)
       : { data: [] };
 
+    // NOTE: `providers` has no `verification_status` column — the canonical KYC
+    // status lives in `provider_verification_status`. Select the real provider
+    // columns here and resolve the KYC status separately below, otherwise the
+    // whole select errors and the admin queue loses all provider context.
     const [ownerProvidersRes, staffProvidersRes] = await Promise.all([
       userIds.length > 0
         ? admin
             .from("providers")
-            .select("id, user_id, business_name, slug, verification_status")
+            .select("id, user_id, business_name, slug, is_verified")
             .in("user_id", userIds)
         : Promise.resolve({ data: [] }),
       userIds.length > 0
         ? admin
             .from("provider_staff")
-            .select("user_id, providers:providers!provider_staff_provider_id_fkey(id, business_name, slug, verification_status)")
+            .select("user_id, providers:providers!provider_staff_provider_id_fkey(id, business_name, slug, is_verified)")
             .in("user_id", userIds)
             .eq("is_active", true)
         : Promise.resolve({ data: [] }),
     ]);
 
     type UserRow = { id: string; full_name?: string; email?: string; phone?: string | null; avatar_url?: string | null };
-    type ProviderInfo = { id: string; business_name?: string | null; slug?: string | null; verification_status?: string | null; relationship: "owner" | "staff" };
+    type ProviderInfo = {
+      id: string;
+      business_name?: string | null;
+      slug?: string | null;
+      is_verified?: boolean | null;
+      verification_status?: string | null;
+      relationship: "owner" | "staff";
+    };
     const userMap = new Map((users || []).map((u: UserRow) => [u.id, u]));
     const reviewerMap = new Map((reviewers || []).map((r: UserRow) => [r.id, r]));
     const providerMap = new Map<string, ProviderInfo>();
-    for (const p of (ownerProvidersRes.data || []) as Array<{ id: string; user_id?: string; business_name?: string | null; slug?: string | null; verification_status?: string | null }>) {
+    for (const p of (ownerProvidersRes.data || []) as Array<{ id: string; user_id?: string; business_name?: string | null; slug?: string | null; is_verified?: boolean | null }>) {
       if (!p.user_id) continue;
       providerMap.set(p.user_id, {
         id: p.id,
         business_name: p.business_name,
         slug: p.slug,
-        verification_status: p.verification_status,
+        is_verified: p.is_verified ?? null,
+        verification_status: null,
         relationship: "owner",
       });
     }
@@ -108,9 +120,32 @@ export async function GET(request: NextRequest) {
         id: provider.id,
         business_name: provider.business_name,
         slug: provider.slug,
-        verification_status: provider.verification_status,
+        is_verified: provider.is_verified ?? null,
+        verification_status: null,
         relationship: "staff",
       });
+    }
+
+    // Resolve canonical KYC status from `provider_verification_status` for every
+    // provider we surfaced, then fold it into each provider entry so the admin
+    // queue shows the real Sumsub/manual KYC state (falling back to the
+    // marketplace `is_verified` flag when no KYC row exists yet).
+    const providerIdsForKyc = [...new Set([...providerMap.values()].map((p) => p.id))];
+    if (providerIdsForKyc.length > 0) {
+      const { data: kycRows } = await admin
+        .from("provider_verification_status")
+        .select("provider_id, status")
+        .in("provider_id", providerIdsForKyc);
+      const kycByProvider = new Map(
+        ((kycRows || []) as Array<{ provider_id: string; status?: string | null }>).map((r) => [
+          r.provider_id,
+          r.status ?? null,
+        ]),
+      );
+      for (const info of providerMap.values()) {
+        info.verification_status =
+          kycByProvider.get(info.id) ?? (info.is_verified ? "approved" : null);
+      }
     }
 
     const enrichedVerifications = vList.map((v) => ({

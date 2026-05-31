@@ -291,7 +291,7 @@ export async function GET(
         `
         *,
         version,
-        customers:users!bookings_customer_id_fkey(id, full_name, email, phone, rating_average, review_count),
+        customers:users!bookings_customer_id_fkey(id, full_name, email, phone, identity_verified, identity_verification_status, rating_average, review_count),
         locations:provider_locations(id, name, address_line1, city),
         providers:providers!bookings_provider_id_fkey(timezone),
         group_bookings!bookings_group_booking_id_fkey(ref_number, booking_participants(id, participant_name, participant_email, participant_phone, is_primary_contact)),
@@ -549,6 +549,7 @@ export async function GET(
       provider_form_responses: bookingData.provider_form_responses || null,
       // Include joined data for provider portal (customers, locations)
       customers: bookingData.customers || null,
+      customer_identity_verified: Boolean((bookingData.customers as any)?.identity_verified),
       locations: bookingData.locations || null,
       recurring_series_id: (bookingData as { recurring_series_id?: string | null }).recurring_series_id || null,
       is_recurring: Boolean((bookingData as { recurring_series_id?: string | null }).recurring_series_id || recurringSeries?.id),
@@ -1358,7 +1359,7 @@ export async function PATCH(
         `
         *,
         version,
-        customers:users!bookings_customer_id_fkey(id, full_name, email, phone),
+        customers:users!bookings_customer_id_fkey(id, full_name, email, phone, identity_verified, identity_verification_status),
         locations:provider_locations(id, name, address_line1, city),
         booking_services(
           id,
@@ -1400,7 +1401,7 @@ export async function PATCH(
           `
           *,
           version,
-          customers:users!bookings_customer_id_fkey(id, full_name, email, phone),
+          customers:users!bookings_customer_id_fkey(id, full_name, email, phone, identity_verified, identity_verification_status),
           locations:provider_locations(id, name, address_line1, city),
           booking_services(
             id,
@@ -1483,7 +1484,7 @@ export async function PATCH(
           `
           *,
           version,
-          customers:users!bookings_customer_id_fkey(id, full_name, email, phone),
+          customers:users!bookings_customer_id_fkey(id, full_name, email, phone, identity_verified, identity_verification_status),
           locations:provider_locations(id, name, address_line1, city),
           booking_services(
             id,

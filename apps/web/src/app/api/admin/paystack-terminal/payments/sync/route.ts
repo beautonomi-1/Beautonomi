@@ -7,6 +7,7 @@ import {
   isPaystackTerminalCharge,
   recordPaystackTerminalCharge,
 } from "@/lib/payments/paystack-terminal-webhook";
+import { resolvePaystackTerminalTenantScope } from "@/lib/admin/paystack-terminal-tenant-scope";
 
 function defaultFromIso() {
   const date = new Date();
@@ -58,6 +59,7 @@ export async function POST(request: NextRequest) {
   try {
     await requireAdminSection(ADMIN_SECTION_FINANCE, request);
     const supabase = getSupabaseAdmin();
+    const tenantScope = await resolvePaystackTerminalTenantScope(supabase, request);
     const body = await request.json().catch(() => ({}));
     const from = typeof body?.from === "string" && body.from.trim() ? body.from.trim() : defaultFromIso();
     const to = typeof body?.to === "string" && body.to.trim() ? body.to.trim() : undefined;
@@ -65,7 +67,8 @@ export async function POST(request: NextRequest) {
     const perPage = Number.isFinite(Number(body?.perPage))
       ? Math.min(100, Math.max(1, Number(body.perPage)))
       : 100;
-    const tenantId = typeof body?.tenantId === "string" && body.tenantId.trim() ? body.tenantId.trim() : null;
+    const tenantId =
+      typeof body?.tenantId === "string" && body.tenantId.trim() ? body.tenantId.trim() : tenantScope.tenantId;
     const requestedTerminalId =
       typeof body?.terminalid === "string" || typeof body?.terminalid === "number"
         ? String(body.terminalid).trim()
@@ -77,10 +80,22 @@ export async function POST(request: NextRequest) {
 
     let localTerminals: LocalTerminal[] = [];
     if (localTerminalId || !requestedTerminalId) {
+      if (tenantScope.providerIds.length === 0) {
+        return successResponse({
+          checked: 0,
+          terminalsChecked: 0,
+          terminalPayments: 0,
+          recorded: 0,
+          results: [],
+          basis:
+            "Fallback reconciliation from Paystack Transaction API. Uses terminalid where a local Paystack terminal ID is available; primary path remains charge.success webhook and mapping uses Virtual Terminal code, not WhatsApp destination.",
+        });
+      }
       let terminalQuery = (supabase.from("provider_paystack_virtual_terminals") as any)
         .select("id, provider_id, paystack_terminal_id, terminal_code, currency, provider:providers(tenant_id)")
         .not("paystack_terminal_id", "is", null)
-        .is("deleted_at", null);
+        .is("deleted_at", null)
+        .in("provider_id", tenantScope.providerIds);
       if (localTerminalId) terminalQuery = terminalQuery.eq("id", localTerminalId);
       const { data: terminalRows, error: terminalError } = await terminalQuery;
       if (terminalError) throw terminalError;

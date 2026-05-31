@@ -65,6 +65,7 @@ import { HistoryItem } from "./components/HistoryItem";
 import { ProviderClientRatingDialog } from "@/components/provider-portal/ProviderClientRatingDialog";
 import { EditRatingDialog } from "@/components/provider-portal/EditRatingDialog";
 import type { MergedProviderClient } from "@/lib/provider-portal/merge-provider-clients-list";
+import { VerifiedBadge } from "@/components/ui/verified-badge";
 import { mergeProviderClientsListFromSources } from "@/lib/provider-portal/merge-provider-clients-list";
 import AddressAutocomplete from "@/components/mapbox/AddressAutocomplete";
 
@@ -475,8 +476,13 @@ export function ClientsClient({
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <p className="font-semibold text-gray-900 truncate">
-                            {client.first_name} {client.last_name}
+                          <p className="font-semibold text-gray-900 truncate flex items-center gap-1.5">
+                            <span className="truncate">
+                              {client.first_name} {client.last_name}
+                            </span>
+                            {client.identity_verified ? (
+                              <VerifiedBadge verified iconOnly className="shrink-0" />
+                            ) : null}
                           </p>
                           {client.is_limited_platform_link && (
                             <span className="mt-1 inline-flex rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-700">
@@ -599,7 +605,12 @@ export function ClientsClient({
                               </AvatarFallback>
                             </Avatar>
                             <div>
-                              <p className="font-medium">{client.first_name} {client.last_name}</p>
+                              <p className="font-medium flex items-center gap-1.5">
+                                <span>{client.first_name} {client.last_name}</span>
+                                {client.identity_verified ? (
+                                  <VerifiedBadge verified iconOnly />
+                                ) : null}
+                              </p>
                               {client.is_limited_platform_link && (
                                 <p className="text-xs font-medium text-sky-700">Existing platform customer</p>
                               )}
@@ -1250,8 +1261,9 @@ function ClientDetailSheet({
                 </AvatarFallback>
               </Avatar>
               <div>
-                <SheetTitle className="text-xl">
-                  {client.first_name} {client.last_name}
+                <SheetTitle className="text-xl flex items-center gap-2">
+                  <span>{client.first_name} {client.last_name}</span>
+                  {client.identity_verified ? <VerifiedBadge verified /> : null}
                 </SheetTitle>
                 {isLimitedPlatformLink && (
                   <div className="mt-2 rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">

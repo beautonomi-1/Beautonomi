@@ -643,7 +643,6 @@ function Step5Location({
             placeholder="Search for your address…"
             country="ZA"
             defaultCountryName="South Africa"
-            geocodeTypes={["address"]}
           />
           <p className="mt-1.5 text-xs text-slate-400">
             Your exact address is only shared with providers when you make a house-call booking.

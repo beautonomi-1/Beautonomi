@@ -159,7 +159,7 @@ async function handleGetProviderBookings(request: NextRequest) {
         `
         *,
         version,
-        customers:users!bookings_customer_id_fkey(id, full_name, email, phone),
+        customers:users!bookings_customer_id_fkey(id, full_name, email, phone, identity_verified, identity_verification_status),
         locations:provider_locations(id, name, address_line1, city),
         group_bookings!bookings_group_booking_id_fkey(ref_number),
         recurring_appointments!bookings_recurring_series_id_fkey(id, recurrence_rule, start_date, end_date, start_time, frequency, last_booking_date, occurrences, is_active),
@@ -522,6 +522,7 @@ async function handleGetProviderBookings(request: NextRequest) {
         locations: booking.locations || null,
         // Flattened convenience fields for the bookings list page
         customer_name: booking.customers?.full_name || null,
+        customer_identity_verified: Boolean((booking.customers as any)?.identity_verified),
         location_name: booking.locations?.name || null,
         staff_name: services[0]?.staff_name || null,
         recurring_series_id: booking.recurring_series_id || null,

@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
           product_variant:product_variants(id, option_values)
         ),
         customer:users!product_orders_customer_id_fkey (
-          id, full_name, email, avatar_url
+          id, full_name, email, avatar_url, identity_verified
         )
       `,
         { count: "exact" },

@@ -228,6 +228,7 @@ export default function WalkInSaleScreen() {
   const { screenPadding } = useResponsive();
   const router = useRouter();
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
+  const yocoEnabled = useFeatureFlag("payment_yoco");
   const { from: fromParam } = useLocalSearchParams<{ from?: string }>();
   const fromTransactionsHub =
     typeof fromParam === "string"
@@ -1087,7 +1088,9 @@ export default function WalkInSaleScreen() {
                 <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Payment</Text>
                 <View style={{ marginBottom: 16, flexDirection: "row", flexWrap: "wrap", marginHorizontal: -4 }}>
                   {WALK_IN_PAYMENT_METHODS.filter(
-                    (method) => paystackTerminalEnabled || method.id !== "paystack_terminal",
+                    (method) =>
+                      (paystackTerminalEnabled || method.id !== "paystack_terminal") &&
+                      (yocoEnabled || method.id !== "yoco"),
                   ).map((method) => {
                     const active = paymentMethod === method.id;
                     return (

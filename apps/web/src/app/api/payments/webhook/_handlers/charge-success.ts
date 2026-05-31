@@ -1895,6 +1895,43 @@ async function handleGiftCardOrderSuccess(
   } catch (e) {
     console.error("Error notifying gift card purchaser:", e);
   }
+
+  // Deliver the gift to the recipient when an email was supplied at purchase.
+  // Email is sent to anyone (registered or not); registered recipients also get
+  // a push + the card already appears in their wallet list via recipient_email.
+  try {
+    const recipientEmail =
+      typeof orderData.recipient_email === "string" ? orderData.recipient_email.trim() : "";
+    if (recipientEmail) {
+      const orderMeta = (orderData.metadata ?? {}) as {
+        recipient_name?: string | null;
+        message?: string | null;
+      };
+      const recipientName =
+        typeof metadata?.recipient_name === "string"
+          ? metadata.recipient_name
+          : (orderMeta.recipient_name ?? null);
+      const giftMessage =
+        typeof metadata?.message === "string" ? metadata.message : (orderMeta.message ?? null);
+      const { deliverGiftCardToRecipient } = await import(
+        "@/lib/notifications/gift-card-recipient-delivery"
+      );
+      await deliverGiftCardToRecipient({
+        supabase,
+        orderId,
+        recipientEmail,
+        recipientName,
+        message: giftMessage,
+        purchaserUserId: orderData.purchaser_user_id ?? null,
+        codes: giftCardCodes,
+        perCardAmount: value,
+        currency,
+        tenantId: giftOrderFinanceTenantId,
+      });
+    }
+  } catch (e) {
+    console.error("Error delivering gift card to recipient:", e);
+  }
 }
 
 async function handleGiftCardOrderFailed(

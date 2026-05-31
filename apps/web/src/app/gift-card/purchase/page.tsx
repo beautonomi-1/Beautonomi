@@ -41,6 +41,8 @@ export default function GiftCardPurchasePage() {
   const [amount, setAmount] = useState("500");
   const [quantity, setQuantity] = useState("1");
   const [recipientEmail, setRecipientEmail] = useState("");
+  const [recipientName, setRecipientName] = useState("");
+  const [giftMessage, setGiftMessage] = useState("");
   const [isBulkMode, setIsBulkMode] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
@@ -134,6 +136,8 @@ export default function GiftCardPurchasePage() {
         amount: amt,
         quantity: qty,
         recipient_email: recipientEmail.trim() ? recipientEmail.trim() : null,
+        recipient_name: recipientEmail.trim() && recipientName.trim() ? recipientName.trim() : undefined,
+        message: recipientEmail.trim() && giftMessage.trim() ? giftMessage.trim() : undefined,
         template_id: selectedTemplate?.id || undefined,
         template_name: selectedTemplate?.name || undefined,
         template_image_url: selectedTemplate?.image_url || undefined,
@@ -327,7 +331,7 @@ export default function GiftCardPurchasePage() {
           
           <div>
             <Label htmlFor="recipient" className="text-sm font-medium mb-1 block">
-              Recipient email {isBulkMode ? "(optional - for single recipient)" : "(optional)"}
+              Send as a gift — recipient email {isBulkMode ? "(optional, single recipient)" : "(optional)"}
             </Label>
             <Input 
               id="recipient"
@@ -336,9 +340,42 @@ export default function GiftCardPurchasePage() {
               onChange={(e) => setRecipientEmail(e.target.value)} 
               placeholder="friend@example.com" 
             />
-            {isBulkMode && (
+            {recipientEmail.trim() ? (
+              <div className="mt-3 space-y-3">
+                <div>
+                  <Label htmlFor="recipientName" className="text-sm font-medium mb-1 block">
+                    Recipient name (optional)
+                  </Label>
+                  <Input
+                    id="recipientName"
+                    value={recipientName}
+                    onChange={(e) => setRecipientName(e.target.value)}
+                    placeholder="e.g. Thandi"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="giftMessage" className="text-sm font-medium mb-1 block">
+                    Personal message (optional)
+                  </Label>
+                  <textarea
+                    id="giftMessage"
+                    value={giftMessage}
+                    onChange={(e) => setGiftMessage(e.target.value)}
+                    placeholder="Happy birthday! Enjoy a treat on me 💛"
+                    maxLength={500}
+                    rows={3}
+                    className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-500"
+                  />
+                </div>
+                <p className="text-xs text-gray-500 rounded-md bg-pink-50 p-2">
+                  We&apos;ll email the code{isBulkMode && Number(quantity) > 1 ? "s" : ""} to {recipientEmail.trim()} after payment, with steps to redeem. If they have a Beautonomi account, it also appears in their wallet automatically.
+                </p>
+              </div>
+            ) : (
               <p className="text-xs text-gray-500 mt-1">
-                Leave empty to receive all gift card codes yourself, or enter an email to send codes to a single recipient.
+                {isBulkMode
+                  ? "Leave empty to receive all gift card codes yourself, or enter an email to send to a single recipient."
+                  : "Leave empty to keep the code yourself — you can copy or share it after payment. Add an email to send it as a gift."}
               </p>
             )}
           </div>

@@ -15,11 +15,16 @@ interface ScreenHeaderProps {
    * Use for avatars / thumbnails in chat or detail headers.
    */
   leadingContent?: React.ReactNode;
+  /**
+   * Optional content rendered immediately after the title (same row).
+   * Use for inline status chips such as a verified badge.
+   */
+  titleAccessory?: React.ReactNode;
 }
 
 const MORE_TAB_HREF = "/(app)/(tabs)/more" as const;
 
-export function ScreenHeader({ title, subtitle, showBack, onBack, rightAction, leadingContent }: ScreenHeaderProps) {
+export function ScreenHeader({ title, subtitle, showBack, onBack, rightAction, leadingContent, titleAccessory }: ScreenHeaderProps) {
   const router = useRouter();
   const handleBack =
     onBack ??
@@ -50,9 +55,17 @@ export function ScreenHeader({ title, subtitle, showBack, onBack, rightAction, l
         )}
         {leadingContent}
         <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }} numberOfLines={1}>
-            {title}
-          </Text>
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <Text
+              style={{ flexShrink: 1, fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}
+              numberOfLines={1}
+            >
+              {title}
+            </Text>
+            {titleAccessory ? (
+              <View style={{ marginLeft: 8, flexShrink: 0 }}>{titleAccessory}</View>
+            ) : null}
+          </View>
           {subtitle ? (
             <Text style={{ marginTop: 2, fontSize: 14, color: Colors.gray[500] }}>{subtitle}</Text>
           ) : null}

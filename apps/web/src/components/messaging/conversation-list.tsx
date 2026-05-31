@@ -5,6 +5,7 @@ import { Search, MessageSquare, Pin } from "lucide-react";
 import { sortConversationsPinFirst } from "@/lib/messaging/conversation-pin";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { VerifiedBadge } from "@/components/ui/verified-badge";
 import { format, isToday, isYesterday } from "date-fns";
 
 interface Conversation {
@@ -18,6 +19,7 @@ interface Conversation {
   provider_phone?: string;
   provider_email?: string;
   customer_name?: string;
+  customer_identity_verified?: boolean | null;
   booking_number?: string;
   avatar?: string;
   last_message_preview?: string;
@@ -145,6 +147,9 @@ export default function ConversationList({
                           <Pin className="w-3.5 h-3.5 text-primary shrink-0" aria-label="Pinned" />
                         ) : null}
                         <span className="truncate">{getConversationName(conversation)}</span>
+                        {isProviderView && conversation.customer_identity_verified ? (
+                          <VerifiedBadge verified iconOnly />
+                        ) : null}
                       </h3>
                       <span className="text-xs text-[#667781] flex-shrink-0 ml-2">
                         {formatTime(conversation.last_message_at)}
