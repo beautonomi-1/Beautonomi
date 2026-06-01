@@ -38,7 +38,7 @@ function transactionRecord(transaction: unknown): Record<string, unknown> {
 function enrichTransactionWithTerminal(
   transaction: Record<string, unknown>,
   terminal: ReconcileLocalTerminal,
-) {
+): Record<string, unknown> {
   const metadata =
     transaction.metadata && typeof transaction.metadata === "object" && !Array.isArray(transaction.metadata)
       ? { ...(transaction.metadata as Record<string, unknown>) }
@@ -101,10 +101,11 @@ export async function reconcilePaystackTerminalPayments(params: {
       checked += rows.length;
       for (const transaction of rows) {
         const result = await recordPaystackTerminalCharge(params.supabase, transaction as any);
+        const ref = transaction.reference;
         results.push({
           terminalid: terminal.paystack_terminal_id,
           terminal_code: terminal.terminal_code,
-          reference: (transaction.reference as string | undefined) ?? null,
+          reference: typeof ref === "string" ? ref : null,
           recorded: result.recorded,
           reason: "reason" in result ? result.reason ?? null : null,
           payment_id: result.recorded ? ((result.payment as { id?: string })?.id ?? null) : null,
