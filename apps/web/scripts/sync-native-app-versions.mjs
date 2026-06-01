@@ -30,9 +30,24 @@ function readVersion(app) {
   return match[1];
 }
 
+/** Keep committed values when sibling native apps are absent (e.g. web-only CI hosts). */
+function readExistingVersions() {
+  if (!existsSync(outPath)) return { customer: null, provider: null };
+  try {
+    const parsed = JSON.parse(readFileSync(outPath, "utf8"));
+    return {
+      customer: parsed.customer ?? null,
+      provider: parsed.provider ?? null,
+    };
+  } catch {
+    return { customer: null, provider: null };
+  }
+}
+
+const existing = readExistingVersions();
 const payload = {
-  customer: readVersion("customer"),
-  provider: readVersion("provider"),
+  customer: readVersion("customer") ?? existing.customer,
+  provider: readVersion("provider") ?? existing.provider,
   synced_at: new Date().toISOString(),
 };
 

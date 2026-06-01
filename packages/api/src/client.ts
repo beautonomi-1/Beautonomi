@@ -123,14 +123,14 @@ const backgroundAborted = new WeakSet<AbortController>();
  * silent and refetch fresh on the next foreground.
  */
 export function abortInFlightRequests(): void {
-  for (const controller of inFlightControllers) {
+  inFlightControllers.forEach((controller) => {
     backgroundAborted.add(controller);
     try {
       controller.abort();
     } catch {
       // no-op: aborting an already-settled request is harmless
     }
-  }
+  });
   inFlightControllers.clear();
 }
 
