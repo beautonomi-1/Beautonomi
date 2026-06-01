@@ -140,6 +140,11 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
       }
       if (!mountedRef.current || id !== requestIdRef.current) return;
 
+      // Request was deliberately aborted because the app went to the background.
+      // Don't surface an error or write a cache entry — leave the entry stale so
+      // the focus/recover listener refetches fresh data on the next foreground.
+      if (payload.errorCode === "CANCELLED") return;
+
       // §Provider-launch (audit 2026-04): preserve last-known-good data on
       // refresh failure.  Screens like the calendar otherwise clear on any
       // blip (pull-to-refresh, backgrounded, flaky network) and show a

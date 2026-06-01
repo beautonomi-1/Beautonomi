@@ -105,6 +105,36 @@ function extractErrorFromPayload(
 }
 
 /**
+ * In-flight GET/HEAD AbortControllers. iOS pauses JS timers while the app is
+ * suspended, so the per-request timeout below never fires in the background:
+ * stalled requests hang until the app resumes, at which point a whole batch
+ * rejects at once with "Request timed out". Apps call `abortInFlightRequests()`
+ * when they background to cancel these immediately. Only idempotent reads are
+ * tracked — never POST/PUT/PATCH/DELETE — so a backgrounded mutation is never
+ * torn down client-side after the server may have already applied it.
+ */
+const inFlightControllers = new Set<AbortController>();
+const backgroundAborted = new WeakSet<AbortController>();
+
+/**
+ * Abort every in-flight idempotent request. Call when the app moves to the
+ * background so stalled sockets don't hang for minutes. Requests cancelled this
+ * way resolve with `code: "CANCELLED"` (not `"TIMEOUT"`) so the UI can stay
+ * silent and refetch fresh on the next foreground.
+ */
+export function abortInFlightRequests(): void {
+  for (const controller of inFlightControllers) {
+    backgroundAborted.add(controller);
+    try {
+      controller.abort();
+    } catch {
+      // no-op: aborting an already-settled request is harmless
+    }
+  }
+  inFlightControllers.clear();
+}
+
+/**
  * Fetch wrapper that parses JSON and returns { data, error } shape.
  * When getAccessToken is provided, injects Authorization header.
  */
@@ -113,6 +143,8 @@ export async function apiFetch<T>(
   options: RequestOptions = {}
 ): Promise<ApiResponse<T>> {
   const { body, baseUrl = "", getAccessToken, timeout = 30000, ...init } = options;
+  const method = String((init as RequestInit).method ?? "GET").toUpperCase();
+  const isIdempotent = method === "GET" || method === "HEAD";
 
   if (!path.startsWith("http") && !baseUrl?.trim()) {
     return {
@@ -151,6 +183,10 @@ export async function apiFetch<T>(
     }
   }
 
+  // Declared outside the try so the catch can tell a deliberate background
+  // cancellation apart from a real timeout / network error.
+  const controller = new AbortController();
+
   try {
     // Resolve auth token inside the try so any exception is caught and returned as { error }.
     if (getAccessToken) {
@@ -161,12 +197,17 @@ export async function apiFetch<T>(
     }
 
     // Add timeout using AbortController
-    const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
     fetchInit.signal = controller.signal;
+    if (isIdempotent) inFlightControllers.add(controller);
 
-    const response = await fetch(url, fetchInit);
-    clearTimeout(timeoutId);
+    let response: Response;
+    try {
+      response = await fetch(url, fetchInit);
+    } finally {
+      clearTimeout(timeoutId);
+      inFlightControllers.delete(controller);
+    }
 
     const rawText = await response.text();
     const html = responseBodyLooksLikeHtml(rawText);
@@ -229,6 +270,20 @@ export async function apiFetch<T>(
       error: null,
     };
   } catch (err) {
+    inFlightControllers.delete(controller);
+    // Deliberately cancelled because the app was backgrounded — not a real
+    // failure. Surface a distinct code so callers stay silent and refetch on
+    // resume instead of flashing a "Request timed out" error.
+    if (backgroundAborted.has(controller)) {
+      backgroundAborted.delete(controller);
+      return {
+        data: null,
+        error: {
+          message: "Request cancelled.",
+          code: "CANCELLED",
+        },
+      };
+    }
     const isTimeout = err instanceof Error && err.name === "AbortError";
     return {
       data: null,

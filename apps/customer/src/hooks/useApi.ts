@@ -110,13 +110,17 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
       }
 
       const inflight = inflightRequests.get(cacheKey) as
-        | Promise<{ data: T | null; error: string | null }>
+        | Promise<{ data: T | null; error: string | null; cancelled?: boolean }>
         | undefined;
       const requestPromise =
         inflight ??
         (async () => {
           const result = await api.get<T>(path, timeoutMs > 0 ? { timeout: timeoutMs } : undefined);
           if (result.error) {
+            // Deliberate background cancellation — not a real failure.
+            if (result.error.code === "CANCELLED") {
+              return { data: null, error: null, cancelled: true };
+            }
             return { data: null, error: getApiErrorMessage(result.error, "Request failed") };
           }
           return { data: result.data, error: null };
@@ -126,7 +130,7 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
         inflightRequests.set(cacheKey, requestPromise as Promise<{ data: unknown | null; error: string | null }>);
       }
 
-      let payload: { data: T | null; error: string | null };
+      let payload: { data: T | null; error: string | null; cancelled?: boolean };
       try {
         payload = await requestPromise;
       } finally {
@@ -135,6 +139,10 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
         }
       }
       if (!mountedRef.current || id !== requestIdRef.current) return;
+
+      // Aborted because the app backgrounded — leave the cache stale (no entry
+      // written) so the focus/recover listener refetches fresh on resume.
+      if (payload.cancelled) return;
 
       responseCache.set(cacheKey, {
         data: payload.data,

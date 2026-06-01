@@ -14,6 +14,7 @@ import * as AuthSession from "expo-auth-session";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase/client";
 import { scheduleRetentionSyncOnSession } from "@/lib/retention-sync";
+import { abortInFlightRequests } from "@beautonomi/api";
 import { APP_URL } from "@/config/public-env";
 import {
   authFlowBreadcrumb,
@@ -218,6 +219,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         DeviceEventEmitter.emit("beautonomi:app:focus");
       } else {
         supabase.auth.stopAutoRefresh();
+        // iOS pauses JS timers while suspended, so in-flight GETs can't time out
+        // and hang until resume — then reject as a batch of "Request timed out".
+        // Cancel them now; the focus listener refetches fresh when we return.
+        if (state === "background") {
+          abortInFlightRequests();
+        }
       }
     });
     return () => sub.remove();
