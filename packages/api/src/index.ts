@@ -1,4 +1,4 @@
-export { apiFetch, createApiClient } from "./client";
+export { apiFetch, createApiClient, abortInFlightRequests } from "./client";
 export type {
   RequestOptions,
   ApiClientConfig,
