@@ -51,6 +51,111 @@ function captureWebhookFailure(
   }
 }
 
+function safeParseJson(text: string): { data?: Record<string, unknown> } | null {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Build the set of tenant ids whose Paystack secret could have signed this webhook.
+ * We use the (untrusted) payload only to PICK candidate secrets — the HMAC must still
+ * match, so this cannot be abused to forge events.
+ */
+async function resolvePaystackWebhookCandidateTenantIds(params: {
+  body: string;
+  hostTenantId: string | null;
+}): Promise<Array<string | null>> {
+  const candidates: Array<string | null> = [];
+  const push = (value: string | null | undefined) => {
+    const normalized = typeof value === "string" && value.trim() ? value.trim() : value === null ? null : undefined;
+    if (normalized === undefined) return;
+    if (!candidates.includes(normalized)) candidates.push(normalized);
+  };
+
+  push(params.hostTenantId);
+
+  try {
+    const parsed = safeParseJson(params.body);
+    const data = parsed?.data && typeof parsed.data === "object" ? (parsed.data as Record<string, unknown>) : null;
+    const metadata =
+      data?.metadata && typeof data.metadata === "object" && !Array.isArray(data.metadata)
+        ? (data.metadata as Record<string, unknown>)
+        : {};
+    const supabase = getSupabaseAdmin();
+
+    const metaTenantId = typeof metadata.tenant_id === "string" ? metadata.tenant_id : null;
+    push(metaTenantId);
+
+    const terminalCode =
+      (typeof metadata.paystack_terminal_code === "string" && metadata.paystack_terminal_code) ||
+      (typeof metadata.terminal_code === "string" && metadata.terminal_code) ||
+      (metadata.virtual_terminal &&
+      typeof metadata.virtual_terminal === "object" &&
+      typeof (metadata.virtual_terminal as Record<string, unknown>).code === "string"
+        ? ((metadata.virtual_terminal as Record<string, unknown>).code as string)
+        : null) ||
+      (data?.terminal &&
+      typeof data.terminal === "object" &&
+      typeof (data.terminal as Record<string, unknown>).code === "string"
+        ? ((data.terminal as Record<string, unknown>).code as string)
+        : null);
+    if (terminalCode) {
+      const { data: terminalRow } = await (supabase
+        .from("provider_paystack_virtual_terminals") as any)
+        .select("provider:providers(tenant_id)")
+        .eq("terminal_code", terminalCode)
+        .maybeSingle();
+      push((terminalRow as { provider?: { tenant_id?: string | null } } | null)?.provider?.tenant_id ?? undefined);
+    }
+
+    const providerId = typeof metadata.provider_id === "string" ? metadata.provider_id : null;
+    if (providerId) {
+      const { data: providerRow } = await supabase
+        .from("providers")
+        .select("tenant_id")
+        .eq("id", providerId)
+        .maybeSingle();
+      push((providerRow as { tenant_id?: string | null } | null)?.tenant_id ?? undefined);
+    }
+  } catch (err) {
+    console.error("[webhook] candidate tenant resolution failed:", err);
+  }
+
+  // Always include the global/env secret as a last resort.
+  push(null);
+  return candidates;
+}
+
+async function verifyPaystackSignatureAcrossTenants(
+  body: string,
+  signature: string,
+  candidateTenantIds: Array<string | null>,
+): Promise<boolean> {
+  const sigBuf = Buffer.from(signature, "hex");
+  const seenSecrets = new Set<string>();
+  for (const tenantId of candidateTenantIds) {
+    let secretKey: string;
+    try {
+      secretKey = await getPaystackSecretKey({ tenantId });
+    } catch {
+      continue;
+    }
+    if (!secretKey || seenSecrets.has(secretKey)) continue;
+    seenSecrets.add(secretKey);
+    const hashBuf = Buffer.from(
+      crypto.createHmac("sha512", secretKey).update(body).digest("hex"),
+      "hex",
+    );
+    if (sigBuf.length === hashBuf.length && crypto.timingSafeEqual(sigBuf, hashBuf)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /**
  * POST /api/payments/webhook
  *
@@ -82,18 +187,24 @@ export async function POST(request: Request) {
     }
 
     const tenant = await resolveTenantFromRequest(request);
-    const paystackSecretKey = await getPaystackSecretKey({ tenantId: tenant?.id ?? null });
-
-    const hash = crypto
-      .createHmac("sha512", paystackSecretKey)
-      .update(body)
-      .digest("hex");
-
-    const sigBuf = Buffer.from(signature, "hex");
-    const hashBuf = Buffer.from(hash, "hex");
-    if (sigBuf.length !== hashBuf.length || !crypto.timingSafeEqual(sigBuf, hashBuf)) {
+    // A Paystack Virtual Terminal payment is initiated from Paystack's hosted page, so the
+    // inbound webhook host may resolve to the wrong/default tenant. Paystack signs the body
+    // with the secret of whichever integration owns the charge, so we must verify against
+    // every plausible tenant secret (host tenant, the tenant derived from the payload's
+    // terminal/provider, and the global secret) before rejecting.
+    const candidateTenantIds = await resolvePaystackWebhookCandidateTenantIds({
+      body,
+      hostTenantId: tenant?.id ?? null,
+    });
+    const signatureValid = await verifyPaystackSignatureAcrossTenants(
+      body,
+      signature,
+      candidateTenantIds,
+    );
+    if (!signatureValid) {
       captureWebhookFailure(new Error("Invalid webhook signature"), {
         stage: "verify_signature",
+        tenantId: tenant?.id ?? null,
       });
       return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
     }

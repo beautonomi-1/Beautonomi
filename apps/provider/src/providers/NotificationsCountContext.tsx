@@ -39,6 +39,9 @@ export function NotificationsCountProvider({ children }: { children: ReactNode }
 
   const baseUnread = data?.total_unread ?? 0;
   const totalUnread = Math.max(0, baseUnread + countBias);
+  /** True once the server has returned a real count. Until then we must not
+   * overwrite an OS badge that a push set while the app was killed. */
+  const hasServerCount = typeof data?.total_unread === "number";
 
   const adjustUnreadCount = useCallback((delta: number) => {
     setCountBias((b) => b + delta);
@@ -53,6 +56,9 @@ export function NotificationsCountProvider({ children }: { children: ReactNode }
 
   useEffect(() => {
     if (Platform.OS === "web") return;
+    // Wait for the first server count before touching the OS badge — otherwise
+    // a cold start would briefly set it to 0 and wipe a push-delivered badge.
+    if (!hasServerCount) return;
     let cancelled = false;
     (async () => {
       try {
@@ -67,7 +73,7 @@ export function NotificationsCountProvider({ children }: { children: ReactNode }
     return () => {
       cancelled = true;
     };
-  }, [totalUnread]);
+  }, [totalUnread, hasServerCount]);
 
   const refreshRef = useRef(refresh);
   refreshRef.current = refresh;

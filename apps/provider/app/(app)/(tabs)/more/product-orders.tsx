@@ -30,6 +30,8 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { YocoPaymentSheet } from "@/components/YocoPaymentSheet";
+import { PaystackTerminalCollectSheet } from "@/components/PaystackTerminalCollectSheet";
+import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { formatCurrency } from "@/lib/format";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { twStyle } from "@/lib/twStyle";
@@ -267,6 +269,8 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
   const [recordPaymentMethod, setRecordPaymentMethod] = useState<"cash" | "card_on_delivery" | "yoco">("cash");
   const [recordPaymentReference, setRecordPaymentReference] = useState("");
   const [showYocoPaymentSheet, setShowYocoPaymentSheet] = useState(false);
+  const [terminalSheetOpen, setTerminalSheetOpen] = useState(false);
+  const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
 
   const pageSize = 50;
   const url = `/api/provider/product-orders?limit=${pageSize}&page=${page}${statusFilter ? `&status=${statusFilter}` : ""}`;
@@ -1331,8 +1335,29 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
             disabled={postingOrderMutation}
             fullWidth
           />
+          {paystackTerminalEnabled ? (
+            <ActionButton
+              label="Collect via Paystack Terminal"
+              onPress={() => {
+                setRecordPaymentSheetOpen(false);
+                setTerminalSheetOpen(true);
+              }}
+              variant="outline"
+              fullWidth
+            />
+          ) : null}
         </View>
       </BottomSheet>
+
+      <PaystackTerminalCollectSheet
+        visible={terminalSheetOpen}
+        onClose={() => setTerminalSheetOpen(false)}
+        entityType="product_order"
+        entityId={activeOrder?.id ?? null}
+        expectedAmount={Number(activeOrder?.total_amount ?? 0)}
+        currency={activeOrder?.currency ?? currency}
+        customerReference={activeOrder?.order_number ?? null}
+      />
 
       <YocoPaymentSheet
         visible={showYocoPaymentSheet}

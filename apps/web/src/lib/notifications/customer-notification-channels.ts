@@ -5,14 +5,19 @@ export type NotificationChannelName = "push" | "email" | "sms";
 type SectionPrefs = { email?: boolean; sms?: boolean; push?: boolean };
 
 const DEFAULT_PREFS: Record<string, SectionPrefs> = {
+  // Marketing sections: push stays opt-in (false) by default.
   inspiration_and_offers: { email: true, sms: true, push: false },
   news_and_programs: { email: true, sms: true, push: false },
-  feedback: { email: true, sms: false, push: false },
-  travel_regulations: { email: true, sms: true, push: false },
+  // Transactional sections: push defaults to true so important notifications
+  // reach the device by default. Users can still opt out per section, and the
+  // CRITICAL_TRANSACTIONAL_TEMPLATES bypass in sendTemplateNotification keeps
+  // must-deliver pushes flowing even when a section is turned off.
+  feedback: { email: true, sms: false, push: true },
+  travel_regulations: { email: true, sms: true, push: true },
   account_activity: { email: true, sms: true, push: true },
-  client_policies: { email: true, sms: false, push: false },
+  client_policies: { email: true, sms: false, push: true },
   reminders: { email: true, sms: true, push: true },
-  subscription_renewal: { email: true, sms: false, push: false },
+  subscription_renewal: { email: true, sms: false, push: true },
   messages: { email: true, sms: true, push: true },
 };
 

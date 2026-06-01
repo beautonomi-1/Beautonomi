@@ -9,6 +9,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/database.types";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { getUnreadNotificationCount } from "@/lib/notifications/insert-notification";
 import { z } from "zod";
 import {
   resolveOneSignalCredentials,
@@ -55,6 +56,17 @@ function formatOneSignalSendFailure(status: number, responseData: unknown, appId
     return `OneSignal rejected App ID ${appId}. Check the App ID/key pair in Platform settings. OneSignal said: ${detail}`;
   }
   return detail;
+}
+
+/** Random collapse id shared across the dual-target legs so the device shows one banner. */
+function generateCollapseId(): string {
+  try {
+    const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
+    if (c?.randomUUID) return c.randomUUID();
+  } catch {
+    // fall through
+  }
+  return `bn-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 function eventTypeFromPayloadData(data: unknown): string {
@@ -408,6 +420,12 @@ async function sendOneSignalNotification(
     ios_badgeType?: "SetTo" | "Increase";
     ios_badgeCount?: number;
     ios_interruption_level?: "passive" | "active" | "time_sensitive" | "critical";
+    /** Collapse/threading id: same value across the dual-target legs so the user sees one banner. */
+    collapse_id?: string;
+    /** @internal Marks a single leg of a dual-target send to prevent re-splitting. */
+    _dualLeg?: "sub" | "alias";
+    /** @internal Original recipient user ids carried for reconcile logging (never sent to OneSignal). */
+    _reconcileUserIds?: string[];
   },
   options?: OneSignalSendOptions
 ): Promise<SendNotificationResult> {
@@ -438,6 +456,56 @@ async function sendOneSignalNotification(
       success,
       error: errors || undefined,
       notification_id: results.find((r) => r.notification_id)?.notification_id,
+    };
+  }
+
+  // §Push-reliability dual targeting: when a single-recipient push has BOTH a
+  // registered subscription id and an external id, send to the subscription id
+  // (the path proven reliable by admin broadcasts) AND fan out by alias to catch
+  // devices we never registered. A shared collapse_id means the device only ever
+  // shows one banner, and the exact `SetTo` badge makes the duplicate delivery
+  // idempotent. Restricted to single-recipient so multi-recipient `Increase`
+  // badges can't double-count; broadcasts keep their existing alias fan-out.
+  const dualPlayerIds = (payload.include_player_ids ?? []).filter(
+    (x): x is string => typeof x === "string" && x.trim().length > 0,
+  );
+  const dualExtIds = (payload.include_external_user_ids ?? []).filter(
+    (x): x is string => typeof x === "string" && x.trim().length > 0,
+  );
+  const isSinglePushChannel = chans.length === 1 && chans[0] === "push";
+  if (
+    !payload._dualLeg &&
+    isSinglePushChannel &&
+    dualExtIds.length === 1 &&
+    dualPlayerIds.length > 0
+  ) {
+    const collapseId = payload.collapse_id || generateCollapseId();
+    const subLeg = await sendOneSignalNotification(
+      {
+        ...payload,
+        include_external_user_ids: undefined,
+        include_player_ids: dualPlayerIds,
+        collapse_id: collapseId,
+        _dualLeg: "sub",
+        _reconcileUserIds: dualExtIds,
+      },
+      options,
+    );
+    const aliasLeg = await sendOneSignalNotification(
+      {
+        ...payload,
+        include_external_user_ids: dualExtIds,
+        include_player_ids: undefined,
+        collapse_id: collapseId,
+        _dualLeg: "alias",
+        _reconcileUserIds: dualExtIds,
+      },
+      options,
+    );
+    return {
+      success: subLeg.success || aliasLeg.success,
+      error: subLeg.success || aliasLeg.success ? undefined : (subLeg.error || aliasLeg.error),
+      notification_id: subLeg.notification_id || aliasLeg.notification_id,
     };
   }
 
@@ -521,6 +589,13 @@ async function sendOneSignalNotification(
   if (payload.send_after && String(payload.send_after).trim()) {
     notification.send_after = String(payload.send_after).trim();
   }
+  if (payload.collapse_id && String(payload.collapse_id).trim()) {
+    // Collapse on both platforms so dual-target legs render as a single banner.
+    const cid = String(payload.collapse_id).trim().slice(0, 64);
+    notification.collapse_id = cid;
+    notification.thread_id = cid;
+    notification.apns_collapse_id = cid;
+  }
 
   // Email content
   if (payload.email_subject) {
@@ -590,10 +665,38 @@ async function sendOneSignalNotification(
       };
     }
 
+    // Attach reconcile metadata so the reconcile-push-delivery cron can later
+    // check OneSignal delivery stats for this send and re-enqueue critical
+    // notifications that reached nobody. Kept inside the jsonb payload so we
+    // don't need a notification_logs schema change.
+    const reconcileUserIds =
+      payload._reconcileUserIds && payload._reconcileUserIds.length > 0
+        ? payload._reconcileUserIds
+        : payload.include_external_user_ids ?? [];
+    const reconcileData =
+      payload.data && typeof payload.data === "object" && !Array.isArray(payload.data)
+        ? (payload.data as Record<string, unknown>)
+        : null;
+    const sentLogPayload = {
+      ...payload,
+      _reconcile: {
+        app_type: appType ?? null,
+        tenant_id: options?.tenantId ?? null,
+        user_ids: reconcileUserIds,
+        template_key:
+          reconcileData && typeof reconcileData.template_key === "string"
+            ? reconcileData.template_key
+            : null,
+        group_id: payload.collapse_id ?? null,
+        title: payload.headings?.en ?? null,
+        message: payload.contents?.en ?? null,
+        url: payload.url ?? null,
+      },
+    };
     await logNotification({
       event_type: eventTypeFromPayloadData(payload.data),
       recipients: payload.include_player_ids || payload.include_external_user_ids || [],
-      payload,
+      payload: sentLogPayload,
       status: "sent",
       provider_response: responseData,
       channels: parseNotificationChannels(payload.channels ?? null),
@@ -686,8 +789,12 @@ export async function sendToUser(
   if (playerIds.length > 0 && normalizedChannels.includes("push")) {
     notificationPayload.include_player_ids = playerIds;
     notificationPayload.ios_interruption_level = "time_sensitive";
-    notificationPayload.ios_badgeType = "Increase";
-    notificationPayload.ios_badgeCount = 1;
+    // §Badge-accuracy: set the OS badge to the user's exact unread count so it
+    // is correct even when the app is killed (WhatsApp-style). Clamp to >=1 so a
+    // fresh push never renders a 0 badge if the in-app row hasn't landed yet.
+    const unread = await getUnreadNotificationCount(userId);
+    notificationPayload.ios_badgeType = "SetTo";
+    notificationPayload.ios_badgeCount = Math.max(1, unread);
   }
   const passthrough = payload as Record<string, unknown>;
   if (passthrough.priority !== undefined) notificationPayload.priority = passthrough.priority;
@@ -754,8 +861,17 @@ export async function sendToUsers(
   if (playerIds.length > 0 && normalizedChannels.includes("push")) {
     notificationPayload.include_player_ids = playerIds;
     notificationPayload.ios_interruption_level = "time_sensitive";
-    notificationPayload.ios_badgeType = "Increase";
-    notificationPayload.ios_badgeCount = 1;
+    // §Badge-accuracy: a single payload can only carry one badge value, so use
+    // the recipient's exact unread count when there's exactly one user, and
+    // fall back to incrementing by 1 for multi-recipient fan-outs.
+    if (userIds.length === 1) {
+      const unread = await getUnreadNotificationCount(userIds[0]);
+      notificationPayload.ios_badgeType = "SetTo";
+      notificationPayload.ios_badgeCount = Math.max(1, unread);
+    } else {
+      notificationPayload.ios_badgeType = "Increase";
+      notificationPayload.ios_badgeCount = 1;
+    }
   }
   if (typeof payload.subtitle === "string" && payload.subtitle.trim()) {
     notificationPayload.subtitle = { en: payload.subtitle.trim() };
@@ -975,6 +1091,16 @@ export async function sendTemplateNotification(
       templateKey,
       triad
     );
+    // Critical transactional templates (booking/payment/security/messages) must
+    // reach the device: if push was requested, never let preference gating drop
+    // it. Email/SMS preferences are still respected.
+    if (
+      CRITICAL_TRANSACTIONAL_TEMPLATES.has(templateKey) &&
+      triad.includes("push") &&
+      !allowed.includes("push")
+    ) {
+      allowed.push("push");
+    }
     channelsToSend = [...nonPref, ...allowed];
   }
 
@@ -1091,6 +1217,8 @@ export async function sendTemplateNotification(
     "safety_alert",
     "safety_check_in",
   ]);
+  /** Resolves when the in-app row insert completes — awaited for single-recipient badge accuracy. */
+  let inAppInsertPromise: Promise<unknown> | null = null;
   if (!SKIP_IN_APP_TEMPLATES.has(templateKey) && userIds.length > 0 && (title || body)) {
     // Pull well-known context IDs out of template variables
     const inAppData: Record<string, unknown> = { template_key: templateKey };
@@ -1098,6 +1226,7 @@ export async function sendTemplateNotification(
       "booking_id", "conversation_id", "order_id", "request_id", "offer_id",
       "review_id", "dispute_id", "payment_id", "ticket_id", "campaign_id",
       "booking_number", "provider_name", "customer_name",
+      "provider_id", "provider_slug",
     ];
     WELL_KNOWN_VARS.forEach((k) => {
       const v = variables[k];
@@ -1118,8 +1247,10 @@ export async function sendTemplateNotification(
       }
     }
 
-    // Fire-and-forget: never block the push send on DB insert latency
-    void import("@/lib/notifications/insert-notification").then(({ insertNotifications }) =>
+    // Capture the insert promise so single-recipient sends can await it before
+    // reading the unread count for an exact badge; multi-recipient sends still
+    // treat it as fire-and-forget (never block a fan-out on DB insert latency).
+    inAppInsertPromise = import("@/lib/notifications/insert-notification").then(({ insertNotifications }) =>
       insertNotifications(
         userIds.map((userId) => ({
           user_id: userId,
@@ -1131,6 +1262,7 @@ export async function sendTemplateNotification(
         }))
       )
     );
+    if (userIds.length > 1) void inAppInsertPromise;
   }
 
   // Always target devices (player_ids + correct app config) when we have userIds.
@@ -1153,6 +1285,26 @@ export async function sendTemplateNotification(
         .filter((id): id is string => typeof id === "string" && id.length > 0) ?? [];
     if (playerIds.length > 0 && channelsToSend.includes("push")) {
       notificationPayload.include_player_ids = playerIds;
+    }
+  }
+
+  // §Badge-accuracy: set the OS app-icon badge so it is correct even when the
+  // app is killed. For a single recipient, wait for the in-app row insert so
+  // the unread count includes this notification, then set it exactly (SetTo).
+  // Multi-recipient fan-outs increment by 1 (one payload carries one value).
+  if (channelsToSend.includes("push")) {
+    if (userIds.length === 1) {
+      try {
+        if (inAppInsertPromise) await inAppInsertPromise;
+      } catch {
+        // best-effort; still send a badge below
+      }
+      const unread = await getUnreadNotificationCount(userIds[0]);
+      notificationPayload.ios_badgeType = "SetTo";
+      notificationPayload.ios_badgeCount = Math.max(1, unread);
+    } else if (userIds.length > 1) {
+      notificationPayload.ios_badgeType = "Increase";
+      notificationPayload.ios_badgeCount = 1;
     }
   }
 
@@ -1225,7 +1377,7 @@ export async function sendTemplateNotification(
 
 // Wave 3.2: templates that MUST eventually reach the recipient. On direct
 // send failure we fan-out into notification_delivery_queue for retry.
-const CRITICAL_TRANSACTIONAL_TEMPLATES = new Set<string>([
+export const CRITICAL_TRANSACTIONAL_TEMPLATES = new Set<string>([
   // Booking lifecycle (customer + provider)
   "booking_confirmed",
   "booking_cancelled",

@@ -13,6 +13,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { supabase } from "@/lib/supabase/client";
+import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
 import { useModuleConfig } from "@/providers/ConfigBundleProvider";
 import { Colors } from "@/constants/colors";
 import { WaitingIllustration } from "@/components/on-demand/WaitingIllustration";
@@ -48,7 +49,6 @@ export default function OnDemandWaitingScreen() {
   const [cancelling, setCancelling] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const hasNavigatedRef = useRef(false);
-  const onDemandRealtimeGenRef = useRef(0);
 
   const load = async () => {
     if (!requestId) return;
@@ -81,9 +81,8 @@ export default function OnDemandWaitingScreen() {
 
   useEffect(() => {
     if (!requestId) return;
-    const gen = ++onDemandRealtimeGenRef.current;
     const channel = supabase
-      .channel(`on-demand-${requestId}-rt${gen}`)
+      .channel(nextRealtimeTopic(`on-demand-${requestId}`))
       .on(
         "postgres_changes",
         {

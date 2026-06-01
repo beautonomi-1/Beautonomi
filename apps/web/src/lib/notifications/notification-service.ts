@@ -2616,15 +2616,29 @@ export async function notifyMembershipWinBack(
     membershipName: string;
     message?: string | null;
     plansUrl?: string | null;
+    providerId?: string | null;
+    providerSlug?: string | null;
   },
   channels?: NotificationChannel[],
 ) {
-  const variables = {
+  // Deep link to the provider's profile → Memberships tab so the customer
+  // lands directly on the plans they were invited to rejoin. Prefer the slug
+  // when available; the public profile route also resolves a provider UUID.
+  const providerRef = args.providerSlug?.trim() || args.providerId?.trim() || "";
+  const plansUrl =
+    args.plansUrl ??
+    (providerRef
+      ? `/partner-profile?${args.providerSlug?.trim() ? "slug" : "provider_id"}=${encodeURIComponent(providerRef)}&tab=memberships`
+      : "/membership");
+
+  const variables: Record<string, string> = {
     provider_name: args.providerName,
     membership_name: args.membershipName,
     message: args.message?.trim() || "Tap to view membership plans and rejoin when you are ready.",
-    plans_url: args.plansUrl ?? "/membership",
+    plans_url: plansUrl,
   };
+  if (args.providerId?.trim()) variables.provider_id = args.providerId.trim();
+  if (args.providerSlug?.trim()) variables.provider_slug = args.providerSlug.trim();
 
   return await sendTemplateNotification(
     "membership_win_back",

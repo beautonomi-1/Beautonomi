@@ -68,3 +68,35 @@ export function getHttpErrorStatus(err: unknown): number | undefined {
   if (typeof o.statusCode === "number" && Number.isFinite(o.statusCode)) return o.statusCode;
   return undefined;
 }
+
+/** Api client sets `code` on synthetic errors (NETWORK_ERROR, TIMEOUT, CANCELLED, etc.). */
+export function getApiErrorCode(err: unknown): string | undefined {
+  if (err == null || typeof err !== "object") return undefined;
+  const c = (err as { code?: unknown }).code;
+  return typeof c === "string" && c.trim() ? c.trim() : undefined;
+}
+
+/**
+ * True when failure is likely transient (offline, DNS blip, server 5xx) or a
+ * deliberate background abort (CANCELLED) — i.e. the caller should stay silent
+ * and retry rather than surface a hard error. Not for 401/403 — callers handle
+ * auth separately.
+ */
+export function isTransientApiFailure(err: unknown): boolean {
+  const status = getHttpErrorStatus(err);
+  const code = getApiErrorCode(err);
+  if (code === "MISSING_API_BASE_URL") return false;
+  if (code === "NETWORK_ERROR" || code === "TIMEOUT" || code === "CANCELLED") return true;
+  if (typeof status === "number" && status >= 500) return true;
+  const msg = getApiErrorMessage(err, "").toLowerCase();
+  if (
+    msg.includes("network request failed") ||
+    msg.includes("failed to fetch") ||
+    msg.includes("network error") ||
+    msg.includes("timed out") ||
+    msg.includes("check your internet connection")
+  ) {
+    return true;
+  }
+  return false;
+}

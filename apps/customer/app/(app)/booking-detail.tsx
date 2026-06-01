@@ -33,6 +33,7 @@ import { SafetyPanicButton } from "@/components/SafetyPanicButton";
 import { haptic } from "@/lib/haptics";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { supabase } from "@/lib/supabase/client";
+import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Clipboard from "expo-clipboard";
 import * as Calendar from "expo-calendar";
@@ -451,13 +452,11 @@ export default function BookingDetailScreen() {
   // to ensure joined fields (services, provider info, etc.) stay consistent.
   const loadRef = useRef(load);
   loadRef.current = load;
-  const bookingDetailRealtimeGenRef = useRef(0);
   useEffect(() => {
     if (!id) return;
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-    const gen = ++bookingDetailRealtimeGenRef.current;
     const channel = supabase
-      .channel(`booking-detail-${id}-rt${gen}`)
+      .channel(nextRealtimeTopic(`booking-detail-${id}`))
       .on(
         "postgres_changes",
         {

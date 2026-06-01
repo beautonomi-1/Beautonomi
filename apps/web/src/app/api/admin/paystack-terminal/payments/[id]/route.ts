@@ -204,6 +204,59 @@ export async function PATCH(
         if (becomingCompleted) await applyPosProductStockDecrements(supabase as any, itemsForStock);
       }
 
+      if (body.entity_type === "group_booking") {
+        // Group bookings reconcile against their primary participant's booking so the
+        // ledger and payout flow stay consistent with a normal booking allocation.
+        const { data: groupRow } = await (supabase.from("group_bookings") as any)
+          .select("id, provider_id")
+          .eq("id", body.entity_id)
+          .eq("provider_id", payment.provider_id)
+          .maybeSingle();
+        if (!groupRow) {
+          return errorResponse("Group booking target not found for this provider.", "TARGET_NOT_FOUND", 404);
+        }
+
+        const { data: groupBooking } = await supabase
+          .from("bookings")
+          .select("id, tenant_id, created_at")
+          .eq("group_booking_id", body.entity_id)
+          .eq("provider_id", payment.provider_id)
+          .order("created_at", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        if (!groupBooking) {
+          return errorResponse(
+            "No booking is linked to this group booking yet.",
+            "TARGET_NOT_FOUND",
+            404,
+          );
+        }
+
+        const recorded = await recordBookingPaystackPayment(supabase as any, {
+          bookingId: (groupBooking as { id: string }).id,
+          tenantId: (groupBooking as { tenant_id?: string | null }).tenant_id ?? null,
+          reference: payment.paystack_reference,
+          transactionId: payment.paystack_transaction_id ?? null,
+          amountMajor: allocationAmount,
+          source: "paystack_virtual_terminal_admin_allocation",
+          notes: `Group booking payment received via Paystack Terminal and resolved by Superadmin. Ref: ${payment.paystack_reference}`,
+        });
+        if (!recorded.ok) {
+          const recordedError = "error" in recorded ? recorded.error : undefined;
+          return errorResponse(
+            "Could not record the Paystack Terminal group booking payment.",
+            "LEDGER_RECORDING_FAILED",
+            500,
+            recordedError,
+          );
+        }
+        await (supabase.from("booking_payments") as any)
+          .update({ payment_method: "paystack_terminal" })
+          .eq("payment_provider", "paystack")
+          .eq("payment_provider_id", payment.paystack_reference);
+        await syncBookingAfterPaystackSuccess(supabase as any, (groupBooking as { id: string }).id);
+      }
+
       const now = new Date().toISOString();
       const { error: allocationError } = await (supabase
         .from("provider_terminal_payment_allocations") as any)

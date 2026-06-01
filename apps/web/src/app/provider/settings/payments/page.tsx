@@ -13,6 +13,12 @@ type PaymentSettingsResponse = {
   acceptCash: boolean;
   acceptCard: boolean;
   acceptOnline: boolean;
+  acceptPaystackTerminal?: boolean;
+  paystackTerminal?: {
+    platformEnabled?: boolean;
+    activeTerminalCount?: number;
+    selectable?: boolean;
+  };
 };
 
 type GiftCardSettingsResponse = {
@@ -27,6 +33,9 @@ export default function ProviderPaymentMethodsPage() {
   const [acceptCash, setAcceptCash] = useState(false);
   const [acceptCard, setAcceptCard] = useState(true);
   const [acceptOnline, setAcceptOnline] = useState(true);
+  const [acceptPaystackTerminal, setAcceptPaystackTerminal] = useState(false);
+  const [paystackTerminalPlatformEnabled, setPaystackTerminalPlatformEnabled] = useState(false);
+  const [paystackTerminalActiveCount, setPaystackTerminalActiveCount] = useState(0);
   const [giftCardsEnabled, setGiftCardsEnabled] = useState(false);
 
   useEffect(() => {
@@ -44,6 +53,9 @@ export default function ProviderPaymentMethodsPage() {
       setAcceptCash(Boolean(data?.acceptCash));
       setAcceptCard(yocoEnabled && Boolean(data?.acceptCard));
       setAcceptOnline(Boolean(data?.acceptOnline));
+      setAcceptPaystackTerminal(Boolean(data?.acceptPaystackTerminal));
+      setPaystackTerminalPlatformEnabled(Boolean(data?.paystackTerminal?.platformEnabled));
+      setPaystackTerminalActiveCount(data?.paystackTerminal?.activeTerminalCount ?? 0);
 
       const giftCardResponse = await fetcher.get<{ data: GiftCardSettingsResponse }>(
         "/api/provider/settings/sales/gift-cards"
@@ -69,6 +81,7 @@ export default function ProviderPaymentMethodsPage() {
           acceptCash,
           acceptCard: yocoEnabled ? acceptCard : false,
           acceptOnline,
+          acceptPaystackTerminal: paystackTerminalPlatformEnabled ? acceptPaystackTerminal : false,
         }),
         fetcher.patch("/api/provider/settings/sales/gift-cards", {
           gift_cards_enabled: giftCardsEnabled,
@@ -134,6 +147,28 @@ export default function ProviderPaymentMethodsPage() {
               checked={acceptOnline}
               onCheckedChange={setAcceptOnline}
             />
+            {paystackTerminalPlatformEnabled && (
+              <div className="space-y-2">
+                <MethodRow
+                  label="Paystack Terminal (in-person QR / link)"
+                  description="Let customers pay in person by scanning your Paystack Terminal QR or link. Payments arrive in your terminal inbox to allocate."
+                  checked={acceptPaystackTerminal}
+                  onCheckedChange={setAcceptPaystackTerminal}
+                />
+                {acceptPaystackTerminal && paystackTerminalActiveCount === 0 && (
+                  <p className="px-1 text-xs text-amber-600">
+                    No active terminal yet. Request setup from{" "}
+                    <a
+                      href="/provider/settings/sales/paystack-terminal"
+                      className="font-semibold underline"
+                    >
+                      Paystack Terminal settings
+                    </a>{" "}
+                    so it becomes selectable at checkout.
+                  </p>
+                )}
+              </div>
+            )}
             <MethodRow
               label="Gift Cards"
               description="Allow customers to redeem platform gift cards at your business."

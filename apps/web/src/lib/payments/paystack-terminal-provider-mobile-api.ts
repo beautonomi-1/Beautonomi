@@ -16,6 +16,7 @@ import {
   successResponse,
 } from "@/lib/supabase/api-helpers";
 import { requirePaystackVirtualTerminalEnabledForProvider } from "@/lib/payments/paystack-virtual-terminal-feature-gate";
+import { getPaystackTerminalAvailability } from "@/lib/payments/paystack-terminal-availability";
 import { checkPaystackVirtualTerminalFeatureAccess } from "@/lib/subscriptions/feature-access";
 import {
   slackNotifyPaystackTerminalAssetRequested,
@@ -25,6 +26,12 @@ import {
   buildPaystackTerminalName,
   normalizeWhatsAppTarget,
 } from "@/lib/payments/paystack-terminal-assets";
+import { checkRateLimit } from "@/lib/rate-limit/store";
+import {
+  reconcilePaystackTerminalPayments,
+  reconcileWindowFromDays,
+  type ReconcileLocalTerminal,
+} from "@/lib/payments/paystack-terminal-reconcile";
 import { recordBookingPaystackPayment } from "@/lib/bookings/record-booking-paystack-payment";
 import { syncBookingAfterPaystackSuccess } from "@/lib/bookings/sync-booking-after-paystack-success";
 import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
@@ -35,6 +42,7 @@ import {
 
 const setupRequestSchema = z.object({
   name: z.string().trim().optional().nullable(),
+  whatsapp: z.string().trim().max(40).optional().nullable(),
 });
 
 const collectionIntentSchema = z.object({
@@ -101,7 +109,7 @@ export async function loadPaystackTerminalMobileDetail(request: NextRequest) {
     .from("provider_paystack_virtual_terminal_setup_requests") as any)
     .select("*")
     .eq("provider_id", providerId)
-    .in("status", ["requested", "in_progress"])
+    .in("status", ["requested", "in_progress", "rejected"])
     .order("created_at", { ascending: false });
   if (setupError) throw setupError;
 
@@ -172,12 +180,14 @@ export async function requestPaystackTerminalSetupMobile(request: NextRequest) {
     uniqueSuffix: providerId,
     portable: true,
   });
-  const destinationTarget = normalizeWhatsAppTarget(
-    (provider as { phone?: string | null; billing_phone?: string | null } | null)?.phone ??
-      (provider as { phone?: string | null; billing_phone?: string | null } | null)?.billing_phone ??
-      (owner as { phone?: string | null } | null)?.phone ??
-      null,
-  );
+  const destinationTarget =
+    normalizeWhatsAppTarget(body.whatsapp) ??
+    normalizeWhatsAppTarget(
+      (provider as { phone?: string | null; billing_phone?: string | null } | null)?.phone ??
+        (provider as { phone?: string | null; billing_phone?: string | null } | null)?.billing_phone ??
+        (owner as { phone?: string | null } | null)?.phone ??
+        null,
+    );
   const destinationName =
     providerBusinessName ? `${providerBusinessName} WhatsApp` : "Provider WhatsApp";
   const destinations = destinationTarget
@@ -382,35 +392,58 @@ export async function createPaystackTerminalCollectionIntentMobile(request: Next
   if (gate) return gate;
 
   const body = collectionIntentSchema.parse(await request.json());
-  const terminalQuery = (supabase.from("provider_paystack_virtual_terminals") as any)
-    .select("id, name, terminal_code, payment_link, qr_url, terminal_url, currency, active")
-    .eq("provider_id", providerId)
-    .eq("active", true)
-    .is("deleted_at", null)
-    .order("created_at", { ascending: true });
-  const { data: terminals, error } = body.terminal_id
-    ? await terminalQuery.eq("id", body.terminal_id).limit(1)
-    : await terminalQuery.limit(1);
-  if (error) throw error;
 
-  const terminal = terminals?.[0];
-  if (!terminal) {
+  const availability = await getPaystackTerminalAvailability({ supabase, providerId });
+  const selectableTerminals = availability.selectableTerminals;
+  if (selectableTerminals.length === 0) {
+    if (availability.terminals.some((t) => t.active)) {
+      return errorResponse(
+        "This Paystack Terminal is still waiting for Ops to add the Paystack payment link.",
+        "TERMINAL_LINK_NOT_READY",
+        400,
+      );
+    }
     return errorResponse(
       "No active Paystack Terminal is available. Request setup and wait for Ops to import the Paystack terminal first.",
       "TERMINAL_NOT_READY",
       400,
     );
   }
-  if (!terminal.payment_link && !terminal.terminal_url) {
+
+  const terminal =
+    (body.terminal_id ? selectableTerminals.find((t) => t.id === body.terminal_id) : null) ??
+    selectableTerminals[0];
+  if (!terminal) {
     return errorResponse(
-      "This Paystack Terminal is still waiting for Ops to add the Paystack payment link.",
-      "TERMINAL_LINK_NOT_READY",
+      "The selected Paystack Terminal is not available for collection.",
+      "TERMINAL_NOT_READY",
       400,
     );
   }
 
+  let customerReference = body.customer_reference ?? null;
+  if (!customerReference && body.entity_id) {
+    if (body.entity_type === "booking") {
+      const { data: booking } = await supabase
+        .from("bookings")
+        .select("booking_number")
+        .eq("id", body.entity_id)
+        .eq("provider_id", providerId)
+        .maybeSingle();
+      customerReference = (booking as { booking_number?: string | null } | null)?.booking_number ?? null;
+    } else if (body.entity_type === "product_order") {
+      const { data: order } = await (supabase.from("product_orders") as any)
+        .select("order_number")
+        .eq("id", body.entity_id)
+        .eq("provider_id", providerId)
+        .maybeSingle();
+      customerReference = (order as { order_number?: string | null } | null)?.order_number ?? null;
+    }
+  }
+
   return successResponse({
     terminal,
+    terminals: selectableTerminals,
     metadata: {
       source: "beautonomi_provider_terminal",
       payment_channel: "paystack_virtual_terminal",
@@ -419,13 +452,15 @@ export async function createPaystackTerminalCollectionIntentMobile(request: Next
       entity_type: body.entity_type ?? null,
       entity_id: body.entity_id ?? null,
       expected_amount: body.expected_amount ?? null,
-      customer_reference: body.customer_reference ?? null,
+      customer_reference: customerReference,
     },
     expectedAmount: body.expected_amount ?? null,
     entityType: body.entity_type ?? null,
     entityId: body.entity_id ?? null,
-    instructions:
-      "Ask the customer to pay through this Paystack Terminal. Once Paystack confirms the payment, it will appear in the provider inbox for allocation.",
+    customerReference,
+    instructions: customerReference
+      ? `Ask the customer to pay through this Paystack Terminal and enter reference ${customerReference}. Once Paystack confirms the payment, it appears in your inbox for allocation.`
+      : "Ask the customer to pay through this Paystack Terminal. Once Paystack confirms the payment, it will appear in the provider inbox for allocation.",
   });
 }
 
@@ -655,7 +690,7 @@ export async function handlePaystackTerminalSettingsPost(request: NextRequest) {
         new NextRequest(request.url, {
           method: "POST",
           headers: request.headers,
-          body: JSON.stringify({ name: body.name ?? null }),
+          body: JSON.stringify({ name: body.name ?? null, whatsapp: body.whatsapp ?? null }),
         }),
       );
     }
@@ -669,6 +704,103 @@ export async function handlePaystackTerminalSettingsPost(request: NextRequest) {
     return errorResponse("Unknown paystackTerminalAction", "BAD_REQUEST", 400);
   } catch (error) {
     return handleApiError(error, "Failed to process Paystack Terminal action");
+  }
+}
+
+/**
+ * Provider-initiated "Check for new payments" (mobile fallback). Mirrors
+ * `/api/provider/paystack/terminal-payments/reconcile` so the mobile app can backfill
+ * webhook-missed payments without depending on the dedicated route tree being deployed.
+ */
+export async function reconcilePaystackTerminalPaymentsMobile(request: NextRequest) {
+  try {
+    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const supabase = await getSupabaseServer(request);
+    const providerId = await getProviderIdForUser(user.id, supabase, { request });
+    if (!providerId) return errorResponse("Provider not found", "PROVIDER_NOT_FOUND", 404);
+
+    const gate = await requirePaystackVirtualTerminalEnabledForProvider(supabase, providerId);
+    if (gate) return gate;
+
+    const rate = await checkRateLimit(
+      { prefix: "paystack-terminal-reconcile", limit: 6, windowSeconds: 60 },
+      providerId,
+    );
+    if (!rate.allowed) {
+      return errorResponse(
+        "You're checking too often. Please wait a moment and try again.",
+        "RATE_LIMITED",
+        429,
+      );
+    }
+
+    const admin = getSupabaseAdmin();
+    const { data: terminalRows, error } = await (admin
+      .from("provider_paystack_virtual_terminals") as any)
+      .select("id, provider_id, paystack_terminal_id, terminal_code, currency, provider:providers(tenant_id)")
+      .eq("provider_id", providerId)
+      .not("paystack_terminal_id", "is", null)
+      .is("deleted_at", null);
+    if (error) throw error;
+
+    const terminals = (terminalRows ?? []) as ReconcileLocalTerminal[];
+    if (terminals.length === 0) {
+      return successResponse({
+        message:
+          "No terminal is ready to check yet. Once Ops finishes setup, payments will appear automatically.",
+        checked: 0,
+        terminalsChecked: 0,
+        terminalPayments: 0,
+        recorded: 0,
+        results: [],
+      });
+    }
+
+    const summary = await reconcilePaystackTerminalPayments({
+      supabase: admin,
+      terminals,
+      from: reconcileWindowFromDays(7),
+      perPage: 100,
+      maxPages: 5,
+    });
+
+    return successResponse({
+      message:
+        summary.recorded > 0
+          ? `Found ${summary.recorded} new payment${summary.recorded === 1 ? "" : "s"}.`
+          : "You're all caught up. No new payments found.",
+      ...summary,
+    });
+  } catch (error) {
+    return handleApiError(error, "Failed to check for new Paystack Terminal payments");
+  }
+}
+
+/**
+ * Marks a terminal payment as seen by the provider (used when the instant-allocation popup is
+ * dismissed) so it does not re-prompt across devices/sessions.
+ */
+export async function markPaystackTerminalPaymentSeenMobile(request: NextRequest, paymentId: string) {
+  try {
+    const { supabase, providerId } = await resolveProvider(request);
+    if (!providerId) return errorResponse("Provider not found", "PROVIDER_NOT_FOUND", 404);
+
+    const gate = await requirePaystackVirtualTerminalEnabledForProvider(supabase, providerId);
+    if (gate) return gate;
+
+    const admin = getSupabaseAdmin();
+    const { data, error } = await (admin
+      .from("provider_paystack_terminal_payments") as any)
+      .update({ provider_seen_at: new Date().toISOString() })
+      .eq("id", paymentId)
+      .eq("provider_id", providerId)
+      .is("provider_seen_at", null)
+      .select("id, provider_seen_at")
+      .maybeSingle();
+    if (error) throw error;
+    return successResponse({ payment: data ?? { id: paymentId } });
+  } catch (error) {
+    return handleApiError(error, "Failed to mark Paystack Terminal payment as seen");
   }
 }
 
@@ -700,6 +832,16 @@ export async function handlePaystackTerminalPaymentsPost(request: NextRequest) {
         }),
         paymentId,
       );
+    }
+    if (action === "reconcile") {
+      return await reconcilePaystackTerminalPaymentsMobile(request);
+    }
+    if (action === "mark_seen") {
+      const paymentId = typeof body.paymentId === "string" ? body.paymentId : "";
+      if (!paymentId) {
+        return errorResponse("paymentId is required", "VALIDATION_ERROR", 400);
+      }
+      return await markPaystackTerminalPaymentSeenMobile(request, paymentId);
     }
     return errorResponse("Unknown paystackTerminalAction", "BAD_REQUEST", 400);
   } catch (error) {

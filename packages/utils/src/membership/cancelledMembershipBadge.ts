@@ -18,7 +18,14 @@ export function shouldShowCancelledMembershipBadge(args: {
   cancelled_at: string | null | undefined;
   nowMs?: number;
 }): boolean {
-  const status = String(args.status ?? "").toLowerCase();
-  if (status !== "cancelled" && !args.cancelled_at) return false;
+  // §Provider-launch (audit 2026-06): the "Cancelled" pill is meant to be
+  // a transient cue (TTL above), not a permanent label. A cancelled row
+  // with no `cancelled_at` anchor has no date to age against, so it used
+  // to linger in perpetuity on the provider clients list — misleading
+  // providers about clients who lapsed long ago. Require the timestamp so
+  // the TTL always applies; legacy / manually-edited rows without it simply
+  // don't surface the transient badge (the live cancel flow always stamps
+  // `cancelled_at`, so genuine recent cancellations are unaffected).
+  if (!args.cancelled_at) return false;
   return !isCancelledMembershipBadgeStale(args.cancelled_at, args.nowMs);
 }

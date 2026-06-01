@@ -184,6 +184,8 @@ export default function ProviderBookingDetail() {
   const [paystackTerminalReady, setPaystackTerminalReady] = useState(false);
   const [paystackTerminalCode, setPaystackTerminalCode] = useState<string | null>(null);
   const [paystackTerminalReference, setPaystackTerminalReference] = useState<string | null>(null);
+  const [paystackTerminalLink, setPaystackTerminalLink] = useState<string | null>(null);
+  const [paystackTerminalQr, setPaystackTerminalQr] = useState<string | null>(null);
   const [showPaystackTerminal, setShowPaystackTerminal] = useState(false);
   const [preparingPaystackTerminal, setPreparingPaystackTerminal] = useState(false);
 
@@ -276,12 +278,23 @@ export default function ProviderBookingDetail() {
   useEffect(() => {
     let cancelled = false;
     fetcher
-      .get<{ data?: { paystackTerminal?: { isEnabled?: boolean; activeTerminalCount?: number } } }>(
-        "/api/provider/settings/payments",
-      )
+      .get<{
+        data?: {
+          paystackTerminal?: {
+            isEnabled?: boolean;
+            activeTerminalCount?: number;
+            selectable?: boolean;
+          };
+        };
+      }>("/api/provider/settings/payments")
       .then((response) => {
         const terminal = response.data?.paystackTerminal;
-        if (!cancelled) setPaystackTerminalReady(Boolean(terminal?.isEnabled && (terminal.activeTerminalCount ?? 0) > 0));
+        // `selectable` is the single source of truth (accepted + active + usable link);
+        // fall back to the legacy shape for older API responses.
+        const ready =
+          terminal?.selectable ??
+          Boolean(terminal?.isEnabled && (terminal.activeTerminalCount ?? 0) > 0);
+        if (!cancelled) setPaystackTerminalReady(ready);
       })
       .catch(() => {
         if (!cancelled) setPaystackTerminalReady(false);
@@ -775,7 +788,16 @@ export default function ProviderBookingDetail() {
     try {
       setPreparingPaystackTerminal(true);
       const response = await fetcher.post<{
-        data?: { terminal?: { terminal_code?: string }; expectedAmount?: number };
+        data?: {
+          terminal?: {
+            terminal_code?: string;
+            payment_link?: string | null;
+            terminal_url?: string | null;
+            qr_url?: string | null;
+          };
+          customerReference?: string | null;
+          expectedAmount?: number;
+        };
       }>("/api/provider/paystack/terminal-payments", {
         entity_type: "booking",
         entity_id: bookingId,
@@ -788,7 +810,13 @@ export default function ProviderBookingDetail() {
         return;
       }
       setPaystackTerminalCode(code);
-      setPaystackTerminalReference((b as any).booking_number ?? bookingId);
+      setPaystackTerminalReference(
+        response.data?.customerReference ?? (b as any).booking_number ?? bookingId,
+      );
+      setPaystackTerminalLink(
+        response.data?.terminal?.payment_link ?? response.data?.terminal?.terminal_url ?? null,
+      );
+      setPaystackTerminalQr(response.data?.terminal?.qr_url ?? null);
       setShowPaystackTerminal(true);
     } catch (err) {
       toast.error(err instanceof FetchError ? err.message : "Failed to prepare Paystack Terminal payment.");
@@ -2635,11 +2663,47 @@ export default function ProviderBookingDetail() {
                   {paystackTerminalCode}
                 </p>
                 <p className="mt-2 text-sm text-emerald-800">Expected: {formatMoney(outstanding)}</p>
-                <p className="mt-1 text-sm text-emerald-800">
-                  Booking/order note: <span className="font-mono">{paystackTerminalReference}</span>
-                </p>
+                {(paystackTerminalQr || paystackTerminalLink) && (
+                  <div className="mt-3 flex flex-col items-center gap-2">
+                    {paystackTerminalQr ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={paystackTerminalQr}
+                        alt="Paystack Terminal QR code"
+                        className="h-40 w-40 rounded-md border border-emerald-200 bg-white object-contain p-1"
+                      />
+                    ) : paystackTerminalLink ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(paystackTerminalLink)}`}
+                        alt="Paystack Terminal QR code"
+                        className="h-40 w-40 rounded-md border border-emerald-200 bg-white object-contain p-1"
+                      />
+                    ) : null}
+                    <p className="text-xs text-emerald-700">Customer scans to pay</p>
+                  </div>
+                )}
               </div>
-              <div className="flex gap-3">
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm">
+                <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+                  Tell the customer to enter reference
+                </p>
+                <p className="mt-1 font-mono text-base font-semibold text-amber-950">
+                  {paystackTerminalReference}
+                </p>
+                <button
+                  type="button"
+                  className="mt-2 text-xs font-medium text-amber-800 underline"
+                  onClick={async () => {
+                    if (!paystackTerminalReference) return;
+                    await navigator.clipboard.writeText(paystackTerminalReference);
+                    toast.success("Reference copied");
+                  }}
+                >
+                  Copy reference
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-3">
                 <Button
                   type="button"
                   className="flex-1"
@@ -2650,6 +2714,19 @@ export default function ProviderBookingDetail() {
                 >
                   Copy code
                 </Button>
+                {paystackTerminalLink && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="flex-1"
+                    onClick={async () => {
+                      await navigator.clipboard.writeText(paystackTerminalLink);
+                      toast.success("Payment link copied");
+                    }}
+                  >
+                    Copy link
+                  </Button>
+                )}
                 <Button
                   type="button"
                   variant="outline"

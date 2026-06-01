@@ -44,19 +44,32 @@ export type PaystackTerminalPayment = {
   suggested_entity_type?: string | null;
   suggested_entity_id?: string | null;
   suggestion_confidence?: number | null;
+  match_candidates?: PaystackTerminalMatchCandidate[] | null;
   payer_name?: string | null;
   payer_email?: string | null;
+  provider_seen_at?: string | null;
   terminal?: { id?: string; name?: string | null; terminal_code?: string | null } | null;
   created_at: string;
 };
 
+export type PaystackTerminalMatchCandidate = {
+  entity_type: string;
+  entity_id: string;
+  label?: string | null;
+  reference?: string | null;
+  expected_amount?: number | null;
+  confidence?: number | null;
+};
+
 export type PaystackTerminalSetupRequest = {
   id: string;
-  status: "requested" | "in_progress";
+  status: "requested" | "in_progress" | "rejected";
   requested_display_name?: string | null;
   suggested_paystack_name?: string | null;
   destination_target?: string | null;
   request_notes?: string | null;
+  rejection_reason?: string | null;
+  support_ticket_id?: string | null;
   created_at: string;
   updated_at?: string | null;
 };
@@ -108,12 +121,13 @@ export function usePaystackTerminals(options?: { enabled?: boolean }) {
   }, []);
 
   const requestTerminalSetup = useCallback(
-    async (name?: string | null) => {
+    async (name?: string | null, whatsapp?: string | null) => {
       const res = await api.post<PaystackTerminalSetupRequestResponse>(
         PAYSTACK_TERMINALS_ACTION_PATH,
         {
           paystackTerminalAction: "request_setup",
           name,
+          whatsapp: whatsapp?.trim() ? whatsapp.trim() : null,
         },
       );
       if (res.error) {
@@ -176,6 +190,17 @@ export function usePaystackTerminalPayments(options?: { enabled?: boolean }) {
     }
   }, []);
 
+  const reconcile = useCallback(async () => {
+    const res = await api.post<{
+      message?: string;
+      recorded?: number;
+      terminalPayments?: number;
+    }>(PAYSTACK_TERMINAL_PAYMENTS_ACTION_PATH, { paystackTerminalAction: "reconcile" });
+    if (res.error) throw new Error(res.error.message ?? "Failed to check for new payments");
+    await refresh();
+    return res.data;
+  }, [refresh]);
+
   const allocate = useCallback(
     async (
       paymentId: string,
@@ -209,5 +234,5 @@ export function usePaystackTerminalPayments(options?: { enabled?: boolean }) {
     void refresh();
   }, [refresh, enabled]);
 
-  return { payments, loading, error, refresh, allocate };
+  return { payments, loading, error, refresh, reconcile, allocate };
 }

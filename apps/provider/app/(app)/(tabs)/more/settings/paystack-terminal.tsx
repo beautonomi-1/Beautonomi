@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, Alert, Share, Linking } from "react-native";
+import { View, Text, TouchableOpacity, Alert, Share, Linking, TextInput } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useState } from "react";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { twStyle } from "@/lib/twStyle";
 import { useFeatureFlag, useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { usePaystackTerminals, usePaystackTerminalPayments, type PaystackTerminalPayment } from "@/hooks/usePaystackTerminal";
+import { TerminalPosterCard } from "@/components/TerminalPosterCard";
 
 export default function PaystackTerminalSettingsScreen() {
   const { isLoading: bundleLoading } = useConfigBundle();
@@ -14,10 +15,24 @@ export default function PaystackTerminalSettingsScreen() {
   const terminalDataEnabled = paystackTerminalEnabled && !bundleLoading;
   const { terminals, setupRequests, canRequestSetup, loading, error, refresh, requestTerminalSetup, requestAssets } =
     usePaystackTerminals({ enabled: terminalDataEnabled });
-  const { payments, refresh: refreshPayments, allocate } = usePaystackTerminalPayments({
+  const { payments, refresh: refreshPayments, reconcile, allocate } = usePaystackTerminalPayments({
     enabled: terminalDataEnabled,
   });
+  const [checkingPayments, setCheckingPayments] = useState(false);
+
+  const onCheckForPayments = async () => {
+    try {
+      setCheckingPayments(true);
+      const result = await reconcile();
+      Alert.alert("Check for new payments", result?.message ?? "You're all caught up.");
+    } catch (err) {
+      Alert.alert("Check for new payments", err instanceof Error ? err.message : "Could not check for new payments.");
+    } finally {
+      setCheckingPayments(false);
+    }
+  };
   const [creating, setCreating] = useState(false);
+  const [whatsapp, setWhatsapp] = useState("");
   const [requestingAssetsId, setRequestingAssetsId] = useState<string | null>(null);
   const [reviewPayment, setReviewPayment] = useState<PaystackTerminalPayment | null>(null);
   const [reviewDismissedId, setReviewDismissedId] = useState<string | null>(null);
@@ -26,7 +41,7 @@ export default function PaystackTerminalSettingsScreen() {
   const onRequestSetup = async () => {
     try {
       setCreating(true);
-      const result = await requestTerminalSetup(null);
+      const result = await requestTerminalSetup(null, whatsapp);
       Alert.alert("Paystack Terminal", result?.message ?? "Beautonomi Ops has been notified.");
     } catch (err) {
       Alert.alert("Paystack Terminal", err instanceof Error ? err.message : "Failed to request terminal setup");
@@ -143,7 +158,11 @@ export default function PaystackTerminalSettingsScreen() {
     await Linking.openURL(url);
   };
 
-  const hasPendingRequest = setupRequests.length > 0;
+  const pendingRequests = setupRequests.filter(
+    (request) => request.status === "requested" || request.status === "in_progress",
+  );
+  const rejectedRequest = setupRequests.find((request) => request.status === "rejected") ?? null;
+  const hasPendingRequest = pendingRequests.length > 0;
 
   if (bundleLoading) {
     return (
@@ -181,10 +200,10 @@ export default function PaystackTerminalSettingsScreen() {
           <Text style={twStyle("text-sm text-amber-800")}>
             Beautonomi Ops has been notified and will create your Paystack Virtual Terminal shortly. Your terminal, payment link, QR, and poster will appear here once ready.
           </Text>
-          {setupRequests[0]?.request_notes ? (
+          {pendingRequests[0]?.request_notes ? (
             <View style={twStyle("mt-3 rounded-xl bg-white/60 p-3")}>
               <Text style={twStyle("text-xs text-amber-800 font-medium")}>Note from your request:</Text>
-              <Text style={twStyle("text-xs text-amber-700 mt-1")}>{setupRequests[0].request_notes}</Text>
+              <Text style={twStyle("text-xs text-amber-700 mt-1")}>{pendingRequests[0].request_notes}</Text>
             </View>
           ) : null}
           <View style={twStyle("mt-3 flex-row items-center gap-2")}>
@@ -195,6 +214,27 @@ export default function PaystackTerminalSettingsScreen() {
               <Text style={twStyle("text-amber-900 font-semibold text-sm")}>Check for updates</Text>
             </TouchableOpacity>
           </View>
+        </View>
+      ) : null}
+
+      {/* Rejected request banner — provider fixes details and resubmits */}
+      {rejectedRequest && !hasPendingRequest ? (
+        <View style={twStyle("rounded-2xl border border-red-200 bg-red-50 p-4 mb-4")}>
+          <View style={twStyle("flex-row items-center gap-2 mb-2")}>
+            <Ionicons name="alert-circle-outline" size={20} color="#b91c1c" />
+            <Text style={twStyle("text-sm font-semibold text-red-900")}>Your last setup request needs changes</Text>
+          </View>
+          {rejectedRequest.rejection_reason ? (
+            <Text style={twStyle("text-sm text-red-800")}>{rejectedRequest.rejection_reason}</Text>
+          ) : null}
+          <Text style={twStyle("text-xs text-red-700 mt-2")}>
+            Update your WhatsApp number below (international format, e.g. +27821234567) and submit a new request.
+          </Text>
+          {rejectedRequest.support_ticket_id ? (
+            <Text style={twStyle("text-xs text-red-700 mt-2")}>
+              Our team opened a support conversation — check your email or notifications to reply.
+            </Text>
+          ) : null}
         </View>
       ) : null}
 
@@ -211,8 +251,20 @@ export default function PaystackTerminalSettingsScreen() {
               <Text style={twStyle("text-sm text-gray-600 mt-1")}>
                 Beautonomi Ops will create your Virtual Terminal in Paystack and add the terminal code, payment link, QR, and poster here once ready.
               </Text>
-              <Text style={twStyle("text-xs text-gray-400 mt-2")}>
-                WhatsApp payment alerts go to your registered phone number. Payments appear in the inbox below after Paystack webhook reconciliation.
+              <Text style={twStyle("text-xs text-gray-500 mt-3 mb-1")}>
+                WhatsApp number for payment notifications
+              </Text>
+              <TextInput
+                value={whatsapp}
+                onChangeText={setWhatsapp}
+                placeholder="+27821234567"
+                keyboardType="phone-pad"
+                autoCapitalize="none"
+                editable={!creating}
+                style={twStyle("rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-900")}
+              />
+              <Text style={twStyle("text-xs text-gray-400 mt-1")}>
+                Use the international format. Leave blank to use the phone number on your profile. Payments appear in the inbox below after Paystack reconciliation.
               </Text>
             </>
           )}
@@ -222,7 +274,13 @@ export default function PaystackTerminalSettingsScreen() {
             style={twStyle(`mt-4 rounded-xl px-4 py-3 items-center ${creating || !canRequestSetup ? "bg-gray-300" : "bg-green-600"}`)}
           >
             <Text style={twStyle("text-center text-white font-semibold")}>
-              {creating ? "Requesting…" : !canRequestSetup ? "Not available on your plan" : "Request Paystack Terminal setup"}
+              {creating
+                ? "Requesting…"
+                : !canRequestSetup
+                  ? "Not available on your plan"
+                  : rejectedRequest
+                    ? "Update & submit new request"
+                    : "Request Paystack Terminal setup"}
             </Text>
           </TouchableOpacity>
         </View>
@@ -299,26 +357,7 @@ export default function PaystackTerminalSettingsScreen() {
                     </TouchableOpacity>
                   </View>
                 ) : null}
-                {terminal.qr_url || terminal.poster_url ? (
-                  <View style={twStyle("flex-row gap-2 mt-2")}>
-                    {terminal.qr_url ? (
-                      <TouchableOpacity
-                        onPress={() => onOpenUrl(terminal.qr_url || "")}
-                        style={twStyle("flex-1 rounded-xl border border-gray-300 px-3 py-2")}
-                      >
-                        <Text style={twStyle("text-center text-gray-800 font-semibold")}>Show QR</Text>
-                      </TouchableOpacity>
-                    ) : null}
-                    {terminal.poster_url ? (
-                      <TouchableOpacity
-                        onPress={() => onShareLink(terminal.poster_url || "")}
-                        style={twStyle("flex-1 rounded-xl border border-gray-300 px-3 py-2")}
-                      >
-                        <Text style={twStyle("text-center text-gray-800 font-semibold")}>Share poster</Text>
-                      </TouchableOpacity>
-                    ) : null}
-                  </View>
-                ) : null}
+                <TerminalPosterCard terminal={terminal} />
                 {terminal.asset_status !== "ready" ? (
                   <TouchableOpacity
                     onPress={() => onRequestAssets(terminal.id)}
@@ -404,6 +443,16 @@ export default function PaystackTerminalSettingsScreen() {
               <Ionicons name="refresh-outline" size={22} color="#16a34a" />
             </TouchableOpacity>
           </View>
+          <TouchableOpacity
+            onPress={onCheckForPayments}
+            disabled={checkingPayments}
+            style={twStyle(`mt-3 flex-row items-center justify-center gap-2 rounded-xl border px-3 py-2 ${checkingPayments ? "border-gray-200" : "border-emerald-600"}`)}
+          >
+            <Ionicons name="sync-outline" size={18} color={checkingPayments ? "#9ca3af" : "#059669"} />
+            <Text style={twStyle(`font-semibold ${checkingPayments ? "text-gray-400" : "text-emerald-700"}`)}>
+              {checkingPayments ? "Checking…" : "Check for new payments"}
+            </Text>
+          </TouchableOpacity>
           {payments.length === 0 ? (
             <Text style={twStyle("text-sm text-gray-400 mt-3")}>No terminal payments yet.</Text>
           ) : (

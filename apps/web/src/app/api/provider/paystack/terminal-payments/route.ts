@@ -10,6 +10,7 @@ import {
   successResponse,
 } from "@/lib/supabase/api-helpers";
 import { requirePaystackVirtualTerminalEnabledForProvider } from "@/lib/payments/paystack-virtual-terminal-feature-gate";
+import { getPaystackTerminalAvailability } from "@/lib/payments/paystack-terminal-availability";
 
 const collectionIntentSchema = z.object({
   terminal_id: z.string().uuid().optional(),
@@ -81,31 +82,55 @@ export async function POST(request: NextRequest) {
     if (gate) return gate;
 
     const body = collectionIntentSchema.parse(await request.json());
-    const terminalQuery = (supabase.from("provider_paystack_virtual_terminals") as any)
-      .select("id, name, terminal_code, payment_link, qr_url, terminal_url, currency, active")
-      .eq("provider_id", providerId)
-      .eq("active", true)
-      .is("deleted_at", null)
-      .order("created_at", { ascending: true });
-    const { data: terminals, error } = body.terminal_id
-      ? await terminalQuery.eq("id", body.terminal_id).limit(1)
-      : await terminalQuery.limit(1);
-    if (error) throw error;
 
-    const terminal = terminals?.[0];
-    if (!terminal) {
+    const availability = await getPaystackTerminalAvailability({ supabase, providerId });
+    const selectableTerminals = availability.selectableTerminals;
+    if (selectableTerminals.length === 0) {
+      if (availability.terminals.some((t) => t.active)) {
+        return errorResponse(
+          "This Paystack Terminal is still waiting for Ops to add the Paystack payment link.",
+          "TERMINAL_LINK_NOT_READY",
+          400,
+        );
+      }
       return errorResponse(
         "No active Paystack Terminal is available. Request setup and wait for Ops to import the Paystack terminal first.",
         "TERMINAL_NOT_READY",
         400,
       );
     }
-    if (!terminal.payment_link && !terminal.terminal_url) {
+
+    const terminal =
+      (body.terminal_id ? selectableTerminals.find((t) => t.id === body.terminal_id) : null) ??
+      selectableTerminals[0];
+    if (!terminal) {
       return errorResponse(
-        "This Paystack Terminal is still waiting for Ops to add the Paystack payment link.",
-        "TERMINAL_LINK_NOT_READY",
+        "The selected Paystack Terminal is not available for collection.",
+        "TERMINAL_NOT_READY",
         400,
       );
+    }
+
+    // Auto-fill the customer reference with the booking/order number so it is embedded in
+    // metadata AND can be shared with the customer to type on the hosted Paystack page.
+    let customerReference = body.customer_reference ?? null;
+    if (!customerReference && body.entity_id) {
+      if (body.entity_type === "booking") {
+        const { data: booking } = await supabase
+          .from("bookings")
+          .select("booking_number")
+          .eq("id", body.entity_id)
+          .eq("provider_id", providerId)
+          .maybeSingle();
+        customerReference = (booking as { booking_number?: string | null } | null)?.booking_number ?? null;
+      } else if (body.entity_type === "product_order") {
+        const { data: order } = await (supabase.from("product_orders") as any)
+          .select("order_number")
+          .eq("id", body.entity_id)
+          .eq("provider_id", providerId)
+          .maybeSingle();
+        customerReference = (order as { order_number?: string | null } | null)?.order_number ?? null;
+      }
     }
 
     const metadata = {
@@ -116,17 +141,20 @@ export async function POST(request: NextRequest) {
       entity_type: body.entity_type ?? null,
       entity_id: body.entity_id ?? null,
       expected_amount: body.expected_amount ?? null,
-      customer_reference: body.customer_reference ?? null,
+      customer_reference: customerReference,
     };
 
     return successResponse({
       terminal,
+      terminals: selectableTerminals,
       metadata,
       expectedAmount: body.expected_amount ?? null,
       entityType: body.entity_type ?? null,
       entityId: body.entity_id ?? null,
-      instructions:
-        "Ask the customer to pay through this Paystack Terminal. Once Paystack confirms the payment, it will appear in the provider inbox for allocation.",
+      customerReference,
+      instructions: customerReference
+        ? `Ask the customer to pay through this Paystack Terminal and enter reference ${customerReference}. Once Paystack confirms the payment, it appears in your inbox for allocation.`
+        : "Ask the customer to pay through this Paystack Terminal. Once Paystack confirms the payment, it will appear in the provider inbox for allocation.",
     });
   } catch (error) {
     return handleApiError(error, "Failed to prepare Paystack Terminal collection");

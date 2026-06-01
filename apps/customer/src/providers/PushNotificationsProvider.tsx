@@ -7,23 +7,27 @@
  * Requires development build (not Expo Go).
  */
 import { useEffect, useRef, useState } from "react";
-import { Platform } from "react-native";
+import { AppState, Platform } from "react-native";
 import type { NotificationClickEvent, NotificationWillDisplayEvent } from "react-native-onesignal";
 import { useAuth } from "@/providers/AuthProvider";
 import { useNativePermissionsOnboardingGate } from "@/providers/NativePermissionsOnboardingProvider";
 import { api } from "@/lib/api-client";
 import {
   clearPendingPushNotification,
+  clearRegisteredPlayerId,
   ensureOneSignalInitialized,
   enqueueOrRoutePushNotification,
   flushPendingPushNotification,
   getOneSignalSubscriptionId,
+  getRegisteredPlayerId,
   logoutOneSignal,
   resolveOneSignalAppId,
   setPushNavigationReady,
+  setRegisteredPlayerId,
 } from "@/lib/onesignal-client";
 import { trackNotificationOpened } from "@/lib/analytics";
 import { addBreadcrumb, captureError } from "@/lib/sentry";
+import { isTransientApiFailure } from "@/lib/api-error";
 import { navigateFromNotification, type Notification } from "@/lib/notifications";
 
 const SUBSCRIPTION_RETRY_DELAYS_MS = [3000, 10000, 30000];
@@ -142,6 +146,16 @@ function usePushRegistration() {
         if (!res.error) {
           registeredRef.current = true;
           lastRegisteredPlayerIdRef.current = normalizedPlayerId;
+          void setRegisteredPlayerId(user.id, normalizedPlayerId);
+        } else if (isTransientApiFailure(res.error)) {
+          // The POST often gets torn down on resume after the app was suspended
+          // mid-flight (iOS freezes the request, the 30s timeout fires overdue →
+          // TIMEOUT/CANCELLED). The foreground re-register effect retries, so
+          // keep a breadcrumb instead of spamming Sentry with a false error.
+          addBreadcrumb("Device register skipped (transient network)", "push_notifications", {
+            code: res.error.code,
+            source,
+          });
         } else {
           captureError(new Error(`Device registration rejected: ${res.error.message}`), {
             scope: "push_notifications:device_register",
@@ -281,6 +295,12 @@ function usePushRegistration() {
         if (!res.error) {
           registeredRef.current = true;
           lastRegisteredPlayerIdRef.current = id.trim();
+        } else if (isTransientApiFailure(res.error)) {
+          // Backgrounded mutation torn down on resume — the foreground
+          // re-register effect retries; don't surface a false error.
+          addBreadcrumb("Device register skipped (transient network)", "push_notifications", {
+            code: res.error.code,
+          });
         } else {
           captureError(new Error(`Device registration rejected: ${res.error.message}`), {
             scope: "push_notifications:device_register",
@@ -300,6 +320,50 @@ function usePushRegistration() {
       timeoutIds.forEach(clearTimeout);
     };
   }, [appId, user, gate]);
+
+  // §Push-reliability: re-check the subscription on every foreground. The OS can
+  // rotate the OneSignal subscription id while the app is backgrounded, and an
+  // earlier registration may have failed silently (offline at launch). Ensure
+  // login(userId) is applied first, then register only when the id changed since
+  // our last successful registration (in-memory or persisted) to avoid spamming
+  // the endpoint on every focus.
+  useEffect(() => {
+    if (Platform.OS === "web" || !appId || !user) return;
+    if (gate.phase === "loading") return;
+    const uid = user.id;
+
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state !== "active") return;
+      void (async () => {
+        try {
+          await ensureOneSignalInitialized(appId, uid);
+          const id = await getOneSignalSubscriptionId();
+          if (!id) return;
+          if (lastRegisteredPlayerIdRef.current === id) return;
+          const persisted = await getRegisteredPlayerId(uid);
+          if (persisted === id) {
+            lastRegisteredPlayerIdRef.current = id;
+            registeredRef.current = true;
+            return;
+          }
+          const platform = Platform.OS === "ios" ? "ios" : "android";
+          const res = await api.post<{ registered?: boolean }>("/api/me/devices", {
+            player_id: id,
+            platform,
+            app_type: "customer",
+          });
+          if (!res.error) {
+            registeredRef.current = true;
+            lastRegisteredPlayerIdRef.current = id;
+            void setRegisteredPlayerId(uid, id);
+          }
+        } catch (err) {
+          captureError(err, { scope: "push_notifications:foreground_reregister" });
+        }
+      })();
+    });
+    return () => sub.remove();
+  }, [appId, user, gate]);
 }
 
 /**
@@ -316,6 +380,7 @@ function useOneSignalLogout() {
     if (prevUserRef.current && !user) {
       clearPendingPushNotification();
       setPushNavigationReady(false);
+      void clearRegisteredPlayerId();
       void (async () => {
         try {
           const playerId = await logoutOneSignal();

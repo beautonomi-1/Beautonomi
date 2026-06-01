@@ -21,6 +21,7 @@ import { useTabContentPaddingBottom } from "@/hooks/useTabContentPaddingBottom";
 import { Colors, Shadows } from "@/constants/colors";
 import { BookingCardSkeleton } from "@/components/Skeleton";
 import { supabase } from "@/lib/supabase/client";
+import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
 import { getTenantLocaleTag } from "@/lib/locale";
 import { getBookingLifecycleDisplay, getBookingPaymentDisplay } from "@beautonomi/utils";
 
@@ -251,7 +252,6 @@ export default function BookingsScreen() {
   // Real-time: refresh list when any of the customer's bookings change (status updates, confirmations, etc.)
   const refetchRef = useRef(refetch);
   refetchRef.current = refetch;
-  const bookingsListRealtimeGenRef = useRef(0);
   useEffect(() => {
     if (!user?.id) return;
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -262,9 +262,8 @@ export default function BookingsScreen() {
         refetchRef.current();
       }, 600);
     };
-    const gen = ++bookingsListRealtimeGenRef.current;
     const channel = supabase
-      .channel(`bookings-list:customer:${user.id}:rt${gen}`)
+      .channel(nextRealtimeTopic(`bookings-list:customer:${user.id}`))
       .on(
         "postgres_changes" as never,
         {

@@ -1,6 +1,6 @@
 {
   "name": "provider",
-  "version": "1.0.51",
+  "version": "1.0.52",
   "main": "index.ts",
   "scripts": {
     "dev": "node ../../tooling/expo-dev/port-safe-expo-dev.js 8082 8084",
@@ -63,10 +63,13 @@
     "expo-local-authentication": "^17.0.8",
     "expo-localization": "^17.0.8",
     "expo-location": "^19.0.8",
+    "expo-media-library": "~18.2.1",
     "expo-modules-core": "~3.0.29",
     "expo-notifications": "~0.32.16",
+    "expo-print": "~15.0.8",
     "expo-router": "^6.0.23",
     "expo-secure-store": "^15.0.8",
+    "expo-sharing": "~14.0.8",
     "expo-splash-screen": "^31.0.13",
     "expo-status-bar": "~3.0.9",
     "expo-system-ui": "~6.0.9",

@@ -1080,13 +1080,14 @@ export default function PartnerProfileScreen() {
     ],
     [pp],
   );
-  const { slug, campaign_id: paramCampaignId, provider_id: paramProviderId, lat: paramLat, lng: paramLng } =
+  const { slug, campaign_id: paramCampaignId, provider_id: paramProviderId, lat: paramLat, lng: paramLng, tab: paramTab } =
     useLocalSearchParams<{
       slug: string;
       campaign_id?: string;
       provider_id?: string;
       lat?: string;
       lng?: string;
+      tab?: string;
     }>();
   const { user } = useAuth();
   const { width: screenWidth } = useWindowDimensions();
@@ -1152,6 +1153,13 @@ export default function PartnerProfileScreen() {
     setMemberships([]);
     setSalonMembership(null);
   }, [effectiveSlug]);
+
+  // Open a specific tab when deep-linked (e.g. membership win-back push → memberships).
+  useEffect(() => {
+    if (paramTab && (TAB_KEYS as readonly string[]).includes(paramTab)) {
+      setActiveTab(paramTab as TabKey);
+    }
+  }, [paramTab]);
 
   /* ── Data Loading ── */
   const load = useCallback(async () => {

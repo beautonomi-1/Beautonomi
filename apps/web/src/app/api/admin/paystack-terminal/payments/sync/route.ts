@@ -7,6 +7,10 @@ import {
   isPaystackTerminalCharge,
   recordPaystackTerminalCharge,
 } from "@/lib/payments/paystack-terminal-webhook";
+import {
+  reconcilePaystackTerminalPayments,
+  type ReconcileLocalTerminal,
+} from "@/lib/payments/paystack-terminal-reconcile";
 import { resolvePaystackTerminalTenantScope } from "@/lib/admin/paystack-terminal-tenant-scope";
 
 function defaultFromIso() {
@@ -15,39 +19,7 @@ function defaultFromIso() {
   return date.toISOString();
 }
 
-type LocalTerminal = {
-  id: string;
-  provider_id: string;
-  paystack_terminal_id: number | string | null;
-  terminal_code: string;
-  currency?: string | null;
-  provider?: { tenant_id?: string | null } | null;
-};
-
-function enrichTransactionWithTerminal(transaction: Record<string, unknown>, terminal: LocalTerminal) {
-  const metadata =
-    transaction.metadata && typeof transaction.metadata === "object" && !Array.isArray(transaction.metadata)
-      ? { ...(transaction.metadata as Record<string, unknown>) }
-      : {};
-  const source =
-    transaction.source && typeof transaction.source === "object" && !Array.isArray(transaction.source)
-      ? { ...(transaction.source as Record<string, unknown>) }
-      : {};
-
-  metadata.provider_id = metadata.provider_id ?? terminal.provider_id;
-  metadata.paystack_terminal_code = metadata.paystack_terminal_code ?? terminal.terminal_code;
-  metadata.virtual_terminal = metadata.virtual_terminal ?? { code: terminal.terminal_code };
-  source.source = source.source ?? "virtual_terminal";
-  source.identifier = source.identifier ?? terminal.terminal_code;
-
-  return {
-    ...transaction,
-    metadata,
-    source,
-    terminal: { code: terminal.terminal_code },
-    currency: transaction.currency ?? terminal.currency ?? "ZAR",
-  };
-}
+type LocalTerminal = ReconcileLocalTerminal;
 
 function transactionRecord(transaction: unknown): Record<string, unknown> {
   return transaction && typeof transaction === "object" && !Array.isArray(transaction)
@@ -105,71 +77,56 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const transactions: Array<Record<string, unknown>> = [];
-    const results = [];
+    const basis =
+      "Fallback reconciliation from Paystack Transaction API. Uses terminalid where a local Paystack terminal ID is available; primary path remains charge.success webhook and mapping uses Virtual Terminal code, not WhatsApp destination.";
 
     if (localTerminals.length > 0 && !requestedTerminalId) {
-      for (const terminal of localTerminals) {
-        const remote = await listTransactions({
-          status: "success",
-          from,
-          to,
-          page,
-          perPage,
-          terminalid: terminal.paystack_terminal_id ?? undefined,
-          tenantId: terminal.provider?.tenant_id ?? tenantId,
-        });
-        const terminalTransactions: Array<Record<string, unknown>> = (remote.data ?? []).map((transaction) =>
-          enrichTransactionWithTerminal(transactionRecord(transaction), terminal),
-        );
-        transactions.push(...terminalTransactions);
-        for (const transaction of terminalTransactions) {
-          const result = await recordPaystackTerminalCharge(supabase, transaction as any);
-          results.push({
-            terminalid: terminal.paystack_terminal_id,
-            terminal_code: terminal.terminal_code,
-            reference: transaction.reference ?? null,
-            recorded: result.recorded,
-            reason: "reason" in result ? result.reason : null,
-            payment_id: result.recorded ? (result.payment as { id?: string })?.id ?? null : null,
-          });
-        }
-      }
-    } else {
-      const remote = await listTransactions({
-        status: "success",
+      const summary = await reconcilePaystackTerminalPayments({
+        supabase,
+        terminals: localTerminals,
         from,
         to,
-        page,
         perPage,
-        terminalid: requestedTerminalId ?? undefined,
-        tenantId,
+        maxPages: 1,
+        fallbackTenantId: tenantId,
       });
-      const remoteTransactions = remote.data ?? [];
-      const terminalTransactions = remoteTransactions.filter((transaction) =>
-        isPaystackTerminalCharge(transaction as any),
-      );
-      transactions.push(...remoteTransactions.map(transactionRecord));
-      for (const transaction of terminalTransactions) {
-        const result = await recordPaystackTerminalCharge(supabase, transaction as any);
-        results.push({
-          terminalid: requestedTerminalId,
-          reference: transaction.reference ?? null,
-          recorded: result.recorded,
-          reason: "reason" in result ? result.reason : null,
-          payment_id: result.recorded ? (result.payment as { id?: string })?.id ?? null : null,
-        });
-      }
+      return successResponse({ ...summary, basis });
+    }
+
+    // Single explicit terminalid path (no local mapping): pull and filter by detection.
+    const remote = await listTransactions({
+      status: "success",
+      from,
+      to,
+      page,
+      perPage,
+      terminalid: requestedTerminalId ?? undefined,
+      tenantId,
+    });
+    const remoteTransactions = remote.data ?? [];
+    const terminalTransactions = remoteTransactions.filter((transaction) =>
+      isPaystackTerminalCharge(transaction as any),
+    );
+    const results = [];
+    for (const transaction of terminalTransactions) {
+      const record = transactionRecord(transaction);
+      const result = await recordPaystackTerminalCharge(supabase, record as any);
+      results.push({
+        terminalid: requestedTerminalId,
+        reference: (record.reference as string | undefined) ?? null,
+        recorded: result.recorded,
+        reason: "reason" in result ? result.reason : null,
+        payment_id: result.recorded ? (result.payment as { id?: string })?.id ?? null : null,
+      });
     }
 
     return successResponse({
-      checked: transactions.length,
-      terminalsChecked: localTerminals.length || (requestedTerminalId ? 1 : 0),
+      checked: remoteTransactions.length,
+      terminalsChecked: requestedTerminalId ? 1 : 0,
       terminalPayments: results.length,
       recorded: results.filter((result) => result.recorded).length,
       results,
-      basis:
-        "Fallback reconciliation from Paystack Transaction API. Uses terminalid where a local Paystack terminal ID is available; primary path remains charge.success webhook and mapping uses Virtual Terminal code, not WhatsApp destination.",
+      basis,
     });
   } catch (error) {
     return handleApiError(error, "Failed to sync Paystack Terminal payments");
