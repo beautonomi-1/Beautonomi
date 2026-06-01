@@ -16,6 +16,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase/client";
+import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -65,8 +66,6 @@ export default function ChatsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  /** Unique Realtime topic suffix — Supabase forbids adding postgres_changes after subscribe(); remounts can reuse the same topic name before removeChannel finishes. */
-  const conversationsRealtimeGenRef = useRef(0);
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -145,9 +144,8 @@ export default function ChatsScreen() {
         void load(true);
       }, 400);
     };
-    const gen = ++conversationsRealtimeGenRef.current;
     const channel = supabase
-      .channel(`customer-conversations:${user.id}:rt${gen}`)
+      .channel(nextRealtimeTopic(`customer-conversations:${user.id}`))
       .on(
         "postgres_changes" as never,
         {

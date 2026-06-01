@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { Redirect } from "expo-router";
-import { View, Text, TouchableOpacity } from "react-native";
+import { AppState, DeviceEventEmitter, View, Text, TouchableOpacity } from "react-native";
 import { useTranslation } from "@beautonomi/i18n";
 import { GateLoadingScreen } from "@/components/GateLoadingScreen";
 import { useAuth } from "@/providers/AuthProvider";
@@ -9,7 +9,7 @@ import { getHttpErrorStatus, isTransientApiFailure } from "@/lib/api-error";
 import { WrongAppScreen } from "@/components/WrongAppScreen";
 import { Colors } from "@/constants/colors";
 import { APP_URL, isScreenshotMode } from "@/config/public-env";
-import { getCachedPortal, setCachedPortal, clearPortalCache } from "@/lib/portal-cache";
+import { getCachedPortal, getPersistedPortal, setCachedPortal, clearPortalCache } from "@/lib/portal-cache";
 import {
   authFlowBreadcrumb,
   captureAuthMessage,
@@ -24,6 +24,8 @@ import {
 const PROFILE_CHECK_DELAY_MS = 0;
 const AUTH_RETRY_DELAY_MS = 0;
 const PORTAL_TIMEOUT_MS = 12 * 1000; // 12s – avoid infinite loading
+/** Extra grace after the first portal deadline: one silent re-fetch before the error screen. */
+const PORTAL_TIMEOUT_GRACE_MS = 8 * 1000;
 const PROFILE_TIMEOUT_MS = 12 * 1000; // 12s – avoid infinite loading
 const PROFILE_AUTH_RETRY_MAX = 4;
 const PROFILE_TRANSIENT_RETRY_MAX = 4;
@@ -77,6 +79,11 @@ export default function Index() {
   const retryCountRef = useRef(0);
   const profileRetryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const profileDeadlineRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Mirrors `hasProfile` so the background/resume handler can tell "still checking" (null) from a resolved answer. */
+  const hasProfileRef = useRef<boolean | null>(null);
+  useEffect(() => {
+    hasProfileRef.current = hasProfile;
+  }, [hasProfile]);
 
   // Phase 1: portal check (is this user a provider?)
   useEffect(() => {
@@ -135,6 +142,15 @@ export default function Index() {
     let cancelled = false;
     /** After timeout we assume provider; ignore late /api/me/portal responses so they can't flip to wrong_app. */
     let portalTimedOut = false;
+    /** Set once resolution reaches a terminal state (portal applied or error shown). */
+    let resolved = false;
+    /**
+     * Set once we've rendered from a persisted last-known-good portal. While
+     * true, any network failure during the background re-verify is swallowed —
+     * we never drop the user back to the "Taking longer than expected" screen
+     * after we've already shown the app. This is the core cold-resume fix.
+     */
+    let hasPersistedFallback = false;
     setPortalState("loading");
     setPortalErrorKind(null);
 
@@ -151,6 +167,10 @@ export default function Index() {
       // Stop the 12s watchdog so it cannot fire after we've already resolved
       // (success or failure). Otherwise `timeout` overwrites `unauthorized`.
       clearPortalDeadline();
+      // Already rendered from a persisted portal — keep the user in the app and
+      // let the network heal on its own (focus / connectivity auto-retry).
+      if (hasPersistedFallback) return;
+      resolved = true;
       setPortalErrorKind(kind);
       setPortalState("error");
       if (isSentryEnabled()) {
@@ -158,19 +178,32 @@ export default function Index() {
       }
     };
 
-    portalDeadlineId = setTimeout(() => {
+    // §Cold-resume fix: on a slow-waking radio the first probe often just needs
+    // a nudge. Rather than fail straight to the error screen at the deadline,
+    // fire one silent re-fetch and extend the watchdog once; only surface the
+    // timeout if that grace window also elapses.
+    let deadlineGraceUsed = false;
+    const onPortalDeadline = () => {
       portalDeadlineId = null;
-      if (cancelled) return;
+      if (cancelled || portalTimedOut) return;
+      if (!deadlineGraceUsed && !hasPersistedFallback) {
+        deadlineGraceUsed = true;
+        fetchPortal(0, 0);
+        portalDeadlineId = setTimeout(onPortalDeadline, PORTAL_TIMEOUT_GRACE_MS);
+        return;
+      }
       portalTimedOut = true;
       // §Provider-launch (audit 2026-04): was "fail open" assuming provider.
       // That allowed customers / admins / suspended users to briefly enter
       // the provider shell on flaky networks. Now we fail closed: show a
       // retry screen rather than gamble on the user's role.
       enterError("timeout");
-    }, PORTAL_TIMEOUT_MS);
+    };
+    portalDeadlineId = setTimeout(onPortalDeadline, PORTAL_TIMEOUT_MS);
 
     const applyPortalResult = (portal: string) => {
       clearPortalDeadline();
+      resolved = true;
       setCachedPortal(uid, portal);
       // §Graceful cross-role entry (2026-04-17): customer-role users are
       // no longer hard-blocked. They're treated like provider_onboarding
@@ -197,6 +230,9 @@ export default function Index() {
         .get<{ role?: string; portal?: string }>("/api/me/role")
         .then((res) => {
           if (cancelled || portalTimedOut) return;
+          // Deliberate background abort — the foreground restart re-probes; never
+          // surface it as a network/no-role error.
+          if ((res.error as { code?: string } | undefined)?.code === "CANCELLED") return;
           if (res.error || !res.data?.role) {
             const status = getHttpErrorStatus(res.error);
             if (
@@ -258,6 +294,8 @@ export default function Index() {
           // Critical: on 401/empty data, do NOT default to "customer" — iOS often fires this
           // before the Bearer session is ready, which falsely showed Wrong app for providers.
           if (res.error) {
+            // Deliberate background abort — ignore; the foreground restart re-probes.
+            if ((res.error as { code?: string }).code === "CANCELLED") return;
             const status = getHttpErrorStatus(res.error);
             if ((status === 401 || status === 403) && authAttempt < 4) {
               setTimeout(
@@ -319,15 +357,60 @@ export default function Index() {
         });
     };
 
+    /**
+     * §Cold-resume fix: before (or alongside) the network probe, try the
+     * persisted last-known-good portal. If present we render immediately; a
+     * fresh value skips the network entirely, a stale one re-verifies quietly
+     * in the background without ever surfacing the timeout/error screen.
+     */
+    const startPortalResolution = async () => {
+      let fallback: { portal: string; fresh: boolean } | null = null;
+      try {
+        fallback = await getPersistedPortal(uid);
+      } catch {
+        fallback = null;
+      }
+      if (cancelled || portalTimedOut) return;
+      if (fallback) {
+        hasPersistedFallback = true;
+        applyPortalResult(fallback.portal);
+        if (fallback.fresh) return; // trusted recent value — no network needed
+        // Stale: re-verify quietly. applyPortalResult already cleared the
+        // watchdog, and enterError is now a no-op while hasPersistedFallback.
+      }
+      fetchPortal(0, 0);
+    };
+
     const t = setTimeout(() => {
       if (cancelled) return;
-      fetchPortal(0, 0);
+      void startPortalResolution();
     }, PROFILE_CHECK_DELAY_MS);
+
+    // §Cold-resume fix (background-freeze): iOS suspends the JS thread in the
+    // background, so the watchdog `setTimeout` above never fires on schedule —
+    // it fires "overdue" the instant we resume and would declare a bogus
+    // `timeout` (the real cause was suspension, not a slow server). Cancel the
+    // watchdog when we background, then restart resolution from scratch on the
+    // next foreground if we hadn't resolved yet. The in-flight reads were
+    // already aborted (CANCELLED) by AuthProvider on background.
+    let appWasBackgrounded = false;
+    const portalAppStateSub = AppState.addEventListener("change", (state) => {
+      if (state === "background") {
+        appWasBackgrounded = true;
+        clearPortalDeadline();
+      } else if (state === "active" && appWasBackgrounded) {
+        appWasBackgrounded = false;
+        if (!cancelled && !resolved && !portalTimedOut) {
+          setPortalRetryKey((k) => k + 1);
+        }
+      }
+    });
 
     return () => {
       cancelled = true;
       clearTimeout(t);
       clearPortalDeadline();
+      portalAppStateSub.remove();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, session?.user?.id, portalRetryKey]);
@@ -451,10 +534,44 @@ export default function Index() {
       runProfileCheck(0);
     }, PROFILE_CHECK_DELAY_MS);
 
+    // §Cold-resume fix (background-freeze): the profile watchdog below is a JS
+    // timer that iOS freezes in the background; it fires "overdue" on resume and
+    // would flash a bogus "Couldn't load your profile" screen. Cancel it (and any
+    // pending retry) when we background, then re-arm + re-probe on the next
+    // foreground if the profile check hadn't resolved yet.
+    let appWasBackgrounded = false;
+    const armProfileDeadline = () => {
+      clearProfileDeadline();
+      profileDeadlineRef.current = setTimeout(() => {
+        if (cancelled) return;
+        setCheckingProfile(false);
+        setHasProfile(null);
+        setProfileLoadError(true);
+        profileDeadlineRef.current = null;
+      }, PROFILE_TIMEOUT_MS);
+    };
+    const profileAppStateSub = AppState.addEventListener("change", (state) => {
+      if (state === "background") {
+        appWasBackgrounded = true;
+        clearProfileDeadline();
+        if (profileRetryTimeoutRef.current) {
+          clearTimeout(profileRetryTimeoutRef.current);
+          profileRetryTimeoutRef.current = null;
+        }
+      } else if (state === "active" && appWasBackgrounded) {
+        appWasBackgrounded = false;
+        if (!cancelled && hasProfileRef.current === null) {
+          armProfileDeadline();
+          runProfileCheck(0);
+        }
+      }
+    });
+
     return () => {
       cancelled = true;
       clearTimeout(t);
       clearProfileDeadline();
+      profileAppStateSub.remove();
       if (profileRetryTimeoutRef.current) {
         clearTimeout(profileRetryTimeoutRef.current);
         profileRetryTimeoutRef.current = null;
@@ -463,6 +580,41 @@ export default function Index() {
     // runProfileCheck is intentionally omitted to avoid re-running on every identity change
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [portalState, session?.user?.id, needsOnboarding]);
+
+  // §Cold-resume fix: when the gate is parked on the portal error or profile
+  // load error, recover automatically as soon as the app refocuses or
+  // connectivity returns. The user no longer has to tap "Try again".
+  useEffect(() => {
+    const portalErrored = portalState === "error";
+    const profileErrored = profileLoadError && hasProfile === null;
+    if (!portalErrored && !profileErrored) return;
+
+    const retry = () => {
+      if (portalState === "error") {
+        // Preserve the persisted last-known-good portal (do not clear cache);
+        // re-running the effect will retry the persisted fallback + network.
+        setPortalErrorKind(null);
+        setPortalState("idle");
+        setPortalRetryKey((k) => k + 1);
+      } else if (profileLoadError) {
+        setProfileLoadError(false);
+        runProfileCheck(0);
+      }
+    };
+
+    const focusSub = DeviceEventEmitter.addListener("beautonomi:app:focus", retry);
+    const netSub = DeviceEventEmitter.addListener("beautonomi:network:recover", retry);
+    const appStateSub = AppState.addEventListener("change", (s) => {
+      if (s === "active") retry();
+    });
+    return () => {
+      focusSub.remove();
+      netSub.remove();
+      appStateSub.remove();
+    };
+    // runProfileCheck intentionally omitted (stable within a render pass).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [portalState, profileLoadError, hasProfile]);
 
   useEffect(() => {
     if (!__DEV__) return;

@@ -1925,6 +1925,13 @@ export default function BookingDetailScreen() {
       Alert.alert("Nothing to record", "There is no remaining balance to mark as paid.");
       return;
     }
+    // Paystack Terminal cannot be "marked paid" manually — the customer must pay via the
+    // hosted terminal and the payment is then allocated. Route to the collection flow.
+    if (markPaidMethod === "paystack_terminal") {
+      setShowMarkPaid(false);
+      await openPaystackTerminalCollection();
+      return;
+    }
     setMarkingPaid(true);
     const res = await postMutation(`/api/provider/bookings/${id}/mark-paid`, {
       payment_method: markPaidMethod,
@@ -2468,9 +2475,15 @@ export default function BookingDetailScreen() {
         ) : null}
 
         <View style={twStyle("rounded-xl border border-gray-200 bg-white p-4 mb-3")}>
-          <View style={twStyle("flex-row items-center justify-between mb-3")}>
-            <View style={twStyle("flex-row items-center flex-1")}>
-              <Text style={twStyle("font-semibold text-gray-900")}>{customerName}</Text>
+          {/*
+            §Provider-launch (audit 2026-06): customer identity row.
+            Booking-level metadata (source + status pills) used to sit
+            on this same row next to the name, where "Provider" /
+            "Pending" read as if they described the *customer*. They are
+            now grouped into a clearly booking-scoped row below.
+          */}
+          <View style={twStyle("flex-row flex-wrap items-center mb-3")}>
+            <Text style={twStyle("font-semibold text-gray-900")} numberOfLines={1}>{customerName}</Text>
               {(b.customers as { identity_verified?: boolean | null } | null)?.identity_verified ? (
                 <VerifiedBadge verified style={{ marginLeft: 8 }} />
               ) : null}
@@ -2552,35 +2565,6 @@ export default function BookingDetailScreen() {
                   <Ionicons name="chatbubble-ellipses-outline" size={20} color="#4b5563" />
                 </TouchableOpacity>
               ) : null}
-            </View>
-            <View style={twStyle("flex-row items-center")}>
-              {b.is_group_booking && (
-                <View style={[twStyle("flex-row items-center gap-1 rounded-full bg-pink-100 px-2 py-1"), { marginRight: 6 }]}>
-                  <Ionicons name="people-outline" size={12} color="#be185d" />
-                  <Text style={twStyle("text-xs font-medium text-pink-800")}>Group</Text>
-                </View>
-              )}
-              {b.booking_source === "walk_in" && (
-                <View style={[twStyle("rounded-full bg-green-100 px-2 py-1"), { marginRight: 6 }]}>
-                  <Text style={twStyle("text-xs font-medium text-green-800")}>Walk-in</Text>
-                </View>
-              )}
-              {b.booking_source === "provider" && !b.is_group_booking && (
-                <View style={[twStyle("rounded-full bg-primary/10 px-2 py-1"), { marginRight: 6 }]}>
-                  <Text style={twStyle("text-xs font-medium text-primary")}>Provider</Text>
-                </View>
-              )}
-              {b.booking_source === "online" && !b.is_group_booking && (
-                <View style={[twStyle("rounded-full bg-blue-100 px-2 py-1"), { marginRight: 6 }]}>
-                  <Text style={twStyle("text-xs font-medium text-blue-800")}>Online</Text>
-                </View>
-              )}
-              <View style={twStyle(`rounded-full px-2 py-1 ${statusColor(currentDbStatus)}`)}>
-                <Text style={twStyle(`text-xs font-semibold ${statusTextColor(currentDbStatus)}`)}>
-                  {labelForDbStatus(currentDbStatus)}
-                </Text>
-              </View>
-            </View>
           </View>
           <Text style={twStyle("text-sm text-gray-600")}>
             {formatDateTimeSafe(b.scheduled_at, b.display_time_zone ?? providerTimezone)}
@@ -2588,6 +2572,39 @@ export default function BookingDetailScreen() {
           {addressLine ? (
             <Text style={twStyle("mt-2 text-sm text-gray-500")}>{addressLine}</Text>
           ) : null}
+          {/*
+            §Provider-launch (audit 2026-06): booking source + status,
+            grouped on a dedicated row beneath the schedule so they read
+            as booking metadata rather than customer attributes.
+          */}
+          <View style={twStyle("mt-2 flex-row flex-wrap items-center")}>
+            {b.is_group_booking && (
+              <View style={[twStyle("flex-row items-center gap-1 rounded-full bg-pink-100 px-2 py-1"), { marginRight: 6, marginTop: 4 }]}>
+                <Ionicons name="people-outline" size={12} color="#be185d" />
+                <Text style={twStyle("text-xs font-medium text-pink-800")}>Group</Text>
+              </View>
+            )}
+            {b.booking_source === "walk_in" && (
+              <View style={[twStyle("rounded-full bg-green-100 px-2 py-1"), { marginRight: 6, marginTop: 4 }]}>
+                <Text style={twStyle("text-xs font-medium text-green-800")}>Walk-in</Text>
+              </View>
+            )}
+            {b.booking_source === "provider" && !b.is_group_booking && (
+              <View style={[twStyle("rounded-full bg-primary/10 px-2 py-1"), { marginRight: 6, marginTop: 4 }]}>
+                <Text style={twStyle("text-xs font-medium text-primary")}>Provider-created</Text>
+              </View>
+            )}
+            {b.booking_source === "online" && !b.is_group_booking && (
+              <View style={[twStyle("rounded-full bg-blue-100 px-2 py-1"), { marginRight: 6, marginTop: 4 }]}>
+                <Text style={twStyle("text-xs font-medium text-blue-800")}>Online</Text>
+              </View>
+            )}
+            <View style={[twStyle(`rounded-full px-2 py-1 ${statusColor(currentDbStatus)}`), { marginTop: 4 }]}>
+              <Text style={twStyle(`text-xs font-semibold ${statusTextColor(currentDbStatus)}`)}>
+                {labelForDbStatus(currentDbStatus)}
+              </Text>
+            </View>
+          </View>
           {typeof b.total_amount === "number" && (
             <Text style={twStyle("mt-2 text-base font-medium text-gray-900")}>
               {b.currency ?? getTenantDefaultCurrency()} {b.total_amount.toLocaleString()}

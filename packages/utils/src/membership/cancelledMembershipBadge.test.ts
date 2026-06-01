@@ -24,4 +24,16 @@ describe("cancelledMembershipBadge", () => {
       shouldShowCancelledMembershipBadge({ status: "cancelled", cancelled_at: cancelledAt, nowMs: now }),
     ).toBe(false);
   });
+
+  it("hides cancelled badge when there is no cancellation anchor", () => {
+    // §Provider-launch (audit 2026-06): legacy / manually-edited rows with
+    // `status === "cancelled"` but no `cancelled_at` must NOT show the pill
+    // in perpetuity.
+    expect(
+      shouldShowCancelledMembershipBadge({ status: "cancelled", cancelled_at: null, nowMs: now }),
+    ).toBe(false);
+    expect(
+      shouldShowCancelledMembershipBadge({ status: "cancelled", cancelled_at: undefined, nowMs: now }),
+    ).toBe(false);
+  });
 });

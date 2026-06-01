@@ -74,6 +74,55 @@ describe("navigateFromNotification", () => {
     expect(pushMock).toHaveBeenCalledWith("/(app)/(tabs)/chats");
   });
 
+  it("deep links membership win-back to the provider profile memberships tab (in-app row)", () => {
+    navigateFromNotification({
+      id: "n-wb1",
+      // In-app rows store an unknown template type as "system"; the template_key
+      // in data is what identifies the win-back notification.
+      type: "system",
+      title: "Membership Win-Back",
+      message: "Glow Salon invited you to rejoin Gold.",
+      is_read: false,
+      created_at: new Date().toISOString(),
+      data: { template_key: "membership_win_back", provider_slug: "glow-salon" },
+    });
+
+    expect(pushMock).toHaveBeenCalledWith({
+      pathname: "/(app)/partner-profile",
+      params: { slug: "glow-salon", tab: "memberships" },
+    });
+  });
+
+  it("deep links membership win-back push (type carries template_key) using provider_id", () => {
+    navigateFromNotification({
+      id: "n-wb2",
+      type: "membership_win_back",
+      title: "Membership Win-Back",
+      message: "Glow Salon invited you to rejoin Gold.",
+      is_read: false,
+      created_at: new Date().toISOString(),
+      data: { provider_id: "11111111-1111-1111-1111-111111111111" },
+    });
+
+    expect(pushMock).toHaveBeenCalledWith({
+      pathname: "/(app)/partner-profile",
+      params: { provider_id: "11111111-1111-1111-1111-111111111111", tab: "memberships" },
+    });
+  });
+
+  it("falls back to the membership management screen when win-back has no provider context", () => {
+    navigateFromNotification({
+      id: "n-wb3",
+      type: "membership_win_back",
+      title: "Membership Win-Back",
+      message: "You're invited back.",
+      is_read: false,
+      created_at: new Date().toISOString(),
+    });
+
+    expect(pushMock).toHaveBeenCalledWith("/(app)/account-settings/membership");
+  });
+
   it("opens product order detail when notification data uses product_order_id", () => {
     navigateFromNotification({
       id: "n4",

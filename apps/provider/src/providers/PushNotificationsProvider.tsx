@@ -7,7 +7,7 @@
  * Notification templates are configured from the superadmin portal.
  */
 import { useEffect, useRef, useState } from "react";
-import { Linking, Platform, Vibration } from "react-native";
+import { AppState, Linking, Platform, Vibration } from "react-native";
 import { router } from "expo-router";
 import type {
   NotificationClickEvent,
@@ -18,13 +18,16 @@ import { useNativePermissionsOnboardingGate } from "@/providers/NativePermission
 import { api } from "@/lib/api-client";
 import {
   clearPendingPushNotification,
+  clearRegisteredPlayerId,
   ensureOneSignalInitialized,
   enqueueOrRoutePushNotification,
   flushPendingPushNotification,
   getOneSignalSubscriptionId,
+  getRegisteredPlayerId,
   logoutOneSignal,
   resolveOneSignalAppId,
   setPushNavigationReady,
+  setRegisteredPlayerId,
 } from "@/lib/onesignal-client";
 import { captureError, addBreadcrumb } from "@/lib/sentry";
 import { isTransientApiFailure } from "@/lib/api-error";
@@ -469,6 +472,7 @@ function usePushRegistration() {
         } else {
           registeredRef.current = true;
           lastRegisteredPlayerIdRef.current = normalizedPlayerId;
+          void setRegisteredPlayerId(user.id, normalizedPlayerId);
         }
       } catch (err) {
         captureError(err, { scope: "push_notifications:device_register", source });
@@ -635,6 +639,49 @@ function usePushRegistration() {
       timeoutIds.forEach(clearTimeout);
     };
   }, [appId, user, gate]);
+
+  // §Push-reliability: re-check the subscription on every foreground. The OS can
+  // rotate the OneSignal subscription id while the app is backgrounded, and an
+  // earlier registration may have failed silently (offline at launch). Ensure
+  // login(userId) is applied first, then register only when the id changed since
+  // our last successful registration (in-memory or persisted) to avoid spamming
+  // the endpoint on every focus.
+  useEffect(() => {
+    if (Platform.OS === "web" || !appId || !user) return;
+    if (gate.phase === "loading") return;
+    const uid = user.id;
+
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state !== "active") return;
+      void (async () => {
+        try {
+          await ensureOneSignalInitialized(appId, uid);
+          const id = await getOneSignalSubscriptionId();
+          if (!id) return;
+          if (lastRegisteredPlayerIdRef.current === id) return;
+          const persisted = await getRegisteredPlayerId(uid);
+          if (persisted === id) {
+            lastRegisteredPlayerIdRef.current = id;
+            registeredRef.current = true;
+            return;
+          }
+          const platform = Platform.OS === "ios" ? "ios" : "android";
+          const res = await api.post<{ registered?: boolean }>("/api/provider/devices", {
+            player_id: id,
+            platform,
+          });
+          if (!res.error) {
+            registeredRef.current = true;
+            lastRegisteredPlayerIdRef.current = id;
+            void setRegisteredPlayerId(uid, id);
+          }
+        } catch (err) {
+          captureError(err, { scope: "push_notifications:foreground_reregister" });
+        }
+      })();
+    });
+    return () => sub.remove();
+  }, [appId, user, gate]);
 }
 
 /**
@@ -650,6 +697,7 @@ function useOneSignalLogout() {
     if (prevUserRef.current && !user) {
       clearPendingPushNotification();
       setPushNavigationReady(false);
+      void clearRegisteredPlayerId();
       void (async () => {
         try {
           const playerId = await logoutOneSignal();

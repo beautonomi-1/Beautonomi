@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Pressable, ActivityIndicator, Platform } from "react-native";
 import { router } from "expo-router";
 import { supabase } from "@/lib/supabase/client";
+import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
 import { useAuth } from "@/providers/AuthProvider";
 import { useResponsive } from "@/hooks/useResponsive";
 import { Colors } from "@/constants/colors";
@@ -95,13 +96,11 @@ export default function AccountBookingsScreen() {
   // Supabase Realtime: live booking status updates — trigger a full reload so status-tab transitions work correctly
   const loadRef = useRef(load);
   loadRef.current = load;
-  const accountBookingsRealtimeGenRef = useRef(0);
   useEffect(() => {
     if (!user?.id) return;
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-    const gen = ++accountBookingsRealtimeGenRef.current;
     const channel = supabase
-      .channel(`booking-status-updates:${user.id}:rt${gen}`)
+      .channel(nextRealtimeTopic(`booking-status-updates:${user.id}`))
       .on(
         "postgres_changes",
         {

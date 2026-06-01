@@ -214,6 +214,33 @@ export async function insertNotification(input: InsertNotificationInput): Promis
 }
 
 /**
+ * Count a user's unread in-app notifications (`notifications` where
+ * `is_read = false`). Used to set the exact OS app-icon badge count in push
+ * payloads (WhatsApp-style) so the badge is correct even when the app is
+ * killed. Never throws — returns 0 on any failure so a badge read can't break
+ * a notification send.
+ */
+export async function getUnreadNotificationCount(userId: string): Promise<number> {
+  if (!userId) return 0;
+  try {
+    const supabase = getSupabaseAdmin();
+    const { count, error } = await supabase
+      .from("notifications")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("is_read", false);
+    if (error) {
+      console.warn("[getUnreadNotificationCount] count failed:", error.message);
+      return 0;
+    }
+    return Math.max(0, count ?? 0);
+  } catch (err) {
+    console.warn("[getUnreadNotificationCount] unexpected error:", err);
+    return 0;
+  }
+}
+
+/**
  * Insert multiple notifications at once (e.g. notify a whole team).
  *
  * If the DB enum doesn't yet contain a type emitted by this batch (i.e.

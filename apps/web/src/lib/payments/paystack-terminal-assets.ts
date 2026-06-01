@@ -1,3 +1,5 @@
+import { DEFAULT_PHONE_COUNTRY_CODE, normalizePhoneToE164 } from "@/lib/phone";
+
 export type PaystackTerminalAssetStatus = "missing_assets" | "link_ready" | "poster_ready" | "ready";
 export type PaystackTerminalDestinationStatus =
   | "not_configured"
@@ -90,6 +92,11 @@ export function buildPaystackTerminalName(params: {
 export function normalizeWhatsAppTarget(value: string | null | undefined): string | null {
   const raw = cleanText(value);
   if (!raw) return null;
+  // Paystack Virtual Terminal destinations require an international (E.164) number,
+  // e.g. "+27821234567". Convert local formats (e.g. "0821234567") using the
+  // platform default calling code before falling back to a best-effort digit string.
+  const e164 = normalizePhoneToE164(raw, DEFAULT_PHONE_COUNTRY_CODE);
+  if (e164) return e164;
   const plus = raw.startsWith("+") ? "+" : "";
   const digits = raw.replace(/\D/g, "");
   if (digits.length < 8) return null;

@@ -18,6 +18,7 @@ const setupRequestSchema = z.object({
   name: z.string().trim().optional().nullable(),
   location_id: z.string().uuid().optional().nullable(),
   currency: z.string().trim().length(3).optional(),
+  whatsapp: z.string().trim().max(40).optional().nullable(),
   destinations: z
     .array(
       z.object({
@@ -79,7 +80,7 @@ export async function GET(request: NextRequest) {
       .from("provider_paystack_virtual_terminal_setup_requests") as any)
       .select("*")
       .eq("provider_id", providerId)
-      .in("status", ["requested", "in_progress"])
+      .in("status", ["requested", "in_progress", "rejected"])
       .order("created_at", { ascending: false });
     if (setupError) throw setupError;
 
@@ -166,7 +167,8 @@ export async function POST(request: NextRequest) {
       portable: !body.location_id,
     });
     const destinationTarget =
-      body.destinations[0]?.target ??
+      normalizeWhatsAppTarget(body.whatsapp) ??
+      normalizeWhatsAppTarget(body.destinations[0]?.target) ??
       normalizeWhatsAppTarget(
         (provider as { phone?: string | null; billing_phone?: string | null } | null)?.phone ??
           (provider as { phone?: string | null; billing_phone?: string | null } | null)?.billing_phone ??

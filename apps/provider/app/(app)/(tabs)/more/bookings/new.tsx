@@ -247,7 +247,7 @@ function sanitizeProviderFormResponsesForApi(
 }
 
 type DiscountType = "percentage" | "fixed";
-type PaymentMethod = "pay_later" | "cash" | "card" | "yoco_pos" | "payment_link";
+type PaymentMethod = "pay_later" | "cash" | "card" | "yoco_pos" | "payment_link" | "paystack_terminal";
 type RecurrencePattern = "daily" | "weekly" | "biweekly" | "monthly";
 
 /**
@@ -298,6 +298,7 @@ const PAYMENT_METHODS: { label: string; value: PaymentMethod; icon: keyof typeof
   { label: "Cash", value: "cash", icon: "cash-outline" },
   { label: "Manual Card", value: "card", icon: "card-outline" },
   { label: "Yoco Terminal", value: "yoco_pos", icon: "phone-portrait-outline" },
+  { label: "Paystack Terminal", value: "paystack_terminal", icon: "qr-code-outline" },
   { label: "Payment Link", value: "payment_link", icon: "send-outline" },
 ];
 const TIP_PERCENTAGES = [0, 10, 15, 20] as const;
@@ -496,6 +497,7 @@ export default function NewBookingScreen() {
   const { width: windowWidth } = useWindowDimensions();
   const { bundle } = useConfigBundle();
   const yocoEnabled = bundle?.flags?.payment_yoco?.enabled === true;
+  const paystackTerminalEnabled = bundle?.flags?.payment_paystack_virtual_terminal?.enabled === true;
   const defaultPhoneDial = useDefaultPhoneDial();
   const mapboxCountryIso =
     bundle?.meta?.active_market_country?.trim().length === 2
@@ -730,7 +732,10 @@ export default function NewBookingScreen() {
     if (!yocoEnabled && paymentMethod === "yoco_pos") {
       setPaymentMethod("pay_later");
     }
-  }, [yocoEnabled, paymentMethod]);
+    if (!paystackTerminalEnabled && paymentMethod === "paystack_terminal") {
+      setPaymentMethod("pay_later");
+    }
+  }, [yocoEnabled, paystackTerminalEnabled, paymentMethod]);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [conflictWarning, setConflictWarning] = useState<string | null>(null);
   const [, setCheckingAvailability] = useState(false);
@@ -2054,6 +2059,13 @@ export default function NewBookingScreen() {
             `The first appointment is on the calendar. Use your Yoco terminal to complete card payment.${extra}`,
             [{ text: "Continue", onPress: () => router.replace(`/(app)/(tabs)/bookings/${initialBookingId}?collectYoco=1` as never) }],
           );
+        } else if (paymentMethod === "paystack_terminal" && initialBookingId) {
+          const extra = warnings?.length ? `\n\n${warnings.join("\n")}` : "";
+          Alert.alert(
+            "Repeating visit created",
+            `The first appointment is on the calendar. Show the customer the Paystack Terminal QR or link to complete payment.${extra}`,
+            [{ text: "Continue", onPress: () => router.replace(`/(app)/(tabs)/bookings/${initialBookingId}?collectPaystack=1` as never) }],
+          );
         } else {
           Alert.alert(
             "Repeating visit created",
@@ -2129,6 +2141,14 @@ export default function NewBookingScreen() {
         : 0;
     const goYoco =
       paymentMethod === "yoco_pos" && cardChargeTotal > 0 && newBookingId.length > 0;
+    const paystackChargeTotal =
+      paymentMethod === "paystack_terminal"
+        ? paymentOption === "deposit"
+          ? percentOf(summary.total, depositPercentage)
+          : summary.total
+        : 0;
+    const goPaystack =
+      paymentMethod === "paystack_terminal" && paystackChargeTotal > 0 && newBookingId.length > 0;
 
     const navigateYoco = () => {
       router.replace(`/(app)/(tabs)/bookings/${newBookingId}?collectYoco=1` as never);
@@ -2140,6 +2160,13 @@ export default function NewBookingScreen() {
         "Booking created",
         `Use your Yoco terminal to complete card payment.${extra}`,
         [{ text: "Continue", onPress: navigateYoco }],
+      );
+    } else if (goPaystack) {
+      const extra = warnings?.length ? `\n\n${warnings.join("\n")}` : "";
+      Alert.alert(
+        "Booking created",
+        `Show the customer the Paystack Terminal QR or link to complete payment.${extra}`,
+        [{ text: "Continue", onPress: () => router.replace(`/(app)/(tabs)/bookings/${newBookingId}?collectPaystack=1` as never) }],
       );
     } else {
       if (warnings?.length) {
@@ -3311,7 +3338,11 @@ export default function NewBookingScreen() {
               {/* -------- PAYMENT METHOD -------- */}
               <SectionLabel label="Payment Method" />
               <View style={twStyle("mb-4 flex-row flex-wrap justify-between")}>
-                {PAYMENT_METHODS.filter((pm) => yocoEnabled || pm.value !== "yoco_pos").map((pm, idx) => (
+                {PAYMENT_METHODS.filter(
+                  (pm) =>
+                    (yocoEnabled || pm.value !== "yoco_pos") &&
+                    (paystackTerminalEnabled || pm.value !== "paystack_terminal"),
+                ).map((pm, idx) => (
                   <TouchableOpacity
                     key={pm.value}
                     style={[twStyle(`flex-row items-center justify-center rounded-xl border py-3 ${
@@ -4069,6 +4100,8 @@ function formatNewBookingPaymentLabel(method: string): string {
       return "Manual Card";
     case "yoco_pos":
       return "Yoco Terminal";
+    case "paystack_terminal":
+      return "Paystack Terminal";
     case "payment_link":
       return "Payment Link";
     case "pay_later":

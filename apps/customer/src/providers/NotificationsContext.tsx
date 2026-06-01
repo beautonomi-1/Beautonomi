@@ -8,6 +8,7 @@ import { AppState, InteractionManager, Platform } from "react-native";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase/client";
+import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
 
 /** Extra callbacks when `notifications` rows change — avoids a second postgres_changes channel (Supabase rejects duplicate bindings after subscribe). */
 const notificationsRealtimeListeners = new Set<() => void>();
@@ -51,10 +52,12 @@ const REALTIME_REFETCH_DEBOUNCE_MS = 120;
 export function NotificationsProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const [unreadCount, setUnreadCount] = useState(0);
+  /** True once the server has returned a count. Until then we must not overwrite
+   * an OS badge that a push set while the app was killed. */
+  const [serverSynced, setServerSynced] = useState(false);
   const refetchRef = useRef<() => Promise<void>>(() => Promise.resolve());
   const foregroundTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const realtimeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const notificationsRealtimeGenRef = useRef(0);
 
   const refetchUnreadCount = useCallback(async () => {
     if (!user?.id) {
@@ -68,8 +71,10 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       const body = res.data as any;
       const count = body?.total_unread ?? body?.data?.total_unread ?? 0;
       setUnreadCount(typeof count === "number" ? count : 0);
+      setServerSynced(true);
     } catch {
-      setUnreadCount(0);
+      // Leave the existing count/badge alone on failure; do not clobber a
+      // push-set badge with 0 just because a refresh failed.
     }
   }, [user?.id]);
 
@@ -112,6 +117,9 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   // Home-screen icon badge (iOS / supported Android launchers) — stays in sync with in-app unread count.
   useEffect(() => {
     if (Platform.OS === "web") return;
+    // Wait for the first server count before touching the OS badge — otherwise
+    // a cold start would briefly set it to 0 and wipe a push-delivered badge.
+    if (!serverSynced) return;
     let cancelled = false;
     (async () => {
       try {
@@ -126,13 +134,12 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     return () => {
       cancelled = true;
     };
-  }, [unreadCount]);
+  }, [unreadCount, serverSynced]);
 
   useEffect(() => {
     if (!user?.id) return;
-    const gen = ++notificationsRealtimeGenRef.current;
     const channel = supabase
-      .channel(`notifications-count:user:${user.id}:rt${gen}`)
+      .channel(nextRealtimeTopic(`notifications-count:user:${user.id}`))
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}` },

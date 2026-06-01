@@ -106,6 +106,12 @@ type PaystackTerminalSetupRequest = {
 
   request_notes?: string | null;
 
+  rejection_reason?: string | null;
+
+  destination_target?: string | null;
+
+  support_ticket_id?: string | null;
+
   created_at: string;
 
 };
@@ -175,6 +181,8 @@ export default function PaystackTerminalSettingsPage() {
   const [loadingPayments, setLoadingPayments] = useState(true);
 
   const [creating, setCreating] = useState(false);
+
+  const [whatsapp, setWhatsapp] = useState("");
 
   const [requestingAssetsId, setRequestingAssetsId] = useState<string | null>(null);
 
@@ -318,7 +326,7 @@ export default function PaystackTerminalSettingsPage() {
 
         error?: { message?: string; code?: string };
 
-      }>("/api/provider/paystack/virtual-terminals", {});
+      }>("/api/provider/paystack/virtual-terminals", whatsapp.trim() ? { whatsapp: whatsapp.trim() } : {});
 
       if (payload?.error) {
 
@@ -512,11 +520,77 @@ export default function PaystackTerminalSettingsPage() {
 
 
 
-  function printPoster(url: string) {
+  function terminalQrSrc(terminal: PaystackTerminal): string | null {
 
-    const win = window.open(url, "_blank", "noopener,noreferrer");
+    if (terminal.qr_url) return terminal.qr_url;
 
-    if (!win) toast.error("Could not open poster. Check your popup blocker.");
+    const link = terminal.payment_link ?? terminal.terminal_url;
+
+    return link
+      ? `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(link)}`
+      : null;
+
+  }
+
+  function printTerminalPoster(terminal: PaystackTerminal) {
+
+    const qr = terminalQrSrc(terminal);
+
+    const name = terminal.display_name || terminal.name || "Pay here";
+
+    const link = terminal.payment_link ?? terminal.terminal_url ?? "";
+
+    const win = window.open("", "_blank", "noopener,noreferrer,width=800,height=1000");
+
+    if (!win) {
+
+      toast.error("Could not open the poster. Check your popup blocker.");
+
+      return;
+
+    }
+
+    win.document.write(`<!doctype html><html><head><title>${name} — Pay here</title>
+
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+<style>
+
+  *{box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+
+  body{margin:0;padding:48px;text-align:center;color:#0f172a}
+
+  h1{font-size:32px;margin:0 0 8px}
+
+  p{font-size:18px;color:#334155;margin:6px 0}
+
+  .qr{margin:32px auto;max-width:360px;width:100%}
+
+  .qr img{width:100%;height:auto;border:1px solid #e2e8f0;border-radius:12px;padding:12px;background:#fff}
+
+  .code{font-family:monospace;font-size:20px;letter-spacing:1px;margin-top:8px}
+
+  .link{font-size:14px;color:#2563eb;word-break:break-all;margin-top:8px}
+
+  @media print{button{display:none}}
+
+</style></head><body>
+
+  <h1>${name}</h1>
+
+  <p>Scan to pay with your phone</p>
+
+  ${qr ? `<div class="qr"><img src="${qr}" alt="Payment QR code" /></div>` : "<p>QR code not available yet.</p>"}
+
+  <p class="code">${terminal.terminal_code}</p>
+
+  ${link ? `<p class="link">${link}</p>` : ""}
+
+  <button onclick="window.print()" style="margin-top:24px;padding:12px 24px;font-size:16px;border-radius:8px;border:none;background:#0f172a;color:#fff;cursor:pointer">Print poster</button>
+
+</body></html>`);
+
+    win.document.close();
 
   }
 
@@ -532,7 +606,15 @@ export default function PaystackTerminalSettingsPage() {
 
 
 
-  const hasPendingRequest = setupRequests.length > 0;
+  const pendingRequests = setupRequests.filter(
+
+    (request) => request.status === "requested" || request.status === "in_progress",
+
+  );
+
+  const rejectedRequest = setupRequests.find((request) => request.status === "rejected") ?? null;
+
+  const hasPendingRequest = pendingRequests.length > 0;
 
 
 
@@ -648,9 +730,9 @@ export default function PaystackTerminalSettingsPage() {
 
               <span className="font-semibold">Setup request received.</span> Beautonomi Ops has been notified and will create your Paystack Virtual Terminal shortly. Your terminal, payment link, QR, and poster will appear here once ready.
 
-              {setupRequests[0]?.request_notes ? (
+              {pendingRequests[0]?.request_notes ? (
 
-                <span className="mt-2 block text-sm text-amber-800">{setupRequests[0].request_notes}</span>
+                <span className="mt-2 block text-sm text-amber-800">{pendingRequests[0].request_notes}</span>
 
               ) : null}
 
@@ -661,6 +743,42 @@ export default function PaystackTerminalSettingsPage() {
         ) : null}
 
 
+
+        {rejectedRequest && !hasPendingRequest ? (
+
+          <Alert variant="destructive">
+
+            <AlertDescription>
+
+              <span className="font-semibold">Your last setup request needs changes.</span>
+
+              {rejectedRequest.rejection_reason ? (
+
+                <span className="mt-2 block text-sm">{rejectedRequest.rejection_reason}</span>
+
+              ) : null}
+
+              <span className="mt-2 block text-sm">
+
+                Update your WhatsApp number below (international format, e.g. +27821234567) and submit a new request.
+
+              </span>
+
+              {rejectedRequest.support_ticket_id ? (
+
+                <span className="mt-2 block text-sm">
+
+                  Our team has opened a support conversation — check your email or the Beautonomi provider app to reply.
+
+                </span>
+
+              ) : null}
+
+            </AlertDescription>
+
+          </Alert>
+
+        ) : null}
 
         <SectionCard>
 
@@ -677,6 +795,42 @@ export default function PaystackTerminalSettingsPage() {
             Once imported, you can share the Paystack payment link. Customer payments arrive with Paystack-generated references and are manually allocated in the payment inbox.
 
           </p>
+
+          <div className="mt-4 space-y-2">
+
+            <label htmlFor="paystack-terminal-whatsapp" className="text-sm font-medium">
+
+              WhatsApp number for payment notifications
+
+            </label>
+
+            <input
+
+              id="paystack-terminal-whatsapp"
+
+              type="tel"
+
+              inputMode="tel"
+
+              value={whatsapp}
+
+              onChange={(event) => setWhatsapp(event.target.value)}
+
+              placeholder="+27821234567"
+
+              disabled={creating || hasPendingRequest || !canRequestSetup}
+
+              className="w-full max-w-sm rounded-md border border-input bg-background px-3 py-2 text-sm disabled:opacity-50"
+
+            />
+
+            <p className="text-xs text-muted-foreground">
+
+              Use the international format. Leave blank to use the phone number on your provider profile.
+
+            </p>
+
+          </div>
 
           <div className="mt-4 flex flex-col gap-3 sm:flex-row">
 
@@ -700,7 +854,11 @@ export default function PaystackTerminalSettingsPage() {
 
                     ? "Not available on your plan"
 
-                    : "Request Paystack Terminal setup"}
+                    : rejectedRequest
+
+                      ? "Update & submit new request"
+
+                      : "Request Paystack Terminal setup"}
 
             </Button>
 
@@ -822,6 +980,62 @@ export default function PaystackTerminalSettingsPage() {
 
                       ) : null}
 
+                      {(terminalQrSrc(terminal) || terminal.poster_url) ? (
+
+                        <div className="mt-3 flex flex-wrap items-start gap-4">
+
+                          {terminalQrSrc(terminal) ? (
+
+                            <div className="flex flex-col items-center gap-1">
+
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+
+                              <img
+
+                                src={terminalQrSrc(terminal) ?? undefined}
+
+                                alt="Paystack Terminal QR code"
+
+                                className="h-40 w-40 rounded-md border bg-white object-contain p-1"
+
+                              />
+
+                              <span className="text-[11px] text-muted-foreground">Customer scans to pay</span>
+
+                            </div>
+
+                          ) : null}
+
+                          {terminal.poster_url ? (
+
+                            <a href={terminal.poster_url} target="_blank" rel="noreferrer" className="block">
+
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+
+                              <img
+
+                                src={terminal.poster_url}
+
+                                alt="Paystack Terminal poster"
+
+                                className="h-40 w-auto rounded-md border object-contain"
+
+                              />
+
+                              <span className="mt-1 block text-center text-[11px] text-muted-foreground">
+
+                                Tap to view full poster
+
+                              </span>
+
+                            </a>
+
+                          ) : null}
+
+                        </div>
+
+                      ) : null}
+
                     </div>
 
                     <div className="flex flex-wrap gap-2">
@@ -884,25 +1098,25 @@ export default function PaystackTerminalSettingsPage() {
 
                       {terminal.poster_url ? (
 
-                        <>
+                        <Button asChild variant="outline">
 
-                          <Button asChild variant="outline">
+                          <a href={terminal.poster_url} download target="_blank" rel="noreferrer">
 
-                            <a href={terminal.poster_url} download target="_blank" rel="noreferrer">
+                            Download poster
 
-                              Download poster
+                          </a>
 
-                            </a>
+                        </Button>
 
-                          </Button>
+                      ) : null}
 
-                          <Button variant="outline" onClick={() => printPoster(terminal.poster_url ?? "")}>
+                      {(terminal.payment_link || terminal.terminal_url || terminal.qr_url) ? (
 
-                            Print poster
+                        <Button variant="outline" onClick={() => printTerminalPoster(terminal)}>
 
-                          </Button>
+                          Print poster
 
-                        </>
+                        </Button>
 
                       ) : null}
 

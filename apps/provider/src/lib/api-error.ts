@@ -41,7 +41,9 @@ export function isTransientApiFailure(err: unknown): boolean {
   const status = getHttpErrorStatus(err);
   const code = getApiErrorCode(err);
   if (code === "MISSING_API_BASE_URL") return false;
-  if (code === "NETWORK_ERROR" || code === "TIMEOUT") return true;
+  // CANCELLED = deliberate background abort of an idempotent read; treat as
+  // transient so callers stay silent and refetch on resume.
+  if (code === "NETWORK_ERROR" || code === "TIMEOUT" || code === "CANCELLED") return true;
   if (typeof status === "number" && status >= 500) return true;
   const msg = getApiErrorMessage(err, "").toLowerCase();
   if (

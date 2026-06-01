@@ -42,7 +42,7 @@ export async function POST(
     const { data: row, error: fetchErr } = await (admin as any)
       .from("user_memberships")
       .select(
-        "id, provider_id, user_id, status, cancelled_at, plan:membership_plans(id, name), provider:providers(id, business_name)",
+        "id, provider_id, user_id, status, cancelled_at, plan:membership_plans(id, name), provider:providers(id, business_name, slug)",
       )
       .eq("id", id)
       .maybeSingle();
@@ -75,6 +75,8 @@ export async function POST(
         providerName,
         membershipName: planName,
         message: parsed.data.message ?? null,
+        providerId: provider?.id ?? row.provider_id ?? null,
+        providerSlug: provider?.slug ?? null,
       },
     );
 

@@ -137,10 +137,12 @@ function membershipBadgeState(c: Client): MembershipBadgeState {
   const m = c.salon_membership;
   if (!m) return null;
   if (clientHasBookableSalonMembership(c)) return { kind: "active", label: "Member" };
-  // §Membership-cancel 2026-05: a `status === "cancelled"` row is
-  // unambiguous — surface the Cancelled pill even if `cancelled_at` was
-  // never written (older rows / manual edits). This keeps the provider
-  // list in sync the moment the cancel API flips the status.
+  // §Provider-launch (audit 2026-06): only surface the transient
+  // "Cancelled" pill when the badge is still within its TTL. The cancel
+  // flow always stamps `cancelled_at`, so a genuine recent cancellation
+  // shows the pill; legacy / manually-edited rows with no anchor (which
+  // used to display "Cancelled" forever and mislead the provider) are
+  // gated out by `shouldShowCancelledMembershipBadge`.
   if (m.status === "cancelled" || m.cancelled_at) {
     const showBadge =
       m.show_cancelled_badge ??

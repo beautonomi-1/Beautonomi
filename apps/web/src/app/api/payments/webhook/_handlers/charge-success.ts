@@ -43,6 +43,7 @@ import { finalizeCustomOfferPaymentFromPaystackEvent } from "@/lib/custom-offers
 import {
   isPaystackTerminalCharge,
   recordPaystackTerminalCharge,
+  resolveKnownTerminalForCharge,
 } from "@/lib/payments/paystack-terminal-webhook";
 
 async function lastResortCurrencyFromTenantId(
@@ -264,6 +265,16 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
         supabase,
       );
       return;
+    }
+    // Last resort: a hosted Paystack Virtual Terminal payment can arrive without any of
+    // our routing metadata. Before giving up, try to map it to a known terminal (incl. a
+    // Paystack verify re-read) so in-person terminal payments still land in the inbox.
+    if (reference) {
+      const terminalContext = await resolveKnownTerminalForCharge(supabase, data as any);
+      if (terminalContext) {
+        await recordPaystackTerminalCharge(supabase, data as any, { context: terminalContext });
+        return;
+      }
     }
     console.error("Missing reference or booking_id in payment data");
     return;

@@ -81,12 +81,23 @@ type AdminTerminalPayment = {
   customer_reference?: string | null;
   suggested_entity_type?: string | null;
   suggested_entity_id?: string | null;
+  suggestion_confidence?: number | null;
+  match_candidates?: AdminTerminalMatchCandidate[] | null;
   provider_assigned_entity_type?: string | null;
   provider_assigned_entity_id?: string | null;
   provider_decline_reason?: string | null;
   created_at: string;
   provider?: AdminTerminalProvider | null;
   terminal?: { id?: string; name?: string | null; terminal_code?: string | null } | null;
+};
+
+type AdminTerminalMatchCandidate = {
+  entity_type: string;
+  entity_id: string;
+  label?: string | null;
+  reference?: string | null;
+  expected_amount?: number | null;
+  confidence?: number | null;
 };
 
 type AdminTerminalSetupRequest = {
@@ -103,6 +114,9 @@ type AdminTerminalSetupRequest = {
   custom_fields?: Array<{ display_name: string; variable_name: string }>;
   metadata?: Record<string, unknown> | null;
   request_notes?: string | null;
+  rejection_reason?: string | null;
+  rejected_at?: string | null;
+  support_ticket_id?: string | null;
   created_at: string;
   provider?: AdminTerminalProvider | null;
   location?: { id?: string; name?: string | null; city?: string | null } | null;
@@ -252,6 +266,9 @@ export function PaystackTerminalOperationsPage() {
   const [resolveReason, setResolveReason] = useState("");
   const [importFor, setImportFor] = useState<SyncTerminal | null>(null);
   const [importForm, setImportForm] = useState({ provider_id: "", payment_link: "" });
+  const [rejectFor, setRejectFor] = useState<AdminTerminalSetupRequest | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
+  const [rejectCreateTicket, setRejectCreateTicket] = useState(true);
 
   const q = useQuery({
     queryKey: [...QK, allocationStatus],
@@ -368,6 +385,37 @@ export function PaystackTerminalOperationsPage() {
       syncMut.mutate();
     },
     onError: (err: Error) => adminToast.error(err.message || "Failed to create Paystack terminal"),
+  });
+
+  const rejectRequestMut = useMutation({
+    mutationFn: ({ id, reason, createTicket }: { id: string; reason: string; createTicket: boolean }) =>
+      adminApi.postJson("/api/admin/paystack-terminal/setup-requests", {
+        action: "reject",
+        request_id: id,
+        reason,
+        create_ticket: createTicket,
+      }),
+    onSuccess: async () => {
+      adminToast.success("Setup request rejected. The provider has been notified.");
+      setRejectFor(null);
+      setRejectReason("");
+      setRejectCreateTicket(true);
+      await invalidatePaystackTerminalQueries(qc);
+    },
+    onError: (err: Error) => adminToast.error(err.message || "Failed to reject setup request"),
+  });
+
+  const createTicketMut = useMutation({
+    mutationFn: (requestId: string) =>
+      adminApi.postJson("/api/admin/paystack-terminal/setup-requests", {
+        action: "create_support_ticket",
+        request_id: requestId,
+      }),
+    onSuccess: async () => {
+      adminToast.success("Support ticket opened with the provider.");
+      await invalidatePaystackTerminalQueries(qc);
+    },
+    onError: (err: Error) => adminToast.error(err.message || "Failed to open support ticket"),
   });
 
   const uploadPosterMut = useMutation({
@@ -865,14 +913,93 @@ export function PaystackTerminalOperationsPage() {
                             <p className="mt-1 text-xs text-red-700">{request.request_notes}</p>
                           ) : null}
                         </div>
-                        <button
-                          type="button"
-                          className="rounded-lg border border-amber-300 bg-amber-100 px-3 py-2 text-xs font-semibold text-amber-950 hover:bg-amber-200 disabled:opacity-50"
-                          disabled={createFromRequestMut.isPending || !request.destination_target}
-                          onClick={() => createFromRequestMut.mutate(request.id)}
-                        >
-                          Create in Paystack
-                        </button>
+                        <div className="flex flex-col gap-2">
+                          <button
+                            type="button"
+                            className="rounded-lg border border-amber-300 bg-amber-100 px-3 py-2 text-xs font-semibold text-amber-950 hover:bg-amber-200 disabled:opacity-50"
+                            disabled={createFromRequestMut.isPending || !request.destination_target}
+                            onClick={() => createFromRequestMut.mutate(request.id)}
+                          >
+                            Create in Paystack
+                          </button>
+                          <button
+                            type="button"
+                            className="rounded-lg border border-red-300 bg-white px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+                            disabled={rejectRequestMut.isPending}
+                            onClick={() => {
+                              setRejectFor(request);
+                              setRejectReason("");
+                              setRejectCreateTicket(true);
+                            }}
+                          >
+                            Reject…
+                          </button>
+                          {request.support_ticket_id ? (
+                            <a
+                              href={`/admin/support-tickets/${request.support_ticket_id}`}
+                              className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-center text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                            >
+                              Open ticket
+                            </a>
+                          ) : (
+                            <button
+                              type="button"
+                              className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                              disabled={createTicketMut.isPending}
+                              onClick={() => createTicketMut.mutate(request.id)}
+                            >
+                              Create support ticket
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          ) : null}
+          {setupRequests.some((request) => request.status === "rejected") ? (
+            <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 p-4">
+              <h3 className="mb-3 text-sm font-semibold text-red-950">Rejected setup requests</h3>
+              <div className="space-y-3">
+                {setupRequests
+                  .filter((request) => request.status === "rejected")
+                  .map((request) => (
+                    <div key={request.id} className="rounded-xl border border-red-200 bg-white p-3">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-gray-900">
+                            {request.provider?.business_name ?? request.provider_id}
+                          </p>
+                          <p className="mt-1 text-xs text-gray-500">
+                            Rejected {request.rejected_at ? new Date(request.rejected_at).toLocaleString() : ""}
+                          </p>
+                          {request.rejection_reason ? (
+                            <p className="mt-1 text-xs text-red-700">Reason: {request.rejection_reason}</p>
+                          ) : null}
+                          <p className="mt-1 text-xs text-gray-500">
+                            Last WhatsApp: {request.destination_target ?? "Missing"}
+                          </p>
+                        </div>
+                        <div className="flex flex-col gap-2">
+                          {request.support_ticket_id ? (
+                            <a
+                              href={`/admin/support-tickets/${request.support_ticket_id}`}
+                              className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-center text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                            >
+                              Open ticket
+                            </a>
+                          ) : (
+                            <button
+                              type="button"
+                              className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                              disabled={createTicketMut.isPending}
+                              onClick={() => createTicketMut.mutate(request.id)}
+                            >
+                              Create support ticket
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -1014,6 +1141,41 @@ export function PaystackTerminalOperationsPage() {
               </div>
             </div>
             <div className="space-y-3">
+              {resolveFor.match_candidates && resolveFor.match_candidates.length > 0 ? (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                  <p className="text-xs font-semibold text-emerald-900">
+                    Suggested matches (one-click assign)
+                  </p>
+                  <div className="mt-2 space-y-1.5">
+                    {resolveFor.match_candidates.map((candidate) => (
+                      <button
+                        key={`${candidate.entity_type}:${candidate.entity_id}`}
+                        type="button"
+                        className="flex w-full items-center justify-between rounded-lg border border-emerald-300 bg-white px-3 py-2 text-left text-sm hover:bg-emerald-100"
+                        onClick={() => {
+                          setResolveEntityType(candidate.entity_type);
+                          setResolveEntityId(candidate.entity_id);
+                        }}
+                      >
+                        <span className="min-w-0">
+                          <span className="font-medium text-gray-900">
+                            {candidate.label || candidate.entity_type}
+                          </span>
+                          <span className="ml-2 font-mono text-xs text-gray-500">
+                            {candidate.entity_id.slice(0, 8)}…
+                          </span>
+                        </span>
+                        <span className="ml-2 shrink-0 text-xs text-emerald-700">
+                          {candidate.expected_amount != null
+                            ? `${resolveFor.currency} ${Number(candidate.expected_amount).toFixed(2)}`
+                            : ""}
+                          {candidate.confidence != null ? ` · ${Math.round(Number(candidate.confidence))}%` : ""}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
               <label className="block text-sm font-medium text-gray-700">
                 Entity type
                 <select
@@ -1156,6 +1318,68 @@ export function PaystackTerminalOperationsPage() {
                 }}
               >
                 {importMut.isPending ? "Importing..." : "Import terminal"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {rejectFor ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/50 p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
+            <h3 className="text-lg font-semibold text-gray-900">Reject setup request</h3>
+            <p className="mt-1 text-sm text-gray-600">
+              Provider:{" "}
+              <span className="font-medium">{rejectFor.provider?.business_name ?? rejectFor.provider_id}</span>
+            </p>
+            <p className="mt-2 text-xs text-gray-500">
+              The reason is shown to the provider so they can fix their WhatsApp number or other details and submit a
+              new request.
+            </p>
+            <div className="mt-4 space-y-3">
+              <label className="block text-sm font-medium text-gray-700">
+                Reason for the provider
+                <textarea
+                  className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+                  rows={4}
+                  value={rejectReason}
+                  onChange={(e) => setRejectReason(e.target.value)}
+                  placeholder="e.g. The WhatsApp number is not a valid international number. Please re-enter it as +27821234567."
+                />
+              </label>
+              <label className="flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={rejectCreateTicket}
+                  onChange={(e) => setRejectCreateTicket(e.target.checked)}
+                />
+                Open a support ticket so I can chat with the provider
+              </label>
+            </div>
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                className={adminToolbarButtonClass(false)}
+                onClick={() => {
+                  setRejectFor(null);
+                  setRejectReason("");
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="inline-flex min-h-11 items-center justify-center rounded-xl bg-red-600 px-4 text-sm font-medium text-white disabled:opacity-50"
+                disabled={rejectRequestMut.isPending || !rejectReason.trim()}
+                onClick={() =>
+                  rejectRequestMut.mutate({
+                    id: rejectFor.id,
+                    reason: rejectReason.trim(),
+                    createTicket: rejectCreateTicket,
+                  })
+                }
+              >
+                {rejectRequestMut.isPending ? "Rejecting..." : "Reject request"}
               </button>
             </div>
           </div>

@@ -22,6 +22,7 @@ import * as DocumentPicker from "expo-document-picker";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase/client";
+import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
 import { Colors } from "@/constants/colors";
 import { useImagePicker } from "@/hooks/useImagePicker";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -276,8 +277,6 @@ export default function ChatScreen() {
   const offerStatusByIdRef = useRef(offerStatusById);
   offerStatusByIdRef.current = offerStatusById;
   const flatListRef = useRef<FlatList>(null);
-  const messagesRealtimeGenRef = useRef(0);
-  const offersRealtimeGenRef = useRef(0);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const { pickFromLibrary, pickFromCamera } = useImagePicker();
@@ -563,9 +562,8 @@ export default function ChatScreen() {
   // Realtime subscription
   useEffect(() => {
     if (!id) return;
-    const gen = ++messagesRealtimeGenRef.current;
     const channel = supabase
-      .channel(`messages:conversation:${id}:rt${gen}`)
+      .channel(nextRealtimeTopic(`messages:conversation:${id}`))
       .on(
         "postgres_changes",
         {
@@ -640,8 +638,7 @@ export default function ChatScreen() {
   // RLS ensures we only receive rows the customer can read.
   useEffect(() => {
     if (!id || !user?.id) return;
-    const gen = ++offersRealtimeGenRef.current;
-    const topic = `customer-offer-status:${id}:rt${gen}`;
+    const topic = nextRealtimeTopic(`customer-offer-status:${id}`);
     const channel = supabase
       .channel(topic)
       .on(

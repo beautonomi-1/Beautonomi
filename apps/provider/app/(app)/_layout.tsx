@@ -17,6 +17,7 @@ import { ProviderProvider } from "@/providers/ProviderContext";
 import { NotificationsCountProvider } from "@/providers/NotificationsCountContext";
 import { OnDemandIncomingListener } from "@/components/OnDemandIncomingListener";
 import { BookingAlertListener } from "@/components/BookingAlertListener";
+import { TerminalPaymentAlertListener } from "@/components/TerminalPaymentAlertListener";
 import { SingularLinkHandler } from "@/components/SingularLinkHandler";
 import { EmailVerificationBanner } from "@/components/EmailVerificationBanner";
 import { ProfileLoadErrorBanner } from "@/components/ProfileLoadErrorBanner";
@@ -106,6 +107,7 @@ export default function AppLayout() {
         <NativePermissionsOnboarding />
         <OnDemandIncomingListener />
         <BookingAlertListener />
+        <TerminalPaymentAlertListener />
         <SingularLinkHandler />
         <View style={{ flex: 1 }}>
           <EmailVerificationBanner />

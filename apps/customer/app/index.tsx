@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Redirect } from "expo-router";
-import { View, Text, TouchableOpacity } from "react-native";
+import { AppState, DeviceEventEmitter, View, Text, TouchableOpacity } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuth } from "@/providers/AuthProvider";
 import { useTranslation } from "@beautonomi/i18n";
@@ -10,7 +10,7 @@ import { onboardingDoneKey } from "./(app)/onboarding/index";
 import { api } from "@/lib/api-client";
 import { WrongAppScreen } from "@/components/WrongAppScreen";
 import { APP_URL, isScreenshotMode } from "@/config/public-env";
-import { getCachedPortal, setCachedPortal, clearPortalCache } from "@/lib/portal-cache";
+import { getCachedPortal, getPersistedPortal, setCachedPortal, clearPortalCache } from "@/lib/portal-cache";
 import {
   authFlowBreadcrumb,
   captureAuthMessage,
@@ -26,6 +26,8 @@ const IDX = "customer_index";
 // (the API client now resolves tokens locally without extra round-trips).
 const PORTAL_CHECK_DELAY_MS = 0;
 const PORTAL_TIMEOUT_MS = 12 * 1000;
+/** Extra grace after the first portal deadline: one silent re-fetch before the error screen. */
+const PORTAL_TIMEOUT_GRACE_MS = 8 * 1000;
 const PROFILE_COMPLETION_DELAY_MS = 0;
 const PROFILE_COMPLETION_TIMEOUT_MS = 8000;
 const ONBOARDING_STATUS_WARN_MS = 25_000;
@@ -230,6 +232,15 @@ export default function Index() {
 
     let cancelled = false;
     let portalTimedOut = false;
+    /** Set once resolution reaches a terminal state (portal applied or error shown). */
+    let resolved = false;
+    /**
+     * Set once we've rendered from a persisted last-known-good portal. While
+     * true, any network failure during the background re-verify is swallowed —
+     * we never drop the user back to the "Taking longer than expected" screen
+     * after we've already shown the app. This is the core cold-resume fix.
+     */
+    let hasPersistedFallback = false;
     setPortalState("loading");
     setPortalErrorKind(null);
 
@@ -247,6 +258,10 @@ export default function Index() {
       // (success or failure). Otherwise `timeout` overwrites `unauthorized` and
       // users see "Please sign in again" flash then "Taking longer than expected".
       clearPortalDeadline();
+      // Already rendered from a persisted portal — keep the user in the app and
+      // let the network heal on its own (focus / connectivity auto-retry).
+      if (hasPersistedFallback) return;
+      resolved = true;
       setPortalErrorKind(kind);
       setPortalState("error");
       if (isSentryEnabled()) {
@@ -254,19 +269,32 @@ export default function Index() {
       }
     };
 
-    portalDeadlineId = setTimeout(() => {
+    // §Cold-resume fix: on a slow-waking radio the first probe often just needs
+    // a nudge. Rather than fail straight to the error screen at the deadline,
+    // fire one silent re-fetch and extend the watchdog once; only surface the
+    // timeout if that grace window also elapses.
+    let deadlineGraceUsed = false;
+    const onPortalDeadline = () => {
       portalDeadlineId = null;
-      if (cancelled) return;
+      if (cancelled || portalTimedOut) return;
+      if (!deadlineGraceUsed && !hasPersistedFallback) {
+        deadlineGraceUsed = true;
+        fetchPortal(0);
+        portalDeadlineId = setTimeout(onPortalDeadline, PORTAL_TIMEOUT_GRACE_MS);
+        return;
+      }
       portalTimedOut = true;
       // §Release-audit 2026-04: was "fail open" — silently treating timeouts
       // as customer. That briefly admitted providers/admins into the customer
       // shell when /api/me/portal was slow. Now we fail closed and surface a
       // retry screen so the user can recover explicitly.
       enterError("timeout");
-    }, PORTAL_TIMEOUT_MS);
+    };
+    portalDeadlineId = setTimeout(onPortalDeadline, PORTAL_TIMEOUT_MS);
 
     const applyPortal = (portal: string) => {
       clearPortalDeadline();
+      resolved = true;
       setCachedPortal(uid, portal);
       // §Graceful cross-role entry (2026-04-17): previously provider-role
       // and provider_onboarding users were redirected to a WrongAppScreen.
@@ -292,6 +320,9 @@ export default function Index() {
         .get<{ role?: string }>("/api/me/role")
         .then((res) => {
           if (cancelled || portalTimedOut) return;
+          // Deliberate background abort — the foreground restart re-probes; never
+          // surface it as a network/no-role error.
+          if ((res.error as { code?: string } | undefined)?.code === "CANCELLED") return;
           if (res.error || !res.data?.role) {
             const status = (res.error as { status?: number } | undefined)?.status;
             if (status === 401 || status === 403) {
@@ -328,6 +359,8 @@ export default function Index() {
         .then((res) => {
           if (cancelled || portalTimedOut) return;
           if (res.error) {
+            // Deliberate background abort — ignore; the foreground restart re-probes.
+            if ((res.error as { code?: string }).code === "CANCELLED") return;
             const status = (res.error as { status?: number }).status;
             if ((status === 401 || status === 403) && attempt < 4) {
               setTimeout(() => fetchPortal(attempt + 1), 350 * (attempt + 1));
@@ -348,18 +381,89 @@ export default function Index() {
         });
     };
 
+    /**
+     * §Cold-resume fix: before the network probe, try the persisted
+     * last-known-good portal. If present we render immediately; a fresh value
+     * skips the network entirely, a stale one re-verifies quietly in the
+     * background without ever surfacing the timeout/error screen.
+     */
+    const startPortalResolution = async () => {
+      let fallback: { portal: string; fresh: boolean } | null = null;
+      try {
+        fallback = await getPersistedPortal(uid);
+      } catch {
+        fallback = null;
+      }
+      if (cancelled || portalTimedOut) return;
+      if (fallback) {
+        hasPersistedFallback = true;
+        applyPortal(fallback.portal);
+        if (fallback.fresh) return; // trusted recent value — no network needed
+        // Stale: re-verify quietly. applyPortal already cleared the watchdog,
+        // and enterError is now a no-op while hasPersistedFallback.
+      }
+      fetchPortal(0);
+    };
+
     const t = setTimeout(() => {
       if (cancelled) return;
-      fetchPortal(0);
+      void startPortalResolution();
     }, PORTAL_CHECK_DELAY_MS);
+
+    // §Cold-resume fix (background-freeze): iOS suspends the JS thread in the
+    // background, so the watchdog `setTimeout` above never fires on schedule —
+    // it fires "overdue" the instant we resume and would declare a bogus
+    // `timeout` (the real cause was suspension, not a slow server). Cancel the
+    // watchdog when we background, then restart resolution from scratch on the
+    // next foreground if we hadn't resolved yet. The in-flight reads were
+    // already aborted (CANCELLED) by AuthProvider on background.
+    let appWasBackgrounded = false;
+    const portalAppStateSub = AppState.addEventListener("change", (state) => {
+      if (state === "background") {
+        appWasBackgrounded = true;
+        clearPortalDeadline();
+      } else if (state === "active" && appWasBackgrounded) {
+        appWasBackgrounded = false;
+        if (!cancelled && !resolved && !portalTimedOut) {
+          setPortalRetryKey((k) => k + 1);
+        }
+      }
+    });
 
     return () => {
       cancelled = true;
       clearTimeout(t);
       clearPortalDeadline();
+      portalAppStateSub.remove();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, session?.user?.id, portalRetryKey]);
+
+  // §Cold-resume fix: when the gate is parked on the portal error screen,
+  // recover automatically as soon as the app refocuses or connectivity returns.
+  // The user no longer has to tap "Try again".
+  useEffect(() => {
+    if (portalState !== "error") return;
+
+    const retry = () => {
+      // Preserve the persisted last-known-good portal (do not clear cache);
+      // re-running the effect will retry the persisted fallback + network.
+      setPortalErrorKind(null);
+      setPortalState("idle");
+      setPortalRetryKey((k) => k + 1);
+    };
+
+    const focusSub = DeviceEventEmitter.addListener("beautonomi:app:focus", retry);
+    const netSub = DeviceEventEmitter.addListener("beautonomi:network:recover", retry);
+    const appStateSub = AppState.addEventListener("change", (s) => {
+      if (s === "active") retry();
+    });
+    return () => {
+      focusSub.remove();
+      netSub.remove();
+      appStateSub.remove();
+    };
+  }, [portalState]);
 
   // Customer onboarding (web + native): server is source of truth before sending users home.
   useEffect(() => {

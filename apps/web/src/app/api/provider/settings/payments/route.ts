@@ -20,6 +20,7 @@ import {
 import type { UserRole } from "@/types/beautonomi";
 import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
 import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
+import { getPaystackTerminalAvailability } from "@/lib/payments/paystack-terminal-availability";
 import {
   handlePaystackTerminalSettingsPost,
   loadPaystackTerminalMobileDetail,
@@ -93,11 +94,12 @@ export async function GET(request: NextRequest) {
       .eq("provider_id", providerId)
       .maybeSingle();
 
-    const { data: paystackTerminals } = await (supabase
-      .from("provider_paystack_virtual_terminals") as any)
-      .select("id, terminal_code, name, active, status, last_payment_at")
-      .eq("provider_id", providerId)
-      .is("deleted_at", null);
+    const paystackTerminalAvailability = await getPaystackTerminalAvailability({
+      supabase,
+      providerId,
+      tenantId: effectiveTenantId,
+      accepted: provider.accept_paystack_terminal ?? false,
+    });
 
     // Get platform settings for default tax rate
     const { data: platformSettings } = await supabase
@@ -136,12 +138,15 @@ export async function GET(request: NextRequest) {
         platformEnabled: yocoEnabled,
       },
       paystackTerminal: {
-        isEnabled: paystackTerminalEnabled && (paystackTerminals?.some((terminal: any) => terminal.active) ?? false),
-        platformEnabled: paystackTerminalEnabled,
-        terminals: paystackTerminalEnabled ? (paystackTerminals ?? []) : [],
-        activeTerminalCount: paystackTerminalEnabled
-          ? (paystackTerminals ?? []).filter((terminal: any) => terminal.active).length
-          : 0,
+        // isEnabled stays true when there is >=1 active terminal (backwards compatible),
+        // while `selectable` is the single source of truth for showing the payment option.
+        isEnabled: paystackTerminalAvailability.activeTerminalCount > 0,
+        platformEnabled: paystackTerminalAvailability.platformEnabled,
+        accepted: paystackTerminalAvailability.accepted,
+        selectable: paystackTerminalAvailability.selectable,
+        terminals: paystackTerminalAvailability.terminals,
+        selectableTerminals: paystackTerminalAvailability.selectableTerminals,
+        activeTerminalCount: paystackTerminalAvailability.activeTerminalCount,
       },
       defaultTaxRate,
     };

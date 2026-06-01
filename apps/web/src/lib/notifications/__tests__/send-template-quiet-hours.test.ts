@@ -23,6 +23,7 @@ vi.mock("@/lib/platform/secrets", async (importOriginal) => {
 
 vi.mock("@/lib/notifications/insert-notification", () => ({
   insertNotifications: vi.fn().mockResolvedValue(undefined),
+  getUnreadNotificationCount: vi.fn().mockResolvedValue(1),
 }));
 
 function createSupabaseMock(templateKey: string) {
@@ -128,8 +129,20 @@ describe("sendTemplateNotification quiet-hours behavior", () => {
     );
 
     expect(result.success).toBe(true);
+    // Dual-target single-recipient push: one leg to the registered subscription
+    // and one alias fan-out leg (shared collapse_id), so push is NOT suppressed
+    // by quiet hours for a critical transactional template.
     const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const bodies = fetchMock.mock.calls.map(
+      (c) => JSON.parse(String((c[1] as { body?: string }).body ?? "{}")) as Record<string, unknown>,
+    );
+    const subLeg = bodies.find((b) => Array.isArray(b.include_subscription_ids));
+    const aliasLeg = bodies.find((b) => b.include_aliases);
+    expect(subLeg?.include_subscription_ids).toEqual(["sub-1"]);
+    expect(aliasLeg?.include_aliases).toEqual({ external_id: [USER_ID] });
+    expect(subLeg?.collapse_id).toBeDefined();
+    expect(subLeg?.collapse_id).toBe(aliasLeg?.collapse_id);
   });
 
   it("suppresses non-critical template push during quiet hours", async () => {

@@ -11,9 +11,11 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { CreditCard, Link2 } from "lucide-react";
+import { CreditCard, Link2, QrCode } from "lucide-react";
 import { sendPaystackLink, createYocoTerminalPaymentAndMarkPaid } from "@/lib/front-desk/actions";
 import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
+import { PaystackTerminalCollectDialog } from "@/components/provider/PaystackTerminalCollectDialog";
+import { fetcher } from "@/lib/http/fetcher";
 
 interface PaymentActionsProps {
   bookingId: string;
@@ -55,6 +57,25 @@ export function PaymentActions({
   const [yocoOpen, setYocoOpen] = useState(false);
   const [yocoAmount, setYocoAmount] = useState(String(remaining));
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [terminalReady, setTerminalReady] = useState(false);
+  const [terminalOpen, setTerminalOpen] = useState(false);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    fetcher
+      .get<{ data?: { paystackTerminal?: { selectable?: boolean } } }>(
+        "/api/provider/settings/payments",
+      )
+      .then((res) => {
+        if (!cancelled) setTerminalReady(Boolean(res.data?.paystackTerminal?.selectable));
+      })
+      .catch(() => {
+        if (!cancelled) setTerminalReady(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const isPaid = remaining <= 0;
 
@@ -109,7 +130,25 @@ export function PaymentActions({
             <Link2 className="h-10 w-10 text-[#0F172A]" strokeWidth={1.5} />
             <span className="font-semibold text-[#0F172A]">Paystack Link</span>
           </button>
+          {terminalReady && (
+            <button
+              type="button"
+              onClick={() => setTerminalOpen(true)}
+              className="flex flex-col items-center justify-center gap-3 rounded-[2.5rem] border-2 border-[#0F172A]/10 bg-white p-8 shadow-sm transition-all duration-300 hover:border-[#0F172A]/20 hover:shadow-lg active:scale-[0.98]"
+            >
+              <QrCode className="h-10 w-10 text-[#0F172A]" strokeWidth={1.5} />
+              <span className="font-semibold text-[#0F172A]">Paystack Terminal</span>
+            </button>
+          )}
         </div>
+        <PaystackTerminalCollectDialog
+          open={terminalOpen}
+          onOpenChange={setTerminalOpen}
+          entityType="booking"
+          entityId={bookingId}
+          expectedAmount={Number(remaining.toFixed(2))}
+          currency={currency}
+        />
         <Dialog open={yocoOpen} onOpenChange={setYocoOpen}>
           <DialogContent className="rounded-[2.5rem] border-[#0F172A]/10 shadow-[0_25px_60px_rgba(0,0,0,0.15)]">
             <DialogHeader>
@@ -179,7 +218,26 @@ export function PaymentActions({
             <CreditCard className="h-4 w-4" />
             Record Yoco Payment
           </Button>
+          {terminalReady && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-11 gap-2 rounded-2xl border-[#0F172A]/12 hover:bg-[#0F172A]/[0.04]"
+              onClick={() => setTerminalOpen(true)}
+            >
+              <QrCode className="h-4 w-4" />
+              Paystack Terminal
+            </Button>
+          )}
         </div>
+        <PaystackTerminalCollectDialog
+          open={terminalOpen}
+          onOpenChange={setTerminalOpen}
+          entityType="booking"
+          entityId={bookingId}
+          expectedAmount={Number(remaining.toFixed(2))}
+          currency={currency}
+        />
       </div>
       <Dialog open={yocoOpen} onOpenChange={setYocoOpen}>
         <DialogContent className="rounded-[2.5rem] border-[#0F172A]/10 shadow-[0_25px_60px_rgba(0,0,0,0.15)]">

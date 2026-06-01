@@ -120,6 +120,35 @@ export function navigateFromNotification(n: Notification): void {
     return;
   }
 
+  // ── Membership win-back (provider invited a cancelled member to rejoin) ──
+  const templateKey = typeof data.template_key === "string" ? data.template_key.toLowerCase() : "";
+  if (
+    nType === "membership_win_back" ||
+    dataType === "membership_win_back" ||
+    subtype === "membership_win_back" ||
+    templateKey === "membership_win_back"
+  ) {
+    const providerSlug =
+      (data.provider_slug != null ? String(data.provider_slug).trim() : "") ||
+      getLinkParam(link, "slug");
+    const providerId =
+      (data.provider_id != null ? String(data.provider_id).trim() : "") ||
+      getLinkParam(link, "provider_id");
+    if (providerSlug || providerId) {
+      router.push({
+        pathname: "/(app)/partner-profile",
+        params: {
+          ...(providerSlug ? { slug: providerSlug } : { provider_id: providerId }),
+          tab: "memberships",
+        },
+      } as never);
+      return;
+    }
+    // No provider context — fall back to the customer's membership management screen.
+    router.push("/(app)/account-settings/membership" as never);
+    return;
+  }
+
   // ── On-demand ────────────────────────────────────────────────────────────
   if (subtype === "on_demand_declined" || dataType === "on_demand_declined" || nType === "on_demand_declined") {
     const rid = data.on_demand_request_id != null ? String(data.on_demand_request_id) : "";
