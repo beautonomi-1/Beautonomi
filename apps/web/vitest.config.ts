@@ -23,10 +23,7 @@ export default defineConfig({
      * startup cost, producing flaky timeout failures in the release gate.
      * Cap to 4 workers so each still gets enough CPU without starving.
      */
-    poolOptions: {
-      threads: { maxThreads: 4, minThreads: 1 },
-      forks: { maxForks: 4, minForks: 1 },
-    },
+    maxWorkers: 4,
     environment: "jsdom",
     include: ["src/**/*.{test,spec}.{js,ts,jsx,tsx}"],
     exclude: ["node_modules", ".next"],
