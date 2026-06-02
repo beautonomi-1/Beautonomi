@@ -168,8 +168,9 @@ export function usePaystackTerminals(options?: { enabled?: boolean }) {
   return { terminals, setupRequests, canRequestSetup, loading, error, refresh, requestTerminalSetup, requestAssets };
 }
 
-export function usePaystackTerminalPayments(options?: { enabled?: boolean }) {
+export function usePaystackTerminalPayments(options?: { enabled?: boolean; terminalId?: string | null }) {
   const enabled = options?.enabled ?? true;
+  const terminalId = options?.terminalId ?? null;
   const [payments, setPayments] = useState<PaystackTerminalPayment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -178,9 +179,11 @@ export function usePaystackTerminalPayments(options?: { enabled?: boolean }) {
     setLoading(true);
     setError(null);
     try {
-      const res = await api.get<{ items?: PaystackTerminalPayment[] }>(
-        PAYSTACK_TERMINAL_PAYMENTS_LIST_PATH,
-      );
+      // Ringfence the inbox to the selected virtual terminal when one is chosen.
+      const path = terminalId
+        ? `${PAYSTACK_TERMINAL_PAYMENTS_LIST_PATH}&terminal_id=${encodeURIComponent(terminalId)}`
+        : PAYSTACK_TERMINAL_PAYMENTS_LIST_PATH;
+      const res = await api.get<{ items?: PaystackTerminalPayment[] }>(path);
       if (res.error) throw new Error(res.error.message ?? "Failed to load terminal payments");
       setPayments(res.data?.items ?? []);
     } catch (err) {
@@ -188,7 +191,7 @@ export function usePaystackTerminalPayments(options?: { enabled?: boolean }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [terminalId]);
 
   const reconcile = useCallback(async () => {
     const res = await api.post<{

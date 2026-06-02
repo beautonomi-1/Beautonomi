@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { SectionCard } from "@/components/provider/SectionCard";
 import { Button } from "@/components/ui/button";
@@ -53,6 +54,12 @@ const STATUS_BADGE: Record<VerificationStatus, { label: string; variant: "defaul
 
 export default function VerificationPage() {
   const { bundle } = useConfigBundle();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  // §provider-launch (2026-06): when reached as the optional post-onboarding
+  // identity step, show a skip/continue-to-dashboard banner. Verification stays
+  // optional and never blocks going live.
+  const isOnboarding = searchParams.get("onboarding") === "1";
   const [statusData, setStatusData] = useState<StatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [launching, setLaunching] = useState(false);
@@ -190,6 +197,25 @@ export default function VerificationPage() {
 
   return (
     <SettingsDetailLayout title="Identity verification" subtitle="Verify your identity for compliance and payouts.">
+      {/* Optional onboarding step banner — verification never blocks going live. */}
+      {isOnboarding && (
+        <SectionCard title="You're almost done" className="mb-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-muted-foreground">
+              Identity verification is optional and earns you the “Verified” badge. You can do it now or
+              later from Settings.
+            </p>
+            <Button
+              variant="outline"
+              className="shrink-0"
+              onClick={() => router.push("/provider/dashboard")}
+            >
+              {isApproved || isUnderReview ? "Continue to dashboard" : "Skip for now"}
+            </Button>
+          </div>
+        </SectionCard>
+      )}
+
       {/* Status card */}
       <SectionCard title="Verification status">
         <div className="flex items-center gap-3 mb-4">

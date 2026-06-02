@@ -19,6 +19,7 @@ import { EVENT_PAYMENT_SUCCESS, EVENT_PAYMENT_FAILED } from "@/lib/analytics/amp
 import type { PaystackEvent, SupabaseClient } from "./shared";
 import { savePaystackAuthorization, generateGiftCardCode } from "./shared";
 import { recordLoyaltyRedemption } from "@/lib/loyalty/record-redemption";
+import { recordPromotionUsage } from "@/lib/promotions/record-promotion-usage";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { percentOf, subtractMoney } from "@beautonomi/utils";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
@@ -887,30 +888,12 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
     const promoId = bookingData.promotion_id;
     const promoDiscount = Number(bookingData.promotion_discount_amount || 0);
     if (promoId && promoDiscount > 0) {
-      const { data: usageRow, error: usageError } = await supabase
-        .from("promotion_usage")
-        .insert({
-          promotion_id: promoId,
-          user_id: bookingData.customer_id,
-          booking_id: metadata.booking_id,
-          discount_amount: promoDiscount,
-          used_at: new Date().toISOString(),
-        })
-        .select("id")
-        .single();
-
-      if (!usageError && usageRow?.id) {
-        const { data: promoRow } = await supabase
-          .from("promotions")
-          .select("usage_count")
-          .eq("id", promoId)
-          .single();
-        const nextCount = Number((promoRow as { usage_count?: number } | null)?.usage_count ?? 0) + 1;
-        await supabase
-          .from("promotions")
-          .update({ usage_count: nextCount })
-          .eq("id", promoId);
-      }
+      await recordPromotionUsage(supabase, {
+        promotionId: promoId,
+        userId: bookingData.customer_id,
+        bookingId: metadata.booking_id,
+        discountAmount: promoDiscount,
+      });
 
       // Finance ledger: record the discount as a negative revenue line so GMV vs net is
       // transparent in reports. Idempotent: only insert if no existing row for this booking.
@@ -1368,11 +1351,35 @@ async function processFailedPayment(data: PaystackChargeData, supabase: Supabase
     provider_id: bookingData.provider_id,
   });
 
-  // If wallet was used as partial payment, refund it immediately
+  // If wallet was used as partial payment, refund it immediately.
+  // §Wallet-refund (audit 2026-06): a duplicate charge.failed webhook previously
+  // double-credited the wallet (no idempotency, RPC error swallowed). We now check
+  // for an existing reversal credit on this booking before crediting, and only zero
+  // out `wallet_amount` when the credit is confirmed (or already present).
   const walletAmountApplied = Number(metadata?.wallet_amount_applied ?? 0);
   if (walletAmountApplied > 0) {
-    try {
-      await supabase.rpc("wallet_credit_admin", {
+    const { data: failedWallet } = await supabase
+      .from("user_wallets")
+      .select("id")
+      .eq("user_id", bookingData.customer_id)
+      .maybeSingle();
+
+    const { data: existingReversal } = (failedWallet as { id?: string } | null)?.id
+      ? await supabase
+          .from("wallet_transactions")
+          .select("id")
+          .eq("wallet_id", (failedWallet as { id: string }).id)
+          .eq("reference_id", metadata.booking_id)
+          .eq("reference_type", "booking_payment_failed")
+          .maybeSingle()
+      : { data: null };
+
+    if (existingReversal) {
+      // Already reversed by a prior delivery — just ensure the booking no longer
+      // claims a wallet portion.
+      await supabase.from("bookings").update({ wallet_amount: 0 }).eq("id", metadata.booking_id);
+    } else {
+      const { error: reversalErr } = await supabase.rpc("wallet_credit_admin", {
         p_user_id: bookingData.customer_id,
         p_amount: walletAmountApplied,
         p_currency: metadata?.currency || lastResortFailed,
@@ -1380,13 +1387,14 @@ async function processFailedPayment(data: PaystackChargeData, supabase: Supabase
         p_reference_id: metadata.booking_id,
         p_reference_type: "booking_payment_failed",
         p_tenant_id: failedChargeWalletTenantId,
+        p_idempotency_key: `booking_payment_failed:${metadata.booking_id}`,
       });
 
-      await supabase.from("bookings")
-        .update({ wallet_amount: 0 })
-        .eq("id", metadata.booking_id);
-    } catch (e) {
-      console.error("Failed to refund wallet on charge.failed:", e);
+      if (reversalErr) {
+        console.error("Failed to refund wallet on charge.failed:", reversalErr);
+      } else {
+        await supabase.from("bookings").update({ wallet_amount: 0 }).eq("id", metadata.booking_id);
+      }
     }
   }
 
@@ -1757,6 +1765,57 @@ async function handleGiftCardOrderSuccess(
   const value = Number(orderData.amount || 0);
   const quantity = Number(orderData.quantity || metadata.quantity || 1);
   const totalAmount = Number(orderData.total_amount || value * quantity);
+
+  // §Gift-purchase (audit 2026-06): validate that Paystack actually charged the
+  // order total before issuing cards. Issuing full value on an underpayment would
+  // hand out more gift-card liability than was collected.
+  const paidAmount = convertFromSmallestUnit(Number(_amount) || 0);
+  if (paidAmount > 0 && paidAmount + 0.01 < totalAmount) {
+    console.error(
+      `[gift_card_order] CRITICAL: paid amount ${paidAmount} is less than order total ${totalAmount} for order ${orderId} — not issuing cards.`,
+    );
+    await supabase
+      .from("gift_card_orders")
+      .update({
+        status: "failed",
+        updated_at: new Date().toISOString(),
+        metadata: { ...(orderData.metadata ?? {}), underpayment: { paid: paidAmount, expected: totalAmount } },
+      })
+      .eq("id", orderId)
+      .neq("status", "paid");
+    return;
+  }
+
+  // §Gift-purchase (audit 2026-06): ATOMIC idempotency claim. The webhook and the
+  // client verify endpoint both call this handler, so a concurrent pair could
+  // both pass the status read above and issue DUPLICATE cards for one payment.
+  // payment_transactions has UNIQUE(provider, reference); inserting it FIRST means
+  // only one caller wins the claim and proceeds to issue. The loser exits cleanly.
+  const { error: claimError } = await supabase.from("payment_transactions").insert({
+    booking_id: null,
+    reference,
+    amount: totalAmount,
+    fees: 0,
+    net_amount: totalAmount,
+    status: "success",
+    provider: "paystack",
+    transaction_type: "charge",
+    metadata: {
+      kind: "gift_card_order",
+      gift_card_order_id: orderId,
+      quantity,
+    },
+    created_at: new Date().toISOString(),
+  });
+  if (claimError) {
+    if ((claimError as { code?: string }).code === "23505") {
+      console.log(
+        `[gift_card_order] reference ${reference} already claimed — skipping duplicate issuance.`,
+      );
+      return;
+    }
+    throw new Error(`Failed to claim gift card order ${orderId}: ${claimError.message}`);
+  }
   const attribution =
     metadata?.attribution && typeof metadata.attribution === "object"
       ? metadata.attribution
@@ -1831,7 +1890,23 @@ async function handleGiftCardOrderSuccess(
   }
 
   if (giftCardIds.length === 0) {
+    // Total issuance failure: release the idempotency claim so a webhook retry can
+    // re-attempt (otherwise the customer is charged with zero cards and no retry).
+    await supabase
+      .from("payment_transactions")
+      .delete()
+      .eq("provider", "paystack")
+      .eq("reference", reference);
     throw new Error("Failed to issue any gift cards");
+  }
+
+  // §Gift-purchase (audit 2026-06): surface partial issuance instead of silently
+  // marking a bulk order fully paid when fewer cards than purchased were issued.
+  const fullyIssued = giftCardIds.length === quantity;
+  if (!fullyIssued) {
+    console.error(
+      `[gift_card_order] CRITICAL: issued ${giftCardIds.length}/${quantity} cards for order ${orderId} — manual issuance of the remainder required.`,
+    );
   }
 
   await supabase
@@ -1841,28 +1916,32 @@ async function handleGiftCardOrderSuccess(
       gift_card_id: giftCardIds[0],
       updated_at: new Date().toISOString(),
       tenant_id: giftOrderFinanceTenantId,
+      metadata: {
+        ...(orderData.metadata ?? {}),
+        issued_count: giftCardIds.length,
+        expected_count: quantity,
+        ...(fullyIssued ? {} : { partial_issuance: true }),
+      },
     })
     .eq("id", orderId);
 
-  await supabase.from("payment_transactions").insert({
-    booking_id: null,
-    reference,
-    amount: totalAmount,
-    fees: 0,
-    net_amount: totalAmount,
-    status: "success",
-    provider: "paystack",
-    transaction_type: "charge",
-    metadata: {
-      kind: "gift_card_order",
-      gift_card_order_id: orderId,
-      gift_card_ids: giftCardIds,
-      quantity: quantity,
-      attribution,
-      ...templateMetadata,
-    },
-    created_at: new Date().toISOString(),
-  });
+  // The payment_transactions claim row was inserted before issuance; enrich it
+  // with the issued card ids for reconciliation/notifications.
+  await supabase
+    .from("payment_transactions")
+    .update({
+      metadata: {
+        kind: "gift_card_order",
+        gift_card_order_id: orderId,
+        gift_card_ids: giftCardIds,
+        quantity: quantity,
+        issued_count: giftCardIds.length,
+        attribution,
+        ...templateMetadata,
+      },
+    })
+    .eq("provider", "paystack")
+    .eq("reference", reference);
 
   await supabase.from("finance_transactions").insert({
     booking_id: null,

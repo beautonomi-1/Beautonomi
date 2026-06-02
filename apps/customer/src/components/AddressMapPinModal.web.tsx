@@ -5,10 +5,23 @@ import { Modal, View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Colors } from "@/constants/colors";
 
+export type ResolvedPinAddress = {
+  place_name?: string;
+  address_line1?: string;
+  city?: string;
+  state?: string;
+  postal_code?: string;
+  country?: string;
+};
+
 export type AddressMapPinModalProps = {
   visible: boolean;
   onClose: () => void;
-  onPickCoordinates: (latitude: number, longitude: number) => void;
+  onPickCoordinates: (
+    latitude: number,
+    longitude: number,
+    resolved?: ResolvedPinAddress,
+  ) => void;
   initialCoordinate?: { latitude: number; longitude: number } | null;
 };
 

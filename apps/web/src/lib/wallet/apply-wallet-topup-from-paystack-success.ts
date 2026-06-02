@@ -107,6 +107,9 @@ export async function applyWalletTopupFromSuccessfulPaystackCharge(
     p_reference_id: topupId,
     p_reference_type: "wallet_topup",
     p_tenant_id: topupWalletTenantId,
+    // DB-level idempotency: even if the stranded-paid heal path runs concurrently
+    // with another caller, the credit is applied at most once for this top-up.
+    p_idempotency_key: `wallet_topup:${topupId}`,
   });
   // Do NOT swallow a failed credit. The top-up is already marked paid above, so
   // a silent failure here is the "I paid but my balance never moved" bug. Throw

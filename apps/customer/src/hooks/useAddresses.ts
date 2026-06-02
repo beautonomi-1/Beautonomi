@@ -166,9 +166,18 @@ export async function searchAddress(
   try {
     const body: Record<string, unknown> = {
       query: query.trim(),
-      country: options?.country ?? getDeviceRegionCountryIso(),
       limit: options?.limit ?? 10,
     };
+    // Scope to the caller-provided market country (the tenant's active market)
+    // when given. We deliberately DO NOT fall back to the device locale here:
+    // a phone set to a different region than the marketplace (e.g. an en-US
+    // device on a South African tenant) would otherwise filter Mapbox to the
+    // wrong country and return zero matches — which looked like broken
+    // autocomplete. Omitting `country` lets Mapbox return proximity-biased
+    // results instead. (The provider flow scopes by tenant/address country,
+    // not device locale, which is why it "just works".)
+    const country = options?.country?.trim();
+    if (country) body.country = country;
     // Omit `types` by default so Mapbox returns the full fuzzy result set
     // (addresses, places, suburbs/localities, neighborhoods, POIs) — matching
     // the working provider autocomplete. Restricting to ["address"] hid most

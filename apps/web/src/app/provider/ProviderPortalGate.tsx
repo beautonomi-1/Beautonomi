@@ -40,8 +40,11 @@ type GateState =
   | { kind: "error"; message: string };
 
 /**
- * After RoleGuard, redirects provider users whose status is not active
- * to /provider/get-started (setup status). Avoids showing dashboard to draft/pending_approval/suspended.
+ * After RoleGuard, redirects provider users still in onboarding (portal
+ * `provider_onboarding` — draft / suspended) to /provider/get-started.
+ * §provider-launch (2026-06): `pending_approval` now resolves to the `provider`
+ * portal, so those providers are allowed on /provider/dashboard (which shows an
+ * "under review" banner) instead of being bounced to get-started.
  *
  * The /api/me/portal result is cached in sessionStorage for 30 minutes so that
  * navigating between provider pages does not show a "Loading…" spinner on every route change.

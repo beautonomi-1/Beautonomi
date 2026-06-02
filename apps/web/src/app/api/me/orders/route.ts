@@ -407,15 +407,32 @@ export async function POST(request: NextRequest) {
 
     if (orderErr) throw orderErr;
 
-    // Debit wallet after order exists (so we can attach order id to transaction)
+    // Debit wallet after order exists (so we can attach order id to transaction).
+    // §Wallet-debit (audit 2026-06): Supabase RPCs return `{ data, error }` and
+    // do NOT throw, so a failed debit was previously ignored — the order would
+    // be marked paid / have a wallet payment recorded while the balance never
+    // dropped. Check the result and roll back the order on failure (no items,
+    // payment, or stock changes have happened yet at this point).
     if (walletAmountApplied > 0) {
-      await (supabase.rpc as any)("wallet_debit_self", {
-        p_amount: walletAmountApplied,
-        p_description: `Product order ${order.order_number}`,
-        p_reference_id: order.id,
-        p_reference_type: "product_order",
-        p_tenant_id: orderTenantId,
-      });
+      const { data: debitResult, error: walletErr } = await (supabase.rpc as any)(
+        "wallet_debit_self",
+        {
+          p_amount: walletAmountApplied,
+          p_description: `Product order ${order.order_number}`,
+          p_reference_id: order.id,
+          p_reference_type: "product_order",
+          p_tenant_id: orderTenantId,
+        }
+      );
+
+      if (walletErr || !debitResult) {
+        await (supabase.from("product_orders") as any).delete().eq("id", order.id);
+        return errorResponse(
+          walletErr?.message || "We could not debit your wallet. Please try again.",
+          "WALLET_ERROR",
+          400
+        );
+      }
     }
 
     if (paidWithWalletOnly) {

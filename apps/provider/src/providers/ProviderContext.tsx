@@ -61,6 +61,13 @@ interface ProviderProfile {
   offers_mobile_services?: boolean;
   is_verified?: boolean;
   verification_status?: string;
+  /**
+   * §provider-launch (2026-06): provider account approval status
+   * (`draft` | `pending_approval` | `active` | `suspended`). Surfaced from
+   * `providers.status` so the dashboard can show an "under review" banner for
+   * `pending_approval` providers who now reach the dashboard directly.
+   */
+  status?: "draft" | "pending_approval" | "active" | "suspended" | string | null;
 }
 
 interface ProviderContextType {

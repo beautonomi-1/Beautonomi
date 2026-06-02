@@ -36,6 +36,12 @@ export interface OnboardingService {
   aftercare_description?: string;
   /** Who this service is for: "everyone" | "women" | "men" | etc. */
   service_available_for?: string;
+  /**
+   * Provider-owned menu category name this service belongs to (from the
+   * wizard's category step). The server resolves/creates the matching
+   * `provider_categories` row and sets `provider_category_id`.
+   */
+  provider_category_name?: string;
   /** Whether the service is bookable online (in-app/web). Default true. */
   online_booking_enabled?: boolean;
   /** Maximum travel radius (km) for at-home services. */
@@ -61,6 +67,28 @@ export interface OnboardingService {
   team_member_ids?: string[];
   /** @deprecated Legacy inline add-ons; use `service_addons` on onboarding form data. */
   addons?: OnboardingServiceAddon[];
+}
+
+export interface OnboardingTravelFeeTier {
+  max_km: number;
+  fee: number;
+}
+
+/**
+ * Travel-fee intent captured in the wizard for mobile / both providers.
+ * When `use_platform_default` is true (or the step is skipped) the server
+ * seeds the platform standard. Custom values are re-validated server-side
+ * against platform limits on submit.
+ */
+export interface OnboardingTravelFees {
+  enabled: boolean;
+  use_platform_default: boolean;
+  pricing_model?: "per_km" | "tiered" | null;
+  rate_per_km?: number | null;
+  minimum_fee?: number | null;
+  maximum_fee?: number | null;
+  free_within_km?: number | null;
+  tiers?: OnboardingTravelFeeTier[];
 }
 
 export interface OnboardingServiceAddon {
@@ -107,7 +135,15 @@ export interface OnboardingFormData {
   phone?: string;
   email?: string;
   selected_zone_ids?: string[];
+  /** Travel-fee configuration for mobile / both providers (mirrors the settings screen). */
+  travel_fees?: OnboardingTravelFees;
   global_category_ids: string[];
+  /**
+   * Provider-owned menu categories created in the wizard's category step.
+   * Each may optionally map to a global category for marketplace discovery.
+   * Created as `provider_categories` rows on submit.
+   */
+  provider_categories?: { name: string; global_category_id?: string }[];
   services: OnboardingService[];
   /** Add-ons created after parent services; mapped by parent_service_index. */
   service_addons?: OnboardingServiceAddon[];

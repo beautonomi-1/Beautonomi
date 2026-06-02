@@ -4,12 +4,13 @@ import { reconcileWindowFromDays } from "../paystack-terminal-reconcile";
 
 vi.mock("@/lib/payments/paystack-complete", () => ({
   listTransactions: vi.fn(),
+  verifyTransaction: vi.fn(),
 }));
 vi.mock("../paystack-terminal-webhook", () => ({
   recordPaystackTerminalCharge: vi.fn(),
 }));
 
-import { listTransactions } from "@/lib/payments/paystack-complete";
+import { listTransactions, verifyTransaction } from "@/lib/payments/paystack-complete";
 import { recordPaystackTerminalCharge } from "../paystack-terminal-webhook";
 import { reconcilePaystackTerminalPayments } from "../paystack-terminal-reconcile";
 
@@ -127,6 +128,7 @@ describe("reconcileWindowFromDays", () => {
 describe("reconcilePaystackTerminalPayments", () => {
   beforeEach(() => {
     vi.mocked(listTransactions).mockReset();
+    vi.mocked(verifyTransaction).mockReset();
     vi.mocked(recordPaystackTerminalCharge).mockReset();
   });
 
@@ -143,11 +145,20 @@ describe("reconcilePaystackTerminalPayments", () => {
     expect(summary.recorded).toBe(0);
   });
 
-  it("records transactions pulled from Paystack and counts the recorded ones", async () => {
+  it("only records transactions that carry the terminal's own VT code", async () => {
     vi.mocked(listTransactions).mockResolvedValueOnce({
       data: [
-        { reference: "ref-1", amount: 25000, currency: "ZAR" },
-        { reference: "ref-2", amount: 10000, currency: "ZAR" },
+        // Belongs: carries this terminal's code.
+        { reference: "ref-1", amount: 25000, currency: "ZAR", virtual_terminal: { code: "VT_1" } },
+        // Belongs but already known (duplicate) - still attributed to this terminal.
+        {
+          reference: "ref-2",
+          amount: 10000,
+          currency: "ZAR",
+          metadata: { paystack_terminal_code: "VT_1" },
+        },
+        // Unrelated platform transaction belonging to a different terminal: must be skipped.
+        { reference: "ref-other", amount: 99999, currency: "ZAR", virtual_terminal: { code: "VT_OTHER" } },
       ],
     } as never);
     vi.mocked(recordPaystackTerminalCharge)
@@ -171,20 +182,56 @@ describe("reconcilePaystackTerminalPayments", () => {
     });
 
     expect(listTransactions).toHaveBeenCalledTimes(1);
+    // Only the two matching transactions are recorded; the unrelated one never reaches it.
     expect(recordPaystackTerminalCharge).toHaveBeenCalledTimes(2);
+    expect(verifyTransaction).not.toHaveBeenCalled();
     expect(summary.terminalPayments).toBe(2);
     expect(summary.recorded).toBe(1);
     expect(summary.results[0]).toMatchObject({ reference: "ref-1", recorded: true, payment_id: "pay-1" });
     expect(summary.results[1]).toMatchObject({ reference: "ref-2", recorded: false, reason: "duplicate" });
+    expect(summary.results[2]).toMatchObject({ reference: "ref-other", recorded: false, reason: "not_this_terminal" });
   });
 
-  it("enriches transactions with terminal context before recording", async () => {
+  it("verifies a markerless transaction before accepting it", async () => {
     vi.mocked(listTransactions).mockResolvedValueOnce({
       data: [{ reference: "ref-3", amount: 5000 }],
     } as never);
+    // The listed row carries no terminal marker, so we re-read it from Paystack.
+    vi.mocked(verifyTransaction).mockResolvedValueOnce({
+      data: { reference: "ref-3", amount: 5000, virtual_terminal: { code: "VT_9" } },
+    } as never);
     vi.mocked(recordPaystackTerminalCharge).mockResolvedValueOnce({ recorded: true, payment: { id: "pay-3" } } as never);
 
-    await reconcilePaystackTerminalPayments({
+    const summary = await reconcilePaystackTerminalPayments({
+      supabase: {},
+      terminals: [
+        { id: "t2", provider_id: "prov-9", paystack_terminal_id: 456, terminal_code: "VT_9", currency: "ZAR" },
+      ],
+      from: reconcileWindowFromDays(7),
+      maxPages: 1,
+    });
+
+    expect(verifyTransaction).toHaveBeenCalledWith("ref-3");
+    expect(recordPaystackTerminalCharge).toHaveBeenCalledTimes(1);
+    // The terminal context is passed explicitly so attribution never depends on fabricated metadata.
+    const passedContext = vi.mocked(recordPaystackTerminalCharge).mock.calls[0][2] as { context?: Record<string, unknown> };
+    expect(passedContext.context).toMatchObject({
+      id: "t2",
+      provider_id: "prov-9",
+      terminal_code: "VT_9",
+    });
+    expect(summary.recorded).toBe(1);
+  });
+
+  it("skips a markerless transaction that verify cannot tie to the terminal", async () => {
+    vi.mocked(listTransactions).mockResolvedValueOnce({
+      data: [{ reference: "ref-unrelated", amount: 5000 }],
+    } as never);
+    vi.mocked(verifyTransaction).mockResolvedValueOnce({
+      data: { reference: "ref-unrelated", amount: 5000, channel: "card" },
+    } as never);
+
+    const summary = await reconcilePaystackTerminalPayments({
       supabase: {},
       terminals: [
         { id: "t2", provider_id: "prov-9", paystack_terminal_id: 456, terminal_code: "VT_9" },
@@ -193,10 +240,9 @@ describe("reconcilePaystackTerminalPayments", () => {
       maxPages: 1,
     });
 
-    const enriched = vi.mocked(recordPaystackTerminalCharge).mock.calls[0][1] as Record<string, any>;
-    expect(enriched.metadata.provider_id).toBe("prov-9");
-    expect(enriched.metadata.paystack_terminal_code).toBe("VT_9");
-    expect(enriched.source.source).toBe("virtual_terminal");
-    expect(enriched.currency).toBe("ZAR");
+    expect(verifyTransaction).toHaveBeenCalledWith("ref-unrelated");
+    expect(recordPaystackTerminalCharge).not.toHaveBeenCalled();
+    expect(summary.recorded).toBe(0);
+    expect(summary.results[0]).toMatchObject({ reference: "ref-unrelated", recorded: false, reason: "not_this_terminal" });
   });
 });

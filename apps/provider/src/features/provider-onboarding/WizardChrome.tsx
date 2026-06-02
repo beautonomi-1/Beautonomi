@@ -32,9 +32,11 @@ type Milestone = { label: string; stepIds: number[] };
 const MILESTONES: Milestone[] = [
   { label: "Profile",   stepIds: [1, 2, 3] },
   { label: "Business",  stepIds: [4, 5, 6] },
-  { label: "Location",  stepIds: [7, 8, 9] },
-  { label: "Services",  stepIds: [10, 11, 12] },
-  { label: "Plan",      stepIds: [13, 14] },
+  // §provider-launch (2026-06): Travel fees (10) joins the Location milestone
+  // alongside Service zones — both are at-home/mobile setup.
+  { label: "Location",  stepIds: [7, 8, 9, 10] },
+  { label: "Services",  stepIds: [11, 12, 13] },
+  { label: "Plan",      stepIds: [14, 15] },
 ];
 
 function getMilestoneLabel(stepId: number): string {

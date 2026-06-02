@@ -823,9 +823,11 @@ export default function Index() {
 
   // §Release-audit 2026-04: parity with web `getDefaultRouteForPortal`. Even
   // when a provider row exists, users whose portal resolved to
-  // `provider_onboarding` (draft / pending_approval / suspended) must land on
-  // the onboarding hub so they see their setup progress, approval status, or
-  // suspension message — not the live dashboard.
+  // `provider_onboarding` (draft / suspended) must land on the onboarding hub
+  // so they see their setup progress or suspension message — not the live
+  // dashboard. §provider-launch (2026-06): `pending_approval` now resolves to
+  // the `provider` portal, so those providers fall through to the dashboard
+  // (which shows an "under review" banner).
   if (needsOnboarding) {
     return <Redirect href={"/(app)/onboarding" as never} />;
   }

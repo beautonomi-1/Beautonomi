@@ -23,12 +23,27 @@ type TerminalLike = {
  * even before Ops uploads a branded poster), with full-screen, save-to-photos, share-image,
  * and print actions so a provider can present it to a customer or display it in-store.
  */
-export function TerminalPosterCard({ terminal }: { terminal: TerminalLike }) {
+export function TerminalPosterCard({
+  terminal,
+  open,
+  onOpenChange,
+}: {
+  terminal: TerminalLike;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}) {
   const qrValue =
     terminal.payment_link ||
     terminal.terminal_url ||
     `https://paystack.shop/pay/${terminal.terminal_code}`;
-  const [fullScreen, setFullScreen] = useState(false);
+  const [internalFullScreen, setInternalFullScreen] = useState(false);
+  // Supports an optional controlled open state so a parent action (e.g. "Open QR poster") can
+  // present the scannable poster; falls back to its own state when used standalone.
+  const fullScreen = open ?? internalFullScreen;
+  const setFullScreen = (next: boolean) => {
+    if (onOpenChange) onOpenChange(next);
+    else setInternalFullScreen(next);
+  };
   const [busy, setBusy] = useState<null | "save" | "share" | "print">(null);
   const qrDataUrlRef = useRef<string | null>(null);
   const qrRef = useRef<{ toDataURL?: (cb: (data: string) => void) => void } | null>(null);

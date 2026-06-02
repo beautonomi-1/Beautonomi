@@ -103,28 +103,52 @@ export async function resolveCheckoutPromotionDiscount(
   }
 
   if (!promotionId) {
+    // Legacy platform `coupons` table. §Coupon-audit 2026-06: this query
+    // previously selected non-existent columns (`max_discount`, `expires_at`,
+    // `used_count`), so it always errored and the fallback was effectively dead;
+    // it also assigned `coupon.id` to `promotionId`, which violates the
+    // bookings.promotion_id -> promotions(id) FK. We now use the real columns
+    // (`max_discount_amount`, `valid_from`/`valid_until`, usage via `user_coupons`)
+    // and DO NOT return the coupon id as a promotion id — the discount is applied
+    // but `promotionId` stays null so the booking insert cannot break the FK.
     const { data: coupon } = await (supabase.from("coupons") as any)
-      .select("id, code, discount_type, discount_value, max_discount, is_active, expires_at, max_uses, used_count")
+      .select(
+        "id, code, discount_type, discount_value, min_purchase_amount, max_discount_amount, is_active, valid_from, valid_until, max_uses",
+      )
       .eq("code", promoCode)
       .eq("is_active", true)
       .maybeSingle();
 
     if (coupon) {
       const now = new Date();
-      const notExpired = !coupon.expires_at || new Date(coupon.expires_at) >= now;
-      const underLimit = !coupon.max_uses || (coupon.used_count || 0) < coupon.max_uses;
+      const validFrom = coupon.valid_from ? new Date(coupon.valid_from as string) : null;
+      const validUntil = coupon.valid_until ? new Date(coupon.valid_until as string) : null;
+      const withinWindow = (!validFrom || now >= validFrom) && (!validUntil || now <= validUntil);
+      const meetsMin =
+        !coupon.min_purchase_amount || prePromoSubtotal >= Number(coupon.min_purchase_amount);
 
-      if (notExpired && underLimit) {
+      let underLimit = true;
+      if (coupon.max_uses) {
+        const { count } = await (supabase.from("user_coupons") as any)
+          .select("id", { count: "exact", head: true })
+          .eq("coupon_id", coupon.id);
+        underLimit = Number(count ?? 0) < Number(coupon.max_uses);
+      }
+
+      if (withinWindow && meetsMin && underLimit) {
         if (coupon.discount_type === "percentage") {
           promotionDiscountAmount = percentOf(prePromoSubtotal, Number(coupon.discount_value || 0));
-          if (coupon.max_discount) {
-            promotionDiscountAmount = Math.min(promotionDiscountAmount, Number(coupon.max_discount));
+          if (coupon.max_discount_amount) {
+            promotionDiscountAmount = Math.min(
+              promotionDiscountAmount,
+              Number(coupon.max_discount_amount),
+            );
           }
         } else {
           promotionDiscountAmount = Number(coupon.discount_value || 0);
         }
         promotionDiscountAmount = Math.max(0, Math.min(promotionDiscountAmount, prePromoSubtotal));
-        promotionId = coupon.id as string;
+        // Intentionally leave promotionId null (FK safety — see comment above).
       }
     }
   }

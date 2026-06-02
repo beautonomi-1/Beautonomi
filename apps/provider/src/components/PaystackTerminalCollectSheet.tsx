@@ -103,7 +103,6 @@ export function PaystackTerminalCollectSheet({
   const link = terminal?.payment_link || terminal?.terminal_url || terminal?.qr_url || null;
   const qrValue = link || (terminal?.terminal_code ? `https://paystack.shop/pay/${terminal.terminal_code}` : null);
   const amount = Number(result?.expectedAmount ?? expectedAmount);
-  const reference = result?.customerReference ?? customerReference ?? null;
 
   const onCopy = async (value: string, label: string) => {
     await Clipboard.setStringAsync(value);
@@ -114,8 +113,8 @@ export function PaystackTerminalCollectSheet({
     void Share.share({
       title: "Paystack Terminal",
       message: link
-        ? `Pay ${currency} ${amount.toFixed(2)} using this Paystack Terminal link: ${link}${reference ? ` Note: ${reference}` : ""}`
-        : `Pay ${currency} ${amount.toFixed(2)} using Paystack Terminal code ${terminal?.terminal_code}${reference ? `. Note: ${reference}` : ""}.`,
+        ? `Pay ${currency} ${amount.toFixed(2)} using this Paystack Terminal link: ${link}`
+        : `Pay ${currency} ${amount.toFixed(2)} using Paystack Terminal code ${terminal?.terminal_code}.`,
       url: link ?? undefined,
     });
   };
@@ -176,22 +175,11 @@ export function PaystackTerminalCollectSheet({
             <Text style={twStyle("mt-2 text-sm text-emerald-800")}>
               Expected: {currency} {amount.toFixed(2)}
             </Text>
-            {reference ? (
-              <Text style={twStyle("mt-1 text-sm text-emerald-800")}>Booking/order note: {reference}</Text>
-            ) : null}
           </View>
           <View style={twStyle("flex-row gap-2")}>
             <TouchableOpacity onPress={onShare} style={twStyle("flex-1 rounded-xl bg-emerald-600 px-3 py-3")}>
               <Text style={twStyle("text-center font-semibold text-white")}>Share</Text>
             </TouchableOpacity>
-            {reference ? (
-              <TouchableOpacity
-                onPress={() => onCopy(reference, "Reference")}
-                style={twStyle("flex-1 rounded-xl border border-emerald-600 px-3 py-3")}
-              >
-                <Text style={twStyle("text-center font-semibold text-emerald-700")}>Copy ref</Text>
-              </TouchableOpacity>
-            ) : null}
           </View>
           {link ? (
             <View style={twStyle("flex-row gap-2 mt-2")}>

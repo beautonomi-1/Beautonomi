@@ -16,6 +16,8 @@ import {
 } from "@/lib/subscriptions/subscription-upgrade-copy";
 import { isAdvancedRecurrenceRule } from "@/lib/recurring/advanced-rrule";
 import { isDateOnOrBeforeEnd, nextRecurringOccurrenceDate } from "@/lib/recurring/next-due-date";
+import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
+import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
 import { z } from "zod";
 
 const createRecurringSchema = z.object({
@@ -80,7 +82,7 @@ async function sendFirstRecurringPaymentLink(params: {
   admin: ReturnType<typeof getSupabaseAdmin>;
   bookingId: string;
   customerId: string;
-}) {
+}): Promise<{ sent: boolean; disabled?: boolean }> {
   const { admin, bookingId, customerId } = params;
   const { data: booking } = await admin
     .from("bookings")
@@ -90,6 +92,15 @@ async function sendFirstRecurringPaymentLink(params: {
 
   if (!booking) {
     throw new Error("First recurring visit could not be loaded for payment-link delivery");
+  }
+
+  // Feature gate: skip sending when the payment-link method is disabled for this tenant.
+  const paymentLinkEnabled = await isFeatureEnabledServer(
+    FEATURE_FLAG_KEYS.PAYMENT_LINK,
+    (booking as { tenant_id?: string | null }).tenant_id ?? null,
+  );
+  if (!paymentLinkEnabled) {
+    return { sent: false, disabled: true };
   }
 
   const bookingRef = booking.booking_number || booking.ref_number || bookingId.slice(0, 8).toUpperCase();
@@ -149,6 +160,7 @@ async function sendFirstRecurringPaymentLink(params: {
     channels,
     { appType: "customer" },
   );
+  return { sent: true };
 }
 
 /**
@@ -363,12 +375,14 @@ export async function POST(request: NextRequest) {
 
     if (validated.payment_method === "payment_link" && createdBookingIds[0]) {
       try {
-        await sendFirstRecurringPaymentLink({
+        const linkResult = await sendFirstRecurringPaymentLink({
           admin,
           bookingId: createdBookingIds[0],
           customerId: validated.customer_id,
         });
-        if (createdBookingIds.length > 1) {
+        if (linkResult.disabled) {
+          warnings.push("Payment link is disabled, so no link was sent. Collect payment another way.");
+        } else if (createdBookingIds.length > 1) {
           warnings.push("Payment link sent for the first generated visit. Future visits remain pending until collected or paid.");
         }
       } catch (paymentLinkError) {

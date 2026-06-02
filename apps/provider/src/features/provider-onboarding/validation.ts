@@ -45,18 +45,45 @@ export function validateStep(
         errors.push("Please upload a profile image/avatar for your provider card");
       }
       break;
-    case 10:
+    case 10: {
+      // Travel fees — optional/skippable. Only validate when the provider opts
+      // into custom pricing (server re-checks against platform limits on submit).
+      const tf = formData.travel_fees;
+      if (tf && tf.enabled && tf.use_platform_default === false) {
+        if (tf.pricing_model === "tiered") {
+          const tiers = tf.tiers || [];
+          if (tiers.length === 0) {
+            errors.push("Add at least one distance tier or use platform defaults");
+          } else {
+            for (let i = 1; i < tiers.length; i++) {
+              if (tiers[i].max_km <= tiers[i - 1].max_km) {
+                errors.push("Travel-fee tiers must be in ascending order by max km");
+                break;
+              }
+            }
+          }
+        } else {
+          if (tf.rate_per_km == null || !Number.isFinite(tf.rate_per_km) || tf.rate_per_km < 0) {
+            errors.push("Enter a valid rate per km or use platform defaults");
+          }
+        }
+      }
+      break;
+    }
+    case 11:
       if (!formData.global_category_ids?.length) {
         errors.push("Please select at least one service category");
       }
       break;
-    case 11: {
+    case 12: {
       const services = formData.services || [];
       for (let i = 0; i < services.length; i++) {
         const service = services[i];
         const label = `Service ${i + 1}`;
         if (!service?.title?.trim()) errors.push(`${label}: title is required`);
-        if (!service?.category_id?.trim()) errors.push(`${label}: category is required`);
+        if (!service?.provider_category_name?.trim() && !service?.category_id?.trim()) {
+          errors.push(`${label}: category is required`);
+        }
         if (!Number.isFinite(service?.duration_minutes) || Number(service?.duration_minutes) <= 0) {
           errors.push(`${label}: duration must be greater than 0`);
         }
@@ -89,7 +116,7 @@ export function validateStep(
       }
       break;
     }
-    case 12: {
+    case 13: {
       const hours = formData.operating_hours;
       if (!hours || Object.keys(hours).length === 0) {
         errors.push("Please set your operating hours");
@@ -103,7 +130,7 @@ export function validateStep(
       }
       break;
     }
-    case 14:
+    case 15:
       if (!formData.selected_plan_id?.trim() && !formData.no_plans_available) {
         errors.push("Please select a subscription plan");
       }
@@ -146,7 +173,11 @@ export function buildSubmitPayload(formData: Partial<OnboardingFormData>): Recor
       longitude: formData.address?.longitude ?? null,
     },
     global_category_ids: formData.global_category_ids || [],
+    provider_categories: (formData.provider_categories || [])
+      .map((c) => ({ name: (c.name || "").trim(), global_category_id: c.global_category_id }))
+      .filter((c) => c.name.length > 0),
     selected_zone_ids: formData.selected_zone_ids || [],
+    travel_fees: formData.travel_fees ?? { enabled: true, use_platform_default: true },
     operating_hours: formData.operating_hours || {},
     services: (formData.services || []).map(({ addons: _legacy, ...svc }) => svc),
     service_addons: formData.service_addons || [],

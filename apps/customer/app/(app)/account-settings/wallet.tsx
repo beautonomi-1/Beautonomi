@@ -526,14 +526,20 @@ export default function WalletScreen() {
           {txs.length === 0 ? (
             <Text style={{ color: Colors.gray[500], paddingVertical: 16 }}>{t("customer.walletScreen.noTransactions")}</Text>
           ) : (
-            txs.slice(0, 10).map((row) => (
+            txs.slice(0, 10).map((row) => {
+              // wallet_transactions.amount is always stored positive; direction
+              // lives in `type` ('credit' | 'debit'). Sign/color off `type` so a
+              // wallet spend shows as a red minus, not a green plus like a top-up.
+              const isCredit = row.type === "credit";
+              return (
               <View key={row.id} style={{ backgroundColor: Colors.gray[50], borderRadius: 12, padding: 16, marginBottom: 8, flexDirection: "row", justifyContent: "space-between" }}>
                 <Text style={{ color: Colors.gray[900] }}>{row.description || row.type || t("customer.walletScreen.transactionFallback")}</Text>
-                <Text style={{ color: Number(row.amount) >= 0 ? "#16a34a" : "#B91C1C" }}>
-                  {Number(row.amount) >= 0 ? "+" : ""}{formatMoney(Math.abs(Number(row.amount)), currency)}
+                <Text style={{ color: isCredit ? "#16a34a" : "#B91C1C" }}>
+                  {isCredit ? "+" : "-"}{formatMoney(Math.abs(Number(row.amount)), currency)}
                 </Text>
               </View>
-            ))
+              );
+            })
           )}
         </View>
       </ScrollView>

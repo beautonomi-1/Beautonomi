@@ -8,6 +8,8 @@ export const FEATURE_FLAG_KEYS = {
   PAYMENT_PAYSTACK_VIRTUAL_TERMINAL: "payment_paystack_virtual_terminal",
   /** Master switch for provider-side Yoco collection and management. */
   PAYMENT_YOCO: "payment_yoco",
+  /** Master switch for the provider booking payment-link method (send a Paystack checkout link). */
+  PAYMENT_LINK: "payment_link",
   PAYMENT_WALLET: "payment_wallet",
   GIFT_CARDS: "gift_cards",
   /** When disabled (tenant or global row), providers cannot create/send custom offers. */

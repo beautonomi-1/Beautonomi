@@ -69,18 +69,38 @@ export async function POST(request: NextRequest) {
       .eq("id", user.id);
 
     if (updateError) {
-      throw updateError;
+      // §provider-launch (2026-06): surface the real cause instead of falling
+      // through to the generic handler so support can act on it.
+      console.error("Account deletion pre-update failed:", {
+        userId: user.id,
+        code: updateError.code,
+        message: updateError.message,
+      });
+      return NextResponse.json(
+        {
+          error:
+            "Could not start account deletion. Please try again shortly or contact support if it persists.",
+        },
+        { status: 500 },
+      );
     }
 
     const purgeResult = await purgePlatformUserAccountFully(admin, user.id);
     if (purgeResult.ok === false) {
-      console.error("Account deletion purge failed:", purgeResult.message, purgeResult.code);
+      // Log the precise blocker (the RPC now RAISEs the exact table/constraint)
+      // so we can fix any remaining RESTRICT chain quickly.
+      console.error("Account deletion purge failed:", {
+        userId: user.id,
+        code: purgeResult.code,
+        message: purgeResult.message,
+      });
       return NextResponse.json(
         {
           error:
             purgeResult.code === "AUTH_DELETE_DATABASE_ERROR"
-              ? "Could not complete account deletion because related records are still linked. Please contact support."
-              : purgeResult.message || "Could not complete account deletion. Please contact support.",
+              ? "Could not complete account deletion because related records are still linked. Our team has been notified — please contact support."
+              : purgeResult.message ||
+                "Could not complete account deletion. Please contact support.",
         },
         { status: 500 },
       );

@@ -21,10 +21,12 @@ export const SETUP_STATUS_ID_TO_WIZARD_STEP: Record<string, number> = {
   // Profile photo + gallery → wizard "Photos"
   "profile-photo": 8,
   gallery: 8,
+  // Travel fees → wizard "Travel fees"
+  "travel-fees": 10,
   // Catalogue → wizard "Services"
-  services: 11,
+  services: 12,
   // Operating hours → wizard "Hours"
-  availability: 12,
+  availability: 13,
   // Yoco terminal → wizard "Payment setup"
   payment: 4,
   // §provider-onboarding-2026-05: `payment-methods` and `payout` are now

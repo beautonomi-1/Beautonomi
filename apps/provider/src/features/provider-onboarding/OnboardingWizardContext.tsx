@@ -375,68 +375,29 @@ export function OnboardingWizardProvider({ children, initialStep }: OnboardingWi
           data?.checkout_path ||
           `/provider/subscription-checkout?planId=${encodeURIComponent(planId)}`;
         const separator = checkoutPath.includes("?") ? "&" : "?";
+        // Keep the web checkout chain on its known `return_to=dashboard`
+        // contract; the native screen handles the final hop to the optional
+        // identity step via its own `returnTo` param below.
         const url = `${base}${checkoutPath}${separator}in_app=1&return_to=dashboard`;
         router.replace({
           pathname: "/(app)/(tabs)/more/in-app-browser",
           params: {
             url: encodeURIComponent(url),
             title: "Complete subscription",
+            // §provider-launch (2026-06): after a paid checkout succeeds, send
+            // the provider to the optional, skippable identity step (which then
+            // continues to the dashboard) so paid and free plans match.
+            returnTo: "verify-identity",
           },
         } as never);
         return;
       }
 
-      const isFreePlan = data?.selected_plan_is_free === true;
-      const welcomeMsg =
-        data?.message ??
-        (isFreePlan
-          ? "Your free plan is active and your profile is live."
-          : "Your provider profile is ready.");
-
-      // §provider-onboarding-2026-05: after the wizard completes, ping
-      // setup-status to see whether any *required* checklist rows are still
-      // missing (payouts, identity verification, payment methods, etc.).
-      // When they are, route to the setup hub so the provider can finish the
-      // remaining items, instead of the old behavior of always sending them
-      // to the dashboard where the same red banners would greet them.
-      const goDashboard = () => {
-        router.replace("/(app)/(tabs)/dashboard" as never);
-      };
-      const goSetupHub = () => {
-        router.replace("/(app)/onboarding" as never);
-      };
-
-      let requiredOutstanding = 0;
-      try {
-        const statusRes = await api.get<{
-          isComplete?: boolean;
-          steps?: { required?: boolean; completed?: boolean }[];
-        }>("/api/provider/setup-status");
-        if (!statusRes.error && statusRes.data && Array.isArray(statusRes.data.steps)) {
-          requiredOutstanding = statusRes.data.steps.filter(
-            (s) => s?.required && !s?.completed,
-          ).length;
-        }
-      } catch {
-        // network error fetching status -> behave like nothing remains
-      }
-
-      if (requiredOutstanding > 0) {
-        Alert.alert(
-          isFreePlan ? "You're on the free plan" : "You're live",
-          `${welcomeMsg}\n\n${requiredOutstanding} required step${
-            requiredOutstanding === 1 ? "" : "s"
-          } left before you can take bookings.`,
-          [
-            { text: "Finish setup", onPress: goSetupHub },
-            { text: "Skip for now", style: "cancel", onPress: goDashboard },
-          ],
-        );
-      } else {
-        Alert.alert(isFreePlan ? "You're on the free plan" : "You're live", welcomeMsg, [
-          { text: "Go to dashboard", onPress: goDashboard },
-        ]);
-      }
+      // §provider-launch (2026-06): no more "second wizard" / setup-hub detour.
+      // After the wizard + plan, route to the optional identity-verification
+      // step which then lands the provider on the dashboard (the dashboard
+      // surfaces any remaining setup via its non-blocking setup card).
+      router.replace("/(app)/onboarding/verify-identity" as never);
     } catch (e) {
       Alert.alert("Error", e instanceof Error ? e.message : "Submit failed.");
     } finally {

@@ -498,6 +498,7 @@ export default function NewBookingScreen() {
   const { bundle } = useConfigBundle();
   const yocoEnabled = bundle?.flags?.payment_yoco?.enabled === true;
   const paystackTerminalEnabled = bundle?.flags?.payment_paystack_virtual_terminal?.enabled === true;
+  const paymentLinkEnabled = bundle?.flags?.payment_link?.enabled === true;
   const defaultPhoneDial = useDefaultPhoneDial();
   const mapboxCountryIso =
     bundle?.meta?.active_market_country?.trim().length === 2
@@ -735,7 +736,10 @@ export default function NewBookingScreen() {
     if (!paystackTerminalEnabled && paymentMethod === "paystack_terminal") {
       setPaymentMethod("pay_later");
     }
-  }, [yocoEnabled, paystackTerminalEnabled, paymentMethod]);
+    if (!paymentLinkEnabled && paymentMethod === "payment_link") {
+      setPaymentMethod("pay_later");
+    }
+  }, [yocoEnabled, paystackTerminalEnabled, paymentLinkEnabled, paymentMethod]);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [conflictWarning, setConflictWarning] = useState<string | null>(null);
   const [, setCheckingAvailability] = useState(false);
@@ -3341,7 +3345,8 @@ export default function NewBookingScreen() {
                 {PAYMENT_METHODS.filter(
                   (pm) =>
                     (yocoEnabled || pm.value !== "yoco_pos") &&
-                    (paystackTerminalEnabled || pm.value !== "paystack_terminal"),
+                    (paystackTerminalEnabled || pm.value !== "paystack_terminal") &&
+                    (paymentLinkEnabled || pm.value !== "payment_link"),
                 ).map((pm, idx) => (
                   <TouchableOpacity
                     key={pm.value}

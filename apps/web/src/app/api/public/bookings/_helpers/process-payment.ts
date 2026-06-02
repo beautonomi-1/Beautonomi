@@ -13,6 +13,7 @@ import type { PublicBookingValidatedBody } from "@/lib/public-booking/booking-dr
 import type { BookingDraft } from "@/types/beautonomi";
 import type { ValidatedBookingData } from "./validate-booking";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
+import { recordPromotionUsage } from "@/lib/promotions/record-promotion-usage";
 import { resolveCommissionPercentageForProvider } from "@/lib/finance/resolve-commission-percentage";
 import { percentOf, subtractMoney } from "@beautonomi/utils";
 import { resolvePaymentTenantForBookingRequest } from "@/lib/bookings/resolve-payment-tenant";
@@ -251,20 +252,44 @@ export async function processPayment(
 
       const walletBalance = Number((wallet as any)?.balance || 0);
       if (walletBalance > 0) {
-        walletAmountApplied = Math.min(walletBalance, amountToCollect);
+        const intendedWalletAmount = Math.min(walletBalance, amountToCollect);
 
         const walletLedgerTenantId = await resolveTenantIdForFinanceLedger(supabase, {
           tenant_id: booking.tenant_id,
           provider_id: draft.provider_id,
         });
 
-        await (supabase.rpc as any)("wallet_debit_self", {
-          p_amount: walletAmountApplied,
-          p_description: `Wallet spend for booking ${booking.booking_number}`,
-          p_reference_id: booking.id,
-          p_reference_type: "booking",
-          p_tenant_id: walletLedgerTenantId,
-        });
+        // §Wallet-debit (audit 2026-06): the RPC result was previously ignored.
+        // Supabase RPCs return `{ data, error }` and do NOT throw, so a failed
+        // debit (e.g. auth.uid() null on the forwarded server-to-server call, or
+        // insufficient balance) slipped through silently. The code then set
+        // `wallet_amount`, inserted a synthetic booking_payments row, and reduced
+        // `amountToCollect` — making the booking look wallet-paid while the
+        // balance never dropped, no wallet_transactions row existed, and the
+        // wallet portion was never collected. We now check the result and only
+        // record the wallet leg after a confirmed successful debit.
+        const { data: debitResult, error: walletErr } = await (supabase.rpc as any)(
+          "wallet_debit_self",
+          {
+            p_amount: intendedWalletAmount,
+            p_description: `Wallet spend for booking ${booking.booking_number}`,
+            p_reference_id: booking.id,
+            p_reference_type: "booking",
+            p_tenant_id: walletLedgerTenantId,
+          }
+        );
+
+        if (walletErr || !debitResult) {
+          return handleApiError(
+            walletErr ?? new Error("Wallet debit did not complete"),
+            walletErr?.message || "We could not debit your wallet. Please try again.",
+            "WALLET_ERROR",
+            400
+          );
+        }
+
+        // Debit confirmed — record the wallet leg and reduce the collectible.
+        walletAmountApplied = intendedWalletAmount;
 
         await (supabase.from("bookings") as any)
           .update({ wallet_amount: walletAmountApplied })
@@ -363,6 +388,18 @@ export async function processPayment(
       .eq("id", booking.id);
 
     await completeWalletGiftSyntheticPayments(supabaseAdmin, booking.id);
+
+    // §Promo-usage (audit 2026-06): the Paystack webhook was the only path that
+    // recorded promotion usage, so wallet/gift-settled bookings never counted —
+    // letting a limited code be reused indefinitely. Record it here too (settled).
+    if (v.promotionId && v.promoDiscountAmount > 0) {
+      await recordPromotionUsage(supabaseAdmin, {
+        promotionId: v.promotionId,
+        userId: v.customerId,
+        bookingId: booking.id,
+        discountAmount: v.promoDiscountAmount,
+      });
+    }
 
     if (recurringSubscribeEligible) {
       const recurringPay = paymentMethod === "cash" ? "cash" : "card";
@@ -800,6 +837,18 @@ export async function processPayment(
         status: cashStatus,
       })
       .eq("id", booking.id);
+
+    // §Promo-usage (audit 2026-06): count the promotion on cash bookings too, so a
+    // limited code cannot be reused indefinitely via the cash path. Recorded at
+    // commitment time; cancellation restoring usage is tracked separately.
+    if (v.promotionId && v.promoDiscountAmount > 0) {
+      await recordPromotionUsage(supabaseAdmin, {
+        promotionId: v.promotionId,
+        userId: v.customerId,
+        bookingId: booking.id,
+        discountAmount: v.promoDiscountAmount,
+      });
+    }
 
     if (recurringSubscribeEligible) {
       const sub = await insertCustomerRecurringSeriesFromPaidBooking({

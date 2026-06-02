@@ -63,6 +63,7 @@ export async function releaseBookingSlotAfterPaymentFailure(
         p_reference_id: bookingId,
         p_reference_type: "booking",
         p_tenant_id: walletTenantId,
+        p_idempotency_key: `booking_payment_failure_reversal:${bookingId}`,
       });
       if (credErr) {
         console.error(

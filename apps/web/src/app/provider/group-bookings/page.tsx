@@ -48,6 +48,7 @@ import { GroupBookingDialog } from "@/components/provider-portal/GroupBookingDia
 import { toast } from "sonner";
 import { fetcher } from "@/lib/http/fetcher";
 import { cn } from "@/lib/utils";
+import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 
 type RecordPaymentMethod = "cash" | "card" | "bank_transfer" | "other" | "yoco";
 
@@ -864,6 +865,7 @@ function GroupBookingDetailPanel({
   onDownloadReceipt,
   isStatusChanging,
 }: DetailPanelProps) {
+  const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
   const participants: GroupBookingParticipant[] = booking.participants ?? [];
   const cancelled = booking.status === "cancelled";
   const completed = booking.status === "completed";
@@ -1174,6 +1176,7 @@ function GroupBookingDetailPanel({
                   Other
                 </Button>
               </div>
+              {paystackTerminalEnabled && (
               <div className="mt-3 pt-3 border-t">
                 <p className="text-xs text-gray-500 mb-2">Collect via Paystack Virtual Terminal (QR / link)</p>
                 <Button
@@ -1192,6 +1195,7 @@ function GroupBookingDetailPanel({
                   {isPreparingTerminal ? "Preparing…" : "Paystack Terminal"}
                 </Button>
               </div>
+              )}
             </div>
           );
         })()}

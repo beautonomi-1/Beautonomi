@@ -48,7 +48,37 @@ const onboardingSchema = z.object({
     longitude: z.number().optional().nullable(),
   }),
   global_category_ids: z.array(z.string().uuid()).min(1, "At least one category is required"),
+  // §provider-launch (2026-06): provider-owned menu categories from the wizard.
+  // Each optionally maps to a global category for marketplace discovery.
+  provider_categories: z
+    .array(
+      z.object({
+        name: z.string().trim().min(1),
+        global_category_id: z.string().uuid().optional().nullable(),
+      }),
+    )
+    .optional()
+    .default([]),
   selected_zone_ids: z.array(z.string().uuid()).optional().default([]),
+  // §provider-launch (2026-06): travel-fee intent captured in the wizard for
+  // mobile / both providers. When omitted or `use_platform_default`, the route
+  // seeds the platform standard (prior behavior).
+  travel_fees: z
+    .object({
+      enabled: z.boolean().optional().default(true),
+      use_platform_default: z.boolean().optional().default(true),
+      pricing_model: z.enum(["per_km", "tiered"]).nullable().optional(),
+      rate_per_km: z.number().min(0).nullable().optional(),
+      minimum_fee: z.number().min(0).nullable().optional(),
+      maximum_fee: z.number().min(0).nullable().optional(),
+      free_within_km: z.number().min(0).nullable().optional(),
+      tiers: z
+        .array(z.object({ max_km: z.number().min(0), fee: z.number().min(0) }))
+        .optional()
+        .default([]),
+    })
+    .optional()
+    .nullable(),
   operating_hours: z.object({
     monday: z.object({
       open: z.string(),
@@ -95,6 +125,9 @@ const onboardingSchema = z.object({
     supports_at_home: z.boolean().default(false),
     supports_at_salon: z.boolean().default(true),
     category_id: z.string().uuid().optional().nullable(),
+    // Provider-owned menu category name this service belongs to (resolved to a
+    // `provider_categories` row on create).
+    provider_category_name: z.string().trim().optional().nullable(),
     // §provider-onboarding-2026-05: catalog-parity advanced fields. Each is
     // optional so the wizard can submit "beginner-friendly" services without
     // forcing the user to fill in tax/availability/etc.
@@ -212,7 +245,9 @@ export async function POST(request: NextRequest) {
       email: legacyEmail,
       address,
       global_category_ids,
+      provider_categories,
       selected_zone_ids,
+      travel_fees,
       operating_hours,
       services,
       service_addons,
@@ -740,6 +775,74 @@ export async function POST(request: NextRequest) {
       return createdId;
     };
 
+    // §provider-launch (2026-06): resolve/create a provider-owned menu category
+    // by its NAME (the wizard now lets providers name their own categories and
+    // assign each service to one). Matches the live catalog behavior.
+    const providerCategoryByName = new Map<string, string>();
+    const ensureProviderCategoryByName = async (
+      rawName: string | null | undefined,
+      globalCategoryId?: string | null,
+    ): Promise<string | null> => {
+      const name = (rawName || "").trim();
+      if (!name) return null;
+      const key = name.toLowerCase();
+      if (providerCategoryByName.has(key)) return providerCategoryByName.get(key)!;
+
+      const slug = slugifyCategory(name);
+      const { data: existing } = await supabaseAdmin
+        .from("provider_categories")
+        .select("id")
+        .eq("provider_id", providerId)
+        .eq("slug", slug)
+        .maybeSingle();
+      if (existing?.id) {
+        const existingId = String(existing.id);
+        providerCategoryByName.set(key, existingId);
+        if (globalCategoryId) providerCategoryByGlobalId.set(globalCategoryId, existingId);
+        return existingId;
+      }
+
+      const { data: maxOrder } = await supabaseAdmin
+        .from("provider_categories")
+        .select("display_order")
+        .eq("provider_id", providerId)
+        .order("display_order", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const displayOrder =
+        typeof maxOrder?.display_order === "number" ? maxOrder.display_order + 1 : 0;
+      const { data: created, error: createError } = await supabaseAdmin
+        .from("provider_categories")
+        .insert({
+          provider_id: providerId,
+          name,
+          slug,
+          display_order: displayOrder,
+          is_active: true,
+        })
+        .select("id")
+        .single();
+      if (createError || !created?.id) {
+        if (createError) {
+          console.error("Error creating provider menu category from onboarding:", createError);
+        }
+        return null;
+      }
+      const createdId = String(created.id);
+      providerCategoryByName.set(key, createdId);
+      if (globalCategoryId) providerCategoryByGlobalId.set(globalCategoryId, createdId);
+      return createdId;
+    };
+
+    // Create the provider's named menu categories up-front so service rows can
+    // map to them by name below.
+    for (const providerCategory of provider_categories || []) {
+      await ensureProviderCategoryByName(
+        providerCategory.name,
+        providerCategory.global_category_id ?? null,
+      );
+    }
+
     // Auto-generate basic services if none provided but categories selected
     let servicesToCreate = services || [];
     let servicesWereAutoGenerated = false;
@@ -825,7 +928,12 @@ export async function POST(request: NextRequest) {
           (typeof service?.category_id === "string" && service.category_id.length > 0
             ? service.category_id
             : defaultGlobalCategoryId) || null;
-        const resolvedProviderCategoryId = await ensureProviderCategoryForGlobalCategory(resolvedGlobalCategoryId);
+        // Prefer the provider's own named menu category (wizard category step);
+        // fall back to deriving one from the global category for back-compat.
+        const providerCategoryName = (service as any)?.provider_category_name as string | undefined;
+        const resolvedProviderCategoryId =
+          (await ensureProviderCategoryByName(providerCategoryName, resolvedGlobalCategoryId)) ??
+          (await ensureProviderCategoryForGlobalCategory(resolvedGlobalCategoryId));
         // §provider-onboarding-2026-05: persist catalog-parity advanced fields
         // (service_type/pricing_name/aftercare/service_available_for/
         // online_booking_enabled/at_home_radius_km/at_home_price_adjustment/
@@ -1025,21 +1133,59 @@ export async function POST(request: NextRequest) {
 
     if (supportsHouseCalls) {
       const platformTravelFees = (platformSettings as any)?.travel_fees || {};
+      const allowCustomization = platformTravelFees.allow_provider_customization !== false;
+      const allowTiered = platformTravelFees.allow_provider_tiered !== false;
+
+      // §provider-launch (2026-06): persist the wizard's Travel-fees step instead
+      // of always hard-coding the platform default. When the step is skipped,
+      // disabled customization, or `use_platform_default`, fall back to the
+      // platform standard (prior behavior).
+      const wantsCustom =
+        allowCustomization &&
+        travel_fees != null &&
+        travel_fees.enabled !== false &&
+        travel_fees.use_platform_default === false;
+
+      const travelFeeRow: Record<string, unknown> = {
+        provider_id: providerId,
+        enabled: travel_fees?.enabled !== false,
+        currency: platformTravelFees.default_currency || tenantDefaultCurrency,
+        use_platform_default: wantsCustom ? false : true,
+        rate_per_km: platformTravelFees.default_rate_per_km ?? 8,
+        minimum_fee: platformTravelFees.default_minimum_fee ?? 20,
+        maximum_fee: platformTravelFees.default_maximum_fee ?? null,
+        updated_at: new Date().toISOString(),
+      };
+
+      if (wantsCustom) {
+        const model: "per_km" | "tiered" =
+          travel_fees!.pricing_model === "tiered" && allowTiered ? "tiered" : "per_km";
+        travelFeeRow.pricing_model = model;
+        if (model === "tiered") {
+          const tiers = (travel_fees!.tiers ?? [])
+            .filter((t) => Number.isFinite(t.max_km) && Number.isFinite(t.fee))
+            .sort((a, b) => a.max_km - b.max_km);
+          // Guard: a tiered choice with no valid tiers reverts to platform default.
+          if (tiers.length > 0) {
+            travelFeeRow.tiers = tiers;
+          } else {
+            travelFeeRow.use_platform_default = true;
+            travelFeeRow.pricing_model = "per_km";
+          }
+        } else {
+          travelFeeRow.tiers = null;
+          travelFeeRow.rate_per_km = travel_fees!.rate_per_km ?? travelFeeRow.rate_per_km;
+          travelFeeRow.minimum_fee = travel_fees!.minimum_fee ?? travelFeeRow.minimum_fee;
+          travelFeeRow.maximum_fee =
+            travel_fees!.maximum_fee != null ? travel_fees!.maximum_fee : null;
+          travelFeeRow.free_within_km =
+            travel_fees!.free_within_km != null ? travel_fees!.free_within_km : null;
+        }
+      }
+
       const { error: travelFeeSettingsError } = await supabaseAdmin
         .from("provider_travel_fee_settings")
-        .upsert(
-          {
-            provider_id: providerId,
-            enabled: true,
-            rate_per_km: platformTravelFees.default_rate_per_km ?? 8,
-            minimum_fee: platformTravelFees.default_minimum_fee ?? 20,
-            maximum_fee: platformTravelFees.default_maximum_fee ?? null,
-            currency: platformTravelFees.default_currency || tenantDefaultCurrency,
-            use_platform_default: true,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "provider_id" },
-        );
+        .upsert(travelFeeRow, { onConflict: "provider_id" });
 
       if (travelFeeSettingsError) {
         console.error("Error creating travel fee defaults:", travelFeeSettingsError);

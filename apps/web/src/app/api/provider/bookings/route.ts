@@ -20,6 +20,8 @@ import { dateRangeBoundsUtc, fromBusinessTime, nowInTz, resolveTz } from "@/lib/
 import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
 import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
 import { startOfDay, startOfMonth } from "date-fns";
+import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
+import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
 
 import { mapStatusToProvider } from "@/lib/utils/booking-status";
 import { checkActiveHoldOverlap, canOverrideDoubleBooking } from "@/lib/bookings/conflict-check";
@@ -35,6 +37,7 @@ import {
 import { computeCatalogPackageServiceDiscount } from "@beautonomi/utils";
 import { validateProviderCatalogPackageMatch } from "@/lib/bookings/validate-provider-package-booking";
 import { resolveMembershipDiscount } from "@/lib/provider/salon-membership-entitlement";
+import { resolveCheckoutPromotionDiscount } from "@/lib/pricing/checkout-promotion-discount";
 import { shouldRejectProductOnlyProviderBooking } from "@/lib/provider-booking/booking-request-policy";
 import {
   computeProviderCreateTaxableAmount,
@@ -1273,7 +1276,11 @@ async function handleCreateProviderBooking(request: NextRequest) {
       discountCode: typeof body.discount_code === "string" ? body.discount_code : null,
     });
     let serverDiscountAmount = normalizedDiscounts.discountAmount;
-    const serverPromotionDiscountAmount = normalizedDiscounts.promotionDiscountAmount;
+    // §Provider-promo (audit 2026-06): the code-based promotion discount is
+    // re-resolved server-side below (never trusted from the client). The manual
+    // provider discount (`discount_amount` + reason) remains a staff-authorized
+    // input.
+    let serverPromotionDiscountAmount = 0;
     // Catalog package: validate lines against `service_package_items`, then discount SERVICES-only
     // subtotal (matches public `validate-booking.ts`).
     const bookingLocationTypeForPkg = body.location_type || "at_salon";
@@ -1325,6 +1332,26 @@ async function handleCreateProviderBooking(request: NextRequest) {
     // when their stylist created the booking from the provider app.
     const bookingLocationType = body.location_type || "at_salon";
     const serverTravelFee = bookingLocationType === "at_home" ? Number(body.travel_fee) || 0 : 0;
+
+    // §Provider-promo (audit 2026-06): re-resolve the promotion code on the server
+    // using the same logic as public checkout, so staff (or a modified client)
+    // cannot persist an arbitrary `promotion_discount_amount`.
+    const providerPromoCode = (typeof body.discount_code === "string" ? body.discount_code : "")
+      .trim()
+      .toUpperCase();
+    if (providerPromoCode) {
+      const prePromoBase = Math.max(0, serverSubtotal - serverDiscountAmount) + serverTravelFee;
+      const promoResolved = await resolveCheckoutPromotionDiscount(supabaseAdmin, {
+        promoCode: providerPromoCode,
+        providerId,
+        promoTenantId: tenantId ?? "",
+        prePromoSubtotal: prePromoBase,
+        locationType: bookingLocationType === "at_home" ? "at_home" : "at_salon",
+        locationId,
+      });
+      serverPromotionDiscountAmount = promoResolved.promotionDiscountAmount;
+    }
+
     const subtotalForMembership = Math.max(
       0,
       serverSubtotal + serverTravelFee - serverDiscountAmount
@@ -2283,7 +2310,15 @@ async function handleCreateProviderBooking(request: NextRequest) {
 
     const paymentLinkWarnings: string[] = [];
     if (body.payment_method === "payment_link") {
-      if (!shouldNotify) {
+      const paymentLinkEnabled = await isFeatureEnabledServer(
+        FEATURE_FLAG_KEYS.PAYMENT_LINK,
+        (booking as { tenant_id?: string | null }).tenant_id ?? tenantId,
+      );
+      if (!paymentLinkEnabled) {
+        paymentLinkWarnings.push(
+          "Payment link is disabled, so no link was sent. Collect payment another way."
+        );
+      } else if (!shouldNotify) {
         paymentLinkWarnings.push(
           "Payment link was not sent because customer notifications are disabled for this booking."
         );

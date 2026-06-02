@@ -8,6 +8,8 @@ import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-
 import { bookingTenantMismatchResponse } from "@/lib/tenant/provider-matches-host";
 import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
 import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
+import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
+import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
 
 /**
  * POST /api/provider/bookings/[id]/send-payment-link
@@ -91,6 +93,15 @@ export async function POST(
       (booking as { tenant_id?: string | null }).tenant_id,
     );
     if (bookingMarketMismatch) return bookingMarketMismatch;
+
+    // Feature gate: the booking payment-link method must be enabled for this tenant.
+    const paymentLinkEnabled = await isFeatureEnabledServer(
+      FEATURE_FLAG_KEYS.PAYMENT_LINK,
+      (booking as { tenant_id?: string | null }).tenant_id ?? tenantId,
+    );
+    if (!paymentLinkEnabled) {
+      return errorResponse("Payment link is disabled", "FEATURE_DISABLED", 403);
+    }
 
     const { format: formatMoney } = await getTenantMoneyFormatter(
       (booking as { tenant_id?: string | null }).tenant_id ?? tenantId,

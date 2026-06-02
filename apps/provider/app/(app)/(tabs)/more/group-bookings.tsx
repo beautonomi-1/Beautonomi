@@ -417,6 +417,7 @@ export default function GroupBookingsScreen() {
   const { provider, selectedLocationId } = useProvider();
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
   const yocoEnabled = useFeatureFlag("payment_yoco");
+  const paymentLinkEnabled = useFeatureFlag("payment_link");
   const providerTz = provider?.timezone ?? null;
   const locations = provider?.locations ?? [];
 
@@ -664,7 +665,8 @@ export default function GroupBookingsScreen() {
   useEffect(() => {
     if (createPaymentMethod === "yoco_pos" && !yocoEnabled) setCreatePaymentMethod("pay_later");
     if (createPaymentMethod === "paystack_terminal" && !paystackTerminalEnabled) setCreatePaymentMethod("pay_later");
-  }, [yocoEnabled, paystackTerminalEnabled, createPaymentMethod]);
+    if (createPaymentMethod === "payment_link" && !paymentLinkEnabled) setCreatePaymentMethod("pay_later");
+  }, [yocoEnabled, paystackTerminalEnabled, paymentLinkEnabled, createPaymentMethod]);
 
   useEffect(() => {
     setExtraGroups([]);
@@ -5024,7 +5026,9 @@ export default function GroupBookingsScreen() {
                   yocoEnabled
                     ? { value: "yoco_pos", label: "Yoco (recorded)", icon: "phone-portrait-outline" as const }
                     : null,
-                  { value: "payment_link", label: "Payment link", icon: "send-outline" as const },
+                  paymentLinkEnabled
+                    ? { value: "payment_link", label: "Payment link", icon: "send-outline" as const }
+                    : null,
                   paystackTerminalEnabled
                     ? { value: "paystack_terminal", label: "Paystack Terminal", icon: "qr-code-outline" as const }
                     : null,

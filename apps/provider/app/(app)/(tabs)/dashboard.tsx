@@ -670,6 +670,35 @@ export default function DashboardScreen() {
     <ScreenContainer refreshing={refreshing} onRefresh={handleRefresh}>
       <ScreenHeader title="Dashboard" subtitle={`${m?.appointments_today ?? 0} appointments today`} />
 
+      {provider?.status === "pending_approval" && (
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "flex-start",
+            gap: 10,
+            backgroundColor: "#fffbeb",
+            borderColor: "#fde68a",
+            borderWidth: 1,
+            borderRadius: 16,
+            padding: 14,
+            marginBottom: 16,
+          }}
+          accessibilityRole="text"
+          accessibilityLabel="Your account is under review"
+        >
+          <Ionicons name="hourglass-outline" size={20} color="#d97706" style={{ marginTop: 1 }} />
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 14, fontWeight: "700", color: "#92400e" }}>
+              Your account is under review
+            </Text>
+            <Text style={{ marginTop: 2, fontSize: 13, lineHeight: 18, color: "#b45309" }}>
+              You can explore your dashboard and finish setup now. We&apos;ll notify you once your
+              profile is approved and visible to customers.
+            </Text>
+          </View>
+        </View>
+      )}
+
       <DashboardSetupCard />
 
       {bookingEligibility &&

@@ -17,7 +17,6 @@ import {
   formatBusinessDayYYYYMMDD,
   isPendingOrQueueBooking,
   isTerminalScheduleBooking,
-  resolveBookingDisplayTimezone,
 } from "@beautonomi/utils";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";

@@ -66,7 +66,6 @@ export function PaystackTerminalCollectDialog({
   const [code, setCode] = useState<string | null>(null);
   const [paymentLink, setPaymentLink] = useState<string | null>(null);
   const [qrUrl, setQrUrl] = useState<string | null>(null);
-  const [customerReference, setCustomerReference] = useState<string | null>(reference ?? null);
   const [terminals, setTerminals] = useState<
     Array<{ id: string; display_name?: string | null; name?: string | null; terminal_code: string }>
   >([]);
@@ -95,7 +94,6 @@ export function PaystackTerminalCollectDialog({
         setCode(terminal.terminal_code);
         setPaymentLink(terminal.payment_link ?? terminal.terminal_url ?? null);
         setQrUrl(terminal.qr_url ?? null);
-        setCustomerReference(response.data?.customerReference ?? reference ?? null);
         setTerminals(response.data?.terminals ?? []);
         const resolvedId =
           response.data?.terminals?.find((t) => t.terminal_code === terminal.terminal_code)?.id ?? null;
@@ -180,26 +178,6 @@ export function PaystackTerminalCollectDialog({
                 </div>
               )}
             </div>
-            {customerReference && (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm">
-                <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">
-                  Tell the customer to enter reference
-                </p>
-                <p className="mt-1 font-mono text-base font-semibold text-amber-950">
-                  {customerReference}
-                </p>
-                <button
-                  type="button"
-                  className="mt-2 text-xs font-medium text-amber-800 underline"
-                  onClick={async () => {
-                    await navigator.clipboard.writeText(customerReference);
-                    toast.success("Reference copied");
-                  }}
-                >
-                  Copy reference
-                </button>
-              </div>
-            )}
             <div className="flex flex-wrap gap-2">
               {paymentLink && (
                 <Button

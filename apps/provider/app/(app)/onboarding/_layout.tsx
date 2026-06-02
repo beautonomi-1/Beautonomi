@@ -10,6 +10,7 @@ export default function OnboardingStackLayout() {
     >
       <Stack.Screen name="index" />
       <Stack.Screen name="wizard" options={{ gestureEnabled: false }} />
+      <Stack.Screen name="verify-identity" options={{ gestureEnabled: false }} />
     </Stack>
   );
 }

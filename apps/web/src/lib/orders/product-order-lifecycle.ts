@@ -91,7 +91,25 @@ export async function creditWalletForProductOrderIfNeeded(
     provider_id: order.provider_id ?? null,
   });
 
-  await (supabase.rpc as any)("wallet_credit_admin", {
+  // §Wallet-reversal (audit 2026-06): this helper is reachable from both the
+  // charge.failed webhook and the stale-order sweep, so two callers could both
+  // see wallet_amount > 0 and double-credit. ATOMICALLY claim the reversal by
+  // zeroing wallet_amount first (only while it is still > 0); only the winner
+  // credits. Restore the amount if the credit fails so a later retry can reverse.
+  const { data: claimed, error: claimError } = await (supabase.from("product_orders") as any)
+    .update({ wallet_amount: "0.00" })
+    .eq("id", order.id)
+    .gt("wallet_amount", 0)
+    .select("id")
+    .maybeSingle();
+
+  if (claimError) {
+    console.error("[product-order] Failed to claim wallet reversal:", claimError);
+    return;
+  }
+  if (!claimed) return; // Already reversed by another path.
+
+  const { error: creditError } = await (supabase.rpc as any)("wallet_credit_admin", {
     p_user_id: order.customer_id,
     p_amount: w,
     p_currency: order.currency || "ZAR",
@@ -99,11 +117,18 @@ export async function creditWalletForProductOrderIfNeeded(
     p_reference_id: order.id,
     p_reference_type: referenceType,
     p_tenant_id: financeTenantId,
+    // One reversal per order regardless of which path (charge.failed vs stale
+    // sweep) triggers it. The atomic wallet_amount claim above already gates
+    // this; the key is a hard DB backstop.
+    p_idempotency_key: `product_order_wallet_reversal:${order.id}`,
   });
 
-  await (supabase.from("product_orders") as any)
-    .update({ wallet_amount: "0.00" })
-    .eq("id", order.id);
+  if (creditError) {
+    console.error("[product-order] Wallet reversal credit failed, restoring wallet_amount:", creditError);
+    await (supabase.from("product_orders") as any)
+      .update({ wallet_amount: w.toFixed(2) })
+      .eq("id", order.id);
+  }
 }
 
 /**
