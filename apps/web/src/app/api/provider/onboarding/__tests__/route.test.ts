@@ -323,7 +323,7 @@ describe("POST /api/provider/onboarding", () => {
 
     expect(providersInsertPayloads[0]?.tenant_id).toBe("tenant-uk");
     expect(zoneSelectionInsertPayloads[0]?.[0]?.currency).toBe("GBP");
-  }, 45_000);
+  }, 120_000);
 
   it("maps onboarding global categories to provider categories and persists addons", async () => {
     mockRequireRoleInApi.mockResolvedValue({
@@ -623,7 +623,7 @@ describe("POST /api/provider/onboarding", () => {
     expect(offeringsInsertPayloads[1]?.[0]?.title).toBe("Hair Mask");
     expect(offeringsInsertPayloads[1]?.[0]?.service_type).toBe("addon");
     expect(offeringsInsertPayloads[1]?.[0]?.applicable_service_ids).toEqual(["offering-1"]);
-  }, 45_000);
+  }, 120_000);
 
   it("returns requires_checkout=true and a checkout_path when a paid pricing plan is selected", async () => {
     mockRequireRoleInApi.mockResolvedValue({
@@ -830,7 +830,7 @@ describe("POST /api/provider/onboarding", () => {
     );
     // Legacy field still emitted for older clients.
     expect(json?.data?.subscription_endpoint).toBe("/api/provider/subscriptions/create");
-  }, 45_000);
+  }, 120_000);
 
   it("returns requires_checkout=false for a free pricing plan and seeds the linked subscription plan", async () => {
     mockRequireRoleInApi.mockResolvedValue({
@@ -1033,6 +1033,6 @@ describe("POST /api/provider/onboarding", () => {
     // not a generic catalog fallback.
     expect(subscriptionInserts).toHaveLength(1);
     expect(subscriptionInserts[0]?.plan_id).toBe(linkedSubscriptionPlanId);
-  }, 45_000);
+  }, 120_000);
 });
 

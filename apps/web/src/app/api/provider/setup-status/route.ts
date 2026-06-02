@@ -49,8 +49,6 @@ export const NATIVE_ROUTE_BY_ID: Record<string, string> = {
   availability: "/(app)/(tabs)/more/settings/hours",
   "travel-fees": "/(app)/(tabs)/more/settings/travel-fees",
   payment: "/(app)/(tabs)/more/settings/yoco-devices",
-  "paystack-terminal": "/(app)/(tabs)/more/paystack-terminal",
-  "paystack-terminal-assets": "/(app)/(tabs)/more/paystack-terminal",
   "payment-methods": "/(app)/(tabs)/more/settings/payments",
   payout: "/(app)/(tabs)/more/settings/payout-accounts",
   gallery: "/(app)/(tabs)/more/gallery",
@@ -208,8 +206,6 @@ export async function GET(request: NextRequest) {
       travelFeeSettingsResult,
       zoneSelectionsResult,
       yocoResult,
-      paystackTerminalResult,
-      paystackTerminalReadyResult,
       bankAccountResult,
     ] = await Promise.all([
       supabaseAdmin
@@ -239,19 +235,6 @@ export async function GET(request: NextRequest) {
         .eq("provider_id", providerId)
         .eq("is_enabled", true),
       supabaseAdmin
-        .from("provider_paystack_virtual_terminals")
-        .select("id", { count: "exact", head: true })
-        .eq("provider_id", providerId)
-        .eq("active", true)
-        .is("deleted_at", null),
-      supabaseAdmin
-        .from("provider_paystack_virtual_terminals")
-        .select("id", { count: "exact", head: true })
-        .eq("provider_id", providerId)
-        .eq("active", true)
-        .eq("asset_status", "ready")
-        .is("deleted_at", null),
-      supabaseAdmin
         .from("provider_payout_accounts")
         .select("id", { count: "exact", head: true })
         .eq("provider_id", providerId)
@@ -265,8 +248,6 @@ export async function GET(request: NextRequest) {
       (travelFeeSettingsResult.count ?? 0) > 0 ||
       (zoneSelectionsResult.count ?? 0) > 0;
     const hasPaymentSetup = (yocoResult.count ?? 0) > 0;
-    const hasPaystackTerminalSetup = (paystackTerminalResult.count ?? 0) > 0;
-    const hasPaystackTerminalAssetsReady = (paystackTerminalReadyResult.count ?? 0) > 0;
     const hasPayoutSetup = (bankAccountResult.count ?? 0) > 0;
     const platformSalesDefaults = await getPlatformSalesDefaults();
     const effectiveGiftCardsEnabled = platformSalesDefaults.gift_cards_enabled ?? false;
@@ -427,28 +408,10 @@ export async function GET(request: NextRequest) {
             },
           ]
         : []),
-      ...(paystackTerminalEnabled
-        ? [
-            {
-              id: "paystack-terminal",
-              title: "Paystack Terminal",
-              description:
-                "Optional: request a Paystack Terminal. Ops imports the Paystack-generated code and link before in-person collection is ready.",
-              completed: hasPaystackTerminalSetup,
-              required: false,
-              link: "/provider/settings/sales/paystack-terminal",
-            },
-            {
-              id: "paystack-terminal-assets",
-              title: "Paystack Terminal QR/Poster",
-              description:
-                "Optional: request Beautonomi-branded QR and counter poster assets for your terminal",
-              completed: hasPaystackTerminalAssetsReady,
-              required: false,
-              link: "/provider/settings/sales/paystack-terminal",
-            },
-          ]
-        : []),
+      // §provider-launch (2026-06): Paystack Terminal is intentionally NOT part
+      // of onboarding (it is a feature-gated, ops-assisted add-on). It remains
+      // available under the feature flag in Settings → Sales → Paystack
+      // Terminal; it must not appear in the onboarding hub / get-started.
       {
         id: "payment-methods",
         title: "Payment Methods",

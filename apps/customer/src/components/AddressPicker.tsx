@@ -36,7 +36,7 @@ import { ensureForegroundLocationPermission } from "@/lib/native-permissions";
 import { useResponsive } from "@/hooks/useResponsive";
 import { RADIUS_INPUT, RADIUS_CARD } from "@/constants/layout";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
-import { AddressMapPinModal } from "./AddressMapPinModal";
+import { AddressMapPinModal, type ResolvedPinAddress } from "./AddressMapPinModal";
 import { useTranslation } from "@beautonomi/i18n";
 
 export interface AddressPickerSelection {
@@ -79,6 +79,19 @@ export function AddressPicker({
   const { contentPadding } = useResponsive();
   const { bundle } = useConfigBundle();
   const defaultCountryLabel = bundle?.meta?.tenant_region?.name?.trim() || "—";
+  // Scope address search to the tenant's active market (ISO 3166-1 alpha-2),
+  // mirroring the provider location step. Falls back to undefined (no country
+  // filter, proximity-biased) when the bundle hasn't resolved a market yet.
+  const marketCountryIso = (() => {
+    const raw = (
+      bundle?.meta?.active_market_country ||
+      bundle?.meta?.tenant_region?.code ||
+      ""
+    )
+      .trim()
+      .toUpperCase();
+    return /^[A-Z]{2}$/.test(raw) ? raw : undefined;
+  })();
   const { user } = useAuth();
   const {
     addresses,
@@ -106,31 +119,34 @@ export function AddressPicker({
         const proximity = lastKnownCoordsRef.current
           ? { longitude: lastKnownCoordsRef.current.longitude, latitude: lastKnownCoordsRef.current.latitude }
           : undefined;
-        searchAddress(initialQuery.trim(), { proximity }).then((results) => {
+        searchAddress(initialQuery.trim(), { proximity, country: marketCountryIso }).then((results) => {
           setSuggestions(results);
           setSearching(false);
         });
       }
     }
-  }, [visible, initialQuery]);
+  }, [visible, initialQuery, marketCountryIso]);
 
-  const handleSearch = useCallback((text: string) => {
-    setQuery(text);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (text.length < 2) {
-      setSuggestions([]);
-      return;
-    }
-    debounceRef.current = setTimeout(async () => {
-      setSearching(true);
-      const proximity = lastKnownCoordsRef.current
-        ? { longitude: lastKnownCoordsRef.current.longitude, latitude: lastKnownCoordsRef.current.latitude }
-        : undefined;
-      const results = await searchAddress(text, { proximity });
-      setSuggestions(results);
-      setSearching(false);
-    }, 400);
-  }, []);
+  const handleSearch = useCallback(
+    (text: string) => {
+      setQuery(text);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (text.length < 2) {
+        setSuggestions([]);
+        return;
+      }
+      debounceRef.current = setTimeout(async () => {
+        setSearching(true);
+        const proximity = lastKnownCoordsRef.current
+          ? { longitude: lastKnownCoordsRef.current.longitude, latitude: lastKnownCoordsRef.current.latitude }
+          : undefined;
+        const results = await searchAddress(text, { proximity, country: marketCountryIso });
+        setSuggestions(results);
+        setSearching(false);
+      }, 300);
+    },
+    [marketCountryIso],
+  );
 
   const parseStructuredFromSuggestion = useCallback(
     (s: GeocodeSuggestion): AddressPickerSelection["structured"] => {
@@ -206,28 +222,68 @@ export function AddressPicker({
   );
 
   const handleMapPinCoordinates = useCallback(
-    async (lat: number, lng: number) => {
+    async (lat: number, lng: number, resolved?: ResolvedPinAddress) => {
       lastKnownCoordsRef.current = { latitude: lat, longitude: lng };
-      try {
-        const feature = await reverseGeocode(lat, lng);
-        if (!feature?.place_name) {
-          Alert.alert(
-            t("customer.mobile.components.addressPicker.resolveFailedTitle"),
-            t("customer.mobile.components.addressPicker.mapPinResolveBody"),
-          );
-          return;
-        }
-        haptic.light();
-        Keyboard.dismiss();
-        applyGeocodeFeature(feature);
-      } catch {
-        Alert.alert(
-          t("customer.mobile.components.addressPicker.resolveFailedTitle"),
-          t("customer.mobile.components.addressPicker.resolveFailedBody"),
-        );
+      haptic.light();
+      Keyboard.dismiss();
+
+      const fallbackCountry = defaultCountryLabel !== "—" ? defaultCountryLabel : "";
+
+      // 1) Prefer the address the map modal already resolved via Mapbox v6 — the
+      //    same lookup that powered the live preview, with the best coverage.
+      const resolvedLine1 = resolved?.address_line1?.trim();
+      const resolvedName = resolved?.place_name?.trim();
+      if (resolvedLine1 || resolvedName) {
+        const line1 = resolvedLine1 || resolvedName || "Pinned location";
+        onSelect({
+          label: line1,
+          latitude: lat,
+          longitude: lng,
+          displayName: resolvedName || line1,
+          structured: {
+            address_line1: line1,
+            city: resolved?.city?.trim() || "",
+            state: resolved?.state?.trim() || undefined,
+            postal_code: resolved?.postal_code?.trim() || undefined,
+            country: resolved?.country?.trim() || fallbackCountry,
+          },
+        });
+        onClose();
+        return;
       }
+
+      // 2) Fall back to the server reverse-geocode (v5) used elsewhere.
+      let feature: GeocodeSuggestion | null = null;
+      try {
+        feature = await reverseGeocode(lat, lng);
+      } catch {
+        feature = null;
+      }
+      if (feature?.place_name) {
+        applyGeocodeFeature(feature);
+        return;
+      }
+
+      // 3) Provider-parity soft-fail: a dropped pin always gives valid
+      //    coordinates, which is exactly what house-call bookings need. Rather
+      //    than dead-ending with "could not resolve address" (the old behavior),
+      //    accept the coordinates with a "Pinned location" starter so the
+      //    caller's editable address form (with the map preview) appears and the
+      //    user can fill in the street/suburb.
+      onSelect({
+        label: "Pinned location",
+        latitude: lat,
+        longitude: lng,
+        displayName: "Pinned location",
+        structured: {
+          address_line1: "Pinned location",
+          city: "",
+          country: fallbackCountry,
+        },
+      });
+      onClose();
     },
-    [applyGeocodeFeature, t],
+    [applyGeocodeFeature, onSelect, onClose, defaultCountryLabel],
   );
 
   const resolveTypedAddress = useCallback(async () => {
@@ -238,7 +294,7 @@ export function AddressPicker({
       : undefined;
     setSearching(true);
     try {
-      const results = await searchAddress(q, { proximity });
+      const results = await searchAddress(q, { proximity, country: marketCountryIso });
       if (results.length > 0) {
         handleSuggestionSelect(results[0]);
         return;
@@ -250,7 +306,7 @@ export function AddressPicker({
     } finally {
       setSearching(false);
     }
-  }, [query, handleSuggestionSelect, t]);
+  }, [query, handleSuggestionSelect, marketCountryIso, t]);
 
   const handleUseCurrentLocation = useCallback(async () => {
     if (gettingLocation) return;
@@ -609,7 +665,7 @@ export function AddressPicker({
       <AddressMapPinModal
         visible={mapPinVisible}
         onClose={() => setMapPinVisible(false)}
-        onPickCoordinates={(lat, lng) => void handleMapPinCoordinates(lat, lng)}
+        onPickCoordinates={(lat, lng, resolved) => void handleMapPinCoordinates(lat, lng, resolved)}
         initialCoordinate={lastKnownCoordsRef.current}
       />
     </Modal>

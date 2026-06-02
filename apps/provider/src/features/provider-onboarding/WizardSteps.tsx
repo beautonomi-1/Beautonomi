@@ -1885,6 +1885,31 @@ function Step10Categories() {
     );
   }
 
+  const providerCategories = formData.provider_categories || [];
+
+  // Keep a provider-owned menu category for each selected global category so the
+  // provider can rename them and assign services in the next step. We only ADD
+  // (never auto-remove) so manual edits / custom categories are preserved.
+  useEffect(() => {
+    const selectedIds = formData.global_category_ids || [];
+    if (selectedIds.length === 0 || cats.length === 0) return;
+    const existing = formData.provider_categories || [];
+    const mappedGlobalIds = new Set(
+      existing.map((c) => c.global_category_id).filter(Boolean) as string[],
+    );
+    const additions = selectedIds
+      .filter((gid) => !mappedGlobalIds.has(gid))
+      .map((gid) => {
+        const g = cats.find((c) => c.id === gid);
+        return g ? { name: g.name, global_category_id: gid } : null;
+      })
+      .filter((x): x is { name: string; global_category_id: string } => Boolean(x));
+    if (additions.length > 0) {
+      updateFormData({ provider_categories: [...existing, ...additions] });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.global_category_ids, cats]);
+
   const toggle = (id: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const cur = formData.global_category_ids || [];
@@ -1892,7 +1917,23 @@ function Step10Categories() {
     else updateFormData({ global_category_ids: [...cur, id] });
   };
 
+  const renameCategory = (index: number, name: string) => {
+    const next = providerCategories.map((c, i) => (i === index ? { ...c, name } : c));
+    updateFormData({ provider_categories: next });
+  };
+
+  const removeCategory = (index: number) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    updateFormData({ provider_categories: providerCategories.filter((_, i) => i !== index) });
+  };
+
+  const addCustomCategory = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    updateFormData({ provider_categories: [...providerCategories, { name: "" }] });
+  };
+
   const selectedCount = (formData.global_category_ids || []).length;
+  const globalNameById = new Map(cats.map((c) => [c.id, c.name]));
 
   return (
     <View style={twStyle("gap-5")}>
@@ -1969,6 +2010,60 @@ function Step10Categories() {
           );
         }}
       />
+
+      {/* ── Your menu categories ───────────────────────────────────────────── */}
+      {selectedCount > 0 ? (
+        <View style={twStyle("gap-3 rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm")}>
+          <View>
+            <Text style={twStyle("text-[16px] font-semibold text-slate-900")}>Your menu categories</Text>
+            <Text style={twStyle("mt-1 text-[13px] leading-relaxed text-slate-500")}>
+              These group your services on your booking page. Rename them, add your own, or remove
+              any you don&apos;t need — you&apos;ll assign each service to one next.
+            </Text>
+          </View>
+
+          {providerCategories.map((cat, index) => (
+            <View key={`pcat-${index}`} style={twStyle("flex-row items-center gap-2")}>
+              <View style={twStyle("flex-1")}>
+                <TextInput
+                  value={cat.name}
+                  onChangeText={(t) => renameCategory(index, t)}
+                  placeholder="Category name"
+                  placeholderTextColor="#9ca3af"
+                  style={twStyle(
+                    "rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[15px] text-slate-900",
+                  )}
+                />
+                {cat.global_category_id ? (
+                  <Text style={twStyle("mt-1 text-[11px] text-slate-400")}>
+                    Listed under “{globalNameById.get(cat.global_category_id) || "marketplace"}” for discovery
+                  </Text>
+                ) : null}
+              </View>
+              <TouchableOpacity
+                onPress={() => removeCategory(index)}
+                style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-rose-50")}
+                accessibilityRole="button"
+                accessibilityLabel="Remove category"
+              >
+                <Ionicons name="trash-outline" size={18} color="#e11d48" />
+              </TouchableOpacity>
+            </View>
+          ))}
+
+          <TouchableOpacity
+            onPress={addCustomCategory}
+            style={twStyle(
+              "flex-row items-center justify-center gap-2 rounded-xl border border-dashed border-primary/40 py-3",
+            )}
+            accessibilityRole="button"
+            accessibilityLabel="Add a custom category"
+          >
+            <Ionicons name="add-circle-outline" size={20} color={Colors.primary} />
+            <Text style={twStyle("text-[14px] font-semibold text-primary")}>Add a custom category</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -1997,9 +2092,13 @@ const TAX_RATE_OPTIONS: ServiceTypeOption[] = [
 function Step11Services() {
   const { formData, updateFormData } = useOnboardingWizard();
   const tenantCurrency = getTenantDefaultCurrency();
-  const [allCats, setAllCats] = useState<Cat[]>([]);
-  const [loadingCats, setLoadingCats] = useState(true);
-  const [categoryId, setCategoryId] = useState("");
+  // §provider-launch (2026-06): services are assigned to the provider's OWN menu
+  // categories (created in the previous step), with inline create-new — matching
+  // the live catalog. The chosen category's optional global mapping still drives
+  // marketplace discovery via `category_id`.
+  const [categoryName, setCategoryName] = useState("");
+  const [showNewCategory, setShowNewCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [supportsAtSalon, setSupportsAtSalon] = useState(formData.business_type !== "mobile");
@@ -2029,22 +2128,29 @@ function Step11Services() {
     () => formData.global_category_ids || [],
     [formData.global_category_ids],
   );
-  const selectedCategories = allCats.filter((cat) => selectedCategoryIds.includes(cat.id));
-  const categoryNameById = new Map(selectedCategories.map((cat) => [cat.id, cat.name]));
+  const providerCategories = useMemo(
+    () => formData.provider_categories || [],
+    [formData.provider_categories],
+  );
 
+  // Keep a valid provider category selected as the list changes.
   useEffect(() => {
-    (async () => {
-      const res = await api.get<Cat[]>("/api/public/categories/global?all=true");
-      setAllCats(Array.isArray(res.data) ? res.data : []);
-      setLoadingCats(false);
-    })();
-  }, []);
+    const names = providerCategories.map((c) => c.name).filter((n) => n.trim().length > 0);
+    if (categoryName && names.includes(categoryName)) return;
+    setCategoryName(names.length > 0 ? names[0] : "");
+  }, [categoryName, providerCategories]);
 
-  useEffect(() => {
-    if (categoryId && selectedCategoryIds.includes(categoryId)) return;
-    if (selectedCategoryIds.length > 0) setCategoryId(selectedCategoryIds[0]);
-    else setCategoryId("");
-  }, [categoryId, selectedCategoryIds]);
+  const addNewCategoryInline = () => {
+    const name = newCategoryName.trim();
+    if (!name) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (!providerCategories.some((c) => c.name.trim().toLowerCase() === name.toLowerCase())) {
+      updateFormData({ provider_categories: [...providerCategories, { name }] });
+    }
+    setCategoryName(name);
+    setNewCategoryName("");
+    setShowNewCategory(false);
+  };
 
   useEffect(() => {
     setSupportsAtSalon(formData.business_type !== "mobile");
@@ -2081,11 +2187,11 @@ function Step11Services() {
   };
 
   const add = () => {
-    if (!selectedCategoryIds.length) {
-      Alert.alert("Service", "Select at least one category in the previous step first.");
+    if (!providerCategories.some((c) => c.name.trim().length > 0)) {
+      Alert.alert("Service", "Add a menu category in the previous step first.");
       return;
     }
-    if (!categoryId) {
+    if (!categoryName.trim()) {
       Alert.alert("Service", "Select a category to continue.");
       return;
     }
@@ -2110,9 +2216,17 @@ function Step11Services() {
     const parsedAdj = parseFloat(atHomePriceAdj);
     const parsedTax = parseFloat(taxRate);
     const parsedExtraDur = parseInt(extraTimeDuration, 10);
+    // Derive the global category for marketplace discovery from the chosen
+    // provider category's mapping (falling back to the first selected global).
+    const chosenProviderCategory = providerCategories.find(
+      (c) => c.name.trim() === categoryName.trim(),
+    );
+    const derivedGlobalCategoryId =
+      chosenProviderCategory?.global_category_id || selectedCategoryIds[0] || undefined;
     const s: OnboardingService = {
       title: title.trim(),
-      category_id: categoryId,
+      provider_category_name: categoryName.trim(),
+      category_id: derivedGlobalCategoryId,
       description: description.trim() || undefined,
       duration_minutes: primaryPricing.duration,
       price: primaryPricing.price,
@@ -2204,7 +2318,7 @@ function Step11Services() {
           <View style={twStyle("flex-1 pr-2")}>
             <Text style={twStyle("text-[17px] font-semibold text-slate-900")}>{s.title}</Text>
             <Text style={twStyle("mt-1 text-[13px] font-medium text-slate-500")}>
-              {s.category_id ? categoryNameById.get(s.category_id) || "Category" : "No category"}
+              {s.provider_category_name?.trim() || "No category"}
             </Text>
             <Text style={twStyle("mt-0.5 text-[13px] text-slate-400")}>
               {s.duration_minutes} min · {s.currency || tenantCurrency} {s.price}
@@ -2229,39 +2343,49 @@ function Step11Services() {
         </View>
       ))}
 
-      {loadingCats ? (
-        <View style={twStyle("py-8 items-center")}>
-          <ActivityIndicator color="#0f172a" size="small" />
-        </View>
-      ) : null}
-
       <View
         style={twStyle("rounded-[1.5rem] border border-slate-200 bg-white p-5 gap-4 shadow-sm")}
       >
         <Text style={twStyle("text-[17px] font-semibold text-slate-900")}>Add a service</Text>
         <Text style={twStyle(labelCls)}>Category</Text>
-        {selectedCategories.length > 0 ? (
+        {providerCategories.some((c) => c.name.trim().length > 0) ? (
           <View style={twStyle("flex-row flex-wrap gap-2")}>
-            {selectedCategories.map((cat) => {
-              const selected = categoryId === cat.id;
-              return (
-                <TouchableOpacity
-                  key={cat.id}
-                  onPress={() => setCategoryId(cat.id)}
-                  style={twStyle(
-                    `rounded-full border px-4 py-2 transition-all duration-300 ${selected ? "border-primary bg-primary shadow-sm" : "border-slate-200 bg-slate-50"}`
-                  )}
-                >
-                  <Text
+            {providerCategories
+              .filter((c) => c.name.trim().length > 0)
+              .map((cat) => {
+                const selected = categoryName.trim() === cat.name.trim();
+                return (
+                  <TouchableOpacity
+                    key={`svc-cat-${cat.name}`}
+                    onPress={() => setCategoryName(cat.name)}
                     style={twStyle(
-                      `text-[14px] font-medium ${selected ? "text-white" : "text-slate-700"}`
+                      `rounded-full border px-4 py-2 transition-all duration-300 ${selected ? "border-primary bg-primary shadow-sm" : "border-slate-200 bg-slate-50"}`
                     )}
                   >
-                    {cat.name}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
+                    <Text
+                      style={twStyle(
+                        `text-[14px] font-medium ${selected ? "text-white" : "text-slate-700"}`
+                      )}
+                    >
+                      {cat.name}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            {showNewCategory ? null : (
+              <TouchableOpacity
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setShowNewCategory(true);
+                }}
+                style={twStyle("flex-row items-center gap-1 rounded-full border border-dashed border-primary/40 px-4 py-2")}
+                accessibilityRole="button"
+                accessibilityLabel="Create a new category"
+              >
+                <Ionicons name="add" size={16} color={Colors.primary} />
+                <Text style={twStyle("text-[14px] font-semibold text-primary")}>New category</Text>
+              </TouchableOpacity>
+            )}
           </View>
         ) : (
           <View
@@ -2271,10 +2395,42 @@ function Step11Services() {
           >
             <Ionicons name="alert-circle-outline" size={20} color="#92400e" />
             <Text style={twStyle("flex-1 text-[14px] text-amber-900 leading-relaxed")}>
-              Select categories in the previous step first.
+              Add a menu category in the previous step first.
             </Text>
           </View>
         )}
+        {showNewCategory ? (
+          <View style={twStyle("flex-row items-center gap-2")}>
+            <TextInput
+              value={newCategoryName}
+              onChangeText={setNewCategoryName}
+              placeholder="New category name"
+              placeholderTextColor="#9ca3af"
+              autoFocus
+              onSubmitEditing={addNewCategoryInline}
+              style={twStyle("flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[15px] text-slate-900")}
+            />
+            <TouchableOpacity
+              onPress={addNewCategoryInline}
+              style={twStyle("rounded-xl bg-primary px-4 py-3")}
+              accessibilityRole="button"
+              accessibilityLabel="Save new category"
+            >
+              <Text style={twStyle("text-[14px] font-semibold text-white")}>Add</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => {
+                setShowNewCategory(false);
+                setNewCategoryName("");
+              }}
+              style={twStyle("h-11 w-11 items-center justify-center rounded-xl bg-slate-100")}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel new category"
+            >
+              <Ionicons name="close" size={18} color="#64748b" />
+            </TouchableOpacity>
+          </View>
+        ) : null}
         <TextInput
           value={title}
           onChangeText={setTitle}
@@ -3468,6 +3624,264 @@ function Step14Plan() {
   );
 }
 
+// ─── Step: Travel fees (mobile / both) ──────────────────────────────────────
+
+interface OnboardingPlatformTravelLimits {
+  provider_min_rate_per_km: number;
+  provider_max_rate_per_km: number;
+  provider_min_minimum_fee: number;
+  provider_max_minimum_fee: number;
+  allow_provider_customization: boolean;
+  allow_provider_tiered: boolean;
+  default_rate_per_km?: number;
+  default_minimum_fee?: number;
+  default_free_within_km?: number;
+}
+
+function StepTravelFees() {
+  const { formData, updateFormData } = useOnboardingWizard();
+  const tf = formData.travel_fees ?? { enabled: true, use_platform_default: true };
+  const currency = getTenantDefaultCurrency();
+
+  const [limits, setLimits] = useState<OnboardingPlatformTravelLimits | null>(null);
+
+  // Platform limits are nice-to-have; the endpoint requires a provider role, so
+  // a brand-new (still "customer") user mid-onboarding may get 403 — tolerate
+  // that and default to allowing customization (server re-validates on submit).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await api.get<OnboardingPlatformTravelLimits>(
+          "/api/provider/travel-fees/platform-limits",
+        );
+        if (!cancelled && res.data && !res.error) setLimits(res.data);
+      } catch {
+        /* ignore — defaults applied below */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const allowCustomization = limits ? limits.allow_provider_customization !== false : true;
+  const allowTiered = limits ? limits.allow_provider_tiered !== false : true;
+
+  const set = (patch: Partial<typeof tf>) => {
+    updateFormData({ travel_fees: { ...tf, ...patch } });
+  };
+
+  const enabled = tf.enabled !== false;
+  const usePlatformDefault = allowCustomization ? tf.use_platform_default !== false : true;
+  const pricingModel: "per_km" | "tiered" = tf.pricing_model === "tiered" ? "tiered" : "per_km";
+  const tiers = tf.tiers ?? [];
+
+  const numStr = (n: number | null | undefined) => (n != null ? String(n) : "");
+  const toNum = (s: string): number | null => {
+    const t = s.trim();
+    if (!t) return null;
+    const n = Number(t);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  return (
+    <View>
+      <View style={twStyle("mb-4 rounded-2xl border border-indigo-100 bg-indigo-50 p-4")}>
+        <Text style={twStyle("text-[15px] leading-relaxed text-indigo-900")}>
+          Set how you charge customers for travelling to at-home appointments. Keep the platform
+          default to start earning instantly — you can fine-tune this any time from Settings.
+        </Text>
+      </View>
+
+      {allowCustomization === false && (
+        <View style={twStyle("mb-4 rounded-2xl border border-amber-100 bg-amber-50 p-3")}>
+          <Text style={twStyle("text-sm text-amber-900")}>
+            Travel rates are set by your platform. You can turn travel fees on or off; per-km and
+            tier customization is disabled.
+          </Text>
+        </View>
+      )}
+
+      <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
+        <View style={twStyle("mb-3 flex-row items-center justify-between")}>
+          <View style={twStyle("flex-1 pr-3")}>
+            <Text style={twStyle("text-sm font-medium text-gray-900")}>Enable travel fees</Text>
+            <Text style={twStyle("text-xs text-gray-500")}>Charge for at-home service travel</Text>
+          </View>
+          <Switch
+            value={enabled}
+            onValueChange={(v) => set({ enabled: v })}
+            trackColor={{ false: "#d1d5db", true: "#818cf8" }}
+            thumbColor={enabled ? "#6366f1" : "#f4f4f5"}
+          />
+        </View>
+
+        {enabled && (
+          <>
+            <View style={twStyle("my-2 border-t border-gray-100")} />
+            <View style={twStyle("mb-1 flex-row items-center justify-between")}>
+              <View style={twStyle("flex-1 pr-3")}>
+                <Text style={twStyle("text-sm font-medium text-gray-900")}>Use platform defaults</Text>
+                <Text style={twStyle("text-xs text-gray-500")}>Use standard platform rates</Text>
+              </View>
+              <Switch
+                value={usePlatformDefault}
+                disabled={!allowCustomization}
+                onValueChange={(v) => {
+                  if (!allowCustomization) return;
+                  set({
+                    use_platform_default: v,
+                    // Seed a sensible pricing model when switching to custom.
+                    pricing_model: v ? tf.pricing_model : pricingModel,
+                  });
+                }}
+                trackColor={{ false: "#d1d5db", true: "#818cf8" }}
+                thumbColor={usePlatformDefault ? "#6366f1" : "#f4f4f5"}
+              />
+            </View>
+
+            {!usePlatformDefault && allowCustomization && (
+              <>
+                <View style={twStyle("my-2 border-t border-gray-100")} />
+                <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Pricing model</Text>
+                <View style={twStyle("mb-3 flex-row gap-3")}>
+                  <TouchableOpacity
+                    style={[
+                      twStyle("flex-1 rounded-xl border px-4 py-3"),
+                      pricingModel === "per_km"
+                        ? twStyle("border-indigo-500 bg-indigo-50")
+                        : twStyle("border-gray-200 bg-gray-50"),
+                    ]}
+                    onPress={() => set({ pricing_model: "per_km" })}
+                  >
+                    <Text style={twStyle("text-center text-sm font-medium text-gray-900")}>Per km</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      twStyle("flex-1 rounded-xl border px-4 py-3"),
+                      pricingModel === "tiered"
+                        ? twStyle("border-indigo-500 bg-indigo-50")
+                        : twStyle("border-gray-200 bg-gray-50"),
+                      !allowTiered ? twStyle("opacity-40") : undefined,
+                    ]}
+                    disabled={!allowTiered}
+                    onPress={() => {
+                      if (!allowTiered) return;
+                      set({ pricing_model: "tiered", tiers: tiers.length ? tiers : [{ max_km: 10, fee: 100 }] });
+                    }}
+                  >
+                    <Text style={twStyle("text-center text-sm font-medium text-gray-900")}>Tiers</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {pricingModel === "per_km" && (
+                  <>
+                    <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Free within (km)</Text>
+                    <TextInput
+                      style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+                      value={numStr(tf.free_within_km)}
+                      onChangeText={(t) => set({ free_within_km: toNum(t) })}
+                      placeholder="0 (charge from first km)"
+                      placeholderTextColor="#9ca3af"
+                      keyboardType="decimal-pad"
+                    />
+                    <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{`Rate per km (${currency})`}</Text>
+                    <TextInput
+                      style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+                      value={numStr(tf.rate_per_km)}
+                      onChangeText={(t) => set({ rate_per_km: toNum(t) })}
+                      placeholder="0.00"
+                      placeholderTextColor="#9ca3af"
+                      keyboardType="decimal-pad"
+                    />
+                    <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{`Minimum fee (${currency})`}</Text>
+                    <TextInput
+                      style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+                      value={numStr(tf.minimum_fee)}
+                      onChangeText={(t) => set({ minimum_fee: toNum(t) })}
+                      placeholder="0.00"
+                      placeholderTextColor="#9ca3af"
+                      keyboardType="decimal-pad"
+                    />
+                    <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{`Maximum fee (${currency}, optional)`}</Text>
+                    <TextInput
+                      style={twStyle("mb-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+                      value={numStr(tf.maximum_fee)}
+                      onChangeText={(t) => set({ maximum_fee: toNum(t) })}
+                      placeholder="No maximum"
+                      placeholderTextColor="#9ca3af"
+                      keyboardType="decimal-pad"
+                    />
+                  </>
+                )}
+
+                {pricingModel === "tiered" && (
+                  <View style={twStyle("mb-1")}>
+                    <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{`Distance tiers (up to X km → fee in ${currency})`}</Text>
+                    {tiers.map((tier, i) => (
+                      <View key={i} style={twStyle("mb-2 flex-row items-center gap-2")}>
+                        <TextInput
+                          style={[twStyle("flex-1 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900"), { minWidth: 60 }]}
+                          value={String(tier.max_km)}
+                          onChangeText={(t) => {
+                            const n = parseInt(t, 10) || 0;
+                            set({ tiers: tiers.map((x, j) => (j === i ? { ...x, max_km: n } : x)) });
+                          }}
+                          placeholder="km"
+                          placeholderTextColor="#9ca3af"
+                          keyboardType="number-pad"
+                        />
+                        <Text style={twStyle("text-sm text-gray-500")}>km =</Text>
+                        <TextInput
+                          style={[twStyle("flex-1 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900"), { minWidth: 60 }]}
+                          value={String(tier.fee)}
+                          onChangeText={(t) => {
+                            const n = parseFloat(t) || 0;
+                            set({ tiers: tiers.map((x, j) => (j === i ? { ...x, fee: n } : x)) });
+                          }}
+                          placeholder={currency}
+                          placeholderTextColor="#9ca3af"
+                          keyboardType="decimal-pad"
+                        />
+                        <TouchableOpacity
+                          onPress={() => set({ tiers: tiers.filter((_, j) => j !== i) })}
+                          style={twStyle("rounded-full bg-gray-200 p-2")}
+                          accessibilityLabel="Remove tier"
+                        >
+                          <Ionicons name="trash-outline" size={18} color="#6b7280" />
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                    <TouchableOpacity
+                      style={twStyle("flex-row items-center rounded-xl border border-dashed border-gray-300 py-2.5")}
+                      onPress={() =>
+                        set({
+                          tiers: [
+                            ...tiers,
+                            { max_km: tiers.length ? tiers[tiers.length - 1].max_km + 10 : 10, fee: 100 },
+                          ],
+                        })
+                      }
+                    >
+                      <Ionicons name="add-circle-outline" size={20} color="#6366f1" style={{ marginLeft: 12, marginRight: 6 }} />
+                      <Text style={twStyle("text-sm font-medium text-indigo-600")}>Add tier</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </>
+            )}
+          </>
+        )}
+      </View>
+
+      <Text style={twStyle("text-center text-xs text-gray-500")}>
+        You can skip this step — we&apos;ll apply the platform standard and you can adjust it later.
+      </Text>
+    </View>
+  );
+}
+
 // ─── Step body dispatcher ────────────────────────────────────────────────────
 
 export function OnboardingStepBody() {
@@ -3492,14 +3906,16 @@ export function OnboardingStepBody() {
     case 9:
       return <Step9Zones />;
     case 10:
-      return <Step10Categories />;
+      return <StepTravelFees />;
     case 11:
-      return <Step11Services />;
+      return <Step10Categories />;
     case 12:
-      return <Step12Hours />;
+      return <Step11Services />;
     case 13:
-      return <Step13Review />;
+      return <Step12Hours />;
     case 14:
+      return <Step13Review />;
+    case 15:
       return <Step14Plan />;
     default:
       return null;

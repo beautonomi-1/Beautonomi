@@ -14,6 +14,7 @@ export const INITIAL_FORM: OnboardingFormData = {
   social_media_links: {},
   services: [],
   global_category_ids: [],
+  provider_categories: [],
   address: {
     line1: "",
     city: "",
@@ -22,6 +23,10 @@ export const INITIAL_FORM: OnboardingFormData = {
     country: DEFAULT_COUNTRY_NAME,
   },
   accepts_custom_requests: true,
+  // §provider-launch (2026-06): travel fees collected in-wizard for mobile/both
+  // providers. Defaults to the platform standard so skipping keeps prior
+  // behavior (auto-seeded platform default on submit).
+  travel_fees: { enabled: true, use_platform_default: true },
   operating_hours: {
     monday: { open: "09:00", close: "18:00", closed: false },
     tuesday: { open: "09:00", close: "18:00", closed: false },
@@ -54,11 +59,18 @@ export const STEPS: OnboardingStepMeta[] = [
     canSkip: true,
     conditional: (d) => d.business_type === "mobile" || d.business_type === "both",
   },
-  { id: 10, title: "Categories", description: "What you offer" },
-  { id: 11, title: "Services", description: "Optional — add services now or later", canSkip: true },
-  { id: 12, title: "Hours", description: "When you're available" },
-  { id: 13, title: "Review", description: "Check your details" },
-  { id: 14, title: "Plan", description: "Choose a subscription" },
+  {
+    id: 10,
+    title: "Travel fees",
+    description: "Charge for at-home travel",
+    canSkip: true,
+    conditional: (d) => d.business_type === "mobile" || d.business_type === "both",
+  },
+  { id: 11, title: "Categories", description: "What you offer" },
+  { id: 12, title: "Services", description: "Optional — add services now or later", canSkip: true },
+  { id: 13, title: "Hours", description: "When you're available" },
+  { id: 14, title: "Review", description: "Check your details" },
+  { id: 15, title: "Plan", description: "Choose a subscription" },
 ];
 
 export function stepIsVisible(stepId: number, data: Partial<OnboardingFormData>): boolean {

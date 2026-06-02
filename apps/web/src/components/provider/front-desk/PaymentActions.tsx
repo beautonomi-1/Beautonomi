@@ -16,6 +16,7 @@ import { sendPaystackLink, createYocoTerminalPaymentAndMarkPaid } from "@/lib/fr
 import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
 import { PaystackTerminalCollectDialog } from "@/components/provider/PaystackTerminalCollectDialog";
 import { fetcher } from "@/lib/http/fetcher";
+import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 
 interface PaymentActionsProps {
   bookingId: string;
@@ -54,6 +55,7 @@ export function PaymentActions({
     unpaidAdditionalCharges,
     paymentStatus,
   });
+  const paymentLinkEnabled = useFeatureFlag("payment_link");
   const [yocoOpen, setYocoOpen] = useState(false);
   const [yocoAmount, setYocoAmount] = useState(String(remaining));
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -122,6 +124,7 @@ export function PaymentActions({
             <CreditCard className="h-10 w-10 text-[#0F172A]" strokeWidth={1.5} />
             <span className="font-semibold text-[#0F172A]">Yoco Machine</span>
           </button>
+          {paymentLinkEnabled && (
           <button
             type="button"
             onClick={handleSendPaystack}
@@ -130,6 +133,7 @@ export function PaymentActions({
             <Link2 className="h-10 w-10 text-[#0F172A]" strokeWidth={1.5} />
             <span className="font-semibold text-[#0F172A]">Paystack Link</span>
           </button>
+          )}
           {terminalReady && (
             <button
               type="button"
@@ -200,6 +204,7 @@ export function PaymentActions({
           Payments
         </p>
         <div className="flex flex-wrap gap-2">
+          {paymentLinkEnabled && (
           <Button
             variant="outline"
             size="sm"
@@ -209,6 +214,7 @@ export function PaymentActions({
             <Link2 className="h-4 w-4" />
             Send Paystack Link
           </Button>
+          )}
           <Button
             variant="outline"
             size="sm"

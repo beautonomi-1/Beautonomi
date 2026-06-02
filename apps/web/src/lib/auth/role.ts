@@ -38,20 +38,20 @@ export function getPortalForUser(params: {
   // (legacy / explicit seed path). Map pre-provider users to the onboarding
   // portal. Once `providers.status` is active, treat like a normal owner so
   // `/api/me/portal` + ProviderPortalGate do not trap them on get-started.
+  //
+  // §provider-launch (2026-06): `pending_approval` providers (the state right
+  // after the onboarding wizard is submitted, when auto-approve is off) now
+  // resolve to the live `provider` portal so they land on the dashboard with an
+  // "under review" banner instead of being trapped on the onboarding hub.
+  // `draft` (wizard not finished) and `suspended` still route to onboarding.
   if (role === "provider_onboarding") {
-    if (provider_status === "active") return "provider";
+    if (provider_status === "active" || provider_status === "pending_approval") return "provider";
     return "provider_onboarding";
   }
 
   if (role === "provider_owner" || role === "provider_staff") {
-    if (provider_status === "active") return "provider";
-    if (
-      provider_status === "draft" ||
-      provider_status === "pending_approval" ||
-      provider_status === "suspended"
-    ) {
-      return "provider_onboarding";
-    }
+    if (provider_status === "active" || provider_status === "pending_approval") return "provider";
+    // draft / suspended / null
     return "provider_onboarding";
   }
 

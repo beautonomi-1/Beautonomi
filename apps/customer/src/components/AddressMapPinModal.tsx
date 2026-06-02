@@ -16,10 +16,29 @@ import { getBackendUrl, withWebApiTenantHeaders } from "@/config/public-env";
 const FALLBACK_LNG = 28.0473;
 const FALLBACK_LAT = -26.2041;
 
+/**
+ * Address parts resolved from the dropped pin via Mapbox Geocoding v6 (rich
+ * coverage + structured context). Passed to the caller on confirm so the
+ * address form can be filled directly — no second server round-trip needed,
+ * and it succeeds for pins where the older v5 reverse-geocode returns nothing.
+ */
+export type ResolvedPinAddress = {
+  place_name?: string;
+  address_line1?: string;
+  city?: string;
+  state?: string;
+  postal_code?: string;
+  country?: string;
+};
+
 export type AddressMapPinModalProps = {
   visible: boolean;
   onClose: () => void;
-  onPickCoordinates: (latitude: number, longitude: number) => void;
+  onPickCoordinates: (
+    latitude: number,
+    longitude: number,
+    resolved?: ResolvedPinAddress,
+  ) => void;
   initialCoordinate?: { latitude: number; longitude: number } | null;
 };
 
@@ -44,6 +63,51 @@ async function fetchPublicDirectionsConfig(): Promise<{ token: string | null; st
   } catch {
     return { token: null, styleUrl: null };
   }
+}
+
+/** Reverse-geocode a coordinate via Mapbox Geocoding v6 (public token), with a timeout. */
+async function reverseGeocodeV6(
+  token: string,
+  lng: number,
+  lat: number,
+  timeoutMs = 6000,
+): Promise<any | null> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(
+        `https://api.mapbox.com/search/geocode/v6/reverse?longitude=${lng}&latitude=${lat}&access_token=${token}`,
+        { signal: controller.signal },
+      );
+      const json = await res.json();
+      return json?.features?.[0] ?? null;
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch {
+    return null;
+  }
+}
+
+/** Map a Mapbox v6 feature to structured address parts. */
+function parseV6Feature(place: any): ResolvedPinAddress {
+  const props = place?.properties ?? {};
+  const ctx = props.context ?? {};
+  const fullAddress = typeof props.full_address === "string" ? props.full_address : "";
+  const line1 =
+    (ctx.address?.name && String(ctx.address.name)) ||
+    (props.name && String(props.name)) ||
+    (fullAddress ? fullAddress.split(",")[0].trim() : "") ||
+    "";
+  return {
+    place_name: fullAddress || props.name || undefined,
+    address_line1: line1 || undefined,
+    city: ctx.place?.name || ctx.locality?.name || ctx.district?.name || undefined,
+    state: ctx.region?.name || undefined,
+    postal_code: ctx.postcode?.name || undefined,
+    country: ctx.country?.name || undefined,
+  };
 }
 
 function buildMapboxPinPickerHtml(opts: {
@@ -184,18 +248,15 @@ export function AddressMapPinModal({
         const d = JSON.parse(ev.nativeEvent.data) as { type?: string; lat?: number; lng?: number };
         if (d.type === "pin_update" && typeof d.lat === "number" && typeof d.lng === "number") {
           if (fetchAddressTimeout.current) clearTimeout(fetchAddressTimeout.current);
+          const lat = d.lat;
+          const lng = d.lng;
           fetchAddressTimeout.current = setTimeout(async () => {
             if (!token) return;
             setIsFetchingAddress(true);
             try {
-              const res = await fetch(`https://api.mapbox.com/search/geocode/v6/reverse?longitude=${d.lng}&latitude=${d.lat}&access_token=${token}`);
-              const json = await res.json();
-              const place = json.features?.[0];
-              if (place) {
-                setCurrentAddressName(place.properties.full_address || place.properties.name || "Unknown Location");
-              } else {
-                setCurrentAddressName("Unknown Location");
-              }
+              const place = await reverseGeocodeV6(token, lng, lat);
+              const parsed = place ? parseV6Feature(place) : null;
+              setCurrentAddressName(parsed?.place_name || "Unknown Location");
             } catch {
               setCurrentAddressName("Unknown Location");
             } finally {
@@ -203,13 +264,26 @@ export function AddressMapPinModal({
             }
           }, 400);
         } else if (d.type === "pin" && typeof d.lat === "number" && typeof d.lng === "number") {
+          const lat = d.lat;
+          const lng = d.lng;
           setConfirming(true);
-          try {
-            onPickCoordinates(d.lat, d.lng);
-            onClose();
-          } finally {
-            setConfirming(false);
-          }
+          // Resolve the exact confirm coordinates via v6 so the caller gets a
+          // real, structured address (not just lat/lng). Falls back to
+          // undefined if Mapbox returns nothing or times out — the caller then
+          // tries the server reverse-geocode and finally keeps the coordinates.
+          void (async () => {
+            try {
+              let resolved: ResolvedPinAddress | undefined;
+              if (token) {
+                const place = await reverseGeocodeV6(token, lng, lat);
+                if (place) resolved = parseV6Feature(place);
+              }
+              onPickCoordinates(lat, lng, resolved);
+              onClose();
+            } finally {
+              setConfirming(false);
+            }
+          })();
         }
       } catch {
         /* ignore non-JSON */

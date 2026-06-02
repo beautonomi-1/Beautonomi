@@ -7,6 +7,7 @@ import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
+import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 
 /**
  * Public entry for “pay this booking” (email/SMS/push from send-payment-link).
@@ -15,6 +16,7 @@ import { Loader2 } from "lucide-react";
 export default function BookingPayPage() {
   const params = useParams();
   const bookingId = params.id as string;
+  const paymentLinkEnabled = useFeatureFlag("payment_link");
   const [phase, setPhase] = useState<"starting" | "error">("starting");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -23,6 +25,7 @@ export default function BookingPayPage() {
 
   useEffect(() => {
     if (!bookingId) return;
+    if (!paymentLinkEnabled) return;
     let cancelled = false;
 
     async function startPay() {
@@ -58,7 +61,25 @@ export default function BookingPayPage() {
     return () => {
       cancelled = true;
     };
-  }, [bookingId]);
+  }, [bookingId, paymentLinkEnabled]);
+
+  if (!paymentLinkEnabled) {
+    return (
+      <AuthGuard redirectTo={redirectPath}>
+        <div className="min-h-[60vh] flex flex-col items-center justify-center px-4 py-12">
+          <div className="max-w-md text-center space-y-4">
+            <p className="text-lg font-medium text-gray-900">Payment link unavailable</p>
+            <p className="text-sm text-gray-600">
+              This payment method is currently unavailable. You can pay from your bookings page.
+            </p>
+            <Button asChild>
+              <Link href={`/account-settings/bookings/${bookingId}`}>Pay from your booking</Link>
+            </Button>
+          </div>
+        </div>
+      </AuthGuard>
+    );
+  }
 
   return (
     <AuthGuard redirectTo={redirectPath}>

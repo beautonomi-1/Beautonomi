@@ -41,6 +41,11 @@ export async function GET(request: NextRequest) {
     const { limit, offset } = getOffsetPaginationParams(request, { defaultLimit: 25, maxLimit: 100 });
     const allocationStatus = searchParams.get("allocation_status");
     const status = searchParams.get("status");
+    // Ringfence the inbox to a single virtual terminal when requested. The provider_id filter
+    // below means an id that does not belong to this provider simply returns nothing, so this
+    // is safe even with an arbitrary (but well-formed) uuid.
+    const terminalIdParam = searchParams.get("terminal_id");
+    const terminalId = terminalIdParam && z.string().uuid().safeParse(terminalIdParam).success ? terminalIdParam : null;
 
     let query = (supabase.from("provider_paystack_terminal_payments") as any)
       .select(
@@ -55,6 +60,7 @@ export async function GET(request: NextRequest) {
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
 
+    if (terminalId) query = query.eq("terminal_id", terminalId);
     if (allocationStatus) query = query.eq("allocation_status", allocationStatus);
     if (status) query = query.eq("status", status);
 
@@ -152,9 +158,8 @@ export async function POST(request: NextRequest) {
       entityType: body.entity_type ?? null,
       entityId: body.entity_id ?? null,
       customerReference,
-      instructions: customerReference
-        ? `Ask the customer to pay through this Paystack Terminal and enter reference ${customerReference}. Once Paystack confirms the payment, it appears in your inbox for allocation.`
-        : "Ask the customer to pay through this Paystack Terminal. Once Paystack confirms the payment, it will appear in the provider inbox for allocation.",
+      instructions:
+        "Ask the customer to scan the QR or pay through this Paystack Terminal. Paystack generates the transaction reference automatically; once it confirms the payment, it appears in your inbox to allocate to this booking, sale, or order.",
     });
   } catch (error) {
     return handleApiError(error, "Failed to prepare Paystack Terminal collection");

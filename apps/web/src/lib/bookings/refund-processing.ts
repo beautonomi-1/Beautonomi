@@ -196,29 +196,52 @@ async function processBookingRefundInner(
     const lateLabel = options.isLateCancellation ? "late cancellation" : "cancellation";
     const description = `Refund for booking ${bookingRef}: ${lateLabel} — ${policy.late_cancellation_type}`;
 
-    // Insert refund record as pending — ledger clawback runs only after wallet credit succeeds (F6).
-    const { data: refundRecord, error: refundError } = await supabaseAdmin
+    // §Refund-idempotency (audit 2026-06): previously this always INSERTed a new
+    // pending refund row and credited the wallet. If the wallet credit succeeded
+    // but the finalize update failed, the caller would retry and create a SECOND
+    // refund + a SECOND wallet credit (double refund). We now reuse an existing
+    // pending store-credit refund row for this booking when present, and key the
+    // wallet credit to that refund row's id so a retried credit is a no-op at the
+    // DB level (migration 649).
+    const { data: existingPending } = await supabaseAdmin
       .from("booking_refunds")
-      .insert({
-        booking_id: bookingId,
-        amount: refundAmount,
-        reason: `Cancellation refund (${lateLabel}) — ${policy.late_cancellation_type}`,
-        refund_method: "store_credit",
-        status: "pending",
-        notes: "Cancellation policy refund – crediting customer wallet",
-      })
-      .select("id")
-      .single();
+      .select("id, amount")
+      .eq("booking_id", bookingId)
+      .eq("refund_method", "store_credit")
+      .eq("status", "pending")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-    if (refundError) {
-      logger.error("processBookingRefund.refund_insert_failed", refundError, {
-        bookingId,
-        refundAmount,
-      });
-      return { success: false, error: "Failed to create refund record" };
+    let refundRecord: { id: string } | null = (existingPending as { id: string } | null) ?? null;
+
+    if (!refundRecord) {
+      // Insert refund record as pending — ledger clawback runs only after wallet credit succeeds (F6).
+      const { data: inserted, error: refundError } = await supabaseAdmin
+        .from("booking_refunds")
+        .insert({
+          booking_id: bookingId,
+          amount: refundAmount,
+          reason: `Cancellation refund (${lateLabel}) — ${policy.late_cancellation_type}`,
+          refund_method: "store_credit",
+          status: "pending",
+          notes: "Cancellation policy refund – crediting customer wallet",
+        })
+        .select("id")
+        .single();
+
+      if (refundError) {
+        logger.error("processBookingRefund.refund_insert_failed", refundError, {
+          bookingId,
+          refundAmount,
+        });
+        return { success: false, error: "Failed to create refund record" };
+      }
+      refundRecord = inserted as { id: string };
     }
 
-    // Credit wallet AFTER refund row exists (ensures audit trail on retry)
+    // Credit wallet AFTER refund row exists (ensures audit trail on retry).
+    // Keyed by the refund row id so a retry credits at most once.
     const { error: walletError } = await (supabaseAdmin.rpc as any)("wallet_credit_admin", {
       p_user_id: (booking as { customer_id: string }).customer_id,
       p_amount: refundAmount,
@@ -227,6 +250,7 @@ async function processBookingRefundInner(
       p_reference_id: bookingId,
       p_reference_type: "booking_refund",
       p_tenant_id: walletTenantId,
+      p_idempotency_key: `booking_refund:${(refundRecord as { id: string }).id}`,
     });
 
     if (walletError) {

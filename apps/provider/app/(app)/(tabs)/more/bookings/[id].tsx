@@ -819,6 +819,7 @@ export default function BookingDetailScreen() {
   const { integration: yocoIntegration } = useYocoIntegration();
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
   const yocoEnabled = useFeatureFlag("payment_yoco");
+  const paymentLinkEnabled = useFeatureFlag("payment_link");
   const markPaidPaymentMethods = useMemo(
     () => buildMarkPaidPaymentMethods(paystackTerminalEnabled, yocoEnabled),
     [paystackTerminalEnabled, yocoEnabled],
@@ -2297,7 +2298,8 @@ export default function BookingDetailScreen() {
   };
 
   const canRequestPayment = canProcessPayments && (isStarted || b.status === "completed");
-  const canSendPaymentLink = canProcessPayments && outstanding > 0 && b.status !== "cancelled";
+  const canSendPaymentLink =
+    paymentLinkEnabled && canProcessPayments && outstanding > 0 && b.status !== "cancelled";
   const canReschedule = canEditAppointments && (isActive || isStarted) && Boolean(b.scheduled_at);
   const nextStep = getBookingNextStepCard(b, { outstanding, isAtHome, isAtSalon });
   const primaryServiceName = services[0]?.offering_name ?? "Appointment";

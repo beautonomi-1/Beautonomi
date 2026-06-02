@@ -35,13 +35,16 @@ describe("getPortalForUser", () => {
     ).toBe("provider_onboarding");
   });
 
-  it("returns provider_onboarding when provider_owner and status pending_approval", () => {
+  // §provider-launch (2026-06): pending_approval now resolves to the live
+  // provider portal (dashboard with an "under review" banner) rather than the
+  // onboarding hub.
+  it("returns provider when provider_owner and status pending_approval", () => {
     expect(
       getPortalForUser({
         role: "provider_owner",
         provider_status: "pending_approval",
       })
-    ).toBe("provider_onboarding");
+    ).toBe("provider");
   });
 
   it("returns provider_onboarding when provider_owner and status suspended", () => {
@@ -75,10 +78,10 @@ describe("getPortalForUser", () => {
     ).toBe("provider");
   });
 
-  it("returns provider_onboarding when role is provider_onboarding and not active", () => {
+  it("returns provider when role is provider_onboarding and provider is pending_approval", () => {
     expect(
       getPortalForUser({ role: "provider_onboarding", provider_status: "pending_approval" })
-    ).toBe("provider_onboarding");
+    ).toBe("provider");
   });
 
   it("returns provider_onboarding when role is provider_onboarding and no provider_status", () => {

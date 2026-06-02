@@ -445,15 +445,15 @@ export async function postCustomOfferAccept(
           tenant_id: null,
           provider_id: req?.provider_id ?? null,
         });
-        const { error: walletErr } = await (supabase.rpc as any)("wallet_debit_self", {
+        const { data: walletDebitResult, error: walletErr } = await (supabase.rpc as any)("wallet_debit_self", {
           p_amount: walletAmount,
           p_description: `Wallet spend for custom offer ${id}`,
           p_reference_id: id,
           p_reference_type: "custom_offer",
           p_tenant_id: walletLedgerTenantId,
         });
-        if (walletErr) {
-          return errorResponse(walletErr.message || "Wallet debit failed.", "WALLET_ERROR", 400);
+        if (walletErr || !walletDebitResult) {
+          return errorResponse(walletErr?.message || "Wallet debit failed.", "WALLET_ERROR", 400);
         }
         reservedRollbacks.push(async () => {
           try {

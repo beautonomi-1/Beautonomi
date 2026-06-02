@@ -215,12 +215,10 @@ export async function requestPaystackTerminalSetupMobile(request: NextRequest) {
     destination_target: destinationTarget,
     destination_name: destinationTarget ? destinationName : null,
     destinations,
-    custom_fields: [
-      {
-        display_name: "Booking / order reference",
-        variable_name: "customer_reference",
-      },
-    ],
+    // Static Virtual Terminal QR: no custom fields. Paystack generates the reference and the
+    // provider allocates by amount + timing in the inbox, so we don't ask the customer to type a
+    // booking/order number.
+    custom_fields: [],
     metadata: {
       provider_id: providerId,
       provider_business_name: providerBusinessName,
@@ -355,6 +353,10 @@ export async function listPaystackTerminalPaymentsMobile(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const allocationStatus = searchParams.get("allocation_status");
   const status = searchParams.get("status");
+  // Ringfence the inbox to a single virtual terminal when requested (provider_id below keeps
+  // it safe against ids that do not belong to this provider).
+  const terminalIdParam = searchParams.get("terminal_id");
+  const terminalId = terminalIdParam && z.string().uuid().safeParse(terminalIdParam).success ? terminalIdParam : null;
 
   let query = (supabase.from("provider_paystack_terminal_payments") as any)
     .select(
@@ -369,6 +371,7 @@ export async function listPaystackTerminalPaymentsMobile(request: NextRequest) {
     .order("created_at", { ascending: false })
     .range(offset, offset + limit - 1);
 
+  if (terminalId) query = query.eq("terminal_id", terminalId);
   if (allocationStatus) query = query.eq("allocation_status", allocationStatus);
   if (status) query = query.eq("status", status);
 
@@ -458,9 +461,8 @@ export async function createPaystackTerminalCollectionIntentMobile(request: Next
     entityType: body.entity_type ?? null,
     entityId: body.entity_id ?? null,
     customerReference,
-    instructions: customerReference
-      ? `Ask the customer to pay through this Paystack Terminal and enter reference ${customerReference}. Once Paystack confirms the payment, it appears in your inbox for allocation.`
-      : "Ask the customer to pay through this Paystack Terminal. Once Paystack confirms the payment, it will appear in the provider inbox for allocation.",
+    instructions:
+      "Ask the customer to scan the QR or pay through this Paystack Terminal. Paystack generates the transaction reference automatically; once it confirms the payment, it appears in your inbox to allocate to this booking, sale, or order.",
   });
 }
 

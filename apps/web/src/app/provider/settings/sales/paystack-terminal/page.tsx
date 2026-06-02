@@ -90,6 +90,8 @@ type PaystackTerminalPayment = {
 
   payer_email?: string | null;
 
+  terminal?: { id?: string | null; name?: string | null; terminal_code?: string | null } | null;
+
   created_at: string;
 
 };
@@ -178,11 +180,11 @@ export default function PaystackTerminalSettingsPage() {
 
   const [payments, setPayments] = useState<PaystackTerminalPayment[]>([]);
 
+  const [selectedTerminalId, setSelectedTerminalId] = useState<string | null>(null);
+
   const [loadingPayments, setLoadingPayments] = useState(true);
 
   const [creating, setCreating] = useState(false);
-
-  const [whatsapp, setWhatsapp] = useState("");
 
   const [requestingAssetsId, setRequestingAssetsId] = useState<string | null>(null);
 
@@ -218,7 +220,16 @@ export default function PaystackTerminalSettingsPage() {
 
       }
 
-      setTerminals(payload?.data?.terminals ?? []);
+      const loadedTerminals = payload?.data?.terminals ?? [];
+
+      setTerminals(loadedTerminals);
+
+      // Default the inbox to the first (usually only) terminal so payments are ringfenced to it,
+      // and keep the selection valid if the previously selected terminal disappears.
+      setSelectedTerminalId((current) => {
+        if (current && loadedTerminals.some((t) => t.id === current)) return current;
+        return loadedTerminals[0]?.id ?? null;
+      });
 
       setSetupRequests(payload?.data?.setupRequests ?? []);
 
@@ -244,9 +255,13 @@ export default function PaystackTerminalSettingsPage() {
 
     try {
 
+      const query = new URLSearchParams({ limit: "10" });
+
+      if (selectedTerminalId) query.set("terminal_id", selectedTerminalId);
+
       const payload = await fetcher.get<PaymentsResponse>(
 
-        "/api/provider/paystack/terminal-payments?limit=10",
+        `/api/provider/paystack/terminal-payments?${query.toString()}`,
 
         { staleTimeMs: 0 },
 
@@ -262,21 +277,19 @@ export default function PaystackTerminalSettingsPage() {
 
       setPayments(rows);
 
-      const actionable = rows.find(
+      // Do not auto-pop the review card on every poll (that made it impossible to dismiss while
 
-        (payment: PaystackTerminalPayment) =>
+      // other payments were pending). It opens only via "Review payment", the realtime alert, or
 
-          payment.id !== reviewDismissedId &&
-
-          ["suggested", "unmatched", "admin_review"].includes(payment.allocation_status),
-
-      );
+      // the notification deep link. We only refresh the currently open card's data here.
 
       setReviewPayment((current) => {
 
-        if (current && current.id === reviewDismissedId) return null;
+        if (!current) return null;
 
-        return current ?? actionable ?? null;
+        if (current.id === reviewDismissedId) return null;
+
+        return rows.find((payment) => payment.id === current.id) ?? current;
 
       });
 
@@ -290,7 +303,7 @@ export default function PaystackTerminalSettingsPage() {
 
     }
 
-  }, [reviewDismissedId]);
+  }, [reviewDismissedId, selectedTerminalId]);
 
 
 
@@ -314,6 +327,62 @@ export default function PaystackTerminalSettingsPage() {
 
 
 
+  // Deep link from the "payment received" notification (action_url ?payment=<id>). Locate the
+
+  // payment, scope the inbox to its terminal, and open the review card so the tap lands on it.
+
+  useEffect(() => {
+
+    if (bundleLoading || !paystackTerminalEnabled) return;
+
+    const paymentId = new URLSearchParams(window.location.search).get("payment");
+
+    if (!paymentId) return;
+
+    let cancelled = false;
+
+    void (async () => {
+
+      try {
+
+        const payload = await fetcher.get<PaymentsResponse>(
+
+          "/api/provider/paystack/terminal-payments?limit=50",
+
+          { staleTimeMs: 0 },
+
+        );
+
+        const found = (payload?.data?.items ?? []).find((item) => item.id === paymentId);
+
+        if (found && !cancelled) {
+
+          if (found.terminal?.id) setSelectedTerminalId(found.terminal.id);
+
+          setReviewDismissedId(null);
+
+          setReviewPayment(found);
+
+        }
+
+      } catch {
+
+        /* non-fatal: the inbox list still reflects the payment */
+
+      }
+
+    })();
+
+    return () => {
+
+      cancelled = true;
+
+    };
+
+  }, [bundleLoading, paystackTerminalEnabled]);
+
+
+
   async function requestTerminalSetup() {
 
     setCreating(true);
@@ -326,7 +395,7 @@ export default function PaystackTerminalSettingsPage() {
 
         error?: { message?: string; code?: string };
 
-      }>("/api/provider/paystack/virtual-terminals", whatsapp.trim() ? { whatsapp: whatsapp.trim() } : {});
+      }>("/api/provider/paystack/virtual-terminals", {});
 
       if (payload?.error) {
 
@@ -760,7 +829,7 @@ export default function PaystackTerminalSettingsPage() {
 
               <span className="mt-2 block text-sm">
 
-                Update your WhatsApp number below (international format, e.g. +27821234567) and submit a new request.
+                Submit a new request and Beautonomi Ops will retry your terminal setup.
 
               </span>
 
@@ -795,42 +864,6 @@ export default function PaystackTerminalSettingsPage() {
             Once imported, you can share the Paystack payment link. Customer payments arrive with Paystack-generated references and are manually allocated in the payment inbox.
 
           </p>
-
-          <div className="mt-4 space-y-2">
-
-            <label htmlFor="paystack-terminal-whatsapp" className="text-sm font-medium">
-
-              WhatsApp number for payment notifications
-
-            </label>
-
-            <input
-
-              id="paystack-terminal-whatsapp"
-
-              type="tel"
-
-              inputMode="tel"
-
-              value={whatsapp}
-
-              onChange={(event) => setWhatsapp(event.target.value)}
-
-              placeholder="+27821234567"
-
-              disabled={creating || hasPendingRequest || !canRequestSetup}
-
-              className="w-full max-w-sm rounded-md border border-input bg-background px-3 py-2 text-sm disabled:opacity-50"
-
-            />
-
-            <p className="text-xs text-muted-foreground">
-
-              Use the international format. Leave blank to use the phone number on your provider profile.
-
-            </p>
-
-          </div>
 
           <div className="mt-4 flex flex-col gap-3 sm:flex-row">
 
@@ -1068,13 +1101,29 @@ export default function PaystackTerminalSettingsPage() {
 
                           </Button>
 
-                          <Button asChild variant="outline">
+                          <Button
 
-                            <a href={terminal.payment_link ?? terminal.terminal_url ?? "#"} target="_blank" rel="noreferrer">
+                            variant="outline"
 
-                              Visit link
+                            onClick={() => {
 
-                            </a>
+                              const posterHref = terminal.poster_url ?? terminal.qr_url ?? null;
+
+                              if (posterHref) {
+
+                                window.open(posterHref, "_blank", "noreferrer");
+
+                              } else {
+
+                                printTerminalPoster(terminal);
+
+                              }
+
+                            }}
+
+                          >
+
+                            Open QR poster
 
                           </Button>
 
@@ -1170,11 +1219,43 @@ export default function PaystackTerminalSettingsPage() {
 
             </div>
 
-            <Button variant="outline" onClick={() => void loadPayments()} disabled={loadingPayments}>
+            <div className="flex items-center gap-2">
 
-              Refresh
+              {terminals.length > 1 ? (
 
-            </Button>
+                <select
+
+                  className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+
+                  value={selectedTerminalId ?? ""}
+
+                  onChange={(event) => setSelectedTerminalId(event.target.value || null)}
+
+                  aria-label="Filter inbox by terminal"
+
+                >
+
+                  {terminals.map((terminal) => (
+
+                    <option key={terminal.id} value={terminal.id}>
+
+                      {terminal.display_name || terminal.name || terminal.terminal_code}
+
+                    </option>
+
+                  ))}
+
+                </select>
+
+              ) : null}
+
+              <Button variant="outline" onClick={() => void loadPayments()} disabled={loadingPayments}>
+
+                Refresh
+
+              </Button>
+
+            </div>
 
           </div>
 
@@ -1240,17 +1321,21 @@ export default function PaystackTerminalSettingsPage() {
 
                 <div className="flex flex-wrap gap-2">
 
-                  <Button
+                  {reviewPayment.suggested_entity_id ? (
 
-                    onClick={() => void allocatePayment(reviewPayment, "confirm")}
+                    <Button
 
-                    disabled={allocatingPaymentId === reviewPayment.id || !reviewPayment.suggested_entity_id}
+                      onClick={() => void allocatePayment(reviewPayment, "confirm")}
 
-                  >
+                      disabled={allocatingPaymentId === reviewPayment.id}
 
-                    Approve match
+                    >
 
-                  </Button>
+                      Approve match
+
+                    </Button>
+
+                  ) : null}
 
                   <Button
 
@@ -1262,7 +1347,7 @@ export default function PaystackTerminalSettingsPage() {
 
                   >
 
-                    Admin review
+                    {reviewPayment.suggested_entity_id ? "Admin review" : "Send to admin to allocate"}
 
                   </Button>
 

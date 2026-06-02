@@ -641,6 +641,7 @@ export class ProviderApiClient implements ProviderApi {
           setup_completion: profile.setup_completion || 0,
           selected_location_id: profile.selected_location_id ?? null,
           business_type: profile.business_type || undefined,
+          status: profile.status ?? undefined,
           currency: profile.currency || undefined,
           locale: profile.locale || undefined,
           timezone: profile.timezone || undefined,

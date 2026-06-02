@@ -9,6 +9,7 @@ export const TENANT_PAYMENT_FEATURE_KEYS = {
   PAYMENT_PAYSTACK: "payment_paystack",
   PAYMENT_PAYSTACK_VIRTUAL_TERMINAL: "payment_paystack_virtual_terminal",
   PAYMENT_YOCO: "payment_yoco",
+  PAYMENT_LINK: "payment_link",
 } as const;
 
 type CheckResponse = { features: Record<string, boolean> };

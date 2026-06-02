@@ -316,15 +316,15 @@ export async function POST(request: NextRequest) {
           const selectedDt = new Date(draft.selected_datetime);
           const windowStart = new Date(selectedDt.getTime() - 4 * 60 * 60 * 1000); // -4 h
           const windowEnd   = new Date(selectedDt.getTime() + 4 * 60 * 60 * 1000); // +4 h
-          await supabaseAdmin
+          // §Stale-cancel (audit 2026-06): a bulk UPDATE here cancelled abandoned
+          // bookings but left their RESERVED gift card balance locked and any
+          // upfront WALLET debit un-reversed. Select the matching ids and route
+          // each through releaseBookingSlotAfterPaymentFailure, which voids the
+          // gift card reservation, credits back the wallet amount, and clears the
+          // coverage fields before cancelling.
+          const { data: staleBookings } = await supabaseAdmin
             .from("bookings")
-            .update({
-              status: "cancelled",
-              cancelled_at: new Date().toISOString(),
-              cancelled_by: user.id,
-              cancellation_reason: "Payment not completed — auto-cancelled on retry",
-              updated_at: new Date().toISOString(),
-            })
+            .select("id")
             .eq("customer_id", user.id)
             .eq("provider_id", draft.provider_id)
             .eq("booking_source", "online")
@@ -333,6 +333,23 @@ export async function POST(request: NextRequest) {
             .in("status", ["pending", "pending_payment", "confirmed"])
             .gte("scheduled_at", windowStart.toISOString())
             .lte("scheduled_at", windowEnd.toISOString());
+
+          const staleIds = ((staleBookings as Array<{ id: string }> | null) ?? []).map((b) => b.id);
+          if (staleIds.length > 0) {
+            await Promise.all(
+              staleIds.map((staleId) =>
+                releaseBookingSlotAfterPaymentFailure(supabaseAdmin, staleId, user.id).catch(
+                  (releaseErr) => {
+                    console.error(
+                      "[stale_pending_cancel] failed to release stale booking",
+                      staleId,
+                      releaseErr,
+                    );
+                  },
+                ),
+              ),
+            );
+          }
         }
 
         stage = "validate_booking";

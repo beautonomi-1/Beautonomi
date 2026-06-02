@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { fetcher } from "@/lib/http/fetcher";
+import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 
 type PaystackTerminalReportRow = {
   id: string;
@@ -19,6 +20,7 @@ type PaystackTerminalReportRow = {
 };
 
 export default function PaystackTerminalReconciliationPage() {
+  const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
   const [rows, setRows] = useState<PaystackTerminalReportRow[]>([]);
   const [totals, setTotals] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
@@ -41,8 +43,22 @@ export default function PaystackTerminalReconciliationPage() {
   }
 
   useEffect(() => {
+    if (!paystackTerminalEnabled) return;
     void load();
-  }, []);
+  }, [paystackTerminalEnabled]);
+
+  if (!paystackTerminalEnabled) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="rounded-lg border bg-gray-50 p-8 text-center">
+          <h1 className="text-xl font-semibold text-gray-900">Paystack Terminal unavailable</h1>
+          <p className="mt-2 text-sm text-gray-600">
+            Paystack Terminal is not enabled for your account, so this report is unavailable.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto px-4 py-8">

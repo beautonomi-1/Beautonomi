@@ -23,9 +23,13 @@ import { Colors } from "@/constants/colors";
 
 export default function InAppBrowserScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ url?: string; title?: string }>();
+  const params = useLocalSearchParams<{ url?: string; title?: string; returnTo?: string }>();
   const rawUrl = params.url ? decodeURIComponent(params.url) : "";
   const displayTitle = params.title ? decodeURIComponent(params.title) : "Web";
+  // Optional post-success destination passed by the caller (e.g. the onboarding
+  // wizard sends "verify-identity" so a paid checkout lands on the optional
+  // identity step rather than straight on the dashboard).
+  const screenReturnTo = typeof params.returnTo === "string" ? params.returnTo : undefined;
 
   const [error, setError] = useState<string | null>(null);
   const [paymentResult, setPaymentResult] = useState<{
@@ -33,6 +37,8 @@ export default function InAppBrowserScreen() {
     title: string;
     message: string;
     returnToDashboard?: boolean;
+    /** Optional post-success destination, e.g. "verify-identity". */
+    returnTo?: string;
   } | null>(null);
 
   const onWebMessage = useCallback((e: WebViewMessageEvent) => {
@@ -85,15 +91,22 @@ export default function InAppBrowserScreen() {
         return;
       }
       if (raw?.type === "subscription_success") {
-        const returnToDashboard = raw.return_to === "dashboard";
+        // Prefer the caller-supplied screen destination (e.g. onboarding's
+        // "verify-identity") over the web-echoed return_to.
+        const returnTo = screenReturnTo ?? raw.return_to;
+        const returnToVerify = returnTo === "verify-identity";
+        const returnToDashboard = returnTo === "dashboard" || returnToVerify;
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setPaymentResult({
           status: "success",
           title: returnToDashboard ? "You're ready to launch" : "Subscription payment complete",
-          message: returnToDashboard
-            ? "Your plan payment was confirmed. Continue to your provider dashboard."
-            : "Your plan payment was confirmed. Return to Subscription to see your active plan.",
+          message: returnToVerify
+            ? "Your plan payment was confirmed. Next, verify your identity (optional) or skip to your dashboard."
+            : returnToDashboard
+              ? "Your plan payment was confirmed. Continue to your provider dashboard."
+              : "Your plan payment was confirmed. Return to Subscription to see your active plan.",
           returnToDashboard,
+          returnTo,
         });
         return;
       }
@@ -129,7 +142,7 @@ export default function InAppBrowserScreen() {
     } catch {
       // ignore non-JSON messages
     }
-  }, []);
+  }, [screenReturnTo]);
 
   const isValid = rawUrl.startsWith("https://") || rawUrl.startsWith("http://");
 
@@ -306,9 +319,15 @@ export default function InAppBrowserScreen() {
             <TouchableOpacity
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                if (paymentResult.returnToDashboard && paymentResult.status === "success") {
-                  router.replace("/(app)/(tabs)/dashboard" as never);
-                  return;
+                if (paymentResult.status === "success") {
+                  if (paymentResult.returnTo === "verify-identity") {
+                    router.replace("/(app)/onboarding/verify-identity" as never);
+                    return;
+                  }
+                  if (paymentResult.returnToDashboard) {
+                    router.replace("/(app)/(tabs)/dashboard" as never);
+                    return;
+                  }
                 }
                 router.back();
               }}
@@ -317,9 +336,11 @@ export default function InAppBrowserScreen() {
               accessibilityRole="button"
             >
               <Text style={styles.resultButtonText}>
-                {paymentResult.returnToDashboard && paymentResult.status === "success"
-                  ? "Go to dashboard"
-                  : "Return to app"}
+                {paymentResult.returnTo === "verify-identity" && paymentResult.status === "success"
+                  ? "Continue"
+                  : paymentResult.returnToDashboard && paymentResult.status === "success"
+                    ? "Go to dashboard"
+                    : "Return to app"}
               </Text>
               <Ionicons name="arrow-forward" size={18} color={Colors.white} />
             </TouchableOpacity>

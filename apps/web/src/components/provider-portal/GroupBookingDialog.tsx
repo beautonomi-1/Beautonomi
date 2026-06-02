@@ -56,6 +56,7 @@ import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalPro
 import { parseSelectedDatetimeInProviderTz } from "@/lib/bookings/parse-selected-datetime-in-provider-tz";
 import AddressAutocomplete from "@/components/mapbox/AddressAutocomplete";
 import { LocationMapPickerDialog, type PickedMapLocation } from "@/components/mapbox/LocationMapPickerDialog";
+import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 
 // ─── Participant addon shape ────────────────────────────────────────────────
 interface ParticipantAddon {
@@ -123,6 +124,8 @@ export function GroupBookingDialog({
 }: GroupBookingDialogProps) {
   const { format: formatMoney } = useProviderMoneyFormat();
   const { provider: portalProvider } = useProviderPortal();
+  const paymentLinkEnabled = useFeatureFlag("payment_link");
+  const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
   const [isLoading, setIsLoading] = useState(false);
   const [isValidatingAddress, setIsValidatingAddress] = useState(false);
 
@@ -1867,8 +1870,12 @@ export function GroupBookingDialog({
                       { value: "cash", label: "Cash" },
                       { value: "card", label: "Manual card" },
                       { value: "yoco_pos", label: "Yoco terminal" },
-                      { value: "payment_link", label: "Payment link" },
-                      { value: "paystack_terminal", label: "Paystack Terminal" },
+                      ...(paymentLinkEnabled
+                        ? [{ value: "payment_link", label: "Payment link" }]
+                        : []),
+                      ...(paystackTerminalEnabled
+                        ? [{ value: "paystack_terminal", label: "Paystack Terminal" }]
+                        : []),
                     ] as const).map((m) => {
                       const active = createPaymentMethod === m.value;
                       return (

@@ -12,6 +12,11 @@ export interface Provider {
   setup_completion: number; // 0-100
   selected_location_id?: string;
   business_type?: "freelancer" | "salon";
+  /**
+   * Provider account approval status from `providers.status`. `pending_approval`
+   * providers now reach the dashboard directly (with an "under review" banner).
+   */
+  status?: "draft" | "pending_approval" | "active" | "suspended" | string | null;
   /** Default ISO 4217 for this provider (from profile / tenant). */
   currency?: string;
   /** BCP 47 locale for money/date (from tenant region config). */

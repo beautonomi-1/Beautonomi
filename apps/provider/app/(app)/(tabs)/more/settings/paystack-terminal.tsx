@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, Alert, Share, Linking, TextInput } from "react-native";
+import { View, Text, TouchableOpacity, Alert, Share } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useState } from "react";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -15,8 +15,10 @@ export default function PaystackTerminalSettingsScreen() {
   const terminalDataEnabled = paystackTerminalEnabled && !bundleLoading;
   const { terminals, setupRequests, canRequestSetup, loading, error, refresh, requestTerminalSetup, requestAssets } =
     usePaystackTerminals({ enabled: terminalDataEnabled });
+  const [selectedTerminalId, setSelectedTerminalId] = useState<string | null>(null);
   const { payments, refresh: refreshPayments, reconcile, allocate } = usePaystackTerminalPayments({
     enabled: terminalDataEnabled,
+    terminalId: selectedTerminalId,
   });
   const [checkingPayments, setCheckingPayments] = useState(false);
 
@@ -32,16 +34,15 @@ export default function PaystackTerminalSettingsScreen() {
     }
   };
   const [creating, setCreating] = useState(false);
-  const [whatsapp, setWhatsapp] = useState("");
   const [requestingAssetsId, setRequestingAssetsId] = useState<string | null>(null);
   const [reviewPayment, setReviewPayment] = useState<PaystackTerminalPayment | null>(null);
-  const [reviewDismissedId, setReviewDismissedId] = useState<string | null>(null);
   const [allocatingPaymentId, setAllocatingPaymentId] = useState<string | null>(null);
+  const [posterOpenId, setPosterOpenId] = useState<string | null>(null);
 
   const onRequestSetup = async () => {
     try {
       setCreating(true);
-      const result = await requestTerminalSetup(null, whatsapp);
+      const result = await requestTerminalSetup(null, null);
       Alert.alert("Paystack Terminal", result?.message ?? "Beautonomi Ops has been notified.");
     } catch (err) {
       Alert.alert("Paystack Terminal", err instanceof Error ? err.message : "Failed to request terminal setup");
@@ -79,14 +80,18 @@ export default function PaystackTerminalSettingsScreen() {
     return "Needs review";
   };
 
-  const actionablePayment = payments.find((payment) =>
-    ["suggested", "unmatched", "admin_review"].includes(payment.allocation_status) &&
-    payment.id !== reviewDismissedId,
-  );
+  // The inline review card is opened explicitly via "Review payment" (below) or by the global
+  // realtime alert for genuinely new payments. We intentionally do NOT auto-pop it on every
+  // poll, which previously made it impossible to dismiss while other payments were pending.
 
+  // Keep the inbox ringfenced to a valid terminal: default to the first one and re-point if the
+  // current selection disappears.
   useEffect(() => {
-    if (actionablePayment && !reviewPayment) setReviewPayment(actionablePayment);
-  }, [actionablePayment, reviewPayment]);
+    setSelectedTerminalId((current) => {
+      if (current && terminals.some((terminal) => terminal.id === current)) return current;
+      return terminals[0]?.id ?? null;
+    });
+  }, [terminals]);
 
   useEffect(() => {
     if (!terminalDataEnabled) return;
@@ -97,7 +102,6 @@ export default function PaystackTerminalSettingsScreen() {
   }, [refreshPayments, terminalDataEnabled]);
 
   const closeReview = () => {
-    if (reviewPayment) setReviewDismissedId(reviewPayment.id);
     setReviewPayment(null);
   };
 
@@ -147,15 +151,6 @@ export default function PaystackTerminalSettingsScreen() {
       message: `Pay securely using this Paystack Terminal link: ${url}`,
       url,
     });
-  };
-
-  const onOpenUrl = async (url: string) => {
-    const ok = await Linking.canOpenURL(url);
-    if (!ok) {
-      Alert.alert("Paystack Terminal", "Could not open this link on your device.");
-      return;
-    }
-    await Linking.openURL(url);
   };
 
   const pendingRequests = setupRequests.filter(
@@ -228,7 +223,7 @@ export default function PaystackTerminalSettingsScreen() {
             <Text style={twStyle("text-sm text-red-800")}>{rejectedRequest.rejection_reason}</Text>
           ) : null}
           <Text style={twStyle("text-xs text-red-700 mt-2")}>
-            Update your WhatsApp number below (international format, e.g. +27821234567) and submit a new request.
+            Submit a new request and Beautonomi Ops will retry your terminal setup.
           </Text>
           {rejectedRequest.support_ticket_id ? (
             <Text style={twStyle("text-xs text-red-700 mt-2")}>
@@ -251,20 +246,8 @@ export default function PaystackTerminalSettingsScreen() {
               <Text style={twStyle("text-sm text-gray-600 mt-1")}>
                 Beautonomi Ops will create your Virtual Terminal in Paystack and add the terminal code, payment link, QR, and poster here once ready.
               </Text>
-              <Text style={twStyle("text-xs text-gray-500 mt-3 mb-1")}>
-                WhatsApp number for payment notifications
-              </Text>
-              <TextInput
-                value={whatsapp}
-                onChangeText={setWhatsapp}
-                placeholder="+27821234567"
-                keyboardType="phone-pad"
-                autoCapitalize="none"
-                editable={!creating}
-                style={twStyle("rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-900")}
-              />
-              <Text style={twStyle("text-xs text-gray-400 mt-1")}>
-                Use the international format. Leave blank to use the phone number on your profile. Payments appear in the inbox below after Paystack reconciliation.
+              <Text style={twStyle("text-xs text-gray-400 mt-2")}>
+                Payments appear in the inbox below once Paystack confirms them.
               </Text>
             </>
           )}
@@ -350,14 +333,18 @@ export default function PaystackTerminalSettingsScreen() {
                       <Text style={twStyle("text-center text-white font-semibold")}>Share link</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      onPress={() => onOpenUrl(terminal.payment_link || terminal.terminal_url || "")}
+                      onPress={() => setPosterOpenId(terminal.id)}
                       style={twStyle("flex-1 rounded-xl border border-green-600 px-3 py-2")}
                     >
-                      <Text style={twStyle("text-center text-green-700 font-semibold")}>Open link</Text>
+                      <Text style={twStyle("text-center text-green-700 font-semibold")}>Open QR poster</Text>
                     </TouchableOpacity>
                   </View>
                 ) : null}
-                <TerminalPosterCard terminal={terminal} />
+                <TerminalPosterCard
+                  terminal={terminal}
+                  open={posterOpenId === terminal.id}
+                  onOpenChange={(next) => setPosterOpenId(next ? terminal.id : null)}
+                />
                 {terminal.asset_status !== "ready" ? (
                   <TouchableOpacity
                     onPress={() => onRequestAssets(terminal.id)}
@@ -409,21 +396,25 @@ export default function PaystackTerminalSettingsScreen() {
               </Text>
             </View>
             <View style={twStyle("flex-row flex-wrap gap-2 mt-3")}>
-              <TouchableOpacity
-                disabled={allocatingPaymentId === reviewPayment.id || !reviewPayment.suggested_entity_id}
-                onPress={() => handleAllocationAction(reviewPayment, "confirm")}
-                style={twStyle(`flex-1 rounded-xl px-3 py-3 ${reviewPayment.suggested_entity_id ? "bg-emerald-600" : "bg-gray-300"}`)}
-              >
-                <Text style={twStyle("text-center text-white font-semibold")}>
-                  {allocatingPaymentId === reviewPayment.id ? "Working..." : "Approve match"}
-                </Text>
-              </TouchableOpacity>
+              {reviewPayment.suggested_entity_id ? (
+                <TouchableOpacity
+                  disabled={allocatingPaymentId === reviewPayment.id}
+                  onPress={() => handleAllocationAction(reviewPayment, "confirm")}
+                  style={twStyle("flex-1 rounded-xl px-3 py-3 bg-emerald-600")}
+                >
+                  <Text style={twStyle("text-center text-white font-semibold")}>
+                    {allocatingPaymentId === reviewPayment.id ? "Working..." : "Approve match"}
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
               <TouchableOpacity
                 disabled={allocatingPaymentId === reviewPayment.id}
                 onPress={() => handleAllocationAction(reviewPayment, "admin_review")}
                 style={twStyle("flex-1 rounded-xl border border-amber-500 px-3 py-3")}
               >
-                <Text style={twStyle("text-center text-amber-900 font-semibold")}>Admin review</Text>
+                <Text style={twStyle("text-center text-amber-900 font-semibold")}>
+                  {reviewPayment.suggested_entity_id ? "Admin review" : "Send to admin to allocate"}
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 disabled={allocatingPaymentId === reviewPayment.id}
@@ -431,6 +422,13 @@ export default function PaystackTerminalSettingsScreen() {
                 style={twStyle("w-full rounded-xl border border-red-300 px-3 py-3")}
               >
                 <Text style={twStyle("text-center text-red-700 font-semibold")}>Incorrect ref / decline</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                disabled={allocatingPaymentId === reviewPayment.id}
+                onPress={closeReview}
+                style={twStyle("w-full rounded-xl px-3 py-3")}
+              >
+                <Text style={twStyle("text-center text-gray-500 font-semibold")}>Dismiss</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -443,6 +441,24 @@ export default function PaystackTerminalSettingsScreen() {
               <Ionicons name="refresh-outline" size={22} color="#16a34a" />
             </TouchableOpacity>
           </View>
+          {terminals.length > 1 ? (
+            <View style={twStyle("flex-row flex-wrap gap-2 mt-3")}>
+              {terminals.map((terminal) => {
+                const active = terminal.id === selectedTerminalId;
+                return (
+                  <TouchableOpacity
+                    key={terminal.id}
+                    onPress={() => setSelectedTerminalId(terminal.id)}
+                    style={twStyle(`rounded-full border px-3 py-1.5 ${active ? "border-emerald-600 bg-emerald-50" : "border-gray-200"}`)}
+                  >
+                    <Text style={twStyle(`text-xs font-semibold ${active ? "text-emerald-700" : "text-gray-600"}`)}>
+                      {terminal.display_name || terminal.name || terminal.terminal_code}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          ) : null}
           <TouchableOpacity
             onPress={onCheckForPayments}
             disabled={checkingPayments}

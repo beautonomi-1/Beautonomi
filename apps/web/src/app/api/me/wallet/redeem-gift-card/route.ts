@@ -63,6 +63,35 @@ export async function POST(request: NextRequest) {
 
     const redeemAmount = Number(giftCard.balance);
 
+    // §Gift-redeem (audit 2026-06): the previous order (credit wallet → then zero
+    // balance, best-effort) allowed a double-redeem race — two concurrent requests
+    // both read the same balance and both credited the wallet, and a failed
+    // zero-out left the card reusable. We now ATOMICALLY claim the balance first
+    // (zero it only while it still equals what we read), so exactly one request
+    // can win. The wallet is credited only after a successful claim, and the
+    // balance is restored if the credit fails so funds are never lost.
+    const { data: claimedCard, error: claimError } = await supabaseAdmin
+      .from("gift_cards")
+      .update({ balance: 0 })
+      .eq("id", giftCard.id)
+      .eq("balance", redeemAmount)
+      .gt("balance", 0)
+      .select("id")
+      .maybeSingle();
+
+    if (claimError) {
+      console.error("[redeem-gift-card] Failed to claim gift card balance:", claimError);
+      return errorResponse("Failed to redeem gift card. Please try again.", "REDEEM_FAILED", 500);
+    }
+    if (!claimedCard) {
+      // Another request redeemed/changed the balance between our read and claim.
+      return errorResponse(
+        "This gift card has already been redeemed or its balance changed. Please refresh and try again.",
+        "ALREADY_REDEEMED",
+        409,
+      );
+    }
+
     // Credit Wallet
     const walletTenantId = await resolveTenantIdForFinanceLedger(supabaseAdmin, {
       tenant_id: tenantId,
@@ -77,10 +106,19 @@ export async function POST(request: NextRequest) {
       p_reference_id: giftCard.id,
       p_reference_type: "gift_card_redemption",
       p_tenant_id: walletTenantId,
+      p_idempotency_key: `gift_card_redemption:${giftCard.id}`,
     });
 
     if (walletError) {
-      console.error("[redeem-gift-card] Failed to credit wallet:", walletError);
+      console.error("[redeem-gift-card] Failed to credit wallet, restoring gift card balance:", walletError);
+      // Roll back the claim so the customer does not lose the gift card value.
+      const { error: restoreError } = await supabaseAdmin
+        .from("gift_cards")
+        .update({ balance: redeemAmount })
+        .eq("id", giftCard.id);
+      if (restoreError) {
+        console.error("[redeem-gift-card] CRITICAL: failed to restore gift card balance after wallet credit failure:", restoreError);
+      }
       return errorResponse("Failed to credit wallet. Please try again.", "WALLET_CREDIT_FAILED", 500);
     }
 
@@ -102,13 +140,28 @@ export async function POST(request: NextRequest) {
       console.error("[redeem-gift-card] Failed to record redemption audit row:", redemptionError);
     }
 
-    // Zero out Gift Card balance so it cannot be redeemed again.
-    const { error: zeroError } = await supabaseAdmin
-      .from("gift_cards")
-      .update({ balance: 0 })
-      .eq("id", giftCard.id);
-    if (zeroError) {
-      console.error("[redeem-gift-card] Failed to zero gift card balance:", zeroError);
+    // §Gift-liability (audit 2026-06): redeeming a gift card to the wallet moves
+    // value from gift-card liability into wallet liability (tracked in
+    // wallet_transactions). Post a gift_card_liability_reduction so the gift-card
+    // liability is not left overstated. Idempotent in practice: the atomic balance
+    // claim above guarantees redemption runs at most once per card.
+    const { error: liabilityError } = await supabaseAdmin.from("finance_transactions").insert({
+      booking_id: null,
+      provider_id: null,
+      tenant_id: walletTenantId,
+      transaction_type: "gift_card_liability_reduction",
+      amount: redeemAmount,
+      fees: 0,
+      commission: 0,
+      net: -redeemAmount,
+      description: `Gift card ${codeUpper} redeemed to wallet`,
+      created_at: new Date().toISOString(),
+    });
+    if (liabilityError) {
+      console.error(
+        "[redeem-gift-card] Failed to record gift_card_liability_reduction:",
+        liabilityError,
+      );
     }
 
     return successResponse({

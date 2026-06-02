@@ -903,9 +903,11 @@ export default function ProviderOnboarding() {
       try {
         sessionStorage.removeItem(ONBOARDING_DRAFT_STORAGE_KEY);
       } catch {}
-      // Small delay to let user see the success message
+      // §provider-launch (2026-06): no get-started detour. Send the provider to
+      // the optional, skippable identity-verification step (the verification
+      // settings screen in onboarding mode), which continues to the dashboard.
       setTimeout(() => {
-        router.push("/provider/dashboard");
+        router.push("/provider/settings/verification?onboarding=1");
       }, 1500);
     } catch (error) {
       let errorMessage = "Failed to submit onboarding. Please try again.";

@@ -28,6 +28,10 @@ const setupRequestSchema = z.object({
     )
     .optional()
     .default([]),
+  // No custom fields on the hosted Paystack page: a Virtual Terminal QR is static, Paystack
+  // generates its own transaction reference, and payments are matched by amount + timing and
+  // confirmed by the provider in the inbox. Asking the customer for a booking/order number
+  // here is redundant and confusing.
   custom_fields: z
     .array(
       z.object({
@@ -36,12 +40,7 @@ const setupRequestSchema = z.object({
       }),
     )
     .optional()
-    .default([
-      {
-        display_name: "Booking / order reference",
-        variable_name: "customer_reference",
-      },
-    ]),
+    .default([]),
 });
 
 async function resolveProvider(request: NextRequest) {

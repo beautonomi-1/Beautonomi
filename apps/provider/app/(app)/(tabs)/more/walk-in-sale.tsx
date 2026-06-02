@@ -342,6 +342,17 @@ export default function WalkInSaleScreen() {
     return () => sub.remove();
   }, [refreshProducts]);
 
+  // Reset a persisted/selected method that is gated off mid-session so the
+  // hidden option cannot linger as the active payment method.
+  useEffect(() => {
+    if (!paystackTerminalEnabled && paymentMethod === "paystack_terminal") {
+      setPaymentMethod("cash");
+    }
+    if (!yocoEnabled && paymentMethod === "yoco") {
+      setPaymentMethod("cash");
+    }
+  }, [paystackTerminalEnabled, yocoEnabled, paymentMethod]);
+
   const openNewSaleSheet = useCallback(() => {
     setSelectedSale(null);
     setCart([]);

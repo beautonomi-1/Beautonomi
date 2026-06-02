@@ -135,6 +135,7 @@ import { PhoneInput } from "@/components/ui/phone-input";
 import { isCompleteE164 } from "@/lib/phone";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { AvailabilitySlotPicker } from "./AvailabilitySlotPicker";
+import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 
 // Types are now in ./types.ts
 type AppointmentProductOrderLink = {
@@ -236,6 +237,7 @@ export function AppointmentSidebar({
   const { format: formatMoney } = useProviderMoneyFormat();
   const { provider: portalProviderRaw } = useProviderPortal();
   const portalProvider = portalProviderRaw as PortalProviderProfile | null;
+  const paymentLinkEnabled = useFeatureFlag("payment_link");
   const recurringDetails = getRecurringDetails(selectedAppointment);
 
   /** Booking id for PATCH /bookings/:id (calendar rows may use composite ids or service-line ids). */
@@ -5054,6 +5056,7 @@ export function AppointmentSidebar({
                           Card (Yoco POS)
                         </Button>
 
+                        {paymentLinkEnabled && (
                         <div className="flex items-center gap-2">
                           <Button 
                             className="flex-1 text-xs" 
@@ -5098,6 +5101,7 @@ export function AppointmentSidebar({
                             </Tooltip>
                           </TooltipProvider>
                         </div>
+                        )}
                             </>
                           );
                         })()}
@@ -5384,7 +5388,9 @@ export function AppointmentSidebar({
                     { value: "cash" as const, label: "Cash", icon: Receipt },
                     { value: "card" as const, label: "Manual Card", icon: CreditCard },
                     { value: "yoco_pos" as const, label: "Yoco Terminal", icon: CreditCard },
-                    { value: "payment_link" as const, label: "Payment Link", icon: Send },
+                    ...(paymentLinkEnabled
+                      ? [{ value: "payment_link" as const, label: "Payment Link", icon: Send }]
+                      : []),
                   ] as const).map(({ value, label, icon: Icon }) => (
                     <button
                       key={value}

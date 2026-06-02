@@ -31,6 +31,15 @@ export async function complianceClearUserReferences(
     p_user_id: userId,
   });
   if (error) {
+    // The RPC RAISEs a descriptive message naming the blocking
+    // table/column/constraint (e.g. "Could not clear provider purge FK blocker
+    // public.sales.provider_id -> providers"). Log it so the exact RESTRICT
+    // chain is visible without reproducing the failure.
+    console.error("compliance_clear_user_references failed", {
+      userId,
+      code: error.code,
+      message: error.message,
+    });
     return { ok: false, message: error.message, code: error.code };
   }
   return { ok: true, storage_attachments_removed: 0 };

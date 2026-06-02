@@ -49,8 +49,6 @@ type Fixture = {
   payoutCount: number;
   travelFeeCount: number;
   zoneSelectionCount: number;
-  paystackTerminalCount: number;
-  paystackTerminalReadyCount: number;
   userProfile: Record<string, unknown> | null;
 };
 
@@ -79,7 +77,6 @@ function makeBuilder(result: { data?: unknown; count?: number | null; error?: un
 
 function makeSupabase(fixture: Fixture) {
   let providerCallIndex = 0;
-  let paystackTerminalCallIndex = 0;
   return {
     from(table: string) {
       switch (table) {
@@ -112,15 +109,6 @@ function makeSupabase(fixture: Fixture) {
           return makeBuilder({ count: fixture.zoneSelectionCount, data: [] });
         case "provider_payout_accounts":
           return makeBuilder({ count: fixture.payoutCount, data: [] });
-        case "provider_paystack_virtual_terminals": {
-          // Route queries this table twice: once for active count, once for asset_status=ready count.
-          // Use a per-table call index to return the appropriate fixture value.
-          paystackTerminalCallIndex += 1;
-          if (paystackTerminalCallIndex === 1) {
-            return makeBuilder({ count: fixture.paystackTerminalCount, data: [] });
-          }
-          return makeBuilder({ count: fixture.paystackTerminalReadyCount, data: [] });
-        }
         case "user_profiles":
           return makeBuilder({ data: fixture.userProfile });
         default:
@@ -164,8 +152,6 @@ function emptyFixture(overrides: Partial<Fixture> = {}): Fixture {
     payoutCount: 1,
     travelFeeCount: 0,
     zoneSelectionCount: 0,
-    paystackTerminalCount: 0,
-    paystackTerminalReadyCount: 0,
     userProfile: {
       about: "I am a freelancer offering bespoke services",
       languages: ["en"],
@@ -244,5 +230,15 @@ describe("GET /api/provider/setup-status", () => {
     const res = await callRoute(fixture);
     const personal = res.data.steps.find((s: any) => s.id === "personal-profile");
     expect(personal).toBeUndefined();
+  });
+
+  // §provider-launch (2026-06): Paystack Terminal is feature-gated and must not
+  // appear in onboarding (the hub / get-started), even when the flag is enabled.
+  it("never includes Paystack Terminal steps in onboarding (even when enabled)", async () => {
+    mockIsFeatureEnabledServer.mockResolvedValue(true);
+    const res = await callRoute(emptyFixture());
+    const ids = res.data.steps.map((s: any) => s.id);
+    expect(ids).not.toContain("paystack-terminal");
+    expect(ids).not.toContain("paystack-terminal-assets");
   });
 });

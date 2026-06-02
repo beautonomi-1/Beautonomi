@@ -386,6 +386,21 @@ export function DashboardClient({
         subtitle="Overview of your business performance"
       />
 
+      {/* §provider-launch (2026-06): pending_approval providers now land here
+          directly — surface a non-blocking "under review" banner. */}
+      {provider?.status === "pending_approval" && (
+        <div className="mb-4 sm:mb-6 flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4">
+          <Clock className="h-5 w-5 flex-shrink-0 text-amber-600 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold text-amber-900">Your account is under review</p>
+            <p className="mt-0.5 text-sm text-amber-700">
+              You can explore your dashboard and finish setup now. We&apos;ll notify you once your
+              profile is approved and visible to customers.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Identity strip: rating (Uber-style), badge, service type, at-home radius */}
       <ProviderIdentityStrip
         averageRating={stats.average_rating}

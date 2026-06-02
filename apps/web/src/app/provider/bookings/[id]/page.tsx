@@ -126,6 +126,7 @@ type SendLinkDelivery = (typeof SEND_LINK_OPTIONS)[number]["value"];
 export default function ProviderBookingDetail() {
   const { format: formatMoney } = useProviderMoneyFormat();
   const yocoEnabled = useFeatureFlag("payment_yoco");
+  const paymentLinkEnabled = useFeatureFlag("payment_link");
   const params = useParams();
   const router = useRouter();
   const bookingId = params.id as string;
@@ -1193,6 +1194,7 @@ export default function ProviderBookingDetail() {
   const canRefund = totalPaid > 0 && totalRefunded < totalPaid;
   /** Matches provider app + POST /send-payment-link (API rejects if already paid; needs email/SMS contact) */
   const canSendPaymentLink =
+    paymentLinkEnabled &&
     outstanding > 0 &&
     bookingLifecycleStatus !== "cancelled" &&
     b.payment_status !== "paid" &&
