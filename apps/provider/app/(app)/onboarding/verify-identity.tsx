@@ -17,7 +17,7 @@ import {
   type VerificationStatus,
 } from "@/components/verification/ProviderVerificationPanel";
 import { twStyle } from "@/lib/twStyle";
-import { Colors, Shadows } from "@/constants/colors";
+import { Shadows } from "@/constants/colors";
 import { hapticLight } from "@/lib/haptics-safe";
 
 export default function OnboardingVerifyIdentityScreen() {

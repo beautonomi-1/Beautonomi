@@ -117,6 +117,7 @@ path,class,note
 /api/admin/finance/summary,T,"uses resolveAdminApiTenantId"
 /api/admin/finance/transactions,T,"uses resolveAdminApiTenantId"
 /api/admin/finance/wallet-reconciliation,T,"uses resolveAdminApiTenantId"
+/api/admin/finance/wallet-booking-debit-audit,T,"uses resolveAdminApiTenantId"
 /api/admin/gamification/backfill/initialize,T,"review: likely tenant-scoped ops"
 /api/admin/gamification/backfill,T,"review: likely tenant-scoped ops"
 /api/admin/gamification/badges/[id],T,"needs explicit tenant filter"

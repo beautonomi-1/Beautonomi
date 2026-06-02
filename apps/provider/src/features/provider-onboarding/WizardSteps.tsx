@@ -1876,17 +1876,6 @@ function Step10Categories() {
     })();
   }, []);
 
-  if (loading) {
-    return (
-      <View style={twStyle("py-12 items-center gap-3")}>
-        <ActivityIndicator color="#0f172a" size="large" />
-        <Text style={twStyle("text-[15px] font-medium text-slate-500")}>Loading categories…</Text>
-      </View>
-    );
-  }
-
-  const providerCategories = formData.provider_categories || [];
-
   // Keep a provider-owned menu category for each selected global category so the
   // provider can rename them and assign services in the next step. We only ADD
   // (never auto-remove) so manual edits / custom categories are preserved.
@@ -1909,6 +1898,17 @@ function Step10Categories() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.global_category_ids, cats]);
+
+  if (loading) {
+    return (
+      <View style={twStyle("py-12 items-center gap-3")}>
+        <ActivityIndicator color="#0f172a" size="large" />
+        <Text style={twStyle("text-[15px] font-medium text-slate-500")}>Loading categories…</Text>
+      </View>
+    );
+  }
+
+  const providerCategories = formData.provider_categories || [];
 
   const toggle = (id: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
