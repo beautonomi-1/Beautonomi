@@ -9,12 +9,14 @@ import {
   type AtHomeSnapshotLine,
 } from "@beautonomi/utils";
 import { formatMoney } from "@beautonomi/utils";
+/** Narrow callable surface for i18next `t` without importing incompatible overloads. */
+export type TranslateFn = (key: string, options?: Record<string, string | number>) => string;
 
-type TranslateFn = (
-  key: string,
-  params?: Record<string, string | number>,
-  defaultValue?: string
-) => string;
+/** Bridges react-i18next `t` into {@link TranslateFn} for house-call UI props. */
+export function toHouseCallTranslate(t: unknown): TranslateFn {
+  const translate = t as TranslateFn;
+  return (key, options) => translate(key, options);
+}
 
 const emerald = {
   bg: "#ECFDF5",

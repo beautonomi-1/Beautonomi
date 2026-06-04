@@ -55,6 +55,7 @@ import { catalogHasAnyAtHomePriceAdjustment, computeAtHomeLinePrice } from "@bea
 import {
   HouseCallAtHomeBanner,
   HouseCallServicePriceText,
+  toHouseCallTranslate,
 } from "@/components/booking/HouseCallPricingNotes";
 import { getGuestFingerprintHash } from "@/lib/guest-fingerprint";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
@@ -107,7 +108,7 @@ function resolveOfferingPricing(
           return {
             basePrice: v.price ?? 0,
             atHomePriceAdjustment: svc.at_home_price_adjustment ?? 0,
-            currency: v.currency ?? svc.currency,
+            currency: svc.currency,
           };
         }
       }
@@ -480,6 +481,7 @@ function DateCell({ date, isSelected, isToday, disabled, onPress }: {
 export default function BookScreen() {
   useScreenTracking("Book");
   const { t } = useTranslation();
+  const houseCallT = useMemo(() => toHouseCallTranslate(t), [t]);
   // §UX-audit 2026-04: previously every sticky bottom bar and floating
   // header on this screen hard-coded `paddingBottom: 28` / `paddingTop: 52`,
   // so CTAs rendered under the home indicator on notched devices.
@@ -999,6 +1001,7 @@ export default function BookScreen() {
     setServiceFilterText("");
     setCategoryFilterText("");
     setVisibleLimitByCategoryId({});
+    const wantsAtHome = locationTypeParam === "at_home";
     try {
       const [provRes, svcRes, staffRes, pkRes, prodRes] = await Promise.all([
         api.get<PublicProviderDetail>(`/api/public/providers/${encodeURIComponent(slug)}`),
@@ -1014,7 +1017,6 @@ export default function BookScreen() {
         setProvider(provRes.data);
         const locs = provRes.data.locations || [];
         const salonLocs = locs.filter((loc) => loc.location_type === "salon");
-        const wantsAtHome = locationTypeParam === "at_home";
 
         if (wantsAtHome) {
           setLocationType("at_home");
@@ -2221,7 +2223,7 @@ export default function BookScreen() {
             {step === "service" && (
               <View>
                 {isAtHomeBooking && catalogHasHouseCallFees && !activePackage ? (
-                  <HouseCallAtHomeBanner t={t} />
+                  <HouseCallAtHomeBanner t={houseCallT} />
                 ) : null}
                 {activePackage ? (
                   /* ── Package mode: locked summary view ── */
@@ -2512,7 +2514,7 @@ export default function BookScreen() {
                                   atHomePriceAdjustment={svc.at_home_price_adjustment}
                                   isAtHome={locationType === "at_home"}
                                   currency={currency}
-                                  t={t}
+                                  t={houseCallT}
                                 />
                               )}
                               {!hasVariants && <Ionicons name="add-circle-outline" size={22} color={Colors.primary} style={{ marginLeft: 8 }} />}
@@ -2581,7 +2583,7 @@ export default function BookScreen() {
                                           atHomePriceAdjustment={svc.at_home_price_adjustment}
                                           isAtHome={locationType === "at_home"}
                                           currency={currency}
-                                          t={t}
+                                          t={houseCallT}
                                         />
                                         <Ionicons
                                           name={isVariantSelected ? "checkmark-circle" : "add-circle-outline"}

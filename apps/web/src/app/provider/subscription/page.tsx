@@ -43,7 +43,7 @@ interface SubscriptionPlan {
 interface ProviderSubscription {
   id: string;
   plan_id: string;
-  status: "active" | "expired" | "cancelled" | "past_due" | "trial";
+  status: "active" | "expired" | "cancelled" | "past_due" | "trial" | "inactive";
   started_at?: string;
   expires_at?: string;
   cancelled_at?: string | null;

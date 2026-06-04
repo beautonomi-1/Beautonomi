@@ -47,7 +47,7 @@ import {
 } from "@beautonomi/utils";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { computeAtHomeLinePrice } from "@beautonomi/utils";
-import { repriceLegacySelectedServices } from "./lib/legacy-at-home-pricing";
+import { repriceLegacySelectedServices } from "../lib/legacy-at-home-pricing";
 import { bookingUrlNeedsOnlineBookingFlowNew } from "@/lib/booking/booking-url-needs-new-flow";
 import { isCompleteE164 } from "@/lib/phone";
 

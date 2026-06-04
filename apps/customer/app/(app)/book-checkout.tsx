@@ -49,7 +49,7 @@ import {
   serverNowToClockOffsetMs,
   lineHasHouseCallAdjustment,
 } from "@beautonomi/utils";
-import { HouseCallLineFootnote } from "@/components/booking/HouseCallPricingNotes";
+import { HouseCallLineFootnote, toHouseCallTranslate } from "@/components/booking/HouseCallPricingNotes";
 import type { SavedPaymentMethod } from "@/types/api";
 import { APP_URL } from "@/config/public-env";
 import { webTermsOfServiceUrl } from "@/lib/legal-web";
@@ -823,6 +823,7 @@ function CollapsibleCheckoutSection({
 export default function BookCheckoutScreen() {
   useScreenTracking("Book Checkout");
   const { t } = useTranslation();
+  const houseCallT = useMemo(() => toHouseCallTranslate(t), [t]);
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
   // §UX-audit 2026-04: sticky footer + floating header were using
   // magic `paddingBottom: 28` / `paddingTop: 52` constants which
@@ -3297,7 +3298,7 @@ export default function BookCheckoutScreen() {
                           </Text>
                         </View>
                         {hold.location_type === "at_home" && lineHasHouseCallAdjustment(svc) ? (
-                          <HouseCallLineFootnote line={svc} currency={lineCurrency} t={t} />
+                          <HouseCallLineFootnote line={svc} currency={lineCurrency} t={houseCallT} />
                         ) : null}
                       </View>
                       <Text style={{ fontSize: 15, fontWeight: "700", color: "#111827" }}>
