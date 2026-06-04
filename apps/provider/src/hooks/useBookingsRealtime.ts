@@ -1,10 +1,11 @@
 import { useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabase/client";
+import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
 
 /**
  * Debounced bookings + overlay refresh when bookings, line items, time blocks,
- * or availability blocks change. Mirrors the former calendar realtime hook with
- * a generation counter to avoid Supabase channel reuse races under Strict Mode.
+ * or availability blocks change. Uses {@link nextRealtimeTopic} so remounts never
+ * reuse a Supabase channel topic still winding down from cleanup.
  */
 export function useBookingsRealtime(
   providerId: string | undefined,
@@ -25,8 +26,6 @@ export function useBookingsRealtime(
   useEffect(() => {
     onInsertRef.current = onBookingInsert;
   }, [onBookingInsert]);
-
-  const realtimeGenRef = useRef(0);
 
   useEffect(() => {
     if (!isFocused || !providerId) return;
@@ -49,7 +48,7 @@ export function useBookingsRealtime(
       }, 700);
     };
 
-    const topic = `bookings-realtime:${providerId}:${++realtimeGenRef.current}`;
+    const topic = nextRealtimeTopic(`bookings-realtime:${providerId}`);
     const channel = supabase
       .channel(topic)
       .on(

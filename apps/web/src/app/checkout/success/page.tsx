@@ -450,6 +450,13 @@ function CheckoutSuccessContent() {
         : isWalletTopup
           ? "Open my wallet"
           : "View bookings";
+  const appCtaSubtext = resolvedBookingId
+    ? "Best on mobile — jump straight to your appointment"
+    : isWalletTopup
+      ? "Best on mobile — jump straight to your wallet"
+      : isCustomOffer
+        ? "Best on mobile — jump straight to custom requests"
+        : "Best on mobile — jump straight to your bookings";
 
   // When loaded in customer app WebView: tell the app to close WebView and
   // navigate. Only fire once the flow has reached a definitive resolution
@@ -1058,30 +1065,34 @@ function CheckoutSuccessContent() {
               <strong>Custom requests</strong> from your account to check status, or pull to refresh in the app.
             </div>
           ) : null}
+          {/* App deep link first — primary CTA for mobile WebView returns after Paystack */}
+          <a
+            href={openInAppUrl}
+            className="flex items-center justify-center gap-2.5 w-full min-h-[52px] rounded-2xl font-bold text-white transition-all active:scale-[0.98] hover:opacity-95 text-sm"
+            style={{ backgroundColor: ACCENT, boxShadow: `0 8px 24px ${ACCENT}40` }}
+          >
+            <Smartphone className="w-5 h-5 shrink-0" strokeWidth={2.25} aria-hidden />
+            Open in Beautonomi app
+          </a>
+          <p className="text-center text-[11px] leading-snug -mt-1 px-1" style={{ color: TEXT_SECONDARY }}>
+            {appCtaSubtext}
+          </p>
           <Link
             href={webPrimaryHref}
-            className="flex items-center justify-center gap-2 w-full min-h-[50px] rounded-2xl font-bold text-white transition-all active:scale-[0.98] text-sm"
-            style={{ backgroundColor: ACCENT, boxShadow: `0 8px 20px ${ACCENT}40` }}
+            className="flex items-center justify-center gap-2 w-full min-h-[44px] rounded-2xl font-semibold border transition-all active:scale-[0.98] hover:bg-[#F9FAFB] text-sm"
+            style={{ color: TEXT_PRIMARY, borderColor: "#E5E7EB", background: "#fff" }}
           >
             {webPrimaryLabel}
           </Link>
           {isCustomOffer && resolvedBookingId ? (
             <Link
               href="/account-settings/custom-requests"
-              className="flex items-center justify-center gap-2 w-full min-h-[44px] rounded-2xl font-semibold border transition-all active:scale-[0.98] text-sm"
-              style={{ color: TEXT_PRIMARY, borderColor: "#E5E7EB" }}
+              className="flex items-center justify-center gap-2 w-full min-h-[44px] rounded-2xl font-medium border transition-all active:scale-[0.98] hover:bg-[#F9FAFB] text-sm"
+              style={{ color: TEXT_SECONDARY, borderColor: "#E5E7EB", background: "#fff" }}
             >
               View custom requests
             </Link>
           ) : null}
-          <a
-            href={openInAppUrl}
-            className="flex items-center justify-center gap-2 w-full min-h-[44px] rounded-2xl font-medium border transition-all active:scale-[0.98] text-sm"
-            style={{ color: TEXT_SECONDARY, borderColor: "#E5E7EB" }}
-          >
-            <ExternalLink className="w-4 h-4" />
-            Open in Beautonomi app
-          </a>
         </div>
 
         {/* ── APP DOWNLOAD BANNER ── */}

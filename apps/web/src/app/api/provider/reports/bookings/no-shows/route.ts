@@ -151,26 +151,26 @@ export async function GET(request: NextRequest) {
     const totalNoShows = noShowCount || 0;
     const noShowRate = totalBookings > 0 ? (totalNoShows / totalBookings) * 100 : 0;
     
-    // Calculate lost revenue from finance_transactions (what provider would have earned)
     const noShowBookingIds = noShowBookings?.map((b) => b.id) || [];
     let lostRevenue = 0;
-    if (noShowBookingIds.length > 0) {
-      const { revenueByBooking } = await getProviderRevenue(
-        supabaseAdmin,
-        providerId,
-        fromDate,
-        toDate,
-        locationId ?? null,
-        { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES }
-      );
-      // Sum revenue for no-show bookings (if they had finance_transactions)
-      noShowBookingIds.forEach((bookingId) => {
-        lostRevenue += revenueByBooking.get(bookingId) || 0;
-      });
-    }
+
+    const { revenueByBooking: noShowLedgerByBooking } =
+      noShowBookingIds.length > 0
+        ? await getProviderRevenue(
+            supabaseAdmin,
+            providerId,
+            fromDate,
+            toDate,
+            locationId ?? null,
+            { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES, timezone: reportContext.timezone },
+          )
+        : { revenueByBooking: new Map<string, number>() };
 
     // Group by client (repeat offenders)
-    const repeatOffenderMap = new Map<string, { name: string; email: string; count: number; revenue: number }>();
+    const repeatOffenderMap = new Map<
+      string,
+      { name: string; email: string; count: number; booked_value: number; ledger_earnings: number }
+    >();
     noShowBookings?.forEach((booking) => {
       const clientId = booking.customer_id;
       if (clientId) {
@@ -179,19 +179,28 @@ export async function GET(request: NextRequest) {
           name: clientInfo.full_name,
           email: clientInfo.email,
           count: 0,
-          revenue: 0,
+          booked_value: 0,
+          ledger_earnings: 0,
         };
         existing.count += 1;
-        // Note: For client-level analysis, we could use finance_transactions here too
-        // but for now keeping total_amount for client perspective
-        existing.revenue += Number(booking.total_amount || 0);
+        existing.booked_value += Number(booking.total_amount || 0);
+        existing.ledger_earnings += noShowLedgerByBooking.get(booking.id) || 0;
         repeatOffenderMap.set(clientId, existing);
       }
     });
 
+    noShowBookingIds.forEach((bookingId) => {
+      lostRevenue += noShowLedgerByBooking.get(bookingId) || 0;
+    });
+
     const repeatOffenders = Array.from(repeatOffenderMap.values())
       .filter((c) => c.count > 1)
-      .sort((a, b) => b.count - a.count);
+      .sort((a, b) => b.count - a.count)
+      .map((c) => ({
+        ...c,
+        /** @deprecated Use booked_value — booked appointment total. */
+        revenue: c.booked_value,
+      }));
 
     // Group by staff — count distinct bookings per staff (not raw service lines)
     const staffBreakdownMap = new Map<string, { name: string; count: number }>();
@@ -219,6 +228,8 @@ export async function GET(request: NextRequest) {
       repeatOffenders,
       staffBreakdown,
       recentNoShows: noShowBookings?.slice(0, 20) || [],
+      basisNote:
+        "lostRevenue = ledger provider_earnings for no-show bookings in range (often zero). Repeat-offender booked_value uses appointment total_amount; ledger_earnings uses the same ledger rule.",
       reportBasis:
         "No-show rate uses exact booking counts for the selected scheduled-date range. Recent no-shows and staff/client breakdowns are capped for display.",
     });

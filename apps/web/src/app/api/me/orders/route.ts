@@ -10,8 +10,10 @@ import {
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
 import { z } from "zod";
-import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
-import { notifyProviderTeamUsers } from "@/lib/notifications/notify-provider-team";
+import {
+  notifyProductOrderPaidIfTransitioned,
+  notifyProductOrderPlacedPendingPayment,
+} from "@/lib/notifications/notify-product-order-paid";
 import { getPaymentFeatureFlagsForTenant } from "@/lib/subscriptions/entitlements";
 import { getPlatformPaymentTypesForTenant } from "@/lib/payments/platform-payment-types";
 import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
@@ -435,8 +437,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    let paymentRecordResult: Awaited<ReturnType<typeof recordProductOrderPayment>> | null = null;
     if (paidWithWalletOnly) {
-      await recordProductOrderPayment({
+      paymentRecordResult = await recordProductOrderPayment({
         supabase: supabase as any,
         productOrderId: order.id,
         reference: `wallet_product_order_${order.id}`,
@@ -483,32 +486,25 @@ export async function POST(request: NextRequest) {
         .eq("provider_id", parsed.provider_id);
     }
 
-    // Notify provider team (owner + active staff with linked accounts)
-    const { format: formatOrderTotal } = await getTenantMoneyFormatter(orderTenantId);
-    await notifyProviderTeamUsers(parsed.provider_id, {
-      type: "product_order_placed",
-      title: "New Product Order",
-      message: `New order ${orderNum} received — ${formatOrderTotal(totalAmount)} (${orderItems.length} items)`,
-      metadata: {
-        product_order_id: order.id,
-        order_number: orderNum,
-        total_amount: totalAmount,
-      },
-      link: `/provider/ecommerce/orders?order=${encodeURIComponent(order.id)}`,
-    });
+    const isPaystackCheckoutPending =
+      paymentMethod === "paystack" && !paidWithWalletOnly && amountAfterWallet > 0;
+    const isPayOnDelivery =
+      paymentMethod === "cash" || paymentMethod === "card_on_delivery";
 
-    // Order confirmation to customer via OneSignal notification template (push + email)
-    try {
-      const { notifyOrderConfirmation } = await import("@/lib/notifications/notification-service");
-      await notifyOrderConfirmation(
-        user.id,
-        order.id,
-        order.order_number,
+    if (paidWithWalletOnly && paymentRecordResult) {
+      await notifyProductOrderPaidIfTransitioned(supabase as any, order.id, {
+        transitionedToPaid: paymentRecordResult.transitionedToPaid,
+      });
+    } else if (!isPaystackCheckoutPending && isPayOnDelivery) {
+      await notifyProductOrderPlacedPendingPayment({
+        providerId: parsed.provider_id,
+        productOrderId: order.id,
+        orderNumber: orderNum,
         totalAmount,
-        ["push", "email"],
-      );
-    } catch (notifyErr) {
-      console.warn("Order confirmation notification failed:", notifyErr);
+        tenantId: orderTenantId,
+        itemCount: orderItems.length,
+        paymentMethod,
+      });
     }
 
     return successResponse({

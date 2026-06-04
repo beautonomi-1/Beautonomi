@@ -31,6 +31,7 @@ import {
 } from "@/lib/onesignal-client";
 import { captureError, addBreadcrumb } from "@/lib/sentry";
 import { isTransientApiFailure } from "@/lib/api-error";
+import { emitNotificationBadgeRefresh } from "@/lib/notification-badge-events";
 
 const SUBSCRIPTION_RETRY_DELAYS_MS = [3000, 10000, 30000];
 
@@ -524,13 +525,18 @@ function usePushRegistration() {
           OneSignal.Notifications.addEventListener(
             "foregroundWillDisplay",
             (event: NotificationWillDisplayEvent) => {
-              event.getNotification().display();
-              // Vibrate for booking notifications to grab attention
               const gn = event.getNotification();
               const data =
                 gn && typeof gn === "object" && "additionalData" in gn
                   ? (gn as { additionalData?: Record<string, unknown> }).additionalData
                   : undefined;
+              if (data?.type === "badge_sync") {
+                event.preventDefault();
+                emitNotificationBadgeRefresh();
+                return;
+              }
+              event.getNotification().display();
+              emitNotificationBadgeRefresh();
               const tKey = String(data?.template_key ?? data?.type ?? "");
               if (
                 PROVIDER_BOOKING_TEMPLATE_KEYS.has(tKey) ||

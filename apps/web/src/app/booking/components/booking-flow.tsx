@@ -46,6 +46,8 @@ import {
   type PublicProductCatalogRow,
 } from "@beautonomi/utils";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { computeAtHomeLinePrice } from "@beautonomi/utils";
+import { repriceLegacySelectedServices } from "./lib/legacy-at-home-pricing";
 import { bookingUrlNeedsOnlineBookingFlowNew } from "@/lib/booking/booking-url-needs-new-flow";
 import { isCompleteE164 } from "@/lib/phone";
 
@@ -95,6 +97,9 @@ export interface BookingState {
     staffId?: string;
     staffName?: string;
     baseServiceId?: string;
+    /** Salon/base catalog price before at-home adjustment. */
+    base_price?: number;
+    at_home_price_adjustment?: number;
   }>;
   selectedAddons: Array<{
     id: string;
@@ -1062,6 +1067,56 @@ export default function BookingFlow() {
     setBookingState((prev) => ({ ...prev, ...updates }));
   };
 
+  const prevBookingModeRef = useRef(bookingState.mode);
+  /** Legacy flow: services precede venue — re-price cart when customer switches salon ↔ house call. */
+  useEffect(() => {
+    if (prevBookingModeRef.current === bookingState.mode) return;
+    prevBookingModeRef.current = bookingState.mode;
+    if (bookingState.selectedServices.length === 0) return;
+    const slug =
+      searchParams.get("slug") ||
+      searchParams.get("partnerId") ||
+      searchParams.get("provider_id");
+    if (!slug) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetcher.get<{
+          data: Array<{ id: string; price: number; at_home_price_adjustment?: number }>;
+        }>(
+          `/api/services?type=salon&providerSlug=${encodeURIComponent(slug)}`,
+          { timeoutMs: 20000 }
+        );
+        if (cancelled) return;
+        const catalog = (res.data ?? []).map((s) => ({
+          id: s.id,
+          price: s.price,
+          at_home_price_adjustment: s.at_home_price_adjustment,
+        }));
+        const isAtHome = bookingState.mode === "mobile";
+        const repriced = repriceLegacySelectedServices(
+          bookingState.selectedServices,
+          catalog,
+          isAtHome
+        );
+        const changed = repriced.some(
+          (s, i) =>
+            s.price !== bookingState.selectedServices[i]?.price ||
+            s.at_home_price_adjustment !==
+              bookingState.selectedServices[i]?.at_home_price_adjustment
+        );
+        if (changed) updateBookingState({ selectedServices: repriced });
+      } catch {
+        // ignore — totals still reconcile at hold/booking time
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookingState.mode]);
+
   const packageFlowKey = useMemo(() => computeBookingFlowKey(searchParams), [searchParams]);
 
   useEffect(() => {
@@ -1125,15 +1180,40 @@ export default function BookingFlow() {
         );
         if (!resolved?.length) return;
 
-        const built = resolved.map((r) => ({
-          id: r.offeringId,
-          title: r.title,
-          duration: r.duration_minutes,
-          bufferMinutes: r.buffer_minutes,
-          price: r.price,
-          currency: r.currency,
-          staffId: "any",
-        }));
+        const isAtHome = bookingState.mode === "mobile";
+        const built = resolved.map((r) => {
+          let menuParent: (ProviderServiceLike & { at_home_price_adjustment?: number }) | undefined;
+          let catalogBase = r.price;
+          let adj = 0;
+          for (const svc of flat) {
+            if (svc.id === r.offeringId) {
+              menuParent = svc as ProviderServiceLike & { at_home_price_adjustment?: number };
+              catalogBase = Number(svc.price ?? r.price);
+              adj = Number((svc as { at_home_price_adjustment?: number }).at_home_price_adjustment ?? 0);
+              break;
+            }
+            const variant = svc.variants?.find((v) => v.id === r.offeringId);
+            if (variant) {
+              menuParent = svc as ProviderServiceLike & { at_home_price_adjustment?: number };
+              catalogBase = Number(variant.price ?? r.price);
+              adj = Number((svc as { at_home_price_adjustment?: number }).at_home_price_adjustment ?? 0);
+              break;
+            }
+          }
+          void menuParent;
+          const priced = computeAtHomeLinePrice(catalogBase, adj, isAtHome);
+          return {
+            id: r.offeringId,
+            title: r.title,
+            duration: r.duration_minutes,
+            bufferMinutes: r.buffer_minutes,
+            price: priced.displayPrice,
+            base_price: priced.basePrice,
+            at_home_price_adjustment: priced.adjustmentApplied,
+            currency: r.currency,
+            staffId: "any",
+          };
+        });
         const servicesTotal = built.reduce((sum, s) => sum + s.price, 0);
         const discount =
           typeof pkg.price === "number" && pkg.price < servicesTotal

@@ -64,6 +64,8 @@ export function WizardChrome() {
     loadingDraft,
     savingDraft,
     formData,
+    submitLabel,
+    submitBusyLabel,
   } = useOnboardingWizard();
 
   if (loadingDraft) {
@@ -115,7 +117,7 @@ export function WizardChrome() {
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : Platform.OS === "android" ? "height" : undefined}
         style={twStyle("flex-1")}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 8 : 0}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 96 : 24}
       >
         {/* ── Progress zone ─────────────────────────────────────────────── */}
         <View style={twStyle("bg-white px-5 pb-4 pt-3")}>
@@ -216,6 +218,7 @@ export function WizardChrome() {
             { paddingBottom: 120 + Math.max(insets.bottom, 8) },
           ]}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
           showsVerticalScrollIndicator={false}
         >
           <OnboardingStepBody />
@@ -257,12 +260,12 @@ export function WizardChrome() {
               {isSubmitting ? (
                 <>
                   <ActivityIndicator color="#fff" size="small" />
-                  <Text style={twStyle("text-[16px] font-semibold text-white")}>Submitting…</Text>
+                  <Text style={twStyle("text-[16px] font-semibold text-white")}>{submitBusyLabel}</Text>
                 </>
               ) : (
                 <>
                   <Text style={twStyle("text-[16px] font-bold text-white")}>
-                    {isLast ? "Submit & launch" : "Continue"}
+                    {submitLabel}
                   </Text>
                   {!isLast ? <Ionicons name="arrow-forward" size={20} color="#fff" /> : null}
                   {isLast ? <Ionicons name="rocket-outline" size={20} color="#fff" /> : null}

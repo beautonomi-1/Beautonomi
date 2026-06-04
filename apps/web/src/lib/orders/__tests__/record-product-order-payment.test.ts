@@ -112,7 +112,7 @@ describe("recordProductOrderPayment", () => {
       platformHeld: false,
     });
 
-    expect(result).toEqual({ ok: true, duplicate: false });
+    expect(result).toEqual({ ok: true, duplicate: false, transitionedToPaid: true });
     expect(state.inserts.payment_transactions).toHaveLength(1);
     expect(state.inserts.finance_transactions).toBeUndefined();
   });
@@ -134,7 +134,7 @@ describe("recordProductOrderPayment", () => {
       provider: "paystack",
     });
 
-    expect(result).toEqual({ ok: true, duplicate: false });
+    expect(result).toEqual({ ok: true, duplicate: false, transitionedToPaid: false });
     expect(state.inserts.payment_transactions).toBeUndefined();
     expect(state.inserts.finance_transactions?.[0].map((row) => row.transaction_type)).toEqual([
       "payment",
@@ -169,7 +169,7 @@ describe("recordProductOrderPayment", () => {
       provider: "paystack",
     });
 
-    expect(result).toEqual({ ok: true, duplicate: true });
+    expect(result).toEqual({ ok: true, duplicate: true, transitionedToPaid: false });
     expect(state.inserts.finance_transactions).toBeUndefined();
   });
 });

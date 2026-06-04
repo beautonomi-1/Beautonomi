@@ -10,9 +10,8 @@ import {
   type RequestOptions,
 } from "@beautonomi/api";
 import type { ApiResponse } from "@beautonomi/types";
-import { Platform } from "react-native";
 import { supabase } from "@/lib/supabase/client";
-import { APP_URL, webApiTenantHeaders } from "@/config/public-env";
+import { APP_URL, getBackendUrl, webApiTenantHeaders } from "@/config/public-env";
 import { getDeviceRegionCountryIso } from "@/lib/device-default-country-dial";
 import { authFlowBreadcrumb, captureError, isSentryEnabled } from "@/lib/sentry";
 import { getHttpErrorStatus } from "@/lib/api-error";
@@ -23,35 +22,21 @@ import {
 
 /** Resolve API base URL with strict production safeguards. Never throws — callers expect sync resolution inside apiFetch try/catch. */
 export function getApiBaseUrl(): string {
-  const configured = APP_URL?.trim() ?? "";
-  if (Platform.OS === "web" && typeof window !== "undefined") {
-    const origin = window.location.origin;
-    const isLocalExpoWeb =
-      origin === "http://localhost:8081" || origin === "http://localhost:8082";
-    if (
-      __DEV__ &&
-      (isLocalExpoWeb || !configured)
-    ) {
-      if (__DEV__) {
-        console.log("[API] Using backend URL http://localhost:3000 (Expo web local dev)");
-      }
-      return "http://localhost:3000";
-    }
-  }
-  if (!configured) {
-    if (__DEV__) {
+  const resolved = getBackendUrl();
+  if (resolved) {
+    if (__DEV__ && !APP_URL?.trim()) {
       console.warn(
-        "[API] Missing EXPO_PUBLIC_APP_URL; using http://localhost:3000 for dev. Configure apps/provider/.env.local for production.",
+        `[API] EXPO_PUBLIC_APP_URL unset; using ${resolved}. Set apps/provider/.env.local for a fixed backend URL.`,
       );
-      return "http://localhost:3000";
     }
-    // Production without URL: avoid throwing (unhandled rejection). Requests fail with a clear network error.
+    return resolved;
+  }
+  if (!__DEV__) {
     console.error(
       "Missing EXPO_PUBLIC_APP_URL for provider API client. Configure apps/provider/.env.",
     );
-    return "";
   }
-  return configured;
+  return "";
 }
 
 /**
@@ -141,7 +126,7 @@ async function getAccessToken(): Promise<string | null> {
           message: e instanceof Error ? e.message : String(e),
         });
       }
-      throw e;
+      return null;
     } finally {
       inflightToken = null;
     }

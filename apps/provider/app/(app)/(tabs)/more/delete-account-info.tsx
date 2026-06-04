@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { View, Text, TouchableOpacity, TextInput, Alert, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
 import { useApi, useApiMutation } from "@/hooks/useApi";
@@ -11,6 +11,7 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { twStyle } from "@/lib/twStyle";
 import {
   canVerifySensitiveActionWithCode,
+  describeReauthOtpDestination,
   isAuthSecurityLoaded,
   sensitiveActionSubmitReady,
   userHasPassword,
@@ -32,11 +33,18 @@ type AuthSecurityState = {
   has_phone: boolean;
 };
 
+type ProfileForDelete = {
+  email?: string;
+  phone?: string;
+  auth_security?: AuthSecurityState | null;
+};
+
 export default function DeleteAccountInfoScreen() {
   const router = useRouter();
   const { signOut } = useAuth();
   const { data: status, loading, error, refresh } = useApi<AccountStatus>("/api/me/account-status");
-  const { data: profile } = useApi<{ auth_security?: AuthSecurityState | null }>("/api/me/profile");
+  const { data: roleData } = useApi<{ role?: string }>("/api/me/role");
+  const { data: profile } = useApi<ProfileForDelete>("/api/me/profile");
   const { execute: deleteAccount, loading: deleting } = useApiMutation("post");
   const [password, setPassword] = useState("");
   const [verificationNonce, setVerificationNonce] = useState("");
@@ -49,6 +57,16 @@ export default function DeleteAccountInfoScreen() {
   const authSecurityLoaded = isAuthSecurityLoaded(authSecurity);
   const hasPassword = userHasPassword(authSecurity);
   const canVerifyWithCode = canVerifySensitiveActionWithCode(authSecurity);
+  const isProviderOwner = roleData?.role === "provider_owner";
+
+  const otpDestination = useMemo(
+    () =>
+      describeReauthOtpDestination(authSecurity, {
+        email: profile?.email,
+        phone: profile?.phone,
+      }),
+    [authSecurity, profile?.email, profile?.phone],
+  );
 
   const handleDeleteAccount = async () => {
     if (!authSecurityLoaded) {
@@ -69,7 +87,9 @@ export default function DeleteAccountInfoScreen() {
     }
     Alert.alert(
       "Delete account permanently?",
-      "This action cannot be undone and will permanently remove your account and profile data.",
+      isProviderOwner
+        ? "This cannot be undone. Your provider profile, services, bookings, and business data will be permanently removed."
+        : "This action cannot be undone and will permanently remove your account and profile data.",
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -90,20 +110,20 @@ export default function DeleteAccountInfoScreen() {
             router.replace("/(auth)/login" as never);
           },
         },
-      ]
+      ],
     );
   };
 
   const requestVerificationCode = async () => {
     if (!canVerifyWithCode) {
-      Alert.alert("Add contact method", "Add and verify an email or phone number before deleting this account.");
+      Alert.alert("Add contact method", otpDestination.codeSentMessage);
       return;
     }
     setRequestingNonce(true);
     try {
       const { error: reauthError } = await supabase.auth.reauthenticate();
       if (reauthError) throw reauthError;
-      Alert.alert("Code sent", "Enter the verification code below to confirm deletion.");
+      Alert.alert("Code sent", otpDestination.codeSentMessage);
     } catch (e) {
       Alert.alert("Could not send code", e instanceof Error ? e.message : "Please try again.");
     } finally {
@@ -140,6 +160,16 @@ export default function DeleteAccountInfoScreen() {
     <ScreenContainer>
       <ScreenHeader title="Delete account" onBack={() => router.back()} />
       <View style={twStyle("px-4 pt-4 pb-8")}>
+        {isProviderOwner && (
+          <View style={twStyle("mb-4 rounded-xl border border-red-200 bg-red-50 p-4")}>
+            <Text style={twStyle("font-medium text-red-800")}>Provider business account</Text>
+            <Text style={twStyle("mt-1 text-sm text-red-700 leading-5")}>
+              Deleting permanently removes your provider profile, services, and linked business data. Team members
+              may lose access to this business. To take a break instead, use Deactivate account in Settings.
+            </Text>
+          </View>
+        )}
+
         {isDeactivated && (
           <View style={twStyle("mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4")}>
             <Text style={twStyle("font-medium text-amber-800")}>Account deactivated</Text>
@@ -186,13 +216,18 @@ export default function DeleteAccountInfoScreen() {
             </>
           ) : (
             <View style={twStyle("mb-3")}>
-              <Text style={twStyle("mb-2 text-sm text-gray-600")}>Confirm with a one-time verification code.</Text>
+              <Text style={twStyle("mb-2 text-sm text-gray-600")}>
+                Confirm with a one-time verification code.
+              </Text>
+              <Text style={twStyle("mb-2 text-xs text-gray-500")}>{otpDestination.sendButtonHint}</Text>
               <TouchableOpacity
                 onPress={requestVerificationCode}
                 disabled={requestingNonce || !canVerifyWithCode}
                 style={twStyle("mb-2 rounded-lg border border-gray-200 bg-white px-3 py-3")}
               >
-                <Text style={twStyle("text-center font-semibold text-gray-900")}>{requestingNonce ? "Sending..." : "Send verification code"}</Text>
+                <Text style={twStyle("text-center font-semibold text-gray-900")}>
+                  {requestingNonce ? "Sending..." : "Send verification code"}
+                </Text>
               </TouchableOpacity>
               <TextInput
                 value={verificationNonce}
@@ -227,11 +262,12 @@ export default function DeleteAccountInfoScreen() {
             autoCapitalize="characters"
             autoCorrect={false}
             style={twStyle(
-              `rounded-lg border px-3 py-2.5 text-gray-900 ${confirmOk ? "border-gray-200" : "border-red-200"}`
+              `rounded-lg border px-3 py-2.5 text-gray-900 ${confirmOk ? "border-gray-200" : "border-red-200"}`,
             )}
           />
           <Text style={twStyle("mt-2 text-xs text-gray-500")}>
-            Same safeguards as the website. Passwordless accounts can confirm with a one-time verification code.
+            Same safeguards as the website. Passwordless accounts receive a code by{" "}
+            {otpDestination.channel === "sms" ? "SMS" : "email"}.
           </Text>
         </View>
 
@@ -244,7 +280,7 @@ export default function DeleteAccountInfoScreen() {
               !sensitiveActionSubmitReady(authSecurity, { password, verificationNonce })
                 ? "border-gray-200 bg-gray-100"
                 : "border-red-300 bg-red-50"
-            }`
+            }`,
           )}
           activeOpacity={0.7}
           disabled={
@@ -261,7 +297,7 @@ export default function DeleteAccountInfoScreen() {
                 !sensitiveActionSubmitReady(authSecurity, { password, verificationNonce })
                   ? "text-gray-400"
                   : "text-red-700"
-              }`
+              }`,
             )}
           >
             {deleting ? "Deleting..." : "Delete account permanently"}

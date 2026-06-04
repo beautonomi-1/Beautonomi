@@ -112,6 +112,16 @@ function isSamePlanOption(sub: Subscription | null, plan: Plan): boolean {
   return bp === plan.billing_period;
 }
 
+function subscriptionNeedsReactivation(sub: Subscription | null): boolean {
+  if (!sub) return false;
+  if (sub.cancelled_at) return true;
+  return sub.status === "cancelled" || sub.status === "expired" || sub.status === "inactive";
+}
+
+function isActiveCurrentPlan(sub: Subscription | null, plan: Plan): boolean {
+  return isSamePlanOption(sub, plan) && !subscriptionNeedsReactivation(sub);
+}
+
 function formatOptionPrice(plan: Plan): string {
   if (plan.is_free || plan.amount === 0) return "Free";
   const period = plan.billing_period === "yearly" ? "year" : "month";
@@ -134,7 +144,12 @@ function currentSubscriptionPriceLine(sub: Subscription | null): string | null {
 }
 
 function getPlanCtaLabel(plan: Plan, sub: Subscription | null): string {
-  if (isSamePlanOption(sub, plan)) return "";
+  if (isSamePlanOption(sub, plan)) {
+    if (subscriptionNeedsReactivation(sub) && (plan.is_free || plan.amount === 0)) {
+      return "Reactivate free plan";
+    }
+    return "";
+  }
   if (plan.is_free || plan.amount === 0) return "Activate free";
   if (isFreeTierSubscription(sub)) return "Upgrade";
   if (sub && sub.plan_id === plan.plan_id && sub.billing_period !== plan.billing_period) {
@@ -156,7 +171,11 @@ function statusLabel(sub: Subscription): string {
 }
 
 function billingActionLabel(sub: Subscription | null): string | null {
-  if (!sub || isFreeTierSubscription(sub)) return null;
+  if (!sub) return null;
+  if (isFreeTierSubscription(sub) && subscriptionNeedsReactivation(sub)) {
+    return "Reactivate free plan";
+  }
+  if (isFreeTierSubscription(sub)) return null;
   if (sub.status === "past_due") return "Pay now / update card";
   if (sub.paystack_sync_pending) return "Complete billing";
   if (sub.billing_issue?.action === "retry_payment") return "Retry payment";
@@ -481,6 +500,18 @@ export default function SubscriptionScreen() {
   }
 
   async function handleBillingAction() {
+    if (
+      subscription &&
+      isFreeTierSubscription(subscription) &&
+      subscriptionNeedsReactivation(subscription)
+    ) {
+      const freePlan = plans?.find((p) => p.is_free || p.amount === 0);
+      if (freePlan) {
+        await handleUpgrade(freePlan.id);
+        return;
+      }
+    }
+
     if (subscription?.billing_issue?.action === "update_payment" || subscription?.status === "past_due") {
       try {
         const { error: linkErr, data } = await api.get<{ link?: string }>("/api/provider/subscription/manage-link");
@@ -876,7 +907,9 @@ function PlanCard({
   upgradingId: string | null;
   onUpgrade: (id: string) => void;
 }) {
-  const isCurrent = isSamePlanOption(subscription, plan);
+  const isCurrent = isActiveCurrentPlan(subscription, plan);
+  const needsReactivate =
+    isSamePlanOption(subscription, plan) && subscriptionNeedsReactivation(subscription);
   const cta = getPlanCtaLabel(plan, subscription);
   const loading = upgradingId === plan.id;
 
@@ -928,7 +961,7 @@ function PlanCard({
         </View>
       ) : null}
 
-      {!isCurrent && cta ? (
+      {(!isCurrent || needsReactivate) && cta ? (
         <TouchableOpacity
           style={[
             twStyle("mt-5 flex-row items-center justify-center rounded-full py-4"),
@@ -950,6 +983,10 @@ function PlanCard({
         <View style={twStyle("mt-5 rounded-full bg-gray-100 py-3")}>
           <Text style={twStyle("text-center text-sm font-semibold text-gray-600")}>This is your current plan</Text>
         </View>
+      ) : needsReactivate ? (
+        <Text style={twStyle("mt-3 text-center text-xs text-amber-800")}>
+          Subscription is cancelled — tap Reactivate free plan above.
+        </Text>
       ) : null}
     </View>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
@@ -18,7 +18,16 @@ import Breadcrumb from "../components/breadcrumb";
 import BackButton from "../components/back-button";
 import { toast } from "sonner";
 import { fetcher } from "@/lib/http/fetcher";
+import { getSupabaseClient } from "@/lib/supabase/client";
 import LoadingTimeout from "@/components/ui/loading-timeout";
+import {
+  canVerifySensitiveActionWithCode,
+  describeReauthOtpDestination,
+  isAuthSecurityLoaded,
+  sensitiveActionSubmitReady,
+  userHasPassword,
+  type AuthSecuritySnapshot,
+} from "@beautonomi/utils";
 import { CookieSettingsFooterLink } from "@/components/cookie-consent/CookieSettingsFooterLink";
 import type { PrivacyPageInitial } from "./privacy-initial-types";
 
@@ -66,15 +75,34 @@ const PrivacyPage = ({
   // Data tab states
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deletePassword, setDeletePassword] = useState("");
+  const [deleteVerificationNonce, setDeleteVerificationNonce] = useState("");
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [deleteReason, setDeleteReason] = useState("");
   const [isRequestingData, setIsRequestingData] = useState(false);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [isRequestingDeleteNonce, setIsRequestingDeleteNonce] = useState(false);
+  const [deleteAuthSecurity, setDeleteAuthSecurity] = useState<AuthSecuritySnapshot | null>(null);
+  const [deleteProfileEmail, setDeleteProfileEmail] = useState<string | null>(null);
+  const [deleteProfilePhone, setDeleteProfilePhone] = useState<string | null>(null);
 
   const DELETE_CONFIRM_PHRASE = "DELETE";
+  const deleteAuthSecurityLoaded = isAuthSecurityLoaded(deleteAuthSecurity);
+  const deleteHasPassword = userHasPassword(deleteAuthSecurity);
+  const deleteCanVerifyWithCode = canVerifySensitiveActionWithCode(deleteAuthSecurity);
+  const deleteOtpDestination = useMemo(
+    () =>
+      describeReauthOtpDestination(deleteAuthSecurity, {
+        email: deleteProfileEmail,
+        phone: deleteProfilePhone,
+      }),
+    [deleteAuthSecurity, deleteProfileEmail, deleteProfilePhone],
+  );
   const canConfirmDelete =
-    !!deletePassword?.trim() &&
-    deleteConfirmText?.trim().toUpperCase() === DELETE_CONFIRM_PHRASE;
+    deleteConfirmText?.trim().toUpperCase() === DELETE_CONFIRM_PHRASE &&
+    sensitiveActionSubmitReady(deleteAuthSecurity, {
+      password: deletePassword,
+      verificationNonce: deleteVerificationNonce,
+    });
   const [isLoadingSettings, setIsLoadingSettings] = useState(() => !initial);
   const [dataExportStatus, setDataExportStatus] = useState<{
     isReady: boolean;
@@ -92,8 +120,27 @@ const PrivacyPage = ({
     }
     void loadPrivacySettings();
     void loadDataExportStatus();
+    void loadDeleteAuthProfile();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `initial` is fixed for this navigation
   }, []);
+
+  const loadDeleteAuthProfile = async () => {
+    try {
+      const res = await fetcher.get<{
+        data?: { email?: string; phone?: string; auth_security?: AuthSecuritySnapshot | null };
+        email?: string;
+        phone?: string;
+        auth_security?: AuthSecuritySnapshot | null;
+      }>("/api/me/profile", { staleTimeMs: 30_000 });
+      const profile = (res as { data?: Record<string, unknown> })?.data ?? res;
+      const p = profile as { email?: string; phone?: string; auth_security?: AuthSecuritySnapshot | null };
+      setDeleteAuthSecurity(p?.auth_security ?? null);
+      setDeleteProfileEmail(p?.email ?? null);
+      setDeleteProfilePhone(p?.phone ?? null);
+    } catch {
+      setDeleteAuthSecurity(null);
+    }
+  };
 
   const loadPrivacySettings = async () => {
     try {
@@ -249,21 +296,53 @@ const PrivacyPage = ({
     }
   };
 
+  const handleRequestDeleteNonce = async () => {
+    if (!deleteCanVerifyWithCode) {
+      toast.error(deleteOtpDestination.codeSentMessage);
+      return;
+    }
+    setIsRequestingDeleteNonce(true);
+    try {
+      const supabase = getSupabaseClient();
+      const { error } = await supabase.auth.reauthenticate();
+      if (error) throw error;
+      toast.success(deleteOtpDestination.codeSentMessage);
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Failed to send verification code");
+    } finally {
+      setIsRequestingDeleteNonce(false);
+    }
+  };
+
   const handleDeleteAccount = async () => {
-    if (!deletePassword) {
+    if (!deleteAuthSecurityLoaded) {
+      toast.error("Still loading account security settings. Please try again.");
+      return;
+    }
+    if (deleteHasPassword && !deletePassword.trim()) {
       toast.error("Password is required to delete your account");
+      return;
+    }
+    if (!deleteHasPassword && !deleteVerificationNonce.trim()) {
+      toast.error("Enter the verification code to delete your account");
+      return;
+    }
+    if (deleteConfirmText.trim().toUpperCase() !== DELETE_CONFIRM_PHRASE) {
+      toast.error(`Type ${DELETE_CONFIRM_PHRASE} to confirm deletion`);
       return;
     }
 
     try {
       setIsDeletingAccount(true);
       await fetcher.post("/api/me/delete-account", {
-        password: deletePassword,
+        password: deleteHasPassword ? deletePassword.trim() : undefined,
+        verificationNonce: deleteHasPassword ? undefined : deleteVerificationNonce.trim(),
         reason: deleteReason || null,
       });
       toast.success("Your account has been deleted. You will be signed out.");
       setShowDeleteDialog(false);
       setDeletePassword("");
+      setDeleteVerificationNonce("");
       setDeleteConfirmText("");
       setDeleteReason("");
       setTimeout(() => {
@@ -595,7 +674,7 @@ const PrivacyPage = ({
                       Advanced
                     </p>
                     <p className="text-sm text-gray-500 font-light mb-3 max-w-xl">
-                      To permanently delete your account we require your password and typing{" "}
+                      To permanently delete your account we require your password or a verification code, and typing{" "}
                       <span className="font-mono font-medium text-gray-600">DELETE</span> to confirm.
                       Prefer a break first? Use{" "}
                       <a
@@ -883,6 +962,7 @@ const PrivacyPage = ({
             setShowDeleteDialog(open);
             if (!open) {
               setDeletePassword("");
+              setDeleteVerificationNonce("");
               setDeleteConfirmText("");
               setDeleteReason("");
             }
@@ -903,20 +983,55 @@ const PrivacyPage = ({
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
-              <div>
-                <label htmlFor="delete-password" className="text-sm font-medium mb-2 block">
-                  Enter your password
-                </label>
-                <Input
-                  id="delete-password"
-                  type="password"
-                  value={deletePassword}
-                  onChange={(e) => setDeletePassword(e.target.value)}
-                  placeholder="Your password"
-                  disabled={isDeletingAccount}
-                  className="w-full"
-                />
-              </div>
+              {!deleteAuthSecurityLoaded ? (
+                <p className="text-sm text-gray-500">Loading verification options…</p>
+              ) : deleteHasPassword ? (
+                <div>
+                  <label htmlFor="delete-password" className="text-sm font-medium mb-2 block">
+                    Enter your password
+                  </label>
+                  <Input
+                    id="delete-password"
+                    type="password"
+                    value={deletePassword}
+                    onChange={(e) => setDeletePassword(e.target.value)}
+                    placeholder="Your password"
+                    disabled={isDeletingAccount}
+                    className="w-full"
+                  />
+                </div>
+              ) : (
+                <div className="rounded-lg border border-gray-200 bg-gray-50/80 p-4 space-y-3">
+                  <p className="text-sm text-gray-600">
+                    Confirm with a one-time verification code. {deleteOtpDestination.sendButtonHint}.
+                  </p>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                    <div className="flex-1">
+                      <label htmlFor="delete-verification-code" className="text-sm font-medium mb-2 block">
+                        Verification code
+                      </label>
+                      <Input
+                        id="delete-verification-code"
+                        value={deleteVerificationNonce}
+                        onChange={(e) => setDeleteVerificationNonce(e.target.value.replace(/\D/g, ""))}
+                        placeholder="Enter code"
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        disabled={isDeletingAccount}
+                        className="w-full"
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleRequestDeleteNonce}
+                      disabled={isRequestingDeleteNonce || !deleteCanVerifyWithCode || isDeletingAccount}
+                    >
+                      {isRequestingDeleteNonce ? "Sending..." : "Send code"}
+                    </Button>
+                  </div>
+                </div>
+              )}
               <div>
                 <label htmlFor="delete-confirm-text" className="text-sm font-medium mb-2 block">
                   Type <span className="font-mono font-bold text-red-600">{DELETE_CONFIRM_PHRASE}</span> to confirm
@@ -952,6 +1067,7 @@ const PrivacyPage = ({
                 onClick={() => {
                   setShowDeleteDialog(false);
                   setDeletePassword("");
+                  setDeleteVerificationNonce("");
                   setDeleteConfirmText("");
                   setDeleteReason("");
                 }}

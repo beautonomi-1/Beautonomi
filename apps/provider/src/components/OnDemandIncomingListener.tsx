@@ -10,6 +10,7 @@ import { useModuleConfig, useFeatureFlag } from "@/providers/ConfigBundleProvide
 import { useProvider } from "@/providers/ProviderContext";
 import { api } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase/client";
+import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
 
 interface OnDemandRequestRow {
   id: string;
@@ -24,15 +25,13 @@ export function OnDemandIncomingListener() {
   const onDemandAcceptEnabled = acceptGlobalEnabled && acceptProviderEnabled;
   const { provider } = useProvider();
   const seenIdsRef = useRef<Set<string>>(new Set());
-  const onDemandRealtimeGenRef = useRef(0);
 
   // Realtime: subscribe to INSERTs on on_demand_requests for this provider
   useEffect(() => {
     if (!onDemandConfig.enabled || !onDemandAcceptEnabled || !provider?.id) return;
 
-    const gen = ++onDemandRealtimeGenRef.current;
     const channel = supabase
-      .channel(`on-demand-requests:${provider.id}:rt${gen}`)
+      .channel(nextRealtimeTopic(`on-demand-requests:${provider.id}`))
       .on(
         "postgres_changes",
         {

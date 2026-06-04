@@ -7,10 +7,11 @@ import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabas
  *
  * Get platform travel fee limits for provider validation (read-only).
  * Provider-scoped alternative to /api/admin/travel-fees for platform limits.
+ * Customers may read limits during provider onboarding before role promotion.
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    await requireRoleInApi(["customer", "provider_owner", "provider_staff"], request);
     const supabase = await getSupabaseServer(request);
 
     const { data: platformSettings, error } = await supabase

@@ -13,6 +13,7 @@ import {
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { format, startOfWeek, endOfWeek, addDays, subDays } from "date-fns";
+import { formatInTimeZone } from "date-fns-tz";
 import { useApi } from "@/hooks/useApi";
 import { useProvider } from "@/providers/ProviderContext";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -22,7 +23,19 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { useResponsive } from "@/hooks/useResponsive";
 import { twStyle } from "@/lib/twStyle";
 import { appendReportLocation } from "@/lib/reportLocationQuery";
-import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { resolveReportTimezone } from "@/lib/reportDateRanges";
+import { formatCurrency } from "@/lib/format";
+
+/**
+ * Calendar anchor (local noon) for the provider-timezone civil date of `instant`.
+ * Using the business TZ civil date — not the device's — keeps the day/week shown here in
+ * sync with GET /api/provider/staff/totals, which aggregates in the provider timezone.
+ * Local noon avoids DST / midnight rollover when navigating with addDays/subDays.
+ */
+function tzCalendarAnchor(instant: Date, tz: string): Date {
+  const [y, m, d] = formatInTimeZone(instant, tz, "yyyy-MM-dd").split("-").map(Number);
+  return new Date(y!, m! - 1, d!, 12, 0, 0, 0);
+}
 
 interface StaffTotalsItem {
   team_member_id: string;
@@ -43,13 +56,15 @@ interface StaffMember {
 
 export default function TeamTotalsScreen() {
   const router = useRouter();
-  const { selectedLocationId } = useProvider();
+  const { selectedLocationId, provider } = useProvider();
   const { screenPadding } = useResponsive();
-  const currency = getTenantDefaultCurrency();
+  const tz = resolveReportTimezone(provider?.timezone);
   const [refreshing, setRefreshing] = useState(false);
   const [period, setPeriod] = useState<"daily" | "weekly">("daily");
-  const [selectedDate, setSelectedDate] = useState(new Date());
-  const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
+  const [selectedDate, setSelectedDate] = useState(() => tzCalendarAnchor(new Date(), tz));
+  const [weekStart, setWeekStart] = useState(() =>
+    startOfWeek(tzCalendarAnchor(new Date(), tz), { weekStartsOn: 1 }),
+  );
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>("all");
 
   const dateStr = format(selectedDate, "yyyy-MM-dd");
@@ -108,9 +123,10 @@ export default function TeamTotalsScreen() {
   }, [period]);
 
   const goToToday = useCallback(() => {
-    setSelectedDate(new Date());
-    setWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }));
-  }, []);
+    const anchor = tzCalendarAnchor(new Date(), tz);
+    setSelectedDate(anchor);
+    setWeekStart(startOfWeek(anchor, { weekStartsOn: 1 }));
+  }, [tz]);
 
   const stats = useMemo(
     () =>
@@ -147,7 +163,7 @@ export default function TeamTotalsScreen() {
     <ScreenContainer>
       <ScreenHeader
         title="Team totals"
-        subtitle="Daily & weekly performance"
+        subtitle="Revenue = ledger provider_earnings allocated by appointment (scheduled date)"
         onBack={() => router.back()}
       />
       <ScrollView
@@ -248,11 +264,11 @@ export default function TeamTotalsScreen() {
               </View>
               <View style={twStyle("flex-1 min-w-[100px] rounded-xl border border-gray-200 bg-white p-3")}>
                 <Text style={twStyle("text-xs text-gray-500")}>Revenue</Text>
-                <Text style={twStyle("text-lg font-semibold text-gray-900")}>{currency} {stats.revenue.toLocaleString()}</Text>
+                <Text style={twStyle("text-lg font-semibold text-gray-900")}>{formatCurrency(stats.revenue)}</Text>
               </View>
               <View style={twStyle("flex-1 min-w-[100px] rounded-xl border border-gray-200 bg-white p-3")}>
                 <Text style={twStyle("text-xs text-gray-500")}>Tips</Text>
-                <Text style={twStyle("text-lg font-semibold text-gray-900")}>{currency} {stats.tips.toLocaleString()}</Text>
+                <Text style={twStyle("text-lg font-semibold text-gray-900")}>{formatCurrency(stats.tips)}</Text>
               </View>
               <View style={twStyle("flex-1 min-w-[100px] rounded-xl border border-gray-200 bg-white p-3")}>
                 <Text style={twStyle("text-xs text-gray-500")}>Hours</Text>
@@ -260,7 +276,7 @@ export default function TeamTotalsScreen() {
               </View>
               <View style={twStyle("flex-1 min-w-[100px] rounded-xl border border-gray-200 bg-white p-3")}>
                 <Text style={twStyle("text-xs text-gray-500")}>Commission</Text>
-                <Text style={twStyle("text-lg font-semibold text-gray-900")}>{currency} {stats.commission.toLocaleString()}</Text>
+                <Text style={twStyle("text-lg font-semibold text-gray-900")}>{formatCurrency(stats.commission)}</Text>
               </View>
             </View>
 
@@ -280,11 +296,11 @@ export default function TeamTotalsScreen() {
                     {t.team_member_name}
                   </Text>
                   <Text style={twStyle("w-12 text-sm text-gray-700 text-right")}>{t.appointments_count}</Text>
-                  <Text style={twStyle("w-16 text-sm text-gray-700 text-right")}>{currency} {t.revenue.toLocaleString()}</Text>
-                  <Text style={twStyle("w-12 text-sm text-gray-700 text-right")}>{currency} {t.tips.toLocaleString()}</Text>
+                  <Text style={twStyle("w-16 text-sm text-gray-700 text-right")}>{formatCurrency(t.revenue)}</Text>
+                  <Text style={twStyle("w-12 text-sm text-gray-700 text-right")}>{formatCurrency(t.tips)}</Text>
                   <Text style={twStyle("w-12 text-sm text-gray-700 text-right")}>{t.hours_worked.toFixed(1)}</Text>
                   <Text style={twStyle("w-16 text-sm font-medium text-gray-700 text-right")}>
-                    {currency} {t.commission.toLocaleString()}
+                    {formatCurrency(t.commission)}
                   </Text>
                 </View>
               ))}

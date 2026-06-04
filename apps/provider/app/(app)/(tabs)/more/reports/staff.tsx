@@ -18,6 +18,7 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { StatCard } from "@/components/ui/StatCard";
 import { ReportResponsiveStatRow } from "@/components/reports/ReportResponsiveStatRow";
+import { ReportBasisFootnote } from "@/components/reports/ReportBasisFootnote";
 import { formatCurrency } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 import {
@@ -120,6 +121,7 @@ export default function StaffReport() {
           ))}
         </ScrollView>
         <Text style={twStyle("text-xs text-gray-500")}>{rangeCaption}</Text>
+        <ReportBasisFootnote basisNote={data?.basisNote} compact />
       </View>
 
       {loading && !data && <ActivityIndicator style={twStyle("my-8")} color="#7c3aed" />}

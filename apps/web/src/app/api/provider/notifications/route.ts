@@ -12,6 +12,9 @@ import {
  *
  * Get provider's notifications. Uses admin client so RLS doesn't block rows;
  * ownership is enforced via the explicit user_id filter.
+ *
+ * Query params:
+ * - `counts_only=1` — return only `total_unread` (uncached head count). Use for bell/OS badge polling.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -27,6 +30,19 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
+    if (searchParams.get("counts_only") === "1") {
+      const { count: unreadCount, error: unreadErr } = await supabase
+        .from("notifications")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", user.id)
+        .eq("is_read", false);
+      if (unreadErr) throw unreadErr;
+      return successResponse({
+        notifications: [],
+        total_unread: unreadCount ?? 0,
+      });
+    }
+
     const limit = parseInt(searchParams.get("limit") || "20");
     const unreadOnly = searchParams.get("unread_only") === "true";
 

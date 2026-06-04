@@ -28,6 +28,7 @@ import { useImagePicker } from "@/hooks/useImagePicker";
 import { appendFormDataFileNative } from "@beautonomi/utils";
 import { invalidateSupportTicketsListCache } from "@/lib/api-response-cache";
 import { supabase } from "@/lib/supabase/client";
+import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
 
 type Message = {
   id: string;
@@ -121,7 +122,6 @@ export default function SupportTicketDetailScreen() {
   const scrollViewRef = useRef<ScrollView>(null);
   const knownMessageIdsRef = useRef<Set<string>>(new Set());
   const loadedOnceRef = useRef(false);
-  const realtimeGenRef = useRef(0);
   const [loadError, setLoadError] = useState<string | null>(null);
   const { pickFromLibrary } = useImagePicker();
 
@@ -191,7 +191,7 @@ export default function SupportTicketDetailScreen() {
   useEffect(() => {
     const tid = typeof id === "string" ? id : Array.isArray(id) ? id[0] : "";
     if (!tid) return;
-    const topic = `customer-support-ticket:${tid}:${++realtimeGenRef.current}`;
+    const topic = nextRealtimeTopic(`customer-support-ticket:${tid}`);
     const channel = supabase
       .channel(topic)
       .on(

@@ -21,6 +21,28 @@ Every screen under `(app)/*` is behind authentication. There are no unauthentica
 5. **Auth routes** `(auth)/*`  
    If user has a session, `(auth)/_layout` redirects to `/` so login/signup are not reachable when logged in.
 
+### Login ↔ signup (provider app)
+
+```mermaid
+flowchart LR
+  login[Login screen]
+  signup[Signup screen]
+  root[Root index gate]
+  onboarding[Onboarding hub]
+
+  login -->|"Don't have an account? Sign up"| signup
+  signup -->|"Already have an account? Log in"| login
+  login -->|"OTP / OAuth success"| root
+  signup -->|"OTP / OAuth success"| root
+  root -->|"customer portal, no provider profile"| onboarding
+```
+
+- **Login** (`/(auth)/login`): primary path is phone OTP; email supports login and signup via an `isSignup` toggle. Footer CTA **"Don't have an account? Sign up"** navigates to `/(auth)/signup` (with optional `return_to`).
+- **Signup** (`/(auth)/signup`): real screen (not a redirect). Supports phone OTP, email/password + terms, and Google/Apple OAuth. Before verify, persists `PENDING_SIGNUP_SOURCE_KEY = "provider_mobile"` so post-auth profile patch can record signup source.
+- **After auth**: both login and signup call `router.replace("/")`. Root `index` resolves portal via `/api/me/portal`; new users without a provider profile land on **`/(app)/onboarding`** (hub), then **`/(app)/onboarding/wizard`** for full setup.
+- **Unified OTP on login**: Supabase may auto-create accounts on first OTP verify; explicit signup is still offered for users who prefer email/password or marketing deep links to `/(auth)/signup`.
+- **Error paths**: when login OTP fails with no-account / signups-disabled errors, Alert may offer navigation to signup with prefilled phone/email (customer parity).
+
 ## API requests
 
 - All requests go through `@/lib/api-client`, which:

@@ -11,10 +11,16 @@ import {
 import { Alert } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
-import { clearPortalCache } from "@/lib/portal-cache";
 import { api } from "@/lib/api-client";
+import { useAuth } from "@/providers/AuthProvider";
 import { useProvider } from "@/providers/ProviderContext";
 import { coerceOwnerPhoneToE164ForForm, phoneNumbersMatchProfile } from "./onboarding-phone";
+import {
+  finalizeOnboardingSuccess,
+  probeProviderProfileExists,
+  resolveCheckoutFlagsForRecovery,
+  type OnboardingCompletionData,
+} from "./finalize-onboarding";
 import {
   countVisibleSteps,
   getNextStep,
@@ -43,6 +49,10 @@ interface OnboardingWizardContextValue {
   goBack: () => void;
   skipForward: () => void;
   isSubmitting: boolean;
+  providerProfileExists: boolean;
+  continueToApp: () => void;
+  submitLabel: string;
+  submitBusyLabel: string;
   savingDraft: boolean;
   loadingDraft: boolean;
   submit: () => Promise<void>;
@@ -91,6 +101,7 @@ interface OnboardingWizardProviderProps {
 
 export function OnboardingWizardProvider({ children, initialStep }: OnboardingWizardProviderProps) {
   const router = useRouter();
+  const { user } = useAuth();
   const { refresh: refreshProvider } = useProvider();
   const [formData, setFormData] = useState<Partial<OnboardingFormData>>(() => ({
     ...INITIAL_FORM,
@@ -99,7 +110,9 @@ export function OnboardingWizardProvider({ children, initialStep }: OnboardingWi
   const [loadingDraft, setLoadingDraft] = useState(true);
   const [savingDraft, setSavingDraft] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [providerProfileExists, setProviderProfileExists] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isSubmittingRef = useRef(false);
   // `initialStep` is meant to override the saved draft only on the first
   // open after navigation. We capture it once so later renders don't bounce
   // the user back when the draft loader resolves.
@@ -160,6 +173,11 @@ export function OnboardingWizardProvider({ children, initialStep }: OnboardingWi
           mergePrefill(merged, profileRes.data);
         }
 
+        const providerExists = await probeProviderProfileExists();
+        if (!cancelled) {
+          setProviderProfileExists(providerExists);
+        }
+
         if (!cancelled) {
           setFormData(merged);
           // Deep-link override: when the wizard route received `?step=` or
@@ -170,6 +188,39 @@ export function OnboardingWizardProvider({ children, initialStep }: OnboardingWi
               ? override
               : step;
           setCurrentStepState(resolved);
+
+          const onSubmitStep = STEPS.length;
+          const hasFocusOverride = typeof initialStepRef.current === "number";
+          if (providerExists && resolved === onSubmitStep && !hasFocusOverride) {
+            const payload = buildSubmitPayload(merged);
+            const res = await api.post<OnboardingCompletionData>(
+              "/api/provider/onboarding",
+              payload as Record<string, unknown>,
+              { timeout: 120_000 },
+            );
+            const completionData =
+              !res.error && res.data
+                ? res.data
+                : await resolveCheckoutFlagsForRecovery(merged);
+            try {
+              await finalizeOnboardingSuccess({
+                data: completionData,
+                formData: merged,
+                router,
+                refreshProvider,
+                userId: user?.id,
+                showSuccessAlert: false,
+              });
+            } catch (e) {
+              if (!cancelled) {
+                Alert.alert("Error", e instanceof Error ? e.message : "Could not continue setup.");
+              }
+            }
+          }
+        }
+      } catch (e) {
+        if (!cancelled) {
+          Alert.alert("Error", e instanceof Error ? e.message : "Could not load onboarding.");
         }
       } finally {
         if (!cancelled) setLoadingDraft(false);
@@ -266,7 +317,44 @@ export function OnboardingWizardProvider({ children, initialStep }: OnboardingWi
     if (next !== null) setCurrentStepState(next);
   }, [currentStep, formData]);
 
+  const continueToApp = useCallback(() => {
+    router.replace("/(app)/(tabs)/dashboard" as never);
+  }, [router]);
+
   const submit = useCallback(async () => {
+    if (isSubmittingRef.current) return;
+
+    if (providerProfileExists && currentStep === STEPS.length) {
+      isSubmittingRef.current = true;
+      setIsSubmitting(true);
+      try {
+        const payload = buildSubmitPayload(formData);
+        const res = await api.post<OnboardingCompletionData>(
+          "/api/provider/onboarding",
+          payload as Record<string, unknown>,
+          { timeout: 120_000 },
+        );
+        const completionData =
+          !res.error && res.data
+            ? res.data
+            : await resolveCheckoutFlagsForRecovery(formData);
+        await finalizeOnboardingSuccess({
+          data: completionData,
+          formData,
+          router,
+          refreshProvider,
+          userId: user?.id,
+          showSuccessAlert: false,
+        });
+      } catch (e) {
+        Alert.alert("Error", e instanceof Error ? e.message : "Could not continue.");
+      } finally {
+        isSubmittingRef.current = false;
+        setIsSubmitting(false);
+      }
+      return;
+    }
+
     for (let s = 1; s <= STEPS.length; s++) {
       if (!stepIsVisible(s, formData)) continue;
       const v = validateStep(s, formData);
@@ -301,18 +389,61 @@ export function OnboardingWizardProvider({ children, initialStep }: OnboardingWi
       return;
     }
 
+    isSubmittingRef.current = true;
     setIsSubmitting(true);
     try {
-      const res = await api.post<{
-        message?: string;
-        subscription_endpoint?: string | null;
-        selected_plan_id?: string | null;
-        selected_plan_is_free?: boolean;
-        requires_checkout?: boolean;
-        checkout_path?: string | null;
-      }>("/api/provider/onboarding", payload as Record<string, unknown>);
+      const res = await api.post<OnboardingCompletionData>(
+        "/api/provider/onboarding",
+        payload as Record<string, unknown>,
+        { timeout: 120_000 },
+      );
 
       if (res.error) {
+        const errCode = (res.error as { code?: string }).code;
+        const isTimeout = errCode === "TIMEOUT";
+        const isAlreadyExists = errCode === "ALREADY_EXISTS";
+
+        if (isTimeout || isAlreadyExists) {
+          const profileExists = await probeProviderProfileExists();
+          if (profileExists) {
+            if (isAlreadyExists) {
+              const retry = await api.post<OnboardingCompletionData>(
+                "/api/provider/onboarding",
+                payload as Record<string, unknown>,
+                { timeout: 120_000 },
+              );
+              if (!retry.error && retry.data) {
+                setProviderProfileExists(true);
+                await finalizeOnboardingSuccess({
+                  data: retry.data,
+                  formData,
+                  router,
+                  refreshProvider,
+                  userId: user?.id,
+                });
+                return;
+              }
+            }
+            const recoveryFlags = await resolveCheckoutFlagsForRecovery(formData);
+            setProviderProfileExists(true);
+            await finalizeOnboardingSuccess({
+              data: recoveryFlags,
+              formData,
+              router,
+              refreshProvider,
+              userId: user?.id,
+            });
+            return;
+          }
+          if (isTimeout) {
+            Alert.alert(
+              "Still setting up",
+              "Your business profile may still be saving. Wait a moment, then tap Submit again.",
+            );
+            return;
+          }
+        }
+
         const details = (res.error as { details?: unknown }).details;
         const msg =
           typeof details === "string"
@@ -327,83 +458,39 @@ export function OnboardingWizardProvider({ children, initialStep }: OnboardingWi
         return;
       }
 
-      const data = res.data as {
-        message?: string;
-        subscription_endpoint?: string | null;
-        selected_plan_id?: string | null;
-        selected_plan_is_free?: boolean;
-        requires_checkout?: boolean;
-        checkout_path?: string | null;
-      } | null;
-
-      try {
-        await AsyncStorage.removeItem(LOCAL_DRAFT_KEY);
-      } catch {
-        /* ignore */
-      }
-
-      clearPortalCache();
-      await refreshProvider();
-
-      const planId = data?.selected_plan_id;
-      // §Provider-launch (2026-05): trust the server's explicit `requires_checkout`
-      // signal instead of re-deriving paid/free on the client. Fall back to the
-      // legacy `subscription_endpoint` field if the server hasn't been redeployed.
-      const requiresCheckout = data?.requires_checkout ?? Boolean(data?.subscription_endpoint);
-
-      if (planId && requiresCheckout) {
-        const { getBackendUrl } = await import("@/config/public-env");
-        const base = (getBackendUrl() || "").replace(/\/$/, "");
-        if (!base) {
-          // Don't pretend they're live when a paid plan still needs payment.
-          Alert.alert(
-            "Couldn't open payment page",
-            "We saved your profile, but we can't open the secure payment page from this build. Please open Beautonomi in your browser to complete payment, or contact support.",
-            [
-              {
-                text: "Open subscription settings",
-                onPress: () => {
-                  router.replace("/(app)/(tabs)/more/settings/subscription" as never);
-                },
-              },
-            ]
-          );
-          return;
-        }
-
-        const checkoutPath =
-          data?.checkout_path ||
-          `/provider/subscription-checkout?planId=${encodeURIComponent(planId)}`;
-        const separator = checkoutPath.includes("?") ? "&" : "?";
-        // Keep the web checkout chain on its known `return_to=dashboard`
-        // contract; the native screen handles the final hop to the optional
-        // identity step via its own `returnTo` param below.
-        const url = `${base}${checkoutPath}${separator}in_app=1&return_to=dashboard`;
-        router.replace({
-          pathname: "/(app)/(tabs)/more/in-app-browser",
-          params: {
-            url: encodeURIComponent(url),
-            title: "Complete subscription",
-            // §provider-launch (2026-06): after a paid checkout succeeds, send
-            // the provider to the optional, skippable identity step (which then
-            // continues to the dashboard) so paid and free plans match.
-            returnTo: "verify-identity",
-          },
-        } as never);
-        return;
-      }
-
-      // §provider-launch (2026-06): no more "second wizard" / setup-hub detour.
-      // After the wizard + plan, route to the optional identity-verification
-      // step which then lands the provider on the dashboard (the dashboard
-      // surfaces any remaining setup via its non-blocking setup card).
-      router.replace("/(app)/onboarding/verify-identity" as never);
+      setProviderProfileExists(true);
+      await finalizeOnboardingSuccess({
+        data: res.data,
+        formData,
+        router,
+        refreshProvider,
+        userId: user?.id,
+      });
     } catch (e) {
       Alert.alert("Error", e instanceof Error ? e.message : "Submit failed.");
     } finally {
+      isSubmittingRef.current = false;
       setIsSubmitting(false);
     }
-  }, [formData, refreshProvider, router]);
+  }, [formData, refreshProvider, router, user?.id, providerProfileExists, currentStep]);
+
+  const selectedPlanIsFree =
+    formData.selected_plan_is_free ??
+    (formData.selected_plan_name?.toLowerCase().includes("free") ?? false);
+
+  const submitLabel =
+    providerProfileExists && currentStep === STEPS.length
+      ? "Continue to app"
+      : currentStep === STEPS.length
+        ? selectedPlanIsFree
+          ? "Launch your business"
+          : "Submit & launch"
+        : "Continue";
+
+  const submitBusyLabel =
+    currentStep === STEPS.length && selectedPlanIsFree
+      ? "Launching your business…"
+      : "Submitting…";
 
   const visibleTotal = useMemo(() => countVisibleSteps(formData), [formData]);
   const visibleIndex = useMemo(
@@ -425,6 +512,10 @@ export function OnboardingWizardProvider({ children, initialStep }: OnboardingWi
       isSubmitting,
       savingDraft,
       loadingDraft,
+      providerProfileExists,
+      continueToApp,
+      submitLabel,
+      submitBusyLabel,
       submit,
       visibleTotal,
       visibleIndex,
@@ -442,6 +533,10 @@ export function OnboardingWizardProvider({ children, initialStep }: OnboardingWi
       isSubmitting,
       savingDraft,
       loadingDraft,
+      providerProfileExists,
+      continueToApp,
+      submitLabel,
+      submitBusyLabel,
       submit,
       visibleTotal,
       visibleIndex,

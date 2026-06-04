@@ -4,7 +4,8 @@
  * Subscribes to notifications table changes so the badge updates in real time.
  */
 import { createContext, useContext, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { AppState, Platform } from "react-native";
+import { AppState, DeviceEventEmitter, Platform } from "react-native";
+import { NOTIFICATION_BADGE_REFRESH_EVENT } from "@/lib/notification-badge-events";
 import { useApi } from "@/hooks/useApi";
 import { useAuth } from "@/providers/AuthProvider";
 import { supabase } from "@/lib/supabase/client";
@@ -26,11 +27,14 @@ const NotificationsCountContext = createContext<NotificationsCountContextValue |
 
 export function NotificationsCountProvider({ children }: { children: ReactNode }) {
   const { session, user } = useAuth();
-  const { data, refresh } = useApi<NotificationsCountResponse>("/api/provider/notifications?limit=1", {
+  const { data, refresh } = useApi<NotificationsCountResponse>(
+    "/api/provider/notifications?counts_only=1",
+    {
     enabled: !!session,
     /** Bell badge must track server unread immediately after read/delete (no stale GET cache). */
-    staleTimeMs: 0,
-  });
+      staleTimeMs: 0,
+    },
+  );
   /** Shifts badge immediately; resets when `data.total_unread` changes from the server. */
   const [countBias, setCountBias] = useState(0);
   useEffect(() => {
@@ -79,6 +83,21 @@ export function NotificationsCountProvider({ children }: { children: ReactNode }
   refreshRef.current = refresh;
   const refreshCount = useCallback(async () => {
     await refreshRef.current();
+  }, []);
+
+  useEffect(() => {
+    let debounce: ReturnType<typeof setTimeout> | undefined;
+    const sub = DeviceEventEmitter.addListener(NOTIFICATION_BADGE_REFRESH_EVENT, () => {
+      if (debounce) clearTimeout(debounce);
+      debounce = setTimeout(() => {
+        debounce = undefined;
+        void refreshRef.current();
+      }, 120);
+    });
+    return () => {
+      sub.remove();
+      if (debounce) clearTimeout(debounce);
+    };
   }, []);
 
   useEffect(() => {

@@ -9,6 +9,7 @@ import {
   nowInTz,
   resolveTz,
 } from "@/lib/dates/provider-tz";
+import { dashboardBookingLocationOrFilter } from "@/lib/server/provider/dashboard-booking-location-filter";
 
 export type ProviderReportContext = {
   providerId: string;
@@ -179,7 +180,7 @@ export async function filterLedgerRowsForLocation<T extends LocationLinkedLedger
       .from("bookings")
       .select("id")
       .eq("provider_id", providerId)
-      .eq("location_id", locationId)
+      .or(dashboardBookingLocationOrFilter(locationId))
       .in("id", bookingIds);
     for (const row of data ?? []) allowedBookingIds.add((row as { id: string }).id);
   }

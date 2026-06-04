@@ -174,15 +174,15 @@ export async function checkProviderMilestones(providerId: string): Promise<void>
 
     const milestones: Array<{ type: string; condition: boolean }> = [
       { type: 'first_booking', condition: provider.total_bookings >= 1 },
-      { type: 'ten_bookings', condition: provider.total_bookings >= 10 },
-      { type: 'fifty_bookings', condition: provider.total_bookings >= 50 },
-      { type: 'hundred_bookings', condition: provider.total_bookings >= 100 },
-      { type: 'five_hundred_bookings', condition: provider.total_bookings >= 500 },
-      { type: 'thousand_bookings', condition: provider.total_bookings >= 1000 },
+      { type: '10_bookings', condition: provider.total_bookings >= 10 },
+      { type: '50_bookings', condition: provider.total_bookings >= 50 },
+      { type: '100_bookings', condition: provider.total_bookings >= 100 },
+      { type: '500_bookings', condition: provider.total_bookings >= 500 },
+      { type: '1000_bookings', condition: provider.total_bookings >= 1000 },
       { type: 'first_review', condition: provider.review_count >= 1 },
-      { type: 'ten_reviews', condition: provider.review_count >= 10 },
-      { type: 'fifty_reviews', condition: provider.review_count >= 50 },
-      { type: 'hundred_reviews', condition: provider.review_count >= 100 },
+      { type: '10_reviews', condition: provider.review_count >= 10 },
+      { type: '50_reviews', condition: provider.review_count >= 50 },
+      { type: '100_reviews', condition: provider.review_count >= 100 },
       { type: 'perfect_rating', condition: provider.rating_average >= 4.9 && provider.review_count >= 10 },
     ];
 

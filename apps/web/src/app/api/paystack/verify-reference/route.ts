@@ -53,12 +53,6 @@ type ProductOrderPaymentRow = {
   payment_reference?: string | null;
 };
 
-type ProductOrderNotificationRow = {
-  customer_id?: string | null;
-  provider_id?: string | null;
-  order_number?: string | null;
-};
-
 type MaybeSingleProductOrderQuery<T> = {
   select(columns: string): {
     eq(column: string, value: string): {
@@ -180,7 +174,7 @@ export async function GET(request: NextRequest) {
         });
       }
 
-      await recordProductOrderPayment({
+      const payRecord = await recordProductOrderPayment({
         supabase: admin,
         productOrderId,
         reference: d.reference ?? reference,
@@ -190,45 +184,12 @@ export async function GET(request: NextRequest) {
         provider: "paystack",
       });
 
-      const productOrderTenantId = await resolveTenantIdForFinanceLedger(admin, {
-        tenant_id: order.tenant_id,
-        provider_id: order.provider_id,
-      });
-      const { format: formatMoney } = await import("@/lib/money/tenant-intl-format").then((m) =>
-        m.getTenantMoneyFormatter(productOrderTenantId),
+      const { notifyProductOrderPaidIfTransitioned } = await import(
+        "@/lib/notifications/notify-product-order-paid"
       );
-
-      try {
-        const adminProductOrders = admin as unknown as ProductOrdersReader<ProductOrderNotificationRow>;
-        const { data: po } = await adminProductOrders
-          .from("product_orders")
-          .select("customer_id, provider_id, order_number")
-          .eq("id", productOrderId)
-          .maybeSingle();
-        if (po?.customer_id) {
-          const { insertNotification } = await import("@/lib/notifications/insert-notification");
-          await insertNotification({
-            user_id: po.customer_id,
-            type: "product_order_update",
-            title: "Order Confirmed",
-            message: `Your order ${po.order_number} has been confirmed and paid.`,
-            data: { product_order_id: productOrderId, amount: amountInCurrency },
-            action_url: `/product-orders`,
-          });
-        }
-        if (po?.provider_id) {
-          const { notifyProviderTeamUsers } = await import("@/lib/notifications/notify-provider-team");
-          await notifyProviderTeamUsers(po.provider_id, {
-            type: "product_order_update",
-            title: "New Product Order",
-            message: `New product order ${po.order_number} received - ${formatMoney(amountInCurrency)}.`,
-            data: { product_order_id: productOrderId, amount: amountInCurrency },
-            action_url: `/provider/ecommerce/orders?order=${encodeURIComponent(productOrderId)}`,
-          });
-        }
-      } catch (notificationError) {
-        console.warn("Product order verification notification failed:", notificationError);
-      }
+      await notifyProductOrderPaidIfTransitioned(admin, productOrderId, {
+        transitionedToPaid: payRecord.transitionedToPaid,
+      });
 
       return successResponse({
         verified: true,

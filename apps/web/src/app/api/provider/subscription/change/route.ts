@@ -72,20 +72,34 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const reactivatePatch = {
+      plan_id,
+      status: "active" as const,
+      cancelled_at: null,
+      auto_renew: false,
+      expires_at: null,
+      paystack_sync_pending: false,
+      paystack_sync_note: null,
+      paystack_subscription_code: null,
+      next_payment_date: null,
+      updated_at: new Date().toISOString(),
+    };
+
     const { error: updateError } = await supabaseAdmin
       .from("provider_subscriptions")
-      .update({ plan_id, updated_at: new Date().toISOString() })
+      .update(reactivatePatch)
       .eq("provider_id", providerId);
 
     if (updateError) {
-      const { error: insertError } = await supabaseAdmin
-        .from("provider_subscriptions")
-        .insert({
-          provider_id: providerId,
-          plan_id,
-          status: "active",
-          tenant_id: subscriptionTenantId,
-        });
+      const { error: insertError } = await supabaseAdmin.from("provider_subscriptions").insert({
+        provider_id: providerId,
+        plan_id,
+        status: "active",
+        tenant_id: subscriptionTenantId,
+        started_at: new Date().toISOString(),
+        expires_at: null,
+        auto_renew: false,
+      });
       if (insertError) throw insertError;
     }
 

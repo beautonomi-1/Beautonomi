@@ -71,6 +71,9 @@ export async function GET(request: NextRequest) {
       cancellation_reasons: Array.from(cancelReasons.entries())
         .map(([reason, count]) => ({ reason, count }))
         .sort((a, b) => b.count - a.count),
+      basisNote:
+        "Counts use bookings.scheduled_at in the selected range. This is operational volume — not ledger earnings (see Revenue or Sales history).",
+      reportBasis: "Appointment date window; all statuses included unless filtered in detail reports.",
     });
   } catch (error) {
     console.error("Error in bookings report:", error);

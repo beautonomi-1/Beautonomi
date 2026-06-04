@@ -20,6 +20,10 @@ interface AnalyticsSummary {
   revenue: { thisMonth: number; growth: string };
   bookings: { thisMonth: number; upcoming: number; growth: string };
   customers: { total: number };
+  basis?: {
+    ledger_period?: string;
+    bookings_in_period?: string;
+  };
 }
 
 function navigateToReport(router: ReturnType<typeof useRouter>, report: ProviderReportItem) {
@@ -126,7 +130,7 @@ export default function ReportsIndex() {
               <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>
                 {formatCurrency(revenueThisMonth)}
               </Text>
-              <Text style={{ fontSize: 12, color: Colors.gray[500], marginLeft: 4 }}>service earnings</Text>
+              <Text style={{ fontSize: 12, color: Colors.gray[500], marginLeft: 4 }}>earnings (ledger)</Text>
               {revenueGrowth !== "0" && revenueGrowth !== "New" && (
                 <Text style={{ fontSize: 12, color: Colors.gray[500], marginLeft: 4 }}>({revenueGrowth}%)</Text>
               )}
@@ -135,7 +139,8 @@ export default function ReportsIndex() {
               )}
             </View>
             <View style={{ flexDirection: "row", alignItems: "baseline" }}>
-              <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[800] }}>{bookingsThisMonth} bookings</Text>
+              <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[800] }}>{bookingsThisMonth}</Text>
+              <Text style={{ fontSize: 12, color: Colors.gray[500], marginLeft: 4 }}>bookings created</Text>
               {bookingsGrowth !== "0" && bookingsGrowth !== "New" && (
                 <Text style={{ fontSize: 12, color: Colors.gray[500], marginLeft: 4 }}>({bookingsGrowth}%)</Text>
               )}
@@ -145,6 +150,12 @@ export default function ReportsIndex() {
               <Text style={{ fontSize: 12, color: Colors.gray[500], marginLeft: 4 }}>customers</Text>
             </View>
           </View>
+          {analytics.basis?.ledger_period || analytics.basis?.bookings_in_period ? (
+            <Text style={{ fontSize: 11, color: Colors.gray[500], marginTop: 8, lineHeight: 16 }}>
+              {analytics.basis.ledger_period ? `${analytics.basis.ledger_period} ` : ""}
+              {analytics.basis.bookings_in_period ?? ""}
+            </Text>
+          ) : null}
         </View>
       ) : null}
 

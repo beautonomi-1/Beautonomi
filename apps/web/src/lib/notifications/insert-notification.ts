@@ -104,6 +104,7 @@ const TYPE_FALLBACK: Record<string, string> = {
   custom_offer: "system",
   custom_request: "system",
   provider_membership_cancelled: "system",
+  product_order_placed: "product_order_update",
 };
 
 function normaliseType(raw: string): string {

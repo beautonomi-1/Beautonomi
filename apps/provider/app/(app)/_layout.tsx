@@ -25,6 +25,7 @@ import { AccountStatusGuard } from "@/components/AccountStatusGuard";
 import MaintenanceGate from "@/components/MaintenanceGate";
 import { BiometricGate } from "@/components/BiometricGate";
 import { NativePermissionsOnboarding } from "@/components/NativePermissionsOnboarding";
+import { BiometricSetupPrompt } from "@/components/BiometricSetupPrompt";
 import { SetupCompleteCelebration } from "@/components/setup/SetupCompleteCelebration";
 import {
   authFlowBreadcrumb,
@@ -105,6 +106,7 @@ export default function AppLayout() {
         <NotificationsCountProvider>
         <Fragment>
         <NativePermissionsOnboarding />
+        <BiometricSetupPrompt />
         <OnDemandIncomingListener />
         <BookingAlertListener />
         <TerminalPaymentAlertListener />

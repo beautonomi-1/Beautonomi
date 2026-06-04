@@ -285,14 +285,20 @@ export async function apiFetch<T>(
       };
     }
     const isTimeout = err instanceof Error && err.name === "AbortError";
+    const rawMessage = err instanceof Error ? err.message : "Request failed";
+    const isNetworkFailure =
+      !isTimeout &&
+      (rawMessage === "Network request failed" ||
+        rawMessage.toLowerCase().includes("network request failed") ||
+        rawMessage.toLowerCase().includes("failed to fetch"));
     return {
       data: null,
       error: {
-        message: isTimeout 
+        message: isTimeout
           ? "Request timed out. Please check your internet connection and try again."
-          : err instanceof Error 
-            ? err.message 
-            : "Request failed",
+          : isNetworkFailure
+            ? "Could not reach the server. Check your internet connection and that the app is configured with the correct API URL."
+            : rawMessage,
         code: isTimeout ? "TIMEOUT" : "NETWORK_ERROR",
       },
     };

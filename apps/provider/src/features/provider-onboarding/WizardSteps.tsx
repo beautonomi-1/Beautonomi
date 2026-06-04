@@ -1,4 +1,4 @@
-import { type ComponentProps, useEffect, useMemo, useRef, useState } from "react";
+import { type ComponentProps, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as Location from "expo-location";
 import {
   View,
@@ -50,15 +50,33 @@ import { twStyle } from "@/lib/twStyle";
 import { Colors } from "@/constants/colors";
 import { APP_URL } from "@/config/public-env";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import {
+  TravelFeesEditor,
+  formatTravelFeesSummary,
+  type PlatformTravelLimits,
+} from "@/features/travel-fees/TravelFeesEditor";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { ensureForegroundLocationPermission } from "@/lib/native-permissions";
 import { useImagePicker } from "@/hooks/useImagePicker";
 import { useOnboardingWizard } from "./OnboardingWizardContext";
+import { OnboardingTextField } from "./OnboardingTextField";
 import { coerceOwnerPhoneToE164ForForm, isValidOwnerPhoneE164 } from "./onboarding-phone";
 import { DEFAULT_COUNTRY_NAME } from "./state";
-import type { BusinessType, OnboardingService, OnboardingServiceAddon, TeamSize, YocoMachine } from "./types";
-import { PricingOptionsEditor } from "@/features/catalogue/PricingOptionsEditor";
-import { DEFAULT_PRICING_OPTION, pricingOptionsToPayload, type PricingOption } from "@/features/catalogue/types";
+import type { BusinessType, OnboardingServiceAddon, TeamSize, YocoMachine } from "./types";
+import { ServiceFormFields } from "@/features/catalogue/ServiceFormFields";
+import {
+  defaultOnboardingFormState,
+  formStateToOnboardingService,
+  onboardingServiceToFormState,
+} from "@/features/catalogue/onboarding-service-adapter";
+import {
+  FALLBACK_AVAILABILITY_OPTIONS,
+  FALLBACK_DURATION_OPTIONS,
+  FALLBACK_EXTRA_TIME_OPTIONS,
+  FALLBACK_PRICE_TYPE_OPTIONS,
+  FALLBACK_TAX_RATE_OPTIONS,
+  type ServiceFormState,
+} from "@/features/catalogue/service-form-state";
 
 const labelCls = "mb-1.5 text-[13px] font-semibold tracking-wide text-slate-800";
 const inputCls =
@@ -273,6 +291,11 @@ function Step2Identity() {
             placeholder="Your name"
             placeholderTextColor="#9ca3af"
             style={twStyle("flex-1 py-3.5 pr-4 text-base text-gray-900")}
+            accessibilityLabel="Full name"
+            accessibilityHint="The name clients see on your profile and bookings"
+            textContentType="name"
+            autoComplete="name"
+            returnKeyType="next"
           />
         </View>
       </View>
@@ -296,6 +319,10 @@ function Step2Identity() {
             keyboardType="email-address"
             autoCapitalize="none"
             style={twStyle("flex-1 py-3.5 pr-4 text-base text-gray-900")}
+            accessibilityLabel="Email"
+            textContentType="emailAddress"
+            autoComplete="email"
+            returnKeyType="next"
           />
         </View>
       </View>
@@ -327,6 +354,11 @@ function Step2Identity() {
             placeholderTextColor="#9ca3af"
             keyboardType="phone-pad"
             style={twStyle(`${inputCls} flex-1`)}
+            accessibilityLabel="Mobile number"
+            accessibilityHint="We verify this number with a one-time code"
+            textContentType="telephoneNumber"
+            autoComplete="tel"
+            returnKeyType="done"
           />
         </View>
 
@@ -340,6 +372,8 @@ function Step2Identity() {
               style={twStyle(
                 "mt-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-base"
               )}
+              accessibilityLabel="Search country code"
+              returnKeyType="search"
             />
             <FlatList<CountryCodeOption>
               {...verticalFlatListPerf}
@@ -549,6 +583,9 @@ function Step3Business() {
             placeholder="Shown to clients"
             placeholderTextColor="#94a3b8"
             style={twStyle("flex-1 py-4 pr-5 text-[17px] text-slate-900")}
+            accessibilityLabel="Business name"
+            accessibilityHint="Shown to clients"
+            returnKeyType="next"
           />
         </View>
       </View>
@@ -604,18 +641,16 @@ function Step3Business() {
       </View>
 
       <View>
-        <Text style={twStyle(labelCls)}>Description (recommended)</Text>
-        <Text style={twStyle("mb-3 text-[14px] text-slate-500")}>
-          Tell clients what you offer and what makes you stand out.
-        </Text>
-        <TextInput
+        <OnboardingTextField
+          label="Description (recommended)"
+          hint="Tell clients what you offer and what makes you stand out."
           value={formData.description || ""}
           onChangeText={(t) => updateFormData({ description: t })}
           placeholder="e.g. Specialist in balayage and precision cuts, serving Cape Town for 8 years."
-          placeholderTextColor="#94a3b8"
           multiline
           numberOfLines={4}
-          style={twStyle(`${inputCls} min-h-[120px] text-[17px] pt-4`)}
+          style={twStyle("min-h-[120px] text-[17px] pt-4")}
+          returnKeyType="default"
         />
         <Text style={twStyle("mt-2 text-right text-[13px] text-slate-400")}>
           {(formData.description || "").length} chars · 10 min recommended
@@ -706,12 +741,13 @@ function Step4Payment() {
           })}
         </View>
         {formData.yoco_machine === "other" ? (
-          <TextInput
+          <OnboardingTextField
+            label="Card machine model"
             value={formData.yoco_machine_other || ""}
             onChangeText={(t) => updateFormData({ yoco_machine_other: t })}
             placeholder="Which device? (e.g. iZettle, Square)"
-            placeholderTextColor="#94a3b8"
-            style={twStyle(`${inputCls} mt-4 text-[17px]`)}
+            containerStyle={twStyle("mt-4")}
+            returnKeyType="done"
           />
         ) : null}
       </View>
@@ -745,15 +781,15 @@ function Step4Payment() {
         {formData.is_vat_registered ? (
           <>
             <View style={twStyle("h-px bg-slate-100")} />
-            <TextInput
+            <OnboardingTextField
+              label="VAT number"
               value={formData.vat_number || ""}
               onChangeText={(t) =>
                 updateFormData({ vat_number: t.replace(/\D/g, "").slice(0, 10) })
               }
               placeholder="10-digit VAT number"
-              placeholderTextColor="#94a3b8"
               keyboardType="number-pad"
-              style={twStyle(`${inputCls} text-[17px]`)}
+              returnKeyType="done"
             />
           </>
         ) : null}
@@ -936,23 +972,21 @@ function Step5Software() {
       )}
 
       {selectedId === "other" ? (
-        <View>
-          <TextInput
-            value={customValue}
-            onChangeText={(t) => {
-              setCustomValue(t);
-              const slug = t.toLowerCase().replace(/\s+/g, "_").slice(0, 80);
-              updateFormData({
-                previous_software: "other",
-                previous_software_other: slug || undefined,
-              });
-            }}
-            placeholder="Type the software name…"
-            placeholderTextColor="#9ca3af"
-            style={twStyle(inputCls)}
-            autoFocus
-          />
-        </View>
+        <OnboardingTextField
+          label="Other software name"
+          value={customValue}
+          onChangeText={(t) => {
+            setCustomValue(t);
+            const slug = t.toLowerCase().replace(/\s+/g, "_").slice(0, 80);
+            updateFormData({
+              previous_software: "other",
+              previous_software_other: slug || undefined,
+            });
+          }}
+          placeholder="Type the software name…"
+          autoFocus
+          returnKeyType="done"
+        />
       ) : null}
 
       {/* Show the currently-selected value for confirmation when it matches
@@ -1078,16 +1112,13 @@ function Step6Payroll() {
       <View
         style={twStyle("rounded-[1.5rem] border border-slate-200 bg-white p-5 gap-3 shadow-sm")}
       >
-        <Text style={twStyle(labelCls)}>Optional details</Text>
-        <Text style={twStyle("text-[14px] text-slate-500 mb-1")}>
-          Anything about schedules, commission splits, or tools.
-        </Text>
-        <TextInput
+        <OnboardingTextField
+          label="Optional details"
+          hint="Anything about schedules, commission splits, or tools."
           value={formData.payroll_details || ""}
           onChangeText={(t) => updateFormData({ payroll_details: t })}
           placeholder="Optional details"
-          placeholderTextColor="#94a3b8"
-          style={twStyle(`${inputCls} text-[17px]`)}
+          returnKeyType="done"
         />
       </View>
     </View>
@@ -1270,30 +1301,28 @@ function Step7Location() {
       ) : null}
 
       <View style={twStyle("gap-4 mt-2")}>
-        <View>
-          <Text style={twStyle(labelCls)}>Apt / suite (optional)</Text>
-          <TextInput
-            value={addr.line2 || ""}
-            onChangeText={(t) => updateFormData({ address: { ...addr, line2: t || undefined } })}
-            style={twStyle(`${inputCls} text-[17px]`)}
-          />
-        </View>
-        <View>
-          <Text style={twStyle(labelCls)}>City</Text>
-          <TextInput
-            value={addr.city || ""}
-            onChangeText={(t) => updateFormData({ address: { ...addr, city: t } })}
-            style={twStyle(`${inputCls} text-[17px]`)}
-          />
-        </View>
-        <View>
-          <Text style={twStyle(labelCls)}>Country</Text>
-          <TextInput
-            value={addr.country || ""}
-            onChangeText={(t) => updateFormData({ address: { ...addr, country: t } })}
-            style={twStyle(`${inputCls} text-[17px]`)}
-          />
-        </View>
+        <OnboardingTextField
+          label="Apt / suite (optional)"
+          value={addr.line2 || ""}
+          onChangeText={(t) => updateFormData({ address: { ...addr, line2: t || undefined } })}
+          returnKeyType="next"
+        />
+        <OnboardingTextField
+          label="City"
+          value={addr.city || ""}
+          onChangeText={(t) => updateFormData({ address: { ...addr, city: t } })}
+          textContentType="addressCity"
+          autoComplete="address-line2"
+          returnKeyType="next"
+        />
+        <OnboardingTextField
+          label="Country"
+          value={addr.country || ""}
+          onChangeText={(t) => updateFormData({ address: { ...addr, country: t } })}
+          textContentType="countryName"
+          autoComplete="country"
+          returnKeyType="done"
+        />
       </View>
 
       <AddressMapPinModal
@@ -2031,8 +2060,10 @@ function Step10Categories() {
                   placeholder="Category name"
                   placeholderTextColor="#9ca3af"
                   style={twStyle(
-                    "rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[15px] text-slate-900",
+                    "rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[15px] text-slate-900 min-h-[48px]",
                   )}
+                  accessibilityLabel={`Menu category ${index + 1} name`}
+                  returnKeyType="next"
                 />
                 {cat.global_category_id ? (
                   <Text style={twStyle("mt-1 text-[11px] text-slate-400")}>
@@ -2070,59 +2101,22 @@ function Step10Categories() {
 
 // ─── Step 11: Services ───────────────────────────────────────────────────────
 
-type ServiceTypeOption = { value: string; label: string };
+const ONBOARDING_REF_DATA = {
+  availability: FALLBACK_AVAILABILITY_OPTIONS,
+  tax_rate: FALLBACK_TAX_RATE_OPTIONS,
+  duration: FALLBACK_DURATION_OPTIONS,
+  price_type: FALLBACK_PRICE_TYPE_OPTIONS,
+  extra_time: FALLBACK_EXTRA_TIME_OPTIONS,
+};
 
-const SERVICE_TYPE_OPTIONS: ServiceTypeOption[] = [
-  { value: "basic", label: "Basic" },
-  { value: "addon", label: "Add-on" },
-  { value: "package", label: "Package" },
-];
-
-const AVAILABILITY_OPTIONS: ServiceTypeOption[] = [
-  { value: "everyone", label: "Everyone" },
-  { value: "women", label: "Women" },
-  { value: "men", label: "Men" },
-];
-
-const TAX_RATE_OPTIONS: ServiceTypeOption[] = [
-  { value: "0", label: "No tax" },
-  { value: "15", label: "15% VAT" },
-];
+function categoryNameFromForm(form: ServiceFormState, categories: { id: string; name: string }[]) {
+  const match = categories.find((c) => c.id === form.categoryId);
+  return match?.name ?? form.categoryId;
+}
 
 function Step11Services() {
   const { formData, updateFormData } = useOnboardingWizard();
   const tenantCurrency = getTenantDefaultCurrency();
-  // §provider-launch (2026-06): services are assigned to the provider's OWN menu
-  // categories (created in the previous step), with inline create-new — matching
-  // the live catalog. The chosen category's optional global mapping still drives
-  // marketplace discovery via `category_id`.
-  const [categoryName, setCategoryName] = useState("");
-  const [showNewCategory, setShowNewCategory] = useState(false);
-  const [newCategoryName, setNewCategoryName] = useState("");
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [supportsAtSalon, setSupportsAtSalon] = useState(formData.business_type !== "mobile");
-  const [supportsAtHome, setSupportsAtHome] = useState(formData.business_type !== "salon");
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [addonName, setAddonName] = useState("");
-  const [addonPrice, setAddonPrice] = useState("");
-  const [addonDuration, setAddonDuration] = useState("");
-  const [addonDescription, setAddonDescription] = useState("");
-  const [draftAddons, setDraftAddons] = useState<OnboardingServiceAddon[]>([]);
-  const [pricingOptions, setPricingOptions] = useState<PricingOption[]>([DEFAULT_PRICING_OPTION()]);
-  // §provider-onboarding-2026-05: Catalog-parity advanced fields. These ride
-  // through to `/api/provider/onboarding` so providers don't have to revisit
-  // every service in the catalog after going live.
-  const [serviceType, setServiceType] = useState<string>("basic");
-  const [pricingName, setPricingName] = useState("");
-  const [aftercareDescription, setAftercareDescription] = useState("");
-  const [availableFor, setAvailableFor] = useState<string>("everyone");
-  const [onlineBookable, setOnlineBookable] = useState(true);
-  const [atHomeRadius, setAtHomeRadius] = useState("");
-  const [atHomePriceAdj, setAtHomePriceAdj] = useState("0");
-  const [taxRate, setTaxRate] = useState("0");
-  const [extraTimeEnabled, setExtraTimeEnabled] = useState(false);
-  const [extraTimeDuration, setExtraTimeDuration] = useState("15");
   const services = formData.services || [];
   const selectedCategoryIds = useMemo(
     () => formData.global_category_ids || [],
@@ -2133,29 +2127,83 @@ function Step11Services() {
     [formData.provider_categories],
   );
 
-  // Keep a valid provider category selected as the list changes.
-  useEffect(() => {
-    const names = providerCategories.map((c) => c.name).filter((n) => n.trim().length > 0);
-    if (categoryName && names.includes(categoryName)) return;
-    setCategoryName(names.length > 0 ? names[0] : "");
-  }, [categoryName, providerCategories]);
+  const wizardCategories = useMemo(
+    () =>
+      providerCategories
+        .filter((c) => c.name.trim().length > 0)
+        .map((c) => ({ id: c.name.trim(), name: c.name.trim() })),
+    [providerCategories],
+  );
 
-  const addNewCategoryInline = () => {
-    const name = newCategoryName.trim();
-    if (!name) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (!providerCategories.some((c) => c.name.trim().toLowerCase() === name.toLowerCase())) {
-      updateFormData({ provider_categories: [...providerCategories, { name }] });
-    }
-    setCategoryName(name);
-    setNewCategoryName("");
-    setShowNewCategory(false);
-  };
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [form, setForm] = useState<ServiceFormState>(() =>
+    defaultOnboardingFormState(formData.business_type ?? "salon"),
+  );
+  const [formError, setFormError] = useState<string | null>(null);
+  const [addonName, setAddonName] = useState("");
+  const [addonPrice, setAddonPrice] = useState("");
+  const [addonDuration, setAddonDuration] = useState("");
+  const [addonDescription, setAddonDescription] = useState("");
+  const [draftAddons, setDraftAddons] = useState<OnboardingServiceAddon[]>([]);
 
-  useEffect(() => {
-    setSupportsAtSalon(formData.business_type !== "mobile");
-    setSupportsAtHome(formData.business_type !== "salon");
+  const resetForm = useCallback(() => {
+    setForm(defaultOnboardingFormState(formData.business_type ?? "salon"));
+    setFormError(null);
+    setEditingIndex(null);
+    setDraftAddons([]);
+    setAddonName("");
+    setAddonPrice("");
+    setAddonDuration("");
+    setAddonDescription("");
   }, [formData.business_type]);
+
+  useEffect(() => {
+    if (editingIndex !== null) return;
+    const names = wizardCategories.map((c) => c.name);
+    if (form.categoryId && names.includes(form.categoryId)) return;
+    if (names.length > 0) {
+      setForm((prev) => ({ ...prev, categoryId: names[0] }));
+    }
+  }, [wizardCategories, form.categoryId, editingIndex]);
+
+  useEffect(() => {
+    if (editingIndex !== null) return;
+    setForm((prev) => ({
+      ...prev,
+      supportsAtSalon: formData.business_type !== "mobile",
+      supportsAtHome: formData.business_type !== "salon",
+    }));
+  }, [formData.business_type, editingIndex]);
+
+  const handleCreateCategory = useCallback(
+    async (name: string) => {
+      const trimmed = name.trim();
+      if (!trimmed) return null;
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      if (!providerCategories.some((c) => c.name.trim().toLowerCase() === trimmed.toLowerCase())) {
+        updateFormData({ provider_categories: [...providerCategories, { name: trimmed }] });
+      }
+      return { value: trimmed, label: trimmed };
+    },
+    [providerCategories, updateFormData],
+  );
+
+  const startEdit = (index: number) => {
+    const service = services[index];
+    if (!service) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setEditingIndex(index);
+    setForm(
+      onboardingServiceToFormState(
+        service,
+        service.provider_category_name?.trim() || wizardCategories[0]?.id || "",
+      ),
+    );
+    setFormError(null);
+    setDraftAddons(
+      (formData.service_addons || []).filter((a) => a.parent_service_index === index),
+    );
+  };
 
   const addAddon = () => {
     const parsedAddonPrice = parseFloat(addonPrice);
@@ -2168,10 +2216,11 @@ function Step11Services() {
       Alert.alert("Add-on", "Enter a valid add-on price.");
       return;
     }
+    const parentIndex = editingIndex ?? services.length;
     setDraftAddons((prev) => [
       ...prev,
       {
-        parent_service_index: services.length,
+        parent_service_index: parentIndex,
         name: addonName.trim(),
         description: addonDescription.trim() || undefined,
         price: parsedAddonPrice,
@@ -2186,107 +2235,74 @@ function Step11Services() {
     setAddonDescription("");
   };
 
-  const add = () => {
+  const saveService = () => {
     if (!providerCategories.some((c) => c.name.trim().length > 0)) {
       Alert.alert("Service", "Add a menu category in the previous step first.");
       return;
     }
-    if (!categoryName.trim()) {
-      Alert.alert("Service", "Select a category to continue.");
-      return;
-    }
-    if (!title.trim()) {
-      Alert.alert("Service", "Enter a service name.");
-      return;
-    }
-    const primaryPricing = pricingOptions[0] ?? DEFAULT_PRICING_OPTION();
-    if (primaryPricing.price <= 0) {
-      Alert.alert("Service", "Enter a valid service price.");
-      return;
-    }
-    if (!primaryPricing.duration || primaryPricing.duration <= 0) {
-      Alert.alert("Service", "Duration must be more than 0 minutes.");
-      return;
-    }
-    if (!supportsAtSalon && !supportsAtHome) {
-      Alert.alert("Service", "Choose at least one availability option: salon or at-home.");
-      return;
-    }
-    const parsedRadius = parseFloat(atHomeRadius);
-    const parsedAdj = parseFloat(atHomePriceAdj);
-    const parsedTax = parseFloat(taxRate);
-    const parsedExtraDur = parseInt(extraTimeDuration, 10);
-    // Derive the global category for marketplace discovery from the chosen
-    // provider category's mapping (falling back to the first selected global).
+
+    const categoryName = categoryNameFromForm(form, wizardCategories);
     const chosenProviderCategory = providerCategories.find(
       (c) => c.name.trim() === categoryName.trim(),
     );
     const derivedGlobalCategoryId =
       chosenProviderCategory?.global_category_id || selectedCategoryIds[0] || undefined;
-    const s: OnboardingService = {
-      title: title.trim(),
-      provider_category_name: categoryName.trim(),
-      category_id: derivedGlobalCategoryId,
-      description: description.trim() || undefined,
-      duration_minutes: primaryPricing.duration,
-      price: primaryPricing.price,
+
+    const { service, error } = formStateToOnboardingService({
+      form: { ...form, serviceType: "basic" },
+      categoryName,
+      globalCategoryId: derivedGlobalCategoryId,
       currency: tenantCurrency,
-      supports_at_home: supportsAtHome,
-      supports_at_salon: supportsAtSalon,
-      service_type: serviceType || "basic",
-      pricing_name: primaryPricing.pricingName.trim() || pricingName.trim() || undefined,
-      pricing_options: pricingOptionsToPayload(pricingOptions),
-      aftercare_description: aftercareDescription.trim() || undefined,
-      service_available_for: availableFor || "everyone",
-      online_booking_enabled: onlineBookable,
-      at_home_radius_km:
-        supportsAtHome && Number.isFinite(parsedRadius) && parsedRadius > 0
-          ? parsedRadius
-          : undefined,
-      at_home_price_adjustment:
-        supportsAtHome && Number.isFinite(parsedAdj) ? parsedAdj : 0,
-      tax_rate: Number.isFinite(parsedTax) ? parsedTax : 0,
-      extra_time_enabled: extraTimeEnabled,
-      extra_time_duration:
-        extraTimeEnabled && Number.isFinite(parsedExtraDur) && parsedExtraDur > 0
-          ? parsedExtraDur
-          : 0,
-    };
+      businessType: formData.business_type ?? "salon",
+    });
+
+    if (error || !service) {
+      setFormError(error ?? "Could not save service.");
+      return;
+    }
+
+    const nextServices = [...services];
+    const targetIndex = editingIndex ?? services.length;
+    if (editingIndex != null) {
+      nextServices[editingIndex] = service;
+    } else {
+      nextServices.push(service);
+    }
+
+    const withoutTargetAddons = (formData.service_addons || []).filter(
+      (a) => a.parent_service_index !== targetIndex,
+    );
     const nextAddons = [
-      ...(formData.service_addons || []),
-      ...draftAddons.map((a) => ({ ...a, parent_service_index: services.length })),
+      ...withoutTargetAddons,
+      ...draftAddons.map((a) => ({ ...a, parent_service_index: targetIndex })),
     ];
-    updateFormData({ services: [...services, s], service_addons: nextAddons });
-    setTitle("");
-    setDescription("");
-    setShowAdvanced(false);
-    setSupportsAtSalon(formData.business_type !== "mobile");
-    setSupportsAtHome(formData.business_type !== "salon");
-    setDraftAddons([]);
-    setPricingOptions([DEFAULT_PRICING_OPTION()]);
-    setServiceType("basic");
-    setPricingName("");
-    setAftercareDescription("");
-    setAvailableFor("everyone");
-    setOnlineBookable(true);
-    setAtHomeRadius("");
-    setAtHomePriceAdj("0");
-    setTaxRate("0");
-    setExtraTimeEnabled(false);
-    setExtraTimeDuration("15");
+
+    updateFormData({ services: nextServices, service_addons: nextAddons });
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    resetForm();
   };
 
   const remove = (i: number) => {
     const next = [...services];
     next.splice(i, 1);
-    updateFormData({ services: next });
+    const nextAddons = (formData.service_addons || [])
+      .filter((a) => a.parent_service_index !== i)
+      .map((a) =>
+        a.parent_service_index > i
+          ? { ...a, parent_service_index: a.parent_service_index - 1 }
+          : a,
+      );
+    updateFormData({ services: next, service_addons: nextAddons });
+    if (editingIndex === i) resetForm();
   };
+
+  const isEditing = editingIndex !== null;
 
   return (
     <View style={twStyle("gap-4")}>
       <View
         style={twStyle(
-          "rounded-[1.5rem] border border-sky-200 bg-sky-50 p-5 flex-row gap-3 shadow-sm"
+          "rounded-[1.5rem] border border-sky-200 bg-sky-50 p-5 flex-row gap-3 shadow-sm",
         )}
       >
         <Ionicons
@@ -2309,7 +2325,7 @@ function Step11Services() {
         <View
           key={`${s.title}-${i}`}
           style={twStyle(
-            "rounded-[1.5rem] border border-slate-200 bg-white p-5 flex-row items-center gap-4 shadow-sm"
+            "rounded-[1.5rem] border border-slate-200 bg-white p-5 flex-row items-center gap-4 shadow-sm",
           )}
         >
           <View style={twStyle("h-12 w-12 items-center justify-center rounded-full bg-emerald-50")}>
@@ -2335,8 +2351,18 @@ function Step11Services() {
             </Text>
           </View>
           <TouchableOpacity
+            onPress={() => startEdit(i)}
+            style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-slate-100")}
+            accessibilityRole="button"
+            accessibilityLabel={`Edit ${s.title}`}
+          >
+            <Ionicons name="pencil-outline" size={18} color="#64748b" />
+          </TouchableOpacity>
+          <TouchableOpacity
             onPress={() => remove(i)}
             style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-rose-50")}
+            accessibilityRole="button"
+            accessibilityLabel={`Remove ${s.title}`}
           >
             <Ionicons name="trash-outline" size={18} color="#e11d48" />
           </TouchableOpacity>
@@ -2346,51 +2372,14 @@ function Step11Services() {
       <View
         style={twStyle("rounded-[1.5rem] border border-slate-200 bg-white p-5 gap-4 shadow-sm")}
       >
-        <Text style={twStyle("text-[17px] font-semibold text-slate-900")}>Add a service</Text>
-        <Text style={twStyle(labelCls)}>Category</Text>
-        {providerCategories.some((c) => c.name.trim().length > 0) ? (
-          <View style={twStyle("flex-row flex-wrap gap-2")}>
-            {providerCategories
-              .filter((c) => c.name.trim().length > 0)
-              .map((cat) => {
-                const selected = categoryName.trim() === cat.name.trim();
-                return (
-                  <TouchableOpacity
-                    key={`svc-cat-${cat.name}`}
-                    onPress={() => setCategoryName(cat.name)}
-                    style={twStyle(
-                      `rounded-full border px-4 py-2 transition-all duration-300 ${selected ? "border-primary bg-primary shadow-sm" : "border-slate-200 bg-slate-50"}`
-                    )}
-                  >
-                    <Text
-                      style={twStyle(
-                        `text-[14px] font-medium ${selected ? "text-white" : "text-slate-700"}`
-                      )}
-                    >
-                      {cat.name}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            {showNewCategory ? null : (
-              <TouchableOpacity
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  setShowNewCategory(true);
-                }}
-                style={twStyle("flex-row items-center gap-1 rounded-full border border-dashed border-primary/40 px-4 py-2")}
-                accessibilityRole="button"
-                accessibilityLabel="Create a new category"
-              >
-                <Ionicons name="add" size={16} color={Colors.primary} />
-                <Text style={twStyle("text-[14px] font-semibold text-primary")}>New category</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        ) : (
+        <Text style={twStyle("text-[17px] font-semibold text-slate-900")}>
+          {isEditing ? "Edit service" : "Add a service"}
+        </Text>
+
+        {!providerCategories.some((c) => c.name.trim().length > 0) ? (
           <View
             style={twStyle(
-              "flex-row gap-3 rounded-[1.5rem] border border-amber-200 bg-amber-50 p-4"
+              "flex-row gap-3 rounded-[1.5rem] border border-amber-200 bg-amber-50 p-4",
             )}
           >
             <Ionicons name="alert-circle-outline" size={20} color="#92400e" />
@@ -2398,413 +2387,132 @@ function Step11Services() {
               Add a menu category in the previous step first.
             </Text>
           </View>
+        ) : (
+          <ServiceFormFields
+            mode="onboarding"
+            value={form}
+            onChange={setForm}
+            categories={wizardCategories}
+            refData={ONBOARDING_REF_DATA}
+            businessType={formData.business_type}
+            showServiceType={false}
+            showTeam={false}
+            showResources={false}
+            showAdvancedPricing={false}
+            showActiveToggle={false}
+            onCreateCategory={handleCreateCategory}
+            onClearValidationError={() => setFormError(null)}
+          />
         )}
-        {showNewCategory ? (
-          <View style={twStyle("flex-row items-center gap-2")}>
-            <TextInput
-              value={newCategoryName}
-              onChangeText={setNewCategoryName}
-              placeholder="New category name"
-              placeholderTextColor="#9ca3af"
-              autoFocus
-              onSubmitEditing={addNewCategoryInline}
-              style={twStyle("flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[15px] text-slate-900")}
-            />
-            <TouchableOpacity
-              onPress={addNewCategoryInline}
-              style={twStyle("rounded-xl bg-primary px-4 py-3")}
-              accessibilityRole="button"
-              accessibilityLabel="Save new category"
+
+        <View style={twStyle("rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4 gap-3")}>
+          <Text style={twStyle("text-[15px] font-semibold text-slate-900")}>Add-ons (optional)</Text>
+          {draftAddons.map((addon, idx) => (
+            <View
+              key={`${addon.name}-${idx}`}
+              style={twStyle(
+                "flex-row items-center justify-between rounded-[1rem] bg-white px-4 py-3 border border-slate-100",
+              )}
             >
-              <Text style={twStyle("text-[14px] font-semibold text-white")}>Add</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => {
-                setShowNewCategory(false);
-                setNewCategoryName("");
-              }}
-              style={twStyle("h-11 w-11 items-center justify-center rounded-xl bg-slate-100")}
-              accessibilityRole="button"
-              accessibilityLabel="Cancel new category"
-            >
-              <Ionicons name="close" size={18} color="#64748b" />
-            </TouchableOpacity>
-          </View>
-        ) : null}
-        <TextInput
-          value={title}
-          onChangeText={setTitle}
-          placeholder="Service name"
-          style={twStyle(inputCls)}
-          placeholderTextColor="#94a3b8"
-        />
-        <View style={twStyle("flex-row gap-3")}>
-          {!showAdvanced ? (
-            <>
-              <TextInput
-                value={pricingOptions[0]?.price > 0 ? String(pricingOptions[0].price) : ""}
-                onChangeText={(t) => {
-                  const val = parseFloat(t) || 0;
-                  setPricingOptions((prev) =>
-                    prev.map((o, i) => (i === 0 ? { ...o, price: val } : o))
-                  );
-                }}
-                placeholder={`Price (${tenantCurrency})`}
-                keyboardType="decimal-pad"
-                style={twStyle(`${inputCls} flex-1`)}
-                placeholderTextColor="#94a3b8"
-              />
-              <TextInput
-                value={pricingOptions[0]?.duration > 0 ? String(pricingOptions[0].duration) : ""}
-                onChangeText={(t) => {
-                  const val = parseInt(t, 10) || 0;
-                  setPricingOptions((prev) =>
-                    prev.map((o, i) => (i === 0 ? { ...o, duration: val } : o))
-                  );
-                }}
-                placeholder="Minutes"
-                keyboardType="number-pad"
-                style={twStyle(`${inputCls} w-32`)}
-                placeholderTextColor="#94a3b8"
-              />
-            </>
-          ) : null}
-        </View>
-
-        {supportsAtHome ? (
-          <View style={twStyle("rounded-[1.5rem] border border-emerald-200 bg-emerald-50 p-4 gap-3")}>
-            <View style={twStyle("flex-row items-center gap-2 mb-1")}>
-              <Ionicons name="home-outline" size={16} color="#047857" />
-              <Text style={twStyle("text-[14px] font-semibold text-emerald-900")}>
-                Home visit settings
-              </Text>
-            </View>
-            <View style={twStyle("rounded-2xl border border-emerald-100 bg-white p-3 flex-row gap-2")}>
-              <Ionicons name="information-circle-outline" size={15} color="#059669" style={{ marginTop: 1 }} />
-              <Text style={twStyle("flex-1 text-[12px] leading-5 text-emerald-800")}>
-                No travel distance limit by default — customers anywhere can book. Set a max km to restrict range.
-              </Text>
-            </View>
-            <View style={twStyle("flex-row gap-3")}>
-              <View style={twStyle("flex-1 gap-1")}>
-                <Text style={twStyle("text-[12px] font-medium text-slate-600")}>Max travel radius (km)</Text>
-                <TextInput
-                  value={atHomeRadius}
-                  onChangeText={setAtHomeRadius}
-                  placeholder="Unlimited"
-                  keyboardType="decimal-pad"
-                  style={twStyle(inputCls)}
-                  placeholderTextColor="#94a3b8"
-                />
-              </View>
-              <View style={twStyle("w-36 gap-1")}>
-                <Text style={twStyle("text-[12px] font-medium text-slate-600")}>Travel surcharge ({tenantCurrency})</Text>
-                <TextInput
-                  value={atHomePriceAdj}
-                  onChangeText={setAtHomePriceAdj}
-                  placeholder="0.00"
-                  keyboardType="decimal-pad"
-                  style={twStyle(inputCls)}
-                  placeholderTextColor="#94a3b8"
-                />
-              </View>
-            </View>
-          </View>
-        ) : null}
-
-        <TouchableOpacity
-          onPress={() => setShowAdvanced((prev) => !prev)}
-          style={twStyle(
-            "flex-row items-center justify-between rounded-[1.5rem] border border-slate-200 bg-slate-50 px-5 py-4"
-          )}
-          accessibilityRole="button"
-          accessibilityLabel={
-            showAdvanced ? "Hide advanced service settings" : "Show advanced service settings"
-          }
-        >
-          <Text style={twStyle("text-[15px] font-semibold text-slate-700")}>
-            Advanced service settings
-          </Text>
-          <Ionicons name={showAdvanced ? "chevron-up" : "chevron-down"} size={20} color="#64748b" />
-        </TouchableOpacity>
-
-        {showAdvanced ? (
-          <View style={twStyle("gap-4 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4")}>
-            <TextInput
-              value={description}
-              onChangeText={setDescription}
-              placeholder="Description (optional)"
-              style={twStyle(`${inputCls} min-h-[100px] pt-4`)}
-              multiline
-              numberOfLines={3}
-              placeholderTextColor="#94a3b8"
-            />
-
-            <View style={twStyle("rounded-[1.5rem] border border-slate-200 bg-white p-4 gap-3")}>
-              <Text style={twStyle("text-[13px] font-semibold uppercase tracking-wide text-slate-500")}>
-                Service type
-              </Text>
-              <View style={twStyle("flex-row flex-wrap gap-2")}>
-                {SERVICE_TYPE_OPTIONS.map((opt) => {
-                  const selected = serviceType === opt.value;
-                  return (
-                    <TouchableOpacity
-                      key={opt.value}
-                      onPress={() => setServiceType(opt.value)}
-                      style={twStyle(
-                        `rounded-full border px-4 py-2 ${selected ? "border-primary bg-primary" : "border-slate-200 bg-white"}`
-                      )}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Service type ${opt.label}`}
-                      accessibilityState={{ selected }}
-                    >
-                      <Text
-                        style={twStyle(
-                          `text-[14px] font-medium ${selected ? "text-white" : "text-slate-700"}`
-                        )}
-                      >
-                        {opt.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-              <PricingOptionsEditor
-                options={pricingOptions}
-                onChange={setPricingOptions}
-                durationOptions={[{ value: "60", label: "60 min" }, { value: "30", label: "30 min" }, { value: "90", label: "90 min" }]}
-                priceTypeOptions={[{ value: "fixed", label: "Fixed" }]}
-                serviceTitle={title.trim() || undefined}
-              />
-            </View>
-
-            <View style={twStyle("rounded-[1.5rem] border border-slate-200 bg-white p-4 gap-3")}>
-              <Text style={twStyle("text-[13px] font-semibold uppercase tracking-wide text-slate-500")}>
-                Available for
-              </Text>
-              <View style={twStyle("flex-row flex-wrap gap-2")}>
-                {AVAILABILITY_OPTIONS.map((opt) => {
-                  const selected = availableFor === opt.value;
-                  return (
-                    <TouchableOpacity
-                      key={opt.value}
-                      onPress={() => setAvailableFor(opt.value)}
-                      style={twStyle(
-                        `rounded-full border px-4 py-2 ${selected ? "border-primary bg-primary" : "border-slate-200 bg-white"}`
-                      )}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Available for ${opt.label}`}
-                      accessibilityState={{ selected }}
-                    >
-                      <Text
-                        style={twStyle(
-                          `text-[14px] font-medium ${selected ? "text-white" : "text-slate-700"}`
-                        )}
-                      >
-                        {opt.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </View>
-
-            <View style={twStyle("rounded-[1.5rem] border border-slate-200 bg-white p-4 gap-4")}>
-              <View style={twStyle("flex-row items-center justify-between")}>
-                <View style={twStyle("flex-1 pr-3")}>
-                  <Text style={twStyle("text-[15px] font-medium text-slate-800")}>
-                    Online bookings
-                  </Text>
-                  <Text style={twStyle("mt-0.5 text-[12px] text-slate-500")}>
-                    Allow customers to book this service from your app or web profile.
-                  </Text>
-                </View>
-                <Switch
-                  value={onlineBookable}
-                  onValueChange={setOnlineBookable}
-                  trackColor={{ false: "#cbd5e1", true: Colors.primary }}
-                  accessibilityLabel="Online booking enabled"
-                />
-              </View>
-              <View style={twStyle("flex-row items-center justify-between")}>
-                <Text style={twStyle("text-[15px] font-medium text-slate-800")}>
-                  Available at salon
+              <View style={twStyle("flex-1 pr-3")}>
+                <Text style={twStyle("text-[15px] font-medium text-slate-900")}>{addon.name}</Text>
+                <Text style={twStyle("mt-0.5 text-[13px] text-slate-500")}>
+                  {addon.currency || tenantCurrency} {addon.price}
+                  {addon.duration_minutes ? ` · +${addon.duration_minutes} min` : ""}
                 </Text>
-                <Switch
-                  value={supportsAtSalon}
-                  onValueChange={setSupportsAtSalon}
-                  trackColor={{ false: "#cbd5e1", true: Colors.primary }}
-                />
               </View>
-              <View style={twStyle("flex-row items-center justify-between")}>
-                <Text style={twStyle("text-[15px] font-medium text-slate-800")}>
-                  Available at home
-                </Text>
-                <Switch
-                  value={supportsAtHome}
-                  onValueChange={setSupportsAtHome}
-                  trackColor={{ false: "#cbd5e1", true: Colors.primary }}
-                />
-              </View>
-            </View>
-
-            <View style={twStyle("rounded-[1.5rem] border border-slate-200 bg-white p-4 gap-3")}>
-              <Text style={twStyle("text-[13px] font-semibold uppercase tracking-wide text-slate-500")}>
-                Tax rate
-              </Text>
-              <View style={twStyle("flex-row flex-wrap gap-2")}>
-                {TAX_RATE_OPTIONS.map((opt) => {
-                  const selected = taxRate === opt.value;
-                  return (
-                    <TouchableOpacity
-                      key={opt.value}
-                      onPress={() => setTaxRate(opt.value)}
-                      style={twStyle(
-                        `rounded-full border px-4 py-2 ${selected ? "border-primary bg-primary" : "border-slate-200 bg-white"}`
-                      )}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Tax rate ${opt.label}`}
-                      accessibilityState={{ selected }}
-                    >
-                      <Text
-                        style={twStyle(
-                          `text-[14px] font-medium ${selected ? "text-white" : "text-slate-700"}`
-                        )}
-                      >
-                        {opt.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </View>
-
-            <View style={twStyle("rounded-[1.5rem] border border-slate-200 bg-white p-4 gap-3")}>
-              <View style={twStyle("flex-row items-center justify-between")}>
-                <View style={twStyle("flex-1 pr-3")}>
-                  <Text style={twStyle("text-[15px] font-medium text-slate-800")}>
-                    Reserve extra time
-                  </Text>
-                  <Text style={twStyle("mt-0.5 text-[12px] text-slate-500")}>
-                    Block the calendar after this service for cleanup, transition, or buffer.
-                  </Text>
-                </View>
-                <Switch
-                  value={extraTimeEnabled}
-                  onValueChange={setExtraTimeEnabled}
-                  trackColor={{ false: "#cbd5e1", true: Colors.primary }}
-                  accessibilityLabel="Reserve extra time"
-                />
-              </View>
-              {extraTimeEnabled ? (
-                <TextInput
-                  value={extraTimeDuration}
-                  onChangeText={setExtraTimeDuration}
-                  placeholder="Buffer (min)"
-                  keyboardType="number-pad"
-                  style={twStyle(inputCls)}
-                  placeholderTextColor="#94a3b8"
-                />
-              ) : null}
-            </View>
-
-            <View style={twStyle("rounded-[1.5rem] border border-slate-200 bg-white p-4 gap-3")}>
-              <Text style={twStyle("text-[13px] font-semibold uppercase tracking-wide text-slate-500")}>
-                Aftercare notes (optional)
-              </Text>
-              <TextInput
-                value={aftercareDescription}
-                onChangeText={setAftercareDescription}
-                placeholder="Sent to customers after the booking is complete"
-                style={twStyle(`${inputCls} min-h-[88px] pt-4`)}
-                multiline
-                numberOfLines={3}
-                placeholderTextColor="#94a3b8"
-              />
-            </View>
-
-            <View style={twStyle("rounded-[1.5rem] border border-slate-200 bg-white p-4 gap-3")}>
-              <Text style={twStyle("text-[15px] font-semibold text-slate-900 mb-1")}>
-                Add-ons (optional)
-              </Text>
-              {draftAddons.map((addon, idx) => (
-                <View
-                  key={`${addon.name}-${idx}`}
-                  style={twStyle(
-                    "flex-row items-center justify-between rounded-[1rem] bg-slate-50 px-4 py-3"
-                  )}
-                >
-                  <View style={twStyle("flex-1 pr-3")}>
-                    <Text style={twStyle("text-[15px] font-medium text-slate-900")}>
-                      {addon.name}
-                    </Text>
-                    <Text style={twStyle("mt-0.5 text-[13px] text-slate-500")}>
-                      {addon.currency || tenantCurrency} {addon.price}
-                      {addon.duration_minutes ? ` · +${addon.duration_minutes} min` : ""}
-                    </Text>
-                  </View>
-                  <TouchableOpacity
-                    onPress={() => setDraftAddons((prev) => prev.filter((_, i) => i !== idx))}
-                  >
-                    <Ionicons name="close-circle" size={22} color="#e11d48" />
-                  </TouchableOpacity>
-                </View>
-              ))}
-              <TextInput
-                value={addonName}
-                onChangeText={setAddonName}
-                placeholder="Add-on name"
-                style={twStyle(inputCls)}
-                placeholderTextColor="#94a3b8"
-              />
-              <View style={twStyle("flex-row gap-3")}>
-                <TextInput
-                  value={addonPrice}
-                  onChangeText={setAddonPrice}
-                  placeholder={`Price (${tenantCurrency})`}
-                  keyboardType="decimal-pad"
-                  style={twStyle(`${inputCls} flex-1`)}
-                  placeholderTextColor="#94a3b8"
-                />
-                <TextInput
-                  value={addonDuration}
-                  onChangeText={setAddonDuration}
-                  placeholder="+ min"
-                  keyboardType="number-pad"
-                  style={twStyle(`${inputCls} w-24`)}
-                  placeholderTextColor="#94a3b8"
-                />
-              </View>
-              <TextInput
-                value={addonDescription}
-                onChangeText={setAddonDescription}
-                placeholder="Add-on description (optional)"
-                style={twStyle(inputCls)}
-                placeholderTextColor="#94a3b8"
-              />
               <TouchableOpacity
-                onPress={addAddon}
-                style={twStyle(
-                  "flex-row items-center justify-center gap-2 rounded-[1.5rem] border-2 border-primary bg-white py-3.5 mt-1"
-                )}
+                onPress={() => setDraftAddons((prev) => prev.filter((_, i) => i !== idx))}
               >
-                <Ionicons name="add" size={18} color={Colors.primary} />
-                <Text style={twStyle("text-[15px] font-semibold text-primary")}>Add add-on</Text>
+                <Ionicons name="close-circle" size={22} color="#e11d48" />
               </TouchableOpacity>
             </View>
+          ))}
+          <TextInput
+            value={addonName}
+            onChangeText={setAddonName}
+            placeholder="Add-on name"
+            style={twStyle(inputCls)}
+            placeholderTextColor="#94a3b8"
+            accessibilityLabel="Add-on name"
+            returnKeyType="next"
+          />
+          <View style={twStyle("flex-row gap-3")}>
+            <TextInput
+              value={addonPrice}
+              onChangeText={setAddonPrice}
+              placeholder={`Price (${tenantCurrency})`}
+              keyboardType="decimal-pad"
+              style={twStyle(`${inputCls} flex-1`)}
+              placeholderTextColor="#94a3b8"
+              accessibilityLabel="Add-on price"
+              returnKeyType="next"
+            />
+            <TextInput
+              value={addonDuration}
+              onChangeText={setAddonDuration}
+              placeholder="+ min"
+              keyboardType="number-pad"
+              style={twStyle(`${inputCls} w-24`)}
+              placeholderTextColor="#94a3b8"
+              accessibilityLabel="Add-on extra minutes"
+              returnKeyType="next"
+            />
+          </View>
+          <TextInput
+            value={addonDescription}
+            onChangeText={setAddonDescription}
+            placeholder="Add-on description (optional)"
+            style={twStyle(inputCls)}
+            placeholderTextColor="#94a3b8"
+            accessibilityLabel="Add-on description"
+            returnKeyType="done"
+          />
+          <TouchableOpacity
+            onPress={addAddon}
+            style={twStyle(
+              "flex-row items-center justify-center gap-2 rounded-[1.5rem] border-2 border-primary bg-white py-3.5",
+            )}
+          >
+            <Ionicons name="add" size={18} color={Colors.primary} />
+            <Text style={twStyle("text-[15px] font-semibold text-primary")}>Add add-on</Text>
+          </TouchableOpacity>
+        </View>
+
+        {formError ? (
+          <View
+            style={twStyle(
+              "rounded-xl border border-red-200 bg-red-50 px-4 py-3 flex-row items-start gap-2",
+            )}
+          >
+            <Ionicons name="alert-circle-outline" size={18} color="#dc2626" style={{ marginTop: 1 }} />
+            <Text style={twStyle("text-sm font-medium text-red-700 flex-1")}>{formError}</Text>
           </View>
         ) : null}
       </View>
 
       <TouchableOpacity
-        onPress={add}
+        onPress={saveService}
         style={twStyle(
-          "flex-row items-center justify-center gap-2 rounded-full bg-primary py-4 shadow-sm"
+          "flex-row items-center justify-center gap-2 rounded-full bg-primary py-4 shadow-sm",
         )}
       >
-        <Ionicons name="add-circle-outline" size={22} color="#fff" />
-        <Text style={twStyle("text-[16px] font-semibold text-white")}>Add service</Text>
+        <Ionicons name={isEditing ? "checkmark-circle-outline" : "add-circle-outline"} size={22} color="#fff" />
+        <Text style={twStyle("text-[16px] font-semibold text-white")}>
+          {isEditing ? "Save service" : "Add service"}
+        </Text>
       </TouchableOpacity>
+
+      {isEditing ? (
+        <TouchableOpacity
+          onPress={resetForm}
+          style={twStyle("items-center py-2")}
+          accessibilityRole="button"
+          accessibilityLabel="Cancel editing"
+        >
+          <Text style={twStyle("text-[15px] font-medium text-slate-500")}>Cancel edit</Text>
+        </TouchableOpacity>
+      ) : null}
     </View>
   );
 }
@@ -3142,13 +2850,12 @@ type ReviewRowProps = {
   label: string;
   value: string;
   ok?: boolean;
+  onPress?: () => void;
 };
 
-function ReviewRow({ icon, iconBg, iconColor, label, value, ok }: ReviewRowProps) {
-  return (
-    <View
-      style={twStyle("flex-row items-center gap-4 py-3.5 border-b border-slate-100 last:border-0")}
-    >
+function ReviewRow({ icon, iconBg, iconColor, label, value, ok, onPress }: ReviewRowProps) {
+  const content = (
+    <>
       <View
         style={[
           twStyle("h-11 w-11 items-center justify-center rounded-full"),
@@ -3176,12 +2883,33 @@ function ReviewRow({ icon, iconBg, iconColor, label, value, ok }: ReviewRowProps
           color={ok ? "#10b981" : "#f59e0b"}
         />
       ) : null}
+    </>
+  );
+
+  if (onPress) {
+    return (
+      <TouchableOpacity
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={`Edit ${label}`}
+        style={twStyle("flex-row items-center gap-4 py-3.5 border-b border-slate-100 last:border-0")}
+      >
+        {content}
+      </TouchableOpacity>
+    );
+  }
+
+  return (
+    <View
+      style={twStyle("flex-row items-center gap-4 py-3.5 border-b border-slate-100 last:border-0")}
+    >
+      {content}
     </View>
   );
 }
 
 function Step13Review() {
-  const { formData } = useOnboardingWizard();
+  const { formData, setCurrentStep } = useOnboardingWizard();
   const a = formData.address;
   const hasRequiredPhotos = !!(formData.thumbnail_url && formData.avatar_url);
   const catCount = (formData.global_category_ids || []).length;
@@ -3307,6 +3035,23 @@ function Step13Review() {
         />
       </View>
 
+      {(formData.business_type === "mobile" || formData.business_type === "both") && (
+        <View style={twStyle("rounded-2xl border-2 border-gray-200 bg-white p-4")}>
+          <Text style={twStyle("mb-1 text-xs font-bold uppercase tracking-wide text-gray-400")}>
+            Travel fees
+          </Text>
+          <ReviewRow
+            icon="car-outline"
+            iconBg="#eff6ff"
+            iconColor="#2563eb"
+            label="At-home travel"
+            value={formatTravelFeesSummary(formData.travel_fees, getTenantDefaultCurrency())}
+            ok={formData.travel_fees?.enabled !== false}
+            onPress={() => setCurrentStep(10)}
+          />
+        </View>
+      )}
+
       {/* Categories & services */}
       <View style={twStyle("rounded-2xl border-2 border-gray-200 bg-white p-4")}>
         <Text style={twStyle("mb-1 text-xs font-bold uppercase tracking-wide text-gray-400")}>
@@ -3349,7 +3094,11 @@ function Step13Review() {
             iconBg="#fdf4ff"
             iconColor="#9333ea"
             label="Selected plan"
-            value={formData.selected_plan_name}
+            value={
+              formData.selected_plan_is_free
+                ? `${formData.selected_plan_name} — activates instantly, no card required`
+                : formData.selected_plan_name
+            }
             ok
           />
         </View>
@@ -3558,6 +3307,7 @@ function Step14Plan() {
           updateFormData({
             selected_plan_id: chosen.id,
             selected_plan_name: chosen.name,
+            selected_plan_is_free: Boolean(chosen.is_free),
             no_plans_available: false,
           });
         } else {
@@ -3616,7 +3366,11 @@ function Step14Plan() {
           selected={formData.selected_plan_id === p.id}
           onSelect={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            updateFormData({ selected_plan_id: p.id, selected_plan_name: p.name });
+            updateFormData({
+              selected_plan_id: p.id,
+              selected_plan_name: p.name,
+              selected_plan_is_free: Boolean(p.is_free),
+            });
           }}
         />
       ))}
@@ -3626,38 +3380,25 @@ function Step14Plan() {
 
 // ─── Step: Travel fees (mobile / both) ──────────────────────────────────────
 
-interface OnboardingPlatformTravelLimits {
-  provider_min_rate_per_km: number;
-  provider_max_rate_per_km: number;
-  provider_min_minimum_fee: number;
-  provider_max_minimum_fee: number;
-  allow_provider_customization: boolean;
-  allow_provider_tiered: boolean;
-  default_rate_per_km?: number;
-  default_minimum_fee?: number;
-  default_free_within_km?: number;
-}
-
 function StepTravelFees() {
   const { formData, updateFormData } = useOnboardingWizard();
   const tf = formData.travel_fees ?? { enabled: true, use_platform_default: true };
   const currency = getTenantDefaultCurrency();
+  const [limits, setLimits] = useState<PlatformTravelLimits | null>(null);
 
-  const [limits, setLimits] = useState<OnboardingPlatformTravelLimits | null>(null);
-
-  // Platform limits are nice-to-have; the endpoint requires a provider role, so
-  // a brand-new (still "customer") user mid-onboarding may get 403 — tolerate
-  // that and default to allowing customization (server re-validates on submit).
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const res = await api.get<OnboardingPlatformTravelLimits>(
+        const res = await api.get<PlatformTravelLimits>(
           "/api/provider/travel-fees/platform-limits",
         );
-        if (!cancelled && res.data && !res.error) setLimits(res.data);
+        if (!cancelled && res.data && !res.error) {
+          setLimits(res.data);
+          updateFormData({ platform_travel_limits: res.data });
+        }
       } catch {
-        /* ignore — defaults applied below */
+        /* ignore — server re-validates on submit */
       }
     })();
     return () => {
@@ -3665,216 +3406,15 @@ function StepTravelFees() {
     };
   }, []);
 
-  const allowCustomization = limits ? limits.allow_provider_customization !== false : true;
-  const allowTiered = limits ? limits.allow_provider_tiered !== false : true;
-
-  const set = (patch: Partial<typeof tf>) => {
-    updateFormData({ travel_fees: { ...tf, ...patch } });
-  };
-
-  const enabled = tf.enabled !== false;
-  const usePlatformDefault = allowCustomization ? tf.use_platform_default !== false : true;
-  const pricingModel: "per_km" | "tiered" = tf.pricing_model === "tiered" ? "tiered" : "per_km";
-  const tiers = tf.tiers ?? [];
-
-  const numStr = (n: number | null | undefined) => (n != null ? String(n) : "");
-  const toNum = (s: string): number | null => {
-    const t = s.trim();
-    if (!t) return null;
-    const n = Number(t);
-    return Number.isFinite(n) ? n : null;
-  };
-
   return (
     <View>
-      <View style={twStyle("mb-4 rounded-2xl border border-indigo-100 bg-indigo-50 p-4")}>
-        <Text style={twStyle("text-[15px] leading-relaxed text-indigo-900")}>
-          Set how you charge customers for travelling to at-home appointments. Keep the platform
-          default to start earning instantly — you can fine-tune this any time from Settings.
-        </Text>
-      </View>
-
-      {allowCustomization === false && (
-        <View style={twStyle("mb-4 rounded-2xl border border-amber-100 bg-amber-50 p-3")}>
-          <Text style={twStyle("text-sm text-amber-900")}>
-            Travel rates are set by your platform. You can turn travel fees on or off; per-km and
-            tier customization is disabled.
-          </Text>
-        </View>
-      )}
-
-      <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
-        <View style={twStyle("mb-3 flex-row items-center justify-between")}>
-          <View style={twStyle("flex-1 pr-3")}>
-            <Text style={twStyle("text-sm font-medium text-gray-900")}>Enable travel fees</Text>
-            <Text style={twStyle("text-xs text-gray-500")}>Charge for at-home service travel</Text>
-          </View>
-          <Switch
-            value={enabled}
-            onValueChange={(v) => set({ enabled: v })}
-            trackColor={{ false: "#d1d5db", true: "#818cf8" }}
-            thumbColor={enabled ? "#6366f1" : "#f4f4f5"}
-          />
-        </View>
-
-        {enabled && (
-          <>
-            <View style={twStyle("my-2 border-t border-gray-100")} />
-            <View style={twStyle("mb-1 flex-row items-center justify-between")}>
-              <View style={twStyle("flex-1 pr-3")}>
-                <Text style={twStyle("text-sm font-medium text-gray-900")}>Use platform defaults</Text>
-                <Text style={twStyle("text-xs text-gray-500")}>Use standard platform rates</Text>
-              </View>
-              <Switch
-                value={usePlatformDefault}
-                disabled={!allowCustomization}
-                onValueChange={(v) => {
-                  if (!allowCustomization) return;
-                  set({
-                    use_platform_default: v,
-                    // Seed a sensible pricing model when switching to custom.
-                    pricing_model: v ? tf.pricing_model : pricingModel,
-                  });
-                }}
-                trackColor={{ false: "#d1d5db", true: "#818cf8" }}
-                thumbColor={usePlatformDefault ? "#6366f1" : "#f4f4f5"}
-              />
-            </View>
-
-            {!usePlatformDefault && allowCustomization && (
-              <>
-                <View style={twStyle("my-2 border-t border-gray-100")} />
-                <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Pricing model</Text>
-                <View style={twStyle("mb-3 flex-row gap-3")}>
-                  <TouchableOpacity
-                    style={[
-                      twStyle("flex-1 rounded-xl border px-4 py-3"),
-                      pricingModel === "per_km"
-                        ? twStyle("border-indigo-500 bg-indigo-50")
-                        : twStyle("border-gray-200 bg-gray-50"),
-                    ]}
-                    onPress={() => set({ pricing_model: "per_km" })}
-                  >
-                    <Text style={twStyle("text-center text-sm font-medium text-gray-900")}>Per km</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      twStyle("flex-1 rounded-xl border px-4 py-3"),
-                      pricingModel === "tiered"
-                        ? twStyle("border-indigo-500 bg-indigo-50")
-                        : twStyle("border-gray-200 bg-gray-50"),
-                      !allowTiered ? twStyle("opacity-40") : undefined,
-                    ]}
-                    disabled={!allowTiered}
-                    onPress={() => {
-                      if (!allowTiered) return;
-                      set({ pricing_model: "tiered", tiers: tiers.length ? tiers : [{ max_km: 10, fee: 100 }] });
-                    }}
-                  >
-                    <Text style={twStyle("text-center text-sm font-medium text-gray-900")}>Tiers</Text>
-                  </TouchableOpacity>
-                </View>
-
-                {pricingModel === "per_km" && (
-                  <>
-                    <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Free within (km)</Text>
-                    <TextInput
-                      style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
-                      value={numStr(tf.free_within_km)}
-                      onChangeText={(t) => set({ free_within_km: toNum(t) })}
-                      placeholder="0 (charge from first km)"
-                      placeholderTextColor="#9ca3af"
-                      keyboardType="decimal-pad"
-                    />
-                    <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{`Rate per km (${currency})`}</Text>
-                    <TextInput
-                      style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
-                      value={numStr(tf.rate_per_km)}
-                      onChangeText={(t) => set({ rate_per_km: toNum(t) })}
-                      placeholder="0.00"
-                      placeholderTextColor="#9ca3af"
-                      keyboardType="decimal-pad"
-                    />
-                    <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{`Minimum fee (${currency})`}</Text>
-                    <TextInput
-                      style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
-                      value={numStr(tf.minimum_fee)}
-                      onChangeText={(t) => set({ minimum_fee: toNum(t) })}
-                      placeholder="0.00"
-                      placeholderTextColor="#9ca3af"
-                      keyboardType="decimal-pad"
-                    />
-                    <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{`Maximum fee (${currency}, optional)`}</Text>
-                    <TextInput
-                      style={twStyle("mb-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
-                      value={numStr(tf.maximum_fee)}
-                      onChangeText={(t) => set({ maximum_fee: toNum(t) })}
-                      placeholder="No maximum"
-                      placeholderTextColor="#9ca3af"
-                      keyboardType="decimal-pad"
-                    />
-                  </>
-                )}
-
-                {pricingModel === "tiered" && (
-                  <View style={twStyle("mb-1")}>
-                    <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{`Distance tiers (up to X km → fee in ${currency})`}</Text>
-                    {tiers.map((tier, i) => (
-                      <View key={i} style={twStyle("mb-2 flex-row items-center gap-2")}>
-                        <TextInput
-                          style={[twStyle("flex-1 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900"), { minWidth: 60 }]}
-                          value={String(tier.max_km)}
-                          onChangeText={(t) => {
-                            const n = parseInt(t, 10) || 0;
-                            set({ tiers: tiers.map((x, j) => (j === i ? { ...x, max_km: n } : x)) });
-                          }}
-                          placeholder="km"
-                          placeholderTextColor="#9ca3af"
-                          keyboardType="number-pad"
-                        />
-                        <Text style={twStyle("text-sm text-gray-500")}>km =</Text>
-                        <TextInput
-                          style={[twStyle("flex-1 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900"), { minWidth: 60 }]}
-                          value={String(tier.fee)}
-                          onChangeText={(t) => {
-                            const n = parseFloat(t) || 0;
-                            set({ tiers: tiers.map((x, j) => (j === i ? { ...x, fee: n } : x)) });
-                          }}
-                          placeholder={currency}
-                          placeholderTextColor="#9ca3af"
-                          keyboardType="decimal-pad"
-                        />
-                        <TouchableOpacity
-                          onPress={() => set({ tiers: tiers.filter((_, j) => j !== i) })}
-                          style={twStyle("rounded-full bg-gray-200 p-2")}
-                          accessibilityLabel="Remove tier"
-                        >
-                          <Ionicons name="trash-outline" size={18} color="#6b7280" />
-                        </TouchableOpacity>
-                      </View>
-                    ))}
-                    <TouchableOpacity
-                      style={twStyle("flex-row items-center rounded-xl border border-dashed border-gray-300 py-2.5")}
-                      onPress={() =>
-                        set({
-                          tiers: [
-                            ...tiers,
-                            { max_km: tiers.length ? tiers[tiers.length - 1].max_km + 10 : 10, fee: 100 },
-                          ],
-                        })
-                      }
-                    >
-                      <Ionicons name="add-circle-outline" size={20} color="#6366f1" style={{ marginLeft: 12, marginRight: 6 }} />
-                      <Text style={twStyle("text-sm font-medium text-indigo-600")}>Add tier</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-              </>
-            )}
-          </>
-        )}
-      </View>
-
+      <TravelFeesEditor
+        value={tf}
+        onChange={(patch) => updateFormData({ travel_fees: { ...tf, ...patch } })}
+        platformLimits={limits}
+        currency={currency}
+        mode="onboarding"
+      />
       <Text style={twStyle("text-center text-xs text-gray-500")}>
         You can skip this step — we&apos;ll apply the platform standard and you can adjust it later.
       </Text>

@@ -7,11 +7,10 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { requireAnyPermission } from "@/lib/auth/requirePermission";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { subDays, subMonths, startOfDay, startOfWeek, startOfMonth } from "date-fns";
-import { dateRangeBoundsUtc, formatDateYmd, fromBusinessTime, nowInTz } from "@/lib/dates/provider-tz";
 import { filterLedgerRowsForLocation, getProviderReportContext } from "@/lib/reports/provider-report-utils";
 import {
   mapFinanceLedgerRowToProviderUi,
+  providerTransactionsPeriodStart,
   PROVIDER_LEDGER_VISIBLE_TYPES,
   type ProviderLedgerUiRow,
 } from "@/lib/provider/provider-ledger-transaction-view";
@@ -39,35 +38,7 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(parseInt(sp.get("limit") || "50", 10), 200);
 
     const locationId = sp.get("location_id") || null;
-    let fromDate: Date;
-    const businessNow = nowInTz(reportContext.timezone);
-    switch (period) {
-      case "today":
-        fromDate = fromBusinessTime(startOfDay(businessNow), reportContext.timezone);
-        break;
-      case "week":
-        fromDate = fromBusinessTime(startOfWeek(businessNow, { weekStartsOn: 1 }), reportContext.timezone);
-        break;
-      case "month":
-        fromDate = fromBusinessTime(startOfMonth(businessNow), reportContext.timezone);
-        break;
-      case "3months":
-        fromDate = fromBusinessTime(subMonths(businessNow, 3), reportContext.timezone);
-        break;
-      case "year":
-        fromDate = fromBusinessTime(subMonths(businessNow, 12), reportContext.timezone);
-        break;
-      case "all":
-        fromDate = new Date(2000, 0, 1);
-        break;
-      default: {
-        const tz = reportContext.timezone;
-        const fromYmd = formatDateYmd(subDays(businessNow, 29), tz);
-        const todayYmd = formatDateYmd(businessNow, tz);
-        fromDate = new Date(dateRangeBoundsUtc(fromYmd, todayYmd, tz).fromIso);
-        break;
-      }
-    }
+    const fromDate = providerTransactionsPeriodStart(period, reportContext.timezone);
 
     const mapped: ProviderLedgerUiRow[] = [];
     let offset = 0;
@@ -75,7 +46,9 @@ export async function GET(request: NextRequest) {
     while (mapped.length < limit && offset < MAX_LEDGER_SCAN) {
       const { data: pageRaw, error: pageError } = await supabaseAdmin
         .from("finance_transactions")
-        .select("id, transaction_type, amount, net, created_at, description, booking_id, product_order_id, metadata")
+        .select(
+          "id, transaction_type, amount, net, created_at, description, booking_id, product_order_id, metadata, refund_component, currency",
+        )
         .eq("provider_id", providerId)
         .gte("created_at", fromDate.toISOString())
         .in("transaction_type", VISIBLE_TYPES_LIST)

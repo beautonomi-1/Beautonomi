@@ -5,6 +5,12 @@ import { Sparkles, Clock, ChevronRight, ChevronDown } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/utils";
+import { useTranslation } from "@beautonomi/i18n";
+import { catalogHasAnyAtHomePriceAdjustment, computeAtHomeLinePrice } from "@beautonomi/utils";
+import {
+  HouseCallAtHomePricesBanner,
+  HouseCallServicePriceLabel,
+} from "@/components/booking/HouseCallPricingNotes";
 import type {
   BookingData,
   ServiceOption,
@@ -63,6 +69,7 @@ export function StepServices({
   categoryName,
   hidePackagesSection = false,
 }: StepServicesProps) {
+  const { t } = useTranslation();
   const [openVariantParents, setOpenVariantParents] = useState<Record<string, boolean>>({});
 
   const hasSelection =
@@ -72,6 +79,9 @@ export function StepServices({
   const baseServices = offerings.filter(
     (o) => !(o as any).parent_service_id && (o as any).service_type !== "addon"
   );
+
+  const showHouseCallPricingHints =
+    isAtHome && catalogHasAnyAtHomePriceAdjustment(baseServices);
 
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
@@ -171,6 +181,7 @@ export function StepServices({
         <h3 className="text-sm font-medium text-left" style={{ color: BOOKING_TEXT_SECONDARY }}>
           Services
         </h3>
+        {showHouseCallPricingHints ? <HouseCallAtHomePricesBanner t={t} /> : null}
         <div className="space-y-2">
           {baseServices.map((svc) => {
             // Primary: from the dedicated variants API. Fallback: variants embedded in the service object.
@@ -178,10 +189,11 @@ export function StepServices({
               ? variantsByServiceId[svc.id]
               : ((svc as any).variants?.length > 0 ? (svc as any).variants : undefined);
             const hasVariants = variants && variants.length > 0;
-            const price =
-              isAtHome && svc.at_home_price_adjustment
-                ? svc.price + (svc.at_home_price_adjustment ?? 0)
-                : svc.price;
+            const { displayPrice: price } = computeAtHomeLinePrice(
+              svc.price,
+              svc.at_home_price_adjustment,
+              isAtHome
+            );
 
             if (hasVariants) {
               const expanded = openVariantParents[svc.id] ?? true;
@@ -213,9 +225,11 @@ export function StepServices({
                         const isSelected = data.selectedServices.some((e) => e.offering_id === v.id);
                         const variantDuration = (v as any).duration ?? (v as any).duration_minutes;
                         // Apply at-home price adjustment for variants too (mirrors mobile behaviour)
-                        const variantPrice = isAtHome && svc.at_home_price_adjustment
-                          ? v.price + (svc.at_home_price_adjustment ?? 0)
-                          : v.price;
+                        const variantPricing = computeAtHomeLinePrice(
+                          v.price,
+                          svc.at_home_price_adjustment,
+                          isAtHome
+                        );
                         return (
                           <button
                             key={v.id}
@@ -226,7 +240,9 @@ export function StepServices({
                                 offering_id: v.id,
                                 title: v.variant_name ?? v.title,
                                 duration_minutes: variantDuration ?? 60,
-                                price: variantPrice,
+                                price: variantPricing.displayPrice,
+                                base_price: variantPricing.basePrice,
+                                at_home_price_adjustment: variantPricing.adjustmentApplied,
                                 currency: v.currency,
                               };
                               onSelectService(
@@ -247,8 +263,17 @@ export function StepServices({
                           >
                             <span className="block">{v.variant_name ?? v.title}</span>
                             <span className="block text-xs opacity-80 mt-0.5">
-                              {formatCurrency(variantPrice, v.currency)}
-                              {variantDuration ? ` · ${variantDuration} min` : ""}
+                              <HouseCallServicePriceLabel
+                                basePrice={v.price}
+                                atHomePriceAdjustment={svc.at_home_price_adjustment}
+                                isAtHome={isAtHome}
+                                currency={v.currency}
+                                t={t}
+                                className="text-left"
+                              />
+                              {variantDuration ? (
+                                <span className="block mt-0.5 opacity-90">{variantDuration} min</span>
+                              ) : null}
                             </span>
                           </button>
                         );
@@ -266,11 +291,18 @@ export function StepServices({
                 type="button"
                 onClick={() => {
                   onSelectPackage(null);
+                  const linePricing = computeAtHomeLinePrice(
+                    svc.price,
+                    svc.at_home_price_adjustment,
+                    isAtHome
+                  );
                   const entry = {
                     offering_id: svc.id,
                     title: svc.title,
                     duration_minutes: svc.duration_minutes,
-                    price,
+                    price: linePricing.displayPrice,
+                    base_price: linePricing.basePrice,
+                    at_home_price_adjustment: linePricing.adjustmentApplied,
                     currency: svc.currency,
                   };
                   onSelectService(
@@ -298,9 +330,14 @@ export function StepServices({
                     {svc.duration_minutes} min
                   </p>
                 </div>
-                <span className="text-sm font-semibold shrink-0" style={{ color: BOOKING_TEXT_PRIMARY }}>
-                  from {formatCurrency(price, svc.currency)}
-                </span>
+                <HouseCallServicePriceLabel
+                  basePrice={svc.price}
+                  atHomePriceAdjustment={svc.at_home_price_adjustment}
+                  isAtHome={isAtHome}
+                  currency={svc.currency}
+                  t={t}
+                  className="text-sm shrink-0 text-right"
+                />
                 <ChevronRight className="h-5 w-5 shrink-0" style={{ color: BOOKING_TEXT_SECONDARY }} />
               </button>
             );

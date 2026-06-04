@@ -72,8 +72,11 @@ vi.mock("@/lib/money/tenant-intl-format", () => ({
   getTenantMoneyFormatter: vi.fn(async () => ({ format: (value: number) => `R${value.toFixed(2)}` })),
 }));
 
-vi.mock("@/lib/notifications/notify-provider-team", () => ({
-  notifyProviderTeamUsers: vi.fn(async () => undefined),
+const mockNotifyProductOrderPaidIfTransitioned = vi.fn(async () => undefined);
+
+vi.mock("@/lib/notifications/notify-product-order-paid", () => ({
+  notifyProductOrderPaidIfTransitioned: (...args: unknown[]) =>
+    mockNotifyProductOrderPaidIfTransitioned(...args),
 }));
 
 vi.mock("@/lib/orders/record-product-order-payment", () => ({
@@ -111,7 +114,11 @@ describe("GET /api/paystack/verify product orders", () => {
     mockOptionalAuthInApi.mockResolvedValue({ user: { id: "customer-1", role: "customer" } });
     mockResolveTenantIdWithZaFallback.mockResolvedValue("tenant-za");
     mockGetPaystackSecretKey.mockResolvedValue("sk_test");
-    mockRecordProductOrderPayment.mockResolvedValue({ ok: true, duplicate: false });
+    mockRecordProductOrderPayment.mockResolvedValue({
+      ok: true,
+      duplicate: false,
+      transitionedToPaid: true,
+    });
     adminProductOrderRow = null;
     vi.stubGlobal(
       "fetch",
@@ -203,6 +210,46 @@ describe("GET /api/paystack/verify product orders", () => {
     expect(res.status).toBe(200);
     expect(body?.data?.status).toBe("success");
     expect(mockRecordProductOrderPayment).toHaveBeenCalledTimes(1);
+    expect(mockNotifyProductOrderPaidIfTransitioned).toHaveBeenCalledWith(
+      expect.anything(),
+      "order-1",
+      { transitionedToPaid: true },
+    );
+  });
+
+  it("does not notify again when payment was already recorded", async () => {
+    mockRecordProductOrderPayment.mockResolvedValue({
+      ok: true,
+      duplicate: true,
+      transitionedToPaid: false,
+    });
+    adminProductOrderRow = {
+      id: "order-1",
+      tenant_id: "tenant-za",
+      provider_id: "provider-1",
+      customer_id: "customer-1",
+      total_amount: 100,
+      wallet_amount: 20,
+      payment_status: "paid",
+      payment_reference: "ref-1",
+      order_number: "PO-001",
+    };
+    mockGetSupabaseServer.mockResolvedValue({
+      from: vi.fn((table: string) => {
+        if (table !== "product_orders") throw new Error(`Unexpected table ${table}`);
+        return productOrdersQuery(adminProductOrderRow!);
+      }),
+    });
+
+    const { GET } = await import("../verify/route");
+    const res = await GET(new NextRequest("http://localhost/api/paystack/verify?reference=ref-1"));
+
+    expect(res.status).toBe(200);
+    expect(mockNotifyProductOrderPaidIfTransitioned).toHaveBeenCalledWith(
+      expect.anything(),
+      "order-1",
+      { transitionedToPaid: false },
+    );
   });
 
   it("rejects product-order verification when Paystack amount does not match amount due", async () => {

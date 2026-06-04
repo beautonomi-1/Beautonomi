@@ -11,6 +11,7 @@ import {
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { MAX_REPORT_DAYS } from "@/lib/reports/constants";
 import { getProviderReportContext, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
+import { sumLedgerEarningsByCustomer } from "@/lib/reports/client-ledger-metrics";
 
 const PAGE_SIZE = 1000;
 const REVIEW_IN_CHUNK = 500;
@@ -19,7 +20,9 @@ export type ClientSummaryTopClient = {
   clientId: string;
   clientName: string;
   totalBookings: number;
+  /** Sum of booking.total_amount in window (booked gross). */
   totalSpent: number;
+  ledgerEarnings: number;
   lastVisit: string;
   averageRating: number;
 };
@@ -30,8 +33,10 @@ export type ClientSummaryResponse = {
   newClients: number;
   /** Customers with more than one booking scheduled in the reporting window. */
   returningClients: number;
-  /** Mean of per-client sums of booking.total_amount for appointments in the window (not all-time LTV). */
+  /** Mean booked gross per client in window (booking.total_amount). */
   averageLifetimeValue: number;
+  averageBookedGross: number;
+  averageLedgerEarnings: number;
   averageBookingsPerClient: number;
   topClients: ClientSummaryTopClient[];
   clientRetention: {
@@ -191,10 +196,26 @@ export async function GET(request: NextRequest) {
     const averageBookingsPerClient =
       totalClients > 0 ? Math.round((clients.reduce((sum, c) => sum + c.totalBookings, 0) / totalClients) * 100) / 100 : 0;
 
-    const averageLifetimeValue =
-      totalClients > 0
-        ? Math.round((clients.reduce((sum, c) => sum + c.totalSpent, 0) / totalClients) * 100) / 100
-        : 0;
+    const windowBookingRows = allBookings.filter(
+      (b) => b.customer_id && inScheduledWindow(b.scheduled_at, fromIso, toIso),
+    );
+    const ledgerByCustomer = await sumLedgerEarningsByCustomer(
+      supabaseAdmin,
+      providerId,
+      fromDate,
+      toDate,
+      locationId,
+      tz,
+      windowBookingRows,
+    );
+
+    const totalBookedGross = clients.reduce((sum, c) => sum + c.totalSpent, 0);
+    const totalLedgerEarnings = [...ledgerByCustomer.values()].reduce((s, v) => s + v, 0);
+    const averageBookedGross =
+      totalClients > 0 ? Math.round((totalBookedGross / totalClients) * 100) / 100 : 0;
+    const averageLedgerEarnings =
+      totalClients > 0 ? Math.round((totalLedgerEarnings / totalClients) * 100) / 100 : 0;
+    const averageLifetimeValue = averageBookedGross;
 
     const completedBookingIds: string[] = [];
     for (const b of allBookings) {
@@ -243,6 +264,7 @@ export async function GET(request: NextRequest) {
           clientName: client.clientName,
           totalBookings: client.totalBookings,
           totalSpent: client.totalSpent,
+          ledgerEarnings: Math.round((ledgerByCustomer.get(client.clientId) || 0) * 100) / 100,
           lastVisit: client.lastVisit,
           averageRating,
         };
@@ -261,7 +283,7 @@ export async function GET(request: NextRequest) {
       `Distinct clients: customers with at least one appointment scheduled in this window (guest walk-ins without customer_id are excluded).`,
       `New clients: customers whose first-ever scheduled booking in this scope falls inside the window (${locPhrase}).`,
       `Returning (label): customers with two or more appointments scheduled inside this window — not lifetime repeat visits.`,
-      `Average “lifetime value” here is the average of each client’s sum of booking.total_amount for appointments in this window only — not all-time revenue.`,
+      `Average booked gross is each client’s sum of booking.total_amount in this window. Ledger earnings is net provider_earnings settled in the same window — compare to Revenue report, not to booked gross.`,
       `Retention % = (clients with 2+ bookings in window) ÷ (distinct clients in window).`,
       `Ratings average review.rating for completed bookings in the window, grouped by customer.`,
     ].join(" ");
@@ -274,6 +296,8 @@ export async function GET(request: NextRequest) {
       newClients,
       returningClients,
       averageLifetimeValue,
+      averageBookedGross,
+      averageLedgerEarnings,
       averageBookingsPerClient,
       topClients,
       clientRetention: {

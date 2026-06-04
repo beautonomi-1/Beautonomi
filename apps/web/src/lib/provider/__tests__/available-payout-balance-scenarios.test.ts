@@ -242,6 +242,89 @@ describe("getAvailablePayoutBalance — payout exclusion matrix", () => {
     expect(result.hasNegativeBalance).toBe(true);
   });
 
+  it("multi-component refund only claws back the provider's components, not platform fee/commission/tender", async () => {
+    // Full refund of a 115 online booking. The 654 trigger splits the refund into
+    // per-component rows; only provider_earnings/tip/travel/cancellation claw back the
+    // payout balance. platform_fee, payment (commission), tax, discount + wallet/gift
+    // tender legs, and walk-in add-ons must NOT reduce the platform-held payout.
+    const result = await getAvailablePayoutBalance(
+      mockSupabase({
+        finance_transactions: [
+          earnings("b1", 90),
+          {
+            provider_id: providerId,
+            transaction_type: "refund",
+            amount: 90,
+            net: -90,
+            booking_id: "b1",
+            created_at: T,
+            refund_component: "provider_earnings",
+          },
+          {
+            provider_id: providerId,
+            transaction_type: "refund",
+            amount: 15,
+            net: -15,
+            booking_id: "b1",
+            created_at: T,
+            refund_component: "platform_fee",
+          },
+          {
+            provider_id: providerId,
+            transaction_type: "refund",
+            amount: 10,
+            net: -10,
+            commission: -10,
+            booking_id: "b1",
+            created_at: T,
+            refund_component: "payment",
+          },
+          {
+            provider_id: providerId,
+            transaction_type: "refund",
+            amount: 50,
+            net: -50,
+            booking_id: "b1",
+            created_at: T,
+            refund_component: "wallet_payment",
+          },
+        ],
+        bookings: [{ id: "b1", booking_source: "online" }],
+        booking_payments: [{ booking_id: "b1", payment_provider: "paystack", status: "completed" }],
+        payouts: [],
+      }),
+      providerId,
+    );
+
+    // 90 earned − 90 provider clawback = 0 (NOT −75 from also subtracting fee+commission+wallet).
+    expect(result.rawBalance).toBe(0);
+  });
+
+  it("legacy/manual whole-refund rows (no refund_component) still fully claw back", async () => {
+    const result = await getAvailablePayoutBalance(
+      mockSupabase({
+        finance_transactions: [
+          earnings("b1", 100),
+          {
+            provider_id: providerId,
+            transaction_type: "refund",
+            amount: -40,
+            net: -40,
+            booking_id: "b1",
+            created_at: T,
+            // no refund_component → legacy/manual → full clawback
+          },
+        ],
+        bookings: [{ id: "b1", booking_source: "online" }],
+        booking_payments: [{ booking_id: "b1", payment_provider: "paystack", status: "completed" }],
+        payouts: [],
+      }),
+      providerId,
+    );
+
+    expect(result.rawBalance).toBe(60);
+  });
+
   it("excludes service_fee (customer-paid platform-fee revenue) from provider payout balance", async () => {
     const result = await getAvailablePayoutBalance(
       mockSupabase({

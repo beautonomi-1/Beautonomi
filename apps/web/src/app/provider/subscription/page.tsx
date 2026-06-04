@@ -110,11 +110,45 @@ function isPaidCurrentPlan(plan: SubscriptionPlan | null): boolean {
   return Boolean(plan && !plan.is_free && planDisplayPrice(plan) > 0);
 }
 
+function subscriptionNeedsReactivation(sub: ProviderSubscription | null): boolean {
+  if (!sub) return false;
+  if (sub.cancelled_at) return true;
+  return sub.status === "cancelled" || sub.status === "expired" || sub.status === "inactive";
+}
+
+function isActiveCurrentPlanSelection(
+  sub: ProviderSubscription | null,
+  plan: SubscriptionPlan
+): boolean {
+  const same =
+    sub?.plan_id === plan.plan_id &&
+    (sub?.billing_period ?? "monthly") === plan.billing_period;
+  return Boolean(same && sub && !subscriptionNeedsReactivation(sub));
+}
+
+function planUpgradeButtonLabel(
+  sub: ProviderSubscription | null,
+  plan: SubscriptionPlan
+): string {
+  const same =
+    sub?.plan_id === plan.plan_id &&
+    (sub?.billing_period ?? "monthly") === plan.billing_period;
+  if (same && subscriptionNeedsReactivation(sub) && (plan.is_free || planDisplayPrice(plan) === 0)) {
+    return "Reactivate free plan";
+  }
+  if (sub?.status === "trial") return "Upgrade from trial";
+  if (plan.is_free || planDisplayPrice(plan) === 0) return "Activate free plan";
+  return "Continue with this plan";
+}
+
 function billingActionLabel(
   subscription: ProviderSubscription,
   isPaidPlan: boolean
 ): string | null {
-  if (!isPaidPlan) return null;
+  if (!isPaidPlan) {
+    if (subscriptionNeedsReactivation(subscription)) return "Reactivate free plan";
+    return null;
+  }
   if (subscription.status === "past_due") return "Pay now / update card";
   if (subscription.paystack_sync_pending) return "Complete billing";
   if (subscription.billing_issue?.action === "retry_payment") return "Retry payment";
@@ -423,6 +457,14 @@ export default function SubscriptionPage() {
   };
 
   const handleBillingAction = async () => {
+    if (subscription && subscriptionNeedsReactivation(subscription) && !isPaidPlan) {
+      const freePlan = plans.find((p) => p.is_free || planDisplayPrice(p) === 0);
+      if (freePlan) {
+        await handleUpgrade(freePlan.id);
+        return;
+      }
+    }
+
     if (
       subscription?.billing_issue?.action === "update_payment" ||
       subscription?.status === "past_due"
@@ -764,9 +806,11 @@ export default function SubscriptionPage() {
                   {visiblePlans.length > 0 ? (
                     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 xl:grid-cols-3">
                       {visiblePlans.map((plan) => {
-                        const isCurrent =
+                        const isCurrent = isActiveCurrentPlanSelection(subscription, plan);
+                        const needsReactivate =
                           subscription?.plan_id === plan.plan_id &&
-                          (subscription?.billing_period ?? "monthly") === plan.billing_period;
+                          (subscription?.billing_period ?? "monthly") === plan.billing_period &&
+                          subscriptionNeedsReactivation(subscription);
                         return (
                           <div
                             key={plan.id}
@@ -829,7 +873,7 @@ export default function SubscriptionPage() {
                                 <li className="pl-6 text-xs text-gray-400">+ more included</li>
                               ) : null}
                             </ul>
-                            {!isCurrent ? (
+                            {!isCurrent || needsReactivate ? (
                               <Button
                                 className={`mt-auto w-full rounded-xl py-5 text-base font-semibold ${
                                   plan.is_popular
@@ -838,9 +882,7 @@ export default function SubscriptionPage() {
                                 }`}
                                 onClick={() => handleUpgrade(plan.id)}
                               >
-                                {subscription?.status === "trial"
-                                  ? "Upgrade from trial"
-                                  : "Continue with this plan"}
+                                {planUpgradeButtonLabel(subscription, plan)}
                               </Button>
                             ) : (
                               <div className="mt-auto rounded-xl bg-gray-50 py-3 text-center text-sm font-medium text-gray-500">
@@ -861,9 +903,11 @@ export default function SubscriptionPage() {
               ) : plans.length > 0 ? (
                 <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                   {visiblePlans.map((plan) => {
-                    const isCurrent =
+                    const isCurrent = isActiveCurrentPlanSelection(subscription, plan);
+                    const needsReactivate =
                       subscription?.plan_id === plan.plan_id &&
-                      (subscription?.billing_period ?? "monthly") === plan.billing_period;
+                      (subscription?.billing_period ?? "monthly") === plan.billing_period &&
+                      subscriptionNeedsReactivation(subscription);
                     return (
                       <div
                         key={plan.id}
@@ -878,12 +922,12 @@ export default function SubscriptionPage() {
                         ) : null}
                         <h4 className="text-lg font-bold text-gray-900">{plan.name}</h4>
                         <p className="mt-3 text-3xl font-bold">{formatPlanPriceMain(plan)}</p>
-                        {!isCurrent ? (
+                        {!isCurrent || needsReactivate ? (
                           <Button
                             className="mt-6 w-full rounded-xl bg-[#FF0077] py-5 text-white hover:bg-[#D60565]"
                             onClick={() => handleUpgrade(plan.id)}
                           >
-                            Continue
+                            {planUpgradeButtonLabel(subscription, plan)}
                           </Button>
                         ) : null}
                       </div>

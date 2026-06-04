@@ -1,8 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { subDays } from "date-fns";
 import { dateRangeBoundsUtc, formatDateYmd, nowInTz } from "@/lib/dates/provider-tz";
-import { filterLedgerRowsForLocation } from "@/lib/reports/provider-report-utils";
+import {
+  filterLedgerRowsForLocation,
+  filterProductOrdersForLocation,
+} from "@/lib/reports/provider-report-utils";
 import { ledgerRowDisplaySign } from "@/lib/provider/provider-ledger-transaction-view";
+import { dashboardBookingLocationOrFilter } from "@/lib/server/provider/dashboard-booking-location-filter";
 
 export type ProviderActivityFeedItem = {
   id: string;
@@ -63,23 +67,63 @@ export async function buildProviderActivityFeed(
     .limit(limit * mult);
 
   if (locationId) {
-    bookingsQuery = bookingsQuery.eq("location_id", locationId);
+    bookingsQuery = bookingsQuery.or(dashboardBookingLocationOrFilter(locationId));
   }
 
   const ledgerQuery = supabaseAdmin
     .from("finance_transactions")
     .select("id, transaction_type, description, amount, net, created_at, booking_id, product_order_id")
     .eq("provider_id", providerId)
-    .in("transaction_type", ["provider_earnings", "payout", "tip", "travel_fee", "cancellation_fee"])
+    .in("transaction_type", [
+      "provider_earnings",
+      "payout",
+      "tip",
+      "travel_fee",
+      "cancellation_fee",
+      "walk_in_additional_charge",
+    ])
     .gte("created_at", since.toISOString())
     .order("created_at", { ascending: false })
     .limit(limit * mult);
 
-  const [{ data: bookingRows }, { data: ledgerRaw }] = await Promise.all([bookingsQuery, ledgerQuery]);
+  const productOrdersQuery = supabaseAdmin
+    .from("product_orders")
+    .select(
+      "id, order_number, order_source, total_amount, paid_at, customer_name, fulfillment_type, collection_location_id",
+    )
+    .eq("provider_id", providerId)
+    .eq("payment_status", "paid")
+    .gte("paid_at", since.toISOString())
+    .order("paid_at", { ascending: false })
+    .limit(limit * mult);
+
+  const [{ data: bookingRows }, { data: ledgerRaw }, { data: productOrdersRaw }] =
+    await Promise.all([bookingsQuery, ledgerQuery, productOrdersQuery]);
+
+  let productOrderRows = (productOrdersRaw ?? []) as Array<{
+    id: string;
+    order_number?: string | null;
+    order_source?: string | null;
+    total_amount?: number | string | null;
+    paid_at?: string | null;
+    customer_name?: string | null;
+    fulfillment_type?: string | null;
+    collection_location_id?: string | null;
+  }>;
+  if (locationId && productOrderRows.length > 0) {
+    productOrderRows = await filterProductOrdersForLocation(
+      supabaseAdmin,
+      providerId,
+      productOrderRows,
+      locationId,
+    );
+  }
 
   const rawLedger = (ledgerRaw ?? []) as LedgerFetchRow[];
   let earningsRows = rawLedger.filter((r) =>
-    ["provider_earnings", "tip", "travel_fee", "cancellation_fee"].includes(r.transaction_type),
+    ["provider_earnings", "tip", "travel_fee", "cancellation_fee", "walk_in_additional_charge"].includes(
+      r.transaction_type,
+    ),
   );
   const payoutRows = rawLedger.filter((r) => r.transaction_type === "payout");
 
@@ -89,6 +133,12 @@ export async function buildProviderActivityFeed(
 
   const ledgerRows = [...earningsRows, ...payoutRows].sort(
     (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+  );
+
+  const ledgerRecognizedProductOrderIds = new Set(
+    earningsRows
+      .filter((r) => r.transaction_type === "provider_earnings" && r.product_order_id)
+      .map((r) => String(r.product_order_id)),
   );
 
   const { data: reviewRows } = await supabaseAdmin
@@ -153,7 +203,10 @@ export async function buildProviderActivityFeed(
     } else if (p.transaction_type === "cancellation_fee") {
       type = "cancellation_fee_recognized";
       description = `Cancellation fee recognized · net ${signed}`;
-    } else if ((p.description || "").toLowerCase().includes("additional charge")) {
+    } else if (
+      p.transaction_type === "walk_in_additional_charge" ||
+      (p.description || "").toLowerCase().includes("additional charge")
+    ) {
       type = "additional_charge_earnings";
       description = `Additional charge earnings recognized · net ${signed}`;
     } else if (p.product_order_id) {
@@ -177,6 +230,26 @@ export async function buildProviderActivityFeed(
     });
   });
 
+  for (const po of productOrderRows) {
+    if (ledgerRecognizedProductOrderIds.has(po.id)) continue;
+
+    const orderNumber = String(po.order_number ?? po.id);
+    const amount = Number(po.total_amount ?? 0);
+    const isWalkIn = String(po.order_source ?? "") === "walk_in";
+    const label = isWalkIn ? "Walk-in retail sale" : "Product order paid";
+    activities.push({
+      id: `product-order-${po.id}`,
+      type: "product_sale_completed",
+      description: `${label} · ${orderNumber} · ${amount.toFixed(2)}`,
+      created_at: String(po.paid_at ?? ""),
+      data: {
+        product_order_id: po.id,
+        client_name: po.customer_name ?? (isWalkIn ? "Walk-in" : undefined),
+        amount,
+      },
+    });
+  }
+
   (reviewRows || []).forEach((r: Record<string, unknown>) => {
     const clientName =
       (r.customers as { full_name?: string } | null)?.full_name || "Client";
@@ -194,7 +267,9 @@ export async function buildProviderActivityFeed(
   );
 
   const basis: Record<string, string> = {
-    window: `Rolling ${fromYmd}–${todayYmd} in ${tz.replace(/_/g, " ")} (bookings created, ledger recognition, reviews submitted).`,
+    window: `Rolling ${fromYmd}–${todayYmd} in ${tz.replace(/_/g, " ")} (bookings created, paid product orders, ledger recognition, reviews submitted).`,
+    product_orders:
+      "Paid provider-collected product orders (walk-in and COD/cash/Yoco) by paid_at. Platform-settled online orders appear once as ledger earnings only.",
     bookings:
       "Rows reflect bookings whose created_at falls in the window; description uses current status (e.g. completed vs new).",
     ledger:

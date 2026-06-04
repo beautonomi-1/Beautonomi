@@ -9,6 +9,7 @@ import {
   fetchFinanceLedgerRowsForTenant,
   resolveFinanceLedgerRowProviderId,
 } from "@/lib/admin/finance-ledger-tenant";
+import { isCashRefundComponent } from "@/lib/ledger/refund-components";
 
 export async function GET(request: NextRequest) {
   try {
@@ -131,8 +132,19 @@ export async function GET(request: NextRequest) {
       }
 
       const grouped: Record<string, number> = {};
-      type RevenueRow = { created_at?: string; net?: number; transaction_type?: string };
+      type RevenueRow = {
+        created_at?: string;
+        net?: number;
+        transaction_type?: string;
+        refund_component?: string | null;
+      };
       (data || []).forEach((item: RevenueRow) => {
+        // Refunds post one row per economic component plus parallel discount/tender
+        // contras. For a net-revenue series, only the cash legs reduce revenue; the
+        // parallel non-cash rows are excluded to avoid double-deducting.
+        if (item.transaction_type === 'refund' && !isCashRefundComponent(item.refund_component)) {
+          return;
+        }
         const date = new Date(item.created_at ?? "").toISOString().split('T')[0];
         const amount = item.transaction_type === 'refund' ? -Math.abs(item.net ?? 0) : Math.abs(item.net ?? 0);
         grouped[date] = (grouped[date] || 0) + amount;

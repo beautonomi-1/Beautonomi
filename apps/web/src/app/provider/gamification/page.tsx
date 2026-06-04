@@ -33,7 +33,13 @@ export default function ProviderGamificationPage() {
         "/api/provider/gamification",
       );
 
-      if (initializeIfNeeded && (!response.data.points || response.data.points.total === 0)) {
+      const needsPostHeal =
+        initializeIfNeeded &&
+        (response.data.points?.total ?? 0) === 0 &&
+        ((response.data.provider_stats?.total_bookings ?? 0) > 0 ||
+          (response.data.provider_stats?.review_count ?? 0) > 0);
+
+      if (needsPostHeal) {
         try {
           await fetcher.post("/api/provider/gamification", {});
           const updatedResponse = await fetcher.get<{ data: ProviderGamificationData }>(

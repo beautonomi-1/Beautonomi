@@ -5,6 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 import { differenceInCalendarDays } from "date-fns";
 import { formatDateYmd } from "@/lib/dates/provider-tz";
 import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
+import { CLIENT_METRICS_BASIS_NOTE } from "@/lib/reports/client-ledger-metrics";
 
 type ClientSummary = {
   id: string;
@@ -159,8 +160,9 @@ export async function GET(request: NextRequest) {
         { segment: "Medium Value", count: mediumValue.length, avgLTV: mediumValue.length > 0 ? mediumValue.reduce((sum, c) => sum + c.totalSpent, 0) / mediumValue.length : 0 },
         { segment: "Low Value", count: lowValue.length, avgLTV: lowValue.length > 0 ? lowValue.reduce((sum, c) => sum + c.totalSpent, 0) / lowValue.length : 0 },
       ],
+      basisNote: `${CLIENT_METRICS_BASIS_NOTE} LTV segments use completed appointment booked gross only.`,
       reportBasis:
-        "Client lifetime value is based on completed booking total_amount only. Upcoming confirmed bookings, cancellations, and no-shows are excluded.",
+        "All-time completed bookings by scheduled date: totalSpent = sum of booking.total_amount (booked gross). Not ledger provider_earnings. Cancellations and no-shows excluded.",
     });
   } catch (error) {
     return handleApiError(error, "LIFETIME_VALUE_ERROR", 500);

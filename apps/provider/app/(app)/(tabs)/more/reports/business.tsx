@@ -75,11 +75,13 @@ type OverviewResponse = {
   reportBasis?: string;
   basis?: Record<string, string>;
   totalRevenue?: number;
+  serviceEarnings?: number;
   ledgerEarningsFromBookings?: number;
   ledgerEarningsFromProductOrders?: number;
   cancellationFees?: number;
   tipsTotal?: number;
-  additionalChargesTotal?: number;
+  travelFeesTotal?: number;
+  walkInAdditionalChargesTotal?: number;
   netRevenue?: number;
   totalBookings?: number;
   completedBookings?: number;
@@ -165,7 +167,9 @@ export default function BusinessReportScreen() {
       overview?.fromYmd && overview?.toYmd ? `Window: ${overview.fromYmd} → ${overview.toYmd}` : "",
       overview?.timezone ? `Timezone: ${overview.timezone}` : "",
       "",
-      `Ledger earnings (provider_earnings): ${formatCurrency(report.revenue.total)}`,
+      `Recognized revenue (earnings + tips + travel + cancellation + walk-in): ${formatCurrency(report.revenue.total)}`,
+      `Service earnings (provider_earnings): ${formatCurrency(overview?.serviceEarnings ?? 0)}`,
+      overview?.netRevenue != null ? `Net after refunds: ${formatCurrency(overview.netRevenue)}` : "",
       `Growth vs prior window: ${report.revenue.growth_percentage >= 0 ? "+" : ""}${report.revenue.growth_percentage.toFixed(1)}%`,
       `Scheduled bookings: ${report.bookings.total} (${report.bookings.completion_rate.toFixed(0)}% completion)`,
       `Distinct clients: ${report.clients.total}`,
@@ -246,11 +250,11 @@ export default function BusinessReportScreen() {
       ) : null}
 
       {/* Revenue */}
-      <SectionHeader title="Ledger earnings" />
+      <SectionHeader title="Recognized revenue" />
       <View style={twStyle("mb-4")}>
         <ReportResponsiveStatRow>
           <StatCard
-            title="Ledger headline"
+            title="Recognized revenue"
             value={formatCurrency(r?.revenue.total ?? 0)}
             icon="cash-outline"
             iconColor="#22c55e"
@@ -268,12 +272,37 @@ export default function BusinessReportScreen() {
         </ReportResponsiveStatRow>
       </View>
 
-      {((overview?.cancellationFees ?? 0) > 0 || (overview?.totalRefunded ?? 0) > 0 || (overview?.netRevenue ?? 0) !== (overview?.totalRevenue ?? 0)) && (
+      {(overview?.totalRevenue ?? 0) > 0 && (
         <View style={twStyle("mb-4 rounded-xl border border-gray-100 bg-white p-4")}>
+          <Text style={twStyle("mb-2 text-xs font-semibold uppercase text-gray-400")}>What makes up recognized revenue</Text>
+          {(overview?.serviceEarnings ?? 0) !== 0 && (
+            <View style={twStyle("flex-row justify-between mb-2")}>
+              <Text style={twStyle("text-sm text-gray-500")}>Service earnings</Text>
+              <Text style={twStyle("text-sm font-medium text-gray-900")}>{formatCurrency(overview!.serviceEarnings!)}</Text>
+            </View>
+          )}
+          {(overview?.tipsTotal ?? 0) > 0 && (
+            <View style={twStyle("flex-row justify-between mb-2")}>
+              <Text style={twStyle("text-sm text-gray-500")}>Tips</Text>
+              <Text style={twStyle("text-sm font-medium text-gray-900")}>{formatCurrency(overview!.tipsTotal!)}</Text>
+            </View>
+          )}
+          {(overview?.travelFeesTotal ?? 0) > 0 && (
+            <View style={twStyle("flex-row justify-between mb-2")}>
+              <Text style={twStyle("text-sm text-gray-500")}>Travel fees</Text>
+              <Text style={twStyle("text-sm font-medium text-gray-900")}>{formatCurrency(overview!.travelFeesTotal!)}</Text>
+            </View>
+          )}
           {(overview?.cancellationFees ?? 0) > 0 && (
             <View style={twStyle("flex-row justify-between mb-2")}>
-              <Text style={twStyle("text-sm text-gray-500")}>Cancellation Fees</Text>
-              <Text style={twStyle("text-sm font-medium text-amber-600")}>{formatCurrency(overview!.cancellationFees!)}</Text>
+              <Text style={twStyle("text-sm text-gray-500")}>Cancellation fees</Text>
+              <Text style={twStyle("text-sm font-medium text-gray-900")}>{formatCurrency(overview!.cancellationFees!)}</Text>
+            </View>
+          )}
+          {(overview?.walkInAdditionalChargesTotal ?? 0) > 0 && (
+            <View style={twStyle("flex-row justify-between mb-2")}>
+              <Text style={twStyle("text-sm text-gray-500")}>Walk-in add-ons</Text>
+              <Text style={twStyle("text-sm font-medium text-gray-900")}>{formatCurrency(overview!.walkInAdditionalChargesTotal!)}</Text>
             </View>
           )}
           {(overview?.totalRefunded ?? 0) > 0 && (
@@ -283,7 +312,7 @@ export default function BusinessReportScreen() {
             </View>
           )}
           <View style={twStyle("flex-row justify-between pt-2 border-t border-gray-50")}>
-            <Text style={twStyle("text-sm font-semibold text-gray-700")}>Net service earnings</Text>
+            <Text style={twStyle("text-sm font-semibold text-gray-700")}>Net after refunds</Text>
             <Text style={twStyle("text-sm font-bold text-indigo-600")}>{formatCurrency(overview?.netRevenue ?? r?.revenue.total ?? 0)}</Text>
           </View>
         </View>
@@ -389,7 +418,7 @@ export default function BusinessReportScreen() {
           onPress={() => router.push("/(app)/(tabs)/more/reports/clients")}
           style={twStyle("flex-1 mr-2 rounded-xl border border-gray-200 bg-white px-4 py-3 flex-row items-center justify-between")}
         >
-          <Text style={twStyle("text-sm font-medium text-gray-700")}>Client retention</Text>
+          <Text style={twStyle("text-sm font-medium text-gray-700")}>Clients</Text>
           <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
         </TouchableOpacity>
         <TouchableOpacity

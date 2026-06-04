@@ -35,6 +35,9 @@ import { isPaymentMethodExpired } from "@/lib/payments/payment-method-expiry";
 export interface PaymentResult {
   paymentUrl: string | null;
   paymentReference?: string | null;
+  walletAmountApplied?: number;
+  giftCardAmountApplied?: number;
+  paystackAmount?: number;
 }
 
 /** Fields read from the booking row after `create_booking_with_locking` (and similar). */
@@ -415,7 +418,13 @@ export async function processPayment(
       }
     }
 
-    return { paymentUrl: null, paymentReference: null };
+    return {
+      paymentUrl: null,
+      paymentReference: null,
+      walletAmountApplied,
+      giftCardAmountApplied,
+      paystackAmount: 0,
+    };
   }
 
   // ── Card payment ─────────────────────────────────────────────────────────
@@ -864,7 +873,13 @@ export async function processPayment(
     }
   }
 
-  return { paymentUrl, paymentReference };
+  return {
+    paymentUrl,
+    paymentReference,
+    walletAmountApplied,
+    giftCardAmountApplied,
+    paystackAmount: paymentMethod === "card" ? amountToCollect : 0,
+  };
 }
 
 // ─── Private helpers ──────────────────────────────────────────────────────────
@@ -1130,6 +1145,41 @@ async function insertNoGatewayLedger(
             commission: 0,
             net: -v.promoDiscountAmount,
             description: `Promotion discount applied to booking ${booking.booking_number}`,
+            created_at: now,
+          },
+        ]
+      : []),
+    // Membership discount: contra-revenue line for GMV vs net symmetry (mirrors promotion_discount).
+    ...(v.membershipDiscountAmount > 0
+      ? [
+          {
+            booking_id: booking.id,
+            provider_id: draft.provider_id,
+            tenant_id: financeTenantId,
+            transaction_type: "membership_discount",
+            amount: v.membershipDiscountAmount,
+            fees: 0,
+            commission: 0,
+            net: -v.membershipDiscountAmount,
+            description: `Membership discount applied to booking ${booking.booking_number}`,
+            created_at: now,
+          },
+        ]
+      : []),
+    // Loyalty redemption: contra-revenue line (net negative), matching finalize-custom-offer.
+    // Not added to total_amount; posting it here keeps standard paths at ledger parity.
+    ...(v.loyaltyDiscountAmount > 0
+      ? [
+          {
+            booking_id: booking.id,
+            provider_id: draft.provider_id,
+            tenant_id: financeTenantId,
+            transaction_type: "loyalty_redemption",
+            amount: v.loyaltyDiscountAmount,
+            fees: 0,
+            commission: 0,
+            net: -v.loyaltyDiscountAmount,
+            description: `Loyalty redemption applied to booking ${booking.booking_number}`,
             created_at: now,
           },
         ]

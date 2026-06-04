@@ -4,6 +4,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   APP_URL,
+  getBackendUrl,
   DEFAULT_MARKET_HOST,
   GLOBAL_ENTRY_HOST,
   MARKET_OVERRIDE_TTL_HOURS,
@@ -174,7 +175,8 @@ export default function MarketAvailabilityGate() {
       if (!isGlobalEntry && !onRegionalZa) return;
 
       try {
-        const base = APP_URL.replace(/\/$/, "");
+        const base = getBackendUrl().replace(/\/$/, "");
+        if (!base) return;
         const response = await fetch(
           `${base}/api/public/tenant-context`,
           withWebApiTenantHeaders({

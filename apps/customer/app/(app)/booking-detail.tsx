@@ -54,6 +54,7 @@ import {
 } from "@beautonomi/utils";
 import QRCode from "react-native-qrcode-svg";
 import { useTranslation } from "@beautonomi/i18n";
+import { matchesExpoReturnUrl } from "@/lib/paystack-webview-utils";
 
 const DEFAULT_TZ = "Africa/Johannesburg";
 
@@ -197,6 +198,14 @@ export default function BookingDetailScreen() {
   const [qrSecondsLeft, setQrSecondsLeft] = useState<number | null>(null);
   const [showCompletionModal, setShowCompletionModal] = useState(false);
   const [payRemainingLoading, setPayRemainingLoading] = useState(false);
+  const [payRemainingUseWallet, setPayRemainingUseWallet] = useState(false);
+  const [payRemainingGiftCode, setPayRemainingGiftCode] = useState("");
+  const [walletBalance, setWalletBalance] = useState(0);
+  const [additionalChargePayLoadingId, setAdditionalChargePayLoadingId] = useState<string | null>(
+    null,
+  );
+  const [additionalPayUseWallet, setAdditionalPayUseWallet] = useState(false);
+  const [additionalPayGiftCode, setAdditionalPayGiftCode] = useState("");
   const [myReview, setMyReview] = useState<BookingReviewSummary | null>(null);
   const hasLoadedOnce = useRef(false);
   const referralPostedBookingIds = useRef<Set<string>>(new Set());
@@ -297,6 +306,18 @@ export default function BookingDetailScreen() {
       if (st === 503) return;
     });
   }, [id, booking]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    void api
+      .get<{ wallet?: { balance: number }; data?: { wallet?: { balance: number } } }>("/api/me/wallet")
+      .then((res) => {
+        const raw = res.data as { wallet?: { balance: number }; data?: { wallet?: { balance: number } } } | null;
+        const wallet = raw?.data?.wallet ?? raw?.wallet;
+        if (wallet?.balance != null) setWalletBalance(Number(wallet.balance) || 0);
+      })
+      .catch(() => {});
+  }, [user?.id]);
 
   // Refetch when screen gains focus after initial load (e.g. return from in-app browser after paying additional charge)
   useFocusEffect(
@@ -642,15 +663,36 @@ export default function BookingDetailScreen() {
     haptic.light();
     setPayRemainingLoading(true);
     try {
-      const res = await api.post<{ authorization_url?: string }>(
-        `/api/me/bookings/${id}/pay-remaining`,
-        { callback_url: ExpoLinking.createURL("booking-detail") }
-      );
-      const url = res.data?.authorization_url;
-      if (res.error || !url) {
+      const res = await api.post<{
+        authorization_url?: string;
+        fully_settled?: boolean;
+        paystack_amount?: number;
+        wallet_amount_applied?: number;
+        gift_card_amount_applied?: number;
+      }>(`/api/me/bookings/${id}/pay-remaining`, {
+        callback_url: ExpoLinking.createURL("booking-detail"),
+        use_wallet: payRemainingUseWallet,
+        ...(payRemainingGiftCode.trim()
+          ? { gift_card_code: payRemainingGiftCode.trim().toUpperCase() }
+          : {}),
+      });
+      if (res.error) {
         Alert.alert(
           errTitle,
-          getApiErrorMessage(res.error || { message: bd("couldNotStartPayment") }, bd("payRemainingBalanceFallback")),
+          getApiErrorMessage(res.error, bd("payRemainingBalanceFallback")),
+        );
+        return;
+      }
+      if (res.data?.fully_settled) {
+        haptic.success();
+        await load();
+        return;
+      }
+      const url = res.data?.authorization_url;
+      if (!url) {
+        Alert.alert(
+          errTitle,
+          getApiErrorMessage({ message: bd("couldNotStartPayment") }, bd("payRemainingBalanceFallback")),
         );
         return;
       }
@@ -840,7 +882,11 @@ export default function BookingDetailScreen() {
         return;
       }
       const icsBookingId = encodeURIComponent(String(booking?.id ?? id).trim());
-      const url = `${APP_URL.replace(/\/$/, "")}/api/me/bookings/${icsBookingId}/calendar.ics`;
+      const url = `${getBackendUrl().replace(/\/$/, "")}/api/me/bookings/${icsBookingId}/calendar.ics`;
+      if (!url.startsWith("http")) {
+        Alert.alert(errTitle, bd("failedToLoadCalendarFile"));
+        return;
+      }
       const response = await fetch(
         url,
         withWebApiTenantHeaders({
@@ -1287,12 +1333,139 @@ export default function BookingDetailScreen() {
     </>
   );
 
+  const handlePayAdditionalCharge = async (chargeId: string, chargeAmount: number) => {
+    if (!id || !booking) return;
+    haptic.light();
+    setAdditionalChargePayLoadingId(chargeId);
+    try {
+      const res = await api.post<{
+        authorization_url?: string;
+        fully_settled?: boolean;
+      }>(`/api/me/bookings/${id}/additional-charges/${chargeId}/pay`, {
+        callback_url: ExpoLinking.createURL("booking-detail"),
+        use_wallet: additionalPayUseWallet,
+        ...(additionalPayGiftCode.trim()
+          ? { gift_card_code: additionalPayGiftCode.trim().toUpperCase() }
+          : {}),
+      });
+      if (res.error) {
+        Alert.alert(errTitle, getApiErrorMessage(res.error, "Could not start payment for this charge."));
+        return;
+      }
+      if (res.data?.fully_settled) {
+        haptic.success();
+        await load();
+        return;
+      }
+      const url = res.data?.authorization_url;
+      if (!url) {
+        Alert.alert(errTitle, "Payment link was not received. Please try again.");
+        return;
+      }
+      if (Platform.OS === "web") {
+        window.open(url, "_blank", "noopener,noreferrer");
+      } else {
+        const returnUrl = ExpoLinking.createURL("booking-detail");
+        await payRemainingCheckout.waitForCheckout(url, {
+          title: "Pay additional charge",
+          returnUrl,
+          matchSuccess: (rawUrl) => {
+            try {
+              if (!rawUrl.startsWith("http")) return matchesExpoReturnUrl(rawUrl, returnUrl);
+              const u = new URL(rawUrl);
+              return u.searchParams.get("charge_id") === chargeId || rawUrl.includes("payment-callback");
+            } catch {
+              return false;
+            }
+          },
+          matchCancel: (rawUrl) => {
+            try {
+              return new URL(rawUrl).searchParams.get("cancelled") === "1";
+            } catch {
+              return false;
+            }
+          },
+        });
+      }
+      await load();
+    } catch (e) {
+      Alert.alert(errTitle, getApiErrorMessage(e as Error, "Could not pay additional charge."));
+    } finally {
+      setAdditionalChargePayLoadingId(null);
+    }
+  };
+
+  const renderSplitTenderOptions = (opts: {
+    useWallet: boolean;
+    onUseWallet: (v: boolean) => void;
+    giftCode: string;
+    onGiftCode: (v: string) => void;
+  }) => {
+    return (
+      <View style={{ marginBottom: 12 }}>
+        {walletBalance > 0 ? (
+          <Pressable
+            onPress={() => opts.onUseWallet(!opts.useWallet)}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              paddingVertical: 10,
+              paddingHorizontal: 12,
+              borderRadius: 10,
+              borderWidth: 1,
+              borderColor: opts.useWallet ? Colors.primary : Colors.gray[200],
+              backgroundColor: opts.useWallet ? "rgba(255,0,119,0.06)" : "#fff",
+              marginBottom: 8,
+            }}
+          >
+            <Ionicons
+              name={opts.useWallet ? "checkbox" : "square-outline"}
+              size={20}
+              color={opts.useWallet ? Colors.primary : Colors.gray[400]}
+              style={{ marginRight: 8 }}
+            />
+            <Text style={{ fontSize: 14, color: Colors.gray[800], flex: 1 }}>
+              Use wallet ({booking?.currency || "ZAR"} {walletBalance.toFixed(2)} available)
+            </Text>
+          </Pressable>
+        ) : null}
+        <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 4 }}>Gift card (optional)</Text>
+        <TextInput
+          value={opts.giftCode}
+          onChangeText={opts.onGiftCode}
+          placeholder="Gift card code"
+          autoCapitalize="characters"
+          style={{
+            borderWidth: 1,
+            borderColor: Colors.gray[200],
+            borderRadius: 10,
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            fontSize: 14,
+            backgroundColor: "#fff",
+          }}
+        />
+      </View>
+    );
+  };
+
   const renderAdditionalChargesSection = () => {
     const charges = booking?.additional_charges ?? [];
     if (charges.length === 0) return null;
+    const hasUnpaid = charges.some(
+      (c: { status?: string }) => c.status === "pending" || c.status === "approved",
+    );
     return (
       <View style={{ marginBottom: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], padding: 12 }}>
         <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Additional charges</Text>
+        {hasUnpaid
+          ? renderSplitTenderOptions({
+              useWallet: additionalPayUseWallet,
+              onUseWallet: setAdditionalPayUseWallet,
+              giftCode: additionalPayGiftCode,
+              onGiftCode: setAdditionalPayGiftCode,
+            })
+          : null}
         {charges.map((c: any, idx: number) => {
           const unpaid = c.status === "pending" || c.status === "approved";
           const cur = (c.currency as string | undefined) || booking.currency;
@@ -1321,21 +1494,17 @@ export default function BookingDetailScreen() {
               </View>
               {unpaid ? (
                 <TouchableOpacity
-                  onPress={() => {
-                    haptic.light();
-                    router.push({
-                      pathname: "/(app)/in-app-browser",
-                      params: {
-                        url: encodeURIComponent(`${APP_URL}/account-settings/bookings/${booking.id}/pay-additional/${c.id}`),
-                        title: "Pay additional charge",
-                      },
-                    } as never);
-                  }}
-                  style={{ backgroundColor: Colors.primary, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8 }}
+                  onPress={() => void handlePayAdditionalCharge(String(c.id), Number(c.amount || 0))}
+                  disabled={additionalChargePayLoadingId === String(c.id)}
+                  style={{ backgroundColor: Colors.primary, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, minWidth: 56, alignItems: "center" }}
                   accessibilityRole="button"
                   accessibilityLabel="Pay additional charge"
                 >
-                  <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.white }}>Pay</Text>
+                  {additionalChargePayLoadingId === String(c.id) ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.white }}>Pay</Text>
+                  )}
                 </TouchableOpacity>
               ) : (
                 <View
@@ -1789,15 +1958,29 @@ export default function BookingDetailScreen() {
               </Pressable>
             )}
             {showPayRemaining && (
-              <Pressable
-                onPress={handlePayRemaining}
-                disabled={payRemainingLoading}
-                style={{ backgroundColor: Colors.primary, paddingVertical: 16, borderRadius: 12, alignItems: "center", marginBottom: 12 }}
-                accessibilityRole="button"
-                accessibilityLabel="Pay remaining balance"
-              >
-                {payRemainingLoading ? <ActivityIndicator size="small" color="#fff" /> : <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 16 }}>Pay remaining balance</Text>}
-              </Pressable>
+              <>
+                {renderSplitTenderOptions({
+                  useWallet: payRemainingUseWallet,
+                  onUseWallet: setPayRemainingUseWallet,
+                  giftCode: payRemainingGiftCode,
+                  onGiftCode: setPayRemainingGiftCode,
+                })}
+                <Pressable
+                  onPress={handlePayRemaining}
+                  disabled={payRemainingLoading}
+                  style={{ backgroundColor: Colors.primary, paddingVertical: 16, borderRadius: 12, alignItems: "center", marginBottom: 12 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Pay remaining balance"
+                >
+                  {payRemainingLoading ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 16 }}>
+                      Pay remaining balance
+                    </Text>
+                  )}
+                </Pressable>
+              </>
             )}
             {renderAdditionalChargesSection()}
             <View style={{ flexDirection: "row" }}>

@@ -1,5 +1,14 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+/** Synthetic provider id; optional leg suffix enables multiple wallet/gift legs per booking (pay-remaining, additional charge). */
+export function buildSyntheticWalletGiftProviderId(
+  kind: "wallet" | "gift_card",
+  bookingId: string,
+  legSuffix = "",
+): string {
+  return `${kind}_booking:${bookingId}${legSuffix}`;
+}
+
 /**
  * Idempotent `booking_payments` rows for wallet / gift portions so
  * `update_booking_payment_status` sums match economic reality (wallet+card → paid).
@@ -17,16 +26,18 @@ export async function ensureWalletGiftBookingPayments(
     giftCardAmount: number;
     /** Default `completed` for pure wallet/gift settlements; use `pending` when a Paystack card leg will follow. */
     initialStatus?: "pending" | "completed";
+    /** e.g. `:remaining:ref` or `:additional:chargeId` — unique booking_payments row per follow-up leg. */
+    paymentLegSuffix?: string;
   },
 ): Promise<void> {
-  const { bookingId, tenantId } = input;
+  const { bookingId, tenantId, paymentLegSuffix = "" } = input;
   const walletAmount = Math.round(Math.max(0, Number(input.walletAmount) || 0) * 100) / 100;
   const giftCardAmount = Math.round(Math.max(0, Number(input.giftCardAmount) || 0) * 100) / 100;
   const initialStatus = input.initialStatus ?? "completed";
 
   const insertOne = async (kind: "wallet" | "gift_card", amount: number) => {
     if (amount <= 0) return;
-    const paymentProviderId = `${kind}_booking:${bookingId}`;
+    const paymentProviderId = buildSyntheticWalletGiftProviderId(kind, bookingId, paymentLegSuffix);
     const { data: existing } = await admin
       .from("booking_payments")
       .select("id, status")

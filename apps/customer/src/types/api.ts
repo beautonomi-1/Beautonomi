@@ -121,6 +121,8 @@ export interface ProviderService {
   currency: string;
   supports_at_home: boolean;
   supports_at_salon: boolean;
+  /** Extra amount added to base price for at-home bookings (may be 0). */
+  at_home_price_adjustment?: number;
   has_variants: boolean;
   variants?: {
     id: string;

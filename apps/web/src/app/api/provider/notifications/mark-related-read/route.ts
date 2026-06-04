@@ -6,6 +6,7 @@ import {
   markRelatedNotificationsReadForUser,
   markRelatedNotificationsReadSchema,
 } from "@/lib/notifications/mark-related-notifications-read";
+import { syncPushBadgeCountAllApps } from "@/lib/notifications/sync-push-badge-count";
 
 /**
  * POST /api/provider/notifications/mark-related-read
@@ -26,6 +27,7 @@ export async function POST(request: NextRequest) {
     const { marked } = await markRelatedNotificationsReadForUser(supabase, user.id, parsed.data);
 
     invalidateProviderNotificationsListCache(user.id);
+    void syncPushBadgeCountAllApps(user.id);
 
     return successResponse({ success: true, marked });
   } catch (error) {

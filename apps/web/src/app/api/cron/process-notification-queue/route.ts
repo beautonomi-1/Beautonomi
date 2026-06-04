@@ -41,7 +41,7 @@ const CIRCUIT_BREAKER_CONSECUTIVE_FAIL = 10;
 const DLQ_ALERT_THRESHOLD = 10;
 
 import type { QueuedNotificationRow } from "@/lib/notifications/queued-senders";
-import { parseQueuePayloadMeta } from "@/lib/notifications/enqueue";
+import { deliverQueueRow } from "@/lib/notifications/deliver-queue-row";
 
 type QueueRow = QueuedNotificationRow;
 
@@ -49,87 +49,6 @@ function backoffSeconds(attempts: number): number {
   // 30s, 1m, 5m, 30m, 2h, 6h ...
   const table = [30, 60, 300, 1800, 7200, 21600];
   return table[Math.min(attempts, table.length - 1)];
-}
-
-type DeliveryResult = { ok: true } | { ok: false; error: string };
-
-async function deliverRow(row: QueueRow): Promise<DeliveryResult> {
-  try {
-    if (row.channel === "in_app") {
-      const { insertNotification } = await import(
-        "@/lib/notifications/insert-notification"
-      );
-      if (!row.recipient_user_id) {
-        return { ok: false, error: "recipient_user_id missing for in_app" };
-      }
-      await insertNotification({
-        user_id: row.recipient_user_id,
-        type: row.template_key,
-        title: String(row.payload?.title ?? "Notification"),
-        message: String(row.payload?.message ?? ""),
-        data: (row.payload?.data as Record<string, unknown>) ?? {},
-      });
-      return { ok: true };
-    }
-
-    if (row.channel === "push") {
-      const { sendToUser } = await import("@/lib/notifications/onesignal").catch(
-        () => ({
-          sendToUser: null as unknown as (
-            userId: string,
-            payload: { title: string; message: string; url?: string; data?: Record<string, unknown> },
-            channels?: unknown,
-            opts?: unknown,
-          ) => Promise<unknown>,
-        }),
-      );
-      if (!sendToUser || !row.recipient_user_id) {
-        return { ok: false, error: "push sender unavailable or missing recipient" };
-      }
-      const meta = parseQueuePayloadMeta(row.payload);
-      const sendOpts =
-        meta.push_app_type || meta.tenant_id
-          ? {
-              ...(meta.push_app_type ? { appType: meta.push_app_type } : {}),
-              ...(meta.tenant_id ? { tenantId: meta.tenant_id } : {}),
-            }
-          : undefined;
-      await sendToUser(
-        row.recipient_user_id,
-        {
-          title: String(row.payload?.title ?? "Beautonomi"),
-          message: String(row.payload?.message ?? ""),
-          url: row.payload?.url ? String(row.payload.url) : undefined,
-          data: (row.payload?.data as Record<string, unknown>) ?? {},
-        },
-        ["push"],
-        sendOpts,
-      );
-      return { ok: true };
-    }
-
-    if (row.channel === "email") {
-      // Delegate to the shared email sender. Template/payload resolution
-      // lives inside the sender so this queue stays channel-agnostic.
-      const { sendQueuedEmail } = await import(
-        "@/lib/notifications/queued-senders"
-      );
-      await sendQueuedEmail(row);
-      return { ok: true };
-    }
-
-    if (row.channel === "sms") {
-      const { sendQueuedSms } = await import(
-        "@/lib/notifications/queued-senders"
-      );
-      await sendQueuedSms(row);
-      return { ok: true };
-    }
-
-    return { ok: false, error: `unknown channel: ${row.channel}` };
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
-  }
 }
 
 export async function GET(request: NextRequest) {
@@ -198,7 +117,7 @@ export async function GET(request: NextRequest) {
 
     if (!claimed) continue; // someone else grabbed it
 
-    const result = await deliverRow(row);
+    const result = await deliverQueueRow(row);
 
     if (result.ok === true) {
       await supabase

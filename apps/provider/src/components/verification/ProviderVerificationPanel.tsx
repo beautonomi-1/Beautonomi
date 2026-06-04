@@ -326,6 +326,9 @@ export function ProviderVerificationPanel({ footer, env: envProp, onStatusChange
                 <TouchableOpacity
                   key={opt.value}
                   onPress={() => { setDocType(opt.value); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Document type ${opt.label}`}
+                  accessibilityState={{ selected: docType === opt.value }}
                   style={{
                     paddingHorizontal: 16,
                     paddingVertical: 10,
@@ -365,12 +368,17 @@ export function ProviderVerificationPanel({ footer, env: envProp, onStatusChange
               placeholder="e.g. South Africa"
               placeholderTextColor={Colors.gray[400]}
               autoCapitalize="words"
+              accessibilityLabel="Country of issue"
+              accessibilityHint="Enter the country that issued your identity document"
+              returnKeyType="done"
             />
 
             {/* File picker */}
             <Text style={twStyle("text-sm font-semibold text-gray-700 mb-2")}>Document photo</Text>
             <TouchableOpacity
               onPress={pickDocument}
+              accessibilityRole="button"
+              accessibilityLabel={selectedFile ? "Change document photo" : "Select document photo"}
               style={{
                 borderRadius: 16,
                 borderWidth: 2,
@@ -407,6 +415,8 @@ export function ProviderVerificationPanel({ footer, env: envProp, onStatusChange
             <TouchableOpacity
               onPress={submitManual}
               disabled={uploading || !selectedFile || !country.trim()}
+              accessibilityRole="button"
+              accessibilityLabel="Submit for verification"
               style={{
                 backgroundColor:
                   uploading || !selectedFile || !country.trim() ? Colors.gray[300] : Colors.primary,

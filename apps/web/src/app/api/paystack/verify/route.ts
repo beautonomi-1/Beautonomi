@@ -15,8 +15,7 @@ import { getPaystackSecretKey } from "@/lib/payments/paystack-server";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
-import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
-import { notifyProviderTeamUsers } from "@/lib/notifications/notify-provider-team";
+import { notifyProductOrderPaidIfTransitioned } from "@/lib/notifications/notify-product-order-paid";
 import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
 import { applyWalletTopupFromSuccessfulPaystackCharge } from "@/lib/wallet/apply-wallet-topup-from-paystack-success";
 import { processSuccessfulPayment } from "@/app/api/payments/webhook/_handlers/charge-success";
@@ -217,11 +216,7 @@ export async function GET(request: NextRequest) {
           );
         }
 
-        const productOrderTenantId = await resolveTenantIdForFinanceLedger(admin, {
-          tenant_id: poBeforeRow.tenant_id,
-          provider_id: poBeforeRow.provider_id,
-        });
-        await recordProductOrderPayment({
+        const payRecord = await recordProductOrderPayment({
           supabase: admin as any,
           productOrderId,
           reference,
@@ -231,34 +226,14 @@ export async function GET(request: NextRequest) {
           provider: "paystack",
         });
 
+        await notifyProductOrderPaidIfTransitioned(admin as any, productOrderId, {
+          transitionedToPaid: payRecord.transitionedToPaid,
+        });
+
         const { data: po } = await (admin.from("product_orders") as any)
-          .select("customer_id, provider_id, order_number, total_amount")
+          .select("order_number, customer_id")
           .eq("id", productOrderId)
           .maybeSingle();
-
-        if (po) {
-          const { format: fmtPo } = await getTenantMoneyFormatter(productOrderTenantId);
-          void import("@/lib/notifications/insert-notification").then(({ insertNotification }) =>
-            insertNotification({
-              user_id: po.customer_id,
-              type: "product_order_update",
-              title: "Order Confirmed",
-              message: `Your order ${po.order_number} has been confirmed and paid.`,
-              data: { product_order_id: productOrderId, amount: amountMajor },
-              action_url: `/product-orders`,
-            })
-          );
-
-          if (po.provider_id) {
-            await notifyProviderTeamUsers(po.provider_id, {
-              type: "product_order_update",
-              title: "New Product Order",
-              message: `New product order ${po.order_number} received — ${fmtPo(amountMajor)}.`,
-              data: { product_order_id: productOrderId, amount: amountMajor },
-              action_url: `/provider/ecommerce/orders?order=${encodeURIComponent(productOrderId)}`,
-            });
-          }
-        }
 
         // Track payment via Amplitude
         trackServer("product_order_paid", {

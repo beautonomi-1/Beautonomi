@@ -97,9 +97,11 @@ export async function POST(
 
     const bookingData = booking as any;
 
-    // Check if booking is in progress or completed
-    if (!["in_progress", "completed"].includes(bookingData.status)) {
-      return errorResponse("Can only request additional payment for in-progress or completed bookings", "INVALID_STATUS", 400);
+    // Allow confirmed bookings too: a confirmed booking (e.g. a custom offer paid
+    // online, which starts as 'confirmed') can legitimately accrue an extra charge
+    // before the provider marks the service started.
+    if (!["confirmed", "in_progress", "completed"].includes(bookingData.status)) {
+      return errorResponse("Can only request additional payment for confirmed, in-progress, or completed bookings", "INVALID_STATUS", 400);
     }
 
     // Create additional charge row (real table)

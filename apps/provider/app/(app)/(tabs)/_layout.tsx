@@ -16,6 +16,7 @@ import { useNotificationsCount } from "@/providers/NotificationsCountContext";
 import { useProvider } from "@/providers/ProviderContext";
 import { supabase } from "@/lib/supabase/client";
 import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
+import { isMoreTabNestedScreen } from "@/lib/provider-tab-navigation";
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -44,6 +45,7 @@ function makeHubTabListener(
   tabName: HubTab,
   hubHref: `/(app)/(tabs)/${HubTab}`,
   exoRouter: Router,
+  pathname: string | null | undefined,
 ) {
   return ({ navigation }: { navigation: NavigationProp<ParamListBase> }) => ({
     tabPress: (e: { preventDefault: () => void }) => {
@@ -53,6 +55,7 @@ function makeHubTabListener(
         | undefined;
       const st = tabRoute?.state;
       const alreadyOnThisTab = state.routes[state.index]?.name === tabName;
+      const moreNestedByPath = tabName === "more" && isMoreTabNestedScreen(pathname);
 
       if (!alreadyOnThisTab) {
         e.preventDefault();
@@ -60,9 +63,10 @@ function makeHubTabListener(
         return;
       }
 
-      if (typeof st?.index === "number" && st.index > 0) {
+      const stackNested = typeof st?.index === "number" && st.index > 0;
+      if (stackNested || moreNestedByPath) {
         e.preventDefault();
-        if (st.key) {
+        if (stackNested && st.key) {
           navigation.dispatch({
             ...StackActions.popToTop(),
             target: st.key,
@@ -319,7 +323,7 @@ export default function TabsLayout() {
           title: t("provider.clients"),
           tabBarIcon: ({ focused }) => <TabIcon name={focused ? "people" : "people-outline"} focused={focused} />,
         }}
-        listeners={makeHubTabListener("clients", "/(app)/(tabs)/clients", router)}
+        listeners={makeHubTabListener("clients", "/(app)/(tabs)/clients", router, pathname)}
       />
       <Tabs.Screen
         name="chats"
@@ -328,7 +332,7 @@ export default function TabsLayout() {
           tabBarBadge: chatsBadge,
           tabBarIcon: ({ focused }) => <TabIcon name={focused ? "chatbubbles" : "chatbubbles-outline"} focused={focused} />,
         }}
-        listeners={makeHubTabListener("chats", "/(app)/(tabs)/chats", router)}
+        listeners={makeHubTabListener("chats", "/(app)/(tabs)/chats", router, pathname)}
       />
       {/*
         §Provider-audit 2026-04: the previous "Transaction History" tab was
@@ -342,7 +346,7 @@ export default function TabsLayout() {
           tabBarBadge: bookingsBadge,
           tabBarIcon: ({ focused }) => <TabIcon name={focused ? "calendar-clear" : "calendar-clear-outline"} focused={focused} />,
         }}
-        listeners={makeHubTabListener("bookings", "/(app)/(tabs)/bookings", router)}
+        listeners={makeHubTabListener("bookings", "/(app)/(tabs)/bookings", router, pathname)}
       />
       {/* Sales is still reachable via More → Sales history. */}
       <Tabs.Screen name="sales" options={{ href: null }} />
@@ -353,7 +357,7 @@ export default function TabsLayout() {
           tabBarBadge: moreBadge,
           tabBarIcon: ({ focused }) => <TabIcon name={focused ? "menu" : "menu-outline"} focused={focused} />,
         }}
-        listeners={makeHubTabListener("more", "/(app)/(tabs)/more", router)}
+        listeners={makeHubTabListener("more", "/(app)/(tabs)/more", router, pathname)}
       />
       {/* Hide settings from tab bar - it's now inside More */}
       <Tabs.Screen name="settings" options={{ href: null }} />

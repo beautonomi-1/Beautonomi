@@ -14,6 +14,7 @@ import { useApi } from "@/hooks/useApi";
 import { api } from "@/lib/api-client";
 import { useResponsive } from "@/hooks/useResponsive";
 import { supabase } from "@/lib/supabase/client";
+import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
 import { useProvider } from "@/providers/ProviderContext";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -38,8 +39,6 @@ interface Conversation {
   booking_id?: string | null;
   is_pinned?: boolean;
 }
-
-let conversationsRealtimeGen = 0;
 
 function formatDateTimeSafe(value: unknown): string {
   if (typeof value !== "string" || !value) return "—";
@@ -89,7 +88,7 @@ export default function MessagingListScreen() {
     // Supabase may return an existing channel when the same topic is reused
     // during fast remounts. Give every subscription a unique topic so all
     // postgres_changes handlers are attached before subscribe().
-    const topic = `provider-conversations:${provider.id}:${++conversationsRealtimeGen}`;
+    const topic = nextRealtimeTopic(`provider-conversations:${provider.id}`);
     const channel = supabase
       .channel(topic)
       .on(

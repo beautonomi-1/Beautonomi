@@ -12,10 +12,11 @@ export type FinanceLedgerRow = {
   commission?: number | null;
   net?: number | null;
   created_at?: string | null;
+  refund_component?: string | null;
 };
 
 const LEDGER_SELECT =
-  "id, booking_id, product_order_id, provider_id, transaction_type, amount, fees, commission, net, created_at";
+  "id, booking_id, product_order_id, provider_id, transaction_type, amount, fees, commission, net, created_at, refund_component";
 
 export type FetchFinanceLedgerRange = {
   start?: string | null;

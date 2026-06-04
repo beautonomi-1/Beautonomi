@@ -257,3 +257,71 @@ export function slackNotifyVerificationNeedsReview(params: {
     actionUrl,
   });
 }
+
+/** Self-service permanent account deletion completed (POST /api/me/delete-account). */
+export function slackNotifySelfServiceAccountDeletionSucceeded(params: {
+  tenantId: string;
+  userId: string;
+  role: string;
+  email?: string | null;
+  providerId?: string | null;
+  reason?: string | null;
+}) {
+  const roleLabel = params.role.replace(/_/g, " ");
+  void tryNotifySlackEvent({
+    tenantId: params.tenantId,
+    environment: eventEnv(),
+    eventKey: SLACK_EVENT_KEYS.COMPLIANCE_ACCOUNT_DELETION_SUCCEEDED,
+    dedupeKey: `account_deletion:${params.userId}:succeeded`,
+    entityType: "user",
+    entityId: params.userId,
+    title: "Self-service account permanently deleted",
+    detailLines: [
+      `User: ${params.email ?? params.userId.slice(0, 8) + "…"}`,
+      `Role: ${roleLabel}`,
+      params.providerId ? `Provider org: ${params.providerId}` : null,
+      params.reason ? `Reason: ${params.reason}` : "Reason: (not provided)",
+      "Action: user initiated delete via app/web; data purged via compliance_clear_user_references.",
+      "Admin → Control plane → Compliance purge audit (if logged).",
+    ].filter(Boolean) as string[],
+    actionUrl: "/control-plane/compliance",
+  }).catch((err) => {
+    console.error("[slack] account_deletion succeeded notify error", err);
+  });
+}
+
+/** Self-service account deletion failed after verification (purge or auth delete). */
+export function slackNotifySelfServiceAccountDeletionFailed(params: {
+  tenantId: string;
+  userId: string;
+  role: string;
+  email?: string | null;
+  providerId?: string | null;
+  failureCode?: string | null;
+  failureMessage?: string | null;
+  preUpdateFailed?: boolean;
+}) {
+  const roleLabel = params.role.replace(/_/g, " ");
+  void tryNotifySlackEvent({
+    tenantId: params.tenantId,
+    environment: eventEnv(),
+    eventKey: SLACK_EVENT_KEYS.COMPLIANCE_ACCOUNT_DELETION_FAILED,
+    dedupeKey: `account_deletion:${params.userId}:failed:${params.failureCode ?? "unknown"}`,
+    entityType: "user",
+    entityId: params.userId,
+    title: "Self-service account deletion failed",
+    detailLines: [
+      `User: ${params.email ?? params.userId.slice(0, 8) + "…"}`,
+      `Role: ${roleLabel}`,
+      params.providerId ? `Provider org: ${params.providerId}` : null,
+      params.failureCode ? `Code: ${params.failureCode}` : null,
+      params.failureMessage ? `Detail: ${params.failureMessage}` : null,
+      params.preUpdateFailed ? "Note: audit pre-update stamp failed; purge was still attempted." : null,
+      "Action: check server logs and assist user or run Admin compliance purge if erasure is required.",
+      "Admin → Users (search by email) or Compliance purge.",
+    ].filter(Boolean) as string[],
+    actionUrl: params.email ? `/users?search=${encodeURIComponent(params.email)}` : "/users",
+  }).catch((err) => {
+    console.error("[slack] account_deletion failed notify error", err);
+  });
+}

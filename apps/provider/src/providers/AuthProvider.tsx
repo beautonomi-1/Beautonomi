@@ -28,6 +28,10 @@ import { invalidateApiAccessTokenCache } from "@/lib/api-client";
 import { clearPortalCache } from "@/lib/portal-cache";
 import { clearBiometricPreference } from "@/hooks/useBiometricAuth";
 import {
+  clearBiometricPromptPending,
+  clearBiometricSetupPromptDismissed,
+} from "@/lib/biometric-setup-prompt";
+import {
   normalizeSupabaseAuthPhone,
   normalizeSupabaseSmsOtpToken,
   isCompleteSupabaseSmsOtp,
@@ -424,6 +428,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const signOut = useCallback(async () => {
+    const signedOutUserId = session?.user?.id ?? user?.id ?? null;
     // §Provider-audit 2026-04 (parity with customer): same issue — awaiting
     // remote `signOut()` before `updateSession(null)` meant the UI stayed on
     // the authenticated stack until GoTrue responded. Clear session + token
@@ -446,8 +451,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await supabase.auth.signOut({ scope: "local" }).catch(() => {});
     }
 
-    void clearBiometricPreference();
-  }, [updateSession]);
+    clearBiometricPromptPending();
+    void Promise.allSettled([
+      clearBiometricPreference(),
+      clearBiometricSetupPromptDismissed(signedOutUserId),
+    ]);
+  }, [updateSession, session?.user?.id, user?.id]);
 
   const isEmailVerified = !!(session?.user as { email_confirmed_at?: string } | undefined)?.email_confirmed_at;
 

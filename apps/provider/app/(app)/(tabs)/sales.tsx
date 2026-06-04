@@ -10,7 +10,8 @@ import {
   Linking,
   Share,
 } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
+import { useFromTransactionsHub, useProviderStackBack } from "@/lib/provider-tab-navigation";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { YocoPaymentSheet } from "@/components/YocoPaymentSheet";
@@ -213,18 +214,10 @@ const DATE_RANGES = [
   { label: "All Time", value: "all" },
 ];
 
-const TRANSACTIONS_HUB_HREF = "/(app)/(tabs)/more/transactions-hub" as const;
-const FROM_TRANSACTIONS_HUB = "transactions-hub";
-
 export default function SalesScreen() {
   const router = useRouter();
-  const { from: fromParam } = useLocalSearchParams<{ from?: string }>();
-  const fromTransactionsHub =
-    typeof fromParam === "string"
-      ? fromParam === FROM_TRANSACTIONS_HUB
-      : Array.isArray(fromParam)
-        ? fromParam[0] === FROM_TRANSACTIONS_HUB
-        : false;
+  const fromTransactionsHub = useFromTransactionsHub();
+  const handleBack = useProviderStackBack();
   const tenantCurrency = getTenantDefaultCurrency();
   const { isTablet } = useResponsive();
   const adsModule = useModuleConfig("ads") as { enabled?: boolean } | undefined;
@@ -1442,13 +1435,7 @@ export default function SalesScreen() {
       <ScreenHeader
         title="Sales"
         subtitle={`${sales.length} transactions`}
-        {...(fromTransactionsHub
-          ? {
-              onBack: () => {
-                router.push(TRANSACTIONS_HUB_HREF as never);
-              },
-            }
-          : {})}
+        {...(fromTransactionsHub ? { showBack: true, onBack: handleBack } : {})}
         rightAction={
           <TouchableOpacity
             style={{ minHeight: 44, minWidth: 44, alignItems: "center", justifyContent: "center", borderRadius: 22, backgroundColor: Colors.gray[100] }}

@@ -41,6 +41,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import type { CustomFieldDefinition } from "@/components/custom-fields/CustomFieldsForm";
 import { NATIVE_STORE } from "@/lib/store/native-app-store";
 import { getOsTypeFromNavigator } from "@/lib/utils/os-type";
+import { useTranslation } from "@beautonomi/i18n";
+import { HouseCallLineFootnote } from "@/components/booking/HouseCallPricingNotes";
+import { lineHasHouseCallAdjustment } from "@beautonomi/utils";
 
 interface ProviderFormField {
   id: string;
@@ -84,6 +87,8 @@ interface HoldData {
     staff_id: string | null;
     duration_minutes: number;
     price: number;
+    base_price?: number;
+    at_home_price_adjustment?: number;
     currency: string;
     scheduled_start_at: string;
     scheduled_end_at: string;
@@ -306,6 +311,7 @@ function MobileAppNudge() {
 }
 
 function BookContinueContent() {
+  const { t } = useTranslation();
   const searchParams = useSearchParams();
   const router = useRouter();
   const holdId = searchParams?.get("hold_id");
@@ -1352,11 +1358,18 @@ function BookContinueContent() {
           >
             <h2 className="text-sm font-semibold opacity-90 pb-1">Booking summary</h2>
             {hold.booking_services_snapshot.map((s, i) => (
-              <div key={`primary-${i}`} className="flex justify-between text-sm border-b border-white/10 pb-2">
-                <span className="opacity-90">
-                  {s.service_name || `Service ${i + 1}`} · {s.duration_minutes} min
-                </span>
-                <span className="opacity-95">{formatCurrency(s.price, s.currency)}</span>
+              <div key={`primary-${i}`} className="border-b border-white/10 pb-2">
+                <div className="flex justify-between text-sm gap-3">
+                  <span className="opacity-90 min-w-0">
+                    {s.service_name || `Service ${i + 1}`} · {s.duration_minutes} min
+                  </span>
+                  <span className="opacity-95 shrink-0">{formatCurrency(s.price, s.currency)}</span>
+                </div>
+                {hold.location_type === "at_home" && lineHasHouseCallAdjustment(s) ? (
+                  <div className="mt-0.5 [&_p]:text-white/70 [&_p]:text-[11px]">
+                    <HouseCallLineFootnote line={s} currency={s.currency} t={t} />
+                  </div>
+                ) : null}
               </div>
             ))}
             {groupBookingForRecurring && groupParticipants.map((p, pIdx) => {

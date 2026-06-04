@@ -31,6 +31,7 @@ import { appendFormDataFileNative } from "@beautonomi/utils";
 import { invalidateSupportTicketsListCache } from "@/lib/api-response-cache";
 import { launchImageLibraryWithPermission } from "@/lib/native-permissions";
 import { supabase } from "@/lib/supabase/client";
+import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
 import { SUPPORT_TICKETS_API_PREFIX } from "@/lib/support-ticket-api";
 
 type Message = {
@@ -113,7 +114,6 @@ export default function SupportTicketDetailScreen() {
   const [submittingCsat, setSubmittingCsat] = useState(false);
   const [csatExpanded, setCsatExpanded] = useState(true);
   const scrollViewRef = useRef<ScrollView>(null);
-  const realtimeGenRef = useRef(0);
 
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -176,7 +176,7 @@ export default function SupportTicketDetailScreen() {
   useEffect(() => {
     const tid = typeof id === "string" ? id : Array.isArray(id) ? id[0] : "";
     if (!tid) return;
-    const topic = `provider-support-ticket:${tid}:${++realtimeGenRef.current}`;
+    const topic = nextRealtimeTopic(`provider-support-ticket:${tid}`);
     const channel = supabase
       .channel(topic)
       .on(

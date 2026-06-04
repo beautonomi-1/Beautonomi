@@ -41,9 +41,19 @@ function mockAdminClient(deviceRows: { onesignal_player_id: string; user_id: str
     in: mockIn,
   });
 
+  const notifCountResult = Promise.resolve({ count: 1, error: null });
   const mockFrom = vi.fn().mockImplementation((table: string) => {
     if (table === "user_devices") {
       return { select: mockSelect };
+    }
+    if (table === "notifications") {
+      return {
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue(notifCountResult),
+          }),
+        }),
+      };
     }
     if (table === "notification_logs") {
       return {

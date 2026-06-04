@@ -26,6 +26,7 @@ import {
 } from "@/lib/reportDateRanges";
 import { appendReportLocation } from "@/lib/reportLocationQuery";
 import { ReportResponsiveStatRow } from "@/components/reports/ReportResponsiveStatRow";
+import { ReportBasisFootnote } from "@/components/reports/ReportBasisFootnote";
 
 const DATE_RANGES: { label: string; value: ReportDateRangeKey }[] = [
   { label: "Today", value: "today" },
@@ -44,6 +45,8 @@ interface BookingsData {
   no_show_count?: number;
   avg_per_day?: number;
   cancellation_reasons?: { reason: string; count: number }[];
+  basisNote?: string;
+  reportBasis?: string;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -94,6 +97,7 @@ export default function BookingsReport() {
           ))}
         </ScrollView>
         <Text style={twStyle("text-xs text-gray-500")}>{rangeCaption}</Text>
+        <ReportBasisFootnote basisNote={data?.basisNote} reportBasis={data?.reportBasis} compact />
       </View>
 
       {loading && !data && <ActivityIndicator style={twStyle("my-8")} color="#3b82f6" />}

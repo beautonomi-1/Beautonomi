@@ -9,9 +9,9 @@ const DEFAULT_PREFS: Record<string, SectionPrefs> = {
   inspiration_and_offers: { email: true, sms: true, push: false },
   news_and_programs: { email: true, sms: true, push: false },
   // Transactional sections: push defaults to true so important notifications
-  // reach the device by default. Users can still opt out per section, and the
-  // CRITICAL_TRANSACTIONAL_TEMPLATES bypass in sendTemplateNotification keeps
-  // must-deliver pushes flowing even when a section is turned off.
+  // reach the device by default. Users can still opt out per section, and
+  // isMustDeliverPushTemplate() in sendTemplateNotification keeps must-deliver
+  // pushes flowing even when a section is turned off (marketing excluded).
   feedback: { email: true, sms: false, push: true },
   travel_regulations: { email: true, sms: true, push: true },
   account_activity: { email: true, sms: true, push: true },

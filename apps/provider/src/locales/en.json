@@ -132,7 +132,11 @@
     "continueWithPhone": "Continue",
     "orContinueWith": "Or continue with",
     "google": "Google",
-    "apple": "Apple"
+    "apple": "Apple",
+    "dontHaveAccount": "Don't have an account?",
+    "signUpCta": "Sign up",
+    "alreadyHaveAccount": "Already have an account?",
+    "signInCta": "Sign in"
   },
   "notifications": {
     "title": "Notifications",

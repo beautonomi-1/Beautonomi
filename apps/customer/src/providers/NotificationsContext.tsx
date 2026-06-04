@@ -4,7 +4,10 @@
  * Subscribes to notifications table changes so the badge updates in real time.
  */
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { AppState, InteractionManager, Platform } from "react-native";
+import { AppState, DeviceEventEmitter, InteractionManager, Platform } from "react-native";
+import {
+  NOTIFICATION_BADGE_REFRESH_EVENT,
+} from "@/lib/notification-badge-events";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase/client";
@@ -91,6 +94,21 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   useEffect(() => {
     refetchUnreadCount();
   }, [refetchUnreadCount]);
+
+  useEffect(() => {
+    let debounce: ReturnType<typeof setTimeout> | undefined;
+    const sub = DeviceEventEmitter.addListener(NOTIFICATION_BADGE_REFRESH_EVENT, () => {
+      if (debounce) clearTimeout(debounce);
+      debounce = setTimeout(() => {
+        debounce = undefined;
+        void refetchRef.current();
+      }, REALTIME_REFETCH_DEBOUNCE_MS);
+    });
+    return () => {
+      sub.remove();
+      if (debounce) clearTimeout(debounce);
+    };
+  }, []);
 
   // Refresh unread when app returns to foreground — delayed + after interactions so we do not
   // contend with other SDKs on the same "active" tick (battery + low-memory devices showed hangs).

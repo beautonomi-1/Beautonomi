@@ -23,7 +23,7 @@ import { SectionHeader } from "@/components/ui/SectionHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
-import { APP_URL, withWebApiTenantHeaders } from "@/config/public-env";
+import { getBackendUrl, withWebApiTenantHeaders } from "@/config/public-env";
 import { supabase } from "@/lib/supabase/client";
 import { twStyle } from "@/lib/twStyle";
 import { appendFormDataFileNative } from "@beautonomi/utils";
@@ -205,8 +205,13 @@ export default function ServiceDetailScreen() {
       });
       formData.append("folder", "services");
 
+      const base = getBackendUrl().replace(/\/$/, "");
+      if (!base) {
+        Alert.alert("Upload Error", "API URL is not configured (EXPO_PUBLIC_APP_URL).");
+        return;
+      }
       const uploadRes = await fetch(
-        `${APP_URL}/api/upload`,
+        `${base}/api/upload`,
         withWebApiTenantHeaders({
           method: "POST",
           headers: {

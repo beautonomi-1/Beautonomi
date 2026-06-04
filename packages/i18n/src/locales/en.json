@@ -183,6 +183,15 @@
       "errorGeneric": "Could not get travel fee estimate.",
       "outsideServiceArea": "This address is outside the service area."
     },
+    "houseCallPricing": {
+      "venueStepHint": "Choose where your appointment happens. Service prices on the next step reflect this choice.",
+      "atHomePricesHint": "Prices below include any house-call fee for at-your-location visits.",
+      "salonAndHomeFrom": "{{currency}} {{salonPrice}} in salon · {{currency}} {{homePrice}} at your location",
+      "includesHouseCallFee": "Includes {{currency}} {{amount}} house-call fee",
+      "houseCallFeeLine": "House-call service fee",
+      "houseCallFeeSummary": "House-call fees ({{count}} services)",
+      "travelFeeSeparateNote": "Travel fee is calculated from your address and shown separately."
+    },
     "providerNotFound": "Provider not found",
     "failedToLoad": "Failed to load",
     "failedToReserveSlot": "Failed to reserve slot",
@@ -1981,7 +1990,14 @@
           "newPhonePlaceholder": "New phone number",
           "currentPasswordPlaceholder": "••••••••",
           "newPasswordPlaceholder": "At least 8 characters",
-          "confirmPasswordPlaceholder": "••••••••"
+          "confirmPasswordPlaceholder": "••••••••",
+          "biometricSetupPrompt": {
+            "title": "Unlock Beautonomi faster",
+            "body": "Use {{label}} to unlock the app when you return. Your session stays signed in — you won't need to enter a code each time you open the app.",
+            "enableCta": "Enable {{label}}",
+            "notNowCta": "Not now",
+            "settingsLink": "Open Login & security"
+          }
         },
         "accountNotifications": {
           "updateError": "Could not update preference. Please try again."
@@ -2244,6 +2260,9 @@
     "services": "Services",
     "service": "service",
     "travelFee": "Travel fee",
+    "includesHouseCallFee": "Includes {{currency}} {{amount}} house-call fee",
+    "houseCallFeeLine": "House-call service fee",
+    "houseCallFeeSummary": "House-call fees",
     "travel": "Travel",
     "addons": "Add-ons",
     "addonsOptional": "Add-ons (optional)",

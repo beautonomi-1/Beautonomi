@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { isPayoutRefundComponent } from "@/lib/ledger/refund-components";
 
 export type GetAvailablePayoutBalanceOptions = {
   /** Earnings created before (now - holdDays) are available. Default 0 = all available. */
@@ -9,13 +10,27 @@ export type GetAvailablePayoutBalanceOptions = {
 
 /**
  * Compute available balance for payout (ledger-based):
- * - Sum provider_earnings (net) excluding direct walk-in (cash/Yoco) — platform doesn't hold that money.
- * - Add refund rows (net is negative), with the same walk-in exclusion when tied to a booking.
+ * - Sum provider_earnings (net) excluding any booking the platform never held funds
+ *   for — i.e. settled entirely by provider-collected tenders (cash, in-person card,
+ *   the provider's own Yoco terminal, bank transfer, etc.). Only paystack/stripe/
+ *   flutterwave/wallet/gift_card are platform-held and therefore payoutable.
+ * - Add refund rows (net is negative), with the same exclusion when tied to a booking.
  * - Optionally exclude earnings newer than holdDays (payout hold period) for **provider_earnings, tip, and travel_fee**
  *   (F15: hold applies consistently to platform-held booking take). Refunds always apply (clawback).
  * - Subtract completed payouts (finance_transactions type 'payout').
  * - Subtract pending/processing payout requests (payouts table).
+ *
+ * Note: the exclusion keys off the booking's *completed payment tenders*, not
+ * booking_source. A provider-created (booking_source='provider') or online booking
+ * paid in cash/Yoco must still be excluded — the platform holds nothing to pay out.
  */
+const PLATFORM_HELD_PAYMENT_PROVIDERS = new Set([
+  "paystack",
+  "stripe",
+  "flutterwave",
+  "wallet",
+  "gift_card",
+]);
 export async function getAvailablePayoutBalance(
   supabase: SupabaseClient,
   providerId: string,
@@ -42,7 +57,7 @@ export async function getAvailablePayoutBalance(
   // - refund: refund clawbacks (negative amounts)
   const { data: ledgerRows, error: ledgerError } = await supabase
     .from("finance_transactions")
-    .select("id, transaction_type, amount, net, created_at, booking_id")
+    .select("id, transaction_type, amount, net, created_at, booking_id, refund_component")
     .eq("provider_id", providerId)
     .in("transaction_type", ["provider_earnings", "payout", "refund", "cancellation_fee", "tip", "travel_fee", "service_fee"])
     .gte("created_at", allTime)
@@ -53,13 +68,9 @@ export async function getAvailablePayoutBalance(
   const rows = ledgerRows || [];
 
   const bookingIds = [...new Set(rows.filter((r: any) => r.booking_id).map((r: any) => r.booking_id))];
-  let bookingMap: Record<string, { booking_source: string | null; payment_provider: string | null }> = {};
+  let bookingMap: Record<string, { hasPlatformHeldPayment: boolean; hasAnyCompletedPayment: boolean }> = {};
 
   if (bookingIds.length > 0) {
-    const { data: bookings } = await supabase
-      .from("bookings")
-      .select("id, booking_source")
-      .in("id", bookingIds);
     let bookingPaymentsQuery = supabase
       .from("booking_payments")
       .select("booking_id, payment_provider")
@@ -72,26 +83,30 @@ export async function getAvailablePayoutBalance(
     }
     const { data: bookingPayments } = await bookingPaymentsQuery;
 
-    if (bookings) {
-      bookingMap = bookings.reduce((acc: any, b: any) => {
-        const payment = bookingPayments?.find((p: any) => p.booking_id === b.id);
-        acc[b.id] = {
-          booking_source: b.booking_source || null,
-          payment_provider: payment?.payment_provider || null,
-        };
-        return acc;
-      }, {});
-    }
+    bookingMap = bookingIds.reduce((acc: Record<string, { hasPlatformHeldPayment: boolean; hasAnyCompletedPayment: boolean }>, bid: string) => {
+      const payments = (bookingPayments ?? []).filter((p: any) => p.booking_id === bid);
+      acc[bid] = {
+        hasAnyCompletedPayment: payments.length > 0,
+        hasPlatformHeldPayment: payments.some((p: any) =>
+          PLATFORM_HELD_PAYMENT_PROVIDERS.has(String(p.payment_provider || "").toLowerCase()),
+        ),
+      };
+      return acc;
+    }, {});
   }
 
   let onlineEarnings = 0;
   let completedPayouts = 0;
 
-  const excludeWalkInNotOnPlatform = (bookingId: string | null | undefined): boolean => {
+  // Exclude only when we positively know the booking was settled entirely by
+  // provider-collected tenders (at least one completed payment, none platform-held).
+  // If we have no payment info, do not hide earnings.
+  const excludeProviderCollected = (bookingId: string | null | undefined): boolean => {
     if (!bookingId) return false;
     const meta = bookingMap[bookingId];
     if (!meta) return false;
-    return meta.booking_source === "walk_in" && meta.payment_provider !== "paystack";
+    if (!meta.hasAnyCompletedPayment) return false;
+    return !meta.hasPlatformHeldPayment;
   };
 
   for (const r of rows) {
@@ -106,7 +121,13 @@ export async function getAvailablePayoutBalance(
       continue;
     }
     if (row.transaction_type === "refund") {
-      if (excludeWalkInNotOnPlatform(row.booking_id)) continue;
+      // The refund trigger splits a refund into per-component rows. Only the
+      // provider-payoutable components (provider_earnings/tip/travel/cancellation,
+      // plus legacy/manual whole-refund rows) claw back the payout balance. Platform
+      // fee/commission, tax, discount contras, wallet/gift tender legs and provider-
+      // collected (walk-in) add-ons were never platform-held provider money.
+      if (!isPayoutRefundComponent(row.refund_component)) continue;
+      if (excludeProviderCollected(row.booking_id)) continue;
       onlineEarnings += Number(row.net ?? row.amount ?? 0);
       continue;
     }
@@ -123,14 +144,14 @@ export async function getAvailablePayoutBalance(
     }
     // Tips and travel fees are platform-held pass-throughs owed to the provider.
     if (row.transaction_type === "tip" || row.transaction_type === "travel_fee") {
-      if (excludeWalkInNotOnPlatform(row.booking_id)) continue;
+      if (excludeProviderCollected(row.booking_id)) continue;
       if (holdDays > 0 && row.created_at && row.created_at > availableFrom) continue;
       onlineEarnings += Number(row.net ?? row.amount ?? 0);
       continue;
     }
     if (row.transaction_type !== "provider_earnings") continue;
     if (holdDays > 0 && row.created_at && row.created_at > availableFrom) continue;
-    if (excludeWalkInNotOnPlatform(row.booking_id)) continue;
+    if (excludeProviderCollected(row.booking_id)) continue;
     onlineEarnings += Number(row.net ?? row.amount ?? 0);
   }
 

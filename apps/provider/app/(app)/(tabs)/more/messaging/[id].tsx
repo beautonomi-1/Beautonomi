@@ -46,6 +46,7 @@ import {
   launchCameraWithPermission,
   launchImageLibraryWithPermission,
 } from "@/lib/native-permissions";
+import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
 
 interface CustomOfferAttachment {
   type: "custom_offer";
@@ -243,7 +244,6 @@ export default function ChatScreen() {
 
   const refreshRef = useRef(refresh);
   const markReadRef = useRef(markRead);
-  const messagesRealtimeGenRef = useRef(0);
   useEffect(() => {
     refreshRef.current = refresh;
   }, [refresh]);
@@ -310,7 +310,7 @@ export default function ChatScreen() {
   useEffect(() => {
     if (!conversationId) return;
     setRealtimeMessages([]);
-    const topic = `provider-messages:${conversationId}:${++messagesRealtimeGenRef.current}`;
+    const topic = nextRealtimeTopic(`provider-messages:${conversationId}`);
     const channel = supabase
       .channel(topic)
       .on(
@@ -397,10 +397,9 @@ export default function ChatScreen() {
   // the offer status flips to "paid" and the message attachment gets patched.
   // Subscribe here too so the card updates immediately without waiting for
   // the message UPDATE to propagate.
-  const offersRealtimeGenRef = useRef(0);
   useEffect(() => {
     if (!conversationId) return;
-    const topic = `provider-offer-status:${conversationId}:${++offersRealtimeGenRef.current}`;
+    const topic = nextRealtimeTopic(`provider-offer-status:${conversationId}`);
     const channel = supabase
       .channel(topic)
       .on(

@@ -20,6 +20,7 @@ import {
   startOfWeekInTz,
 } from "@/lib/dates/provider-tz";
 import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
+import { buildServiceLedgerPerformance } from "@/lib/reports/service-ledger-performance";
 
 /**
  * GET /api/provider/analytics
@@ -123,7 +124,6 @@ export async function GET(request: NextRequest) {
       revenueResult,
       bookingsResult,
       upcomingBookingsResult,
-      serviceDataResult,
       customerDataResult,
     ] = await Promise.all([
       // Revenue — same net as main provider dashboard revenue cards
@@ -140,13 +140,6 @@ export async function GET(request: NextRequest) {
       ]),
       // Upcoming bookings
       (() => { let q = supabaseAdmin.from("bookings").select("id", { count: "exact", head: true }).eq("provider_id", providerId).eq("status", "confirmed").gt("scheduled_at", now.toISOString()); if (locationId) q = q.eq("location_id", locationId); return q; })(),
-      // Service popularity via RPC (F8) — DB-side aggregate, no app-level row cap.
-      supabaseAdmin.rpc("provider_analytics_by_service", {
-        p_provider_id: providerId,
-        p_from: new Date(0).toISOString(),
-        p_to: now.toISOString(),
-        p_location_id: locationId,
-      }),
       // Customer analytics
       (() => { let q = supabaseAdmin.from("bookings").select("customer_id").eq("provider_id", providerId); if (locationId) q = q.eq("location_id", locationId); return q; })(),
     ]);
@@ -164,11 +157,15 @@ export async function GET(request: NextRequest) {
     const lastMonthBookings = lastMonthBookingsCount.count || 0;
     const upcomingBookings = upcomingBookingsResult.count || 0;
 
-    // provider_analytics_by_service returns { offering_id, offering_title, booking_count, revenue }
-    type ServiceRow = { offering_id: string; offering_title: string; booking_count: number; revenue: number };
-    const serviceRows: ServiceRow[] = Array.isArray(serviceDataResult.data)
-      ? (serviceDataResult.data as ServiceRow[])
-      : [];
+    const serviceRows = await buildServiceLedgerPerformance(
+      supabaseAdmin,
+      providerId,
+      thisMonthStart,
+      thisMonthEndDate,
+      locationId,
+      tz,
+      { status: "completed" },
+    );
 
     // Revenue trends — bucket size matches the selected period:
     //   week  → last 12 ISO weeks
@@ -338,7 +335,7 @@ export async function GET(request: NextRequest) {
       customers:
         "Distinct customers from bookings (scoped to location when filtered). Repeat = 2+ bookings ever with you; single-booking = exactly one — not the same as marketing “new”.",
       top_services:
-        "Per-offering `SUM(booking_services.price)` for bookings ever created through now — catalog line totals, not ledger settlement (differs from ledger net when discounts/platform economics apply).",
+        "Per-offering ledger net for completed appointments scheduled in the current period, allocated by line price share (same as Sales by service / top-services report).",
       trends_revenue: `Chart revenue per bucket: same ledger rule as period headline. ${trendBucketDescription}`,
       trends_bookings: `Chart bookings per bucket: same created_at rule as period counts. ${trendBucketDescription}`,
     };
@@ -418,8 +415,11 @@ export async function GET(request: NextRequest) {
         new: uniqueCustomers.size - repeatCustomers,
       },
       services: serviceRows
-        .map((s) => ({ name: s.offering_title, count: Number(s.booking_count || 0), revenue: Number(s.revenue || 0) }))
-        .sort((a, b) => b.revenue - a.revenue)
+        .map((s) => ({
+          name: s.serviceName,
+          count: s.bookingCount,
+          revenue: s.revenue,
+        }))
         .slice(0, 10),
       trends: trendsData,
     });

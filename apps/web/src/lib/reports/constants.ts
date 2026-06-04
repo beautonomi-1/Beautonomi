@@ -9,12 +9,14 @@ export const MAX_FINANCE_TRANSACTIONS = 50000;
 /**
  * Accounting / reporting (provider-facing)
  *
- * - "Headline revenue" / dashboard cards: net `provider_earnings` in `finance_transactions`
- *   (platform-settled). See DASHBOARD_REVENUE_TRANSACTION_TYPES and getProviderRevenue
- *   when you pass the dashboard option. Walk-in clients paid in cash or on a provider
- *   terminal may not appear in the ledger; Paystack / platform flows do.
- * - Tips: separate `tip` rows; not included in DASHBOARD headline unless a report says so.
- * - Travel: often `travel_fee` rows; full booking net can use LEDGER_FULL_PROVIDER_NET_TYPES.
+ * - "Recognized revenue" headline (dashboard, business overview, payment summary net):
+ *   `provider_earnings + tip + travel_fee + cancellation_fee + walk_in_additional_charge`
+ *   via `provider-revenue-semantics.ts`. Walk-in cash/unsupported terminals may lack ledger rows.
+ * - `DASHBOARD_REVENUE_TRANSACTION_TYPES` / getProviderRevenue (dashboard option): **service
+ *   earnings only** (`provider_earnings`) for per-booking splits and booking-summary charts —
+ *   not the same as the recognized-revenue headline.
+ * - Tips / travel: separate ledger rows; included in recognized revenue, excluded from
+ *   DASHBOARD_REVENUE_TRANSACTION_TYPES unless a route opts into LEDGER_FULL_PROVIDER_NET_TYPES.
  * - Platform fees retained for the marketplace: `platform_fee` and `service_fee` (naming
  *   varies by product surface). Aligned with finance route, not ad-hoc `payment` type.
  * - Refunds: explicit `refund` plus negative `provider_earnings` (see finance route).

@@ -16,6 +16,7 @@ import {
   reportDateRangeFromParams,
   summarizeLedgerLocationAttribution,
 } from "@/lib/reports/provider-report-utils";
+import { isCashRefundComponent } from "@/lib/ledger/refund-components";
 const BATCH = 200;
 
 /**
@@ -92,7 +93,7 @@ export async function GET(request: NextRequest) {
 
     const feeQuery = supabaseAdmin
       .from("finance_transactions")
-      .select("booking_id, product_order_id, transaction_type, amount, net")
+      .select("booking_id, product_order_id, transaction_type, amount, net, refund_component")
       .eq("provider_id", providerId)
       .in("transaction_type", ["platform_fee", "service_fee", "refund"])
       .gte("created_at", fromDate.toISOString())
@@ -112,11 +113,16 @@ export async function GET(request: NextRequest) {
         transaction_type: string;
         amount: number;
         net: number;
+        refund_component: string | null;
       }>,
       locationId,
     );
 
-    const feeMap = new Map<string, { platformFee: number; refundedAmount: number }>();
+    // Refunds here are netted against the GROSS booked amount, so we want the customer
+    // cash refunded = |Σ net of the cash legs|. We sum the signed net of cash components
+    // (they penny-balance to the refund) and abs at read time; the parallel discount/
+    // tender contras (isCashRefundComponent === false) are excluded.
+    const feeMap = new Map<string, { platformFee: number; refundNetSum: number }>();
     for (const row of feeRows ?? []) {
       const objectKey = row.booking_id
         ? `booking:${row.booking_id}`
@@ -124,11 +130,13 @@ export async function GET(request: NextRequest) {
           ? `order:${row.product_order_id}`
           : null;
       if (!objectKey) continue;
-      const existing = feeMap.get(objectKey) ?? { platformFee: 0, refundedAmount: 0 };
+      const existing = feeMap.get(objectKey) ?? { platformFee: 0, refundNetSum: 0 };
       if (row.transaction_type === "platform_fee" || row.transaction_type === "service_fee") {
         existing.platformFee += Math.abs(Number(row.amount ?? 0));
       } else if (row.transaction_type === "refund") {
-        existing.refundedAmount += Math.abs(Number(row.amount ?? 0));
+        if (isCashRefundComponent((row as { refund_component: string | null }).refund_component)) {
+          existing.refundNetSum += Number(row.net ?? row.amount ?? 0);
+        }
       }
       feeMap.set(objectKey, existing);
     }
@@ -155,7 +163,7 @@ export async function GET(request: NextRequest) {
       const fees = feeMap.get(`booking:${bookingId}`);
       const booking = bookingsById.get(bookingId);
       const bookedAmount = Number(booking?.total_amount ?? 0);
-      const refundedAmount = fees?.refundedAmount ?? 0;
+      const refundedAmount = Math.abs(fees?.refundNetSum ?? 0);
       const platformFee = fees?.platformFee ?? 0;
       const bookedNetOfRefunds = Math.max(0, bookedAmount - refundedAmount);
       const ledgerSettlementAt =
@@ -181,7 +189,7 @@ export async function GET(request: NextRequest) {
       const fees = feeMap.get(`order:${productOrderId}`);
       const order = productOrders.find((o) => o.id === productOrderId);
       const bookedAmount = Number(order?.total_amount ?? 0);
-      const refundedAmount = fees?.refundedAmount ?? 0;
+      const refundedAmount = Math.abs(fees?.refundNetSum ?? 0);
       const platformFee = fees?.platformFee ?? 0;
       const bookedNetOfRefunds = Math.max(0, bookedAmount - refundedAmount);
       const ledgerSettlementAt =

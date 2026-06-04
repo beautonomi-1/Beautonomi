@@ -38,10 +38,23 @@ export default function PayAdditionalChargePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [useWallet, setUseWallet] = useState(false);
+  const [giftCardCode, setGiftCardCode] = useState("");
+  const [walletBalance, setWalletBalance] = useState(0);
 
   useEffect(() => {
     loadCharge();
   }, [bookingId, chargeId]); // eslint-disable-line react-hooks/exhaustive-deps -- load on mount and when ids change
+
+  useEffect(() => {
+    void fetcher
+      .get<{ data?: { wallet?: { balance?: number } } }>("/api/me/wallet", { cache: "no-store" })
+      .then((res) => {
+        const w = res.data?.wallet;
+        if (w?.balance != null) setWalletBalance(Number(w.balance) || 0);
+      })
+      .catch(() => {});
+  }, []);
 
   const loadCharge = async () => {
     try {
@@ -101,18 +114,26 @@ export default function PayAdditionalChargePage() {
       // Initialize Paystack payment
       const response = await fetcher.post<{
         data: {
-          authorization_url: string;
-          access_code: string;
-          reference: string;
+          authorization_url?: string;
+          fully_settled?: boolean;
+          paystack_amount?: number;
+          wallet_amount_applied?: number;
+          gift_card_amount_applied?: number;
         };
       }>(`/api/me/bookings/${bookingId}/additional-charges/${chargeId}/pay`, {
-        amount: charge.amount,
-        currency: charge.currency,
+        use_wallet: useWallet,
+        ...(giftCardCode.trim() ? { gift_card_code: giftCardCode.trim().toUpperCase() } : {}),
       });
 
-      // Redirect to Paystack payment page
-      if (response.data.authorization_url) {
-        window.location.href = response.data.authorization_url;
+      const payload = response.data;
+      if (payload?.fully_settled) {
+        toast.success("Charge paid successfully.");
+        router.push(`/account-settings/bookings/${bookingId}`);
+        return;
+      }
+
+      if (payload?.authorization_url) {
+        window.location.href = payload.authorization_url;
       } else {
         throw new Error("Payment link not received");
       }
@@ -228,6 +249,28 @@ export default function PayAdditionalChargePage() {
                 </div>
               )}
 
+              {walletBalance > 0 && (
+                <label className="flex items-center gap-2 mb-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={useWallet}
+                    onChange={(e) => setUseWallet(e.target.checked)}
+                    className="rounded border-gray-300"
+                  />
+                  <span className="text-sm text-gray-700">
+                    Use wallet balance ({charge.currency} {walletBalance.toFixed(2)} available)
+                  </span>
+                </label>
+              )}
+              <label className="block text-sm text-gray-600 mb-1">Gift card code (optional)</label>
+              <input
+                type="text"
+                value={giftCardCode}
+                onChange={(e) => setGiftCardCode(e.target.value.toUpperCase())}
+                placeholder="Enter gift card code"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-4"
+              />
+
               <Button
                 onClick={handlePayNow}
                 disabled={isProcessing || charge.status === 'paid'}
@@ -248,7 +291,7 @@ export default function PayAdditionalChargePage() {
               </Button>
 
               <p className="text-xs text-gray-500 text-center mt-4">
-                Secure payment with card
+                Apply wallet or gift card first; any remainder is paid securely by card.
               </p>
             </div>
           </div>

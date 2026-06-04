@@ -3,6 +3,9 @@
 import { Lock, Shield, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/utils";
+import { useTranslation } from "@beautonomi/i18n";
+import { HouseCallLineFootnote } from "@/components/booking/HouseCallPricingNotes";
+import { lineHasHouseCallAdjustment } from "@beautonomi/utils";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { BookingData } from "../../types/booking-engine";
@@ -67,6 +70,7 @@ export function StepReview({
   onEditSchedule,
   onEditVenue,
 }: StepReviewProps) {
+  const { t } = useTranslation();
   const subtotal = data.servicesSubtotal;
   const addonsTotal = data.addonsSubtotal;
   const total = subtotal + addonsTotal;
@@ -153,15 +157,32 @@ export function StepReview({
             <span className="opacity-95">{formatCurrency(data.servicesSubtotal, currency)}</span>
           </div>
         ) : (
-          data.selectedServices.map((s, i) => (
-            <div
-              key={i}
-              className="flex justify-between text-sm py-1.5 border-b border-white/10 last:border-0"
-            >
-              <span className="opacity-90">{s.title}{s.duration_minutes ? ` · ${s.duration_minutes} min` : ""}</span>
-              <span className="opacity-95">{formatCurrency(s.price, s.currency)}</span>
-            </div>
-          ))
+          data.selectedServices.map((s, i) => {
+            const snapshotLine = {
+              price: s.price,
+              base_price: s.base_price,
+              at_home_price_adjustment: s.at_home_price_adjustment,
+            };
+            return (
+              <div
+                key={i}
+                className="py-1.5 border-b border-white/10 last:border-0"
+              >
+                <div className="flex justify-between text-sm gap-3">
+                  <span className="opacity-90 min-w-0">
+                    {s.title}
+                    {s.duration_minutes ? ` · ${s.duration_minutes} min` : ""}
+                  </span>
+                  <span className="opacity-95 shrink-0">{formatCurrency(s.price, s.currency)}</span>
+                </div>
+                {isAtHome && lineHasHouseCallAdjustment(snapshotLine) ? (
+                  <div className="mt-0.5 [&_p]:text-white/70 [&_p]:text-[11px]">
+                    <HouseCallLineFootnote line={snapshotLine} currency={s.currency} t={t} />
+                  </div>
+                ) : null}
+              </div>
+            );
+          })
         )}
         {addonsTotal > 0 && (
           <div className="flex justify-between text-sm py-1.5 border-b border-white/10">
@@ -170,8 +191,8 @@ export function StepReview({
           </div>
         )}
         {isAtHome && (
-          <p className="text-xs opacity-75 py-2 border-b border-white/10">
-            Travel fee (based on your address) will be added at checkout.
+          <p className="text-xs opacity-75 py-2 border-b border-white/10 leading-relaxed">
+            {t("booking.houseCallPricing.travelFeeSeparateNote")}
           </p>
         )}
         {showPaymentNote && (

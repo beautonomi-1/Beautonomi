@@ -32,7 +32,7 @@ export default function OnboardingVerifyIdentityScreen() {
   const isDone = status === "approved" || status === "in_progress";
 
   return (
-    <ScreenContainer scrollable={false} noPadding edges={["top"]} reserveTabBarSpace={false}>
+    <ScreenContainer scrollable={false} noPadding edges={["top"]} reserveTabBarSpace={false} keyboardAvoiding>
       <View style={{ paddingHorizontal: 16 }}>
         <ScreenHeader
           title="Verify your identity"

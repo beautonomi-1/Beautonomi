@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { isProviderEarningsRefundComponent } from "@/lib/ledger/refund-components";
 
 const PAGE_SIZE = 1000;
 
@@ -22,7 +23,7 @@ export async function sumProviderGamificationLedgerNet(
   for (let from = 0; ; from += PAGE_SIZE) {
     const { data, error } = await db
       .from("finance_transactions")
-      .select("net, amount")
+      .select("net, amount, transaction_type, refund_component")
       .eq("provider_id", providerId)
       .in("transaction_type", [...PROVIDER_GAMIFICATION_LEDGER_TYPES])
       .order("created_at", { ascending: true })
@@ -31,6 +32,15 @@ export async function sumProviderGamificationLedgerNet(
     if (error) throw error;
     const page = data ?? [];
     for (const row of page) {
+      // Multi-component refunds: only provider-affecting components claw back net
+      // earnings. Platform fee/commission, tax, discounts and tender legs are not the
+      // provider's loss (legacy/manual whole-refund rows have no component → counted).
+      if (
+        (row as { transaction_type?: string }).transaction_type === "refund" &&
+        !isProviderEarningsRefundComponent((row as { refund_component?: string | null }).refund_component)
+      ) {
+        continue;
+      }
       sum += rowNet(row);
     }
     if (page.length < PAGE_SIZE) break;

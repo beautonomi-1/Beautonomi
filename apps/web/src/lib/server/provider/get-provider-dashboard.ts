@@ -6,12 +6,44 @@ import { createClient } from '@supabase/supabase-js';
 import { format, subDays } from "date-fns";
 import { checkBookingLimit } from "@/lib/subscriptions/limit-checker";
 import { formatProviderPortalLimitMessage } from "@/lib/subscriptions/subscription-limit-messages";
-import { mapStatusToProvider } from "@/lib/utils/booking-status";
 import { getAvailablePayoutBalance } from "@/lib/provider/available-payout-balance";
 import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
-import { fromBusinessTime, formatInTz, nowInTz, resolveTz } from "@/lib/dates/provider-tz";
+import {
+  addDaysToYmd,
+  dateRangeBoundsUtc,
+  formatDateYmd,
+  fromBusinessTime,
+  formatInTz,
+  nowInTz,
+  resolveTz,
+} from "@/lib/dates/provider-tz";
 import { buildProviderActivityFeed } from "@/lib/provider/build-provider-activity-feed";
 import { filterLedgerRowsForLocation } from "@/lib/reports/provider-report-utils";
+import { buildServiceLedgerPerformance } from "@/lib/reports/service-ledger-performance";
+import { isProviderEarningsRefundComponent } from "@/lib/ledger/refund-components";
+import {
+  computeDashboardEarningsMix,
+  recognizedRevenue,
+  recognizedRevenueInRange,
+} from "@/lib/reports/provider-revenue-semantics";
+import { dashboardBookingLocationOrFilter } from "@/lib/server/provider/dashboard-booking-location-filter";
+import { getProviderRetailTakingsSummary } from "@/lib/reports/provider-retail-takings";
+import {
+  fetchUpcomingBookingsForDashboard,
+  UPCOMING_BOOKINGS_BASIS,
+} from "@/lib/server/provider/fetch-upcoming-bookings-for-dashboard";
+import { MAX_FINANCE_TRANSACTIONS } from "@/lib/reports/constants";
+import { fetchAllLedgerPages } from "@/lib/reports/fetch-all-ledger-pages";
+import {
+  PROVIDER_POINTS_SELECT,
+  fetchProviderGamificationHealSignals,
+  syncProviderGamification,
+} from "@/lib/provider/ensure-provider-gamification-synced";
+import {
+  buildProgressToNextBadge,
+  resolveJoinedBadge,
+} from "@/lib/provider/build-gamification-view";
+import { getDashboardRecognizedRevenueBounds } from "@/lib/server/provider/dashboard-revenue-period-bounds";
 
 const DASHBOARD_CACHE_TTL_MS = 5000;
 const MAX_DASHBOARD_CACHE_ENTRIES = 400;
@@ -151,7 +183,7 @@ export async function getProviderDashboardResponse(request: NextRequest) {
     // When no location is selected, show all bookings (including those with NULL location_id)
     // Note: Bookings with NULL location_id (walk-in clients) are only shown when no location filter is applied
     if (locationId) {
-      bookingsQuery = bookingsQuery.eq('location_id', locationId);
+      bookingsQuery = bookingsQuery.or(dashboardBookingLocationOrFilter(locationId));
     }
     // When no locationId is provided, the query will return all bookings including NULL location_id
 
@@ -160,15 +192,16 @@ export async function getProviderDashboardResponse(request: NextRequest) {
     // by checking if they're related to bookings with the selected location
     const financeQuery = supabaseAdmin
       .from("finance_transactions")
-      .select("transaction_type, amount, net, description, created_at, booking_id, product_order_id")
+      .select("transaction_type, amount, net, description, created_at, booking_id, product_order_id, refund_component")
       .eq("provider_id", providerId)
-      .limit(8000);
-    
+      .order("created_at", { ascending: false });
+
     // If location filter is provided, we'll need to filter finance transactions
-    // by joining with bookings. For performance, we'll do this in memory after fetching
-    const [bookingsResult, ledgerResult] = await Promise.all([
+    // by joining with bookings. For performance, we'll do this in memory after fetching.
+    // The ledger is fully paginated (not capped) so lifetime totals never undercount.
+    const [bookingsResult, ledgerRows] = await Promise.all([
       bookingsQuery,
-      financeQuery
+      fetchAllLedgerPages(financeQuery as any, MAX_FINANCE_TRANSACTIONS),
     ]);
 
     if (bookingsResult.error) {
@@ -295,7 +328,7 @@ export async function getProviderDashboardResponse(request: NextRequest) {
     }
 
     // Revenue streams from finance ledger (already loaded in parallel above)
-    let rows = ledgerResult.data || [];
+    let rows = ledgerRows || [];
     if (locationId && rows.length > 0) {
       rows = await filterLedgerRowsForLocation(supabaseAdmin as any, providerId, rows as any, locationId);
     }
@@ -332,56 +365,66 @@ export async function getProviderDashboardResponse(request: NextRequest) {
       return sum;
     };
 
-    const recognizedEarningTypes = new Set([
-      "provider_earnings",
-      "tip",
-      "travel_fee",
-      "cancellation_fee",
-    ]);
-    const recognizedRowValue = (row: { transaction_type: string; netValue: number; amountValue: number }) => {
-      if (row.transaction_type === "travel_fee") return row.amountValue;
-      return row.netValue;
-    };
-
-    // Provider earnings by source (service bookings vs product orders vs other).
+    const earningsMix = computeDashboardEarningsMix(
+      parsedRows.map((r) => ({
+        transaction_type: r.transaction_type,
+        amount: r.amountValue,
+        net: r.netValue,
+        booking_id: r.booking_id,
+        product_order_id: r.product_order_id,
+        description: r.descriptionText,
+      })),
+    );
+    const {
+      serviceEarningsTotal,
+      bookingEarningsTotal,
+      productOrderEarningsTotal,
+      additionalChargeEarningsTotal,
+      otherEarningsTotal,
+    } = earningsMix;
     const providerEarningsRows = parsedRows.filter((r) => r.transaction_type === "provider_earnings");
-    const additionalChargeEarningsTotal = providerEarningsRows
-      .filter((r) => r.descriptionText.toLowerCase().includes("additional charge"))
-      .reduce((sum, r) => sum + r.netValue, 0);
-    const bookingEarningsTotal = providerEarningsRows
-      .filter((r) => Boolean(r.booking_id))
-      .reduce((sum, r) => sum + r.netValue, 0);
-    const productOrderEarningsTotal = providerEarningsRows
-      .filter((r) => Boolean(r.product_order_id))
-      .reduce((sum, r) => sum + r.netValue, 0);
-    const otherEarningsTotal = providerEarningsRows
-      .filter((r) => !r.booking_id && !r.product_order_id)
-      .reduce((sum, r) => sum + r.netValue, 0);
     const providerEarningsTotal = providerEarningsRows.reduce((sum, r) => sum + r.netValue, 0);
-    const serviceEarningsTotal = bookingEarningsTotal - additionalChargeEarningsTotal;
 
-    // Recognized revenue includes provider earnings + tips + travel fees + cancellation fees.
-    const recognizedRevenueTotal = parsedRows.reduce((sum, r) => {
-      if (!recognizedEarningTypes.has(r.transaction_type)) return sum;
-      return sum + recognizedRowValue(r);
-    }, 0);
+    // Recognized revenue (single source of truth): provider_earnings + tips + travel +
+    // cancellation fees + walk-in add-ons. See lib/reports/provider-revenue-semantics.ts.
+    const recognizedRevenueTotal = recognizedRevenue(parsedRows);
     const totalRevenue = recognizedRevenueTotal;
 
     // Gross sales (for reporting) — does not change provider net directly here.
     const giftCardSalesTotal = sumAmount(["gift_card_sale"]);
     const membershipSalesTotal = sumAmount(["membership_sale"]);
 
-    // Travel line items: ledger rows use net=0 (travel is included in provider_earnings); use amount for display.
-    const travelFeesToday = sumAmount(["travel_fee"], startOfToday);
-    const travelFeesThisMonth = sumAmount(["travel_fee"], startOfMonth);
+    const revenuePeriodEnds = getDashboardRecognizedRevenueBounds({
+      timezone: providerTz,
+      businessNow,
+      startOfWeekLocal,
+    });
+
+    // Travel posts as its own ledger row with amount === net (excluded from provider_earnings);
+    // amount and net are interchangeable here.
+    const travelFeesToday = sumAmount(
+      ["travel_fee"],
+      startOfToday,
+      revenuePeriodEnds.endOfToday,
+    );
+    const travelFeesThisMonth = sumAmount(
+      ["travel_fee"],
+      startOfMonth,
+      revenuePeriodEnds.endOfMonth,
+    );
     const travelFeesLastMonth = sumAmount(["travel_fee"], startOfLastMonth, endOfLastMonth);
     const travelFeesTotal = sumAmount(["travel_fee"]);
 
-    // Refunds: match finance API — sum |net| on `refund` rows plus legacy negative provider_earnings (F10).
+    // Refunds: match finance API — sum |net| on provider-affecting `refund` component
+    // rows plus legacy negative provider_earnings (F10). The trigger splits a refund
+    // into per-component rows; platform fee/commission, tax, discount contras and
+    // wallet/gift tender legs are not provider losses and are excluded here.
     let refundsTotal = 0;
     for (const r of parsedRows) {
       if (r.transaction_type === "refund") {
-        refundsTotal += Math.abs(r.netValue);
+        if (isProviderEarningsRefundComponent(r.refund_component)) {
+          refundsTotal += Math.abs(r.netValue);
+        }
         continue;
       }
       if (r.transaction_type === "provider_earnings" && r.netValue < 0) {
@@ -406,21 +449,35 @@ export async function getProviderDashboardResponse(request: NextRequest) {
       }
     }
 
-    const sumRecognizedRevenue = (start?: Date, end?: Date) => {
-      let sum = 0;
-      for (const r of parsedRows) {
-        if (!recognizedEarningTypes.has(r.transaction_type)) continue;
-        if (start && r.createdDate < start) continue;
-        if (end && r.createdDate > end) continue;
-        sum += recognizedRowValue(r);
-      }
-      return sum;
-    };
+    const ledgerRowsForRange = parsedRows.map((r) => ({
+      transaction_type: r.transaction_type,
+      amount: r.amountValue,
+      net: r.netValue,
+      created_at: r.created_at,
+    }));
 
-    const revenueToday = sumRecognizedRevenue(startOfToday);
-    const revenueThisWeek = sumRecognizedRevenue(startOfWeek);
-    const revenueThisMonth = sumRecognizedRevenue(startOfMonth);
+    const sumRecognizedRevenue = (start?: Date, end?: Date) =>
+      recognizedRevenueInRange(ledgerRowsForRange, { start, end });
+
+    const revenueToday = sumRecognizedRevenue(startOfToday, revenuePeriodEnds.endOfToday);
+    const revenueThisWeek = sumRecognizedRevenue(startOfWeek, revenuePeriodEnds.endOfWeek);
+    const revenueThisMonth = sumRecognizedRevenue(startOfMonth, revenuePeriodEnds.endOfMonth);
     const revenueLastMonth = sumRecognizedRevenue(startOfLastMonth, endOfLastMonth);
+
+    const todayYmd = formatDateYmd(businessNow, providerTz);
+    const weekStartYmd = formatDateYmd(startOfWeekLocal, providerTz);
+    const monthStartYmd = format(
+      new Date(businessNow.getFullYear(), businessNow.getMonth(), 1),
+      "yyyy-MM-dd",
+    );
+    const retailTakings = await getProviderRetailTakingsSummary(supabaseAdmin, {
+      providerId,
+      timezone: providerTz,
+      todayYmd,
+      weekStartYmd,
+      monthStartYmd,
+      locationId,
+    });
 
     const revenueGrowth =
       revenueLastMonth !== 0
@@ -460,7 +517,7 @@ export async function getProviderDashboardResponse(request: NextRequest) {
       .not("status", "in", "(cancelled,no_show)");
     
     if (locationId) {
-      unpaidBookingsQuery = unpaidBookingsQuery.eq('location_id', locationId);
+      unpaidBookingsQuery = unpaidBookingsQuery.or(dashboardBookingLocationOrFilter(locationId));
     }
     
     const { data: unpaidBookings } = await unpaidBookingsQuery;
@@ -538,6 +595,7 @@ export async function getProviderDashboardResponse(request: NextRequest) {
             package_name?: string | null;
             products?: Array<{ product_name?: string; quantity?: number }>;
           }>;
+          basis?: { upcoming?: string };
         }
       | null = null;
 
@@ -549,155 +607,69 @@ export async function getProviderDashboardResponse(request: NextRequest) {
       | null = null;
 
     if (includeInsights) {
-      const weekStart = subDays(startOfToday, 6);
-      const weekStartLocal = new Date(startOfTodayLocal);
-      weekStartLocal.setDate(startOfTodayLocal.getDate() - 6);
+      const chartStartYmd = addDaysToYmd(todayYmd, -6);
+      const chartBounds = dateRangeBoundsUtc(chartStartYmd, todayYmd, providerTz);
       const revenueByDay = new Map<string, number>();
       for (let i = 0; i < 7; i += 1) {
-        const d = new Date(weekStartLocal);
-        d.setDate(weekStartLocal.getDate() + i);
-        revenueByDay.set(format(d, "yyyy-MM-dd"), 0);
+        revenueByDay.set(addDaysToYmd(chartStartYmd, i), 0);
       }
       for (const r of parsedRows) {
-        if (!recognizedEarningTypes.has(r.transaction_type)) continue;
-        if (r.createdDate < weekStart || r.createdDate > now) continue;
-        const key = formatInTz(r.createdDate, "yyyy-MM-dd", providerTz);
-        revenueByDay.set(key, (revenueByDay.get(key) ?? 0) + recognizedRowValue(r));
+        const createdAt = r.createdDate;
+        if (createdAt < new Date(chartBounds.fromIso) || createdAt > now) continue;
+        const key = formatInTz(createdAt, "yyyy-MM-dd", providerTz);
+        if (!revenueByDay.has(key)) continue;
+        revenueByDay.set(
+          key,
+          (revenueByDay.get(key) ?? 0) +
+            recognizedRevenueInRange(
+              [
+                {
+                  transaction_type: r.transaction_type,
+                  amount: r.amountValue,
+                  net: r.netValue,
+                },
+              ],
+              {},
+            ),
+        );
       }
       const weeklyRevenue = Array.from(revenueByDay.entries()).map(([day, revenue]) => ({ day, revenue }));
 
-      let bookingServicesQuery = supabaseAdmin
-        .from("booking_services")
-        .select(
-          `
-          id,
-          price,
-          bookings!inner (id, provider_id, status, location_id),
-          offerings:offering_id (title)
-        `,
-        )
-        .eq("bookings.provider_id", providerId)
-        .not("bookings.status", "in", "(cancelled,no_show)")
-        .limit(1200);
-      if (locationId) {
-        bookingServicesQuery = bookingServicesQuery.eq("bookings.location_id", locationId);
-      }
-      const { data: bookingServices } = await bookingServicesQuery;
-      const serviceMap = new Map<string, { service_name: string; bookingIds: Set<string>; total_revenue: number }>();
-      (bookingServices || []).forEach((bs: any) => {
-        const name = bs.offerings?.title || "Unknown Service";
-        const bookingRow = Array.isArray(bs.bookings) ? bs.bookings[0] : bs.bookings;
-        const bookingId = bookingRow?.id as string | undefined;
-        const existing = serviceMap.get(name) || {
-          service_name: name,
-          bookingIds: new Set<string>(),
-          total_revenue: 0,
-        };
-        if (bookingId) existing.bookingIds.add(bookingId);
-        existing.total_revenue += Number(bs.price || 0);
-        serviceMap.set(name, existing);
-      });
-      const topServices = Array.from(serviceMap.values())
+      const topServicesFrom = subDays(startOfToday, 29);
+      const topServicesPerf = await buildServiceLedgerPerformance(
+        supabaseAdmin,
+        providerId,
+        topServicesFrom,
+        now,
+        locationId,
+        providerTz,
+        { status: "completed" },
+      );
+      const topServices = topServicesPerf
         .map((s) => ({
-          service_name: s.service_name,
-          booking_count: s.bookingIds.size,
-          total_revenue: s.total_revenue,
+          service_name: s.serviceName,
+          booking_count: s.bookingCount,
+          total_revenue: s.revenue,
         }))
-        .sort((a, b) => b.booking_count - a.booking_count)
         .slice(0, 5);
 
-      const upcomingWindowEnd = new Date(startOfToday);
-      upcomingWindowEnd.setDate(upcomingWindowEnd.getDate() + 6);
-      upcomingWindowEnd.setHours(23, 59, 59, 999);
-      const endOfToday = new Date(startOfToday);
-      endOfToday.setHours(23, 59, 59, 999);
-      let previewBookingsQuery = supabaseAdmin
-        .from("bookings")
-        .select(
-          `
-          id,
-          booking_number,
-          status,
-          scheduled_at,
-          total_amount,
-          currency,
-          location_type,
-          location_id,
-          is_group_booking,
-          group_booking_id,
-          customers:users!bookings_customer_id_fkey(full_name, phone),
-          group_bookings!bookings_group_booking_id_fkey(ref_number),
-          service_packages!bookings_package_id_fkey(name),
-          booking_services(
-            duration_minutes,
-            guest_name,
-            offering:offerings(title),
-            staff:provider_staff(name)
-          ),
-          booking_products(
-            quantity,
-            products:products(name)
-          )
-        `,
-        )
-        .eq("provider_id", providerId)
-        .gte("scheduled_at", startOfToday.toISOString())
-        .lte("scheduled_at", upcomingWindowEnd.toISOString())
-        .order("scheduled_at", { ascending: true });
-      if (locationId) {
-        previewBookingsQuery = previewBookingsQuery.eq("location_id", locationId);
-      }
-      const { data: previewBookingsRaw } = await previewBookingsQuery.limit(80);
-      const previewBookings = (previewBookingsRaw || [])
-        .map((b: any) => {
-          const group = Array.isArray(b.group_bookings) ? b.group_bookings[0] : b.group_bookings;
-          const pkg = Array.isArray(b.service_packages) ? b.service_packages[0] : b.service_packages;
-          return {
-            id: b.id,
-            booking_number: b.booking_number,
-            status: mapStatusToProvider(
-              String(b.status || "pending") as Parameters<typeof mapStatusToProvider>[0],
-            ),
-            scheduled_at: b.scheduled_at,
-            total_amount: Number(b.total_amount || 0),
-            currency: String(b.currency || "ZAR"),
-            location_type: String(b.location_type || "at_salon"),
-            services: (b.booking_services || []).map((s: any) => ({
-              name: s.offering?.title || "Service",
-              offering_name: s.offering?.title || "Service",
-              duration_minutes: Number(s.duration_minutes || 60),
-              staff_name: s.staff?.name || null,
-              guest_name: s.guest_name || null,
-            })),
-            customers: b.customers
-              ? {
-                  full_name: String(b.customers.full_name || ""),
-                  phone: String(b.customers.phone || ""),
-                }
-              : null,
-            is_group_booking: Boolean(b.is_group_booking),
-            group_booking_id: b.group_booking_id ?? null,
-            group_booking_ref: group?.ref_number ?? null,
-            package_name: pkg?.name ?? null,
-            products: (b.booking_products || []).map((p: any) => ({
-              product_name: p.products?.name || "Product",
-              quantity: Number(p.quantity || 1),
-            })),
-          };
+      const { bookings: upcomingBookings, basis: upcomingBasis } =
+        await fetchUpcomingBookingsForDashboard(supabaseAdmin, {
+          providerId,
+          timezone: providerTz,
+          locationId,
+          limit: 12,
         });
-      const todayBookings = previewBookings
-        .filter((b: any) => {
+
+      const todayBounds = dateRangeBoundsUtc(todayYmd, todayYmd, providerTz);
+      const todayBookings = upcomingBookings
+        .filter((b) => {
           const when = new Date(b.scheduled_at);
-          return when >= startOfToday && when <= endOfToday;
+          return (
+            when >= new Date(todayBounds.fromIso) && when <= new Date(todayBounds.toIso)
+          );
         })
         .slice(0, 8);
-      const upcomingBookings = previewBookings
-        .filter((b: any) => {
-          const when = new Date(b.scheduled_at);
-          const activeStatuses = ["confirmed", "pending", "booked"];
-          return when >= startOfToday && when <= upcomingWindowEnd && activeStatuses.includes(String(b.status));
-        })
-        .slice(0, 12);
 
       const activityPayload = await buildProviderActivityFeed(supabaseAdmin, providerId, {
         timezone: providerTz,
@@ -720,6 +692,9 @@ export async function getProviderDashboardResponse(request: NextRequest) {
         recent_activity: recentActivity,
         today_bookings: todayBookings,
         upcoming_bookings: upcomingBookings,
+        basis: {
+          upcoming: upcomingBasis.upcoming || UPCOMING_BOOKINGS_BASIS,
+        },
       };
     }
     
@@ -728,27 +703,20 @@ export async function getProviderDashboardResponse(request: NextRequest) {
     const completionRate = terminalBookings > 0 ? (completedBookings / terminalBookings) * 100 : 0;
     const noShowRate = terminalBookings > 0 ? (noShowBookings / terminalBookings) * 100 : 0;
 
-    // Fetch gamification data (points, badge, milestones) - use admin client
+    const healSignalsInitial = await fetchProviderGamificationHealSignals(supabaseAdmin, providerId);
+    const { data: pointsRowPeek } = await supabaseAdmin
+      .from("provider_points")
+      .select("id")
+      .eq("provider_id", providerId)
+      .maybeSingle();
+    await syncProviderGamification(supabaseAdmin, providerId, {
+      ...healSignalsInitial,
+      hasProviderPointsRow: !!pointsRowPeek,
+    });
+
     const { data: gamificationData } = await supabaseAdmin
       .from('provider_points')
-      .select(`
-        total_points,
-        lifetime_points,
-        current_tier_points,
-        badge_earned_at,
-        badge_expires_at,
-        provider_badges!provider_points_current_badge_id_fkey (
-          id,
-          name,
-          slug,
-          description,
-          icon_url,
-          tier,
-          color,
-          requirements,
-          benefits
-        )
-      `)
+      .select(PROVIDER_POINTS_SELECT)
       .eq('provider_id', providerId)
       .maybeSingle();
 
@@ -766,50 +734,20 @@ export async function getProviderDashboardResponse(request: NextRequest) {
       .order('created_at', { ascending: false })
       .limit(10);
 
-    // Calculate progress to next badge
-    let progressToNextBadge = null;
-    const badge = Array.isArray(gamificationData?.provider_badges) ? gamificationData?.provider_badges?.[0] : gamificationData?.provider_badges;
-    if (gamificationData) {
-      const currentTier = badge?.tier || 0;
-      const currentPoints = gamificationData.total_points || 0;
-      
-      // Fetch all active badges to find the next one
-      const { data: allBadges } = await supabaseAdmin
-        .from('provider_badges')
-        .select('id, name, tier, color, requirements')
-        .eq('is_active', true)
-        .order('tier', { ascending: true });
-      
-      if (allBadges && allBadges.length > 0) {
-        const nextBadge = allBadges.find(b => b.tier > currentTier);
-        if (nextBadge) {
-          const requiredPoints = (nextBadge.requirements as any)?.points || 0;
-          const pointsNeeded = Math.max(0, requiredPoints - currentPoints);
-          const progressPercentage = requiredPoints > 0 
-            ? Math.min(100, Math.round((currentPoints / requiredPoints) * 100))
-            : 0;
-          
-          progressToNextBadge = {
-            badge: {
-              id: nextBadge.id,
-              name: nextBadge.name,
-              tier: nextBadge.tier,
-              color: nextBadge.color,
-              requirements: nextBadge.requirements,
-            },
-            current_points: currentPoints,
-            required_points: requiredPoints,
-            points_needed: pointsNeeded,
-            progress_percentage: progressPercentage,
-          };
-        }
-      }
-    }
+    const { data: allBadges } = await supabaseAdmin
+      .from('provider_badges')
+      .select('id, name, slug, tier, color, requirements, benefits, description, icon_url')
+      .eq('is_active', true)
+      .order('tier', { ascending: true });
 
-    const gamification = gamificationData ? {
-      total_points: gamificationData.total_points || 0,
-      lifetime_points: gamificationData.lifetime_points || 0,
-      current_tier_points: gamificationData.current_tier_points || 0,
+    const badge = resolveJoinedBadge(gamificationData?.provider_badges);
+    const currentPoints = gamificationData?.total_points ?? 0;
+    const progressToNextBadge = buildProgressToNextBadge(allBadges, badge, currentPoints);
+
+    const gamification = {
+      total_points: currentPoints,
+      lifetime_points: gamificationData?.lifetime_points ?? 0,
+      current_tier_points: gamificationData?.current_tier_points ?? 0,
       current_badge: badge ? {
         id: badge.id,
         name: badge.name,
@@ -821,12 +759,12 @@ export async function getProviderDashboardResponse(request: NextRequest) {
         requirements: badge.requirements,
         benefits: badge.benefits,
       } : null,
-      badge_earned_at: gamificationData.badge_earned_at,
-      badge_expires_at: gamificationData.badge_expires_at,
+      badge_earned_at: gamificationData?.badge_earned_at ?? null,
+      badge_expires_at: gamificationData?.badge_expires_at ?? null,
       milestones: milestones || [],
       recent_transactions: recentTransactions || [],
       progress_to_next_badge: progressToNextBadge,
-    } : null;
+    };
 
     const payload = {
       // Booking counts
@@ -872,6 +810,14 @@ export async function getProviderDashboardResponse(request: NextRequest) {
       service_earnings_total: serviceEarningsTotal,
       booking_earnings_total: bookingEarningsTotal,
       product_order_earnings_total: productOrderEarningsTotal,
+      product_order_earnings_platform_total: productOrderEarningsTotal,
+      product_order_retail_total: retailTakings.lifetime.amount,
+      retail_sales_today: retailTakings.today.amount,
+      retail_sales_this_week: retailTakings.this_week.amount,
+      retail_sales_this_month: retailTakings.this_month.amount,
+      retail_sales_count_today: retailTakings.today.count,
+      retail_sales_count_this_week: retailTakings.this_week.count,
+      retail_sales_count_this_month: retailTakings.this_month.count,
       additional_charge_earnings_total: additionalChargeEarningsTotal,
       other_earnings_total: otherEarningsTotal,
       recognized_earnings_total: recognizedRevenueTotal,
@@ -881,8 +827,10 @@ export async function getProviderDashboardResponse(request: NextRequest) {
       membership_sales_total: membershipSalesTotal,
       refunds_total: Math.abs(refundsTotal),
 
-      /** F11: dashboard ledger sums are all-time (no date filter), unlike finance API default period. */
+      /** F11: earnings-mix lines are all-time ledger sums; revenue_today/week/month use recognition dates. */
       metrics_time_basis: "lifetime_all_time",
+      earnings_mix_time_basis:
+        "All-time ledger totals. Revenue chips use recognition date in your business timezone.",
       raw_payout_balance: rawBalance,
       has_negative_payout_balance: hasNegativeBalance,
       balance_owed_to_platform: hasNegativeBalance ? Math.abs(rawBalance) : 0,

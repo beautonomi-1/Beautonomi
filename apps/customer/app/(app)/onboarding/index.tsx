@@ -49,6 +49,7 @@ import {
 } from "@/lib/supabase-sms-otp";
 import { resolvePostLoginHref } from "@/lib/post-login-href";
 import { consumePostOnboardingHref } from "@/lib/post-onboarding-redirect";
+import { setBiometricPromptPending } from "@/lib/biometric-setup-prompt";
 import { AddressPicker, type AddressPickerSelection } from "@/components/AddressPicker";
 import { StaticMapImage } from "@/components/StaticMapImage";
 import { useTranslation } from "@beautonomi/i18n";
@@ -529,6 +530,7 @@ export default function CustomerOnboarding() {
         return;
       }
       await AsyncStorage.setItem(onboardingDoneKey(userId), "1");
+      if (userId) setBiometricPromptPending(userId);
       await refreshSession();
       api.post("/api/me/analytics/identify").catch(() => {});
     } catch {

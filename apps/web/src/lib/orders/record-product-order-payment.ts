@@ -27,7 +27,7 @@ type RecordProductOrderPaymentInput = {
 
 export async function recordProductOrderPayment(
   input: RecordProductOrderPaymentInput,
-): Promise<{ ok: boolean; duplicate: boolean }> {
+): Promise<{ ok: boolean; duplicate: boolean; transitionedToPaid: boolean }> {
   return Sentry.startSpan(
     {
       name: "finance.recordProductOrderPayment",
@@ -45,7 +45,7 @@ export async function recordProductOrderPayment(
 
 async function recordProductOrderPaymentInner(
   input: RecordProductOrderPaymentInput,
-): Promise<{ ok: boolean; duplicate: boolean }> {
+): Promise<{ ok: boolean; duplicate: boolean; transitionedToPaid: boolean }> {
   const { supabase, productOrderId, reference, amountMajor, feesMajor = 0, source, provider } = input;
 
   const { data: order, error: orderErr } = await (supabase.from("product_orders") as any)
@@ -58,6 +58,8 @@ async function recordProductOrderPaymentInner(
   if (orderErr || !order) {
     throw orderErr || new Error("Product order not found");
   }
+
+  const wasAlreadyPaid = String((order as any).payment_status ?? "") === "paid";
 
   const financeTenantId = await resolveTenantIdForFinanceLedger(supabase, {
     tenant_id: (order as any).tenant_id ?? null,
@@ -86,7 +88,7 @@ async function recordProductOrderPaymentInner(
   // If the order was already marked paid and both the gateway audit row and
   // platform-held provider ledger are present, this is an idempotent retry.
   if ((order as any).payment_status === "paid" && alreadyRecorded && (!isPlatformHeld || (existingLedgerRows?.length ?? 0) > 0)) {
-    return { ok: true, duplicate: true };
+    return { ok: true, duplicate: true, transitionedToPaid: false };
   }
 
   const { error: orderUpdateError } = await (supabase.from("product_orders") as any)
@@ -128,7 +130,7 @@ async function recordProductOrderPaymentInner(
     });
     if (paymentTxError) {
       if (paymentTxError.code === "23505") {
-        return { ok: true, duplicate: true };
+        return { ok: true, duplicate: true, transitionedToPaid: !wasAlreadyPaid };
       }
       throw paymentTxError;
     }
@@ -158,7 +160,7 @@ async function recordProductOrderPaymentInner(
   // finance_transactions because that ledger drives platform-held payouts and
   // shadow GL; adding provider-collected cash here would overstate payable cash.
   if (!isPlatformHeld) {
-    return { ok: true, duplicate: alreadyRecorded };
+    return { ok: true, duplicate: alreadyRecorded, transitionedToPaid: !wasAlreadyPaid };
   }
 
   const financeRows = [
@@ -210,6 +212,6 @@ async function recordProductOrderPaymentInner(
   const { error: financeInsertError } = await (supabase.from("finance_transactions") as any).insert(financeRows);
   if (financeInsertError) throw financeInsertError;
 
-  return { ok: true, duplicate: false };
+  return { ok: true, duplicate: false, transitionedToPaid: !wasAlreadyPaid };
 }
 

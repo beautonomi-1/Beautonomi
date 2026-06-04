@@ -75,6 +75,13 @@ export async function POST(
       platformHeld: false,
     });
 
+    const { notifyProductOrderPaidIfTransitioned } = await import(
+      "@/lib/notifications/notify-product-order-paid"
+    );
+    await notifyProductOrderPaidIfTransitioned(supabase as never, id, {
+      transitionedToPaid: result.transitionedToPaid,
+    });
+
     return successResponse({
       order_id: id,
       duplicate: result.duplicate,

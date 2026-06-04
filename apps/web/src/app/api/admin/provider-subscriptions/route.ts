@@ -41,7 +41,8 @@ export async function GET(request: NextRequest) {
           id,
           name,
           price_monthly,
-          price_yearly
+          price_yearly,
+          is_free
         )
       `,
       )

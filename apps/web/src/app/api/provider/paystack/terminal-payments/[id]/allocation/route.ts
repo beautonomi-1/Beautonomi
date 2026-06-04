@@ -167,7 +167,7 @@ export async function POST(
         return errorResponse("Product order target not found for this provider.", "TARGET_NOT_FOUND", 404);
       }
 
-      await recordProductOrderPayment({
+      const payRecord = await recordProductOrderPayment({
         supabase: admin as any,
         productOrderId: body.entity_id,
         reference: payment.paystack_reference,
@@ -176,6 +176,12 @@ export async function POST(
         source: "paystack_virtual_terminal_allocation",
         provider: "paystack",
         platformHeld: true,
+      });
+      const { notifyProductOrderPaidIfTransitioned } = await import(
+        "@/lib/notifications/notify-product-order-paid"
+      );
+      await notifyProductOrderPaidIfTransitioned(admin as any, body.entity_id, {
+        transitionedToPaid: payRecord.transitionedToPaid,
       });
     }
 

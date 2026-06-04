@@ -2,7 +2,7 @@
  * Fetch third-party config (OneSignal, Mapbox, etc.) from backend.
  * Uses public API – no auth required.
  */
-import { APP_URL, withWebApiTenantHeaders } from "@/config/public-env";
+import { getBackendUrl, withWebApiTenantHeaders } from "@/config/public-env";
 
 export interface ThirdPartyConfig {
   onesignal?: { app_id: string; enabled: boolean };
@@ -21,7 +21,12 @@ export async function getThirdPartyConfig(
   const params = new URLSearchParams();
   if (service) params.set("service", service);
   if (options?.app) params.set("app", options.app);
-  const url = `${APP_URL}/api/public/third-party-config${params.toString() ? `?${params.toString()}` : ""}`;
+  const origin = getBackendUrl().trim().replace(/\/$/, "");
+  if (!origin) {
+    return {} as ThirdPartyConfig;
+  }
+
+  const url = `${origin}/api/public/third-party-config${params.toString() ? `?${params.toString()}` : ""}`;
 
   try {
     const res = await fetch(url, withWebApiTenantHeaders());

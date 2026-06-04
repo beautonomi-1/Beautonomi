@@ -3,7 +3,7 @@ import { Alert, InteractionManager, Linking, Platform } from "react-native";
 import Constants from "expo-constants";
 import {
   ANDROID_PLAY_STORE_PACKAGE,
-  APP_URL,
+  getBackendUrl,
   IOS_APP_STORE_ID,
   withWebApiTenantHeaders,
 } from "@/config/public-env";
@@ -56,8 +56,10 @@ export function useForceUpdate() {
     const check = async () => {
       try {
         const v = encodeURIComponent(currentVersion);
+        const base = getBackendUrl().replace(/\/$/, "");
+        if (!base) return;
         const res = await fetch(
-          `${APP_URL}/api/public/app-version?app=provider&platform=${Platform.OS}&version=${v}`,
+          `${base}/api/public/app-version?app=provider&platform=${Platform.OS}&version=${v}`,
           withWebApiTenantHeaders(),
         );
         if (!res.ok) return;

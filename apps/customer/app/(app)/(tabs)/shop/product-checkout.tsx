@@ -484,10 +484,10 @@ export default function ProductCheckoutScreen() {
 
     if (
       paymentMethod === "paystack" &&
-      !useWallet &&
       !useNewCard &&
       selectedCardId &&
-      savedCards.some((c) => c.id === selectedCardId)
+      savedCards.some((c) => c.id === selectedCardId) &&
+      amountDue > 0.005
     ) {
       setProcessingMessage(pc("processingPayment", undefined, "Processing payment…"));
       const cardCharge = await payWithSavedCard({
@@ -1452,7 +1452,7 @@ export default function ProductCheckoutScreen() {
                 </TouchableOpacity>
               )}
 
-              {paymentMethod === "paystack" && user && savedCards.length > 0 && !useWallet && (
+              {paymentMethod === "paystack" && user && savedCards.length > 0 && (
                 <View style={{ marginTop: 12 }}>
                   <Text
                     style={{ fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 8 }}
@@ -1622,6 +1622,11 @@ export default function ProductCheckoutScreen() {
                     Use wallet balance — {fmt(walletBalance)} available
                   </Text>
                 </Pressable>
+              )}
+              {paymentMethod === "paystack" && useWallet && walletBalance > 0 && (
+                <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 6, paddingHorizontal: 4 }}>
+                  {`Wallet applies first; you pay ${fmt(Math.max(0, total - Math.min(walletBalance, total)))} by card.`}
+                </Text>
               )}
             </View>
 

@@ -8,6 +8,8 @@ import {
   reportDateRangeFromParams,
   summarizeLedgerLocationAttribution,
 } from "@/lib/reports/provider-report-utils";
+import { isProviderEarningsRefundComponent } from "@/lib/ledger/refund-components";
+import { providerNetAfterRefunds } from "@/lib/reports/provider-revenue-semantics";
 
 type FinanceRowFull = {
   transaction_type: string;
@@ -16,6 +18,7 @@ type FinanceRowFull = {
   booking_id: string | null;
   product_order_id: string | null;
   created_at: string;
+  refund_component?: string | null;
 };
 
 type LedgerParts = { payment: number; wallet: number; gift: number; additional: number };
@@ -137,7 +140,7 @@ export async function GET(request: NextRequest) {
     // ── 2. Finance transactions settled in the period (authoritative ledger) ──
     const { data: ft } = await supabaseAdmin
       .from("finance_transactions")
-      .select("transaction_type, amount, net, booking_id, product_order_id, created_at")
+      .select("transaction_type, amount, net, booking_id, product_order_id, created_at, refund_component")
       .eq("provider_id", providerId)
       .gte("created_at", fromDate.toISOString())
       .lte("created_at", toDate.toISOString());
@@ -292,15 +295,20 @@ export async function GET(request: NextRequest) {
     const pendingPayments = rows.filter((b) => b.payment_status === "pending").length;
     const failedPayments = rows.filter((b) => b.payment_status === "failed").length;
 
-    // Refunds (from finance_transactions refund rows, amount is now positive absolute value)
+    // Refunds (finance_transactions refund rows). The trigger splits a refund into
+    // per-component rows; only provider-affecting components reduce the provider's
+    // earnings. Platform fee/commission, tax, discount contras and wallet/gift tender
+    // legs are excluded so providerNetActivity is not over-clawed.
     const refundedAmount = financeRows
-      .filter((r) => r.transaction_type === "refund")
-      .reduce((s, r) => s + Math.abs(Number(r.amount ?? 0)), 0);
+      .filter((r) => r.transaction_type === "refund" && isProviderEarningsRefundComponent(r.refund_component))
+      .reduce((s, r) => s + Math.abs(Number(r.net ?? r.amount ?? 0)), 0);
     const providerEarningsReversals = financeRows
       .filter((r) => r.transaction_type === "provider_earnings" && Number(r.net ?? r.amount ?? 0) < 0)
       .reduce((s, r) => s + Math.abs(Number(r.net ?? r.amount ?? 0)), 0);
-    const providerNetActivity =
-      providerEarnings + tipsCollected + travelFeesCollected + cancellationFeesRetained - refundedAmount;
+    // Single source of truth: recognized provider revenue (incl. walk-in add-ons) net of
+    // provider refund clawbacks. Keeps this report reconciled with the dashboard,
+    // business overview and sales history. See provider-revenue-semantics.ts.
+    const providerNetActivity = providerNetAfterRefunds(financeRows);
 
     const averageTransactionValue = totalPayments > 0 ? gmv / totalPayments : 0;
     const averageBookedValueNonPending = averageTransactionValue;
