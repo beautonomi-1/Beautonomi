@@ -13,10 +13,15 @@ import { authFlowBreadcrumb, isSentryEnabled, setAuthFlowTags } from "@/lib/sent
 /** provider_onboarding: explicit DB role or legacy; same app access as owner/staff until onboarding completes */
 const ALLOWED_ROLES: UserRole[] = ["provider_owner", "provider_staff", "provider_onboarding"];
 
-type BlockReason = "network" | "role" | "api";
+type BlockReason = "network" | "verify" | "role";
 
 interface RoleGateProps {
   children: React.ReactNode;
+}
+
+function isNetworkishProfileError(message: string | null): boolean {
+  if (!message) return false;
+  return /network|timeout|timed out|fetch|connection|econnrefused/i.test(message);
 }
 
 export function RoleGate({ children }: RoleGateProps) {
@@ -33,10 +38,11 @@ export function RoleGate({ children }: RoleGateProps) {
 
   const blockReason = useMemo<BlockReason | null>(() => {
     if (!role) {
-      if (profileLoadError && /network|timeout|timed out|fetch/i.test(profileLoadError)) {
+      if (isNetworkishProfileError(profileLoadError)) {
         return "network";
       }
-      return "api";
+      // Missing role after a failed/cancelled fetch — not "wrong account".
+      return "verify";
     }
     if (role === "customer" && pathname?.includes("/onboarding")) {
       return null;
@@ -47,6 +53,14 @@ export function RoleGate({ children }: RoleGateProps) {
     return null;
   }, [role, profileLoadError, pathname]);
   const blocked = !loading && blockReason !== null;
+
+  const shouldAutoRetryOnResume = useMemo(() => {
+    if (!blocked) return false;
+    if (blockReason === "network" || blockReason === "verify") return true;
+    // users.role may still be customer until /api/me/role upgrades owner/staff on X-App: provider.
+    if (blockReason === "role" && role === "customer") return true;
+    return false;
+  }, [blocked, blockReason, role]);
 
   useEffect(() => {
     if (!user?.id || !isSentryEnabled()) return;
@@ -62,47 +76,57 @@ export function RoleGate({ children }: RoleGateProps) {
     lastResolved.current = next;
   }, [user?.id, loading, blocked, blockReason]);
 
-  // Auto-retry when the app comes to foreground / network recovers so the
-  // network-error block screen heals itself without any manual tap.
+  // Auto-retry when the app comes to foreground / network recovers.
   useEffect(() => {
-    if (!blocked || blockReason !== "network") return;
-    const handler = () => { if (!loading) void refresh(); };
+    if (!shouldAutoRetryOnResume) return;
+    const handler = () => {
+      if (!loading) void refresh();
+    };
     const subFocus = DeviceEventEmitter.addListener("beautonomi:app:focus", handler);
     const subRecover = DeviceEventEmitter.addListener("beautonomi:network:recover", handler);
-    return () => { subFocus.remove(); subRecover.remove(); };
-  }, [blocked, blockReason, loading, refresh]);
+    return () => {
+      subFocus.remove();
+      subRecover.remove();
+    };
+  }, [shouldAutoRetryOnResume, loading, refresh]);
 
   if (!user) return null;
   if (loading) {
-    // §Provider-audit 2026-04 (loading-polish): use the branded gate so role
-    // checks look consistent with auth / portal / profile-completion gates.
     return <GateLoadingScreen message="Checking access…" />;
   }
   if (blocked) {
     const isNetwork = blockReason === "network";
+    const isVerify = blockReason === "verify";
+    const canRetry = isNetwork || isVerify || (blockReason === "role" && role === "customer");
+
+    const title = isNetwork
+      ? "Can't reach server"
+      : isVerify
+        ? "Couldn't verify access"
+        : "Provider access only";
+
+    const description = isNetwork
+      ? "Start the backend (e.g. pnpm dev in apps/web). Set EXPO_PUBLIC_APP_URL in .env.local (e.g. http://localhost:3000 for emulator, or your machine IP for a device). Then tap Retry."
+      : isVerify
+        ? "We couldn't refresh your provider session. This often happens after the app was in the background. Tap Retry to continue."
+        : "Your account is not set up for the provider app. Please use the customer app or contact support.";
+
     return (
-      // §provider-setup-seamless-ux 2026-05: use shared ScreenContainer +
-      // EmptyState so the blocked screens match the rest of the app's chrome
-      // (safe-area handling, tablet content clamp, brand background).
       <ScreenContainer scrollable={false} edges={["top"]} reserveTabBarSpace={false}>
         <EmptyState
-          icon={isNetwork ? "cloud-offline-outline" : "lock-closed-outline"}
-          title={isNetwork ? "Can't reach server" : "Provider access only"}
-          description={
-            isNetwork
-              ? "Start the backend (e.g. pnpm dev in apps/web). Set EXPO_PUBLIC_APP_URL in .env.local (e.g. http://localhost:3000 for emulator, or your machine IP for a device). Then tap Retry."
-              : "Your account is not set up for the provider app. Please use the customer app or contact support."
-          }
-          actionLabel={isNetwork ? "Retry" : "Sign out"}
+          icon={isNetwork ? "cloud-offline-outline" : isVerify ? "refresh-outline" : "lock-closed-outline"}
+          title={title}
+          description={description}
+          actionLabel={canRetry ? "Retry" : "Sign out"}
           onAction={() => {
-            if (isNetwork) {
+            if (canRetry) {
               void refresh();
             } else {
               void handleSignOut();
             }
           }}
         />
-        {isNetwork && (
+        {canRetry && (
           <View style={{ alignItems: "center", paddingBottom: 32 }}>
             <TouchableOpacity
               onPress={() => handleSignOut()}

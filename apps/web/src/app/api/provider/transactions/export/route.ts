@@ -7,11 +7,11 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { requireAnyPermission } from "@/lib/auth/requirePermission";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { subDays, subMonths, startOfDay, startOfWeek, startOfMonth } from "date-fns";
-import { formatDateYmd, fromBusinessTime, nowInTz } from "@/lib/dates/provider-tz";
+import { formatDateYmd } from "@/lib/dates/provider-tz";
 import { filterLedgerRowsForLocation, getProviderReportContext } from "@/lib/reports/provider-report-utils";
 import {
   mapFinanceLedgerRowToProviderUi,
+  providerTransactionsPeriodStart,
   PROVIDER_LEDGER_VISIBLE_TYPES,
   type ProviderLedgerUiRow,
 } from "@/lib/provider/provider-ledger-transaction-view";
@@ -21,26 +21,6 @@ const VISIBLE_TYPES_LIST = Array.from(PROVIDER_LEDGER_VISIBLE_TYPES);
 function csvCell(value: unknown): string {
   if (value == null) return "";
   return `"${String(value).replace(/"/g, '""')}"`;
-}
-
-function periodStart(period: string, timezone: string): Date {
-  const businessNow = nowInTz(timezone);
-  switch (period) {
-    case "today":
-      return fromBusinessTime(startOfDay(businessNow), timezone);
-    case "week":
-      return fromBusinessTime(startOfWeek(businessNow, { weekStartsOn: 1 }), timezone);
-    case "month":
-      return fromBusinessTime(startOfMonth(businessNow), timezone);
-    case "3months":
-      return fromBusinessTime(subMonths(businessNow, 3), timezone);
-    case "year":
-      return fromBusinessTime(subMonths(businessNow, 12), timezone);
-    case "all":
-      return new Date(2000, 0, 1);
-    default:
-      return fromBusinessTime(subDays(businessNow, 30), timezone);
-  }
 }
 
 function toCsv(rows: ProviderLedgerUiRow[]): string {
@@ -93,9 +73,11 @@ export async function POST(request: NextRequest) {
     for (let from = 0; ; from += pageSize) {
       const { data, error } = await supabaseAdmin
         .from("finance_transactions")
-        .select("id, transaction_type, amount, net, created_at, description, booking_id, product_order_id, metadata")
+        .select(
+          "id, transaction_type, amount, net, created_at, description, booking_id, product_order_id, metadata, refund_component, currency",
+        )
         .eq("provider_id", providerId)
-        .gte("created_at", periodStart(period, reportContext.timezone).toISOString())
+        .gte("created_at", providerTransactionsPeriodStart(period, reportContext.timezone).toISOString())
         .in("transaction_type", VISIBLE_TYPES_LIST)
         .order("created_at", { ascending: false })
         .range(from, from + pageSize - 1);

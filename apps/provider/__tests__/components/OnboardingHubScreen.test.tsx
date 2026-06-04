@@ -133,6 +133,29 @@ describe("OnboardingHubScreen", () => {
     expect(mockReplace).not.toHaveBeenCalledWith("/(app)/(tabs)/dashboard");
   });
 
+  it("shows continue setup and dashboard escape when provider profile exists", () => {
+    mockUseApi.mockReturnValue({
+      data: {
+        isComplete: false,
+        completionPercentage: 40,
+        steps: [
+          { id: "profile-details", title: "Business Details", completed: true, required: true },
+          { id: "services", title: "Services", completed: false, required: true },
+        ],
+      },
+      loading: false,
+      error: null,
+      refresh: mockRefresh,
+    });
+
+    const screen = render(<OnboardingHubScreen />);
+
+    expect(screen.getByText("Continue setup")).toBeTruthy();
+    expect(screen.getByText("Pick up where you left off")).toBeTruthy();
+    expect(screen.getByText("Go to dashboard")).toBeTruthy();
+    expect(screen.queryByText("Start business setup")).toBeNull();
+  });
+
   it("routes complete providers to the dashboard", () => {
     mockUseApi.mockReturnValue({
       data: {

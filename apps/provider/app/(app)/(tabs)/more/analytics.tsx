@@ -360,7 +360,7 @@ export default function AnalyticsScreen() {
           <>
             <SectionHeader
               title="Top offerings"
-              subtitle="Catalog line totals (booking_services.price) — not ledger settlement"
+              subtitle="Ledger net by offering (scheduled in period) — matches Sales by service"
             />
             <View style={twStyle("mb-4 overflow-hidden rounded-2xl border border-gray-100 bg-white")}>
               {services.map((s, i) => (

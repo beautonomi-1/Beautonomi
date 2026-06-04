@@ -31,8 +31,8 @@ Rules:
 - `payout` rows are completed payout deductions and are subtracted by amount.
 - Pending and processing rows in `payouts` are reserved and subtracted.
 - `provider_earnings` newer than the configured payout hold period are deferred; refunds are never deferred.
-- Direct walk-in bookings with completed non-Paystack payments are excluded from platform-held payout balance because the provider already collected those funds.
-- Walk-in Paystack payments remain included because the platform/gateway holds the money.
+- Exclusion is by **settling tender, not `booking_source`**. A booking is excluded from platform-held payout balance when every completed `booking_payments` row is a provider-collected tender (`cash`, `manual`, `yoco`, `bank_transfer`, `other`) — the provider already holds that money. This applies regardless of whether the booking is `walk_in`, `provider`, or `online`.
+- A booking is included when it has at least one platform-held tender (`paystack`, `stripe`, `flutterwave`, `wallet`, `gift_card`), because the platform/gateway holds the money. Walk-in Paystack and wallet/gift-card bookings therefore remain payoutable.
 
 Excluded rows are still important for audit, liability, or revenue reporting, but are not directly payoutable by themselves:
 
@@ -44,6 +44,8 @@ Excluded rows are still important for audit, liability, or revenue reporting, bu
 - `gift_card_sale`
 - `gift_card_liability_reduction`
 - `promotion_discount`
+- `membership_discount`
+- `loyalty_discount`
 - `loyalty_redemption`
 - `membership_sale`
 - `provider_subscription_payment`
@@ -69,6 +71,8 @@ Product orders must use one canonical payment recording helper for every collect
 
 Every completed booking refund must create exactly one clawback path. The preferred booking path is `booking_refunds` with the finance ledger trigger. Product order refunds use product-order-specific ledger reversal logic.
 
+The booking refund trigger reverses **every recognised component proportionally** (refund amount ÷ `total_amount`): `provider_earnings`, `tip`, `travel_fee`, `platform_fee`, `tax`, `payment` commission, `cancellation_fee`, `walk_in_additional_charge`, and `additional_charge_payment` commission are penny-balanced so the cash-affecting reversal rows sum exactly to `-refund_amount`. `promotion_discount`, `membership_discount`/`loyalty_discount`, `wallet_payment`, `gift_card_payment`, and `gift_card_liability_reduction` are reversed as parallel rows (not part of the cash penny-balance). Idempotency is via the unique `(source_refund_id, refund_component)` index.
+
 Webhook retries, customer return-page verification, admin retries, and provider double taps must be idempotent at the database or stable-reference level.
 
 ## Reporting Labels
@@ -81,5 +85,16 @@ Reports must distinguish:
 - liability movement,
 - provider earnings,
 - platform revenue and fees.
+
+### "Recognized revenue" vs "period earnings" vs "available to withdraw"
+
+These three figures are deliberately different and must not be conflated in UI copy:
+
+- **Recognized revenue** (provider dashboard, `get-provider-dashboard.ts`): all earned revenue in the period — `provider_earnings` + `tip` + `travel_fee` + `cancellation_fee` + `walk_in_additional_charge`. This includes provider-collected in-person add-ons because they are earned and inflate `bookings.total_amount`, even though the platform never held that cash.
+- **Period earnings** (Finance API, `/api/provider/finance`): `total_earnings` is **`provider_earnings` only**. Walk-in additional charges are surfaced separately as `walk_in_additional_charges_total` (audit/reporting), not folded into `total_earnings`.
+- **Sales history `provider_net`** (`provider-sales-history.ts`): reconciles against `gross_total` (= `bookings.total_amount`) per row and therefore **does** include `walk_in_additional_charge` so gross and net tie out.
+- **Available to withdraw** (`getAvailablePayoutBalance`): excludes every provider-collected tender (see Provider Payoutable Balance) and so excludes `walk_in_additional_charge` and any cash/Yoco/manual booking. This is always ≤ recognized revenue.
+
+UI surfaces must label these distinctly (e.g. "Revenue earned" vs "Available to withdraw") so a provider never reads recognized revenue as withdrawable cash.
 
 `providers.total_earnings` is denormalized historical payout information and must not be presented as payoutable balance.

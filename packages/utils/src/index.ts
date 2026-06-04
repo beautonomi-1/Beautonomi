@@ -1,7 +1,14 @@
-export type { AuthSecuritySnapshot } from "./auth/sensitive-action-ui";
+export type {
+  AuthSecuritySnapshot,
+  ReauthOtpChannel,
+  ReauthOtpDestination,
+} from "./auth/sensitive-action-ui";
 export {
   canVerifySensitiveActionWithCode,
+  describeReauthOtpDestination,
   isAuthSecurityLoaded,
+  maskEmailForDisplay,
+  maskPhoneForDisplay,
   sensitiveActionSubmitReady,
   userHasPassword,
 } from "./auth/sensitive-action-ui";
@@ -213,3 +220,14 @@ export {
   isCancelledMembershipBadgeStale,
   shouldShowCancelledMembershipBadge,
 } from "./membership/cancelledMembershipBadge";
+export {
+  catalogHasAnyAtHomePriceAdjustment,
+  computeAtHomeLinePrice,
+  hasAtHomePriceAdjustment,
+  resolveAtHomeAdjustmentForOffering,
+  houseCallAdjustmentForSnapshotLine,
+  lineHasHouseCallAdjustment,
+  sumHouseCallAdjustmentsFromSnapshot,
+  type AtHomeLinePricing,
+  type AtHomeSnapshotLine,
+} from "./booking/at-home-pricing";

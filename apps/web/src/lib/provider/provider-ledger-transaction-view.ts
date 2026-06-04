@@ -8,6 +8,38 @@
  * remittance — not provider take-home). Reports that need VAT liability should prefer `amount`.
  */
 
+import { isProviderEarningsRefundComponent } from "@/lib/ledger/refund-components";
+import { subDays, subMonths, startOfDay, startOfWeek, startOfMonth } from "date-fns";
+import { fromBusinessTime, nowInTz } from "@/lib/dates/provider-tz";
+
+/** Default look-back window (days) for the provider transactions feed when period is unset/unknown. */
+export const PROVIDER_TRANSACTIONS_DEFAULT_DAYS = 30;
+
+/**
+ * Resolve the inclusive start date for a provider transactions/finance feed period in the
+ * provider's business timezone. Shared by GET /api/provider/transactions and its CSV export
+ * so their default windows never drift apart.
+ */
+export function providerTransactionsPeriodStart(period: string, timezone: string): Date {
+  const businessNow = nowInTz(timezone);
+  switch (period) {
+    case "today":
+      return fromBusinessTime(startOfDay(businessNow), timezone);
+    case "week":
+      return fromBusinessTime(startOfWeek(businessNow, { weekStartsOn: 1 }), timezone);
+    case "month":
+      return fromBusinessTime(startOfMonth(businessNow), timezone);
+    case "3months":
+      return fromBusinessTime(subMonths(businessNow, 3), timezone);
+    case "year":
+      return fromBusinessTime(subMonths(businessNow, 12), timezone);
+    case "all":
+      return new Date(2000, 0, 1);
+    default:
+      return fromBusinessTime(subDays(businessNow, PROVIDER_TRANSACTIONS_DEFAULT_DAYS), timezone);
+  }
+}
+
 /** Gross customer-charge rows — not provider take-home; hide from provider activity feed. */
 export const PROVIDER_LEDGER_EXCLUDED_TYPES = new Set<string>(["payment"]);
 
@@ -91,8 +123,11 @@ export interface ProviderLedgerUiRow {
   payment_method: string | null;
   reference: string | null;
   booking_id: string | null;
+  product_order_id: string | null;
   notes: string | null;
   transaction_type: string;
+  /** ISO currency code for this ledger row (provider may have multi-currency ledger). */
+  currency: string | null;
 }
 
 export function mapFinanceLedgerRowToProviderUi(row: {
@@ -103,11 +138,23 @@ export function mapFinanceLedgerRowToProviderUi(row: {
   created_at: string;
   description?: string | null;
   booking_id?: string | null;
+  product_order_id?: string | null;
   metadata?: unknown;
+  refund_component?: string | null;
+  currency?: string | null;
 }): ProviderLedgerUiRow | null {
   const tt = row.transaction_type;
   if (PROVIDER_LEDGER_EXCLUDED_TYPES.has(tt)) return null;
   if (!PROVIDER_LEDGER_VISIBLE_TYPES.has(tt)) return null;
+  // A completed refund posts one finance row per economic component (migration 654).
+  // The provider feed should reflect only the provider's own refund impact — the
+  // platform-fee/tax/commission legs and the parallel discount/tender/liability
+  // reversals are not provider cash events (and their reversal sign would render
+  // incorrectly here). Drop them so the feed matches the provider-facing refund
+  // aggregates (lib/ledger/refund-components.ts). Legacy/NULL components still show.
+  if (tt === "refund" && !isProviderEarningsRefundComponent(row.refund_component)) {
+    return null;
+  }
 
   const net = Number(row.net ?? row.amount ?? 0);
   const gross = Number(row.amount ?? 0);
@@ -120,8 +167,10 @@ export function mapFinanceLedgerRowToProviderUi(row: {
     payment_method: null as string | null,
     reference: null as string | null,
     booking_id: row.booking_id ?? null,
+    product_order_id: row.product_order_id ?? null,
     notes: typeof row.description === "string" ? row.description : null,
     transaction_type: tt,
+    currency: row.currency ?? null,
   };
 
   if (tt === "provider_earnings") {

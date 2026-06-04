@@ -2,34 +2,23 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, successResponse, handleApiError, getProviderIdForUser } from "@/lib/supabase/api-helpers";
-import { recalculateProviderGamification } from "@/lib/services/provider-gamification";
 import { sumProviderGamificationLedgerNet } from "@/lib/provider/sum-gamification-ledger-net";
-
-const PROVIDER_POINTS_SELECT = `
-        id,
-        total_points,
-        lifetime_points,
-        current_tier_points,
-        badge_earned_at,
-        badge_expires_at,
-        last_calculated_at,
-        provider_badges!provider_points_current_badge_id_fkey (
-          id,
-          name,
-          slug,
-          description,
-          icon_url,
-          tier,
-          color,
-          requirements,
-          benefits
-        )
-      `;
+import {
+  PROVIDER_POINTS_SELECT,
+  fetchProviderGamificationHealSignals,
+  syncProviderGamification,
+} from "@/lib/provider/ensure-provider-gamification-synced";
+import {
+  buildBadgeLadder,
+  buildProgressToNextBadge,
+  resolveJoinedBadge,
+} from "@/lib/provider/build-gamification-view";
 
 /**
  * GET /api/provider/gamification
- * 
- * Get provider gamification data (points, badge, milestones, transactions)
+ *
+ * Get provider gamification data (points, badge, milestones, transactions).
+ * Auto-heals empty ledgers / stale booking counts (post–migration 507 prod fix).
  */
 export async function GET(request: NextRequest) {
   try {
@@ -45,29 +34,13 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Fetch gamification data
-    const { data: pointsData, error: pointsError } = await supabase
+    const supabaseAdmin = getSupabaseAdmin();
+
+    const healSignalsInitial = await fetchProviderGamificationHealSignals(supabaseAdmin, providerId);
+
+    const { data: pointsDataInitial, error: pointsError } = await supabase
       .from('provider_points')
-      .select(`
-        id,
-        total_points,
-        lifetime_points,
-        current_tier_points,
-        badge_earned_at,
-        badge_expires_at,
-        last_calculated_at,
-        provider_badges!provider_points_current_badge_id_fkey (
-          id,
-          name,
-          slug,
-          description,
-          icon_url,
-          tier,
-          color,
-          requirements,
-          benefits
-        )
-      `)
+      .select(PROVIDER_POINTS_SELECT)
       .eq('provider_id', providerId)
       .maybeSingle();
 
@@ -75,7 +48,21 @@ export async function GET(request: NextRequest) {
       throw pointsError;
     }
 
-    // Fetch milestones
+    await syncProviderGamification(supabaseAdmin, providerId, {
+      ...healSignalsInitial,
+      hasProviderPointsRow: !!pointsDataInitial,
+    });
+
+    const { data: effectivePointsData, error: pointsRefetchError } = await supabase
+      .from('provider_points')
+      .select(PROVIDER_POINTS_SELECT)
+      .eq('provider_id', providerId)
+      .maybeSingle();
+
+    if (pointsRefetchError) {
+      throw pointsRefetchError;
+    }
+
     const { data: milestones, error: milestonesError } = await supabase
       .from('provider_milestones')
       .select('id, milestone_type, achieved_at, metadata')
@@ -86,7 +73,6 @@ export async function GET(request: NextRequest) {
       throw milestonesError;
     }
 
-    // Fetch recent transactions
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get('limit') || '20');
     const offset = parseInt(searchParams.get('offset') || '0');
@@ -102,7 +88,6 @@ export async function GET(request: NextRequest) {
       throw transactionsError;
     }
 
-    // Fetch all available badges for progress tracking
     const { data: allBadges, error: badgesError } = await supabase
       .from('provider_badges')
       .select('*')
@@ -112,9 +97,6 @@ export async function GET(request: NextRequest) {
     if (badgesError) {
       throw badgesError;
     }
-
-    // Stats shown here must match what badge eligibility uses (`providers` + completed bookings).
-    const supabaseAdmin = getSupabaseAdmin();
 
     const { count: completedBookingsCount } = await supabaseAdmin
       .from("bookings")
@@ -132,92 +114,17 @@ export async function GET(request: NextRequest) {
 
     const totalEarnings = await sumProviderGamificationLedgerNet(supabaseAdmin, providerId);
 
-    const storedBookings = Number(provRow?.total_bookings ?? 0);
     const reviewCount = Number(provRow?.review_count ?? 0);
     const ratingAverage = Number(provRow?.rating_average ?? 0);
 
-    let effectivePointsData = pointsData;
-
-    if (provRow && storedBookings !== completedBookings) {
-      const { error: syncBookingsError } = await supabaseAdmin
-        .from("providers")
-        .update({ total_bookings: completedBookings })
-        .eq("id", providerId);
-
-      if (!syncBookingsError) {
-        await recalculateProviderGamification(providerId);
-        const { data: refreshedPoints, error: refetchError } = await supabase
-          .from("provider_points")
-          .select(PROVIDER_POINTS_SELECT)
-          .eq("provider_id", providerId)
-          .maybeSingle();
-        if (!refetchError) {
-          effectivePointsData = refreshedPoints;
-        }
-      }
-    }
-
-    // Calculate progress to next badge
-    let progressToNextBadge = null;
-
-    const badge = Array.isArray(effectivePointsData?.provider_badges)
-      ? effectivePointsData?.provider_badges?.[0]
-      : effectivePointsData?.provider_badges;
-    // Progress must work when provider_points row is missing (treat as 0 points until first sync).
-    if (allBadges) {
-      const currentTier = badge?.tier || 0;
-      const nextBadgeCandidate = allBadges.find(b => b.tier > currentTier);
-      
-      if (nextBadgeCandidate) {
-        const requiredPoints = (nextBadgeCandidate.requirements as any)?.points || 0;
-        const currentPoints = effectivePointsData?.total_points || 0;
-        const progress = requiredPoints > 0 
-          ? Math.min(100, Math.round((currentPoints / requiredPoints) * 100))
-          : 0;
-        progressToNextBadge = {
-          badge: nextBadgeCandidate,
-          current_points: currentPoints,
-          required_points: requiredPoints,
-          points_needed: Math.max(0, requiredPoints - currentPoints),
-          progress_percentage: progress,
-        };
-      }
-    }
-
-    const currentTier = badge?.tier || 0;
-    const currentBadgeId = badge?.id || null;
-    const nextBadgeId = progressToNextBadge?.badge?.id || null;
-
-    const badgeLadder = (allBadges || []).map((row) => {
-      const requirements = row.requirements as { points?: number } | null;
-      let status: "current" | "earned" | "next" | "locked";
-      if (currentBadgeId && row.id === currentBadgeId) {
-        status = "current";
-      } else if (row.tier < currentTier) {
-        status = "earned";
-      } else if (nextBadgeId && row.id === nextBadgeId) {
-        status = "next";
-      } else {
-        status = "locked";
-      }
-      return {
-        id: row.id,
-        name: row.name,
-        slug: row.slug,
-        description: row.description,
-        tier: row.tier,
-        color: row.color,
-        icon_url: row.icon_url,
-        requirements: row.requirements,
-        benefits: row.benefits,
-        status,
-        points_required: requirements?.points ?? 0,
-      };
-    });
+    const badge = resolveJoinedBadge(effectivePointsData?.provider_badges);
+    const currentPoints = effectivePointsData?.total_points ?? 0;
+    const progressToNextBadge = buildProgressToNextBadge(allBadges, badge, currentPoints);
+    const badgeLadder = buildBadgeLadder(allBadges ?? [], badge, progressToNextBadge);
 
     return successResponse({
       points: {
-        total: effectivePointsData?.total_points || 0,
+        total: currentPoints,
         lifetime: effectivePointsData?.lifetime_points || 0,
         current_tier: effectivePointsData?.current_tier_points || 0,
         last_calculated: effectivePointsData?.last_calculated_at,
@@ -253,7 +160,7 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/provider/gamification
- * 
+ *
  * Manually trigger recalculation of provider points and badges
  */
 export async function POST(request: NextRequest) {
@@ -271,47 +178,32 @@ export async function POST(request: NextRequest) {
     }
 
     const supabaseAdmin = getSupabaseAdmin();
-    
-    // Check if provider has any transactions, if not, backfill them
-    const { count: transactionCount } = await supabaseAdmin
+
+    const { count: transactionCountBefore } = await supabaseAdmin
       .from('provider_point_transactions')
-      .select('*', { count: 'exact', head: true })
+      .select('id', { count: 'exact', head: true })
       .eq('provider_id', providerId);
-    
-    // If no transactions exist, backfill historical data
-    if (transactionCount === 0) {
-      try {
-        await supabaseAdmin.rpc('backfill_provider_point_transactions', {
-          p_provider_id: providerId,
-        });
-      } catch (backfillError) {
-        console.warn('Failed to backfill transactions:', backfillError);
-        // Continue with recalculation even if backfill fails
-      }
-    }
 
-    // Sync completed booking count only; review_count and rating_average are maintained by DB triggers.
-    const { count: completedBookings } = await supabaseAdmin
-      .from("bookings")
-      .select("id", { count: "exact", head: true })
+    const healSignals = await fetchProviderGamificationHealSignals(supabaseAdmin, providerId, {
+      hasProviderPointsRow: true,
+    });
+
+    const syncResult = await syncProviderGamification(supabaseAdmin, providerId, healSignals, {
+      force: true,
+    });
+
+    const { data: pointsAfter } = await supabaseAdmin
+      .from("provider_points")
+      .select("total_points, current_badge_id")
       .eq("provider_id", providerId)
-      .eq("status", "completed");
-
-    await supabaseAdmin
-      .from("providers")
-      .update({
-        total_bookings: completedBookings ?? 0,
-      })
-      .eq("id", providerId);
-
-    // Recalculate gamification
-    const result = await recalculateProviderGamification(providerId);
+      .maybeSingle();
 
     return successResponse({
       message: 'Gamification recalculated successfully',
-      points: result.points,
-      badge_id: result.badge_id,
-      transactions_backfilled: transactionCount === 0,
+      points: pointsAfter?.total_points ?? 0,
+      badge_id: pointsAfter?.current_badge_id ?? null,
+      transactions_backfilled:
+        syncResult.transactionsBackfilled || (transactionCountBefore ?? 0) === 0,
     });
   } catch (error) {
     return handleApiError(error, 'Failed to recalculate gamification');

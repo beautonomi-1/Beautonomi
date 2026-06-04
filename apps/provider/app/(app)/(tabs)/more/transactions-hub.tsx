@@ -11,7 +11,9 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { FilterChipGroup } from "@/components/ui/FilterChip";
 import { Colors } from "@/constants/colors";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { formatCurrency } from "@/lib/format";
 import { hubTransactionTypeTitle, ledgerRowDisplaySign } from "@/lib/providerLedgerDisplay";
+import { HUB_RETURN_SUFFIX, useProviderStackBack } from "@/lib/provider-tab-navigation";
 
 const FINANCE_RANGE_OPTIONS: { label: string; value: "week" | "month" | "year" | "all" }[] = [
   { label: "Week", value: "week" },
@@ -47,9 +49,6 @@ type ShortcutRow = {
   color: string;
   bg: string;
 };
-
-/** Query flag so destination screens can show an explicit back target to this hub (tab switches do not always preserve stack history). */
-const HUB_RETURN_SUFFIX = "?from=transactions-hub" as const;
 
 const SHORTCUTS: ShortcutRow[] = [
   {
@@ -102,6 +101,7 @@ type Transaction = {
   date: string;
   created_at?: string;
   description?: string | null;
+  currency?: string | null;
 };
 
 type FinanceResponse = {
@@ -118,6 +118,7 @@ function formatDateTimeSafe(value: unknown): string {
 
 export default function TransactionsHubScreen() {
   const router = useRouter();
+  const handleBack = useProviderStackBack();
   const tenantCurrency = getTenantDefaultCurrency();
   const { provider } = useProvider();
   const [refreshing, setRefreshing] = useState(false);
@@ -142,7 +143,7 @@ export default function TransactionsHubScreen() {
   if (loading && !data) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Transactions & history" onBack={() => router.back()} />
+        <ScreenHeader title="Transactions & history" showBack onBack={handleBack} />
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 48 }}>
           <LoadingState />
         </View>
@@ -153,7 +154,7 @@ export default function TransactionsHubScreen() {
   if (error && !data) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Transactions & history" onBack={() => router.back()} />
+        <ScreenHeader title="Transactions & history" showBack onBack={handleBack} />
         <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: 16 }}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
@@ -166,7 +167,8 @@ export default function TransactionsHubScreen() {
       <ScreenHeader
         title="Transactions & history"
         subtitle="Payments, fees & sales"
-        onBack={() => router.back()}
+        showBack
+        onBack={handleBack}
       />
       <ScrollView
         style={{ flex: 1 }}
@@ -178,7 +180,7 @@ export default function TransactionsHubScreen() {
           {SHORTCUTS.map((s) => (
             <TouchableOpacity
               key={s.route}
-              onPress={() => router.push(s.route as never)}
+              onPress={() => router.navigate(s.route as never)}
               style={{ flexDirection: "row", alignItems: "center", borderRadius: 14, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 14 }}
               accessibilityRole="button"
               accessibilityLabel={s.label}
@@ -256,7 +258,7 @@ export default function TransactionsHubScreen() {
                   </View>
                   <Text style={{ fontSize: 16, fontWeight: "600", color: isDebit ? "#dc2626" : "#15803d" }}>
                     {isDebit ? "−" : "+"}
-                    {tenantCurrency} {Math.abs(net).toLocaleString()}
+                    {formatCurrency(Math.abs(net), t.currency || tenantCurrency)}
                   </Text>
                 </View>
               );

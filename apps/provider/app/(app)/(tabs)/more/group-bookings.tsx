@@ -21,6 +21,7 @@ import * as Location from "expo-location";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { useProviderStackBack } from "@/lib/provider-tab-navigation";
 import { addDays, format as formatDateFns, isSameDay, parseISO, startOfDay } from "date-fns";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -405,10 +406,12 @@ function getParticipantLine(
 export default function GroupBookingsScreen() {
   useResponsive();
   const router = useRouter();
+  const handleBack = useProviderStackBack();
   const { width: windowWidth } = useWindowDimensions();
   const params = useLocalSearchParams<{
     open_group_id?: string;
     openCreate?: string;
+    from?: string;
     default_date?: string;
     default_time?: string;
     default_staff_id?: string;
@@ -2510,6 +2513,7 @@ export default function GroupBookingsScreen() {
       <ScreenHeader
         title="Group Bookings"
         showBack
+        onBack={handleBack}
         subtitle={`${stats.total} groups · ${stats.upcoming} upcoming`}
         rightAction={
           <TouchableOpacity

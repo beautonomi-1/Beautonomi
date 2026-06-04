@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { isProviderEarningsRefundComponent } from "@/lib/ledger/refund-components";
 
 const EXPENSE_TYPES = ["provider_subscription_payment", "provider_ads_payment", "provider_expense"] as const;
 
@@ -65,7 +66,19 @@ export async function sumRefundsLikeFinance(
   range?: LedgerRange
 ): Promise<number> {
   const [refundRows, negEarnings] = await Promise.all([
-    fetchAllNetRows(db, providerId, ["refund"], range),
+    (async () => {
+      let q = db
+        .from("finance_transactions")
+        .select("net, amount, refund_component")
+        .eq("provider_id", providerId)
+        .eq("transaction_type", "refund");
+      if (range) {
+        q = q.gte("created_at", range.from.toISOString()).lte("created_at", range.to.toISOString());
+      }
+      const { data, error } = await q;
+      if (error) throw error;
+      return (data ?? []) as { net: number | null; amount: number | null; refund_component: string | null }[];
+    })(),
     (async () => {
       let q = db
         .from("finance_transactions")
@@ -81,7 +94,12 @@ export async function sumRefundsLikeFinance(
       return (data ?? []) as { net: number | null }[];
     })(),
   ]);
-  const fromRefunds = refundRows.reduce((s, r) => s + Math.abs(num(r.net ?? r.amount)), 0);
+  // Only provider-affecting refund components reduce provider earnings; platform
+  // fee/commission, tax, discount contras and wallet/gift tender legs are excluded.
+  const fromRefunds = refundRows.reduce(
+    (s, r) => (isProviderEarningsRefundComponent(r.refund_component) ? s + Math.abs(num(r.net ?? r.amount)) : s),
+    0,
+  );
   const fromNeg = negEarnings.reduce((s, r) => s + Math.abs(num(r.net)), 0);
   return fromRefunds + fromNeg;
 }

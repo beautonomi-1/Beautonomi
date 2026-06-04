@@ -476,7 +476,13 @@ export async function POST(request: NextRequest) {
             return paymentResult;
           }
 
-          const { paymentUrl, paymentReference } = paymentResult;
+          const {
+            paymentUrl,
+            paymentReference,
+            walletAmountApplied,
+            giftCardAmountApplied,
+            paystackAmount,
+          } = paymentResult;
           bookingIdPendingRelease = "";
 
           stage = "post_effects";
@@ -526,6 +532,9 @@ export async function POST(request: NextRequest) {
             booking_number: booking.booking_number,
             payment_url: paymentUrl,
             payment_reference: paymentReference ?? null,
+            wallet_amount_applied: walletAmountApplied ?? 0,
+            gift_card_amount_applied: giftCardAmountApplied ?? 0,
+            paystack_amount: paystackAmount ?? 0,
             ...(recurring_subscription ? { recurring_subscription } : {}),
             // Display hints for confirmation screen — respect admin settings
             display: {

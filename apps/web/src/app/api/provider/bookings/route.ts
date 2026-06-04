@@ -23,6 +23,7 @@ import { startOfDay, startOfMonth } from "date-fns";
 import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
 import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
 
+import { dashboardBookingLocationOrFilter } from "@/lib/server/provider/dashboard-booking-location-filter";
 import { mapStatusToProvider } from "@/lib/utils/booking-status";
 import { checkActiveHoldOverlap, canOverrideDoubleBooking } from "@/lib/bookings/conflict-check";
 import { evaluateProviderSlotAgainstGrid } from "@/lib/provider-booking/compute-provider-slot-grid";
@@ -65,6 +66,7 @@ function mapStatusToDatabase(frontendStatus: string): string | null {
     cancelled: "cancelled",
     no_show: "no_show",
     pending: "pending",
+    pending_payment: "pending_payment",
     confirmed: "confirmed",
     in_progress: "in_progress",
     waiting: "waiting",
@@ -265,13 +267,18 @@ async function handleGetProviderBookings(request: NextRequest) {
       query = query.lte("scheduled_at", toIso);
     }
 
+    const fromNow = searchParams.get("from_now") === "1";
+    if (fromNow) {
+      query = query.gte("scheduled_at", new Date().toISOString());
+    }
+
     // Location: salon-scoped bookings use location_id; at-home bookings use location_type and have null location_id.
     const locationId = searchParams.get("location_id");
     const locationTypeFilter = searchParams.get("location_type");
     if (locationTypeFilter === "at_home") {
       query = query.eq("location_type", "at_home");
     } else if (locationId) {
-      query = query.eq("location_id", locationId);
+      query = query.or(dashboardBookingLocationOrFilter(locationId));
     }
 
     // §Provider-audit 2026-04 (round 6): server-side search by
@@ -590,7 +597,10 @@ async function handleGetProviderBookings(request: NextRequest) {
       const endYmd = endDate.slice(0, 10);
       groupQuery = groupQuery.lte("scheduled_at", dateRangeBoundsUtc(endYmd, endYmd, tz).toIso);
     }
-    if (locationId) groupQuery = groupQuery.eq("location_id", locationId);
+    if (fromNow) {
+      groupQuery = groupQuery.gte("scheduled_at", new Date().toISOString());
+    }
+    if (locationId) groupQuery = groupQuery.or(dashboardBookingLocationOrFilter(locationId));
     if (searchRaw && searchRaw.trim().length > 0) {
       const safe = searchRaw.trim().replace(/[%_,()]/g, "");
       groupQuery = groupQuery.or(`ref_number.ilike.%${safe}%,title.ilike.%${safe}%`);

@@ -34,6 +34,10 @@ import { invalidateApiAccessTokenCache } from "@/lib/api-client";
 import { clearPortalCache } from "@/lib/portal-cache";
 import { clearBiometricPreference } from "@/hooks/useBiometricAuth";
 import {
+  clearBiometricPromptPending,
+  clearBiometricSetupPromptDismissed,
+} from "@/lib/biometric-setup-prompt";
+import {
   authFlowBreadcrumb,
   clearSentryUser,
   isSentryEnabled,
@@ -555,7 +559,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    void Promise.allSettled([clearCustomerUserCaches(signedOutUserId), clearBiometricPreference()]);
+    clearBiometricPromptPending();
+    void Promise.allSettled([
+      clearCustomerUserCaches(signedOutUserId),
+      clearBiometricPreference(),
+      clearBiometricSetupPromptDismissed(signedOutUserId),
+    ]);
   }, [updateSession]);
 
   return (

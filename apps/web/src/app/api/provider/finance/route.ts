@@ -9,6 +9,7 @@ import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
 import { PROVIDER_LEDGER_VISIBLE_TYPES } from "@/lib/provider/provider-ledger-transaction-view";
+import { isProviderEarningsRefundComponent } from "@/lib/ledger/refund-components";
 import {
   getProviderPrimaryReportLocationId,
   getProviderReportContext,
@@ -17,20 +18,8 @@ import {
 import { subDays, subMonths, subYears, startOfMonth, endOfMonth } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
 import { dateRangeBoundsUtc, formatDateYmd } from "@/lib/dates/provider-tz";
+import { fetchAllLedgerPages } from "@/lib/reports/fetch-all-ledger-pages";
 
-const LEDGER_PAGE_SIZE = 1000;
-
-async function fetchAllLedgerPages(query: any): Promise<any[]> {
-  const rows: any[] = [];
-  for (let from = 0; ; from += LEDGER_PAGE_SIZE) {
-    const { data, error } = await query.range(from, from + LEDGER_PAGE_SIZE - 1);
-    if (error) throw error;
-    const page = data || [];
-    rows.push(...page);
-    if (page.length < LEDGER_PAGE_SIZE) break;
-  }
-  return rows;
-}
 
 /**
  * GET /api/provider/finance
@@ -160,7 +149,7 @@ export async function GET(request: NextRequest) {
     const financeQuery = db
       .from("finance_transactions")
       .select(
-        "id, transaction_type, amount, net, fees, commission, created_at, description, booking_id, product_order_id, currency",
+        "id, transaction_type, amount, net, fees, commission, created_at, description, booking_id, product_order_id, currency, refund_component",
       )
       .eq("provider_id", providerId)
       .gte("created_at", startIso)
@@ -355,9 +344,14 @@ export async function GET(request: NextRequest) {
         .reduce((s: number, r: any) => s + Number(r.amount || 0), 0);
     const travelFeesTotal = sumTravelFeeAmount();
     const travelFeesThisPeriod = sumTravelFeeAmount({ start: startDate, end: now });
+    // Refund rows are split by component; only provider-affecting components reduce
+    // the provider's earnings. Platform fee/commission, tax, discount contras and
+    // wallet/gift tender legs are excluded (they were never the provider's money).
     const refundsTotal = rows.reduce((s: number, r: any) => {
       if (r.transaction_type === "refund") {
-        return s + Math.abs(Number(r.net ?? r.amount ?? 0));
+        return isProviderEarningsRefundComponent(r.refund_component)
+          ? s + Math.abs(Number(r.net ?? r.amount ?? 0))
+          : s;
       }
       if (r.transaction_type === "provider_earnings" && Number(r.net ?? 0) < 0) {
         return s + Math.abs(Number(r.net ?? 0));
@@ -371,7 +365,9 @@ export async function GET(request: NextRequest) {
       })
       .reduce((s: number, r: any) => {
         if (r.transaction_type === "refund") {
-          return s + Math.abs(Number(r.net ?? r.amount ?? 0));
+          return isProviderEarningsRefundComponent(r.refund_component)
+            ? s + Math.abs(Number(r.net ?? r.amount ?? 0))
+            : s;
         }
         if (r.transaction_type === "provider_earnings" && Number(r.net ?? 0) < 0) {
           return s + Math.abs(Number(r.net ?? 0));
@@ -454,8 +450,21 @@ export async function GET(request: NextRequest) {
     const rowsForTransactionList =
       locationId && transactionListAllLocations ? enrichedBeforeLocationFilter : rows;
 
+    // The provider finance ledger feed keeps a rich per-row shape (fees/commission/net/date)
+    // because the web finance page renders those columns. Sign/visible-type/refund-component
+    // semantics are kept aligned with the shared mapper (PROVIDER_LEDGER_VISIBLE_TYPES +
+    // isProviderEarningsRefundComponent + ledgerRowDisplaySign) so totals reconcile with
+    // GET /api/provider/transactions.
     const transactions = rowsForTransactionList
       .filter((r: any) => PROVIDER_LEDGER_VISIBLE_TYPES.has(r.transaction_type))
+      // A refund posts one row per component (migration 654). Show only the provider's
+      // own refund legs in the feed; the platform-fee/tax/commission legs and parallel
+      // discount/tender/liability reversals are not provider cash events and would render
+      // with the wrong sign. This matches refundsTotal and the shared mapper.
+      .filter(
+        (r: any) =>
+          r.transaction_type !== "refund" || isProviderEarningsRefundComponent(r.refund_component),
+      )
       .slice(0, 50)
       .map((r: any) => ({
         id: r.id,

@@ -26,6 +26,7 @@ import {
 } from "@/lib/reportDateRanges";
 import { appendReportLocation } from "@/lib/reportLocationQuery";
 import { ReportResponsiveStatRow } from "@/components/reports/ReportResponsiveStatRow";
+import { ReportBasisFootnote } from "@/components/reports/ReportBasisFootnote";
 
 const DATE_RANGES: { label: string; value: ReportDateRangeKey }[] = [
   { label: "Today", value: "today" },
@@ -176,6 +177,13 @@ export default function RevenueReport() {
           ))}
         </ScrollView>
         <Text style={twStyle("text-xs text-gray-500")}>{rangeCaption}</Text>
+        {data ? (
+          <ReportBasisFootnote
+            basisNote={data.time_basis_note}
+            reportBasis={data.reportBasis ?? data.basis?.ledger_period}
+            compact
+          />
+        ) : null}
       </View>
 
       {timedOut && !data && (

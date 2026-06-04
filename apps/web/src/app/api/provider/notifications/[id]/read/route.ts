@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, successResponse, handleApiError, notFoundResponse } from "@/lib/supabase/api-helpers";
 import { invalidateProviderNotificationsListCache } from "@/lib/notifications/provider-notifications-list-cache";
+import { syncPushBadgeCountAllApps } from "@/lib/notifications/sync-push-badge-count";
 
 /**
  * POST /api/provider/notifications/[id]/read
@@ -41,6 +42,7 @@ export async function POST(
     }
 
     invalidateProviderNotificationsListCache(user.id);
+    void syncPushBadgeCountAllApps(user.id);
 
     return successResponse({ message: "Notification marked as read" });
   } catch (error) {

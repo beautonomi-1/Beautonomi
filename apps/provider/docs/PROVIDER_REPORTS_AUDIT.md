@@ -1,5 +1,9 @@
 # Provider reports audit & hardening (A–J)
 
+## Semantics reference
+
+Per-endpoint metric, date axis, and ledger vs booked gross rules: [docs/PROVIDER_REPORTS_SEMANTICS.md](../../../docs/PROVIDER_REPORTS_SEMANTICS.md).
+
 ## A. Executive summary
 
 - **Correctness:** Report APIs that bucketed by `toISOString().split("T")[0]` (UTC) now use **`reportDateKey(..., providerTimezone)`** for booking summary daily counts, cancellations daily breakdown, and refund daily breakdown so charts align with provider civil dates and with `revenueByDate` keys from `getProviderRevenue`.
@@ -128,3 +132,73 @@
 - [ ] **End of day** for one calendar day: booking payments + walk-in products + tips/cancellation fees vs POS expectations.
 - [ ] **Payout earnings** report: confirm internal stakeholders accept **ledger** definition vs finance **bank payout** export.
 - [ ] Dashboard links: **Gift cards → sales**, **Packages → sales**, **Bookings → summary**, **Month card → business overview**.
+
+## M. Single source of truth: provider revenue semantics (2026-06)
+
+Previously the dashboard, business overview, payment summary and the legacy payments
+route each computed "revenue" / "net" differently, so the same period showed different
+numbers. They now all consume **one** canonical module:
+[`apps/web/src/lib/reports/provider-revenue-semantics.ts`](../../web/src/lib/reports/provider-revenue-semantics.ts).
+
+### Ledger posting invariants (verified against the writers)
+
+| `transaction_type` | Provider take-home column | Relationship | In recognized revenue? |
+|--------------------|---------------------------|--------------|------------------------|
+| `provider_earnings` | `net` (== `amount`) | Post-commission service take. **Excludes** tip/travel/cancellation (separate rows). Also carries additional-charge take + product/membership earnings. Negative rows = legacy refund reversals. | **Yes** |
+| `tip` | `net` (== `amount`) | Standalone pass-through owed to provider. | **Yes** |
+| `travel_fee` | `net` (== `amount`) | Standalone; **not** embedded in `provider_earnings` (the old "net=0 / included in earnings" comment was stale). | **Yes** |
+| `cancellation_fee` | `net` (== `amount`) | Provider-retained late-cancel income. | **Yes** |
+| `walk_in_additional_charge` | `net` (== `amount`) | Provider-collected in-person add-on (cash-in-hand). | **Yes** |
+| `additional_charge_payment` | `net` = **platform commission** | Platform's leg of an online additional charge. | No |
+| `additional_charge` | (in `payment_transactions`) | Gateway gross record, not a `finance_transactions` provider row. | No |
+| `payment` / `wallet_payment` / `gift_card_payment` | tender legs | Customer funds settled, not provider take. | No |
+| `platform_fee` / `service_fee` / `tax` | platform / statutory | Not provider money. | No |
+| `refund` (components) | `net` (negative) | Per-component (migrations 652/654). Only **provider-money** components deduct (`isProviderEarningsRefundComponent`). | Deduction |
+
+Because each recognized type posts as its own row with `amount === net`, summing each
+type's `net` counts every economic event **exactly once** — there is no travel/tip
+double-count. Refunds post **either** as component `refund` rows **or** a legacy negative
+`provider_earnings` reversal (never both for one refund), so netting negatives into
+`provider_earnings` while subtracting provider-component `refund` rows does not
+double-count.
+
+### Canonical definitions
+
+- **Recognized revenue** = `provider_earnings + tip + travel_fee + cancellation_fee + walk_in_additional_charge` (net per row). `recognizedRevenue(rows)`.
+- **Provider net after refunds** = recognized revenue − Σ |provider-money `refund` components|. `providerNetAfterRefunds(rows)`.
+- **Service earnings** = `provider_earnings` only (a labelled subset of recognized). `providerServiceEarnings(rows)`.
+
+### Surfaces repointed
+
+- **Dashboard** (`get-provider-dashboard.ts`): `recognizedRevenueTotal` / `totalRevenue` via `recognizedRevenue`.
+- **Business overview** (`business/overview/route.ts`): `totalRevenue` = recognized, `netRevenue` = net after refunds, plus new `serviceEarnings`, `travelFeesTotal`, `walkInAdditionalChargesTotal`; `additionalChargesTotal` removed (it conflated the platform commission leg).
+- **Payment summary** (`payments/summary/route.ts`): `providerNetActivity` = `providerNetAfterRefunds` (now includes walk-in add-ons).
+- **Legacy `reports/payments/route.ts`**: deleted its divergent `net_revenue` formula; re-exports `payments/summary`'s `GET`.
+
+### Undercount cap fix
+
+The dashboard previously fetched `finance_transactions` with `.limit(8000)` and **no date
+filter**, silently dropping rows for high-volume providers. It now uses the shared
+[`fetchAllLedgerPages`](../../web/src/lib/reports/fetch-all-ledger-pages.ts) (offset
+pagination, bounded by `MAX_FINANCE_TRANSACTIONS`), the same helper the finance route uses.
+
+### Tests
+
+| Location | What |
+|----------|------|
+| `apps/web/src/lib/reports/__tests__/provider-revenue-semantics.test.ts` | Single-count travel/tip, refund-component signs, legacy-reversal vs modern-refund non-double-count, breakdown reconciliation |
+| `apps/web/src/lib/reports/__tests__/provider-revenue-reconciliation.test.ts` | Dashboard == business overview == payment summary headline for one fixture; >8000-row sum has no cap |
+| `apps/web/src/lib/reports/__tests__/fetch-all-ledger-pages.test.ts` | Pagination fetches all rows (>8000), stops on short page, respects max bound, propagates errors |
+
+### Mobile fixes (same pass)
+
+- **Team totals** (`team-totals.tsx`): day/week navigation now anchors to the **provider business timezone** (was device-local, wrong near midnight); money uses shared `formatCurrency`.
+- **Transactions feed** (`transactions.tsx`): summary cards (in/out/net) now compute from the **filtered** list so they match the visible rows.
+- **Business overview** (`reports/business.tsx`): headline relabeled **Recognized revenue** with a component breakdown; the "Client retention" shortcut (which opens the Clients report) relabeled **Clients**.
+- **Transactions hub** (`transactions-hub.tsx`): money uses shared `formatCurrency`.
+
+> Note: the provider finance ledger feed (`/api/provider/finance` `transactions[]`) keeps
+> its richer per-row shape (`net`/`fees`/`commission`/`date`/`currency`) because the web
+> finance page renders those columns; it stays sign-aligned with the shared mapper. The
+> `/api/provider/transactions` GET and CSV export share `providerTransactionsPeriodStart`
+> so their default windows no longer drift (was 29 vs 30 days).

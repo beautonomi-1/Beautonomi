@@ -13,6 +13,10 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { twStyle } from "@/lib/twStyle";
 import { Colors, Shadows } from "@/constants/colors";
 import { hapticLight } from "@/lib/haptics-safe";
+import {
+  isBiometricSetupPromptDismissed,
+  setBiometricPromptPending,
+} from "@/lib/biometric-setup-prompt";
 
 type SetupStep = {
   id: string;
@@ -35,7 +39,7 @@ type SetupStatus = {
  */
 export default function OnboardingHubScreen() {
   const router = useRouter();
-  const { signOut } = useAuth();
+  const { signOut, user } = useAuth();
   const { screenPadding, isTablet, contentMaxWidth } = useResponsive();
   const { data, loading, error, refresh } = useApi<SetupStatus>("/api/provider/setup-status");
 
@@ -58,8 +62,13 @@ export default function OnboardingHubScreen() {
       }
     : undefined;
 
-  const goToApp = () => {
+  const goToApp = async () => {
     hapticLight();
+    const uid = user?.id;
+    if (isComplete && uid) {
+      const dismissed = await isBiometricSetupPromptDismissed(uid);
+      if (!dismissed) setBiometricPromptPending(uid);
+    }
     router.replace("/(app)/(tabs)" as never);
   };
 
@@ -394,20 +403,36 @@ export default function OnboardingHubScreen() {
                 Shadows.card,
               ]}
               activeOpacity={0.88}
-              accessibilityLabel="Start full setup wizard"
+              accessibilityLabel={hasSetupSteps ? "Continue setup wizard" : "Start full setup wizard"}
               accessibilityRole="button"
             >
               <View style={twStyle("flex-row items-center gap-2")}>
                 <Ionicons name="rocket-outline" size={20} color="#fff" />
                 <Text style={twStyle("text-[16px] font-semibold text-white")}>
-                  {hasSetupSteps ? "Start setup wizard" : "Start business setup"}
+                  {hasSetupSteps ? "Continue setup" : "Start business setup"}
                 </Text>
               </View>
               <Text style={twStyle("mt-1 px-6 text-center text-[13px] text-slate-300")}>
-                Walks you through every step end-to-end
+                {hasSetupSteps
+                  ? "Pick up where you left off"
+                  : "Walks you through every step end-to-end"}
               </Text>
             </TouchableOpacity>
           )}
+
+          {!isComplete && hasSetupSteps ? (
+            <TouchableOpacity
+              onPress={goToApp}
+              style={twStyle(
+                "mb-4 items-center rounded-full border-2 border-slate-200 bg-white py-4",
+              )}
+              activeOpacity={0.85}
+              accessibilityLabel="Go to dashboard"
+              accessibilityRole="button"
+            >
+              <Text style={twStyle("text-[15px] font-semibold text-slate-700")}>Go to dashboard</Text>
+            </TouchableOpacity>
+          ) : null}
 
           {!isComplete && (
             <TouchableOpacity

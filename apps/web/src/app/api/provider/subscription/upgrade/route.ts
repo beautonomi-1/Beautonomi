@@ -17,8 +17,8 @@ import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { extractSubscriptionPlanUuid } from "@/lib/subscription/extract-subscription-plan-uuid";
-import { addYears } from "date-fns";
-import { formatInTz, fromBusinessTime, nowInTz, resolveTz } from "@/lib/dates/provider-tz";
+import { formatInTz, resolveTz } from "@/lib/dates/provider-tz";
+import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 
 const upgradeSubscriptionSchema = z.object({
   plan_id: z.string().min(1, 'Plan ID is required'),
@@ -95,28 +95,7 @@ export async function POST(request: NextRequest) {
 
     if (planRow.is_free) {
       const now = new Date();
-      const expiresAt = fromBusinessTime(addYears(nowInTz(tz), 1), tz);
 
-      const { data: subscription, error: subError } = await supabase.from("provider_subscriptions")
-        .upsert({
-          provider_id: providerId,
-          tenant_id: tenantId,
-          plan_id,
-          status: "active",
-          started_at: now.toISOString(),
-          expires_at: expiresAt.toISOString(),
-          billing_period: "yearly",
-          auto_renew: false,
-          paystack_sync_pending: false,
-          paystack_sync_note: null,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: "provider_id" })
-        .select()
-        .single();
-
-      if (subError) throw subError;
-
-      // For free tier, send notification if upgrading from paid plan
       const supabaseAdmin = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -127,6 +106,39 @@ export async function POST(request: NextRequest) {
           },
         }
       );
+
+      const subscriptionTenantId = await resolveTenantIdForFinanceLedger(supabaseAdmin, {
+        tenant_id: (providerTenantRow as { tenant_id?: string | null } | null)?.tenant_id ?? tenantId,
+        provider_id: providerId,
+      });
+
+      const { data: subscription, error: subError } = await supabaseAdmin
+        .from("provider_subscriptions")
+        .upsert(
+          {
+            provider_id: providerId,
+            tenant_id: subscriptionTenantId,
+            plan_id,
+            status: "active",
+            started_at: now.toISOString(),
+            expires_at: null,
+            billing_period: billing_period,
+            auto_renew: false,
+            cancelled_at: null,
+            paystack_sync_pending: false,
+            paystack_sync_note: null,
+            paystack_subscription_code: null,
+            next_payment_date: null,
+            updated_at: now.toISOString(),
+          },
+          { onConflict: "provider_id" },
+        )
+        .select()
+        .single();
+
+      if (subError) throw subError;
+
+      // For free tier, send notification if upgrading from paid plan
 
       const { data: providerData } = await supabaseAdmin
         .from("providers")

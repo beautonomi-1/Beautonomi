@@ -10,7 +10,8 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { router, useLocalSearchParams } from "expo-router";
+import { useRouter } from "expo-router";
+import { useProviderStackBack } from "@/lib/provider-tab-navigation";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -147,6 +148,7 @@ function confirmPayoutRequest(params: {
 
 /** Content-only for use in Finance hub (Payouts tab). */
 export function PayoutsContent() {
+  const router = useRouter();
   const { screenPadding } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
   const [requestOpen, setRequestOpen] = useState(false);
@@ -543,26 +545,14 @@ export function PayoutsContent() {
 }
 
 export default function PayoutsScreen() {
-  const { from: fromParam } = useLocalSearchParams<{ from?: string }>();
-  const fromTransactionsHub =
-    typeof fromParam === "string"
-      ? fromParam === "transactions-hub"
-      : Array.isArray(fromParam)
-        ? fromParam[0] === "transactions-hub"
-        : false;
+  const handleBack = useProviderStackBack();
 
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader
         title="Payouts"
         showBack
-        onBack={
-          fromTransactionsHub
-            ? () => {
-                router.push("/(app)/(tabs)/more/transactions-hub");
-              }
-            : undefined
-        }
+        onBack={handleBack}
         subtitle="Withdraw earnings · More → Finance hub"
       />
       <PayoutsContent />

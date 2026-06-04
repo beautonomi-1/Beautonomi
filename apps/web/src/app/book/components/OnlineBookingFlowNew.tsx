@@ -53,6 +53,10 @@ import {
   type ResolvedOfferingLine,
   type PublicProductCatalogRow,
 } from "@beautonomi/utils";
+import {
+  computeAtHomeLinePrice,
+  resolveAtHomeAdjustmentForOffering,
+} from "@beautonomi/utils";
 import { parseProductsQueryParam, type ProductCartLine } from "@/lib/express-booking/prefill";
 import {
   BOOKING_ACCENT,
@@ -104,21 +108,21 @@ function normalizeDeepLinkOfferingIds(rawIds: string[], baseServices: ServiceOpt
   return out;
 }
 
-function applyAtHomeCatalogPrice(
+function resolveLineAtHomeAdjustment(
   line: ResolvedOfferingLine,
   baseServices: ServiceOption[],
-  variantsByServiceId: Record<string, ServiceVariant[]>,
-  treatAsAtHome: boolean
+  variantsByServiceId: Record<string, ServiceVariant[]>
 ): number {
-  if (!treatAsAtHome) return line.price;
   for (const svc of baseServices) {
     const vars = variantsByServiceId[svc.id] ?? [];
-    if (vars.some((v) => v.id === line.offeringId)) return line.price;
-    if (svc.id === line.offeringId && vars.length === 0 && svc.at_home_price_adjustment) {
-      return line.price + (svc.at_home_price_adjustment ?? 0);
+    if (vars.some((v) => v.id === line.offeringId)) {
+      return Number(svc.at_home_price_adjustment ?? 0);
+    }
+    if (svc.id === line.offeringId) {
+      return Number(svc.at_home_price_adjustment ?? 0);
     }
   }
-  return line.price;
+  return 0;
 }
 
 function resolvedLinesToBookingEntries(
@@ -128,13 +132,21 @@ function resolvedLinesToBookingEntries(
   treatAsAtHomeForPricing: boolean,
   fallbackCurrency: string
 ): BookingServiceEntry[] {
-  return lines.map((line) => ({
-    offering_id: line.offeringId,
-    title: line.title,
-    duration_minutes: line.duration_minutes,
-    price: applyAtHomeCatalogPrice(line, baseServices, variantsByServiceId, treatAsAtHomeForPricing),
-    currency: line.currency ?? fallbackCurrency,
-  }));
+  return lines.map((line) => {
+    const adjustment = treatAsAtHomeForPricing
+      ? resolveLineAtHomeAdjustment(line, baseServices, variantsByServiceId)
+      : 0;
+    const priced = computeAtHomeLinePrice(line.price, adjustment, treatAsAtHomeForPricing);
+    return {
+      offering_id: line.offeringId,
+      title: line.title,
+      duration_minutes: line.duration_minutes,
+      price: priced.displayPrice,
+      base_price: priced.basePrice,
+      at_home_price_adjustment: priced.adjustmentApplied,
+      currency: line.currency ?? fallbackCurrency,
+    };
+  });
 }
 
 function resolveOfferingDurationBufferForSlot(
@@ -441,6 +453,52 @@ export default function OnlineBookingFlowNew({
   const [staff, setStaff] = useState<StaffOption[]>([]);
   const [addons, setAddons] = useState<AddonOption[]>([]);
   const [variantsByServiceId, setVariantsByServiceId] = useState<Record<string, ServiceVariant[]>>({});
+
+  useEffect(() => {
+    if (offerings.length === 0) return;
+    const isAtHome = bookingData.venueType === "at_home";
+    setBookingData((prev) => {
+      if (prev.selectedServices.length === 0) return prev;
+      let changed = false;
+      const nextServices = prev.selectedServices.map((entry) => {
+        const row = offerings.find((o) => o.id === entry.offering_id);
+        const basePrice = row?.price ?? entry.base_price ?? entry.price;
+        const adjustment = resolveAtHomeAdjustmentForOffering(
+          offerings as Array<{
+            id: string;
+            parent_service_id?: string | null;
+            at_home_price_adjustment?: number | null;
+          }>,
+          entry.offering_id
+        );
+        const priced = computeAtHomeLinePrice(basePrice, adjustment, isAtHome);
+        if (
+          Math.abs(priced.displayPrice - entry.price) < 0.005 &&
+          entry.base_price === priced.basePrice &&
+          entry.at_home_price_adjustment === priced.adjustmentApplied
+        ) {
+          return entry;
+        }
+        changed = true;
+        return {
+          ...entry,
+          price: priced.displayPrice,
+          base_price: priced.basePrice,
+          at_home_price_adjustment: priced.adjustmentApplied,
+        };
+      });
+      if (!changed) return prev;
+      const servicesSubtotal = prev.selectedPackage
+        ? (prev.selectedPackage.price ?? nextServices.reduce((s, e) => s + e.price, 0))
+        : nextServices.reduce((s, e) => s + e.price, 0);
+      return {
+        ...prev,
+        selectedServices: nextServices,
+        servicesSubtotal,
+      };
+    });
+  }, [bookingData.venueType, offerings]);
+
   const [settings, setSettings] = useState<OnlineBookingSettings>({
     staff_selection_mode: "client_chooses",
     require_auth_step: "checkout",

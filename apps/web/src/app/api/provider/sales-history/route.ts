@@ -71,6 +71,10 @@ export async function GET(request: NextRequest) {
       totals,
       truncated_ledger,
       default_range_months: !dateFrom && !dateTo ? 24 : null,
+      basis:
+        "Rows keyed by finance_transactions.created_at in range. gross_total = bookings.total_amount. " +
+        "provider_net = earnings + tips + travel + cancellation + walk-in add-ons − provider refunds. " +
+        "discount_contra = promotion/membership/loyalty contra rows (absolute); reconciles gross when total_amount is pre-discount.",
     });
   } catch (error) {
     console.error("sales-history GET:", error);

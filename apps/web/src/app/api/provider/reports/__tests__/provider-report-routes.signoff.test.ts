@@ -7,6 +7,8 @@ import { GET as refundsGET } from "../payments/refunds/route";
 import { GET as paymentsSummaryGET } from "../payments/summary/route";
 import { GET as payoutsGET } from "../payments/payouts/route";
 import { GET as revenueGET } from "../revenue/route";
+import { GET as clientsGET } from "../clients/route";
+import { GET as noShowsGET } from "../bookings/no-shows/route";
 
 type Row = Record<string, any>;
 
@@ -501,5 +503,69 @@ describe("provider report routes sign-off coverage", () => {
     expect(revenue.locationAttribution.excludedUnattributedRows).toBe(0);
     expect(payouts.totalPayoutAmount).toBe(122);
     expect(payouts.locationAttribution.excludedUnattributedRows).toBe(2);
+  });
+
+  it("clients report exposes booked gross and ledger earnings with basis", async () => {
+    const data = await json(
+      await clientsGET(request("/api/provider/reports/clients?from=2026-05-01&to=2026-05-31&location_id=loc-a")),
+    );
+
+    expect(data.basisNote).toContain("Booked gross");
+    expect(data.avg_booked_gross).toBeGreaterThan(0);
+    expect(typeof data.avg_ledger_earnings).toBe("number");
+    expect(data.top_clients[0]).toMatchObject({
+      booked_gross_spend: expect.any(Number),
+      ledger_earnings: expect.any(Number),
+    });
+  });
+
+  it("no-shows repeat offenders include booked_value and ledger_earnings", async () => {
+    db.bookings.push(
+      {
+        id: "ns-1",
+        provider_id: providerId,
+        location_id: "loc-a",
+        status: "no_show",
+        scheduled_at: "2026-05-02T10:00:00.000Z",
+        total_amount: 200,
+        customer_id: "client-1",
+        booking_services: [{ staff_id: "staff-1" }],
+      },
+      {
+        id: "ns-2",
+        provider_id: providerId,
+        location_id: "loc-a",
+        status: "no_show",
+        scheduled_at: "2026-05-02T14:00:00.000Z",
+        total_amount: 150,
+        customer_id: "client-1",
+        booking_services: [{ staff_id: "staff-1" }],
+      },
+    );
+    getProviderRevenueMock.mockResolvedValue({
+      totalRevenue: 0,
+      revenueByBooking: new Map([
+        ["ns-1", 0],
+        ["ns-2", 0],
+      ]),
+      revenueByProductOrder: new Map(),
+      revenueByDate: new Map(),
+      latestSettlementAtByBooking: new Map(),
+      latestSettlementAtByProductOrder: new Map(),
+    });
+
+    const data = await json(
+      await noShowsGET(
+        request("/api/provider/reports/bookings/no-shows?from=2026-05-02&to=2026-05-02&location_id=loc-a"),
+      ),
+    );
+
+    expect(data.basisNote).toContain("lostRevenue");
+    const offender = data.repeatOffenders.find((c: { name: string }) => c.name);
+    expect(offender).toMatchObject({
+      booked_value: 350,
+      ledger_earnings: 0,
+      revenue: 350,
+    });
   });
 });

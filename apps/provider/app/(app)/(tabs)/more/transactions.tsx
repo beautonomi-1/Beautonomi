@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo } from "react";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
+import { useProviderStackBack } from "@/lib/provider-tab-navigation";
 import { View, Text, TouchableOpacity, Alert, Share } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -104,19 +105,9 @@ function paymentMethodIcon(method: string | null): keyof typeof Ionicons.glyphMa
   }
 }
 
-const TRANSACTIONS_HUB_HREF = "/(app)/(tabs)/more/transactions-hub" as const;
-const FROM_TRANSACTIONS_HUB = "transactions-hub";
-
-function useFromTransactionsHub(): boolean {
-  const { from: fromParam } = useLocalSearchParams<{ from?: string }>();
-  if (typeof fromParam === "string") return fromParam === FROM_TRANSACTIONS_HUB;
-  if (Array.isArray(fromParam)) return fromParam[0] === FROM_TRANSACTIONS_HUB;
-  return false;
-}
-
 export default function TransactionsScreen() {
   const router = useRouter();
-  const fromTransactionsHub = useFromTransactionsHub();
+  const handleBack = useProviderStackBack();
   const [refreshing, setRefreshing] = useState(false);
   const [period, setPeriod] = useState("month");
   const [typeFilter, setTypeFilter] = useState("all");
@@ -160,26 +151,28 @@ export default function TransactionsScreen() {
     return list;
   }, [transactions, typeFilter, search]);
 
+  // Summary cards reflect the currently VISIBLE (type/search-filtered) list so the totals
+  // always reconcile with the rows shown below them.
   const totalIn = useMemo(
     () =>
-      (transactions ?? [])
+      filtered
         .filter((t) => t.type === "earning" || t.type === "tip")
         .reduce((s, t) => s + t.amount, 0),
-    [transactions]
+    [filtered]
   );
 
   const totalOut = useMemo(
     () =>
-      (transactions ?? [])
+      filtered
         .filter((t) => t.type === "payout" || t.type === "refund")
         .reduce((s, t) => s + t.amount, 0),
-    [transactions]
+    [filtered]
   );
 
   /** Operating-style net: earnings & tips minus fees, payouts & refunds; ledger adjustments added by signed amount. */
   const netAmount = useMemo(
-    () => (transactions ?? []).reduce((s, t) => s + signedContributionForSummary(t), 0),
-    [transactions]
+    () => filtered.reduce((s, t) => s + signedContributionForSummary(t), 0),
+    [filtered]
   );
 
   async function handleExport() {
@@ -273,13 +266,7 @@ export default function TransactionsScreen() {
       <ScreenHeader
         title="Transactions"
         showBack
-        onBack={
-          fromTransactionsHub
-            ? () => {
-                router.push(TRANSACTIONS_HUB_HREF as never);
-              }
-            : undefined
-        }
+        onBack={handleBack}
         subtitle={`${filtered.length} transaction${filtered.length !== 1 ? "s" : ""}`}
         rightAction={
           <TouchableOpacity

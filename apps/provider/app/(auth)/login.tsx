@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import {
   View,
   Text,
@@ -14,7 +14,6 @@ import {
   InteractionManager,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { Colors } from "@/constants/colors";
@@ -22,13 +21,14 @@ import { BeautonomiLogo } from "@/components/ui/BeautonomiLogo";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useAuth, type OAuthProvider } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
-import { changeLanguage } from "@/lib/i18n";
 import {
   normalizeSupabaseAuthPhone,
   normalizeSupabaseSmsOtpToken,
   isCompleteOtpForLength,
+  SUPABASE_AUTH_OTP_LENGTH,
   SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS,
   SUPABASE_SMS_OTP_RESEND_COOLDOWN_SECONDS,
+  isCompleteSupabaseSmsOtp,
 } from "@/lib/supabase-sms-otp";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { DEFAULT_AUTH } from "@/lib/config-bundle";
@@ -39,17 +39,19 @@ import {
 } from "@/lib/phone-country-codes";
 import { getDeviceDefaultCountryDial } from "@/lib/phone";
 import { OtpDigitRow } from "@/components/OtpDigitRow";
-import { trackLogin } from "@/lib/analytics";
+import { trackLogin, trackSignUp } from "@/lib/analytics";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { supabase } from "@/lib/supabase/client";
 import { logLoginSuccessBreadcrumb } from "@/lib/sentry";
 import { pushInAppBrowser } from "@/lib/in-app-web";
 import { webPrivacyPolicyUrl, webTermsOfServiceUrl } from "@/lib/legal-web";
 import { getSocialAuthConfig } from "@/lib/third-party-config";
+import {
+  applyPendingSignupPreferences,
+  persistProviderSignupSource,
+} from "@/features/auth/pending-signup-preferences";
 
 const PRIMARY = Colors.primary;
-const PENDING_SIGNUP_SOURCE_KEY = "beautonomi_pending_signup_source";
-const PENDING_PREFERRED_LANGUAGE_KEY = "beautonomi_pending_preferred_language";
 
 /** Wait for session storage so root `/` portal + profile checks see a valid Bearer token on iOS. */
 async function goToAppRoot(router: { replace: (href: string) => void }, method: string) {
@@ -58,26 +60,6 @@ async function goToAppRoot(router: { replace: (href: string) => void }, method: 
   router.replace("/");
 }
 
-async function applyPendingSignupPreferences() {
-  const [pendingSource, pendingLang] = await Promise.all([
-    AsyncStorage.getItem(PENDING_SIGNUP_SOURCE_KEY),
-    AsyncStorage.getItem(PENDING_PREFERRED_LANGUAGE_KEY),
-  ]);
-  if (!pendingSource && !pendingLang) return;
-  const payload: { signup_source?: string; preferred_language?: string } = {};
-  if (pendingSource) payload.signup_source = pendingSource;
-  if (pendingLang) payload.preferred_language = pendingLang;
-  try {
-    await api.patch("/api/me/profile", payload);
-    if (pendingLang) await changeLanguage(pendingLang);
-  } catch {
-    // Non-blocking
-  }
-  await Promise.all([
-    pendingSource ? AsyncStorage.removeItem(PENDING_SIGNUP_SOURCE_KEY) : Promise.resolve(),
-    pendingLang ? AsyncStorage.removeItem(PENDING_PREFERRED_LANGUAGE_KEY) : Promise.resolve(),
-  ]);
-}
 const PRIMARY_LIGHT = "rgba(255,0,119,0.06)";
 
 type LoginMode = "phone" | "email";
@@ -92,6 +74,9 @@ export default function LoginScreen() {
     signInWithOtpEmail,
     verifyOtpEmail,
     signInWithEmail,
+    signUpWithEmail,
+    verifySignupEmailOtp,
+    resendSignupConfirmationEmail,
     signInWithOAuth,
   } = useAuth();
   const { bundle: configBundle } = useConfigBundle();
@@ -127,7 +112,15 @@ export default function LoginScreen() {
   const [pendingPhone, setPendingPhone] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [isSignup, setIsSignup] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [awaitingSignupVerification, setAwaitingSignupVerification] = useState(false);
+  const [signupOtpCode, setSignupOtpCode] = useState("");
+  const [verifyingSignupOtp, setVerifyingSignupOtp] = useState(false);
+  const [resendingSignupOtp, setResendingSignupOtp] = useState(false);
+  const [signupOtpResendCooldown, setSignupOtpResendCooldown] = useState(0);
+  const [signupOtpError, setSignupOtpError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [countrySearch, setCountrySearch] = useState("");
 
@@ -159,6 +152,16 @@ export default function LoginScreen() {
     const id = setInterval(() => setEmailResendCooldown((s) => (s > 0 ? s - 1 : 0)), 1000);
     return () => clearInterval(id);
   }, [emailResendCooldown]);
+
+  useEffect(() => {
+    if (signupOtpResendCooldown <= 0) return;
+    const id = setInterval(() => setSignupOtpResendCooldown((s) => (s > 0 ? s - 1 : 0)), 1000);
+    return () => clearInterval(id);
+  }, [signupOtpResendCooldown]);
+
+  const goToSignup = useCallback(() => {
+    router.push("/(auth)/signup" as never);
+  }, [router]);
 
   const fullPhone = `${countryCode}${stripLeadingZero(phone.replace(/\D/g, ""))}`.trim();
   const hasSocialAuth = socialAuth.google || socialAuth.apple;
@@ -360,7 +363,7 @@ export default function LoginScreen() {
     }
   }
 
-  async function handleEmailLogin() {
+  async function handleEmailSubmit() {
     setFormError(null);
     if (!email.trim()) {
       setFormError("Please enter your email");
@@ -370,20 +373,82 @@ export default function LoginScreen() {
       setFormError("Please enter your password");
       return;
     }
+    if (password.length < 8) {
+      setFormError("Password must be at least 8 characters");
+      return;
+    }
+    if (isSignup && !fullName.trim()) {
+      setFormError("Please enter your full name");
+      return;
+    }
     setLoading(true);
     try {
-      const { error } = await signInWithEmail(email.trim(), password);
-      if (error) {
-        setFormError(error.message);
-        return;
+      if (isSignup) {
+        await persistProviderSignupSource();
+        const result = await signUpWithEmail(email.trim(), password, { full_name: fullName.trim() });
+        if (result.error) {
+          setFormError(result.error.message);
+          return;
+        }
+        if (result.requiresConfirmation) {
+          trackSignUp("email");
+          setSignupOtpCode("");
+          setSignupOtpError(null);
+          setSignupOtpResendCooldown(SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS);
+          setAwaitingSignupVerification(true);
+          return;
+        }
+        trackSignUp("email");
+      } else {
+        const result = await signInWithEmail(email.trim(), password);
+        if (result.error) {
+          setFormError(result.error.message);
+          return;
+        }
+        trackLogin("email");
       }
-      trackLogin("email");
       await applyPendingSignupPreferences();
-      await goToAppRoot(router, "email_password");
+      await goToAppRoot(router, isSignup ? "email_signup" : "email_password");
     } catch (e: unknown) {
-      setFormError(e instanceof Error ? e.message : "Login failed. Please try again.");
+      setFormError(e instanceof Error ? e.message : "Something went wrong. Please try again.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleVerifySignupOtp(codeOverride?: string) {
+    const otpToken = normalizeSupabaseSmsOtpToken(codeOverride ?? signupOtpCode);
+    if (!isCompleteSupabaseSmsOtp(otpToken)) return;
+    setVerifyingSignupOtp(true);
+    setSignupOtpError(null);
+    try {
+      const { error } = await verifySignupEmailOtp(email.trim(), otpToken);
+      if (error) {
+        setSignupOtpError(error.message);
+        return;
+      }
+      trackSignUp("email");
+      await applyPendingSignupPreferences();
+      await goToAppRoot(router, "email_signup");
+    } catch (e: unknown) {
+      setSignupOtpError(e instanceof Error ? e.message : "Verification failed.");
+    } finally {
+      setVerifyingSignupOtp(false);
+    }
+  }
+
+  async function handleResendSignupOtp() {
+    if (signupOtpResendCooldown > 0 || resendingSignupOtp) return;
+    setResendingSignupOtp(true);
+    setSignupOtpError(null);
+    try {
+      await resendSignupConfirmationEmail(email.trim());
+      setSignupOtpCode("");
+      setSignupOtpResendCooldown(SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS);
+    } catch (e: unknown) {
+      setSignupOtpError(e instanceof Error ? e.message : "Failed to resend code.");
+    } finally {
+      setResendingSignupOtp(false);
     }
   }
 
@@ -447,6 +512,134 @@ export default function LoginScreen() {
     } finally {
       setLoading(false);
     }
+  }
+
+  if (awaitingSignupVerification) {
+    return (
+      <ScreenContainer edges={["top"]} scrollable={false} keyboardAvoiding={false} reserveTabBarSpace={false} noPadding>
+        <KeyboardAvoidingView
+          style={{ flex: 1, backgroundColor: "#ffffff" }}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+          <ScrollView
+            style={{ flex: 1, backgroundColor: "#ffffff" }}
+            contentContainerStyle={scrollContentStyle}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View style={formStyle}>
+              <View
+                style={{
+                  borderWidth: 1,
+                  borderColor: "#A7F3D0",
+                  backgroundColor: "#ECFDF5",
+                  borderRadius: 16,
+                  padding: 20,
+                }}
+              >
+                <View
+                  style={{
+                    alignSelf: "center",
+                    width: 52,
+                    height: 52,
+                    borderRadius: 26,
+                    backgroundColor: "#D1FAE5",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    marginBottom: 14,
+                  }}
+                >
+                  <Ionicons name="checkmark-circle" size={28} color="#059669" />
+                </View>
+                <Text style={{ textAlign: "center", fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 6 }}>
+                  Verify your email
+                </Text>
+                <Text style={{ textAlign: "center", fontSize: 13, color: "#4B5563", marginBottom: 4 }}>
+                  We sent a {SUPABASE_AUTH_OTP_LENGTH}-digit verification code to:
+                </Text>
+                <Text style={{ textAlign: "center", fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 16 }}>
+                  {email.trim()}
+                </Text>
+                <OtpDigitRow
+                  value={signupOtpCode}
+                  onChange={(v) => {
+                    setSignupOtpCode(v);
+                    if (signupOtpError) setSignupOtpError(null);
+                  }}
+                  onComplete={(code) => {
+                    if (!verifyingSignupOtp && isCompleteSupabaseSmsOtp(code)) {
+                      void handleVerifySignupOtp(code);
+                    }
+                  }}
+                  disabled={verifyingSignupOtp}
+                  autoFocus
+                  accessibilityLabelPrefix="Signup verification code"
+                />
+                {signupOtpError ? (
+                  <Text style={{ marginTop: 12, textAlign: "center", fontSize: 12, color: "#EF4444" }}>{signupOtpError}</Text>
+                ) : null}
+                <TouchableOpacity
+                  onPress={() => void handleVerifySignupOtp()}
+                  disabled={verifyingSignupOtp || !isCompleteSupabaseSmsOtp(signupOtpCode)}
+                  style={{
+                    marginTop: 16,
+                    backgroundColor: PRIMARY,
+                    borderRadius: 12,
+                    paddingVertical: 14,
+                    alignItems: "center",
+                    opacity: verifyingSignupOtp || !isCompleteSupabaseSmsOtp(signupOtpCode) ? 0.6 : 1,
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Verify and continue"
+                >
+                  {verifyingSignupOtp ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={{ color: "#fff", fontSize: 15, fontWeight: "700" }}>Verify & continue</Text>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => void handleResendSignupOtp()}
+                  disabled={resendingSignupOtp || signupOtpResendCooldown > 0}
+                  style={{
+                    marginTop: 10,
+                    borderWidth: 1,
+                    borderColor: "#A7F3D0",
+                    borderRadius: 12,
+                    paddingVertical: 12,
+                    alignItems: "center",
+                    opacity: resendingSignupOtp || signupOtpResendCooldown > 0 ? 0.6 : 1,
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Resend verification code"
+                >
+                  {resendingSignupOtp ? (
+                    <ActivityIndicator color={PRIMARY} />
+                  ) : signupOtpResendCooldown > 0 ? (
+                    <Text style={{ color: "#374151", fontSize: 14, fontWeight: "600" }}>
+                      Resend code in {signupOtpResendCooldown}s
+                    </Text>
+                  ) : (
+                    <Text style={{ color: "#374151", fontSize: 14, fontWeight: "600" }}>Resend verification code</Text>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => {
+                    setAwaitingSignupVerification(false);
+                    setSignupOtpCode("");
+                    setSignupOtpError(null);
+                  }}
+                  style={{ marginTop: 14, alignItems: "center" }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Go back to edit signup details"
+                >
+                  <Text style={{ color: "#6B7280", fontSize: 13 }}>Wrong email? Go back and edit</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </ScreenContainer>
+    );
   }
 
   return (
@@ -837,6 +1030,41 @@ export default function LoginScreen() {
                 <Text style={{ fontSize: 14, color: PRIMARY, fontWeight: "600" }}>← Continue with phone</Text>
               </TouchableOpacity>
             ) : null}
+            {isSignup ? (
+              <Text style={{ textAlign: "center", fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 20 }}>
+                Create your account
+              </Text>
+            ) : null}
+            {isSignup && (
+              <>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 6 }}>
+                  Full name
+                </Text>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    borderWidth: 1.5,
+                    borderColor: "#E5E7EB",
+                    borderRadius: 12,
+                    backgroundColor: "#FAFAFA",
+                    paddingHorizontal: 14,
+                    marginBottom: 16,
+                  }}
+                >
+                  <Ionicons name="person-outline" size={18} color="#9CA3AF" />
+                  <TextInput
+                    style={{ flex: 1, paddingVertical: 14, paddingHorizontal: 10, fontSize: 15, color: "#111827" }}
+                    placeholder="Your full name"
+                    placeholderTextColor="#9CA3AF"
+                    value={fullName}
+                    onChangeText={setFullName}
+                    autoCapitalize="words"
+                    accessibilityLabel="Full name"
+                  />
+                </View>
+              </>
+            )}
             {/* Email */}
             <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 6 }}>
               Email
@@ -868,7 +1096,7 @@ export default function LoginScreen() {
               />
             </View>
 
-            {!emailOtpMode && (
+            {(isSignup || !emailOtpMode) && (
               <>
                 <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 6 }}>
                   Password
@@ -895,7 +1123,7 @@ export default function LoginScreen() {
                     onChangeText={setPassword}
                     secureTextEntry={!showPassword}
                     returnKeyType="done"
-                    onSubmitEditing={handleEmailLogin}
+                    onSubmitEditing={handleEmailSubmit}
                   />
                   <TouchableOpacity
                     onPress={() => setShowPassword((v) => !v)}
@@ -909,7 +1137,7 @@ export default function LoginScreen() {
               </>
             )}
 
-            {emailOtpMode && emailOtpSent && (
+            {!isSignup && emailOtpMode && emailOtpSent && (
               <>
                 <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 8 }}>
                   Verification code
@@ -978,7 +1206,7 @@ export default function LoginScreen() {
               </>
             )}
 
-            {emailOtpMode && !emailOtpSent && (
+            {!isSignup && emailOtpMode && !emailOtpSent && (
               <>
                 <Text style={{ fontSize: 12, color: "#6B7280", marginBottom: 12 }}>
                   We&apos;ll email you a {emailOtpLen}-digit verification code (valid about {emailOtpExpiryMin}{" "}
@@ -1016,9 +1244,9 @@ export default function LoginScreen() {
               </>
             )}
 
-            {!emailOtpMode && (
+            {(isSignup || !emailOtpMode) && (
               <TouchableOpacity
-                onPress={handleEmailLogin}
+                onPress={handleEmailSubmit}
                 disabled={loading}
                 style={{
                   backgroundColor: PRIMARY,
@@ -1028,17 +1256,39 @@ export default function LoginScreen() {
                   opacity: loading ? 0.7 : 1,
                 }}
                 accessibilityRole="button"
-                accessibilityLabel="Sign in with email"
+                accessibilityLabel={isSignup ? "Sign up with email" : "Sign in with email"}
               >
                 {loading ? (
                   <ActivityIndicator color="white" />
                 ) : (
-                  <Text style={{ color: "#fff", fontSize: 16, fontWeight: "700" }}>Sign In</Text>
+                  <Text style={{ color: "#fff", fontSize: 16, fontWeight: "700" }}>
+                    {isSignup ? "Sign up" : "Sign In"}
+                  </Text>
                 )}
               </TouchableOpacity>
             )}
 
-            {!emailOtpMode && (
+            <TouchableOpacity
+              onPress={() => {
+                setIsSignup(!isSignup);
+                setEmailOtpMode(false);
+                setEmailOtpSent(false);
+                setEmailOtpCode("");
+                setPendingEmailOtp("");
+                setFormError(null);
+                setFormSuccess(null);
+              }}
+              disabled={loading}
+              style={{ marginTop: 12, paddingVertical: 8 }}
+              accessibilityRole="button"
+            >
+              <Text style={{ textAlign: "center", fontSize: 14, color: "#6B7280" }}>
+                {isSignup ? "Already have an account? " : "Don't have an account? "}
+                <Text style={{ fontWeight: "700", color: PRIMARY }}>{isSignup ? "Sign in" : "Sign up"}</Text>
+              </Text>
+            </TouchableOpacity>
+
+            {!isSignup && !emailOtpMode && (
               <>
                 <TouchableOpacity
                   onPress={() => router.push("/(auth)/forgot-password" as never)}
@@ -1172,12 +1422,16 @@ export default function LoginScreen() {
           </>
         )}
 
-        {/* Unified flow — no separate signup */}
-        <View style={{ marginTop: 20 }}>
-          <Text style={{ textAlign: "center", fontSize: 14, color: "#6B7280", lineHeight: 20 }}>
-            New here? Use phone, email code, or Google above — we create your account when you verify.
-          </Text>
-        </View>
+        {showPhoneLoginBlock && !otpSent ? (
+          <View style={{ marginTop: 20 }}>
+            <TouchableOpacity onPress={goToSignup} accessibilityRole="link" accessibilityLabel="Sign up for a new account">
+              <Text style={{ textAlign: "center", fontSize: 14, color: "#6B7280" }}>
+                Don&apos;t have an account?{" "}
+                <Text style={{ fontWeight: "700", color: PRIMARY }}>Sign up</Text>
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
         </View>
       </ScrollView>
 

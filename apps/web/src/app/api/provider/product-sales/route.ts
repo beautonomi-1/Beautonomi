@@ -88,6 +88,8 @@ const walkInSaleSchema = z.object({
   /** Optional dial digits / ISO hint for national-format phones (matches clients/create). */
   customer_phone_country_code: z.string().max(8).optional().nullable(),
   customer_id: z.string().uuid().optional(),
+  /** Salon branch for walk-in attribution (matches provider dashboard location filter). */
+  location_id: z.string().uuid().optional(),
 });
 
 type WalkInLine = z.infer<typeof walkInLineSchema>;
@@ -386,6 +388,7 @@ export async function POST(request: NextRequest) {
         payment_status: "paid",
         status: "delivered",
         order_source: "walk_in",
+        collection_location_id: parsed.location_id ?? null,
         staff_id: user.id,
         customer_name: parsed.customer_name ?? null,
         customer_phone: parsed.customer_phone ?? null,
@@ -420,8 +423,9 @@ export async function POST(request: NextRequest) {
     // The order is already fully created (payment_status=paid, status=delivered)
     // at this point, so a ledger failure must NOT abort the response or the
     // client will retry and create a duplicate order. Log and continue.
+    let payResult = { transitionedToPaid: true };
     try {
-      await recordProductOrderPayment({
+      payResult = await recordProductOrderPayment({
         supabase: getSupabaseAdmin() as never,
         productOrderId: order.id,
         reference: parsed.payment_reference?.trim() || `walk_in_pos_${order.id}`,
@@ -436,6 +440,17 @@ export async function POST(request: NextRequest) {
         orderId: order.id,
         error: ledgerErr,
       });
+    }
+
+    try {
+      const { notifyProductOrderPaidIfTransitioned } = await import(
+        "@/lib/notifications/notify-product-order-paid"
+      );
+      await notifyProductOrderPaidIfTransitioned(getSupabaseAdmin() as never, order.id, {
+        transitionedToPaid: payResult.transitionedToPaid,
+      });
+    } catch (notifyErr) {
+      console.error("[product-sales] notifyProductOrderPaid failed:", notifyErr);
     }
 
     await applyPosProductStockDecrements(supabase, posItems);

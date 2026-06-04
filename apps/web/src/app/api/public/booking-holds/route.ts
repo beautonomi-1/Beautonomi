@@ -8,7 +8,7 @@
 import { NextRequest } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
-import { normalizePublicStaffIdForDatabase } from "@beautonomi/utils";
+import { normalizePublicStaffIdForDatabase, resolveAtHomeAdjustmentForOffering } from "@beautonomi/utils";
 import { checkBookingSnapshotSegmentConflicts } from "@/lib/bookings/conflict-check";
 import { withRouteMetrics } from "@/lib/monitoring/route-metrics";
 import { applyRateLimitHeaders } from "@/lib/rate-limit/headers";
@@ -369,7 +369,7 @@ export async function POST(request: NextRequest) {
         const { data: offerings, error: offeringsError } = await supabase
           .from("offerings")
           .select(
-            "id, title, provider_id, duration_minutes, buffer_minutes, price, currency, is_active, at_home_price_adjustment, supports_at_home, online_booking_enabled, service_type"
+            "id, title, provider_id, duration_minutes, buffer_minutes, price, currency, is_active, at_home_price_adjustment, supports_at_home, online_booking_enabled, service_type, parent_service_id"
           )
           .in("id", offeringIds);
 
@@ -471,6 +471,8 @@ export async function POST(request: NextRequest) {
           staff_id: string | null;
           duration_minutes: number;
           price: number;
+          base_price: number;
+          at_home_price_adjustment: number;
           currency: string;
           scheduled_start_at: string;
           scheduled_end_at: string;
@@ -480,10 +482,19 @@ export async function POST(request: NextRequest) {
           const off = offeringById.get(s.offering_id);
           if (!off) continue;
           const duration = Number(off.duration_minutes || 0);
-          const price =
-            location_type === "at_home" && off.at_home_price_adjustment
-              ? Number(off.price || 0) + Number(off.at_home_price_adjustment || 0)
-              : Number(off.price || 0);
+          const basePrice = Number(off.price || 0);
+          const homeAdj =
+            location_type === "at_home"
+              ? resolveAtHomeAdjustmentForOffering(
+                  (offerings || []) as Array<{
+                    id: string;
+                    parent_service_id?: string | null;
+                    at_home_price_adjustment?: number | null;
+                  }>,
+                  off.id
+                )
+              : 0;
+          const price = basePrice + homeAdj;
           const start = new Date(cursor);
           const end = new Date(cursor.getTime() + duration * 60000);
           const lineRaw = s.staff_id ?? rawStaffKey ?? null;
@@ -494,6 +505,8 @@ export async function POST(request: NextRequest) {
             staff_id: lineStaffDb ?? holdStaffIdForDb,
             duration_minutes: duration,
             price,
+            base_price: basePrice,
+            at_home_price_adjustment: homeAdj,
             currency: off.currency || currency,
             scheduled_start_at: start.toISOString(),
             scheduled_end_at: end.toISOString(),

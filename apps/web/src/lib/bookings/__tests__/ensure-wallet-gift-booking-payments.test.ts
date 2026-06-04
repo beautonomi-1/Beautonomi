@@ -37,7 +37,8 @@ function makeAdmin(opts: { existingProviderIds?: Set<string>; failInsert?: boole
           },
           async maybeSingle() {
             void bookingId;
-            return { data: existing.has(providerId) ? { id: "existing" } : null };
+            const hit = existing.has(providerId);
+            return { data: hit ? { id: "existing", status: "completed" } : null };
           },
         };
         return chain;
@@ -101,6 +102,19 @@ describe("ensureWalletGiftBookingPayments", () => {
       giftCardAmount: 0,
     });
     expect(inserts).toHaveLength(0);
+  });
+
+  it("uses leg suffix for follow-up payment rows", async () => {
+    const { admin, inserts } = makeAdmin();
+    await ensureWalletGiftBookingPayments(admin, {
+      bookingId: "b-leg",
+      tenantId: null,
+      walletAmount: 30,
+      giftCardAmount: 0,
+      paymentLegSuffix: ":remaining:ref-1",
+    });
+    expect(inserts).toHaveLength(1);
+    expect(inserts[0]?.payment_provider_id).toBe("wallet_booking:b-leg:remaining:ref-1");
   });
 
   it("rounds amounts to 2 decimals", async () => {

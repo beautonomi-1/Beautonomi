@@ -43,6 +43,7 @@ import {
   paystackTerminalCollectionIntentPayload,
 } from "@/lib/paystack-terminal-api";
 import { supabase } from "@/lib/supabase/client";
+import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
 import { twStyle } from "@/lib/twStyle";
 import { buildZonedIsoForWallClock } from "@/lib/tz";
 import { useProvider } from "@/providers/ProviderContext";
@@ -869,14 +870,12 @@ export default function BookingDetailScreen() {
 
   const refreshBookingDetailRef = useRef(refreshBookingDetail);
   refreshBookingDetailRef.current = refreshBookingDetail;
-  const bookingDetailRealtimeGenRef = useRef(0);
 
   useEffect(() => {
     if (!bookingIdStr) return;
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-    const gen = ++bookingDetailRealtimeGenRef.current;
     const channel = supabase
-      .channel(`provider-booking-detail-${bookingIdStr}-rt${gen}`)
+      .channel(nextRealtimeTopic(`provider-booking-detail-${bookingIdStr}`))
       .on(
         "postgres_changes",
         {
@@ -930,6 +929,10 @@ export default function BookingDetailScreen() {
   const [chargeMarkPaidId, setChargeMarkPaidId] = useState<string | null>(null);
   const [chargeMarkPaidMethod, setChargeMarkPaidMethod] = useState<"cash" | "card" | "mobile" | "bank_transfer" | "other">("card");
   const [markingChargePaid, setMarkingChargePaid] = useState(false);
+
+  // "Send to client" — re-send the pay request for an existing charge so the
+  // customer settles it online (instead of the provider marking it paid in person).
+  const [notifyingChargeId, setNotifyingChargeId] = useState<string | null>(null);
 
   // §Provider-launch (audit 2026-04): customer notification actions (P8 parity).
   const [isNotifying, setIsNotifying] = useState(false);
@@ -2297,7 +2300,31 @@ export default function BookingDetailScreen() {
     await Promise.all([refresh(), refreshCharges()]);
   };
 
-  const canRequestPayment = canProcessPayments && (isStarted || b.status === "completed");
+  const handleSendChargeToClient = async (chargeId: string) => {
+    if (!id) return;
+    if (!canProcessPayments) {
+      Alert.alert("Permission", "You do not have permission to process payments.");
+      return;
+    }
+    setNotifyingChargeId(chargeId);
+    const res = await postMutation(
+      `/api/provider/bookings/${id}/additional-charges/${chargeId}/notify`,
+      {}
+    );
+    setNotifyingChargeId(null);
+    if (res.error) {
+      Alert.alert("Error", res.error);
+      return;
+    }
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    Alert.alert("Sent", "The customer has been asked to pay this charge online.");
+    await Promise.all([refresh(), refreshCharges()]);
+  };
+
+  // Confirmed bookings (e.g. a custom offer paid online) can also accrue an extra
+  // charge before the provider marks the service started, so allow it there too.
+  const canRequestPayment =
+    canProcessPayments && (isStarted || b.status === "completed" || currentDbStatus === "confirmed");
   const canSendPaymentLink =
     paymentLinkEnabled && canProcessPayments && outstanding > 0 && b.status !== "cancelled";
   const canReschedule = canEditAppointments && (isActive || isStarted) && Boolean(b.scheduled_at);
@@ -3600,20 +3627,35 @@ export default function BookingDetailScreen() {
                     </Text>
                   </View>
                   {canProcessPayments && (c.status === "pending" || c.status === "approved") && (
-                    <TouchableOpacity
-                      onPress={() => {
-                        setChargeMarkPaidId(c.id);
-                        setChargeMarkPaidMethod("card");
-                      }}
-                      disabled={markingChargePaid}
-                      style={twStyle("rounded-lg bg-green-600 py-2 px-3")}
-                    >
-                      {markingChargePaid && chargeMarkPaidId === c.id ? (
-                        <ActivityIndicator size="small" color="#fff" />
-                      ) : (
-                        <Text style={twStyle("text-xs font-medium text-white")}>Mark paid</Text>
-                      )}
-                    </TouchableOpacity>
+                    <View style={twStyle("flex-row items-center gap-2")}>
+                      <TouchableOpacity
+                        onPress={() => void handleSendChargeToClient(c.id)}
+                        disabled={notifyingChargeId === c.id}
+                        style={twStyle("rounded-lg border border-primary py-2 px-3")}
+                        accessibilityRole="button"
+                        accessibilityLabel="Send this charge to the client to pay online"
+                      >
+                        {notifyingChargeId === c.id ? (
+                          <ActivityIndicator size="small" color={Colors.primary} />
+                        ) : (
+                          <Text style={twStyle("text-xs font-medium text-primary")}>Send to client</Text>
+                        )}
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => {
+                          setChargeMarkPaidId(c.id);
+                          setChargeMarkPaidMethod("card");
+                        }}
+                        disabled={markingChargePaid}
+                        style={twStyle("rounded-lg bg-green-600 py-2 px-3")}
+                      >
+                        {markingChargePaid && chargeMarkPaidId === c.id ? (
+                          <ActivityIndicator size="small" color="#fff" />
+                        ) : (
+                          <Text style={twStyle("text-xs font-medium text-white")}>Mark paid</Text>
+                        )}
+                      </TouchableOpacity>
+                    </View>
                   )}
                 </View>
               </View>

@@ -9,6 +9,7 @@ import { useRouter } from "expo-router";
 import { useProvider } from "@/providers/ProviderContext";
 import { useModuleConfig } from "@/providers/ConfigBundleProvider";
 import { supabase } from "@/lib/supabase/client";
+import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
 import { api } from "@/lib/api-client";
 import { playNormalBookingRingtone } from "@/lib/on-demand/ringtone";
 import type { OnDemandModuleConfig } from "@/lib/config-bundle";
@@ -62,7 +63,6 @@ export function BookingAlertListener() {
   const alertSoundRef = useRef<{ stop: () => void } | null>(null);
   const prefsRef = useRef<{ booking_alert_sound?: boolean }>({ booking_alert_sound: true });
   const appState = useRef(AppState.currentState);
-  const bookingAlertsRealtimeGenRef = useRef(0);
 
   // Load the provider's alert sound preference
   useEffect(() => {
@@ -133,9 +133,8 @@ export function BookingAlertListener() {
   useEffect(() => {
     if (!provider?.id) return;
 
-    const gen = ++bookingAlertsRealtimeGenRef.current;
     const channel = supabase
-      .channel(`booking-alerts:${provider.id}:rt${gen}`)
+      .channel(nextRealtimeTopic(`booking-alerts:${provider.id}`))
       .on(
         "postgres_changes",
         {

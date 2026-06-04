@@ -26,6 +26,7 @@ import {
 } from "@/lib/reportDateRanges";
 import { appendReportLocation } from "@/lib/reportLocationQuery";
 import { ReportResponsiveStatRow } from "@/components/reports/ReportResponsiveStatRow";
+import { ReportBasisFootnote } from "@/components/reports/ReportBasisFootnote";
 
 const DATE_RANGES: { label: string; value: ReportDateRangeKey }[] = [
   { label: "Today", value: "today" },
@@ -41,8 +42,18 @@ interface ClientsData {
   total_clients: number;
   retention_rate?: number;
   avg_lifetime_value?: number;
-  top_clients: { name: string; spend: number; visits: number }[];
+  avg_booked_gross?: number;
+  avg_ledger_earnings?: number;
+  top_clients: {
+    name: string;
+    spend: number;
+    booked_gross_spend?: number;
+    ledger_earnings?: number;
+    visits: number;
+  }[];
   growth: { month: string; count: number }[];
+  basisNote?: string;
+  reportBasis?: string;
 }
 
 export default function ClientsReport() {
@@ -70,7 +81,7 @@ export default function ClientsReport() {
 
   return (
     <ScreenContainer>
-      <ScreenHeader title="Clients" showBack subtitle="New, returning & top spenders" />
+      <ScreenHeader title="Clients" showBack subtitle="Booked gross & ledger earnings in range" />
 
       <View style={twStyle("mb-3")}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: "row", paddingBottom: 4 }}>
@@ -85,6 +96,7 @@ export default function ClientsReport() {
           ))}
         </ScrollView>
         <Text style={twStyle("text-xs text-gray-500")}>{rangeCaption}</Text>
+        <ReportBasisFootnote basisNote={data?.basisNote} reportBasis={data?.reportBasis} compact />
       </View>
 
       {loading && !data && <ActivityIndicator style={twStyle("my-8")} color="#ec4899" />}
@@ -100,14 +112,34 @@ export default function ClientsReport() {
             </ReportResponsiveStatRow>
           </View>
 
-          {(data.retention_rate != null || data.avg_lifetime_value != null) && (
+          {(data.retention_rate != null ||
+            data.avg_booked_gross != null ||
+            data.avg_lifetime_value != null ||
+            data.avg_ledger_earnings != null) && (
             <View style={twStyle("mb-3")}>
               <ReportResponsiveStatRow>
                 {data.retention_rate != null ? (
                   <StatCard title="Retention Rate" value={formatPercentage(data.retention_rate)} icon="heart-outline" iconColor="#ec4899" iconBg="bg-pink-50" compact />
                 ) : null}
-                {data.avg_lifetime_value != null ? (
-                  <StatCard title="Avg LTV" value={formatCurrency(data.avg_lifetime_value)} icon="diamond-outline" iconColor="#8b5cf6" iconBg="bg-violet-50" compact />
+                {data.avg_booked_gross != null || data.avg_lifetime_value != null ? (
+                  <StatCard
+                    title="Avg booked gross"
+                    value={formatCurrency(data.avg_booked_gross ?? data.avg_lifetime_value ?? 0)}
+                    icon="diamond-outline"
+                    iconColor="#8b5cf6"
+                    iconBg="bg-violet-50"
+                    compact
+                  />
+                ) : null}
+                {data.avg_ledger_earnings != null ? (
+                  <StatCard
+                    title="Avg ledger earnings"
+                    value={formatCurrency(data.avg_ledger_earnings)}
+                    icon="cash-outline"
+                    iconColor="#059669"
+                    iconBg="bg-emerald-50"
+                    compact
+                  />
                 ) : null}
               </ReportResponsiveStatRow>
             </View>
@@ -142,7 +174,7 @@ export default function ClientsReport() {
 
           {data.top_clients.length > 0 && (
             <View>
-              <SectionHeader title="Top Clients by Spend" />
+              <SectionHeader title="Top clients (booked gross)" />
               <View style={twStyle("rounded-2xl border border-gray-100 bg-white px-4 py-1")}>
                 {data.top_clients.slice(0, 10).map((c, i) => (
                   <View key={i} style={twStyle("flex-row items-center justify-between py-3 border-b border-gray-50")}>
@@ -155,7 +187,14 @@ export default function ClientsReport() {
                         <Text style={twStyle("text-xs text-gray-400")}>{c.visits} visits</Text>
                       </View>
                     </View>
-                    <Text style={twStyle("text-sm font-semibold text-gray-900")}>{formatCurrency(c.spend)}</Text>
+                    <View style={twStyle("items-end")}>
+                      <Text style={twStyle("text-sm font-semibold text-gray-900")}>{formatCurrency(c.spend)}</Text>
+                      {(c.ledger_earnings ?? 0) > 0 ? (
+                        <Text style={twStyle("text-xs text-emerald-700")}>
+                          Ledger {formatCurrency(c.ledger_earnings!)}
+                        </Text>
+                      ) : null}
+                    </View>
                   </View>
                 ))}
               </View>

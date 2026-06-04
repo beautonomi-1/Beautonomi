@@ -47,7 +47,9 @@ import {
   getHoldTimeRemaining,
   percentOf,
   serverNowToClockOffsetMs,
+  lineHasHouseCallAdjustment,
 } from "@beautonomi/utils";
+import { HouseCallLineFootnote, toHouseCallTranslate } from "@/components/booking/HouseCallPricingNotes";
 import type { SavedPaymentMethod } from "@/types/api";
 import { APP_URL } from "@/config/public-env";
 import { webTermsOfServiceUrl } from "@/lib/legal-web";
@@ -97,6 +99,8 @@ interface BookingServiceSnapshot {
   staff_id?: string | null;
   duration_minutes: number;
   price: number;
+  base_price?: number;
+  at_home_price_adjustment?: number;
   currency: string;
   service_name?: string;
   title?: string;
@@ -819,6 +823,7 @@ function CollapsibleCheckoutSection({
 export default function BookCheckoutScreen() {
   useScreenTracking("Book Checkout");
   const { t } = useTranslation();
+  const houseCallT = useMemo(() => toHouseCallTranslate(t), [t]);
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
   // §UX-audit 2026-04: sticky footer + floating header were using
   // magic `paddingBottom: 28` / `paddingTop: 52` constants which
@@ -1779,27 +1784,25 @@ export default function BookCheckoutScreen() {
   const depositAmount = depositAmountComputed;
   const checkoutAmountDueByPolicy =
     paymentOption === "deposit" && hasDeposit ? depositAmount : total;
-  const walletAppliesToCheckout =
-    (paymentMethod === "wallet" || (paymentMethod === "card" && useWallet)) && walletBalance > 0;
-  const walletAppliedToCheckout = walletAppliesToCheckout
-    ? Math.min(walletBalance, checkoutAmountDueByPolicy)
-    : 0;
   const giftCardAppliedToCheckout =
     (paymentMethod === "giftcard" || paymentMethod === "card") && giftCardValid
       ? Math.min(Number(giftCardValid.balance || 0), checkoutAmountDueByPolicy)
       : 0;
-  const cardAmountDueNow = Math.max(
+  const amountAfterGiftOnCheckout = Math.max(
     0,
-    checkoutAmountDueByPolicy - giftCardAppliedToCheckout - walletAppliedToCheckout
+    checkoutAmountDueByPolicy - giftCardAppliedToCheckout
   );
+  const walletAppliesToCheckout = paymentMethod === "card" && useWallet && walletBalance > 0;
+  const walletAppliedToCheckout = walletAppliesToCheckout
+    ? Math.min(walletBalance, amountAfterGiftOnCheckout)
+    : 0;
+  const cardAmountDueNow = Math.max(0, amountAfterGiftOnCheckout - walletAppliedToCheckout);
   const bottomAmountShown =
     paymentMethod === "cash"
       ? checkoutAmountDueByPolicy
       : paymentMethod === "giftcard"
         ? checkoutAmountDueByPolicy
-        : paymentMethod === "wallet"
-          ? walletAppliedToCheckout || checkoutAmountDueByPolicy
-          : cardAmountDueNow;
+        : cardAmountDueNow;
   const amountPaidOnCompletion = paymentMethod === "cash" ? 0 : checkoutAmountDueByPolicy;
 
   useEffect(() => {
@@ -1811,17 +1814,25 @@ export default function BookCheckoutScreen() {
       setPaymentMethod(paystack ? "card" : cashEnabled ? "cash" : "card");
       return;
     }
-    if (paymentMethod === "wallet" && !walletOk) {
-      setPaymentMethod(paystack ? "card" : cashEnabled ? "cash" : "card");
+    if (paymentMethod === "wallet") {
+      setPaymentMethod("card");
+      setUseWallet(walletOk);
       return;
     }
     if (paymentMethod === "card" && !paystack && cashEnabled) {
       setPaymentMethod("cash");
     }
     if (paymentMethod === "cash" && !cashEnabled) {
-      setPaymentMethod(paystack ? "card" : walletOk ? "wallet" : giftOk ? "giftcard" : "card");
+      setPaymentMethod(paystack ? "card" : giftOk ? "giftcard" : "card");
     }
   }, [hold, paymentMethod, cashEnabled]);
+
+  useEffect(() => {
+    if (paymentMethod === "wallet") {
+      setPaymentMethod("card");
+      if (walletBalance > 0) setUseWallet(true);
+    }
+  }, [paymentMethod, walletBalance]);
 
   useEffect(() => {
     if (!hasDeposit) setPaymentOption("full");
@@ -2333,7 +2344,7 @@ export default function BookCheckoutScreen() {
       Number(giftCardValid.balance || 0) + 0.005 < checkoutAmountDueByPolicy
     ) {
       setError(
-        "This gift card does not cover the amount due now. Choose another payment method or use a different gift card."
+        "This gift card does not cover the full amount. Select Card, enter your gift card code, and pay the remainder with your card or wallet."
       );
       return;
     }
@@ -2342,8 +2353,13 @@ export default function BookCheckoutScreen() {
       setError(t("checkout.cardUnavailableMarket"));
       return;
     }
-    if (paymentMethod === "wallet" && !walletEnabled) {
-      setError(t("checkout.walletUnavailableMarket"));
+    if (
+      paymentMethod === "card" &&
+      cardAmountDueNow > 0.005 &&
+      !paystackEnabled &&
+      !(selectedCardId && !useNewCard && savedCards.length > 0)
+    ) {
+      setError(t("checkout.cardUnavailableMarket"));
       return;
     }
 
@@ -2403,14 +2419,9 @@ export default function BookCheckoutScreen() {
       const fingerprint = await getGuestFingerprintHash();
 
       const payload: Record<string, unknown> = {
-        payment_method:
-          paymentMethod === "wallet"
-            ? "card"
-            : paymentMethod === "giftcard"
-              ? "giftcard"
-              : paymentMethod,
+        payment_method: paymentMethod === "giftcard" ? "giftcard" : paymentMethod,
         payment_option: paymentOption,
-        use_wallet: paymentMethod === "wallet" || (paymentMethod === "card" && useWallet),
+        use_wallet: paymentMethod === "card" && useWallet,
         save_card:
           paymentMethod === "card" && (useNewCard || savedCards.length === 0) ? saveCard : false,
         guest_fingerprint_hash: fingerprint,
@@ -2629,7 +2640,7 @@ export default function BookCheckoutScreen() {
         }
       };
 
-      if (paymentUrl && paymentMethod === "card") {
+      if (paymentUrl && paymentMethod !== "cash" && paymentMethod !== "giftcard") {
         setProcessingPayment(true);
         setProcessingMessage(t("checkout.openingPaymentPage"));
         let returnedPaymentReference: string | null = data?.payment_reference ?? null;
@@ -3254,37 +3265,46 @@ export default function BookCheckoutScreen() {
                   svc.name ??
                   routeServiceName ??
                   `Service ${i + 1}`;
+                const lineCurrency = svc.currency ?? currency;
                 return (
                   <View
                     key={i}
                     style={{
-                      flexDirection: "row",
-                      justifyContent: "space-between",
-                      alignItems: "center",
                       paddingVertical: 12,
                       borderBottomWidth: 1,
                       borderColor: "#F3F4F6",
                     }}
                   >
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 14, fontWeight: "500", color: "#111827" }}>
-                        {serviceName}
-                      </Text>
-                      <View style={{ flexDirection: "row", alignItems: "center", marginTop: 4 }}>
-                        <Ionicons
-                          name="time-outline"
-                          size={12}
-                          color="#9CA3AF"
-                          style={{ marginRight: 4 }}
-                        />
-                        <Text style={{ fontSize: 12, color: "#6B7280" }}>
-                          {svc.duration_minutes} min
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        justifyContent: "space-between",
+                        alignItems: "flex-start",
+                      }}
+                    >
+                      <View style={{ flex: 1, paddingRight: 12 }}>
+                        <Text style={{ fontSize: 14, fontWeight: "500", color: "#111827" }}>
+                          {serviceName}
                         </Text>
+                        <View style={{ flexDirection: "row", alignItems: "center", marginTop: 4 }}>
+                          <Ionicons
+                            name="time-outline"
+                            size={12}
+                            color="#9CA3AF"
+                            style={{ marginRight: 4 }}
+                          />
+                          <Text style={{ fontSize: 12, color: "#6B7280" }}>
+                            {svc.duration_minutes} min
+                          </Text>
+                        </View>
+                        {hold.location_type === "at_home" && lineHasHouseCallAdjustment(svc) ? (
+                          <HouseCallLineFootnote line={svc} currency={lineCurrency} t={houseCallT} />
+                        ) : null}
                       </View>
+                      <Text style={{ fontSize: 15, fontWeight: "700", color: "#111827" }}>
+                        {formatCurrency(svc.price, lineCurrency)}
+                      </Text>
                     </View>
-                    <Text style={{ fontSize: 15, fontWeight: "700", color: "#111827" }}>
-                      {formatCurrency(svc.price, svc.currency)}
-                    </Text>
                   </View>
                 );
               })}
@@ -4159,15 +4179,13 @@ export default function BookCheckoutScreen() {
                 </Text>
               )}
 
-              {/* Wallet credit breakdown — shown when wallet covers part/all of total */}
+              {/* Split tender breakdown (gift card + wallet + card remainder) */}
               {paymentMethod === "card" &&
-                useWallet &&
-                walletBalance > 0 &&
+                (giftCardAppliedToCheckout > 0 || walletAppliedToCheckout > 0) &&
                 (() => {
                   const chargeableAmount =
                     paymentOption === "deposit" && hasDeposit ? depositAmount : total;
-                  const walletApplied = Math.min(walletBalance, chargeableAmount);
-                  const paystackRemainder = Math.max(0, chargeableAmount - walletApplied);
+                  const paystackRemainder = cardAmountDueNow;
                   return (
                     <>
                       <View
@@ -4175,23 +4193,38 @@ export default function BookCheckoutScreen() {
                           height: 1,
                           backgroundColor: "#E5E7EB",
                           marginVertical: 10,
-                          borderStyle: "dashed",
                         }}
                       />
-                      <View
-                        style={{
-                          flexDirection: "row",
-                          justifyContent: "space-between",
-                          marginBottom: 6,
-                        }}
-                      >
-                        <Text style={{ fontSize: 13, color: "#059669" }}>
-                          {t("checkout.walletCreditApplied")}
-                        </Text>
-                        <Text style={{ fontSize: 13, color: "#059669", fontWeight: "600" }}>
-                          -{formatCurrency(walletApplied, currency)}
-                        </Text>
-                      </View>
+                      {giftCardAppliedToCheckout > 0 ? (
+                        <View
+                          style={{
+                            flexDirection: "row",
+                            justifyContent: "space-between",
+                            marginBottom: 6,
+                          }}
+                        >
+                          <Text style={{ fontSize: 13, color: "#2563EB" }}>Gift card</Text>
+                          <Text style={{ fontSize: 13, color: "#2563EB", fontWeight: "600" }}>
+                            -{formatCurrency(giftCardAppliedToCheckout, currency)}
+                          </Text>
+                        </View>
+                      ) : null}
+                      {walletAppliedToCheckout > 0 ? (
+                        <View
+                          style={{
+                            flexDirection: "row",
+                            justifyContent: "space-between",
+                            marginBottom: 6,
+                          }}
+                        >
+                          <Text style={{ fontSize: 13, color: "#059669" }}>
+                            {t("checkout.walletCreditApplied")}
+                          </Text>
+                          <Text style={{ fontSize: 13, color: "#059669", fontWeight: "600" }}>
+                            -{formatCurrency(walletAppliedToCheckout, currency)}
+                          </Text>
+                        </View>
+                      ) : null}
                       <View
                         style={{
                           flexDirection: "row",
@@ -4222,6 +4255,18 @@ export default function BookCheckoutScreen() {
                           }}
                         >
                           {t("checkout.walletCoversFullNoCard")}
+                        </Text>
+                      )}
+                      {paystackRemainder > 0 && chargeableAmount > paystackRemainder && (
+                        <Text
+                          style={{
+                            fontSize: 11,
+                            color: "#6B7280",
+                            marginTop: 4,
+                            textAlign: "center",
+                          }}
+                        >
+                          Wallet and gift card reduce your total; pay the remainder securely by card.
                         </Text>
                       )}
                     </>
@@ -4764,52 +4809,6 @@ export default function BookCheckoutScreen() {
                     )}
                   </Pressable>
                 )}
-                {user && walletBalance > 0 && walletEnabled && (
-                  <Pressable
-                    onPress={() => {
-                      haptic.light();
-                      setPaymentMethod("wallet");
-                    }}
-                    style={{
-                      flex: 1,
-                      minWidth: 90,
-                      flexDirection: "row",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      paddingVertical: 14,
-                      borderRadius: 14,
-                      borderWidth: 1.5,
-                      borderColor: paymentMethod === "wallet" ? Colors.primary : "#E5E7EB",
-                      backgroundColor: paymentMethod === "wallet" ? Colors.primaryLight : "#fff",
-                    }}
-                    accessibilityRole="radio"
-                    accessibilityState={{ selected: paymentMethod === "wallet" }}
-                  >
-                    <Ionicons
-                      name="wallet-outline"
-                      size={18}
-                      color={paymentMethod === "wallet" ? Colors.primary : "#6B7280"}
-                      style={{ marginRight: 6 }}
-                    />
-                    <Text
-                      style={{
-                        fontWeight: "600",
-                        color: paymentMethod === "wallet" ? Colors.primary : "#374151",
-                        fontSize: 14,
-                      }}
-                    >
-                      {t("checkout.wallet")}
-                    </Text>
-                    {paymentMethod === "wallet" && (
-                      <Ionicons
-                        name="checkmark-circle"
-                        size={18}
-                        color={Colors.primary}
-                        style={{ marginLeft: 4 }}
-                      />
-                    )}
-                  </Pressable>
-                )}
                 {cashEnabled && (
                   <Pressable
                     onPress={() => {
@@ -5321,13 +5320,11 @@ export default function BookCheckoutScreen() {
                   ? "Due at appointment"
                   : paymentMethod === "giftcard"
                     ? "Gift card charge"
-                    : paymentMethod === "wallet"
-                      ? "Wallet charge"
-                      : paymentOption === "deposit" && hasDeposit
-                        ? t("checkout.depositNow")
-                        : walletAppliedToCheckout > 0
-                          ? "Card charge now"
-                          : t("checkout.total")}
+                    : paymentOption === "deposit" && hasDeposit
+                      ? t("checkout.depositNow")
+                      : giftCardAppliedToCheckout > 0 || walletAppliedToCheckout > 0
+                        ? "Card charge now"
+                        : t("checkout.total")}
               </Text>
               <Text style={{ fontSize: 18, fontWeight: "800", color: "#111827" }}>
                 {formatCurrency(bottomAmountShown, currency)}

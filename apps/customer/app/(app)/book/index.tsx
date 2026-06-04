@@ -51,6 +51,12 @@ import {
   getPendingExcludeHoldId,
   setPendingExcludeHoldId,
 } from "@/lib/booking-flow-hold";
+import { catalogHasAnyAtHomePriceAdjustment, computeAtHomeLinePrice } from "@beautonomi/utils";
+import {
+  HouseCallAtHomeBanner,
+  HouseCallServicePriceText,
+  toHouseCallTranslate,
+} from "@/components/booking/HouseCallPricingNotes";
 import { getGuestFingerprintHash } from "@/lib/guest-fingerprint";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { getTenantLocaleTag } from "@/lib/locale";
@@ -82,6 +88,33 @@ export interface SelectedServiceItem {
   currency: string;
   /** When false, at-home booking is not allowed for this line. */
   supports_at_home?: boolean;
+}
+
+function resolveOfferingPricing(
+  categories: ProviderServicesResponse["categories"],
+  offeringId: string
+): { basePrice: number; atHomePriceAdjustment: number; currency: string } | null {
+  for (const cat of categories) {
+    for (const svc of cat.services ?? []) {
+      if (svc.id === offeringId) {
+        return {
+          basePrice: svc.price ?? 0,
+          atHomePriceAdjustment: svc.at_home_price_adjustment ?? 0,
+          currency: svc.currency,
+        };
+      }
+      for (const v of svc.variants ?? []) {
+        if (v.id === offeringId) {
+          return {
+            basePrice: v.price ?? 0,
+            atHomePriceAdjustment: svc.at_home_price_adjustment ?? 0,
+            currency: svc.currency,
+          };
+        }
+      }
+    }
+  }
+  return null;
 }
 
 const STEP_LABEL_KEYS: Record<Step, string> = {
@@ -448,6 +481,7 @@ function DateCell({ date, isSelected, isToday, disabled, onPress }: {
 export default function BookScreen() {
   useScreenTracking("Book");
   const { t } = useTranslation();
+  const houseCallT = useMemo(() => toHouseCallTranslate(t), [t]);
   // §UX-audit 2026-04: previously every sticky bottom bar and floating
   // header on this screen hard-coded `paddingBottom: 28` / `paddingTop: 52`,
   // so CTAs rendered under the home indicator on notched devices.
@@ -593,7 +627,7 @@ export default function BookScreen() {
   } = useAddresses(!!user);
 
   const validSteps: Step[] = ["service", "venue", "staff", "date", "time", "addons"];
-  const initialStep: Step = stepParam && validSteps.includes(stepParam as Step) ? (stepParam as Step) : "service";
+  const initialStep: Step = stepParam && validSteps.includes(stepParam as Step) ? (stepParam as Step) : "venue";
 
   const [provider, setProvider] = useState<PublicProviderDetail | null>(null);
   const [servicesData, setServicesData] = useState<ProviderServicesResponse | null>(null);
@@ -844,11 +878,40 @@ export default function BookScreen() {
   });
 
   const visibleSteps = useMemo(() => {
-    const steps: Step[] = ["service", "venue"];
+    const steps: Step[] = ["venue", "service"];
     if (staff.length > 0) steps.push("staff");
     steps.push("date", "time", "addons");
     return steps;
   }, [staff.length]);
+
+  const isAtHomeBooking = locationType === "at_home";
+
+  const catalogHasHouseCallFees = useMemo(() => {
+    const services = (servicesData?.categories ?? []).flatMap((c) => c.services ?? []);
+    return catalogHasAnyAtHomePriceAdjustment(services);
+  }, [servicesData?.categories]);
+
+  /** Keep cart line prices in sync when the customer switches salon ↔ at-home. */
+  useEffect(() => {
+    if (!servicesData?.categories?.length) return;
+    setSelectedServices((prev) => {
+      if (prev.length === 0) return prev;
+      let changed = false;
+      const next = prev.map((item) => {
+        const resolved = resolveOfferingPricing(servicesData.categories, item.offeringId);
+        if (!resolved) return item;
+        const { displayPrice } = computeAtHomeLinePrice(
+          resolved.basePrice,
+          resolved.atHomePriceAdjustment,
+          locationType === "at_home"
+        );
+        if (Math.abs(displayPrice - item.price) < 0.005) return item;
+        changed = true;
+        return { ...item, price: displayPrice, currency: resolved.currency || item.currency };
+      });
+      return changed ? next : prev;
+    });
+  }, [locationType, servicesData?.categories]);
 
   const salonLocations = useMemo(
     () => (provider?.locations ?? []).filter((loc) => loc.location_type === "salon"),
@@ -938,6 +1001,7 @@ export default function BookScreen() {
     setServiceFilterText("");
     setCategoryFilterText("");
     setVisibleLimitByCategoryId({});
+    const wantsAtHome = locationTypeParam === "at_home";
     try {
       const [provRes, svcRes, staffRes, pkRes, prodRes] = await Promise.all([
         api.get<PublicProviderDetail>(`/api/public/providers/${encodeURIComponent(slug)}`),
@@ -953,7 +1017,6 @@ export default function BookScreen() {
         setProvider(provRes.data);
         const locs = provRes.data.locations || [];
         const salonLocs = locs.filter((loc) => loc.location_type === "salon");
-        const wantsAtHome = locationTypeParam === "at_home";
 
         if (wantsAtHome) {
           setLocationType("at_home");
@@ -992,14 +1055,26 @@ export default function BookScreen() {
             mode
           );
           if (!resolved?.length) return null;
-          const entries: SelectedServiceItem[] = resolved.map((r) => ({
-            offeringId: r.offeringId,
-            title: r.title,
-            duration_minutes: r.duration_minutes,
-            buffer_minutes: r.buffer_minutes,
-            price: r.price,
-            currency: r.currency,
-          }));
+          const entries: SelectedServiceItem[] = resolved.map((r) => {
+            const svc = flat.find(
+              (s) => s.id === r.offeringId || s.variants?.some((vv) => vv.id === r.offeringId),
+            );
+            const parentAdj = svc?.at_home_price_adjustment;
+            const { displayPrice } = computeAtHomeLinePrice(
+              r.price,
+              parentAdj,
+              wantsAtHome,
+            );
+            return {
+              offeringId: r.offeringId,
+              title: r.title,
+              duration_minutes: r.duration_minutes,
+              buffer_minutes: r.buffer_minutes,
+              price: displayPrice,
+              currency: r.currency,
+              supports_at_home: svc?.supports_at_home,
+            };
+          });
           setSelectedServices(entries);
           const firstOfferingId = entries[0].offeringId;
           const firstSvc = flat.find(
@@ -1226,11 +1301,10 @@ export default function BookScreen() {
     }
   }, [selectedServices, selectedPackageProducts, packageIdForCheckout]);
 
-  // Auto-advance past the service step when a package has been fully preloaded —
-  // the user's intent (book this package) is already clear, no need to linger on service selection.
+  // Package deep-link: once services are preloaded, move from venue to the package summary step.
   useEffect(() => {
-    if (!loading && packageIdForCheckout && activePackage && selectedServices.length > 0 && step === "service") {
-      setStep("venue");
+    if (!loading && packageIdForCheckout && activePackage && selectedServices.length > 0 && step === "venue") {
+      setStep("service");
     }
   }, [loading, packageIdForCheckout, activePackage, selectedServices.length, step]);
 
@@ -1758,7 +1832,15 @@ export default function BookScreen() {
               buffer_minutes: selectedVariant
                 ? resolveOfferingBufferMinutes(selectedService, selectedVariant.id)
                 : resolveOfferingBufferMinutes(selectedService, null),
-              price: selectedVariant?.price ?? selectedService.price ?? 0,
+              price: (() => {
+                const base = selectedVariant?.price ?? selectedService.price ?? 0;
+                const { displayPrice } = computeAtHomeLinePrice(
+                  base,
+                  selectedService.at_home_price_adjustment,
+                  locationType === "at_home"
+                );
+                return displayPrice;
+              })(),
               currency: selectedService.currency ?? getTenantDefaultCurrency(),
             },
           ]
@@ -1966,9 +2048,9 @@ export default function BookScreen() {
 
   const goBack = useCallback(() => {
     haptic.light();
-    if (step === "venue") setStep("service");
-    else if (step === "staff") setStep("venue");
-    else if (step === "date") setStep(staff.length ? "staff" : "venue");
+    if (step === "service") setStep("venue");
+    else if (step === "staff") setStep("service");
+    else if (step === "date") setStep(staff.length ? "staff" : "service");
     else if (step === "time") setStep("date");
     else if (step === "addons") setStep("time");
     else router.back();
@@ -2140,6 +2222,9 @@ export default function BookScreen() {
             {/* ── Step: Service (grouped by category, collapsible) ── */}
             {step === "service" && (
               <View>
+                {isAtHomeBooking && catalogHasHouseCallFees && !activePackage ? (
+                  <HouseCallAtHomeBanner t={houseCallT} />
+                ) : null}
                 {activePackage ? (
                   /* ── Package mode: locked summary view ── */
                   <View>
@@ -2380,11 +2465,23 @@ export default function BookScreen() {
                                   setSelectedVariant(null);
                                   const offeringId = svc.id;
                                   const dur = svc.duration_minutes ?? 60;
-                                  const price = svc.price ?? 0;
+                                  const { displayPrice } = computeAtHomeLinePrice(
+                                    svc.price ?? 0,
+                                    svc.at_home_price_adjustment,
+                                    locationType === "at_home"
+                                  );
                                   const buf = resolveOfferingBufferMinutes(svc, null);
                                   setSelectedServices((prev) => [
                                     ...prev,
-                                    { offeringId, title: svc.title ?? "", duration_minutes: dur, buffer_minutes: buf, price, currency },
+                                    {
+                                      offeringId,
+                                      title: svc.title ?? "",
+                                      duration_minutes: dur,
+                                      buffer_minutes: buf,
+                                      price: displayPrice,
+                                      currency: svc.currency ?? getTenantDefaultCurrency(),
+                                      supports_at_home: svc.supports_at_home,
+                                    },
                                   ]);
                                 }
                               }}
@@ -2408,10 +2505,19 @@ export default function BookScreen() {
                                 <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }}>
                                   {hasVariants
                                     ? `${svc.variants!.length} option${svc.variants!.length === 1 ? "" : "s"} · tap to ${variantsExpanded ? "hide" : "choose"}`
-                                    : `${svc.duration_minutes} min · ${currency} ${svc.price.toFixed(2)}`}
+                                    : `${svc.duration_minutes} min`}
                                 </Text>
                               </View>
-                              {!hasVariants && <Ionicons name="add-circle-outline" size={22} color={Colors.primary} />}
+                              {!hasVariants && (
+                                <HouseCallServicePriceText
+                                  basePrice={svc.price ?? 0}
+                                  atHomePriceAdjustment={svc.at_home_price_adjustment}
+                                  isAtHome={locationType === "at_home"}
+                                  currency={currency}
+                                  t={houseCallT}
+                                />
+                              )}
+                              {!hasVariants && <Ionicons name="add-circle-outline" size={22} color={Colors.primary} style={{ marginLeft: 8 }} />}
                               {hasVariants && (
                                 <Ionicons
                                   name={variantsExpanded ? "chevron-up" : "chevron-down"}
@@ -2435,6 +2541,11 @@ export default function BookScreen() {
                                           // Deselect this variant
                                           setSelectedServices((prev) => prev.filter((s) => s.offeringId !== v.id));
                                         } else {
+                                          const { displayPrice } = computeAtHomeLinePrice(
+                                            v.price,
+                                            svc.at_home_price_adjustment,
+                                            locationType === "at_home"
+                                          );
                                           setSelectedServices((prev) => [
                                             ...prev,
                                             {
@@ -2442,8 +2553,9 @@ export default function BookScreen() {
                                               title: v.title ?? svc.title ?? "",
                                               duration_minutes: v.duration_minutes,
                                               buffer_minutes: resolveOfferingBufferMinutes(svc, v.id),
-                                              price: v.price,
+                                              price: displayPrice,
                                               currency,
+                                              supports_at_home: svc.supports_at_home,
                                             },
                                           ]);
                                         }
@@ -2466,13 +2578,18 @@ export default function BookScreen() {
                                         <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>{v.duration_minutes} min</Text>
                                       </View>
                                       <View style={{ flexDirection: "row", alignItems: "center" }}>
-                                        <Text style={{ fontSize: 14, fontWeight: "700", color: Colors.primary, marginRight: 6 }}>
-                                          {currency} {v.price.toFixed(2)}
-                                        </Text>
+                                        <HouseCallServicePriceText
+                                          basePrice={v.price}
+                                          atHomePriceAdjustment={svc.at_home_price_adjustment}
+                                          isAtHome={locationType === "at_home"}
+                                          currency={currency}
+                                          t={houseCallT}
+                                        />
                                         <Ionicons
                                           name={isVariantSelected ? "checkmark-circle" : "add-circle-outline"}
                                           size={20}
-                                          color={isVariantSelected ? Colors.primary : Colors.primary}
+                                          color={Colors.primary}
+                                          style={{ marginLeft: 6 }}
                                         />
                                       </View>
                                     </Pressable>
@@ -2518,10 +2635,15 @@ export default function BookScreen() {
               </View>
             )}
 
-            {/* ── Step: Venue ── */}
-            {step === "venue" && (selectedService || selectedServices.length > 0) && (
+            {/* ── Step: Venue (first — prices on the service step reflect this choice) ── */}
+            {step === "venue" && (
               <View>
-                <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 12 }}>{t("booking.selectVenue")}</Text>
+                <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 4 }}>{t("booking.selectVenue")}</Text>
+                {catalogHasHouseCallFees ? (
+                  <Text style={{ fontSize: 13, color: "#6B7280", marginBottom: 14, lineHeight: 18 }}>
+                    {t("booking.houseCallPricing.venueStepHint")}
+                  </Text>
+                ) : null}
                 {provider.supports_salon && (salonLocations.length ? (
                   (salonLocations.length === 1 ? (
                     <Pressable
@@ -2529,7 +2651,6 @@ export default function BookScreen() {
                         haptic.light();
                         setLocationType("at_salon");
                         setSelectedLocation(salonLocations[0]!);
-                        setStep(staff.length ? "staff" : "date");
                       }}
                       style={{
                         flexDirection: "row", alignItems: "center",
@@ -2561,7 +2682,6 @@ export default function BookScreen() {
                             haptic.light();
                             setLocationType("at_salon");
                             setSelectedLocation(loc);
-                            setStep(staff.length ? "staff" : "date");
                           }}
                           style={{
                             flexDirection: "row", alignItems: "center",
@@ -2595,7 +2715,6 @@ export default function BookScreen() {
                       haptic.light();
                       setLocationType("at_salon");
                       setSelectedLocation(null);
-                      setStep(staff.length ? "staff" : "date");
                     }}
                     style={{
                       flexDirection: "row", alignItems: "center",
@@ -2963,17 +3082,6 @@ export default function BookScreen() {
                         )}
                       </View>
                     )}
-                    <TouchableOpacity
-                      onPress={() => { haptic.medium(); setStep(staff.length ? "staff" : "date"); }}
-                      disabled={!atHomeAddress.line1.trim() || !atHomeAddress.city.trim()}
-                      style={{
-                        backgroundColor: (!atHomeAddress.line1.trim() || !atHomeAddress.city.trim()) ? "#D1D5DB" : Colors.primary,
-                        borderRadius: 12, paddingVertical: 14, alignItems: "center", marginTop: 10,
-                      }}
-                      accessibilityRole="button" accessibilityLabel={t("common.continue")}
-                    >
-                      <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>{t("common.continue")}</Text>
-                    </TouchableOpacity>
                   </View>
                 )}
               </View>
@@ -3599,7 +3707,10 @@ export default function BookScreen() {
               borderTopWidth: 1, borderColor: "#E5E7EB", backgroundColor: "#fff",
             }}>
               <TouchableOpacity
-                onPress={() => { haptic.medium(); setStep("venue"); }}
+                onPress={() => {
+                  haptic.medium();
+                  setStep(staff.length > 0 ? "staff" : "date");
+                }}
                 disabled={selectedServices.length === 0}
                 style={{
                   backgroundColor: selectedServices.length > 0 ? Colors.primary : "#D1D5DB",
@@ -3637,18 +3748,19 @@ export default function BookScreen() {
               </TouchableOpacity>
             </View>
           )}
-          {step === "venue" && (selectedService || selectedServices.length > 0) && (
+          {step === "venue" && (
             <View style={{
               paddingHorizontal: contentPadding, paddingTop: 12, paddingBottom: 12 + Math.max(insets.bottom, 8),
               borderTopWidth: 1, borderColor: "#E5E7EB", backgroundColor: "#fff",
             }}>
               {(() => {
-                const venueValid = locationType === "at_salon"
-                  ? selectedLocation != null
-                  : (Boolean(atHomeAddress.line1.trim()) && Boolean(atHomeAddress.city.trim()));
+                const venueValid =
+                  locationType === "at_salon"
+                    ? salonLocations.length === 0 || selectedLocation != null
+                    : Boolean(atHomeAddress.line1.trim()) && Boolean(atHomeAddress.city.trim());
                 return (
                   <TouchableOpacity
-                    onPress={() => { haptic.medium(); setStep(staff.length > 0 ? "staff" : "date"); }}
+                    onPress={() => { haptic.medium(); setStep("service"); }}
                     disabled={!venueValid}
                     style={{
                       backgroundColor: venueValid ? Colors.primary : "#D1D5DB",

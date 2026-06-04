@@ -111,6 +111,9 @@ export interface BookingServiceEntry {
   title: string;
   duration_minutes: number;
   price: number;
+  /** Salon/base price before at-home adjustment (for transparent checkout copy). */
+  base_price?: number;
+  at_home_price_adjustment?: number;
   currency: string;
   staff_id?: string | null;
 }

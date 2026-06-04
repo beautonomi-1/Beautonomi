@@ -121,7 +121,7 @@ async function getAccessToken(): Promise<string | null> {
           message: e instanceof Error ? e.message : String(e),
         });
       }
-      throw e;
+      return null;
     } finally {
       inflightToken = null;
     }

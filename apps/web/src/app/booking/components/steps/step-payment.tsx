@@ -42,12 +42,16 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { subscribeRecurringEligible } from "@/lib/recurring/subscribe-recurring-eligibility";
 import { formatLocalDateYYYYMMDD } from "@/lib/dates/format-local-date-yyyymmdd";
 import { reconcileBookingInstantWithSlotLabel } from "@/lib/bookings/reconcile-booking-instant-with-slot-label";
-import { getHoldTimeRemaining, percentOf, serverNowToClockOffsetMs } from "@beautonomi/utils";
+import { getHoldTimeRemaining, lineHasHouseCallAdjustment, percentOf, serverNowToClockOffsetMs } from "@beautonomi/utils";
+import { HouseCallLineFootnote } from "@/components/booking/HouseCallPricingNotes";
 
 type PublicBookingCreateResult = {
   booking_id: string;
   booking_number: string;
   payment_url?: string | null;
+  wallet_amount_applied?: number;
+  gift_card_amount_applied?: number;
+  paystack_amount?: number;
   recurring_subscription?: { created: boolean; pending?: boolean; message?: string };
 };
 
@@ -1002,7 +1006,7 @@ export default function StepPayment({
       const amountDueNow = paymentOption === "deposit" ? depositAmount : totals.total;
       if ((bookingState.promotions.giftCardAmount || 0) + 0.005 < amountDueNow) {
         toast.error(
-          "This gift card does not cover the amount due now. Use card payment to combine a gift card with another tender."
+          "This gift card does not cover the full amount. Select Card, enter your gift card code on this step, and pay the remainder with your card or wallet."
         );
         return;
       }
@@ -1159,12 +1163,14 @@ export default function StepPayment({
 
       const draftWithUrl = bookingResult;
 
-      // Wallet covered full amount — server returned null payment_url
-      if (
-        (bookingState.useWallet ?? false) &&
-        (draftWithUrl.payment_url == null || draftWithUrl.payment_url === "")
-      ) {
-        toast.success("Booking created! Payment processed from wallet.");
+      const paystackRemainder = Number(draftWithUrl.paystack_amount ?? NaN);
+      const noCardLeg =
+        draftWithUrl.payment_url == null ||
+        draftWithUrl.payment_url === "" ||
+        (Number.isFinite(paystackRemainder) && paystackRemainder <= 0);
+      // Wallet/gift covered full amount — server returned no Paystack URL
+      if ((bookingState.useWallet ?? false) && noCardLeg) {
+        toast.success("Booking created! Payment processed from wallet and gift card.");
         notifyRecurringFromResult(bookingResult.recurring_subscription);
         router.push(`/booking/confirmation?bookingId=${bookingResult.booking_id}`);
         return;
@@ -1308,20 +1314,34 @@ export default function StepPayment({
                     className="border-b border-gray-200 pb-3 last:border-0 last:pb-0"
                   >
                     <p className="font-medium text-gray-900 mb-2">{participant.name}</p>
-                    {participantServices.map((service) => (
-                      <div
-                        key={service.id}
-                        className="flex justify-between gap-2 text-sm ml-4 mb-1"
-                      >
-                        <span className="min-w-0 truncate text-gray-600">
-                          {service.title}
-                          {service.staffName && ` - ${service.staffName}`}
-                        </span>
-                        <span className="flex-shrink-0 font-medium whitespace-nowrap">
-                          {formatCurrency(service.price, totals.currency)}
-                        </span>
-                      </div>
-                    ))}
+                    {participantServices.map((service) => {
+                      const snapshotLine = {
+                        price: service.price,
+                        base_price: service.base_price,
+                        at_home_price_adjustment: service.at_home_price_adjustment,
+                      };
+                      return (
+                        <div key={service.id} className="ml-4 mb-2">
+                          <div className="flex justify-between gap-2 text-sm">
+                            <span className="min-w-0 truncate text-gray-600">
+                              {service.title}
+                              {service.staffName && ` - ${service.staffName}`}
+                            </span>
+                            <span className="flex-shrink-0 font-medium whitespace-nowrap">
+                              {formatCurrency(service.price, totals.currency)}
+                            </span>
+                          </div>
+                          {bookingState.mode === "mobile" &&
+                          lineHasHouseCallAdjustment(snapshotLine) ? (
+                            <HouseCallLineFootnote
+                              line={snapshotLine}
+                              currency={totals.currency}
+                              t={t}
+                            />
+                          ) : null}
+                        </div>
+                      );
+                    })}
                     <div className="flex justify-between text-sm font-medium mt-2 ml-4">
                       <span>Subtotal</span>
                       <span>{formatCurrency(participantTotal, totals.currency)}</span>
@@ -1330,17 +1350,34 @@ export default function StepPayment({
                 );
               })
             : // Show services for regular bookings
-              bookingState.selectedServices.map((service) => (
-                <div key={service.id} className="flex justify-between gap-2 text-sm">
-                  <span className="min-w-0 truncate text-gray-600">
-                    {service.title}
-                    {service.staffName && ` - ${service.staffName}`}
-                  </span>
-                  <span className="flex-shrink-0 font-medium whitespace-nowrap">
-                    {formatCurrency(service.price, totals.currency)}
-                  </span>
-                </div>
-              ))}
+              bookingState.selectedServices.map((service) => {
+                const snapshotLine = {
+                  price: service.price,
+                  base_price: service.base_price,
+                  at_home_price_adjustment: service.at_home_price_adjustment,
+                };
+                return (
+                  <div key={service.id} className="space-y-0.5">
+                    <div className="flex justify-between gap-2 text-sm">
+                      <span className="min-w-0 truncate text-gray-600">
+                        {service.title}
+                        {service.staffName && ` - ${service.staffName}`}
+                      </span>
+                      <span className="flex-shrink-0 font-medium whitespace-nowrap">
+                        {formatCurrency(service.price, totals.currency)}
+                      </span>
+                    </div>
+                    {bookingState.mode === "mobile" &&
+                    lineHasHouseCallAdjustment(snapshotLine) ? (
+                      <HouseCallLineFootnote
+                        line={snapshotLine}
+                        currency={totals.currency}
+                        t={t}
+                      />
+                    ) : null}
+                  </div>
+                );
+              })}
           {bookingState.selectedAddons.map((addon) => (
             <div key={addon.id} className="flex justify-between gap-2 text-sm">
               <span className="min-w-0 truncate text-gray-600">+ {addon.title}</span>

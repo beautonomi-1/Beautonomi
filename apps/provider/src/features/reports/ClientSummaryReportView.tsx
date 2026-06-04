@@ -20,12 +20,15 @@ function isClientSummaryPayload(data: unknown): data is {
   newClients?: number;
   returningClients?: number;
   averageLifetimeValue?: number;
+  averageBookedGross?: number;
+  averageLedgerEarnings?: number;
   averageBookingsPerClient?: number;
   topClients?: {
     clientId?: string;
     clientName?: string;
     totalBookings?: number;
     totalSpent?: number;
+    ledgerEarnings?: number;
     lastVisit?: string;
     averageRating?: number;
   }[];
@@ -46,7 +49,8 @@ export function ClientSummaryReportView({ data }: { data: unknown }) {
   const total = Number(data.totalClients ?? 0);
   const newC = Number(data.newClients ?? 0);
   const returning = Number(data.returningClients ?? 0);
-  const avgSpend = Number(data.averageLifetimeValue ?? 0);
+  const avgBooked = Number(data.averageBookedGross ?? data.averageLifetimeValue ?? 0);
+  const avgLedger = Number(data.averageLedgerEarnings ?? 0);
   const avgBk = Number(data.averageBookingsPerClient ?? 0);
   const retRate = data.clientRetention?.retentionRate;
   const days = data.clientRetention?.inclusiveDayCount;
@@ -93,11 +97,19 @@ export function ClientSummaryReportView({ data }: { data: unknown }) {
           <Text style={twStyle("mt-1 text-xl font-semibold tabular-nums text-indigo-950")}>{returning}</Text>
         </View>
         <View style={twStyle("min-w-[148px] flex-1 rounded-2xl border border-violet-100 bg-violet-50/90 px-4 py-3")}>
-          <Text style={twStyle("text-xs font-medium text-violet-900")}>Avg spend / client</Text>
+          <Text style={twStyle("text-xs font-medium text-violet-900")}>Avg booked gross</Text>
           <Text style={twStyle("mt-1 text-xl font-semibold tabular-nums text-violet-950")}>
-            {formatCurrency(avgSpend)}
+            {formatCurrency(avgBooked)}
           </Text>
         </View>
+        {data.averageLedgerEarnings != null ? (
+          <View style={twStyle("min-w-[148px] flex-1 rounded-2xl border border-emerald-100 bg-emerald-50/90 px-4 py-3")}>
+            <Text style={twStyle("text-xs font-medium text-emerald-900")}>Avg ledger earnings</Text>
+            <Text style={twStyle("mt-1 text-xl font-semibold tabular-nums text-emerald-950")}>
+              {formatCurrency(avgLedger)}
+            </Text>
+          </View>
+        ) : null}
       </View>
 
       <View style={twStyle("rounded-2xl border border-gray-100 bg-white px-4 py-3")}>
@@ -109,7 +121,9 @@ export function ClientSummaryReportView({ data }: { data: unknown }) {
         </Text>
       </View>
 
-      <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-500")}>Top spenders</Text>
+      <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-500")}>
+        Top clients (booked gross · ledger in window)
+      </Text>
       <View style={twStyle("rounded-2xl border border-gray-100 bg-white")}>
         {top.length === 0 ? (
           <Text style={twStyle("px-4 py-6 text-center text-sm text-gray-500")}>No rows.</Text>
@@ -128,9 +142,16 @@ export function ClientSummaryReportView({ data }: { data: unknown }) {
                   {c.averageRating != null && c.averageRating > 0 ? ` · ★ ${c.averageRating.toFixed(1)}` : ""}
                 </Text>
               </View>
-              <Text style={twStyle("text-sm font-semibold tabular-nums text-gray-900")}>
-                {formatCurrency(Number(c.totalSpent ?? 0))}
-              </Text>
+              <View style={twStyle("items-end")}>
+                <Text style={twStyle("text-sm font-semibold tabular-nums text-gray-900")}>
+                  {formatCurrency(Number(c.totalSpent ?? 0))}
+                </Text>
+                {c.ledgerEarnings != null && c.ledgerEarnings > 0 ? (
+                  <Text style={twStyle("text-xs tabular-nums text-emerald-700")}>
+                    Ledger {formatCurrency(c.ledgerEarnings)}
+                  </Text>
+                ) : null}
+              </View>
             </View>
           ))
         )}

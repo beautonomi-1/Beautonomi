@@ -1,4 +1,5 @@
 import type { FinanceLedgerRow } from "@/lib/admin/finance-ledger-tenant";
+import { isCashRefundComponent } from "@/lib/ledger/refund-components";
 
 /**
  * Single source of truth for admin money metrics from merged `finance_transactions` rows.
@@ -55,7 +56,10 @@ export type FinanceLedgerAggregate = {
   manual_adjustments_net: number;
 };
 
-type Row = Pick<FinanceLedgerRow, "transaction_type" | "amount" | "fees" | "net" | "commission" | "booking_id" | "product_order_id">;
+type Row = Pick<
+  FinanceLedgerRow,
+  "transaction_type" | "amount" | "fees" | "net" | "commission" | "booking_id" | "product_order_id" | "refund_component"
+>;
 
 function sum(tx: Row[], types: string[], field: "amount" | "fees" | "net" | "commission"): number {
   return tx.filter((r) => types.includes(r.transaction_type ?? "")).reduce((s, r) => s + Number(r[field] ?? 0), 0);
@@ -69,6 +73,13 @@ function sumAbsoluteAmount(tx: Row[], types: string[]): number {
   return tx
     .filter((r) => types.includes(r.transaction_type ?? ""))
     .reduce((s, r) => s + Math.abs(Number(r.amount ?? 0)), 0);
+}
+
+/** Refund rows are split per component; the customer cash refunded is captured by the
+ *  cash legs only. Exclude the parallel discount/tender/liability reversal rows so
+ *  gross refund totals and net impact are not inflated. */
+function isCashRefundRow(r: Row): boolean {
+  return r.transaction_type === "refund" && isCashRefundComponent(r.refund_component);
 }
 
 export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLedgerAggregate {
@@ -150,8 +161,12 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
   const platformCommissionGross = sum(tx, ["payment", "additional_charge_payment"], "net");
   // Refund rows can represent full customer cash movements; only `commission` (when present)
   // should reverse platform-recognized earnings to avoid overstating platform losses.
+  // platform_refund_contra is the reversed platform commission (only the 'payment' and
+  // 'additional_charge_payment' refund legs carry commission; parallel non-cash rows
+  // carry 0), so it is unaffected by the non-cash legs. totalRefundNet must exclude the
+  // parallel discount/tender/liability reversals or it double-counts the same refund.
   const platformRefundContra = sum(tx, ["refund"], "commission");
-  const totalRefundNet = sum(tx, ["refund"], "net");
+  const totalRefundNet = tx.filter(isCashRefundRow).reduce((s, r) => s + Number(r.net ?? 0), 0);
   const providerRefundNetImpact = totalRefundNet - platformRefundContra;
   // Cancellation fees are provider-retained income (not platform commission).
   // They are tracked separately via `cancellation_fees_retained`.
@@ -188,8 +203,8 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
     provider_earnings_net: sum(tx, ["provider_earnings"], "net"),
     gift_card_sales: sum(tx, ["gift_card_sale"], "amount"),
     membership_sales: sum(tx, ["membership_sale"], "amount"),
-    refunds_abs_gross: sumAbsoluteAmount(tx, ["refund"]),
-    refunds_gross: sumAbsoluteAmount(tx, ["refund"]),
+    refunds_abs_gross: tx.filter(isCashRefundRow).reduce((s, r) => s + Math.abs(Number(r.amount ?? 0)), 0),
+    refunds_gross: tx.filter(isCashRefundRow).reduce((s, r) => s + Math.abs(Number(r.amount ?? 0)), 0),
     provider_refund_net_impact: providerRefundNetImpact,
     wallet_collected: walletCollected,
     gift_card_collected: giftCardCollected,

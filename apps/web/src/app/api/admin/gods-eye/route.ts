@@ -7,6 +7,7 @@ import {
   fetchFinanceLedgerRowsForTenant,
   resolveFinanceLedgerRowProviderId,
 } from "@/lib/admin/finance-ledger-tenant";
+import { isCashRefundComponent } from "@/lib/ledger/refund-components";
 
 type ProviderRow = {
   id: string;
@@ -102,6 +103,8 @@ export async function GET(request: NextRequest) {
         });
         return rows.reduce((sum, r) => {
           const t = r.transaction_type ?? "";
+          // Skip parallel discount/tender refund contras; only cash legs reduce net cash.
+          if (t === "refund" && !isCashRefundComponent(r.refund_component)) return sum;
           const delta =
             t === "refund"
               ? -Math.abs(Number(r.net ?? r.amount ?? 0))

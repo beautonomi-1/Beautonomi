@@ -2,10 +2,8 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   View,
   Text,
-  TextInput,
   ScrollView,
   TouchableOpacity,
-  Switch,
   Alert,
   KeyboardAvoidingView,
   Platform,
@@ -18,29 +16,22 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
-import { BottomSheet } from "@/components/ui/BottomSheet";
-import { ChipCombobox } from "@/components/ui/ChipCombobox";
-import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { twStyle } from "@/lib/twStyle";
-import { PricingOptionsEditor } from "@/features/catalogue/PricingOptionsEditor";
 import { AdvancedPricingRulesEditor } from "@/features/catalogue/AdvancedPricingRulesEditor";
-import {
-  ApplicableServicesPicker,
-  IncludedServicesPicker,
-  ServiceIdsChips,
-} from "@/features/catalogue/ServiceIdsPicker";
-import { ParentServicePicker } from "@/features/catalogue/ParentServicePicker";
-import { ResourceRequirementsEditor } from "@/features/catalogue/ResourceRequirementsEditor";
+import { ServiceFormFields } from "@/features/catalogue/ServiceFormFields";
 import { buildServicePayload, buildResourcesPayload } from "@/features/catalogue/buildServicePayload";
 import { validateAdvancedPricingRules, validateServiceForm } from "@/features/catalogue/validateServiceForm";
+import {
+  DEFAULT_SERVICE_FORM_STATE,
+  type ServiceFormState,
+} from "@/features/catalogue/service-form-state";
 import type {
   AdvancedPricingRule,
   CatalogueServiceItem,
   OfferingResourceEntry,
-  PricingOption,
   RefDataOption,
 } from "@/features/catalogue/types";
-import { DEFAULT_PRICING_OPTION, pricingOptionsFromService } from "@/features/catalogue/types";
+import { pricingOptionsFromService } from "@/features/catalogue/types";
 
 interface ServiceCategory {
   id: string;
@@ -77,73 +68,41 @@ interface Service extends CatalogueServiceItem {
   pricing_name?: string | null;
 }
 
-function FormField({
-  label,
-  value,
-  onChangeText,
-  placeholder,
-  keyboardType,
-  multiline,
-  hint,
-}: {
-  label: string;
-  value: string;
-  onChangeText: (text: string) => void;
-  placeholder?: string;
-  keyboardType?: "default" | "numeric" | "decimal-pad";
-  multiline?: boolean;
-  hint?: string;
-}) {
-  return (
-    <View style={twStyle("mb-3")}>
-      <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{label}</Text>
-      {hint ? (
-        <Text style={twStyle("mb-2 text-xs text-gray-400")}>{hint}</Text>
-      ) : null}
-      <TextInput
-        style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
-        placeholder={placeholder}
-        placeholderTextColor="#9ca3af"
-        value={value}
-        onChangeText={onChangeText}
-        keyboardType={keyboardType}
-        multiline={multiline}
-        numberOfLines={multiline ? 3 : 1}
-        textAlignVertical={multiline ? "top" : "center"}
-      />
-    </View>
-  );
+function serviceToFormState(service: Service): ServiceFormState {
+  const base = DEFAULT_SERVICE_FORM_STATE();
+  return {
+    ...base,
+    name: service.title || service.name || "",
+    categoryId: service.provider_category_id ?? "",
+    serviceType: service.service_type ?? "basic",
+    description: service.description ?? "",
+    aftercareDescription: service.aftercare_description ?? "",
+    availableFor: service.service_available_for ?? "everyone",
+    onlineBookable: service.online_booking_enabled !== false,
+    supportsAtSalon: service.supports_at_salon !== false,
+    supportsAtHome: service.supports_at_home ?? false,
+    atHomeRadiusKm: service.at_home_radius_km != null ? String(service.at_home_radius_km) : "",
+    atHomePriceAdjustment: String(service.at_home_price_adjustment ?? 0),
+    taxRate: String(service.tax_rate ?? 0),
+    teamMemberIds: service.team_member_ids ?? [],
+    teamMemberCommissionEnabled: service.team_member_commission_enabled ?? false,
+    isActive: service.is_active !== false,
+    extraTimeEnabled: service.extra_time_enabled ?? false,
+    extraTimeDuration: String(service.extra_time_duration ?? 15),
+    reminderToRebookEnabled: service.reminder_to_rebook_enabled ?? false,
+    reminderToRebookWeeks: String(service.reminder_to_rebook_weeks ?? 4),
+    serviceCostPercentage: String(service.service_cost_percentage ?? 0),
+    includedServices: service.included_services ?? [],
+    applicableServiceIds: service.applicable_service_ids ?? [],
+    addonCategory: service.addon_category ?? "general",
+    isRecommended: service.is_recommended ?? false,
+    parentServiceId: service.parent_service_id ?? "",
+    variantName: service.variant_name ?? "",
+    variantSortOrder: service.variant_sort_order ?? 0,
+    pricingOptions: pricingOptionsFromService(service),
+    advancedPricingRules: service.advanced_pricing_rules ?? [],
+  };
 }
-
-const defaultForm = {
-  name: "",
-  categoryId: "",
-  serviceType: "basic",
-  description: "",
-  aftercareDescription: "",
-  availableFor: "everyone",
-  onlineBookable: true,
-  supportsAtSalon: true,
-  supportsAtHome: false,
-  atHomeRadiusKm: "",
-  atHomePriceAdjustment: "0",
-  taxRate: "0",
-  teamMemberIds: [] as string[],
-  teamMemberCommissionEnabled: false,
-  isActive: true,
-  extraTimeEnabled: false,
-  extraTimeDuration: "15",
-  reminderToRebookEnabled: false,
-  reminderToRebookWeeks: "4",
-  serviceCostPercentage: "0",
-  includedServices: [] as string[],
-  applicableServiceIds: [] as string[],
-  addonCategory: "general",
-  isRecommended: false,
-  parentServiceId: "",
-  variantName: "",
-  variantSortOrder: 0,
-};
 
 export default function ServiceFormScreen() {
   const router = useRouter();
@@ -207,82 +166,16 @@ export default function ServiceFormScreen() {
       ? (refData as Record<string, RefDataOption[]>)
       : {};
 
-  const serviceTypeOptions = refObj.service_type?.length
-    ? refObj.service_type
-    : [
-        {
-          value: "basic",
-          label: "Basic service",
-          description: "What most providers use. One service — add options below for multiple prices or lengths.",
-        },
-        {
-          value: "variant",
-          label: "Standalone variant",
-          description: "Advanced only. Links to another service. Prefer Basic + booking options instead.",
-        },
-        {
-          value: "addon",
-          label: "Add-on",
-          description: "Optional extra during checkout, not a main bookable service.",
-        },
-        {
-          value: "package",
-          label: "Package",
-          description: "Bundle of services sold together at one price.",
-        },
-      ];
-
-  const availabilityOptions = refObj.availability?.length
-    ? refObj.availability
-    : [
-        { value: "everyone", label: "Everyone" },
-        { value: "women", label: "Women" },
-        { value: "men", label: "Men" },
-      ];
-
-  const taxRateOptions = refObj.tax_rate?.length
-    ? refObj.tax_rate
-    : [
-        { value: "0", label: "No tax" },
-        { value: "15", label: "15% VAT" },
-      ];
-
-  const durationOptions = refObj.duration?.length
-    ? refObj.duration
-    : [{ value: "60", label: "60 min" }];
-
-  const priceTypeOptions = refObj.price_type?.length
-    ? refObj.price_type
-    : [{ value: "fixed", label: "Fixed" }];
-
-  const extraTimeOptions = refObj.extra_time?.length
-    ? refObj.extra_time
-    : [{ value: "15", label: "15 min" }];
-
-  const addonCategoryOptions = refObj.addon_category?.length
-    ? refObj.addon_category
-    : [{ value: "general", label: "General" }];
-
   const providerResources = Array.isArray(resourcesData)
     ? resourcesData
     : resourcesData && "data" in resourcesData && Array.isArray(resourcesData.data)
       ? resourcesData.data
       : [];
 
-  const [form, setForm] = useState(defaultForm);
-  const [pricingOptions, setPricingOptions] = useState<PricingOption[]>([DEFAULT_PRICING_OPTION()]);
-  const [advancedPricingRules, setAdvancedPricingRules] = useState<AdvancedPricingRule[]>([]);
+  const [form, setForm] = useState<ServiceFormState>(DEFAULT_SERVICE_FORM_STATE());
   const [offeringResources, setOfferingResources] = useState<OfferingResourceEntry[]>([]);
   const [formValidationError, setFormValidationError] = useState<string | null>(null);
-
-  const [serviceTypeSheetOpen, setServiceTypeSheetOpen] = useState(false);
-  const [availabilitySheetOpen, setAvailabilitySheetOpen] = useState(false);
-  const [taxSheetOpen, setTaxSheetOpen] = useState(false);
-  const [extraTimeSheetOpen, setExtraTimeSheetOpen] = useState(false);
-  const [addonCategorySheetOpen, setAddonCategorySheetOpen] = useState(false);
   const [advancedPricingOpen, setAdvancedPricingOpen] = useState(false);
-  const [includedPickerOpen, setIncludedPickerOpen] = useState(false);
-  const [applicablePickerOpen, setApplicablePickerOpen] = useState(false);
   const hydratedServiceIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -290,43 +183,11 @@ export default function ServiceFormScreen() {
       const isFirstLoadForService = hydratedServiceIdRef.current !== service.id;
       if (isFirstLoadForService) {
         hydratedServiceIdRef.current = service.id;
-        setForm({
-          name: service.title || service.name || "",
-          categoryId: service.provider_category_id ?? "",
-          serviceType: service.service_type ?? "basic",
-          description: service.description ?? "",
-          aftercareDescription: service.aftercare_description ?? "",
-          availableFor: service.service_available_for ?? "everyone",
-          onlineBookable: service.online_booking_enabled !== false,
-          supportsAtSalon: service.supports_at_salon !== false,
-          supportsAtHome: service.supports_at_home ?? false,
-          atHomeRadiusKm: service.at_home_radius_km != null ? String(service.at_home_radius_km) : "",
-          atHomePriceAdjustment: String(service.at_home_price_adjustment ?? 0),
-          taxRate: String(service.tax_rate ?? 0),
-          teamMemberIds: service.team_member_ids ?? [],
-          teamMemberCommissionEnabled: service.team_member_commission_enabled ?? false,
-          isActive: service.is_active !== false,
-          extraTimeEnabled: service.extra_time_enabled ?? false,
-          extraTimeDuration: String(service.extra_time_duration ?? 15),
-          reminderToRebookEnabled: service.reminder_to_rebook_enabled ?? false,
-          reminderToRebookWeeks: String(service.reminder_to_rebook_weeks ?? 4),
-          serviceCostPercentage: String(service.service_cost_percentage ?? 0),
-          includedServices: service.included_services ?? [],
-          applicableServiceIds: service.applicable_service_ids ?? [],
-          addonCategory: service.addon_category ?? "general",
-          isRecommended: service.is_recommended ?? false,
-          parentServiceId: service.parent_service_id ?? "",
-          variantName: service.variant_name ?? "",
-          variantSortOrder: service.variant_sort_order ?? 0,
-        });
-        setPricingOptions(pricingOptionsFromService(service));
-        setAdvancedPricingRules(service.advanced_pricing_rules ?? []);
+        setForm(serviceToFormState(service));
       }
     } else if (!serviceId) {
       hydratedServiceIdRef.current = null;
-      setForm({ ...defaultForm });
-      setPricingOptions([DEFAULT_PRICING_OPTION()]);
-      setAdvancedPricingRules([]);
+      setForm(DEFAULT_SERVICE_FORM_STATE());
       setOfferingResources([]);
     }
   }, [service, serviceId]);
@@ -336,12 +197,6 @@ export default function ServiceFormScreen() {
       setOfferingResources(serviceResources.resources);
     }
   }, [serviceResources]);
-
-  const primaryPrice = pricingOptions[0]?.price ?? 0;
-  const serviceCostAmount = useMemo(() => {
-    const pct = parseFloat(form.serviceCostPercentage) || 0;
-    return ((primaryPrice * pct) / 100).toFixed(2);
-  }, [form.serviceCostPercentage, primaryPrice]);
 
   const handleCreateCategory = useCallback(
     async (name: string) => {
@@ -452,16 +307,16 @@ export default function ServiceFormScreen() {
       categoryId: form.categoryId,
       serviceType: form.serviceType,
       parentServiceId: form.parentServiceId,
-      pricingOptions,
+      pricingOptions: form.pricingOptions,
       includedServices: form.includedServices,
-      parentPricingName: pricingOptions[0]?.pricingName ?? null,
+      parentPricingName: form.pricingOptions[0]?.pricingName ?? null,
     });
     if (validationError) {
       setFormValidationError(validationError);
       return;
     }
 
-    const advError = validateAdvancedPricingRules(advancedPricingRules);
+    const advError = validateAdvancedPricingRules(form.advancedPricingRules);
     if (advError) {
       setFormValidationError(advError);
       return;
@@ -477,8 +332,8 @@ export default function ServiceFormScreen() {
       onlineBookable: form.onlineBookable,
       teamMemberIds: form.teamMemberIds,
       teamMemberCommissionEnabled: form.teamMemberCommissionEnabled,
-      pricingOptions,
-      advancedPricingRules,
+      pricingOptions: form.pricingOptions,
+      advancedPricingRules: form.advancedPricingRules,
       extraTimeEnabled: form.extraTimeEnabled,
       extraTimeDuration: parseInt(form.extraTimeDuration, 10) || 0,
       reminderToRebookEnabled: form.reminderToRebookEnabled,
@@ -512,7 +367,7 @@ export default function ServiceFormScreen() {
         return;
       }
       const sync = data?.variant_sync;
-      if (pricingOptions.length > 1) {
+      if (form.pricingOptions.length > 1) {
         if (sync?.errors?.length) {
           variantSyncMessage = `Service saved, but tier sync had issues: ${sync.errors[0]}`;
         } else if (sync?.synced != null) {
@@ -530,7 +385,7 @@ export default function ServiceFormScreen() {
       }
       savedId = data?.id;
       const sync = data?.variant_sync;
-      if (pricingOptions.length > 1) {
+      if (form.pricingOptions.length > 1) {
         if (sync?.errors?.length) {
           variantSyncMessage = `Service saved, but tier sync had issues: ${sync.errors[0]}`;
         } else if (sync?.synced != null) {
@@ -554,8 +409,6 @@ export default function ServiceFormScreen() {
     }
   }, [
     form,
-    pricingOptions,
-    advancedPricingRules,
     offeringResources,
     isEdit,
     serviceId,
@@ -566,7 +419,6 @@ export default function ServiceFormScreen() {
   ]);
 
   const isSaving = creating || updating;
-  const showResources = form.serviceType === "basic" || form.serviceType === "variant";
 
   if (serviceId && loadingService && !service) {
     return (
@@ -613,292 +465,28 @@ export default function ServiceFormScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View style={twStyle("px-1 pt-2")}>
-            <FormField
-              label="Service name *"
-              value={form.name}
-              onChangeText={(t) => { setFormValidationError(null); setForm((p) => ({ ...p, name: t })); }}
-              placeholder="e.g. Signature Haircut"
-              hint="This is what customers will see when browsing your services."
+            <ServiceFormFields
+              mode="catalogue"
+              value={form}
+              onChange={setForm}
+              categories={categories}
+              refData={refObj}
+              showServiceType
+              showTeam
+              showResources
+              showAdvancedPricing
+              showActiveToggle
+              staff={staff}
+              allServices={allServices}
+              serviceId={serviceId}
+              offeringResources={offeringResources}
+              providerResources={providerResources}
+              onOfferingResourcesChange={setOfferingResources}
+              onCreateCategory={handleCreateCategory}
+              onCheckZonesBeforeAtHome={checkZonesBeforeAtHome}
+              onOpenAdvancedPricing={() => setAdvancedPricingOpen(true)}
+              onClearValidationError={() => setFormValidationError(null)}
             />
-
-            <View style={twStyle("mb-3")}>
-              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Service type</Text>
-              <TouchableOpacity
-                style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
-                onPress={() => setServiceTypeSheetOpen(true)}
-              >
-                <Text style={twStyle("text-base text-gray-900")}>
-                  {serviceTypeOptions.find((o) => o.value === form.serviceType)?.label ?? form.serviceType}
-                </Text>
-              </TouchableOpacity>
-              {form.serviceType === "variant" ? (
-                <Text style={twStyle("mt-1 text-xs text-amber-700")}>
-                  Tip: For multiple prices on one service, choose Basic and use booking options below instead.
-                </Text>
-              ) : form.serviceType === "basic" ? (
-                <Text style={twStyle("mt-1 text-xs text-gray-500")}>
-                  Set price and duration below. Add more options if customers should choose (e.g. short vs long).
-                </Text>
-              ) : null}
-            </View>
-
-            {form.serviceType === "package" ? (
-              <ServiceIdsChips
-                label="Included services"
-                selectedIds={form.includedServices}
-                services={allServices}
-                onPressEdit={() => setIncludedPickerOpen(true)}
-                emptyHint="Tap to select services included in this package"
-              />
-            ) : null}
-
-            {form.serviceType === "addon" ? (
-              <>
-                <View style={twStyle("mb-3")}>
-                  <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Add-on category</Text>
-                  <TouchableOpacity
-                    style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
-                    onPress={() => setAddonCategorySheetOpen(true)}
-                  >
-                    <Text style={twStyle("text-base text-gray-900")}>
-                      {addonCategoryOptions.find((o) => o.value === form.addonCategory)?.label ??
-                        form.addonCategory}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-                <ServiceIdsChips
-                  label="Applicable services"
-                  selectedIds={form.applicableServiceIds}
-                  services={allServices}
-                  onPressEdit={() => setApplicablePickerOpen(true)}
-                  emptyHint="All services (tap to restrict)"
-                />
-                <View style={twStyle("mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}>
-                  <Text style={twStyle("text-sm font-medium text-gray-700")}>Recommended add-on</Text>
-                  <Switch
-                    value={form.isRecommended}
-                    onValueChange={(v) => setForm((p) => ({ ...p, isRecommended: v }))}
-                  />
-                </View>
-              </>
-            ) : null}
-
-            {form.serviceType === "variant" ? (
-              <ParentServicePicker
-                parentServiceId={form.parentServiceId}
-                variantName={form.variantName}
-                variantSortOrder={form.variantSortOrder}
-                services={allServices}
-                currentServiceId={serviceId}
-                onChangeParent={(id) => setForm((p) => ({ ...p, parentServiceId: id }))}
-                onChangeVariantName={(name) => setForm((p) => ({ ...p, variantName: name }))}
-                onChangeSortOrder={(order) => setForm((p) => ({ ...p, variantSortOrder: order }))}
-              />
-            ) : null}
-
-            <View style={twStyle("mb-3")}>
-              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Category *</Text>
-              <ChipCombobox
-                singleSelect
-                value={form.categoryId || null}
-                onChange={(v) => { setFormValidationError(null); setForm((p) => ({ ...p, categoryId: v ?? "" })); }}
-                staticSuggestions={categories.map((c) => ({ value: c.id, label: c.name }))}
-                onCreateNew={handleCreateCategory}
-                placeholder="Select or add category"
-              />
-            </View>
-
-            <FormField
-              label="Description (optional)"
-              value={form.description}
-              onChangeText={(t) => setForm((p) => ({ ...p, description: t }))}
-              multiline
-            />
-            <FormField
-              label="Aftercare instructions (optional)"
-              value={form.aftercareDescription}
-              onChangeText={(t) => setForm((p) => ({ ...p, aftercareDescription: t }))}
-              multiline
-            />
-
-            <View style={twStyle("my-4 flex-row items-center gap-3")}>
-              <View style={twStyle("h-px flex-1 bg-gray-200")} />
-              <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-400")}>
-                Pricing
-              </Text>
-              <View style={twStyle("h-px flex-1 bg-gray-200")} />
-            </View>
-            <PricingOptionsEditor
-              options={pricingOptions}
-              onChange={setPricingOptions}
-              durationOptions={durationOptions}
-              priceTypeOptions={priceTypeOptions}
-              onOpenAdvancedPricing={
-                form.serviceType === "variant" ? undefined : () => setAdvancedPricingOpen(true)
-              }
-              parentPricingName={pricingOptions[0]?.pricingName ?? null}
-              serviceTitle={form.name.trim() || undefined}
-              allowMultipleTiers={form.serviceType !== "variant"}
-            />
-
-            <View style={twStyle("mb-3")}>
-              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Available for</Text>
-              <TouchableOpacity
-                style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
-                onPress={() => setAvailabilitySheetOpen(true)}
-              >
-                <Text style={twStyle("text-base text-gray-900")}>
-                  {availabilityOptions.find((o) => o.value === form.availableFor)?.label ??
-                    form.availableFor}
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            <Text style={twStyle("mb-2 text-sm font-semibold text-gray-900")}>Location</Text>
-            <View style={twStyle("mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}>
-              <Text style={twStyle("text-sm font-medium text-gray-700")}>Available at salon</Text>
-              <Switch
-                value={form.supportsAtSalon}
-                onValueChange={(v) => setForm((p) => ({ ...p, supportsAtSalon: v }))}
-              />
-            </View>
-            <View style={twStyle("mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}>
-              <Text style={twStyle("text-sm font-medium text-gray-700")}>Available at home</Text>
-              <Switch
-                value={form.supportsAtHome}
-                onValueChange={(v) => void checkZonesBeforeAtHome(v)}
-              />
-            </View>
-            {form.supportsAtHome ? (
-              <>
-                <FormField
-                  label="At-home radius (km)"
-                  value={form.atHomeRadiusKm}
-                  onChangeText={(t) => setForm((p) => ({ ...p, atHomeRadiusKm: t }))}
-                  keyboardType="decimal-pad"
-                />
-                <FormField
-                  label={`At-home price adjustment (${getTenantDefaultCurrency()})`}
-                  value={form.atHomePriceAdjustment}
-                  onChangeText={(t) => setForm((p) => ({ ...p, atHomePriceAdjustment: t }))}
-                  keyboardType="decimal-pad"
-                />
-              </>
-            ) : null}
-
-            {showResources ? (
-              <ResourceRequirementsEditor
-                resources={providerResources}
-                offeringResources={offeringResources}
-                onChange={setOfferingResources}
-              />
-            ) : null}
-
-            <View style={twStyle("mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}>
-              <Text style={twStyle("text-sm font-medium text-gray-700")}>Online bookable</Text>
-              <Switch
-                value={form.onlineBookable}
-                onValueChange={(v) => setForm((p) => ({ ...p, onlineBookable: v }))}
-              />
-            </View>
-
-            <View style={twStyle("mb-3")}>
-              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Team members</Text>
-              <ChipCombobox
-                value={form.teamMemberIds}
-                onChange={(ids) =>
-                  setForm((p) => ({
-                    ...p,
-                    teamMemberIds: ids.includes("__any__") ? [] : ids.filter((id) => id !== "__any__"),
-                  }))
-                }
-                staticSuggestions={[
-                  { value: "__any__", label: "Any team member" },
-                  ...staff.map((m) => ({ value: m.id, label: m.name })),
-                ]}
-                placeholder="Any or select staff"
-              />
-            </View>
-
-            <View style={twStyle("mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}>
-              <Text style={twStyle("text-sm font-medium text-gray-700")}>Team commission</Text>
-              <Switch
-                value={form.teamMemberCommissionEnabled}
-                onValueChange={(v) => setForm((p) => ({ ...p, teamMemberCommissionEnabled: v }))}
-              />
-            </View>
-
-            <View style={twStyle("mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}>
-              <Text style={twStyle("text-sm font-medium text-gray-700")}>Extra (buffer) time</Text>
-              <Switch
-                value={form.extraTimeEnabled}
-                onValueChange={(v) => setForm((p) => ({ ...p, extraTimeEnabled: v }))}
-              />
-            </View>
-            {form.extraTimeEnabled ? (
-              <View style={twStyle("mb-3")}>
-                <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Extra time duration</Text>
-                <TouchableOpacity
-                  style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
-                  onPress={() => setExtraTimeSheetOpen(true)}
-                >
-                  <Text style={twStyle("text-base text-gray-900")}>
-                    {extraTimeOptions.find((o) => o.value === form.extraTimeDuration)?.label ??
-                      `${form.extraTimeDuration} min`}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            ) : null}
-
-            <View style={twStyle("mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}>
-              <Text style={twStyle("text-sm font-medium text-gray-700")}>Reminder to rebook</Text>
-              <Switch
-                value={form.reminderToRebookEnabled}
-                onValueChange={(v) => setForm((p) => ({ ...p, reminderToRebookEnabled: v }))}
-              />
-            </View>
-            {form.reminderToRebookEnabled ? (
-              <FormField
-                label="Reminder (weeks)"
-                value={form.reminderToRebookWeeks}
-                onChangeText={(t) => setForm((p) => ({ ...p, reminderToRebookWeeks: t.replace(/[^0-9]/g, "") }))}
-                keyboardType="numeric"
-              />
-            ) : null}
-
-            <FormField
-              label="Service cost %"
-              value={form.serviceCostPercentage}
-              onChangeText={(t) => setForm((p) => ({ ...p, serviceCostPercentage: t }))}
-              keyboardType="decimal-pad"
-            />
-            <Text style={twStyle("mb-3 text-xs text-gray-500")}>
-              Estimated cost amount: {getTenantDefaultCurrency()} {serviceCostAmount}
-            </Text>
-
-            <View style={twStyle("mb-3")}>
-              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Tax rate</Text>
-              <TouchableOpacity
-                style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
-                onPress={() => setTaxSheetOpen(true)}
-              >
-                <Text style={twStyle("text-base text-gray-900")}>
-                  {taxRateOptions.find((o) => o.value === form.taxRate)?.label ?? `${form.taxRate}%`}
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={twStyle("mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}>
-              <View>
-                <Text style={twStyle("text-sm font-medium text-gray-700")}>Active</Text>
-                <Text style={twStyle("text-xs text-gray-500")}>Inactive services won&apos;t appear in booking flows</Text>
-              </View>
-              <Switch
-                value={form.isActive}
-                onValueChange={(v) => setForm((p) => ({ ...p, isActive: v }))}
-              />
-            </View>
-
           </View>
         </ScrollView>
 
@@ -930,102 +518,10 @@ export default function ServiceFormScreen() {
 
       <AdvancedPricingRulesEditor
         visible={advancedPricingOpen}
-        rules={advancedPricingRules}
+        rules={form.advancedPricingRules}
         onClose={() => setAdvancedPricingOpen(false)}
-        onSave={setAdvancedPricingRules}
-      />
-
-      <IncludedServicesPicker
-        visible={includedPickerOpen}
-        services={allServices}
-        selectedIds={form.includedServices}
-        currentServiceId={serviceId}
-        onClose={() => setIncludedPickerOpen(false)}
-        onChange={(ids) => setForm((p) => ({ ...p, includedServices: ids }))}
-      />
-
-      <ApplicableServicesPicker
-        visible={applicablePickerOpen}
-        services={allServices}
-        selectedIds={form.applicableServiceIds}
-        currentServiceId={serviceId}
-        onClose={() => setApplicablePickerOpen(false)}
-        onChange={(ids) => setForm((p) => ({ ...p, applicableServiceIds: ids }))}
-      />
-
-      <OptionSheet
-        visible={serviceTypeSheetOpen}
-        title="Service type"
-        options={serviceTypeOptions}
-        onSelect={(v) => setForm((p) => ({ ...p, serviceType: v }))}
-        onClose={() => setServiceTypeSheetOpen(false)}
-      />
-      <OptionSheet
-        visible={availabilitySheetOpen}
-        title="Available for"
-        options={availabilityOptions}
-        onSelect={(v) => setForm((p) => ({ ...p, availableFor: v }))}
-        onClose={() => setAvailabilitySheetOpen(false)}
-      />
-      <OptionSheet
-        visible={taxSheetOpen}
-        title="Tax rate"
-        options={taxRateOptions}
-        onSelect={(v) => setForm((p) => ({ ...p, taxRate: v }))}
-        onClose={() => setTaxSheetOpen(false)}
-      />
-      <OptionSheet
-        visible={extraTimeSheetOpen}
-        title="Extra time"
-        options={extraTimeOptions}
-        onSelect={(v) => setForm((p) => ({ ...p, extraTimeDuration: v }))}
-        onClose={() => setExtraTimeSheetOpen(false)}
-      />
-      <OptionSheet
-        visible={addonCategorySheetOpen}
-        title="Add-on category"
-        options={addonCategoryOptions}
-        onSelect={(v) => setForm((p) => ({ ...p, addonCategory: v }))}
-        onClose={() => setAddonCategorySheetOpen(false)}
+        onSave={(rules) => setForm((p) => ({ ...p, advancedPricingRules: rules }))}
       />
     </ScreenContainer>
-  );
-}
-
-function OptionSheet({
-  visible,
-  title,
-  options,
-  onSelect,
-  onClose,
-}: {
-  visible: boolean;
-  title: string;
-  options: RefDataOption[];
-  onSelect: (value: string) => void;
-  onClose: () => void;
-}) {
-  return (
-    <BottomSheet visible={visible} onClose={onClose} title={title}>
-      <ScrollView style={twStyle("max-h-80")}>
-        {options.map((o) => (
-          <TouchableOpacity
-            key={o.value}
-            style={twStyle("border-b border-gray-100 px-1 py-3.5")}
-            onPress={() => {
-              onSelect(o.value);
-              onClose();
-            }}
-            accessibilityRole="button"
-            accessibilityLabel={o.description ? `${o.label}. ${o.description}` : o.label}
-          >
-            <Text style={twStyle("text-base font-medium text-gray-900")}>{o.label}</Text>
-            {o.description ? (
-              <Text style={twStyle("mt-0.5 text-xs leading-5 text-gray-500")}>{o.description}</Text>
-            ) : null}
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-    </BottomSheet>
   );
 }

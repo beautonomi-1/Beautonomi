@@ -16,6 +16,7 @@ import {
   reportDateRangeFromParams,
   summarizeLedgerLocationAttribution,
 } from "@/lib/reports/provider-report-utils";
+import { isCashRefundComponent } from "@/lib/ledger/refund-components";
 
 const PAGE_SIZE = 1000;
 
@@ -29,6 +30,7 @@ type LedgerRefundRow = {
   source_refund_id?: string | null;
   created_at: string;
   description?: string | null;
+  refund_component?: string | null;
 };
 
 async function fetchFinanceLedgerSlice(
@@ -43,7 +45,7 @@ async function fetchFinanceLedgerSlice(
     const { data, error } = await supabaseAdmin
       .from("finance_transactions")
       .select(
-        "id, transaction_type, amount, net, booking_id, product_order_id, source_refund_id, created_at, description",
+        "id, transaction_type, amount, net, booking_id, product_order_id, source_refund_id, created_at, description, refund_component",
       )
       .eq("provider_id", providerId)
       .in("transaction_type", ["refund", "provider_earnings", "payment"])
@@ -184,15 +186,60 @@ export async function GET(request: NextRequest) {
     let rows = ledgerRows;
     rows = await filterLedgerRowsForLocation(supabaseAdmin, providerId, rows, locationId || null);
 
-    const refundRows = rows.filter((r) => r.transaction_type === "refund");
+    // The refund trigger splits one customer refund into several finance_transactions
+    // rows (one per economic component) plus parallel discount/tender reversals. For a
+    // refunds report we want LOGICAL refunds (what the customer got back), so we keep
+    // only the cash legs and collapse them by source_refund_id. Each group's gross =
+    // |Σ net| of its cash legs (they penny-balance to the refunded amount). Legacy/manual
+    // whole-refund rows (no source_refund_id) stand alone, keyed by row id.
+    const cashRefundRows = rows.filter(
+      (r) => r.transaction_type === "refund" && isCashRefundComponent(r.refund_component),
+    );
     const negativeEarningsRows = rows.filter(
       (r) => r.transaction_type === "provider_earnings" && Number(r.net ?? 0) < 0,
     );
     const paymentRows = rows.filter((r) => r.transaction_type === "payment");
 
+    type LogicalRefund = {
+      id: string;
+      netSum: number;
+      created_at: string;
+      booking_id: string | null;
+      product_order_id: string | null;
+      source_refund_id: string | null;
+      description?: string | null;
+    };
+    const logicalMap = new Map<string, LogicalRefund>();
+    for (const r of cashRefundRows) {
+      const key = r.source_refund_id || r.id;
+      const net = Number(r.net ?? r.amount ?? 0);
+      const existing = logicalMap.get(key);
+      if (existing) {
+        existing.netSum += net;
+        if (new Date(r.created_at).getTime() > new Date(existing.created_at).getTime()) {
+          existing.created_at = r.created_at;
+        }
+        if (!existing.description && r.description) existing.description = r.description;
+      } else {
+        logicalMap.set(key, {
+          id: key,
+          netSum: net,
+          created_at: r.created_at,
+          booking_id: r.booking_id,
+          product_order_id: r.product_order_id ?? null,
+          source_refund_id: r.source_refund_id ?? null,
+          description: r.description ?? undefined,
+        });
+      }
+    }
+    const logicalRefunds = Array.from(logicalMap.values()).map((g) => ({
+      ...g,
+      amount: Math.abs(g.netSum),
+    }));
+
     let sourceRefundMethodById = new Map<string, string>();
     try {
-      sourceRefundMethodById = await resolveRefundMethodLabels(supabaseAdmin, refundRows);
+      sourceRefundMethodById = await resolveRefundMethodLabels(supabaseAdmin, cashRefundRows);
     } catch (e) {
       console.error("[refunds report] booking_refunds / booking_payments enrichment failed", e);
       return handleApiError(
@@ -203,8 +250,8 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const totalRefunds = refundRows.length;
-    const totalRefundAmount = refundRows.reduce((sum, r) => sum + Math.abs(Number(r.amount ?? 0)), 0);
+    const totalRefunds = logicalRefunds.length;
+    const totalRefundAmount = logicalRefunds.reduce((sum, r) => sum + r.amount, 0);
     const providerEarningsReversed = negativeEarningsRows.reduce(
       (sum, r) => sum + Math.abs(Number(r.net ?? r.amount ?? 0)),
       0,
@@ -215,7 +262,7 @@ export async function GET(request: NextRequest) {
     const averageRefundAmount = totalRefunds > 0 ? totalRefundAmount / totalRefunds : 0;
 
     const refundsByMethod = new Map<string, { count: number; amount: number }>();
-    refundRows.forEach((refund) => {
+    logicalRefunds.forEach((refund) => {
       let method = "ledger";
       if (refund.product_order_id) {
         method = "product_order";
@@ -225,7 +272,7 @@ export async function GET(request: NextRequest) {
       const existing = refundsByMethod.get(method) || { count: 0, amount: 0 };
       refundsByMethod.set(method, {
         count: existing.count + 1,
-        amount: existing.amount + Math.abs(Number(refund.amount || 0)),
+        amount: existing.amount + refund.amount,
       });
     });
 
@@ -239,12 +286,12 @@ export async function GET(request: NextRequest) {
       .sort((a, b) => b.amount - a.amount);
 
     const dailyRefunds = new Map<string, { count: number; amount: number }>();
-    refundRows.forEach((refund) => {
+    logicalRefunds.forEach((refund) => {
       const date = reportDateKey(refund.created_at, reportContext.timezone);
       const existing = dailyRefunds.get(date) || { count: 0, amount: 0 };
       dailyRefunds.set(date, {
         count: existing.count + 1,
-        amount: existing.amount + Math.abs(Number(refund.amount || 0)),
+        amount: existing.amount + refund.amount,
       });
     });
 
@@ -252,7 +299,7 @@ export async function GET(request: NextRequest) {
       .map(([date, d]) => ({ date, ...d }))
       .sort((a, b) => a.date.localeCompare(b.date));
 
-    const recentRefunds = refundRows
+    const recentRefunds = logicalRefunds
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
       .slice(0, 20)
       .map((r) => {
@@ -263,7 +310,7 @@ export async function GET(request: NextRequest) {
         }
         return {
           id: r.id,
-          amount: Math.abs(Number(r.amount ?? 0)),
+          amount: r.amount,
           created_at: r.created_at,
           booking_id: r.booking_id,
           product_order_id: r.product_order_id ?? null,

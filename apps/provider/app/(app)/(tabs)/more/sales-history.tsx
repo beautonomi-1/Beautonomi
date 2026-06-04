@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { View, Text, TouchableOpacity, FlatList, Alert, Share } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
+import { useProviderStackBack } from "@/lib/provider-tab-navigation";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi, useApiPost } from "@/hooks/useApi";
@@ -19,6 +20,7 @@ import { formatCurrency, formatDate } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 import { getReportDateRange, formatReportRangeCaption, type ReportDateRangeKey } from "@/lib/reportDateRanges";
 import { ReportResponsiveStatRow } from "@/components/reports/ReportResponsiveStatRow";
+import { ReportBasisFootnote } from "@/components/reports/ReportBasisFootnote";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 type SalesHistorySource = "booking" | "product_order" | "pos";
@@ -58,6 +60,7 @@ interface SalesHistoryApiResponse {
   };
   truncated_ledger?: boolean;
   default_range_months?: number | null;
+  basis?: string;
 }
 
 const DATE_FILTERS = [
@@ -94,18 +97,9 @@ function subtypeLabel(sub: string): string {
   return "Standard";
 }
 
-const TRANSACTIONS_HUB_HREF = "/(app)/(tabs)/more/transactions-hub" as const;
-const FROM_TRANSACTIONS_HUB = "transactions-hub";
-
 export default function SalesHistoryScreen() {
   const router = useRouter();
-  const { from: fromParam } = useLocalSearchParams<{ from?: string }>();
-  const fromTransactionsHub =
-    typeof fromParam === "string"
-      ? fromParam === FROM_TRANSACTIONS_HUB
-      : Array.isArray(fromParam)
-        ? fromParam[0] === FROM_TRANSACTIONS_HUB
-        : false;
+  const handleBack = useProviderStackBack();
   useResponsive();
   const { selectedLocationId, provider } = useProvider();
   const [search, setSearch] = useState("");
@@ -204,13 +198,7 @@ export default function SalesHistoryScreen() {
       <ScreenHeader
         title="Sales history"
         showBack
-        onBack={
-          fromTransactionsHub
-            ? () => {
-                router.push(TRANSACTIONS_HUB_HREF as never);
-              }
-            : undefined
-        }
+        onBack={handleBack}
         subtitle={`${stats.count} rows`}
         rightAction={
           <TouchableOpacity
@@ -238,6 +226,12 @@ export default function SalesHistoryScreen() {
           <Text style={twStyle("text-xs text-orange-900")}>
             Ledger scan hit the safety cap — totals may be incomplete. Narrow the date range for full accuracy.
           </Text>
+        </View>
+      ) : null}
+
+      {salesPayload?.basis ? (
+        <View style={twStyle("mx-4 mb-2")}>
+          <ReportBasisFootnote basisNote={salesPayload.basis} compact />
         </View>
       ) : null}
 
@@ -414,8 +408,8 @@ export default function SalesHistoryScreen() {
               </View>
             </View>
             <Text style={twStyle("text-xs text-gray-500")}>
-              Figures for bookings and product orders come from your finance ledger in the selected period. POS rows show
-              gross as net (cash / in-person).
+              Bookings and online product orders use the finance ledger when settled by the platform. Walk-in retail
+              orders appear by paid date even without ledger rows. Legacy POS rows show gross as net.
             </Text>
           </View>
         )}

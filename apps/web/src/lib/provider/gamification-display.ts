@@ -29,10 +29,22 @@ export interface LadderBadge {
 const MILESTONE_META: Record<string, { label: string }> = {
   first_booking: { label: "First booking" },
   "10_bookings": { label: "10 bookings" },
+  ten_bookings: { label: "10 bookings" },
   "50_bookings": { label: "50 bookings" },
+  fifty_bookings: { label: "50 bookings" },
   "100_bookings": { label: "100 bookings" },
+  hundred_bookings: { label: "100 bookings" },
+  "500_bookings": { label: "500 bookings" },
+  five_hundred_bookings: { label: "500 bookings" },
+  "1000_bookings": { label: "1000 bookings" },
+  thousand_bookings: { label: "1000 bookings" },
   "100_reviews": { label: "100 reviews" },
+  "10_reviews": { label: "10 reviews" },
+  ten_reviews: { label: "10 reviews" },
+  "50_reviews": { label: "50 reviews" },
+  fifty_reviews: { label: "50 reviews" },
   first_review: { label: "First review" },
+  perfect_rating: { label: "Perfect rating" },
   perfect_rating_month: { label: "Perfect rating month" },
 };
 

@@ -62,6 +62,8 @@ const EVENT_LABELS: Record<string, string> = {
   "safety.user_report.adverse": "Safety: adverse report pending",
   "verification.pending_review": "Verifications: pending review",
   "verification.stuck_review": "Verifications: stuck review",
+  "compliance.account_deletion.succeeded": "Compliance: self-service account deleted",
+  "compliance.account_deletion.failed": "Compliance: self-service account deletion failed",
   "report.daily_operations_digest": "Reports: daily operations digest",
   "report.finance_exceptions_digest": "Reports: finance exceptions digest",
 };

@@ -9,6 +9,7 @@ import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { Redirect } from "expo-router";
 import { useApi } from "@/hooks/useApi";
+import { useGamificationAutoHeal } from "@/hooks/useGamificationAutoHeal";
 import { useResponsive } from "@/hooks/useResponsive";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
@@ -65,6 +66,7 @@ export function RewardsPointsContent() {
   const { data, loading, error, refresh } = useApi<GamificationResponse>(
     "/api/provider/gamification?limit=30"
   );
+  useGamificationAutoHeal(data, refresh);
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {

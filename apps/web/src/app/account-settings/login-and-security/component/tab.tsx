@@ -30,18 +30,21 @@ import {
   isCompleteSupabaseSmsOtp,
 } from "@/lib/supabase/auth-sms-otp";
 import { OtpDigitInput } from "@/components/ui/otp-digit-input";
+import {
+  describeReauthOtpDestination,
+  maskEmailForDisplay,
+  maskPhoneForDisplay,
+} from "@beautonomi/utils";
 import type { LoginAndSecurityInitial } from "../fetch-login-and-security-initial";
 
 type AuthSecurityState = NonNullable<LoginAndSecurityInitial["profile"]["auth_security"]>;
 
 function maskProfileEmail(email: string): string {
-  const parts = email.split("@");
-  return parts[0]?.length > 0 ? `${parts[0].substring(0, 1)}****@${parts[1] || ""}` : email;
+  return maskEmailForDisplay(email);
 }
 
 function maskProfilePhone(phone: string): string {
-  const digits = phone.replace(/\D/g, "");
-  return digits.length >= 4 ? `${digits.substring(0, 3)} *** ***${digits.substring(digits.length - 4)}` : phone;
+  return maskPhoneForDisplay(phone);
 }
 
 // §Customer-launch (audit 2026-04): "LOGIN REQUESTS" and "SHARED ACCESS" tabs
@@ -229,6 +232,10 @@ const LoginAccount = ({
   const canVerifyWithCode = Boolean(
     authSecurity?.has_mailable_email || authSecurity?.has_phone,
   );
+  const deactivateOtpDestination = describeReauthOtpDestination(authSecurity, {
+    email: initial?.profile?.email ?? user?.email ?? null,
+    phone: initial?.profile?.phone ?? null,
+  });
 
   const handlePasswordUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -424,7 +431,7 @@ const LoginAccount = ({
       const supabase = getSupabaseClient();
       const { error } = await supabase.auth.reauthenticate();
       if (error) throw error;
-      toast.success("A verification code has been sent to the email address on your account. Enter it below to confirm deactivation.");
+      toast.success(deactivateOtpDestination.codeSentMessage);
     } catch (error: unknown) {
       toast.error(error instanceof Error ? error.message : "Failed to send verification code");
     } finally {
@@ -968,7 +975,7 @@ const LoginAccount = ({
             ) : (
               <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
                 <p className="text-sm text-gray-700">
-                  Confirm this sensitive action with a one-time code.
+                  Confirm this sensitive action with a one-time code. {deactivateOtpDestination.sendButtonHint}.
                 </p>
                 <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
                   <div className="flex-1">

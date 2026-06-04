@@ -549,6 +549,7 @@ export function DashboardClient({
           <p className="text-xl sm:text-2xl font-semibold">
             {formatCurrency(stats.revenue_today, tenantCurrency)}
           </p>
+          <p className="text-xs text-gray-500 mt-1">Recognized when paid (ledger date)</p>
         </div>
         <div 
           className="bg-white border rounded-lg p-3 sm:p-4 cursor-pointer hover:shadow-md transition-shadow"
@@ -574,12 +575,18 @@ export function DashboardClient({
           <div className="space-y-3">
             <div className="flex items-center justify-between cursor-pointer hover:bg-gray-50 rounded p-2 transition-colors" role="button" tabIndex={0} onClick={() => navigateTo("/provider/finance")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") navigateTo("/provider/finance"); }}>
               <span className="text-sm text-gray-600">Service Earnings</span>
-              <span className="text-lg font-semibold text-green-600">{formatCurrency(stats.booking_earnings_total ?? stats.service_earnings_total ?? 0, tenantCurrency)}</span>
+              <span className="text-lg font-semibold text-green-600">{formatCurrency(stats.service_earnings_total ?? 0, tenantCurrency)}</span>
             </div>
             <div className="flex items-center justify-between cursor-pointer hover:bg-gray-50 rounded p-2 transition-colors" role="button" tabIndex={0} onClick={() => navigateTo("/provider/ecommerce/orders")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") navigateTo("/provider/ecommerce/orders"); }}>
-              <span className="text-sm text-gray-600">Product Order Earnings</span>
+              <span className="text-sm text-gray-600">Product Order Earnings (platform)</span>
               <span className="text-lg font-semibold text-emerald-700">{formatCurrency(stats.product_order_earnings_total || 0, tenantCurrency)}</span>
             </div>
+            {(stats.product_order_retail_total ?? 0) > 0 || (stats.retail_sales_today ?? 0) > 0 ? (
+              <div className="flex items-center justify-between cursor-pointer hover:bg-gray-50 rounded p-2 transition-colors" role="button" tabIndex={0} onClick={() => navigateTo("/provider/ecommerce/orders")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") navigateTo("/provider/ecommerce/orders"); }}>
+                <span className="text-sm text-gray-600">Retail (POS / collected)</span>
+                <span className="text-lg font-semibold text-emerald-800">{formatCurrency(stats.product_order_retail_total ?? 0, tenantCurrency)}</span>
+              </div>
+            ) : null}
             <div className="flex items-center justify-between cursor-pointer hover:bg-gray-50 rounded p-2 transition-colors" role="button" tabIndex={0} onClick={() => navigateTo("/provider/bookings")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") navigateTo("/provider/bookings"); }}>
               <span className="text-sm text-gray-600">Additional Charge Earnings</span>
               <span className="text-lg font-semibold text-teal-700">{formatCurrency(stats.additional_charge_earnings_total || 0, tenantCurrency)}</span>
@@ -605,6 +612,9 @@ export function DashboardClient({
                 <span className="text-sm text-gray-600">Other Earnings</span>
                 <span className="text-lg font-semibold text-slate-700">{formatCurrency(stats.other_earnings_total || 0, tenantCurrency)}</span>
               </div>
+            ) : null}
+            {stats.earnings_mix_time_basis ? (
+              <p className="text-xs text-gray-500 px-2">{stats.earnings_mix_time_basis}</p>
             ) : null}
             <div className="border-t pt-2">
               <div className="flex items-center justify-between p-2">

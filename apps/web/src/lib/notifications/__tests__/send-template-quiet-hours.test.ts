@@ -26,7 +26,7 @@ vi.mock("@/lib/notifications/insert-notification", () => ({
   getUnreadNotificationCount: vi.fn().mockResolvedValue(1),
 }));
 
-function createSupabaseMock(templateKey: string) {
+function createSupabaseMock(templateKey: string, profilePrefs?: Record<string, unknown>) {
   const templateRow = {
     key: templateKey,
     title: "Template title",
@@ -45,7 +45,7 @@ function createSupabaseMock(templateKey: string) {
     data: [
       {
         user_id: USER_ID,
-        notification_preferences: {
+        notification_preferences: profilePrefs ?? {
           quiet_hours_enabled: true,
           quiet_hours_start: "22:00",
           quiet_hours_end: "07:00",
@@ -57,6 +57,22 @@ function createSupabaseMock(templateKey: string) {
 
   const userProfilesQuery = {
     in: vi.fn().mockReturnValue(profileResult),
+  };
+
+  const usersResult = Promise.resolve({
+    data: [
+      {
+        id: USER_ID,
+        email_notifications_enabled: true,
+        sms_notifications_enabled: true,
+        push_notifications_enabled: true,
+      },
+    ],
+    error: null,
+  });
+
+  const usersQuery = {
+    in: vi.fn().mockReturnValue(usersResult),
   };
 
   const deviceResult = Promise.resolve({
@@ -82,6 +98,9 @@ function createSupabaseMock(templateKey: string) {
       }
       if (table === "user_profiles") {
         return { select: vi.fn().mockReturnValue(userProfilesQuery) };
+      }
+      if (table === "users") {
+        return { select: vi.fn().mockReturnValue(usersQuery) };
       }
       if (table === "user_devices") {
         return { select: vi.fn().mockReturnValue(userDevicesSelect) };
@@ -145,18 +164,42 @@ describe("sendTemplateNotification quiet-hours behavior", () => {
     expect(subLeg?.collapse_id).toBe(aliasLeg?.collapse_id);
   });
 
-  it("suppresses non-critical template push during quiet hours", async () => {
+  it("still sends custom offer template push during quiet hours", async () => {
     hoisted.getSupabaseAdminMock.mockReturnValue(
-      createSupabaseMock("provider_onboarding_welcome"),
+      createSupabaseMock("customer_custom_offer"),
     );
 
     const { sendTemplateNotification } = await import("@/lib/notifications/onesignal");
     const result = await sendTemplateNotification(
-      "provider_onboarding_welcome",
+      "customer_custom_offer",
       [USER_ID],
       {},
       ["push"],
-      { appType: "provider" },
+      { appType: "customer" },
+    );
+
+    expect(result.success).toBe(true);
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+    expect(fetchMock).toHaveBeenCalled();
+  });
+
+  it("suppresses marketing template push during quiet hours", async () => {
+    hoisted.getSupabaseAdminMock.mockReturnValue(
+      createSupabaseMock("promotion_available", {
+        quiet_hours_enabled: true,
+        quiet_hours_start: "22:00",
+        quiet_hours_end: "07:00",
+        inspiration_and_offers: { push: true, email: true, sms: true },
+      }),
+    );
+
+    const { sendTemplateNotification } = await import("@/lib/notifications/onesignal");
+    const result = await sendTemplateNotification(
+      "promotion_available",
+      [USER_ID],
+      {},
+      ["push"],
+      { appType: "customer" },
     );
 
     expect(result.success).toBe(true);

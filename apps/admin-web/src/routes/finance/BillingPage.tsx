@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { formatAdminCurrency } from "@/lib/adminFormatCurrency";
 import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -22,6 +22,10 @@ import {
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { adminToast } from "@/lib/adminToast";
+import {
+  AdminSubscriptionActionModal,
+  type AdminSubscriptionActionPayload,
+} from "@/components/admin/AdminSubscriptionActionModal";
 
 type InvoiceRow = Record<string, unknown> & {
   id?: string;
@@ -47,7 +51,7 @@ type SubRow = Record<string, unknown> & {
   expires_at?: string;
   created_at?: string;
   providers?: { business_name?: string } | null;
-  subscription_plans?: { name?: string } | null;
+  subscription_plans?: { name?: string; is_free?: boolean } | null;
 };
 
 const SUB_STATUS_BADGE: Record<string, string> = {
@@ -98,15 +102,28 @@ export function BillingPage() {
     enabled: allowed,
   });
 
-  const overrideStatusMut = useMutation({
-    mutationFn: ({ subId, newStatus }: { subId: string; newStatus: string }) =>
-      adminApi.patchJson<unknown>(`/api/admin/provider-subscriptions/${subId}`, { status: newStatus }),
+  const [pendingAction, setPendingAction] = useState<AdminSubscriptionActionPayload | null>(null);
+
+  const patchSubscription = useMutation({
+    mutationFn: (body: { subId: string; patch: Record<string, unknown> }) =>
+      adminApi.patchJson<unknown>(`/api/admin/provider-subscriptions/${body.subId}`, body.patch),
     onSuccess: async () => {
-      adminToast.success("Subscription status updated");
+      adminToast.success("Subscription updated");
+      setPendingAction(null);
       await qc.invalidateQueries({ queryKey: adminQueryKeys.providerSubscriptions(subQk) });
     },
-    onError: (err: Error) => adminToast.error(err.message || "Failed to update status"),
+    onError: (err: Error) => adminToast.error(err.message || "Failed to update subscription"),
   });
+
+  function handleModalConfirm(payload: AdminSubscriptionActionPayload) {
+    if (payload.kind === "reactivate") {
+      patchSubscription.mutate({ subId: payload.subId, patch: { status: "active" } });
+      return;
+    }
+    if (payload.kind === "cancel") {
+      patchSubscription.mutate({ subId: payload.subId, patch: { status: "cancelled" } });
+    }
+  }
 
   const rows = q.data?.invoices ?? [];
   const subRows = Array.isArray(subsQuery.data)
@@ -276,13 +293,22 @@ export function BillingPage() {
           <AdminTableBody>
             {subRows.map((r) => {
               const sid = String(r.id ?? "");
+              const providerName = String(r.providers?.business_name ?? "this provider");
+              const currentPlanName = String(r.subscription_plans?.name ?? "—");
+              const currentStatus = String(r.status ?? "");
+              const currentPlanIsFree = r.subscription_plans?.is_free === true;
+              const isCancelledLike =
+                currentStatus === "expired" ||
+                currentStatus === "past_due" ||
+                currentStatus === "cancelled";
+
               return (
                 <tr key={sid}>
-                  <AdminTd className="font-medium">{String(r.providers?.business_name ?? "—")}</AdminTd>
-                  <AdminTd>{String(r.subscription_plans?.name ?? "—")}</AdminTd>
+                  <AdminTd className="font-medium">{providerName}</AdminTd>
+                  <AdminTd>{currentPlanName}</AdminTd>
                   <AdminTd>
-                    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${SUB_STATUS_BADGE[String(r.status ?? "")] ?? "bg-gray-100 text-gray-600"}`}>
-                      {String(r.status ?? "")}
+                    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${SUB_STATUS_BADGE[currentStatus] ?? "bg-gray-100 text-gray-600"}`}>
+                      {currentStatus}
                     </span>
                   </AdminTd>
                   <AdminTd>{String(r.billing_period ?? "—")}</AdminTd>
@@ -294,34 +320,49 @@ export function BillingPage() {
                   </AdminTd>
                   <AdminTd>
                     <div className="flex flex-wrap gap-1">
-                      {(r.status === "expired" || r.status === "past_due" || r.status === "cancelled") && (
+                      {isCancelledLike && (
                         <button
                           type="button"
                           className="rounded bg-green-600 px-2 py-1 text-xs text-white hover:bg-green-700 disabled:opacity-50"
-                          disabled={overrideStatusMut.isPending}
+                          disabled={patchSubscription.isPending}
                           onClick={() => {
-                            if (confirm(`Reactivate subscription for ${r.providers?.business_name ?? "this provider"}?`)) {
-                              overrideStatusMut.mutate({ subId: sid, newStatus: "active" });
-                            }
+                            setPendingAction({
+                              kind: "reactivate",
+                              subId: sid,
+                              providerName,
+                              currentPlanName,
+                              currentStatus,
+                              currentPlanIsFree,
+                            });
                           }}
                         >
                           Reactivate
                         </button>
                       )}
-                      {r.status === "active" && (
+                      {currentStatus === "active" && !currentPlanIsFree && (
                         <button
                           type="button"
                           className="rounded bg-amber-600 px-2 py-1 text-xs text-white hover:bg-amber-700 disabled:opacity-50"
-                          disabled={overrideStatusMut.isPending}
+                          disabled={patchSubscription.isPending}
                           onClick={() => {
-                            if (confirm(`Cancel subscription for ${r.providers?.business_name ?? "this provider"}?`)) {
-                              overrideStatusMut.mutate({ subId: sid, newStatus: "cancelled" });
-                            }
+                            setPendingAction({
+                              kind: "cancel",
+                              subId: sid,
+                              providerName,
+                              currentPlanName,
+                              currentStatus,
+                              currentPlanIsFree,
+                              expiresAt:
+                                typeof r.expires_at === "string" ? r.expires_at : null,
+                            });
                           }}
                         >
                           Cancel
                         </button>
                       )}
+                      {currentStatus === "active" && currentPlanIsFree ? (
+                        <span className="text-xs text-gray-500 self-center px-1">Free tier</span>
+                      ) : null}
                     </div>
                   </AdminTd>
                 </tr>
@@ -330,6 +371,14 @@ export function BillingPage() {
           </AdminTableBody>
         </AdminDataTable>
       )}
+
+      <AdminSubscriptionActionModal
+        open={pendingAction != null}
+        payload={pendingAction}
+        onClose={() => setPendingAction(null)}
+        onConfirm={handleModalConfirm}
+        isPending={patchSubscription.isPending}
+      />
     </div>
   );
 }

@@ -295,7 +295,7 @@ export async function POST(request: NextRequest) {
 
     if (productOrderIdFromMeta && chargeResult.data?.reference) {
       try {
-        await recordProductOrderPayment({
+        const payRecord = await recordProductOrderPayment({
           supabase: supabaseAdmin,
           productOrderId: productOrderIdFromMeta,
           reference: String(chargeResult.data.reference),
@@ -303,6 +303,12 @@ export async function POST(request: NextRequest) {
           feesMajor: 0,
           source: "paystack_verify",
           provider: "paystack",
+        });
+        const { notifyProductOrderPaidIfTransitioned } = await import(
+          "@/lib/notifications/notify-product-order-paid"
+        );
+        await notifyProductOrderPaidIfTransitioned(supabaseAdmin, productOrderIdFromMeta, {
+          transitionedToPaid: payRecord.transitionedToPaid,
         });
       } catch (poErr) {
         console.error("[charge-saved-card] Failed to record product order payment:", poErr);

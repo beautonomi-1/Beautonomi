@@ -37,16 +37,26 @@ vi.mock("@/lib/platform/secrets", async (importOriginal) => {
 function mockAdmin(deviceRows: { onesignal_player_id: string | null; user_id: string }[]) {
   const result = Promise.resolve({ data: deviceRows, error: null });
   const orFn = vi.fn().mockReturnValue(result);
-  const eqFn = vi.fn().mockReturnValue(result);
+  const eqFn = vi.fn().mockReturnValue({ or: orFn, then: result.then.bind(result) });
   const inFn = vi.fn().mockReturnValue({
     or: orFn,
     eq: eqFn,
     then: result.then.bind(result),
     catch: result.catch.bind(result),
   });
-  const selectFn = vi.fn().mockReturnValue({ in: inFn });
+  const selectFn = vi.fn().mockReturnValue({ in: inFn, eq: eqFn });
+  const notifCountResult = Promise.resolve({ count: 2, error: null });
   const from = vi.fn().mockImplementation((table: string) => {
     if (table === "user_devices") return { select: selectFn };
+    if (table === "notifications") {
+      return {
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue(notifCountResult),
+          }),
+        }),
+      };
+    }
     if (table === "notification_logs") return { insert: vi.fn().mockResolvedValue({ error: null }) };
     throw new Error("unexpected table " + table);
   });
@@ -95,6 +105,8 @@ describe("applyOneSignalTargeting (regression for sub+ext mix)", () => {
     expect(body.target_channel).toBe("push");
     expect(body.include_subscription_ids).toBeUndefined();
     expect(body.include_external_user_ids).toBeUndefined();
+    expect(body.ios_badgeType).toBe("SetTo");
+    expect(body.ios_badgeCount).toBe(2);
   });
 
   it("does not mix include_subscription_ids with external IDs (regression for OneSignal silent miss)", async () => {

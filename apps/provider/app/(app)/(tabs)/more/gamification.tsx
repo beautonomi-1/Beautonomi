@@ -12,6 +12,7 @@ import type { ComponentProps } from "react";
 import * as Haptics from "expo-haptics";
 import { Redirect } from "expo-router";
 import { useApi, useApiMutation } from "@/hooks/useApi";
+import { useGamificationAutoHeal } from "@/hooks/useGamificationAutoHeal";
 import { useResponsive } from "@/hooks/useResponsive";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
@@ -108,10 +109,22 @@ const EARN_TIPS: { icon: IoniconName; title: string; body: string }[] = [
 const MILESTONE_META: Record<string, { label: string; icon: IoniconName }> = {
   first_booking: { label: "First booking", icon: "calendar" },
   "10_bookings": { label: "10 bookings", icon: "calendar" },
+  ten_bookings: { label: "10 bookings", icon: "calendar" },
   "50_bookings": { label: "50 bookings", icon: "calendar" },
+  fifty_bookings: { label: "50 bookings", icon: "calendar" },
   "100_bookings": { label: "100 bookings", icon: "calendar" },
+  hundred_bookings: { label: "100 bookings", icon: "calendar" },
+  "500_bookings": { label: "500 bookings", icon: "calendar" },
+  five_hundred_bookings: { label: "500 bookings", icon: "calendar" },
+  "1000_bookings": { label: "1000 bookings", icon: "calendar" },
+  thousand_bookings: { label: "1000 bookings", icon: "calendar" },
   "100_reviews": { label: "100 reviews", icon: "chatbubbles" },
+  "10_reviews": { label: "10 reviews", icon: "chatbubbles" },
+  ten_reviews: { label: "10 reviews", icon: "chatbubbles" },
+  "50_reviews": { label: "50 reviews", icon: "chatbubbles" },
+  fifty_reviews: { label: "50 reviews", icon: "chatbubbles" },
   first_review: { label: "First review", icon: "chatbubble" },
+  perfect_rating: { label: "Perfect rating", icon: "star" },
   perfect_rating_month: { label: "Perfect rating month", icon: "star" },
 };
 
@@ -483,6 +496,7 @@ export function GamificationBadgesContent() {
   const { data, loading, error, refresh } = useApi<GamificationResponse>(
     "/api/provider/gamification"
   );
+  useGamificationAutoHeal(data, refresh);
   const { execute: recalculate, loading: recalculating } = useApiMutation("post");
   const onRefresh = useCallback(async () => {
     setRefreshing(true);

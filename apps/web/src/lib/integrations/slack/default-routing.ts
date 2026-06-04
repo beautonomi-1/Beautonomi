@@ -26,7 +26,13 @@ function defaultDedupeWindowSeconds(key: string): number {
   if (key.includes("stale") || key.includes("overdue") || key.includes("blocked") || key.includes("reconciliation")) {
     return 21_600;
   }
-  if (key.includes("payout") || key.includes("refund") || key.includes("dispute") || key.includes("verification")) {
+  if (
+    key.includes("payout") ||
+    key.includes("refund") ||
+    key.includes("dispute") ||
+    key.includes("verification") ||
+    key.includes("account_deletion")
+  ) {
     return 3_600;
   }
   return 900;

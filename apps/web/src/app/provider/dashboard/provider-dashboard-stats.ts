@@ -48,6 +48,12 @@ export interface ProviderDashboardStats {
   additional_charge_earnings_total?: number;
   other_earnings_total?: number;
   recognized_earnings_total?: number;
+  product_order_retail_total?: number;
+  retail_sales_today?: number;
+  retail_sales_this_week?: number;
+  retail_sales_this_month?: number;
+  earnings_mix_time_basis?: string;
+  metrics_time_basis?: string;
   tips_total?: number;
   tips_this_month?: number;
   gift_card_sales_total: number;

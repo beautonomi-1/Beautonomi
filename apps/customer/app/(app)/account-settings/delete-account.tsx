@@ -2,7 +2,7 @@
  * Permanent account deletion – parity with web (password + type DELETE).
  * POST /api/me/delete-account, then sign out.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -25,6 +25,7 @@ import { useTranslation } from "@beautonomi/i18n";
 import { supabase } from "@/lib/supabase/client";
 import {
   canVerifySensitiveActionWithCode,
+  describeReauthOtpDestination,
   isAuthSecurityLoaded,
   sensitiveActionSubmitReady,
   userHasPassword,
@@ -63,6 +64,8 @@ export default function DeleteAccountScreen() {
   const [password, setPassword] = useState("");
   const [verificationNonce, setVerificationNonce] = useState("");
   const [authSecurity, setAuthSecurity] = useState<AuthSecurityState | null>(null);
+  const [profileEmail, setProfileEmail] = useState<string | null>(null);
+  const [profilePhone, setProfilePhone] = useState<string | null>(null);
   const [reason, setReason] = useState("");
   const [confirmText, setConfirmText] = useState("");
   const [loading, setLoading] = useState(false);
@@ -70,15 +73,24 @@ export default function DeleteAccountScreen() {
   const authSecurityLoaded = isAuthSecurityLoaded(authSecurity);
   const hasPassword = userHasPassword(authSecurity);
   const canVerifyWithCode = canVerifySensitiveActionWithCode(authSecurity);
+  const otpDestination = useMemo(
+    () => describeReauthOtpDestination(authSecurity, { email: profileEmail, phone: profilePhone }),
+    [authSecurity, profileEmail, profilePhone],
+  );
 
   const loadStatus = useCallback(async () => {
     setStatusLoading(true);
     try {
       const res = await api.get<AccountStatus>("/api/me/account-status");
       if (!res.error && res.data) setStatus(res.data);
-      const profile = await api.get<{ auth_security?: AuthSecurityState | null }>("/api/me/profile");
+      const profile = await api.get<{ auth_security?: AuthSecurityState | null; email?: string; phone?: string }>(
+        "/api/me/profile",
+      );
       if (!profile.error) {
-        setAuthSecurity((profile.data as { auth_security?: AuthSecurityState | null } | undefined)?.auth_security ?? null);
+        const data = profile.data as { auth_security?: AuthSecurityState | null; email?: string; phone?: string } | undefined;
+        setAuthSecurity(data?.auth_security ?? null);
+        setProfileEmail(data?.email ?? null);
+        setProfilePhone(data?.phone ?? null);
       }
     } catch {
       setStatus(null);
@@ -152,20 +164,20 @@ export default function DeleteAccountScreen() {
 
   const requestVerificationCode = useCallback(async () => {
     if (!canVerifyWithCode) {
-      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), "Add and verify an email or phone number before deleting this account.");
+      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), otpDestination.codeSentMessage);
       return;
     }
     setRequestingNonce(true);
     try {
       const { error } = await supabase.auth.reauthenticate();
       if (error) throw error;
-      Alert.alert("Code sent", "Enter the verification code below to confirm deletion.");
+      Alert.alert("Code sent", otpDestination.codeSentMessage);
     } catch (e) {
       Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), getApiErrorMessage(e, da("deleteFailed")));
     } finally {
       setRequestingNonce(false);
     }
-  }, [canVerifyWithCode, da, t]);
+  }, [canVerifyWithCode, da, otpDestination.codeSentMessage, t]);
 
   return (
     <KeyboardAvoidingView
@@ -251,6 +263,7 @@ export default function DeleteAccountScreen() {
           ) : (
             <View>
               <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 8 }}>Confirm with a one-time verification code.</Text>
+              <Text style={{ fontSize: 13, color: Colors.gray[500], marginBottom: 8 }}>{otpDestination.sendButtonHint}</Text>
               <TouchableOpacity
                 onPress={requestVerificationCode}
                 disabled={requestingNonce || !canVerifyWithCode}

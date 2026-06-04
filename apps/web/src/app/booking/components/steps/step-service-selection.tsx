@@ -11,6 +11,16 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useTranslation } from "@beautonomi/i18n";
+import { catalogHasAnyAtHomePriceAdjustment } from "@beautonomi/utils";
+import {
+  HouseCallAtHomePricesBanner,
+  HouseCallServicePriceLabel,
+} from "@/components/booking/HouseCallPricingNotes";
+import {
+  applyLegacyAtHomeToSelectedLine,
+  repriceLegacySelectedServices,
+  type LegacySelectedServiceLine,
+} from "../../lib/legacy-at-home-pricing";
 import ServiceAddons from "./service-addons-inline";
 import BookingProducts from "./booking-products";
 
@@ -35,10 +45,33 @@ interface Service {
   duration: number;
   bufferMinutes?: number;
   price: number;
+  at_home_price_adjustment?: number;
   currency: string;
   category: string;
   hasAddons: boolean;
   hasVariants?: boolean;
+}
+
+function legacyIsAtHome(mode: BookingState["mode"]): boolean {
+  return mode === "mobile";
+}
+
+function buildLegacyCartLine(
+  partial: Omit<LegacySelectedServiceLine, "price" | "base_price" | "at_home_price_adjustment"> & {
+    catalogBasePrice: number;
+    atHomeAdjustment: number;
+    isAtHome: boolean;
+  }
+): LegacySelectedServiceLine {
+  return applyLegacyAtHomeToSelectedLine(
+    {
+      ...partial,
+      price: partial.catalogBasePrice,
+    },
+    partial.catalogBasePrice,
+    partial.atHomeAdjustment,
+    partial.isAtHome
+  );
 }
 
 interface Staff {
@@ -196,16 +229,18 @@ export default function StepServiceSelection({
       updateBookingState({
         selectedServices: [
           ...bookingState.selectedServices,
-          {
+          buildLegacyCartLine({
             id: baseRow.id,
             title: baseRow.title,
             duration: baseRow.duration,
             bufferMinutes: baseRow.bufferMinutes ?? 0,
-            price: baseRow.price,
             currency: baseRow.currency,
             staffId: defaultStaffId,
             staffName: defaultStaff?.name,
-          },
+            catalogBasePrice: baseRow.price,
+            atHomeAdjustment: Number(baseRow.at_home_price_adjustment ?? 0),
+            isAtHome: legacyIsAtHome(bookingState.mode),
+          }),
         ],
       });
       if (baseRow.hasAddons || defaultStaff) setExpandedService(baseRow.id);
@@ -237,21 +272,24 @@ export default function StepServiceSelection({
 
     setActiveCategory(parentWithVariant.category);
     requestScrollToBaseService(parentWithVariant.id);
+    const variantBase = Number(v.price ?? parentWithVariant.price);
     updateBookingState({
       selectedServices: [
         ...bookingState.selectedServices,
-        {
+        buildLegacyCartLine({
           id: v.id,
           title: v.title || v.variant_name || parentWithVariant.title,
           duration: v.duration ?? v.duration_minutes ?? parentWithVariant.duration,
           bufferMinutes:
             v.bufferMinutes ?? v.buffer_minutes ?? parentWithVariant.bufferMinutes ?? 0,
-          price: v.price ?? parentWithVariant.price,
           currency: v.currency ?? parentWithVariant.currency,
           staffId: defaultStaffId,
           staffName: defaultStaff?.name,
           baseServiceId: parentWithVariant.id,
-        },
+          catalogBasePrice: variantBase,
+          atHomeAdjustment: Number(parentWithVariant.at_home_price_adjustment ?? 0),
+          isAtHome: legacyIsAtHome(bookingState.mode),
+        }),
       ],
     });
     setExpandedService(parentWithVariant.id);
@@ -378,6 +416,37 @@ export default function StepServiceSelection({
     ? staff.filter((s) => s.mobileReady)
     : staff;
 
+  const isAtHomeVenue = legacyIsAtHome(bookingState.mode);
+
+  const showHouseCallPricingHints = useMemo(
+    () => isAtHomeVenue && catalogHasAnyAtHomePriceAdjustment(services),
+    [isAtHomeVenue, services]
+  );
+
+  // Re-price cart when venue mode changes (services step is before venue in legacy flow).
+  useEffect(() => {
+    if (services.length === 0 || bookingState.selectedServices.length === 0) return;
+    const catalog = services.map((s) => ({
+      id: s.id,
+      price: s.price,
+      at_home_price_adjustment: s.at_home_price_adjustment,
+    }));
+    const repriced = repriceLegacySelectedServices(
+      bookingState.selectedServices,
+      catalog,
+      isAtHomeVenue
+    );
+    const changed = repriced.some(
+      (s, i) =>
+        s.price !== bookingState.selectedServices[i]?.price ||
+        s.at_home_price_adjustment !== bookingState.selectedServices[i]?.at_home_price_adjustment
+    );
+    if (changed) {
+      updateBookingState({ selectedServices: repriced });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookingState.mode, services.length]);
+
   const searchFilteredServices = useMemo(() => {
     const q = serviceSearchQuery.trim().toLowerCase();
     if (!q) return filteredServices;
@@ -465,16 +534,18 @@ export default function StepServiceSelection({
       updateBookingState({
         selectedServices: [
           ...bookingState.selectedServices,
-          {
+          buildLegacyCartLine({
             id: service.id,
             title: service.title,
             duration: service.duration,
             bufferMinutes: service.bufferMinutes ?? 0,
-            price: service.price,
             currency: service.currency,
             staffId,
             staffName,
-          },
+            catalogBasePrice: service.price,
+            atHomeAdjustment: Number(service.at_home_price_adjustment ?? 0),
+            isAtHome: legacyIsAtHome(bookingState.mode),
+          }),
         ],
       });
       setExpandedService(service.id);
@@ -509,28 +580,32 @@ export default function StepServiceSelection({
     }
   };
 
-  const handleVariantSelect = (serviceId: string, variant: any) => {
-    // The entry in selectedServices may have id === serviceId (base) OR id === variantId + baseServiceId === serviceId
+  const handleVariantSelect = (serviceId: string, variant: any, parentService: Service) => {
     const currentService = bookingState.selectedServices.find(
       (s) => s.id === serviceId || s.baseServiceId === serviceId
     );
-    // When selecting the base option, clear baseServiceId; otherwise set it
     const isBaseOption = variant.id === serviceId;
+    const catalogBasePrice = Number(variant.price ?? parentService.price);
+    const partial: Omit<LegacySelectedServiceLine, "price" | "base_price" | "at_home_price_adjustment"> = {
+      id: variant.id,
+      title: variant.title || variant.variant_name || parentService.title,
+      duration: variant.duration ?? parentService.duration,
+      bufferMinutes:
+        variant.bufferMinutes ?? variant.buffer_minutes ?? currentService?.bufferMinutes ?? 0,
+      currency: variant.currency ?? parentService.currency,
+      ...(isBaseOption ? {} : { baseServiceId: serviceId }),
+      staffId: currentService?.staffId,
+      staffName: currentService?.staffName,
+    };
     updateBookingState({
       selectedServices: bookingState.selectedServices.map((s) =>
         s.id === serviceId || s.baseServiceId === serviceId
-          ? {
-              id: variant.id,
-              title: variant.title || variant.variant_name || variant.title,
-              duration: variant.duration,
-              bufferMinutes:
-                variant.bufferMinutes ?? variant.buffer_minutes ?? currentService?.bufferMinutes ?? 0,
-              price: variant.price,
-              currency: variant.currency,
-              ...(isBaseOption ? {} : { baseServiceId: serviceId }),
-              staffId: currentService?.staffId,
-              staffName: currentService?.staffName,
-            }
+          ? buildLegacyCartLine({
+              ...partial,
+              catalogBasePrice,
+              atHomeAdjustment: Number(parentService.at_home_price_adjustment ?? 0),
+              isAtHome: legacyIsAtHome(bookingState.mode),
+            })
           : s
       ),
     });
@@ -579,6 +654,8 @@ export default function StepServiceSelection({
           {t("booking.addService")}
         </p>
       </div>
+
+      {showHouseCallPricingHints ? <HouseCallAtHomePricesBanner t={t} /> : null}
 
       {/* Group Booking Toggle */}
       {groupBookingSettings?.enabled && (
@@ -731,9 +808,15 @@ export default function StepServiceSelection({
                         <Clock className="w-4 h-4" />
                         {service.duration} min
                       </span>
-                      <span className="font-semibold text-gray-900">
-                        {formatCurrency(service.price, service.currency)}
-                      </span>
+                      <HouseCallServicePriceLabel
+                        basePrice={service.price}
+                        atHomePriceAdjustment={service.at_home_price_adjustment}
+                        isAtHome={isAtHomeVenue}
+                        currency={service.currency}
+                        durationMinutes={service.duration}
+                        t={t}
+                        className="font-semibold text-gray-900"
+                      />
                     </div>
                   </div>
                   <div
@@ -789,7 +872,7 @@ export default function StepServiceSelection({
                               duration: service.duration,
                               price: service.price,
                               currency: service.currency,
-                            })}
+                            }, service)}
                             className={`w-full p-3 rounded-lg border-2 text-left transition-all touch-target ${
                               !selectedService?.baseServiceId || selectedService?.id === service.id
                                 ? "border-primary bg-pink-50"
@@ -804,9 +887,15 @@ export default function StepServiceSelection({
                                     <Clock className="w-3 h-3" />
                                     {service.duration} min
                                   </span>
-                                  <span className="font-semibold text-gray-900">
-                                    {formatCurrency(service.price, service.currency)}
-                                  </span>
+                                  <HouseCallServicePriceLabel
+                                    basePrice={service.price}
+                                    atHomePriceAdjustment={service.at_home_price_adjustment}
+                                    isAtHome={isAtHomeVenue}
+                                    currency={service.currency}
+                                    durationMinutes={service.duration}
+                                    t={t}
+                                    className="font-semibold text-gray-900"
+                                  />
                                 </div>
                               </div>
                               {(!selectedService?.baseServiceId || selectedService?.id === service.id) && (
@@ -820,7 +909,7 @@ export default function StepServiceSelection({
                             <motion.button
                               key={variant.id}
                               whileTap={{ scale: 0.98 }}
-                              onClick={() => handleVariantSelect(service.id, variant)}
+                              onClick={() => handleVariantSelect(service.id, variant, service)}
                               className={`w-full p-3 rounded-lg border-2 text-left transition-all touch-target ${
                                 selectedService?.id === variant.id
                                   ? "border-primary bg-pink-50"
@@ -837,9 +926,15 @@ export default function StepServiceSelection({
                                       <Clock className="w-3 h-3" />
                                       {variant.duration} min
                                     </span>
-                                    <span className="font-semibold text-gray-900">
-                                      {formatCurrency(variant.price, variant.currency)}
-                                    </span>
+                                    <HouseCallServicePriceLabel
+                                      basePrice={variant.price}
+                                      atHomePriceAdjustment={service.at_home_price_adjustment}
+                                      isAtHome={isAtHomeVenue}
+                                      currency={variant.currency ?? service.currency}
+                                      durationMinutes={variant.duration}
+                                      t={t}
+                                      className="font-semibold text-gray-900"
+                                    />
                                   </div>
                                 </div>
                                 {selectedService?.id === variant.id && (

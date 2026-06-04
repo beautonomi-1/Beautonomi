@@ -11,6 +11,7 @@ import { useRouter } from "expo-router";
 import { useProvider } from "@/providers/ProviderContext";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { supabase } from "@/lib/supabase/client";
+import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
 import { api } from "@/lib/api-client";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { twStyle } from "@/lib/twStyle";
@@ -100,7 +101,7 @@ export function TerminalPaymentAlertListener() {
     if (!provider?.id || !paystackTerminalEnabled) return;
 
     const channel = supabase
-      .channel(`terminal-payments:${provider.id}`)
+      .channel(nextRealtimeTopic(`terminal-payments:${provider.id}`))
       .on(
         "postgres_changes",
         {

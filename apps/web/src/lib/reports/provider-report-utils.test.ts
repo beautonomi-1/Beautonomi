@@ -52,6 +52,7 @@ describe("provider report utilities", () => {
     const table = vi.fn((name: string) => ({
       select: vi.fn().mockReturnThis(),
       eq: vi.fn().mockReturnThis(),
+      or: vi.fn().mockReturnThis(),
       order: vi.fn().mockReturnThis(),
       limit: vi.fn().mockReturnThis(),
       maybeSingle: vi.fn().mockResolvedValue({

@@ -3,6 +3,7 @@
  * EXPO_PUBLIC_* vars are injected at build time from .env / .env.local.
  */
 import Constants from "expo-constants";
+import { Platform } from "react-native";
 import { LAST_RESORT_CURRENCY } from "@beautonomi/utils";
 import {
   getActiveMarketHostSync,
@@ -75,20 +76,60 @@ export const SUPABASE_ANON_KEY = getEnv("EXPO_PUBLIC_SUPABASE_ANON_KEY") ?? "";
 /** Backend (Next.js) URL. Optional for local web dev (Expo at :8081/:8082 uses http://localhost:3000). */
 export const APP_URL = getEnv("EXPO_PUBLIC_APP_URL") ?? "";
 
+const DEV_BACKEND_PORT = 3000;
+
+function resolveDevBackendFromExpoHost(port = DEV_BACKEND_PORT): string | null {
+  if (typeof __DEV__ === "undefined" || !__DEV__) return null;
+  const raw =
+    Constants.expoConfig?.hostUri ??
+    (Constants as { manifest2?: { extra?: { expoClient?: { hostUri?: string } } } }).manifest2
+      ?.extra?.expoClient?.hostUri;
+  if (!raw || typeof raw !== "string") return null;
+  const host = raw.split(":")[0]?.trim();
+  if (!host) return null;
+  if (host === "localhost" || host === "127.0.0.1") {
+    if (Platform.OS === "android") return `http://10.0.2.2:${port}`;
+    return `http://localhost:${port}`;
+  }
+  return `http://${host}:${port}`;
+}
+
+function devBackendFallback(): string {
+  const fromExpo = resolveDevBackendFromExpoHost();
+  if (fromExpo) return fromExpo;
+  if (Platform.OS === "android") return `http://10.0.2.2:${DEV_BACKEND_PORT}`;
+  return `http://localhost:${DEV_BACKEND_PORT}`;
+}
+
 /**
  * Resolved backend base URL for public fetches (config bundle, embedded WebViews, Sumsub embed).
- * Matches provider app: Expo web on localhost:8081/8082 or empty APP_URL → http://localhost:3000; native dev with empty APP_URL → localhost.
+ * Matches provider app: Expo web on localhost:8081/8082 or empty APP_URL → http://localhost:3000.
+ * Native dev: derive LAN host from Expo when APP_URL is unset (physical device cannot use localhost).
  */
 export function getBackendUrl(): string {
+  const configured = APP_URL?.trim() ?? "";
   if (typeof window !== "undefined") {
     const o = window.location.origin;
-    if (o === "http://localhost:8081" || o === "http://localhost:8082" || !APP_URL?.trim()) {
-      return "http://localhost:3000";
+    if (o === "http://localhost:8081" || o === "http://localhost:8082" || !configured) {
+      return `http://localhost:${DEV_BACKEND_PORT}`;
     }
+    return configured.replace(/\/$/, "");
   }
-  const url = APP_URL?.trim();
-  if (!url && typeof __DEV__ !== "undefined" && __DEV__) return "http://localhost:3000";
-  return url || "";
+  if (configured) {
+    if (
+      typeof __DEV__ !== "undefined" &&
+      __DEV__ &&
+      (configured.includes("localhost") || configured.includes("127.0.0.1"))
+    ) {
+      const fromExpo = resolveDevBackendFromExpoHost();
+      if (fromExpo) return fromExpo;
+    }
+    return configured.replace(/\/$/, "");
+  }
+  if (typeof __DEV__ !== "undefined" && __DEV__) {
+    return devBackendFallback();
+  }
+  return configured.replace(/\/$/, "") || "";
 }
 
 /** OneSignal App ID – optional; push notifications disabled if unset */

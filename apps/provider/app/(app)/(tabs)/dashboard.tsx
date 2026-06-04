@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
-import { InteractionManager, View, Text, TouchableOpacity, Platform } from "react-native";
+import { InteractionManager, View, Text, TouchableOpacity, Platform, DeviceEventEmitter } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -30,6 +30,9 @@ import {
   formatTimeAgo,
 } from "@/lib/format";
 import { trackDashboardView } from "@/lib/analytics";
+import { navigateToMoreScreen } from "@/lib/provider-tab-navigation";
+import { PROVIDER_DASHBOARD_REFRESH_EVENT } from "@/lib/provider-dashboard-events";
+import { normalizeTopServicesPayload } from "@/lib/normalize-top-services";
 import { newBookingScreenHref } from "@/lib/new-booking-nav-defaults";
 import { Colors } from "@/constants/colors";
 
@@ -62,6 +65,14 @@ interface DashboardMetrics {
   service_earnings_total: number;
   booking_earnings_total?: number;
   product_order_earnings_total?: number;
+  product_order_earnings_platform_total?: number;
+  product_order_retail_total?: number;
+  retail_sales_today?: number;
+  retail_sales_this_week?: number;
+  retail_sales_this_month?: number;
+  retail_sales_count_today?: number;
+  retail_sales_count_this_week?: number;
+  retail_sales_count_this_month?: number;
   additional_charge_earnings_total?: number;
   other_earnings_total?: number;
   recognized_earnings_total?: number;
@@ -70,6 +81,8 @@ interface DashboardMetrics {
   gift_card_sales_total?: number;
   membership_sales_total?: number;
   refunds_total?: number;
+  earnings_mix_time_basis?: string;
+  metrics_time_basis?: string;
   gamification?: {
     total_points: number;
     lifetime_points: number;
@@ -95,6 +108,7 @@ interface DashboardMetrics {
     recent_activity: ActivityItem[];
     today_bookings: Booking[];
     upcoming_bookings: Booking[];
+    basis?: { upcoming?: string };
   } | null;
   booking_eligibility?: {
     can_accept_online_bookings: boolean;
@@ -189,6 +203,7 @@ function getActivityIcon(type: string): {
     case "booking_earnings":
       return { name: "cash-outline", color: "#22c55e", bg: "#f0fdf4" };
     case "product_order_earnings":
+    case "product_sale_completed":
       return { name: "bag-handle-outline", color: "#059669", bg: "#ecfdf5" };
     case "tip_recognized":
       return { name: "heart-outline", color: "#16a34a", bg: "#f0fdf4" };
@@ -297,12 +312,10 @@ export default function DashboardScreen() {
   const openBookingSurface = useCallback(
     (booking: Booking) => {
       if (booking.is_group_booking && booking.group_booking_id) {
-        router.push(
-          {
-            pathname: "/(app)/(tabs)/more/group-bookings",
-            params: { open_group_id: booking.group_booking_id },
-          } as never,
-        );
+        navigateToMoreScreen(router, "/(app)/(tabs)/more/group-bookings", {
+          open_group_id: booking.group_booking_id,
+          from: "dashboard",
+        });
         return;
       }
       router.push(`/(app)/(tabs)/bookings/${booking.id}` as never);
@@ -392,7 +405,7 @@ export default function DashboardScreen() {
     error: fallbackUpcomingError,
     refresh: refreshFallbackUpcoming,
   } = useApi<Booking[]>(
-    `/api/provider/bookings?status=confirmed,pending,booked&start_date=${today}&end_date=${upcomingEnd}&limit=20&sort=scheduled_at${locQ}`,
+    `/api/provider/bookings?status=pending,pending_payment,booked,started,in_progress,waiting,checked_in&start_date=${today}&end_date=${upcomingEnd}&from_now=1&limit=20&sort=scheduled_at${locQ}`,
     {
       enabled: isFocused && metrics !== null && !hasBundledInsights,
       staleTimeMs: 15_000,
@@ -412,7 +425,7 @@ export default function DashboardScreen() {
     data: fallbackTopServices,
     error: fallbackTopServicesError,
     refresh: refreshFallbackTopServices,
-  } = useApi<TopService[]>(
+  } = useApi<unknown>(
     `/api/provider/reports/top-services?limit=5${locQ}`,
     {
       enabled: isFocused && secondaryEnabled && metrics !== null && !hasBundledInsights,
@@ -441,11 +454,23 @@ export default function DashboardScreen() {
     staleTimeMs: 60_000,
   });
 
-  const upcomingBookings = metrics?.insights?.upcoming_bookings ?? fallbackUpcomingBookings ?? null;
+  const upcomingBookingsRaw =
+    metrics?.insights?.upcoming_bookings ?? fallbackUpcomingBookings ?? null;
+  const upcomingBookings = useMemo(() => {
+    if (!upcomingBookingsRaw?.length) return upcomingBookingsRaw;
+    const nowMs = Date.now();
+    return upcomingBookingsRaw.filter((b) => {
+      const when = b.scheduled_at ? new Date(b.scheduled_at).getTime() : NaN;
+      return Number.isFinite(when) && when >= nowMs;
+    });
+  }, [upcomingBookingsRaw]);
   const upcomingError = hasBundledInsights ? null : fallbackUpcomingError;
 
   const weeklyRevenue = metrics?.insights?.weekly_revenue ?? fallbackWeeklyRevenue ?? null;
-  const topServices = metrics?.insights?.top_services ?? fallbackTopServices ?? null;
+  const topServices =
+    metrics?.insights?.top_services ??
+    normalizeTopServicesPayload(fallbackTopServices) ??
+    null;
   const recentActivity =
     metrics?.insights?.recent_activity ?? unwrapActivityFeedPayload(fallbackActivityPayload);
   const bookingEligibility = metrics?.booking_eligibility ?? fallbackBookingEligibility ?? null;
@@ -534,6 +559,16 @@ export default function DashboardScreen() {
           },
           scheduleRefresh,
         )
+        .on(
+          "postgres_changes" as never,
+          {
+            event: "*",
+            schema: "public",
+            table: "product_orders",
+            filter: `provider_id=eq.${provider.id}`,
+          },
+          scheduleRefresh,
+        )
         .subscribe();
     } catch {
       // Non-fatal: dashboard still refreshes on focus / pull.
@@ -544,6 +579,13 @@ export default function DashboardScreen() {
       if (channel) supabase.removeChannel(channel);
     };
   }, [isFocused, provider?.id]);
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(PROVIDER_DASHBOARD_REFRESH_EVENT, () => {
+      void refreshRealtimeDashboardData();
+    });
+    return () => sub.remove();
+  }, [refreshRealtimeDashboardData]);
 
   const m = metrics;
   const statColumns = isTablet ? (columns >= 3 ? 4 : 2) : 2;
@@ -578,6 +620,24 @@ export default function DashboardScreen() {
         return m.appointments_today ?? 0;
     }
   }, [m, dateRange]);
+
+  const displayRetailSales = useMemo(() => {
+    if (!m) return formatCurrency(0);
+    switch (dateRange) {
+      case "today":
+        return formatCurrency(m.retail_sales_today ?? 0);
+      case "week":
+        return formatCurrency(m.retail_sales_this_week ?? 0);
+      case "month":
+        return formatCurrency(m.retail_sales_this_month ?? 0);
+      default:
+        return formatCurrency(m.retail_sales_today ?? 0);
+    }
+  }, [m, dateRange]);
+
+  const upcomingBasisFootnote =
+    metrics?.insights?.basis?.upcoming ??
+    "Includes confirmed and in-progress appointments in your business timezone.";
 
   const periodLabel = useMemo(() => {
     switch (dateRange) {
@@ -870,7 +930,7 @@ export default function DashboardScreen() {
           style={{ minHeight: 48, flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white }}
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            router.push("/(app)/(tabs)/more/walk-in-sale" as never);
+            navigateToMoreScreen(router, "/(app)/(tabs)/more/walk-in-sale", { from: "dashboard" });
           }}
           activeOpacity={0.7}
           accessibilityLabel="Start a product sale"
@@ -899,8 +959,9 @@ export default function DashboardScreen() {
       >
         <View style={{ width: statColumns === 4 ? "24%" : "48.5%", marginRight: 12, marginBottom: 12 }}>
           <StatCard
-            title={`${periodLabel} Revenue`}
+            title={`${periodLabel} Revenue earned`}
             value={displayRevenue}
+            subtitle="Recognized when paid (ledger date)"
             icon="wallet-outline"
             iconColor="#22c55e"
             iconBg="bg-green-50"
@@ -916,6 +977,27 @@ export default function DashboardScreen() {
             iconBg="bg-indigo-50"
             compact={!isTablet}
           />
+        </View>
+        <View style={{ width: statColumns === 4 ? "24%" : "48.5%", marginRight: 12, marginBottom: 12 }}>
+          <TouchableOpacity
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel={`${periodLabel} Retail sales, ${displayRetailSales}`}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              navigateToMoreScreen(router, "/(app)/(tabs)/more/walk-in-sale", { from: "dashboard" });
+            }}
+          >
+            <StatCard
+              title={`${periodLabel} Retail sales`}
+              value={displayRetailSales}
+              subtitle="Walk-in POS (not platform payout)"
+              icon="pricetag-outline"
+              iconColor="#059669"
+              iconBg="bg-emerald-50"
+              compact={!isTablet}
+            />
+          </TouchableOpacity>
         </View>
         <View style={{ width: statColumns === 4 ? "24%" : "48.5%", marginRight: 12, marginBottom: 12 }}>
           <TouchableOpacity
@@ -955,15 +1037,26 @@ export default function DashboardScreen() {
         <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
           <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Services</Text>
           <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>
-            {formatCurrency(m?.booking_earnings_total ?? m?.service_earnings_total ?? 0)}
+            {formatCurrency(m?.service_earnings_total ?? 0)}
           </Text>
         </View>
         <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
-          <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Product orders</Text>
+          <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Product orders (platform)</Text>
           <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>
-            {formatCurrency(m?.product_order_earnings_total ?? 0)}
+            {formatCurrency(
+              m?.product_order_earnings_platform_total ?? m?.product_order_earnings_total ?? 0,
+            )}
           </Text>
         </View>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
+          <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Retail (POS / collected)</Text>
+          <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>
+            {formatCurrency(m?.product_order_retail_total ?? 0)}
+          </Text>
+        </View>
+        <Text style={{ fontSize: 11, color: Colors.gray[500], marginBottom: 8 }}>
+          Ledger revenue cards exclude POS/collected retail; retail stat uses walk-in and cash/COD/Yoco orders by paid date.
+        </Text>
         <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
           <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Additional charges</Text>
           <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>
@@ -1013,6 +1106,11 @@ export default function DashboardScreen() {
               {formatCurrency(m?.other_earnings_total ?? 0)}
             </Text>
           </View>
+        ) : null}
+        {m?.earnings_mix_time_basis ? (
+          <Text style={{ fontSize: 11, color: Colors.gray[500], marginBottom: 8 }}>
+            {m.earnings_mix_time_basis}
+          </Text>
         ) : null}
         <View style={{ marginTop: 4, borderTopWidth: 1, borderTopColor: Colors.gray[100], paddingTop: 8, flexDirection: "row", justifyContent: "space-between" }}>
           <Text style={{ fontSize: 13, fontWeight: "700", color: Colors.gray[800] }}>Recognized total</Text>
@@ -1270,10 +1368,13 @@ export default function DashboardScreen() {
           <Text style={{ marginTop: 4, fontSize: 12, color: "#ef4444" }}>Failed to load · Tap to retry</Text>
         </TouchableOpacity>
       ) : !upcomingBookings || upcomingBookings.length === 0 ? (
-        <View style={{ alignItems: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingVertical: 32 }}>
+        <View style={{ alignItems: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingVertical: 32, paddingHorizontal: 16 }}>
           <Ionicons name="calendar-outline" size={32} color="#d1d5db" />
-          <Text style={{ marginTop: 8, fontSize: 14, color: Colors.gray[400] }}>
+          <Text style={{ marginTop: 8, fontSize: 14, color: Colors.gray[400], textAlign: "center" }}>
             No upcoming appointments
+          </Text>
+          <Text style={{ marginTop: 6, fontSize: 11, color: Colors.gray[400], textAlign: "center" }}>
+            {upcomingBasisFootnote}
           </Text>
         </View>
       ) : (
@@ -1396,7 +1497,9 @@ export default function DashboardScreen() {
                       `/(app)/(tabs)/bookings/${item.data.booking_id}` as never,
                     );
                   } else if (item.data?.product_order_id) {
-                    router.push("/(app)/(tabs)/more/product-orders" as never);
+                    router.push(
+                      `/(app)/(tabs)/more/orders-hub?order=${encodeURIComponent(item.data.product_order_id)}` as never,
+                    );
                   }
                 }}
                 accessibilityLabel={`${item.description}, ${formatTimeAgo(item.created_at)}`}

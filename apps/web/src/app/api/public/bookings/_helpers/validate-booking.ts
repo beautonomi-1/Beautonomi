@@ -16,6 +16,7 @@ import {
   entitlementMismatch,
   percentOf,
   sumMoney,
+  resolveAtHomeAdjustmentForOffering,
 } from "@beautonomi/utils";
 import { sumChainedBlockedMinutes } from "@/lib/booking-slot-math/blocked-window-minutes";
 import { applyPublicBookingHoldSnapshotToDraft } from "@/lib/bookings/apply-hold-snapshot-to-draft";
@@ -24,6 +25,19 @@ import { normalizeProviderTimezone } from "@/lib/availability/time-utils";
 import { DEFAULT_BOOKING_DISPLAY_TIMEZONE } from "@/lib/bookings/display-invariants";
 import { loadEffectiveStaffShifts } from "@/lib/availability/load-constraints";
 import { segmentFitsAnyShift } from "@/lib/availability/shift-fit";
+
+function atHomeAdjustmentForOffering(
+  offeringsList: Array<{
+    id: string;
+    parent_service_id?: string | null;
+    at_home_price_adjustment?: number | null;
+  }>,
+  offeringId: string,
+  isAtHome: boolean
+): number {
+  if (!isAtHome) return 0;
+  return resolveAtHomeAdjustmentForOffering(offeringsList, offeringId);
+}
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 
@@ -444,7 +458,7 @@ export async function validateBooking(
   const { data: offerings, error: offeringsError } = await supabase
     .from("offerings")
     .select(
-      "id, provider_id, title, duration_minutes, buffer_minutes, price, currency, supports_at_home, at_home_price_adjustment, is_active, online_booking_enabled, service_type, master_service_id"
+      "id, provider_id, title, duration_minutes, buffer_minutes, price, currency, supports_at_home, at_home_price_adjustment, is_active, online_booking_enabled, service_type, master_service_id, parent_service_id"
     )
     .in("id", offeringIds);
 
@@ -957,7 +971,11 @@ export async function validateBooking(
   const servicesSubtotal = draft.services.reduce((sum, s) => {
     const off = offeringById.get(s.offering_id);
     const base = Number(off.price || 0);
-    const homeAdj = draft.location_type === "at_home" ? Number(off.at_home_price_adjustment || 0) : 0;
+    const homeAdj = atHomeAdjustmentForOffering(
+      offerings || [],
+      off.id,
+      draft.location_type === "at_home"
+    );
     return sum + base + homeAdj;
   }, 0);
 
@@ -1550,7 +1568,11 @@ export async function validateBooking(
     const servicesMap = new Map();
     for (const s of draft.services) {
       const off = offeringById.get(s.offering_id);
-      const homeAdj = draft.location_type === "at_home" ? Number(off.at_home_price_adjustment || 0) : 0;
+      const homeAdj = atHomeAdjustmentForOffering(
+        offerings || [],
+        off.id,
+        draft.location_type === "at_home"
+      );
       servicesMap.set(s.offering_id, {
         offering_id: off.id,
         staff_id: s.staff_id || null,
@@ -1576,7 +1598,11 @@ export async function validateBooking(
         const s = draft.services.find((serv: any) => serv.offering_id === serviceId);
         if (!s) return null;
         const off = offeringById.get(s.offering_id);
-        const homeAdj = draft.location_type === "at_home" ? Number(off.at_home_price_adjustment || 0) : 0;
+        const homeAdj = atHomeAdjustmentForOffering(
+        offerings || [],
+        off.id,
+        draft.location_type === "at_home"
+      );
         const start = new Date(cursor);
         const end = new Date(start.getTime() + Number(off.duration_minutes) * 60000);
         cursor = new Date(end.getTime() + Number(off.buffer_minutes || 0) * 60000);
@@ -1595,7 +1621,11 @@ export async function validateBooking(
     if (bookingServicesData.length === 0 && draft.services.length > 0) {
       const s = draft.services[0];
       const off = offeringById.get(s.offering_id);
-      const homeAdj = draft.location_type === "at_home" ? Number(off.at_home_price_adjustment || 0) : 0;
+      const homeAdj = atHomeAdjustmentForOffering(
+        offerings || [],
+        off.id,
+        draft.location_type === "at_home"
+      );
       const start = new Date(draft.selected_datetime);
       const end = new Date(start.getTime() + Number(off.duration_minutes) * 60000);
       bookingServicesData = [
@@ -1618,7 +1648,11 @@ export async function validateBooking(
       const end = new Date(start.getTime() + Number(off.duration_minutes) * 60000);
       cursor = new Date(end.getTime() + Number(off.buffer_minutes || 0) * 60000);
 
-      const homeAdj = draft.location_type === "at_home" ? Number(off.at_home_price_adjustment || 0) : 0;
+      const homeAdj = atHomeAdjustmentForOffering(
+        offerings || [],
+        off.id,
+        draft.location_type === "at_home"
+      );
       return {
         offering_id: off.id,
         staff_id: s.staff_id || null,

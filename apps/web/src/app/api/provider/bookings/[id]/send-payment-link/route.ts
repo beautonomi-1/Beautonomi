@@ -118,10 +118,38 @@ export async function POST(
       return errorResponse(branchAccess.message, "FORBIDDEN", 403);
     }
 
-    // Check if already paid
-    if (booking.payment_status === 'paid') {
+    // Determine true outstanding. A booking can be payment_status='paid' on the
+    // base service yet still owe additional charges added after an online payment
+    // (e.g. a paid custom offer). Those must remain payable, so reject only when
+    // nothing at all is owed.
+    const unpaidAdditionalCharges = Array.isArray((booking as any).additional_charges)
+      ? (booking as any).additional_charges
+          .filter((charge: any) => charge?.status !== "paid" && charge?.status !== "rejected")
+          .reduce((sum: number, charge: any) => sum + Number(charge?.amount || 0), 0)
+      : 0;
+    const baseOutstanding = computeBookingOutstandingDisplay({
+      totalAmount: Number(booking.total_amount ?? 0),
+      totalPaid: Number(booking.total_paid ?? 0),
+      totalRefunded: Number(booking.total_refunded ?? 0),
+      walletAmount: Number(booking.wallet_amount ?? 0),
+      giftCardAmount: Number(booking.gift_card_amount ?? 0),
+      unpaidAdditionalCharges: 0,
+      paymentStatus: booking.payment_status,
+    });
+    const amountDue = computeBookingOutstandingDisplay({
+      totalAmount: Number(booking.total_amount ?? 0),
+      totalPaid: Number(booking.total_paid ?? 0),
+      totalRefunded: Number(booking.total_refunded ?? 0),
+      walletAmount: Number(booking.wallet_amount ?? 0),
+      giftCardAmount: Number(booking.gift_card_amount ?? 0),
+      unpaidAdditionalCharges,
+      paymentStatus: booking.payment_status,
+    });
+
+    // Nothing owed (base settled and no unpaid add-ons) → nothing to send.
+    if (amountDue <= 0) {
       return errorResponse(
-        "Booking is already paid",
+        "Booking is already fully paid",
         "ALREADY_PAID",
         400
       );
@@ -152,22 +180,17 @@ export async function POST(
     }
 
     const appBase = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
-    const paymentLink = `${appBase}/bookings/${bookingId}/pay`;
     const bookingRef = booking.ref_number || booking.booking_number || bookingId.slice(0, 8).toUpperCase();
-    const unpaidAdditionalCharges = Array.isArray((booking as any).additional_charges)
-      ? (booking as any).additional_charges
-          .filter((charge: any) => charge?.status !== "paid" && charge?.status !== "rejected")
-          .reduce((sum: number, charge: any) => sum + Number(charge?.amount || 0), 0)
-      : 0;
-    const amountDue = computeBookingOutstandingDisplay({
-      totalAmount: Number(booking.total_amount ?? 0),
-      totalPaid: Number(booking.total_paid ?? 0),
-      totalRefunded: Number(booking.total_refunded ?? 0),
-      walletAmount: Number(booking.wallet_amount ?? 0),
-      giftCardAmount: Number(booking.gift_card_amount ?? 0),
-      unpaidAdditionalCharges,
-      paymentStatus: booking.payment_status,
-    });
+    // Route the customer to the correct pay surface:
+    // - base balance outstanding → /bookings/[id]/pay (pay-remaining → Paystack)
+    // - base settled but additional charges owed → booking detail, where each
+    //   charge is paid via the dedicated additional-charge flow that settles the
+    //   charge row, bumps total_amount, and posts provider_earnings. pay-remaining
+    //   does NOT settle additional_charges rows, so it must not be used for them.
+    const paymentLink =
+      baseOutstanding > 0
+        ? `${appBase}/bookings/${bookingId}/pay`
+        : `${appBase}/account-settings/bookings/${bookingId}`;
 
     // Create notification for customer (will be sent via OneSignal)
     try {

@@ -2,6 +2,7 @@ import { View, Text, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { Colors } from "@/constants/colors";
+import { performProviderStackBack } from "@/lib/provider-tab-navigation";
 
 interface ScreenHeaderProps {
   title: string;
@@ -22,19 +23,9 @@ interface ScreenHeaderProps {
   titleAccessory?: React.ReactNode;
 }
 
-const MORE_TAB_HREF = "/(app)/(tabs)/more" as const;
-
 export function ScreenHeader({ title, subtitle, showBack, onBack, rightAction, leadingContent, titleAccessory }: ScreenHeaderProps) {
   const router = useRouter();
-  const handleBack =
-    onBack ??
-    (() => {
-      if (router.canGoBack()) {
-        router.back();
-      } else {
-        router.replace(MORE_TAB_HREF as never);
-      }
-    });
+  const handleBack = onBack ?? (() => performProviderStackBack(router));
   const showBackButton = showBack ?? !!onBack;
 
   return (

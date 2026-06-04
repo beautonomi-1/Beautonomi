@@ -29,6 +29,7 @@ import { trackNotificationOpened } from "@/lib/analytics";
 import { addBreadcrumb, captureError } from "@/lib/sentry";
 import { isTransientApiFailure } from "@/lib/api-error";
 import { navigateFromNotification, type Notification } from "@/lib/notifications";
+import { emitNotificationBadgeRefresh } from "@/lib/notification-badge-events";
 
 const SUBSCRIPTION_RETRY_DELAYS_MS = [3000, 10000, 30000];
 
@@ -209,9 +210,16 @@ function usePushRegistration() {
             );
           });
 
-          // Show immediately in the notification shade while the app is open (not queued by us).
+          // Show in the shade while open; re-sync bell + app-icon badge from server (single source of truth).
           OneSignal.Notifications.addEventListener("foregroundWillDisplay", (event: NotificationWillDisplayEvent) => {
+            const data = (event.notification.additionalData ?? {}) as Record<string, unknown>;
+            if (data.type === "badge_sync") {
+              event.preventDefault();
+              emitNotificationBadgeRefresh();
+              return;
+            }
             event.getNotification().display();
+            emitNotificationBadgeRefresh();
           });
         }
 

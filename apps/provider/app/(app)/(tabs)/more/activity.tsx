@@ -165,8 +165,8 @@ export default function ActivityScreen() {
         showBack
         subtitle={
           selectedLocationId
-            ? "Mixed timeline · filtered branch where noted"
-            : "Bookings, ledger, reviews · rolling window"
+            ? "Operational timeline (not a balance sheet) · filtered branch where noted"
+            : "Operational timeline — bookings, ledger, reviews (not a balance sheet)"
         }
       />
       <ScrollView

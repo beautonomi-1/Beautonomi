@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { invalidateProviderNotificationsListCache } from "@/lib/notifications/provider-notifications-list-cache";
+import { syncPushBadgeCountAllApps } from "@/lib/notifications/sync-push-badge-count";
 
 /**
  * POST /api/provider/notifications/mark-all-read
@@ -21,10 +22,11 @@ export async function POST(request: NextRequest) {
       .eq("is_read", false);
 
     if (error) {
-      console.warn("Error marking all provider notifications read:", error);
-    } else {
-      invalidateProviderNotificationsListCache(user.id);
+      throw error;
     }
+
+    invalidateProviderNotificationsListCache(user.id);
+    void syncPushBadgeCountAllApps(user.id, 0);
 
     return successResponse({ message: "All notifications marked as read" });
   } catch (error) {

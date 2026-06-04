@@ -56,12 +56,11 @@ vi.mock("@/app/api/payments/webhook/_handlers/charge-success", () => ({
   processSuccessfulPayment: vi.fn(),
 }));
 
-vi.mock("@/lib/notifications/insert-notification", () => ({
-  insertNotification: vi.fn(async () => undefined),
-}));
+const mockNotifyProductOrderPaidIfTransitioned = vi.fn(async () => undefined);
 
-vi.mock("@/lib/notifications/notify-provider-team", () => ({
-  notifyProviderTeamUsers: vi.fn(async () => undefined),
+vi.mock("@/lib/notifications/notify-product-order-paid", () => ({
+  notifyProductOrderPaidIfTransitioned: (...args: unknown[]) =>
+    mockNotifyProductOrderPaidIfTransitioned(...args),
 }));
 
 function productOrdersQuery(row: Record<string, unknown> | null) {
@@ -95,7 +94,11 @@ describe("GET /api/paystack/verify-reference product orders", () => {
     mockOptionalAuthInApi.mockResolvedValue({ user: { id: "customer-1", role: "customer" } });
     mockResolveTenantIdWithZaFallback.mockResolvedValue("tenant-za");
     mockGetPaystackSecretKey.mockResolvedValue("sk_test");
-    mockRecordProductOrderPayment.mockResolvedValue({ ok: true, duplicate: false });
+    mockRecordProductOrderPayment.mockResolvedValue({
+      ok: true,
+      duplicate: false,
+      transitionedToPaid: true,
+    });
     adminOrderRow = null;
     vi.stubGlobal(
       "fetch",
@@ -147,6 +150,11 @@ describe("GET /api/paystack/verify-reference product orders", () => {
         feesMajor: 2,
         provider: "paystack",
       }),
+    );
+    expect(mockNotifyProductOrderPaidIfTransitioned).toHaveBeenCalledWith(
+      expect.anything(),
+      "order-1",
+      { transitionedToPaid: true },
     );
   });
 

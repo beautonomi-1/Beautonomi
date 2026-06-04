@@ -3,10 +3,10 @@
  *
  * §Push-reliability (audit 2026-06) — delivery-status reconciliation.
  *
- * Recent critical push sends are logged to `notification_logs` with reconcile
+ * Recent must-deliver push sends are logged to `notification_logs` with reconcile
  * metadata (app_type, tenant, recipient user ids, OneSignal notification id).
  * This job re-reads the OneSignal "View notification" stats for those sends a
- * few minutes later and, when a critical notification reached *nobody*
+ * few minutes later and, when a must-deliver notification reached *nobody*
  * (successful + converted == 0 and nothing remaining), re-enqueues it into the
  * durable `notification_delivery_queue` so the existing worker retries it.
  *
@@ -23,7 +23,7 @@ import * as Sentry from "@sentry/nextjs";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { verifyCronRequest } from "@/lib/cron-auth";
 import {
-  CRITICAL_TRANSACTIONAL_TEMPLATES,
+  isMustDeliverPushTemplate,
   oneSignalAuthorizationHeader,
 } from "@/lib/notifications/onesignal";
 import { resolveOneSignalCredentials, type OneSignalAppType } from "@/lib/platform/secrets";
@@ -182,7 +182,7 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error;
 
-    // Build groups of critical push sends keyed by collapse group (dual legs) or log id.
+    // Build groups of must-deliver push sends keyed by collapse group (dual legs) or log id.
     const groupMap = new Map<string, LogGroup>();
     for (const log of logs ?? []) {
       scanned++;
@@ -190,7 +190,7 @@ export async function GET(request: NextRequest) {
       if (!channels.includes("push")) continue;
       const meta = parseReconcileMeta(log.payload);
       if (!meta) continue;
-      if (!meta.template_key || !CRITICAL_TRANSACTIONAL_TEMPLATES.has(meta.template_key)) continue;
+      if (!meta.template_key || !isMustDeliverPushTemplate(meta.template_key)) continue;
       if (meta.user_ids.length === 0) continue;
       const notificationId = notificationIdOf(log.provider_response);
       if (!notificationId) continue;

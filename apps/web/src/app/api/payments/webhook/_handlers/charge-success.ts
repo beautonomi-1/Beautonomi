@@ -204,7 +204,7 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
   if (!reference || !metadata?.booking_id) {
     if (metadata?.product_order_id && reference) {
       const productOrderId = String(metadata.product_order_id);
-      await recordProductOrderPayment({
+      const payRecord = await recordProductOrderPayment({
         supabase,
         productOrderId,
         reference: String(reference),
@@ -212,6 +212,12 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
         feesMajor: convertFromSmallestUnit(fees || 0),
         source: "paystack_webhook",
         provider: "paystack",
+      });
+      const { notifyProductOrderPaidIfTransitioned } = await import(
+        "@/lib/notifications/notify-product-order-paid"
+      );
+      await notifyProductOrderPaidIfTransitioned(supabase, productOrderId, {
+        transitionedToPaid: payRecord.transitionedToPaid,
       });
       return;
     }
@@ -922,6 +928,68 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
     const msg = promoError instanceof Error ? promoError.message : String(promoError);
     if (!msg.toLowerCase().includes("duplicate") && !msg.toLowerCase().includes("unique")) {
       console.error("Error recording promotion usage:", promoError);
+    }
+  }
+
+  // Membership & loyalty discount ledger parity (mirrors promotion_discount and the
+  // custom-offer finalize path) so GMV vs net reconciles for every settlement path,
+  // not only custom offers. Idempotent per (booking, transaction_type).
+  try {
+    const membershipDiscountAmount = Number(
+      metadata?.membership_discount_amount ??
+        (bookingData as { membership_discount_amount?: number }).membership_discount_amount ??
+        0,
+    );
+    const loyaltyDiscountAmount = Number(
+      metadata?.loyalty_discount_amount ??
+        (bookingData as { loyalty_discount_amount?: number }).loyalty_discount_amount ??
+        0,
+    );
+
+    const postContraRowOnce = async (
+      transactionType: "membership_discount" | "loyalty_redemption",
+      amount: number,
+      description: string,
+    ) => {
+      if (!(amount > 0)) return;
+      const { data: existing } = await supabase
+        .from("finance_transactions")
+        .select("id")
+        .eq("booking_id", metadata.booking_id)
+        .eq("transaction_type", transactionType)
+        .maybeSingle();
+      if (existing) return;
+      await supabase.from("finance_transactions").insert({
+        booking_id: metadata.booking_id,
+        provider_id: bookingData.provider_id || null,
+        tenant_id: financeTenantId,
+        transaction_type: transactionType,
+        amount,
+        fees: 0,
+        commission: 0,
+        net: -amount,
+        description,
+        created_at: new Date().toISOString(),
+      });
+    };
+
+    await postContraRowOnce(
+      "membership_discount",
+      membershipDiscountAmount,
+      `Membership discount applied to booking ${bookingData.booking_number}`,
+    );
+    // Standard-path parity with finalize-custom-offer: loyalty is posted as a
+    // loyalty_redemption contra row (net negative); not added to total_amount.
+    await postContraRowOnce(
+      "loyalty_redemption",
+      loyaltyDiscountAmount,
+      `Loyalty redemption applied to booking ${bookingData.booking_number}`,
+    );
+  } catch (discountLedgerError) {
+    const msg =
+      discountLedgerError instanceof Error ? discountLedgerError.message : String(discountLedgerError);
+    if (!msg.toLowerCase().includes("duplicate") && !msg.toLowerCase().includes("unique")) {
+      console.error("Error recording membership/loyalty discount ledger rows:", discountLedgerError);
     }
   }
 
@@ -2844,6 +2912,17 @@ async function handleBookingRemainingSuccess(
     return;
   }
 
+  const walletAmountFromMeta = Number(metadata?.wallet_amount_applied ?? 0);
+  const giftCardAmountFromMeta = Number(metadata?.gift_card_amount_applied ?? 0);
+  if (giftCardAmountFromMeta > 0) {
+    try {
+      await supabase.rpc("capture_gift_card_redemption", { p_booking_id: bookingId });
+    } catch (giftCaptureErr) {
+      console.error("[pay-remaining] gift card capture failed:", giftCaptureErr);
+    }
+  }
+  await completeWalletGiftSyntheticPayments(supabase, bookingId);
+
   const commissionRate = await resolveCommissionPercentageForProvider(supabase, {
     tenantId: bookingData.tenant_id ?? payRemainingFinanceTenantId ?? null,
     providerId,
@@ -2851,7 +2930,6 @@ async function handleBookingRemainingSuccess(
   const tipAmount = Number(metadata?.tip_amount ?? bookingData.tip_amount ?? 0);
   const taxAmount = Number(metadata?.tax_amount ?? bookingData.tax_amount ?? 0);
   const travelFee = Number(metadata?.travel_fee ?? bookingData.travel_fee ?? 0);
-  // Same || fallback pattern as the initial-payment path above.
   const serviceFeeAmount = Number(
     metadata?.service_fee_amount ??
       ((bookingData as Record<string, unknown>).platform_fee_amount ||
@@ -2860,13 +2938,18 @@ async function handleBookingRemainingSuccess(
         0),
   );
   const bookingTotal = Number(bookingData.total_amount || 0);
-  const fullCommissionBase = bookingTotal > 0
-    ? bookingTotal - tipAmount - taxAmount - travelFee - serviceFeeAmount
-    : amountInCurrency;
-  const netRevenueRatio = bookingTotal > 0
-    ? Math.max(0, fullCommissionBase / bookingTotal)
-    : 1;
-  const commissionBase = Math.max(0, Math.round(amountInCurrency * netRevenueRatio * 100) / 100);
+  const fullCommissionBase =
+    bookingTotal > 0
+      ? bookingTotal - tipAmount - taxAmount - travelFee - serviceFeeAmount
+      : amountInCurrency;
+  const netRevenueRatio =
+    bookingTotal > 0 ? Math.max(0, fullCommissionBase / bookingTotal) : 1;
+  const totalCollectedForCommission =
+    amountInCurrency + walletAmountFromMeta + giftCardAmountFromMeta;
+  const commissionBase = Math.max(
+    0,
+    Math.round(totalCollectedForCommission * netRevenueRatio * 100) / 100,
+  );
   const platformCommission = commissionRate > 0 ? percentOf(commissionBase, commissionRate) : 0;
   const providerEarnings = subtractMoney(commissionBase, platformCommission);
 
@@ -2917,6 +3000,75 @@ async function handleBookingRemainingSuccess(
     description: `Provider earnings (remaining balance) for booking ${bookingData.booking_number}`,
     created_at: new Date().toISOString(),
   });
+
+  const payRemainWebhookNow = new Date().toISOString();
+  if (walletAmountFromMeta > 0) {
+    const { data: existingWalletEntry } = await supabase
+      .from("finance_transactions")
+      .select("id")
+      .eq("booking_id", bookingId)
+      .eq("transaction_type", "wallet_payment")
+      .ilike("description", `%${reference}%`)
+      .maybeSingle();
+    if (!existingWalletEntry) {
+      await supabase.from("finance_transactions").insert({
+        booking_id: bookingId,
+        provider_id: providerId,
+        tenant_id: payRemainingFinanceTenantId,
+        transaction_type: "wallet_payment",
+        amount: walletAmountFromMeta,
+        fees: 0,
+        commission: 0,
+        net: walletAmountFromMeta,
+        description: `Wallet (pay-remaining split) ref ${reference} booking ${bookingData.booking_number}`,
+        created_at: payRemainWebhookNow,
+      });
+    }
+  }
+  if (giftCardAmountFromMeta > 0) {
+    const { data: existingGcEntry } = await supabase
+      .from("finance_transactions")
+      .select("id")
+      .eq("booking_id", bookingId)
+      .eq("transaction_type", "gift_card_payment")
+      .ilike("description", `%${reference}%`)
+      .maybeSingle();
+    if (!existingGcEntry) {
+      await supabase.from("finance_transactions").insert({
+        booking_id: bookingId,
+        provider_id: providerId,
+        tenant_id: payRemainingFinanceTenantId,
+        transaction_type: "gift_card_payment",
+        amount: giftCardAmountFromMeta,
+        fees: 0,
+        commission: 0,
+        net: giftCardAmountFromMeta,
+        description: `Gift card (pay-remaining split) ref ${reference} booking ${bookingData.booking_number}`,
+        created_at: payRemainWebhookNow,
+      });
+    }
+    const { data: existingGcLiab } = await supabase
+      .from("finance_transactions")
+      .select("id")
+      .eq("booking_id", bookingId)
+      .eq("transaction_type", "gift_card_liability_reduction")
+      .ilike("description", `%${reference}%`)
+      .maybeSingle();
+    if (!existingGcLiab) {
+      await supabase.from("finance_transactions").insert({
+        booking_id: bookingId,
+        provider_id: providerId,
+        tenant_id: payRemainingFinanceTenantId,
+        transaction_type: "gift_card_liability_reduction",
+        amount: giftCardAmountFromMeta,
+        fees: 0,
+        commission: 0,
+        net: -giftCardAmountFromMeta,
+        description: `Gift card liability reduction (pay-remaining split) ref ${reference} booking ${bookingData.booking_number}`,
+        created_at: payRemainWebhookNow,
+      });
+    }
+  }
 
   await syncBookingAfterPaystackSuccess(supabase, bookingId, {
     paymentReference: reference,
@@ -3020,16 +3172,33 @@ async function handleAdditionalChargeSuccess(
   }
   if ((charge as { status?: string }).status === "paid") return;
 
+  const walletAmountFromMeta = Number(metadata?.wallet_amount_applied ?? 0);
+  const giftCardAmountFromMeta = Number(metadata?.gift_card_amount_applied ?? 0);
+  if (giftCardAmountFromMeta > 0) {
+    try {
+      await supabase.rpc("capture_gift_card_redemption", { p_booking_id: bookingId });
+    } catch (giftCaptureErr) {
+      console.error("[additional-charge] gift card capture failed:", giftCaptureErr);
+    }
+  }
+  await completeWalletGiftSyntheticPayments(supabase, bookingId);
+
   const amountInCurrency = convertFromSmallestUnit(amount || 0);
   const feesInCurrency = convertFromSmallestUnit(fees || 0);
+  const chargeAmountMajor = Number((charge as { amount?: number }).amount ?? 0);
+  const totalEconomicAmount =
+    chargeAmountMajor > 0
+      ? chargeAmountMajor
+      : amountInCurrency + walletAmountFromMeta + giftCardAmountFromMeta;
   const netAmount = amountInCurrency - feesInCurrency;
 
   const commissionRate = await resolveCommissionPercentageForProvider(supabase, {
     tenantId: bookingData.tenant_id ?? additionalChargeFinanceTenantId ?? null,
     providerId,
   });
-  const platformCommission = commissionRate > 0 ? percentOf(netAmount, commissionRate) : 0;
-  const providerEarnings = subtractMoney(netAmount, platformCommission);
+  const platformCommission =
+    commissionRate > 0 ? percentOf(totalEconomicAmount, commissionRate) : 0;
+  const providerEarnings = subtractMoney(totalEconomicAmount, platformCommission);
 
   const { error: paymentTxInsertError } = await supabase.from("payment_transactions").insert({
     booking_id: bookingId,
@@ -3069,17 +3238,18 @@ async function handleAdditionalChargeSuccess(
     })
     .eq("id", bookingId);
 
+  const addlFinanceNow = new Date().toISOString();
   await supabase.from("finance_transactions").insert({
     booking_id: bookingId,
     provider_id: providerId,
     tenant_id: additionalChargeFinanceTenantId,
     transaction_type: "additional_charge_payment",
-    amount: netAmount,
+    amount: totalEconomicAmount,
     fees: feesInCurrency,
     commission: platformCommission,
     net: platformCommission,
     description: `Additional charge payment for booking ${bookingData.booking_number}`,
-    created_at: new Date().toISOString(),
+    created_at: addlFinanceNow,
   });
 
   await supabase.from("finance_transactions").insert({
@@ -3092,8 +3262,49 @@ async function handleAdditionalChargeSuccess(
     commission: 0,
     net: providerEarnings,
     description: `Provider earnings (additional charge) for booking ${bookingData.booking_number}`,
-    created_at: new Date().toISOString(),
+    created_at: addlFinanceNow,
   });
+
+  if (walletAmountFromMeta > 0) {
+    await supabase.from("finance_transactions").insert({
+      booking_id: bookingId,
+      provider_id: providerId,
+      tenant_id: additionalChargeFinanceTenantId,
+      transaction_type: "wallet_payment",
+      amount: walletAmountFromMeta,
+      fees: 0,
+      commission: 0,
+      net: walletAmountFromMeta,
+      description: `Wallet (additional charge split) ref ${reference} charge ${chargeId}`,
+      created_at: addlFinanceNow,
+    });
+  }
+  if (giftCardAmountFromMeta > 0) {
+    await supabase.from("finance_transactions").insert({
+      booking_id: bookingId,
+      provider_id: providerId,
+      tenant_id: additionalChargeFinanceTenantId,
+      transaction_type: "gift_card_payment",
+      amount: giftCardAmountFromMeta,
+      fees: 0,
+      commission: 0,
+      net: giftCardAmountFromMeta,
+      description: `Gift card (additional charge split) ref ${reference} charge ${chargeId}`,
+      created_at: addlFinanceNow,
+    });
+    await supabase.from("finance_transactions").insert({
+      booking_id: bookingId,
+      provider_id: providerId,
+      tenant_id: additionalChargeFinanceTenantId,
+      transaction_type: "gift_card_liability_reduction",
+      amount: giftCardAmountFromMeta,
+      fees: 0,
+      commission: 0,
+      net: -giftCardAmountFromMeta,
+      description: `Gift card liability reduction (additional charge split) ref ${reference} charge ${chargeId}`,
+      created_at: addlFinanceNow,
+    });
+  }
 
   await supabase.from("payments")
     .update({

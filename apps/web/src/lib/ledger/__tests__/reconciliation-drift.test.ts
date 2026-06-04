@@ -60,7 +60,22 @@ const SHADOW_LEDGER_ALLOWLIST = [
   "provider_ads_payment",
   "additional_charge_payment",
   "platform_fee",
+  // 655: booking-level discount contra rows (GMV/net symmetry with promotion_discount).
+  "membership_discount",
+  "loyalty_discount",
 ] as const;
+
+/**
+ * Allowlist entries introduced AFTER migration 510 (each in its own migration).
+ * The "migration agrees on allowlist" check reads the union of these files so
+ * later additions don't have to edit the immutable 510 migration.
+ */
+const POST_510_ALLOWLIST_MIGRATIONS: Record<string, string[]> = {
+  "655_shadow_ledger_membership_loyalty_discounts.sql": [
+    "membership_discount",
+    "loyalty_discount",
+  ],
+};
 
 /**
  * Types that are allowed to appear in code but deliberately skipped by
@@ -131,8 +146,8 @@ function isFinanceTransactionsInsert(context: string[]): boolean {
 const WEB_SRC = path.resolve(__dirname, "..", "..", "..");
 
 describe("Reconciliation drift (Wave 5.3)", () => {
-  it("migration 510 and test data agree on allowlist", () => {
-    const migrationPath = path.resolve(
+  it("migration 510 (+ later allowlist migrations) and test data agree on allowlist", () => {
+    const migrationsDir = path.resolve(
       __dirname,
       "..",
       "..",
@@ -142,10 +157,27 @@ describe("Reconciliation drift (Wave 5.3)", () => {
       "..",
       "supabase",
       "migrations",
-      "510_shadow_ledger_full_allowlist.sql",
     );
-    const sql = fs.readFileSync(migrationPath, "utf8");
+    const sql = fs.readFileSync(
+      path.join(migrationsDir, "510_shadow_ledger_full_allowlist.sql"),
+      "utf8",
+    );
+
+    // Types added after 510 live in their own migration; verify each appears there.
+    const addedAfter510 = new Set<string>();
+    for (const [file, types] of Object.entries(POST_510_ALLOWLIST_MIGRATIONS)) {
+      const laterSql = fs.readFileSync(path.join(migrationsDir, file), "utf8");
+      for (const t of types) {
+        expect(
+          laterSql.includes(`'${t}'`),
+          `Migration ${file} should mention transaction_type '${t}'`,
+        ).toBe(true);
+        addedAfter510.add(t);
+      }
+    }
+
     for (const t of SHADOW_LEDGER_ALLOWLIST) {
+      if (addedAfter510.has(t)) continue;
       expect(
         sql.includes(`'${t}'`),
         `Migration 510 should mention transaction_type '${t}'`,

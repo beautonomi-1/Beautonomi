@@ -4,9 +4,12 @@ import { toZonedTime } from "date-fns-tz";
 
 import { dateRangeBoundsUtc, formatDateYmd } from "@/lib/dates/provider-tz";
 import {
+  filterProductOrdersForLocation,
   getProviderPrimaryReportLocationId,
   productOrderReportLocationId,
 } from "@/lib/reports/provider-report-utils";
+import { providerCollectedRetailOrdersOrFilter } from "@/lib/reports/provider-retail-order-scope";
+import { isProviderEarningsRefundComponent } from "@/lib/ledger/refund-components";
 
 export type SalesHistorySource = "booking" | "product_order" | "pos";
 
@@ -27,6 +30,8 @@ export type SalesHistoryRow = {
   tax: number;
   travel_fee: number;
   cancellation_fee: number;
+  /** Contra-revenue discounts (absolute); explains gross_total vs provider_net when total_amount is pre-discount. */
+  discount_contra: number;
   refunds: number;
   payment_status: string | null;
   currency: string;
@@ -41,9 +46,22 @@ type LedgerAgg = {
   tax: number;
   travel_fee: number;
   cancellation_fee: number;
+  // Provider-collected (walk-in / in-person) additional charges. The settlement
+  // RPC bumps bookings.total_amount (gross) but posts no provider_earnings, so we
+  // must count it here or gross_total and provider_net diverge.
+  walk_in_additional_charge: number;
+  /** Absolute sum of discount contra rows (promotion/membership/loyalty); reconciles gross vs net. */
+  discount_contra: number;
   refunds: number;
   last_at: string;
 };
+
+const DISCOUNT_CONTRA_TYPES = [
+  "promotion_discount",
+  "membership_discount",
+  "loyalty_discount",
+  "loyalty_redemption",
+] as const;
 
 const LEDGER_TYPES = [
   "provider_earnings",
@@ -54,6 +72,12 @@ const LEDGER_TYPES = [
   "tax",
   "travel_fee",
   "cancellation_fee",
+  // Additional charges: walk_in_additional_charge is provider-collected revenue;
+  // additional_charge_payment carries the platform commission on an online add-on
+  // (its sibling provider_earnings row is already counted above).
+  "walk_in_additional_charge",
+  "additional_charge_payment",
+  ...DISCOUNT_CONTRA_TYPES,
   "refund",
 ] as const;
 
@@ -70,14 +94,27 @@ function emptyAgg(): LedgerAgg {
     tax: 0,
     travel_fee: 0,
     cancellation_fee: 0,
+    walk_in_additional_charge: 0,
+    discount_contra: 0,
     refunds: 0,
     last_at: "",
   };
 }
 
+function isDiscountContraType(tt: string): boolean {
+  return (DISCOUNT_CONTRA_TYPES as readonly string[]).includes(tt);
+}
+
 function bumpAgg(
   agg: LedgerAgg,
-  row: { transaction_type: string; amount?: unknown; net?: unknown; commission?: unknown; created_at: string },
+  row: {
+    transaction_type: string;
+    amount?: unknown;
+    net?: unknown;
+    commission?: unknown;
+    created_at: string;
+    refund_component?: unknown;
+  },
 ) {
   const net = Number(row.net ?? 0);
   const comm = Number(row.commission ?? 0);
@@ -85,11 +122,23 @@ function bumpAgg(
   if (tt === "provider_earnings") agg.provider_earnings_net += net;
   else if (tt === "platform_fee" || tt === "service_fee") agg.platform_fee += Math.abs(net);
   else if (tt === "payment") agg.commission += Math.abs(comm) > 0 ? Math.abs(comm) : Math.abs(net);
+  else if (tt === "additional_charge_payment") agg.commission += Math.abs(comm) > 0 ? Math.abs(comm) : Math.abs(net);
+  else if (tt === "walk_in_additional_charge") agg.walk_in_additional_charge += net;
   else if (tt === "tip") agg.tip += Math.abs(net);
   else if (tt === "tax") agg.tax += Math.abs(Number(row.amount ?? 0));
   else if (tt === "travel_fee") agg.travel_fee += Math.abs(net);
   else if (tt === "cancellation_fee") agg.cancellation_fee += Math.abs(net);
-  else if (tt === "refund") agg.refunds += Math.abs(net);
+  else if (isDiscountContraType(tt)) agg.discount_contra += Math.abs(net);
+  // Refunds are split into per-component rows by the trigger. provider_net only
+  // deducts components that were the provider's money (earnings/tip/travel/
+  // cancellation/walk-in add-on + legacy/manual whole refunds). Platform fee/
+  // commission, tax, discount contras and wallet/gift tender legs are not the
+  // provider's loss and must not reduce provider_net.
+  else if (tt === "refund") {
+    if (isProviderEarningsRefundComponent(row.refund_component as string | null | undefined)) {
+      agg.refunds += Math.abs(net);
+    }
+  }
   if (!agg.last_at || row.created_at > agg.last_at) agg.last_at = row.created_at;
 }
 
@@ -107,7 +156,7 @@ async function fetchLedgerAggregates(
   for (;;) {
     const { data, error } = await db
       .from("finance_transactions")
-      .select("booking_id, product_order_id, transaction_type, amount, net, commission, created_at")
+      .select("booking_id, product_order_id, transaction_type, amount, net, commission, created_at, refund_component")
       .eq("provider_id", providerId)
       .gte("created_at", fromIso)
       .lte("created_at", toIso)
@@ -256,11 +305,17 @@ export async function buildProviderSalesHistoryRows(
           platform_fee: agg.platform_fee,
           commission: agg.commission,
           provider_net:
-            agg.provider_earnings_net + agg.tip + agg.travel_fee + agg.cancellation_fee - agg.refunds,
+            agg.provider_earnings_net +
+            agg.tip +
+            agg.travel_fee +
+            agg.cancellation_fee +
+            agg.walk_in_additional_charge -
+            agg.refunds,
           tip: agg.tip,
           tax: agg.tax,
           travel_fee: agg.travel_fee,
           cancellation_fee: agg.cancellation_fee,
+          discount_contra: agg.discount_contra,
           refunds: agg.refunds,
           payment_status: row.payment_status ?? null,
           currency: row.currency || "ZAR",
@@ -315,12 +370,102 @@ export async function buildProviderSalesHistoryRows(
           platform_fee: agg.platform_fee,
           commission: agg.commission,
           provider_net:
-            agg.provider_earnings_net + agg.tip + agg.travel_fee + agg.cancellation_fee - agg.refunds,
+            agg.provider_earnings_net +
+            agg.tip +
+            agg.travel_fee +
+            agg.cancellation_fee +
+            agg.walk_in_additional_charge -
+            agg.refunds,
           tip: agg.tip,
           tax: agg.tax,
           travel_fee: agg.travel_fee,
           cancellation_fee: agg.cancellation_fee,
+          discount_contra: agg.discount_contra,
           refunds: agg.refunds,
+          payment_status: row.payment_status ?? null,
+          currency: row.currency || "ZAR",
+          location_id: reportLoc,
+        });
+      }
+    }
+
+    // Provider-collected retail without platform ledger rows (walk-in + COD/cash/Yoco online).
+    if (source === "all" || source === "product_order") {
+      let walkInQuery = db
+        .from("product_orders")
+        .select(
+          "id, order_number, customer_id, customer_name, total_amount, currency, payment_status, payment_method, order_source, fulfillment_type, collection_location_id, paid_at, updated_at, created_at",
+        )
+        .eq("provider_id", providerId)
+        .eq("payment_status", "paid")
+        .gte("paid_at", fromIso)
+        .lte("paid_at", toIso)
+        .or(providerCollectedRetailOrdersOrFilter());
+
+      const { data: walkInOrders, error: walkInErr } = await walkInQuery;
+      if (walkInErr) throw walkInErr;
+
+      let walkInList = (walkInOrders ?? []) as Array<{
+        id: string;
+        order_number?: string | null;
+        customer_id?: string | null;
+        customer_name?: string | null;
+        total_amount?: number | string | null;
+        currency?: string | null;
+        payment_status?: string | null;
+        fulfillment_type?: string | null;
+        collection_location_id?: string | null;
+        paid_at?: string | null;
+        updated_at?: string | null;
+        created_at?: string | null;
+      }>;
+
+      if (locationId) {
+        walkInList = await filterProductOrdersForLocation(db, providerId, walkInList, locationId);
+      }
+
+      const customerIds = [
+        ...new Set(walkInList.map((o) => o.customer_id).filter(Boolean)),
+      ] as string[];
+      const customerMap = new Map<string, string>();
+      if (customerIds.length > 0) {
+        const { data: users } = await db.from("users").select("id, full_name").in("id", customerIds);
+        for (const u of users ?? []) customerMap.set((u as { id: string }).id, String((u as { full_name?: string }).full_name || ""));
+      }
+
+      for (const row of walkInList) {
+        if (orderAggs.has(row.id)) continue;
+        const reportLoc = productOrderReportLocationId(row, primaryLocationId);
+        const customerName =
+          (row.customer_id && customerMap.get(row.customer_id)) ||
+          row.customer_name ||
+          "Walk-in";
+        const ref = row.order_number || row.id;
+        if (
+          q &&
+          !String(ref).toLowerCase().includes(q) &&
+          !(customerName && customerName.toLowerCase().includes(q))
+        ) {
+          continue;
+        }
+        const gross = Number(row.total_amount ?? 0);
+        rows.push({
+          id: row.id,
+          source: "product_order",
+          subtype: "normal",
+          ref_number: String(ref),
+          sort_date: row.paid_at || row.updated_at || row.created_at || fromIso,
+          customer_name: customerName,
+          gross_total: gross,
+          platform_fee: 0,
+          commission: 0,
+          provider_net: gross,
+          tip: 0,
+          tax: 0,
+          travel_fee: 0,
+          cancellation_fee: 0,
+          discount_contra: 0,
+          refunds: 0,
           payment_status: row.payment_status ?? null,
           currency: row.currency || "ZAR",
           location_id: reportLoc,
@@ -380,6 +525,7 @@ export async function buildProviderSalesHistoryRows(
         tax: Number(row.tax_amount ?? 0),
         travel_fee: 0,
         cancellation_fee: 0,
+        discount_contra: 0,
         refunds: 0,
         payment_status: row.payment_status ?? null,
         currency: row.currency || "ZAR",

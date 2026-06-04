@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { formatInTz } from "@/lib/dates/provider-tz";
 import { MAX_REPORT_DAYS } from "@/lib/reports/constants";
 import { getProviderReportContext, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
+import { CLIENT_METRICS_BASIS_NOTE } from "@/lib/reports/client-ledger-metrics";
 
 type ClientSummary = {
   id: string;
@@ -136,6 +137,7 @@ export async function GET(request: NextRequest) {
       averageFirstBookingValue,
       monthlyBreakdown,
       newClients: enrichedNewClients.slice(0, 50), // Limit to 50 most recent
+      basisNote: `${CLIENT_METRICS_BASIS_NOTE} First-booking and totalSpent figures are booked gross (total_amount), not ledger earnings.`,
       reportBasis:
         "New clients are customers whose first confirmed or completed booking at this provider/location falls in the selected date range. Completed spend is separated from booked value.",
     });

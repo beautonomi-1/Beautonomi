@@ -150,7 +150,17 @@ export interface OnboardingFormData {
   operating_hours: Record<string, { open: string; close: string; closed: boolean }>;
   selected_plan_id?: string;
   selected_plan_name?: string;
+  selected_plan_is_free?: boolean;
   no_plans_available?: boolean;
+  /** Client-only snapshot from platform-limits API; not sent on submit. */
+  platform_travel_limits?: {
+    provider_min_rate_per_km: number;
+    provider_max_rate_per_km: number;
+    provider_min_minimum_fee: number;
+    provider_max_minimum_fee: number;
+    allow_provider_customization: boolean;
+    allow_provider_tiered: boolean;
+  };
   /** When true, provider accepts ad-hoc / custom booking requests (defaults true in API). */
   accepts_custom_requests?: boolean;
   /**

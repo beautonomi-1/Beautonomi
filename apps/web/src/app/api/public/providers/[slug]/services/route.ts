@@ -16,6 +16,7 @@ interface ServiceWithVariants {
   category_name: string | null;
   supports_at_home: boolean;
   supports_at_salon: boolean;
+  at_home_price_adjustment: number;
   has_variants: boolean;
   variants: any[];
 }
@@ -76,6 +77,7 @@ export async function GET(
         service_available_for,
         supports_at_home,
         supports_at_salon,
+        at_home_price_adjustment,
         online_booking_enabled,
         parent_service_id,
         variant_name,
@@ -148,6 +150,7 @@ export async function GET(
         category_order: service.provider_categories?.display_order || 0,
         supports_at_home: service.supports_at_home || false,
         supports_at_salon: service.supports_at_salon !== false,
+        at_home_price_adjustment: Number(service.at_home_price_adjustment ?? 0),
         has_variants: variants.length > 0,
         variants: variants,
         display_order: service.display_order,

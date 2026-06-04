@@ -32,7 +32,7 @@ export type CompliancePurgeReportV2 = {
 export async function insertCompliancePurgeAuditLog(
   admin: SupabaseClient,
   row: {
-    actor_user_id: string;
+    actor_user_id: string | null;
     tenant_id: string | null;
     purge_type: CompliancePurgeType;
     target_user_id: string | null;

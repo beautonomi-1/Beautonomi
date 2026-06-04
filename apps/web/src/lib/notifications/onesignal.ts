@@ -10,12 +10,17 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/database.types";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getUnreadNotificationCount } from "@/lib/notifications/insert-notification";
+import { exactIosBadgeCount } from "@/lib/notifications/exact-ios-badge-count";
 import { z } from "zod";
 import {
   resolveOneSignalCredentials,
   type OneSignalAppType,
   type ResolveOneSignalOptions,
 } from "@/lib/platform/secrets";
+import {
+  isMustDeliverPushTemplate,
+  resolvePushTemplateKey,
+} from "@/lib/notifications/must-deliver-push";
 
 // OneSignal API base URL
 const ONESIGNAL_API_BASE = "https://api.onesignal.com";
@@ -75,6 +80,35 @@ function eventTypeFromPayloadData(data: unknown): string {
     if (typeof t === "string" && t.trim()) return t;
   }
   return "notification";
+}
+
+/** Silent OS badge-only push (mark-all-read / inbox sync) — must not play sound or time-sensitive alert. */
+export function isBadgeSyncPayload(payload: NotificationPayload | Record<string, unknown>): boolean {
+  const p = payload as Record<string, unknown>;
+  if (p.type === "badge_sync") return true;
+  const data = p.data;
+  return Boolean(data && typeof data === "object" && !Array.isArray(data) && (data as { type?: unknown }).type === "badge_sync");
+}
+
+function applyNotificationPayloadPassthrough(
+  notificationPayload: Record<string, unknown>,
+  payload: NotificationPayload | Record<string, unknown>,
+): void {
+  const passthrough = payload as Record<string, unknown>;
+  if (passthrough.priority !== undefined) notificationPayload.priority = passthrough.priority;
+  if (passthrough.ios_sound) notificationPayload.ios_sound = passthrough.ios_sound;
+  if (passthrough.ios_badgeType) notificationPayload.ios_badgeType = passthrough.ios_badgeType;
+  if (typeof passthrough.ios_badgeCount === "number") {
+    notificationPayload.ios_badgeType = passthrough.ios_badgeType ?? "SetTo";
+    notificationPayload.ios_badgeCount = exactIosBadgeCount(passthrough.ios_badgeCount);
+  }
+  if (passthrough.android_channel_id) notificationPayload.android_channel_id = passthrough.android_channel_id;
+  if (passthrough.ios_interruption_level) {
+    notificationPayload.ios_interruption_level = passthrough.ios_interruption_level;
+  }
+  if (passthrough.content_available !== undefined) {
+    notificationPayload.content_available = passthrough.content_available;
+  }
 }
 
 /**
@@ -381,6 +415,8 @@ export type OneSignalSendOptions = {
   supabaseClient?: SupabaseClient<Database>;
   /** Market tenant: use platform_settings / platform_secrets for this tenant (merged over global), same as admin Settings UI. */
   tenantId?: string | null;
+  /** When true, do not enqueue a durable retry row on push failure (queue worker sets this). */
+  skipMustDeliverRetryEnqueue?: boolean;
 };
 
 /**
@@ -683,10 +719,7 @@ async function sendOneSignalNotification(
         app_type: appType ?? null,
         tenant_id: options?.tenantId ?? null,
         user_ids: reconcileUserIds,
-        template_key:
-          reconcileData && typeof reconcileData.template_key === "string"
-            ? reconcileData.template_key
-            : null,
+        template_key: resolvePushTemplateKey(reconcileData),
         group_id: payload.collapse_id ?? null,
         title: payload.headings?.en ?? null,
         message: payload.contents?.en ?? null,
@@ -786,25 +819,57 @@ export async function sendToUser(
     (notificationPayload.data as Record<string, unknown>).deep_link = payload.url;
   }
   if (payload.image) notificationPayload.big_picture = payload.image;
-  if (playerIds.length > 0 && normalizedChannels.includes("push")) {
-    notificationPayload.include_player_ids = playerIds;
-    notificationPayload.ios_interruption_level = "time_sensitive";
-    // §Badge-accuracy: set the OS badge to the user's exact unread count so it
-    // is correct even when the app is killed (WhatsApp-style). Clamp to >=1 so a
-    // fresh push never renders a 0 badge if the in-app row hasn't landed yet.
-    const unread = await getUnreadNotificationCount(userId);
-    notificationPayload.ios_badgeType = "SetTo";
-    notificationPayload.ios_badgeCount = Math.max(1, unread);
+  if (normalizedChannels.includes("push")) {
+    if (playerIds.length > 0) {
+      notificationPayload.include_player_ids = playerIds;
+    }
+    const badgeSync = isBadgeSyncPayload(payload);
+    if (!badgeSync) {
+      notificationPayload.ios_sound = notificationPayload.ios_sound ?? "default";
+      notificationPayload.priority = notificationPayload.priority ?? 10;
+      notificationPayload.ios_interruption_level = "time_sensitive";
+    }
+    // §Badge-accuracy: exact unread (0 after mark-all-read). Works with alias-only targeting too.
+    const passthroughBadge = (payload as Record<string, unknown>).ios_badgeCount;
+    if (typeof passthroughBadge !== "number") {
+      const unread = await getUnreadNotificationCount(userId);
+      notificationPayload.ios_badgeType = "SetTo";
+      notificationPayload.ios_badgeCount = exactIosBadgeCount(unread);
+    }
   }
-  const passthrough = payload as Record<string, unknown>;
-  if (passthrough.priority !== undefined) notificationPayload.priority = passthrough.priority;
-  if (passthrough.ios_sound) notificationPayload.ios_sound = passthrough.ios_sound;
-  if (passthrough.ios_badgeType) notificationPayload.ios_badgeType = passthrough.ios_badgeType;
-  if (typeof passthrough.ios_badgeCount === "number") notificationPayload.ios_badgeCount = passthrough.ios_badgeCount;
-  if (passthrough.android_channel_id) notificationPayload.android_channel_id = passthrough.android_channel_id;
-  if (passthrough.ios_interruption_level) notificationPayload.ios_interruption_level = passthrough.ios_interruption_level;
+  applyNotificationPayloadPassthrough(notificationPayload, payload);
 
-  return await sendOneSignalNotification(notificationPayload, options);
+  const directResult = await sendOneSignalNotification(notificationPayload, options);
+
+  if (
+    !directResult.success &&
+    normalizedChannels.includes("push") &&
+    !options?.skipMustDeliverRetryEnqueue
+  ) {
+    const data = (payload.data ?? {}) as Record<string, unknown>;
+    const templateKey = resolvePushTemplateKey(data, payload.type);
+    if (templateKey && isMustDeliverPushTemplate(templateKey)) {
+      const bookingId = typeof data.booking_id === "string" ? data.booking_id : null;
+      await enqueueMustDeliverChannelsRetry({
+        templateKey,
+        userIds: [userId],
+        channels: ["push"],
+        bookingId,
+        tenantId: options?.tenantId ?? null,
+        pushAppType: options?.appType ?? null,
+        title: payload.title,
+        body: payload.message,
+        emailSubject: payload.title,
+        emailBody: payload.message,
+        smsBody: payload.message,
+        data: { template_key: templateKey, ...data },
+        url: payload.url,
+        dedupePrefix: "fallback",
+      });
+    }
+  }
+
+  return directResult;
 }
 
 /**
@@ -858,17 +923,22 @@ export async function sendToUsers(
     (notificationPayload.data as Record<string, unknown>).deep_link = payload.url;
   }
   if (payload.image) notificationPayload.big_picture = payload.image;
-  if (playerIds.length > 0 && normalizedChannels.includes("push")) {
-    notificationPayload.include_player_ids = playerIds;
-    notificationPayload.ios_interruption_level = "time_sensitive";
-    // §Badge-accuracy: a single payload can only carry one badge value, so use
-    // the recipient's exact unread count when there's exactly one user, and
-    // fall back to incrementing by 1 for multi-recipient fan-outs.
+  if (normalizedChannels.includes("push")) {
+    if (playerIds.length > 0) {
+      notificationPayload.include_player_ids = playerIds;
+      if (userIds.length > 1) {
+        notificationPayload.ios_interruption_level = "time_sensitive";
+      }
+    }
+    // §Badge-accuracy: exact SetTo for one user; Increase when fan-out can't carry per-user totals.
     if (userIds.length === 1) {
-      const unread = await getUnreadNotificationCount(userIds[0]);
-      notificationPayload.ios_badgeType = "SetTo";
-      notificationPayload.ios_badgeCount = Math.max(1, unread);
-    } else {
+      const passthroughBadge = (payload as Record<string, unknown>).ios_badgeCount;
+      if (typeof passthroughBadge !== "number") {
+        const unread = await getUnreadNotificationCount(userIds[0]);
+        notificationPayload.ios_badgeType = "SetTo";
+        notificationPayload.ios_badgeCount = exactIosBadgeCount(unread);
+      }
+    } else if (playerIds.length > 0) {
       notificationPayload.ios_badgeType = "Increase";
       notificationPayload.ios_badgeCount = 1;
     }
@@ -882,13 +952,7 @@ export async function sendToUsers(
   if (typeof payload.send_after === "string" && payload.send_after.trim()) {
     notificationPayload.send_after = payload.send_after.trim();
   }
-  const passthrough = payload as Record<string, unknown>;
-  if (passthrough.priority !== undefined) notificationPayload.priority = passthrough.priority;
-  if (passthrough.ios_sound) notificationPayload.ios_sound = passthrough.ios_sound;
-  if (passthrough.ios_badgeType) notificationPayload.ios_badgeType = passthrough.ios_badgeType;
-  if (typeof passthrough.ios_badgeCount === "number") notificationPayload.ios_badgeCount = passthrough.ios_badgeCount;
-  if (passthrough.android_channel_id) notificationPayload.android_channel_id = passthrough.android_channel_id;
-  if (passthrough.ios_interruption_level) notificationPayload.ios_interruption_level = passthrough.ios_interruption_level;
+  applyNotificationPayloadPassthrough(notificationPayload, payload);
 
   return await sendOneSignalNotification(notificationPayload, options);
 }
@@ -1091,11 +1155,11 @@ export async function sendTemplateNotification(
       templateKey,
       triad
     );
-    // Critical transactional templates (booking/payment/security/messages) must
-    // reach the device: if push was requested, never let preference gating drop
-    // it. Email/SMS preferences are still respected.
+    // Must-deliver pushes (everything except marketing/promo) bypass preference
+    // gating so transactional notifications reach the device. Email/SMS prefs
+    // are still respected.
     if (
-      CRITICAL_TRANSACTIONAL_TEMPLATES.has(templateKey) &&
+      isMustDeliverPushTemplate(templateKey) &&
       triad.includes("push") &&
       !allowed.includes("push")
     ) {
@@ -1104,12 +1168,12 @@ export async function sendTemplateNotification(
     channelsToSend = [...nonPref, ...allowed];
   }
 
-  // Quiet hours enforcement: suppress push notifications during quiet hours,
-  // but never suppress critical transactional templates.
+  // Quiet hours enforcement: suppress push during quiet hours for marketing
+  // only; must-deliver transactional pushes always go through.
   if (
     channelsToSend.includes("push") &&
     userIds.length > 0 &&
-    !CRITICAL_TRANSACTIONAL_TEMPLATES.has(templateKey)
+    !isMustDeliverPushTemplate(templateKey)
   ) {
     try {
       const supabaseAdmin = getSupabaseAdmin();
@@ -1301,7 +1365,7 @@ export async function sendTemplateNotification(
       }
       const unread = await getUnreadNotificationCount(userIds[0]);
       notificationPayload.ios_badgeType = "SetTo";
-      notificationPayload.ios_badgeCount = Math.max(1, unread);
+      notificationPayload.ios_badgeCount = exactIosBadgeCount(unread);
     } else if (userIds.length > 1) {
       notificationPayload.ios_badgeType = "Increase";
       notificationPayload.ios_badgeCount = 1;
@@ -1314,112 +1378,90 @@ export async function sendTemplateNotification(
 
   const directResult = await sendOneSignalNotification(notificationPayload, options);
 
-  // Wave 3.2 (audit 2026-04 final 100/100): durable retry safety net.
-  // For critical transactional and reminder templates, if the direct
-  // send did NOT succeed we enqueue a durable row per (user × channel)
-  // so the notification-queue cron will retry with exponential backoff
-  // and eventually DLQ on permanent failure. Silent drops of these
-  // templates previously cost us customers; the queue cron is the
-  // single place that guarantees eventual delivery.
-  //
-  // Non-critical templates (marketing, promotions, broad fan-outs) do
-  // not fan into the queue — the failure cost there is low and the
-  // queue volume is high.
-  if (
-    !directResult.success &&
-    userIds.length > 0 &&
-    CRITICAL_TRANSACTIONAL_TEMPLATES.has(templateKey)
-  ) {
-    try {
-      const { enqueueNotification } = await import("@/lib/notifications/enqueue");
-      const bookingId =
-        (variables as { booking_id?: string })?.booking_id ?? null;
-      await Promise.all(
-        userIds.flatMap((userId) =>
-          channelsToSend
-            .filter((ch): ch is "email" | "sms" | "push" =>
-              ch === "email" || ch === "sms" || ch === "push",
-            )
-            .map((channel) =>
-              enqueueNotification({
-                channel,
-                templateKey,
-                recipientUserId: userId,
-                bookingId,
-                tenantId: options?.tenantId ?? null,
-                pushAppType:
-                  channel === "push" ? (options?.appType ?? null) : null,
-                payload: buildQueuePayload(channel, {
-                  title,
-                  body,
-                  emailSubject,
-                  emailBody,
-                  smsBody,
-                  data: { template_key: templateKey, ...variables },
-                  url: templateUrl || undefined,
-                }),
-                dedupeKey: `fallback:${templateKey}:${userId}:${channel}:${bookingId ?? "none"}`,
-              }),
-            ),
-        ),
-      );
-    } catch (enqueueErr) {
-      // Never let a retry-queue write break the original response.
-      console.error(
-        "[sendTemplateNotification] failed to enqueue durable retry",
-        enqueueErr,
-      );
-    }
+  if (!directResult.success && userIds.length > 0 && isMustDeliverPushTemplate(templateKey)) {
+    const bookingId = (variables as { booking_id?: string })?.booking_id ?? null;
+    await enqueueMustDeliverChannelsRetry({
+      templateKey,
+      userIds,
+      channels: channelsToSend,
+      bookingId,
+      tenantId: options?.tenantId ?? null,
+      pushAppType: options?.appType ?? null,
+      title,
+      body,
+      emailSubject,
+      emailBody,
+      smsBody,
+      data: { template_key: templateKey, ...variables },
+      url: templateUrl || undefined,
+      dedupePrefix: "fallback",
+    });
   }
 
   return directResult;
 }
 
-// Wave 3.2: templates that MUST eventually reach the recipient. On direct
-// send failure we fan-out into notification_delivery_queue for retry.
-export const CRITICAL_TRANSACTIONAL_TEMPLATES = new Set<string>([
-  // Booking lifecycle (customer + provider)
-  "booking_confirmed",
-  "booking_cancelled",
-  "booking_cancelled_by_customer",
-  "booking_cancelled_by_provider",
-  "booking_cancelled_emergency",
-  "booking_rescheduled",
-  "booking_time_changed",
-  "booking_date_changed",
-  "provider_booking_request",
-  "provider_booking_cancelled",
-  "provider_booking_rescheduled",
-  "provider_booking_time_changed",
-  "provider_booking_date_changed",
-  // Reminders
-  "appointment_reminder",
-  "booking_reminder_24h",
-  "booking_reminder_2h",
-  // Payments + refunds
-  "payment_successful",
-  "payment_failed",
-  "payment_pending",
-  "payment_method_expired",
-  "partial_payment_received",
-  "additional_charge_requested",
-  "refund_processed",
-  "invoice_generated",
-  "receipt_sent",
-  // Provider payouts
-  "provider_payout_processed",
-  "provider_payout_scheduled",
-  "provider_payout_failed",
-  // Abandoned booking re-engagement
-  "abandoned_booking_reminder",
-  // Security/critical user flows
-  "password_reset",
-  "email_verification",
-  "otp_verification",
-  // Conversations (customer ↔ provider)
-  "customer_new_message",
-  "provider_new_message",
-]);
+// Wave 3.2: must-deliver templates fan into notification_delivery_queue on failure.
+// Marketing/promotional templates are excluded — see must-deliver-push.ts.
+export { isMustDeliverPushTemplate, isMarketingPushTemplate } from "@/lib/notifications/must-deliver-push";
+
+/** @deprecated Use isMustDeliverPushTemplate(templateKey) instead. */
+export const CRITICAL_TRANSACTIONAL_TEMPLATES = {
+  has(key: string) {
+    return isMustDeliverPushTemplate(key);
+  },
+} as Pick<Set<string>, "has">;
+
+async function enqueueMustDeliverChannelsRetry(ctx: {
+  templateKey: string;
+  userIds: string[];
+  channels: NotificationChannel[];
+  bookingId: string | null;
+  tenantId: string | null | undefined;
+  pushAppType: OneSignalAppType | null | undefined;
+  title: string;
+  body: string;
+  emailSubject: string;
+  emailBody: string;
+  smsBody: string;
+  data: Record<string, unknown>;
+  url?: string;
+  dedupePrefix: string;
+}): Promise<void> {
+  try {
+    const { enqueueNotification } = await import("@/lib/notifications/enqueue");
+    await Promise.all(
+      ctx.userIds.flatMap((userId) =>
+        ctx.channels
+          .filter((ch): ch is "email" | "sms" | "push" =>
+            ch === "email" || ch === "sms" || ch === "push",
+          )
+          .map((channel) =>
+            enqueueNotification({
+              channel,
+              templateKey: ctx.templateKey,
+              recipientUserId: userId,
+              bookingId: ctx.bookingId,
+              tenantId: ctx.tenantId ?? null,
+              pushAppType: channel === "push" ? (ctx.pushAppType ?? null) : null,
+              payload: buildQueuePayload(channel, {
+                title: ctx.title,
+                body: ctx.body,
+                emailSubject: ctx.emailSubject,
+                emailBody: ctx.emailBody,
+                smsBody: ctx.smsBody,
+                data: ctx.data,
+                url: ctx.url,
+              }),
+              dedupeKey: `${ctx.dedupePrefix}:${ctx.templateKey}:${userId}:${channel}:${ctx.bookingId ?? "none"}`,
+            }),
+          ),
+      ),
+    );
+  } catch (enqueueErr) {
+    console.error("[notifications] failed to enqueue durable retry", enqueueErr);
+  }
+}
 
 function buildQueuePayload(
   channel: "email" | "sms" | "push",
