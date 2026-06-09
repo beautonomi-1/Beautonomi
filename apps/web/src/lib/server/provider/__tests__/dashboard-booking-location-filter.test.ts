@@ -1,12 +1,36 @@
 import { describe, expect, it } from "vitest";
-import { dashboardBookingLocationOrFilter } from "../dashboard-booking-location-filter";
+import { bookingMatchesDashboardLocation } from "../dashboard-booking-location-filter";
 
-describe("dashboardBookingLocationOrFilter", () => {
-  it("includes branch, at-home without branch, and walk-in without branch", () => {
-    const loc = "11111111-1111-4111-8111-111111111111";
-    const clause = dashboardBookingLocationOrFilter(loc);
-    expect(clause).toContain(`location_id.eq.${loc}`);
-    expect(clause).toContain("location_type.eq.at_home");
-    expect(clause).toContain("booking_source.eq.walk_in");
+describe("bookingMatchesDashboardLocation", () => {
+  const branch = "loc-1";
+
+  it("includes bookings at the selected branch", () => {
+    expect(bookingMatchesDashboardLocation(branch, { location_id: branch })).toBe(true);
+  });
+
+  it("includes at-home bookings without a branch", () => {
+    expect(
+      bookingMatchesDashboardLocation(branch, {
+        location_id: null,
+        location_type: "at_home",
+      }),
+    ).toBe(true);
+  });
+
+  it("includes walk-in bookings without a branch", () => {
+    expect(
+      bookingMatchesDashboardLocation(branch, {
+        location_id: null,
+        booking_source: "walk_in",
+      }),
+    ).toBe(true);
+  });
+
+  it("excludes other-branch salon bookings", () => {
+    expect(bookingMatchesDashboardLocation(branch, { location_id: "loc-2" })).toBe(false);
+  });
+
+  it("passes through when no branch filter is active", () => {
+    expect(bookingMatchesDashboardLocation(null, { location_id: "loc-2" })).toBe(true);
   });
 });

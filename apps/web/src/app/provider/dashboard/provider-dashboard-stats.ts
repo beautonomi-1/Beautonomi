@@ -122,4 +122,116 @@ export interface ProviderDashboardStats {
     is_distance_filter_enabled?: boolean;
   };
   dashboard_bundle_version?: number;
+
+  bookings_truncated?: boolean;
+  ledger_truncated?: boolean;
+
+  period_breakdown?: {
+    today?: DashboardPeriodSlice;
+    this_week?: DashboardPeriodSlice;
+    this_month?: DashboardPeriodSlice;
+  };
+  period_comparison?: {
+    today?: DashboardPeriodComparison;
+    this_week?: DashboardPeriodComparison;
+    this_month?: DashboardPeriodComparison;
+  };
+
+  insights?: DashboardInsights | null;
+  booking_eligibility?: {
+    can_accept_online_bookings: boolean;
+    booking_limit_message: string | null;
+  } | null;
 }
+
+export type DashboardPeriodChannelMix = {
+  online: number;
+  walk_in: number;
+  provider: number;
+};
+
+export type DashboardPeriodEarningsMix = {
+  service_earnings: number;
+  product_order_earnings: number;
+  membership_earnings: number;
+  additional_charge_earnings: number;
+  other_earnings: number;
+  tips: number;
+  travel_fees: number;
+  gift_card_sales: number;
+  membership_sales: number;
+  refunds: number;
+  recognized_total: number;
+};
+
+export type DashboardPeriodSlice = {
+  revenue: number;
+  appointments: number;
+  retail_sales: number;
+  retail_sales_count: number;
+  earnings_mix: DashboardPeriodEarningsMix;
+  channel_mix?: DashboardPeriodChannelMix;
+  booking_status: {
+    pending: number;
+    confirmed: number;
+    completed: number;
+    cancelled: number;
+    no_show: number;
+    scheduled_total: number;
+  };
+  performance: {
+    completion_rate: number;
+    no_show_rate: number;
+  };
+};
+
+export type DashboardPeriodComparison = {
+  revenue_growth_pct: number;
+  appointments_growth_pct: number;
+  prior_revenue: number;
+  prior_appointments: number;
+  prior_label: string;
+};
+
+export type DashboardInsightsBooking = {
+  id: string;
+  booking_number: string;
+  status: string;
+  scheduled_at: string;
+  total_amount: number;
+  currency: string;
+  location_type: string;
+  services: Array<{
+    name?: string;
+    offering_name?: string;
+    duration_minutes: number;
+    staff_name: string | null;
+    guest_name?: string | null;
+  }>;
+  customers: { full_name: string; phone: string } | null;
+  is_group_booking?: boolean;
+  group_booking_id?: string | null;
+};
+
+export type DashboardInsights = {
+  weekly_revenue: Array<{ day: string; revenue: number }>;
+  top_services: Array<{ service_name: string; booking_count: number; total_revenue: number }>;
+  recent_activity: Array<{
+    id: string;
+    type: string;
+    description: string;
+    created_at: string;
+    data?: {
+      booking_id?: string;
+      product_order_id?: string;
+      client_name?: string;
+      amount?: number;
+    };
+  }>;
+  upcoming_bookings: DashboardInsightsBooking[];
+  basis?: {
+    upcoming?: string;
+    activity?: string | null;
+    activity_window?: string | null;
+  };
+};

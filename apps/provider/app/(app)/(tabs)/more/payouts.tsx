@@ -22,6 +22,8 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { twStyle } from "@/lib/twStyle";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { formatCurrency } from "@/lib/format";
+import { PayoutReconciliationCard, type PayoutReconciliation } from "@/components/PayoutReconciliationCard";
 
 type IoniconName = ComponentProps<typeof Ionicons>["name"];
 
@@ -165,6 +167,8 @@ export function PayoutsContent() {
       available_balance?: number;
       pending_payouts?: number;
       minimum_payout_amount?: number;
+      payout_hold_days?: number;
+      payout_reconciliation?: PayoutReconciliation;
     };
   }>("/api/provider/finance?range=month");
   const { execute: postPayout, loading: requesting } = useApiMutation<Payout>("post");
@@ -211,14 +215,14 @@ export function PayoutsContent() {
     if (num < minimumPayout) {
       Alert.alert(
         "Below minimum",
-        `Minimum payout is ${defaultCurrency} ${Number(minimumPayout).toFixed(2)}.`,
+        `Minimum payout is ${formatCurrency(minimumPayout, defaultCurrency)}.`,
       );
       return;
     }
     if (num > availableBalance + 0.005) {
       Alert.alert(
         "Insufficient balance",
-        `Available: ${defaultCurrency} ${Number(availableBalance).toFixed(2)}. You requested ${defaultCurrency} ${num.toFixed(2)}.`,
+        `Available: ${formatCurrency(availableBalance, defaultCurrency)}. You requested ${formatCurrency(num, defaultCurrency)}.`,
       );
       return;
     }
@@ -231,10 +235,10 @@ export function PayoutsContent() {
       ? `${nextDate.payout_schedule ?? "weekly"} · next run ${formatDateSafe(nextDate.next_payout_date)}`
       : nextDate?.payout_schedule;
     const confirmed = await confirmPayoutRequest({
-      amount: `${defaultCurrency} ${num.toFixed(2)}`,
+      amount: formatCurrency(num, defaultCurrency),
       account: formatAccountLabel(selectedAccount),
-      available: `${defaultCurrency} ${Math.max(0, availableBalance - num).toFixed(2)}`,
-      pending: `${defaultCurrency} ${Number(pendingPayouts).toFixed(2)}`,
+      available: formatCurrency(Math.max(0, availableBalance - num), defaultCurrency),
+      pending: formatCurrency(pendingPayouts, defaultCurrency),
       schedule: scheduleLabel,
     });
     if (!confirmed) return;
@@ -311,20 +315,28 @@ export function PayoutsContent() {
         <View style={twStyle("mb-4 rounded-2xl bg-emerald-50 border border-emerald-200 p-4")}>
           <Text style={twStyle("text-sm text-emerald-700 mb-1")}>All-time available to withdraw</Text>
           <Text style={twStyle("text-2xl font-bold text-emerald-900")}>
-            {defaultCurrency} {Number(availableBalance).toFixed(2)}
+            {formatCurrency(availableBalance, defaultCurrency)}
           </Text>
           {pendingPayouts > 0 && (
             <Text style={twStyle("text-xs text-amber-700 mt-1")}>
-              {defaultCurrency} {Number(pendingPayouts).toFixed(2)} pending payout
+              {formatCurrency(pendingPayouts, defaultCurrency)} pending payout
             </Text>
           )}
           <Text style={twStyle("text-xs text-gray-500 mt-1")}>
-            Minimum payout: {defaultCurrency} {Number(minimumPayout).toFixed(2)}
+            Minimum payout: {formatCurrency(minimumPayout, defaultCurrency)}
           </Text>
           <Text style={twStyle("text-xs text-gray-500 mt-1")}>
             This is platform-held payoutable money after completed payouts and pending requests. Direct cash, EFT, manual card and Yoco takings are excluded.
           </Text>
         </View>
+
+        {financeData?.earnings?.payout_reconciliation ? (
+          <PayoutReconciliationCard
+            reconciliation={financeData.earnings.payout_reconciliation}
+            currency={defaultCurrency}
+            payoutHoldDays={financeData.earnings.payout_hold_days}
+          />
+        ) : null}
         <View style={twStyle("mb-4 rounded-2xl border border-blue-100 bg-blue-50 p-4")}>
           <View style={twStyle("flex-row items-start")}>
             <View style={twStyle("mr-3 h-10 w-10 items-center justify-center rounded-xl bg-blue-100")}>
@@ -394,7 +406,7 @@ export function PayoutsContent() {
                 if (!canRequestPayouts) {
                   Alert.alert(
                     "Permission required",
-                    'Payout requests need the "Process payments" permission. Ask your business owner to enable it under Staff permissions, or use the web provider portal.',
+                    'Payout requests need the "Process payments" permission. Ask your business owner to enable it under Settings → Team → Permissions.',
                   );
                   return;
                 }
@@ -424,7 +436,7 @@ export function PayoutsContent() {
                       <View style={twStyle("flex-row items-start justify-between")}>
                         <View style={twStyle("flex-1")}>
                           <Text style={twStyle("font-semibold text-gray-900")}>
-                            {p.currency} {Number(p.amount).toFixed(2)}
+                            {formatCurrency(p.amount, p.currency || defaultCurrency)}
                           </Text>
                           <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
                             Requested {formatDateSafe(p.requested_at ?? p.created_at)}
@@ -462,7 +474,7 @@ export function PayoutsContent() {
         subtitle="Withdraw from your all-time available balance"
       >
         <Text style={twStyle("mb-1 text-sm text-emerald-700")}>
-          Available: {defaultCurrency} {Number(availableBalance).toFixed(2)}
+          Available: {formatCurrency(availableBalance, defaultCurrency)}
         </Text>
         <View style={twStyle("mb-2 flex-row items-center justify-between")}>
           <Text style={twStyle("text-sm font-medium text-gray-700")}>
@@ -486,7 +498,7 @@ export function PayoutsContent() {
           keyboardType="decimal-pad"
         />
         <Text style={twStyle("mb-4 text-xs text-gray-500")}>
-          {`Min ${defaultCurrency} ${Number(minimumPayout).toFixed(2)} · Available ${defaultCurrency} ${Number(availableBalance).toFixed(2)} · Pending ${defaultCurrency} ${Number(pendingPayouts).toFixed(2)}`}
+          {`Min ${formatCurrency(minimumPayout, defaultCurrency)} · Available ${formatCurrency(availableBalance, defaultCurrency)} · Pending ${formatCurrency(pendingPayouts, defaultCurrency)}`}
         </Text>
         {activeAccounts.length > 0 ? (
           <>

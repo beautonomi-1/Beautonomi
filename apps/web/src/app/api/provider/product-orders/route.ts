@@ -37,6 +37,8 @@ export async function GET(request: NextRequest) {
     const bookingId = searchParams.get("booking_id")?.trim();
     const offset = (page - 1) * limit;
 
+    // Includes order_source, fulfillment_type, payment_method for appointment-linked
+    // fulfillment UI on booking detail (collection vs delivery routing).
     let query = (supabase.from("product_orders") as any)
       .select(
         `

@@ -137,7 +137,7 @@ export default function GetStartedPage() {
     );
   }
 
-  // ── No setup steps returned ────────────────────────────────────────────────
+  // ── No provider row yet (pre-wizard) ───────────────────────────────────────
   if (!setupStatus.steps || setupStatus.steps.length === 0) {
     return (
       <SettingsDetailLayout
@@ -147,14 +147,26 @@ export default function GetStartedPage() {
           { label: "Get Started" },
         ]}
       >
-        <div className="rounded-xl border bg-white p-6">
-          <p className="text-sm text-gray-600 mb-4">
-            We could not load your setup checklist right now.
-            Try refreshing. If this keeps happening, your provider profile may still be syncing.
-          </p>
-          <Button onClick={() => loadSetupStatus(true)}>
-            Refresh Checklist
-          </Button>
+        <div className="max-w-lg mx-auto py-8 px-4">
+          <div className="rounded-2xl border border-primary/15 bg-primary/[0.04] p-6 sm:p-8 text-center">
+            <h1 className="text-xl font-bold text-gray-900 mb-2">Start your business profile</h1>
+            <p className="text-sm text-gray-600 mb-6 leading-relaxed">
+              Complete the guided setup wizard first. We will walk you through business details,
+              services, availability, and payment setup — then your checklist will appear here.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              <Button
+                onClick={() => router.push("/provider/onboarding")}
+                className="bg-primary hover:bg-primary-hover text-white"
+              >
+                Start business setup
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+              <Button variant="outline" onClick={() => loadSetupStatus(true)} disabled={isRefreshing}>
+                Refresh
+              </Button>
+            </div>
+          </div>
         </div>
       </SettingsDetailLayout>
     );

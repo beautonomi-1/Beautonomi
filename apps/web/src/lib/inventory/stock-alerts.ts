@@ -142,7 +142,8 @@ export async function checkLowStockAndAlert(providerId?: string) {
             product_list: productList,
           },
           ["push", "email"],
-          { appType: "provider" }
+          // In-app bell row inserted manually above; skip template auto-insert.
+          { appType: "provider", skipInApp: true }
         );
 
         alertedCount++;

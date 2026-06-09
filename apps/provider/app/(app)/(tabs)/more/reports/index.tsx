@@ -10,6 +10,8 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { SearchBar } from "@/components/ui/SearchBar";
+import { ActiveLocationChip } from "@/components/reports/ActiveLocationChip";
+import { ReportRevenueGlossary } from "@/components/reports/ReportRevenueGlossary";
 import { useResponsive } from "@/hooks/useResponsive";
 import { trackScreenView } from "@/lib/analytics";
 import { appendReportLocation } from "@/lib/reportLocationQuery";
@@ -42,8 +44,9 @@ function navigateToReport(router: ReturnType<typeof useRouter>, report: Provider
 }
 
 function reportBadge(report: ProviderReportItem): string {
-  if (report.target === "route") return "App";
-  return "App";
+  if (report.target === "detail") return "Detail";
+  if (report.target === "native") return "Screen";
+  return "Link";
 }
 
 export default function ReportsIndex() {
@@ -85,6 +88,8 @@ export default function ReportsIndex() {
         showBack
         subtitle="Same data as the web portal — all reports open in the app"
       />
+      <ActiveLocationChip />
+      <ReportRevenueGlossary keys={["recognizedRevenue", "ledgerNet"]} />
 
       {analyticsLoading && !analytics ? (
         <View

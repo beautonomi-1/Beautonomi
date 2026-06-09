@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { useResponsive } from "@/hooks/useMobile";
@@ -9,7 +10,17 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { format } from "date-fns";
+import {
+  format,
+  startOfDay,
+  startOfMonth,
+  endOfMonth,
+  startOfYear,
+  subDays,
+  subMonths,
+  isValid,
+  parseISO,
+} from "date-fns";
 import { CalendarIcon, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -31,7 +42,35 @@ interface ReportFiltersProps {
   onServiceChange?: (serviceId: string | null) => void;
   selectedStaff?: string | null;
   selectedService?: string | null;
+  /**
+   * Persist the active range to `?from=&to=` (yyyy-MM-dd) so it survives
+   * navigation/refresh. Hydrates from the URL once on mount. Defaults to true.
+   */
+  persistToUrl?: boolean;
 }
+
+/** Calendar-correct quick ranges (inclusive), computed at click time. */
+const QUICK_DATE_OPTIONS: Array<{ label: string; range: () => DateRange }> = [
+  { label: "Today", range: () => ({ from: startOfDay(new Date()), to: new Date() }) },
+  {
+    label: "Yesterday",
+    range: () => {
+      const y = subDays(new Date(), 1);
+      return { from: startOfDay(y), to: startOfDay(y) };
+    },
+  },
+  { label: "Last 7 days", range: () => ({ from: startOfDay(subDays(new Date(), 6)), to: new Date() }) },
+  { label: "Last 30 days", range: () => ({ from: startOfDay(subDays(new Date(), 29)), to: new Date() }) },
+  { label: "This month", range: () => ({ from: startOfMonth(new Date()), to: new Date() }) },
+  {
+    label: "Last month",
+    range: () => {
+      const lastMonth = subMonths(new Date(), 1);
+      return { from: startOfMonth(lastMonth), to: endOfMonth(lastMonth) };
+    },
+  },
+  { label: "This year", range: () => ({ from: startOfYear(new Date()), to: new Date() }) },
+];
 
 export function ReportFilters({
   dateRange,
@@ -45,25 +84,47 @@ export function ReportFilters({
   onServiceChange,
   selectedStaff,
   selectedService,
+  persistToUrl = true,
 }: ReportFiltersProps) {
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const numberOfMonths = useResponsive({ mobile: 1, tablet: 1, desktop: 2 });
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const hydratedRef = useRef(false);
 
-  const quickDateOptions = [
-    { label: "Today", days: 0 },
-    { label: "Yesterday", days: -1 },
-    { label: "Last 7 days", days: -7 },
-    { label: "Last 30 days", days: -30 },
-    { label: "This month", days: -new Date().getDate() + 1 },
-    { label: "Last month", days: -new Date().getDate() - new Date(new Date().getFullYear(), new Date().getMonth() - 1, 0).getDate() },
-    { label: "This year", days: -new Date(new Date().getFullYear(), 0, 1).getDate() + 1 },
-  ];
+  // Hydrate the range from ?from=&to= once on mount so a shared/refreshed URL
+  // reopens the same window. Parent owns the default until this fires.
+  useEffect(() => {
+    if (!persistToUrl || hydratedRef.current) return;
+    hydratedRef.current = true;
+    const fromParam = searchParams.get("from");
+    const toParam = searchParams.get("to");
+    if (!fromParam && !toParam) return;
+    const from = fromParam ? parseISO(fromParam) : undefined;
+    const to = toParam ? parseISO(toParam) : undefined;
+    if ((from && !isValid(from)) || (to && !isValid(to))) return;
+    onDateRangeChange({ from: from && isValid(from) ? from : undefined, to: to && isValid(to) ? to : undefined });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [persistToUrl]);
 
-  const handleQuickDate = (days: number) => {
-    const today = new Date();
-    const from = new Date(today);
-    from.setDate(today.getDate() + days);
-    onDateRangeChange({ from, to: today });
+  const writeRangeToUrl = (range: DateRange) => {
+    if (!persistToUrl) return;
+    const params = new URLSearchParams(searchParams.toString());
+    if (range.from) params.set("from", format(range.from, "yyyy-MM-dd"));
+    else params.delete("from");
+    if (range.to) params.set("to", format(range.to, "yyyy-MM-dd"));
+    else params.delete("to");
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  };
+
+  const applyRange = (range: DateRange) => {
+    onDateRangeChange(range);
+    writeRangeToUrl(range);
+  };
+
+  const handleQuickDate = (range: DateRange) => {
+    applyRange(range);
     setIsDatePickerOpen(false);
   };
 
@@ -104,13 +165,13 @@ export function ReportFilters({
           <div className="p-3 border-b">
             <p className="text-sm font-medium mb-2">Quick Select</p>
             <div className="grid grid-cols-2 gap-2">
-              {quickDateOptions.map((option) => (
+              {QUICK_DATE_OPTIONS.map((option) => (
                 <Button
                   key={option.label}
                   variant="ghost"
                   size="sm"
                   className="justify-start text-xs"
-                  onClick={() => handleQuickDate(option.days)}
+                  onClick={() => handleQuickDate(option.range())}
                 >
                   {option.label}
                 </Button>
@@ -123,7 +184,7 @@ export function ReportFilters({
             defaultMonth={dateRange.from}
             selected={dateRange}
             onSelect={(range) => {
-              onDateRangeChange({
+              applyRange({
                 from: range?.from ?? undefined,
                 to: range?.to ?? undefined,
               });
@@ -178,7 +239,15 @@ export function ReportFilters({
         <Button
           variant="outline"
           size="sm"
-          onClick={onReset}
+          onClick={() => {
+            if (persistToUrl) {
+              const params = new URLSearchParams(searchParams.toString());
+              params.delete("from");
+              params.delete("to");
+              router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+            }
+            onReset?.();
+          }}
           className="w-full sm:w-auto"
         >
           <X className="mr-2 h-4 w-4" />

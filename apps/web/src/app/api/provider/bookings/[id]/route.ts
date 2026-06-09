@@ -1450,16 +1450,27 @@ export async function PATCH(
       // Insert new services
       if (services.length > 0) {
         const baseScheduledAt = scheduled_at || (currentBooking as BookingRow).scheduled_at;
-        type ServiceUpdateInput = { scheduled_start_at?: string; duration?: number; serviceId?: string; offering_id?: string; price?: number; currency?: string };
+        type ServiceUpdateInput = {
+          scheduled_start_at?: string;
+          duration?: number;
+          serviceId?: string;
+          offering_id?: string;
+          staff_id?: string | null;
+          staffId?: string | null;
+          price?: number;
+          currency?: string;
+        };
         const servicesToInsert = services.map((service: ServiceUpdateInput) => {
           const startAt = service.scheduled_start_at || baseScheduledAt;
           const duration = service.duration ?? 60;
           const start = new Date(startAt);
           const end = new Date(start.getTime() + duration * 60 * 1000);
+          const lineStaffId =
+            service.staff_id ?? service.staffId ?? staff_id ?? (currentBooking as BookingRow).staff_id ?? null;
           return {
             booking_id: id,
             offering_id: service.serviceId || service.offering_id,
-            staff_id: staff_id ?? (currentBooking as BookingRow).staff_id ?? null,
+            staff_id: lineStaffId,
             duration_minutes: duration,
             price: service.price || 0,
             currency: service.currency || lastResortCurrency,
@@ -2072,7 +2083,8 @@ export async function PATCH(
               [customerId],
               templateVariables,
               ["push", "email"],
-              { appType: "customer" }
+              // In-app bell row inserted manually above; skip template auto-insert.
+              { appType: "customer", skipInApp: true }
             );
           }
           // Note: For other status changes without specific templates, notifications are skipped

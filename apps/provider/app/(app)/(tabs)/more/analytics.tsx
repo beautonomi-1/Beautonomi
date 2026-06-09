@@ -16,7 +16,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { SectionHeader } from "@/components/ui/SectionHeader";
-import { formatCurrencyShort } from "@/lib/format";
+import { formatCurrency } from "@/lib/format";
 import { trackScreenView } from "@/lib/analytics";
 import { twStyle } from "@/lib/twStyle";
 
@@ -72,8 +72,6 @@ export interface AnalyticsData {
   services: { name: string; count: number; revenue: number }[];
   trends: { month: string; revenue: number; bookings: number }[];
 }
-
-const formatCurrency = formatCurrencyShort;
 
 const PERIODS: { id: "week" | "month" | "year"; label: string }[] = [
   { id: "week", label: "Week" },

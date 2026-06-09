@@ -26,7 +26,9 @@ interface AnalyticsPayload {
   breakdowns?: {
     providerStatus?: Record<string, number>;
     bookingStatus?: Record<string, number>;
+    bookingsByChannel?: Array<{ channel: string; count: number; percentage?: number }>;
   };
+  bookingsByChannel?: Array<{ channel: string; count: number; percentage?: number }>;
   topProviders?: Array<{ provider_id: string; business_name: string; revenue: number }>;
 }
 
@@ -111,6 +113,7 @@ export function AnalyticsPage() {
           const prov = data?.breakdowns?.providerStatus ?? {};
           const book = data?.breakdowns?.bookingStatus ?? {};
           const top = data?.topProviders ?? [];
+          const byChannel = data?.bookingsByChannel ?? data?.breakdowns?.bookingsByChannel ?? [];
 
           const totalNewCustomers = (ts.users ?? []).reduce((s, p) => s + (p.count ?? 0), 0);
           const totalNewBookings = (ts.bookings ?? []).reduce((s, p) => s + (p.count ?? 0), 0);
@@ -199,6 +202,27 @@ export function AnalyticsPage() {
                       </li>
                     ))}
                   </ul>
+                </AdminPanel>
+                <AdminPanel>
+                  <h3 className="text-lg font-semibold text-gray-900">Bookings by channel (created in period)</h3>
+                  {byChannel.length === 0 ? (
+                    <p className="mt-3 text-sm text-gray-500">No channel data for this period.</p>
+                  ) : (
+                    <ul className="mt-4 grid gap-2 sm:grid-cols-2">
+                      {byChannel.map((row) => (
+                        <li
+                          key={row.channel}
+                          className="flex items-center justify-between rounded-xl border border-gray-100 bg-gray-50/80 px-3 py-2 text-sm"
+                        >
+                          <span className="capitalize text-gray-600">{row.channel.replace(/_/g, " ")}</span>
+                          <span className="font-semibold tabular-nums">
+                            {formatAdminNumber(row.count)}
+                            {typeof row.percentage === "number" ? ` (${row.percentage.toFixed(0)}%)` : ""}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </AdminPanel>
                 <AdminPanel>
                   <h3 className="text-lg font-semibold text-gray-900">Booking outcomes (in period)</h3>

@@ -91,6 +91,19 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
 
   refetchRef.current = refetchUnreadCount;
 
+  // Reset count + server-sync flag the instant the authenticated user changes
+  // (sign-out, or A→B account switch via token refresh) so user B never sees
+  // user A's badge before the first server fetch resolves, and so the OS badge
+  // effect can't write user A's stale count to the icon.
+  const lastUserIdRef = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (lastUserIdRef.current !== undefined && lastUserIdRef.current !== (user?.id ?? null)) {
+      setUnreadCount(0);
+      setServerSynced(false);
+    }
+    lastUserIdRef.current = user?.id ?? null;
+  }, [user?.id]);
+
   useEffect(() => {
     refetchUnreadCount();
   }, [refetchUnreadCount]);

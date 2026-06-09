@@ -18,6 +18,7 @@ import * as Haptics from "expo-haptics";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { api, getApiBaseUrl } from "@/lib/api-client";
+import { emitNotificationBadgeRefresh } from "@/lib/notification-badge-events";
 import { webApiTenantHeaders } from "@/config/public-env";
 import { supabase } from "@/lib/supabase/client";
 import { pushInAppBrowser } from "@/lib/in-app-web";
@@ -161,9 +162,14 @@ function getWorkflowPrimaryNext(
   current: string,
   fulfillmentType?: string | null,
   paymentStatus?: string | null,
+  orderSource?: string | null,
 ): string | null {
   const ps = (paymentStatus ?? "").toLowerCase();
-  if (ps === "pending" || ps === "unpaid" || ps === "failed" || ps === "requires_payment") {
+  const isAppointmentOrder = (orderSource ?? "").toLowerCase() === "appointment";
+  if (
+    !isAppointmentOrder &&
+    (ps === "pending" || ps === "unpaid" || ps === "failed" || ps === "requires_payment")
+  ) {
     return null;
   }
   const ft = (fulfillmentType ?? "").toLowerCase();
@@ -322,7 +328,10 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
     try {
       const res = await api.get<{ order: Order }>(`/api/provider/product-orders/${order.id}`);
       setOrderDetail(res.data?.order ?? order);
-      void api.post("/api/provider/notifications/mark-related-read", { order_id: order.id }).catch(() => {});
+      void api
+        .post("/api/provider/notifications/mark-related-read", { order_id: order.id })
+        .then(() => emitNotificationBadgeRefresh())
+        .catch(() => {});
     } catch {
       setOrderDetail(order);
     } finally {
@@ -1025,9 +1034,16 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                 );
               })()}
 
-              {(activeOrder.payment_status ?? "").toLowerCase() === "pending" &&
-              activeOrder.status !== "cancelled" &&
-              activeOrder.status !== "refunded" ? (
+              {activeOrder.order_source === "appointment" ? (
+                <View style={twStyle("mb-3 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2")}>
+                  <Text style={twStyle("text-xs text-blue-900")}>
+                    Payment is recorded on the linked appointment. Mark the product collected from the booking
+                    detail or advance fulfillment below.
+                  </Text>
+                </View>
+              ) : (activeOrder.payment_status ?? "").toLowerCase() === "pending" &&
+                activeOrder.status !== "cancelled" &&
+                activeOrder.status !== "refunded" ? (
                 <TouchableOpacity
                   onPress={() => {
                     setRecordPaymentMethod("cash");
@@ -1146,6 +1162,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                   activeOrder.status,
                   activeOrder.fulfillment_type,
                   activeOrder.payment_status,
+                  activeOrder.order_source,
                 );
                 const destructive = getDestructiveNextStatuses(activeOrder.status, activeOrder.order_source);
                 if (!primary && destructive.length === 0) return null;

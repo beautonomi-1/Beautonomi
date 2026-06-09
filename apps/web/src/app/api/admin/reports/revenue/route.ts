@@ -9,6 +9,11 @@ import {
   FINANCE_METRIC_CONTRACT_VERSION,
   getFinanceMetricContracts,
 } from "@/lib/admin/finance-metric-contracts";
+import {
+  computeOrderSourceBreakdown,
+  normalizeBookingChannel,
+} from "@/lib/reports/booking-channel-breakdown";
+import { RECOGNIZED_REVENUE_TYPES } from "@/lib/reports/provider-revenue-semantics";
 
 export async function GET(request: NextRequest) {
   try {
@@ -56,7 +61,7 @@ export async function GET(request: NextRequest) {
     const { data: completedBookings } = await supabase
       .from("bookings")
       .select(
-        "id, scheduled_at, completed_at, created_at, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, status, provider_id, payment_status"
+        "id, scheduled_at, completed_at, created_at, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, status, provider_id, payment_status, booking_source"
       )
       .eq("tenant_id", tenantId)
       .eq("status", "completed")
@@ -67,7 +72,7 @@ export async function GET(request: NextRequest) {
     const { data: confirmedBookings } = await supabase
       .from("bookings")
       .select(
-        "id, scheduled_at, completed_at, created_at, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, status, provider_id, payment_status"
+        "id, scheduled_at, completed_at, created_at, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, status, provider_id, payment_status, booking_source"
       )
       .eq("tenant_id", tenantId)
       .eq("status", "confirmed")
@@ -87,6 +92,7 @@ export async function GET(request: NextRequest) {
       provider_id?: string;
       status?: string;
       payment_status?: string;
+      booking_source?: string | null;
     };
 
     const byId = new Map<string, BookingRow>();
@@ -96,6 +102,7 @@ export async function GET(request: NextRequest) {
     }
     const bookings: BookingRow[] = [...byId.values()];
 
+    const channelGmv: Record<string, { gmv: number; bookings: number }> = {};
     const revenueByDay: Record<string, { revenue: number; actual_collected: number; bookings: number }> = {};
     const revenueByProvider: Record<string, { revenue: number; actual_collected: number; bookings: number; provider_name: string }> = {};
     const revenueByStatus: Record<string, { revenue: number; bookings: number }> = {};
@@ -154,6 +161,11 @@ export async function GET(request: NextRequest) {
       revenueByStatus[status].revenue += gmvAmount;
       revenueByStatus[status].bookings += 1;
 
+      const channel = normalizeBookingChannel(booking.booking_source);
+      if (!channelGmv[channel]) channelGmv[channel] = { gmv: 0, bookings: 0 };
+      channelGmv[channel].gmv += gmvAmount;
+      channelGmv[channel].bookings += 1;
+
       totalRevenue += gmvAmount;
       totalActualCollected += collectedAmount;
       totalRefunded += refundedAmount;
@@ -177,6 +189,87 @@ export async function GET(request: NextRequest) {
         }
       });
     }
+
+    const bookingIds = bookings.map((b) => b.id).filter((id): id is string => typeof id === "string");
+    const revenueByBooking = new Map<string, number>();
+    if (bookingIds.length > 0) {
+      const ledgerRows = await fetchFinanceLedgerRowsForTenant(
+        supabase,
+        tenantId,
+        { start: startDate.toISOString(), end: endDate.toISOString() },
+        { transactionTypes: [...RECOGNIZED_REVENUE_TYPES] },
+      );
+      for (const row of ledgerRows ?? []) {
+        const bid = (row as { booking_id?: string | null }).booking_id;
+        if (!bid) continue;
+        revenueByBooking.set(
+          bid,
+          (revenueByBooking.get(bid) ?? 0) + Number((row as { net?: number }).net ?? 0),
+        );
+      }
+    }
+
+    const revenueByServiceMap = new Map<
+      string,
+      { service_id: string; service_name: string; revenue: number; bookingIds: Set<string> }
+    >();
+    if (bookingIds.length > 0) {
+      const { data: serviceRows } = await supabase
+        .from("booking_services")
+        .select("booking_id, price, offering_id, offerings(title)")
+        .in("booking_id", bookingIds);
+
+      type ServiceRow = {
+        booking_id?: string;
+        price?: number;
+        offering_id?: string;
+        offerings?: { title?: string } | Array<{ title?: string }>;
+      };
+      const servicesByBooking = new Map<string, ServiceRow[]>();
+      for (const row of (serviceRows ?? []) as ServiceRow[]) {
+        if (!row.booking_id) continue;
+        const list = servicesByBooking.get(row.booking_id) ?? [];
+        list.push(row);
+        servicesByBooking.set(row.booking_id, list);
+      }
+
+      for (const booking of bookings) {
+        const id = booking.id;
+        if (!id) continue;
+        const bookingRevenue = revenueByBooking.get(id) ?? 0;
+        const svcs = servicesByBooking.get(id) ?? [];
+        if (svcs.length === 0 || bookingRevenue <= 0) continue;
+        const totalPrice = svcs.reduce((s, x) => s + Number(x.price ?? 0), 0);
+        for (const service of svcs) {
+          const offering = Array.isArray(service.offerings)
+            ? service.offerings[0]
+            : service.offerings;
+          const serviceName = offering?.title ?? "Unknown service";
+          const serviceId = service.offering_id ?? serviceName;
+          const proportion =
+            totalPrice > 0 ? Number(service.price ?? 0) / totalPrice : 1 / svcs.length;
+          const serviceRevenue = bookingRevenue * proportion;
+          const existing = revenueByServiceMap.get(serviceId) ?? {
+            service_id: serviceId,
+            service_name: serviceName,
+            revenue: 0,
+            bookingIds: new Set<string>(),
+          };
+          existing.revenue += serviceRevenue;
+          existing.bookingIds.add(id);
+          revenueByServiceMap.set(serviceId, existing);
+        }
+      }
+    }
+
+    const revenueByService = Array.from(revenueByServiceMap.values())
+      .map((row) => ({
+        service_id: row.service_id,
+        service_name: row.service_name,
+        revenue: row.revenue,
+        bookings: row.bookingIds.size,
+      }))
+      .sort((a, b) => b.revenue - a.revenue);
 
     // Fill missing dates
     const revenueByDayArray = [];
@@ -312,6 +405,23 @@ export async function GET(request: NextRequest) {
     const platformRecognizedRevenueNet =
       ledgerAgg.platform_take_net + ledgerAgg.subscription_net + ledgerAgg.ads_net + ledgerAgg.service_fee_revenue;
 
+    const { data: productOrders } = await supabase
+      .from("product_orders")
+      .select("order_source, total_amount, payment_status")
+      .eq("tenant_id", tenantId)
+      .eq("payment_status", "paid")
+      .or("order_source.is.null,order_source.neq.appointment")
+      .gte("created_at", startISO)
+      .lte("created_at", endISO);
+
+    const productBySource = computeOrderSourceBreakdown({
+      orders: (productOrders || []).map((o: { order_source?: string | null; total_amount?: number }) => ({
+        order_source: o.order_source,
+        units: 1,
+        revenue: Number(o.total_amount ?? 0),
+      })),
+    });
+
     return successResponse({
       period,
       // GMV: total booking value at time of booking (what was charged)
@@ -330,11 +440,19 @@ export async function GET(request: NextRequest) {
       },
       revenueByDay: revenueByDayArray,
       revenueByProvider: Object.values(revenueByProvider).sort((a, b) => b.revenue - a.revenue),
-      revenueByService: [],
+      revenueByService,
       revenueByStatus: Object.entries(revenueByStatus).map(([status, data]) => ({
         status,
         ...data,
       })),
+      channelGmvBreakdown: Object.entries(channelGmv).map(([channel, data]) => ({
+        channel,
+        gmv: data.gmv,
+        bookings: data.bookings,
+      })),
+      productOrdersBySource: productBySource,
+      channelBasisNote:
+        "Booking GMV uses completed_at (completed) or scheduled_at (confirmed) anchors. Product orders exclude appointment mirrors.",
       giftCardMetrics: {
         totalSales,
         totalRedemptions,

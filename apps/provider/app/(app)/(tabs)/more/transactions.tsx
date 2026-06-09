@@ -114,10 +114,33 @@ export default function TransactionsScreen() {
   const [search, setSearch] = useState("");
   const [selectedTxn, setSelectedTxn] = useState<Transaction | null>(null);
 
+  interface TransactionsApiPayload {
+    transactions?: Transaction[];
+    summary?: {
+      total_in: number;
+      total_out: number;
+      net: number;
+      row_count: number;
+      basis_note?: string;
+    };
+    truncated_list?: boolean;
+  }
+
   /** Org-wide ledger: omit `location_id` so payouts and non-booking rows still appear when a branch is selected in the app (matches Transactions hub behaviour). */
-  const { data: transactions, loading, error: txnError, refresh } = useApi<Transaction[]>(
+  const { data: txnPayload, loading, error: txnError, refresh } = useApi<TransactionsApiPayload | Transaction[]>(
     `/api/provider/transactions?period=${period}&limit=200`
   );
+
+  const transactions = useMemo(() => {
+    if (!txnPayload) return [];
+    if (Array.isArray(txnPayload)) return txnPayload;
+    return txnPayload.transactions ?? [];
+  }, [txnPayload]);
+
+  const serverSummary = useMemo(() => {
+    if (!txnPayload || Array.isArray(txnPayload)) return null;
+    return txnPayload.summary ?? null;
+  }, [txnPayload]);
   const { execute: exportTransactions, loading: exporting } = useApiPost<
     { period: string; format: string },
     { url?: string; csv?: string; filename?: string; row_count?: number; truncated?: boolean }
@@ -151,29 +174,29 @@ export default function TransactionsScreen() {
     return list;
   }, [transactions, typeFilter, search]);
 
-  // Summary cards reflect the currently VISIBLE (type/search-filtered) list so the totals
-  // always reconcile with the rows shown below them.
-  const totalIn = useMemo(
-    () =>
-      filtered
-        .filter((t) => t.type === "earning" || t.type === "tip")
-        .reduce((s, t) => s + t.amount, 0),
-    [filtered]
-  );
+  const useServerSummary =
+    serverSummary &&
+    typeFilter === "all" &&
+    !search.trim();
 
-  const totalOut = useMemo(
-    () =>
-      filtered
-        .filter((t) => t.type === "payout" || t.type === "refund")
-        .reduce((s, t) => s + t.amount, 0),
-    [filtered]
-  );
+  const totalIn = useMemo(() => {
+    if (useServerSummary) return serverSummary!.total_in;
+    return filtered
+      .filter((t) => t.type === "earning" || t.type === "tip")
+      .reduce((s, t) => s + t.amount, 0);
+  }, [filtered, useServerSummary, serverSummary]);
 
-  /** Operating-style net: earnings & tips minus fees, payouts & refunds; ledger adjustments added by signed amount. */
-  const netAmount = useMemo(
-    () => filtered.reduce((s, t) => s + signedContributionForSummary(t), 0),
-    [filtered]
-  );
+  const totalOut = useMemo(() => {
+    if (useServerSummary) return serverSummary!.total_out;
+    return filtered
+      .filter((t) => t.type === "payout" || t.type === "refund")
+      .reduce((s, t) => s + t.amount, 0);
+  }, [filtered, useServerSummary, serverSummary]);
+
+  const netAmount = useMemo(() => {
+    if (useServerSummary) return serverSummary!.net;
+    return filtered.reduce((s, t) => s + signedContributionForSummary(t), 0);
+  }, [filtered, useServerSummary, serverSummary]);
 
   async function handleExport() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);

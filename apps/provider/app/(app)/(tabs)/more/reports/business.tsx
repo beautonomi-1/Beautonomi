@@ -22,14 +22,13 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { formatCurrency } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 import { ReportResponsiveStatRow } from "@/components/reports/ReportResponsiveStatRow";
+import { ActiveLocationChip } from "@/components/reports/ActiveLocationChip";
 
 interface BusinessReport {
   revenue: {
     total: number;
     previous_period: number;
     growth_percentage: number;
-    by_service: { name: string; amount: number }[];
-    by_staff: { name: string; amount: number }[];
   };
   bookings: {
     total: number;
@@ -99,6 +98,11 @@ type OverviewResponse = {
   revenueGrowth?: number;
   periodStart?: string;
   periodEnd?: string;
+  new_this_period?: number;
+  returning?: number;
+  retention_rate?: number;
+  product_revenue?: number;
+  product_orders_with_earnings?: number;
 };
 
 function daysInOverviewPeriod(o: OverviewResponse): number {
@@ -115,8 +119,6 @@ function mapOverviewToBusinessReport(overview: OverviewResponse | null): Busines
       total: overview.totalRevenue ?? 0,
       previous_period: 0,
       growth_percentage: overview.revenueGrowth ?? 0,
-      by_service: [],
-      by_staff: [],
     },
     bookings: {
       total: overview.totalBookings ?? 0,
@@ -128,9 +130,9 @@ function mapOverviewToBusinessReport(overview: OverviewResponse | null): Busines
     },
     clients: {
       total: overview.uniqueClients ?? 0,
-      new_this_period: 0,
-      returning: 0,
-      retention_rate: 0,
+      new_this_period: overview.new_this_period ?? 0,
+      returning: overview.returning ?? 0,
+      retention_rate: overview.retention_rate ?? 0,
       avg_booking_value: overview.averageBookingValue ?? 0,
     },
     staff: {
@@ -140,8 +142,8 @@ function mapOverviewToBusinessReport(overview: OverviewResponse | null): Busines
       total_hours: 0,
     },
     products: {
-      total_sold: 0,
-      product_revenue: 0,
+      total_sold: overview.product_orders_with_earnings ?? 0,
+      product_revenue: overview.product_revenue ?? overview.ledgerEarningsFromProductOrders ?? 0,
       top_product: null,
     },
   };
@@ -232,6 +234,8 @@ export default function BusinessReportScreen() {
         }
       />
 
+      <ActiveLocationChip />
+
       <View style={twStyle("mb-4")}>
         <FilterChipGroup options={PERIOD_FILTERS} selected={period} onSelect={setPeriod} />
       </View>
@@ -318,49 +322,9 @@ export default function BusinessReportScreen() {
         </View>
       )}
 
-      {r?.revenue.by_service && r.revenue.by_service.length > 0 && (
-        <View style={twStyle("mb-4 rounded-xl border border-gray-100 bg-white p-4")}>
-          <Text style={twStyle("mb-2 text-xs font-semibold uppercase text-gray-400")}>Top Services</Text>
-          {r.revenue.by_service.slice(0, 5).map((s, i) => {
-            const maxAmount = r.revenue.by_service[0]?.amount ?? 1;
-            return (
-              <View key={i} style={twStyle("mb-2")}>
-                <View style={twStyle("flex-row items-center justify-between mb-1")}>
-                  <Text style={twStyle("text-sm text-gray-700")} numberOfLines={1}>{s.name}</Text>
-                  <Text style={twStyle("text-sm font-semibold text-gray-900")}>{formatCurrency(s.amount)}</Text>
-                </View>
-                <View style={twStyle("h-1.5 rounded-full bg-gray-100 overflow-hidden")}>
-                  <View
-                    style={[twStyle("h-full rounded-full bg-indigo-500"), { width: `${(s.amount / maxAmount) * 100}%` }]}
-                  />
-                </View>
-              </View>
-            );
-          })}
-        </View>
-      )}
-
-      {r?.revenue.by_staff && r.revenue.by_staff.length > 0 && (
-        <View style={twStyle("mb-4 rounded-xl border border-gray-100 bg-white p-4")}>
-          <Text style={twStyle("mb-2 text-xs font-semibold uppercase text-gray-400")}>Revenue by Staff</Text>
-          {r.revenue.by_staff.slice(0, 5).map((s, i) => {
-            const maxAmount = r.revenue.by_staff[0]?.amount ?? 1;
-            return (
-              <View key={i} style={twStyle("mb-2")}>
-                <View style={twStyle("flex-row items-center justify-between mb-1")}>
-                  <Text style={twStyle("text-sm text-gray-700")}>{s.name}</Text>
-                  <Text style={twStyle("text-sm font-semibold text-gray-900")}>{formatCurrency(s.amount)}</Text>
-                </View>
-                <View style={twStyle("h-1.5 rounded-full bg-gray-100 overflow-hidden")}>
-                  <View
-                    style={[twStyle("h-full rounded-full bg-emerald-500"), { width: `${(s.amount / maxAmount) * 100}%` }]}
-                  />
-                </View>
-              </View>
-            );
-          })}
-        </View>
-      )}
+      {/* Top services / revenue-by-staff intentionally live on the dedicated
+          Services and Staff report screens (linked below); the overview API
+          does not return those breakdowns. */}
 
       {/* Bookings */}
       <SectionHeader title="Scheduled bookings" />
@@ -388,20 +352,45 @@ export default function BusinessReportScreen() {
       </View>
 
       {/*
-        §Provider-audit 2026-04 (round 8): Clients / Staff / Products
-        sections previously rendered hard-coded zeros because the
-        /business/overview endpoint does not return new-vs-returning,
-        retention, hours-worked, or product-sold breakdowns — those live
-        on the dedicated per-report endpoints. Rendering a "New: 0" /
-        "Retention: 0%" / "Staff Hours: 0h" card that never updates is
-        actively misleading, so we only show the stat that IS computed
-        (total unique clients, avg booking value) and redirect deeper
-        questions to the specialised report screens.
+        §Financial-reporting-audit 2026-06: the /business/overview endpoint now
+        returns new-vs-returning client counts, retention rate and product
+        revenue (recognised ledger earnings from product orders) for the
+        selected period, so these cards bind to real API values instead of the
+        previous hard-coded zeros. Staff hours / per-product breakdowns still
+        live on the dedicated report screens linked below.
       */}
       <SectionHeader title="Clients" />
       <View style={twStyle("mb-4")}>
         <ReportResponsiveStatRow>
           <StatCard title="Unique Clients" value={String(r?.clients.total ?? 0)} icon="people-outline" iconColor="#ec4899" iconBg="bg-pink-50" compact />
+          <StatCard
+            title="New this period"
+            value={String(r?.clients.new_this_period ?? 0)}
+            icon="person-add-outline"
+            iconColor="#10b981"
+            iconBg="bg-emerald-50"
+            compact
+          />
+        </ReportResponsiveStatRow>
+        <ReportResponsiveStatRow>
+          <StatCard
+            title="Returning"
+            value={String(r?.clients.returning ?? 0)}
+            icon="repeat-outline"
+            iconColor="#f59e0b"
+            iconBg="bg-amber-50"
+            compact
+          />
+          <StatCard
+            title="Retention"
+            value={`${(r?.clients.retention_rate ?? 0).toFixed(1)}%`}
+            icon="trending-up-outline"
+            iconColor="#8b5cf6"
+            iconBg="bg-violet-50"
+            compact
+          />
+        </ReportResponsiveStatRow>
+        <ReportResponsiveStatRow>
           <StatCard
             title="Avg ledger / booking"
             value={formatCurrency(r?.clients.avg_booking_value ?? 0)}
@@ -410,12 +399,20 @@ export default function BusinessReportScreen() {
             iconBg="bg-indigo-50"
             compact
           />
+          <StatCard
+            title="Product revenue"
+            value={formatCurrency(r?.products.product_revenue ?? 0)}
+            icon="bag-handle-outline"
+            iconColor="#0ea5e9"
+            iconBg="bg-sky-50"
+            compact
+          />
         </ReportResponsiveStatRow>
       </View>
 
       <View style={twStyle("mb-4 flex-row")}>
         <TouchableOpacity
-          onPress={() => router.push("/(app)/(tabs)/more/reports/clients")}
+          onPress={() => router.push("/(app)/(tabs)/more/reports/detail/client-summary" as never)}
           style={twStyle("flex-1 mr-2 rounded-xl border border-gray-200 bg-white px-4 py-3 flex-row items-center justify-between")}
         >
           <Text style={twStyle("text-sm font-medium text-gray-700")}>Clients</Text>

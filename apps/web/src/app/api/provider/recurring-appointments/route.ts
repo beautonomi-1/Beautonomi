@@ -158,7 +158,8 @@ async function sendFirstRecurringPaymentLink(params: {
       payment_link: paymentLink,
     },
     channels,
-    { appType: "customer" },
+    // In-app bell row inserted manually above; skip template auto-insert.
+    { appType: "customer", skipInApp: true },
   );
   return { sent: true };
 }

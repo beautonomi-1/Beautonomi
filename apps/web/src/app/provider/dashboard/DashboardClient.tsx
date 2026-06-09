@@ -11,6 +11,7 @@ import {
   AlertCircle,
   Home,
   Building2,
+  MapPin,
 } from "lucide-react";
 // Force fresh module evaluation
 import { fetcher, FetchError, FetchTimeoutError, PROVIDER_BOOTSTRAP_TIMEOUT_MS } from "@/lib/http/fetcher";
@@ -19,6 +20,7 @@ import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { PageHeader } from "@/components/provider/PageHeader";
+import { ActiveLocationChip } from "@/components/provider/ActiveLocationChip";
 import { QuickStartBanner } from "@/components/provider/QuickStartBanner";
 import { ProviderDashboardExcellenceBanner } from "@/components/provider/ProviderDashboardExcellenceBanner";
 import { RewardsCard } from "@/components/provider/RewardsCard";
@@ -33,6 +35,7 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { formatCurrency } from "@/lib/utils";
 import type { ProviderDashboardStats } from "./provider-dashboard-stats";
 import { buildPayoutBalanceCardView } from "./payout-balance-card";
+import { DashboardInsightsPanel } from "./DashboardInsightsPanel";
 
 const ICON_DOLLAR_5 = <DollarSign className="w-5 h-5" />;
 const ICON_HOME_5 = <Home className="w-5 h-5" />;
@@ -62,6 +65,10 @@ export function DashboardClient({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(() => initialLoadError ?? null);
   const [isMissingProfile, setIsMissingProfile] = useState(() => initialMissingProfile);
+  // The SSR payload is always all-locations (no location_id). Track whether the
+  // figures currently on screen are still that SSR payload so we can warn when a
+  // branch is selected but the client hasn't refetched the scoped numbers yet.
+  const [isShowingSsrAllLocations, setIsShowingSsrAllLocations] = useState(() => Boolean(initialStats));
   const hasLoadedRef = useRef(false);
   const loadingProviderIdRef = useRef<string | null>(null);
   const lastLocationIdRef = useRef<string | null>(null);
@@ -120,6 +127,8 @@ export function DashboardClient({
       );
       
       setStats(response.data);
+      // Stats now reflect the active location scope (client fetch), not SSR.
+      setIsShowingSsrAllLocations(false);
       
       // Cache the response
       if (typeof window !== 'undefined') {
@@ -386,6 +395,15 @@ export function DashboardClient({
         subtitle="Overview of your business performance"
       />
 
+      {isShowingSsrAllLocations && selectedLocationId ? (
+        <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs font-medium text-gray-600">
+          <MapPin className="h-3.5 w-3.5" />
+          Showing all locations — updating to your selected branch…
+        </div>
+      ) : (
+        <ActiveLocationChip className="mb-4" />
+      )}
+
       {/* §provider-launch (2026-06): pending_approval providers now land here
           directly — surface a non-blocking "under review" banner. */}
       {provider?.status === "pending_approval" && (
@@ -449,6 +467,8 @@ export function DashboardClient({
       <QuickStartBanner />
 
       <ProviderDashboardExcellenceBanner />
+
+      <DashboardInsightsPanel stats={stats} tenantCurrency={tenantCurrency} />
 
       {/* Rewards & Achievements Card - always show to encourage progress */}
       {stats.gamification ? (
@@ -902,12 +922,15 @@ const StatCard = React.memo(function StatCard({
     orange: "bg-orange-50 text-orange-600",
   };
 
+  const ariaLabel = subtitle ? `${title}: ${value}. ${subtitle}` : `${title}: ${value}`;
+
   return (
     <div 
       className={`bg-white border rounded-lg p-3 sm:p-4 ${handleClick ? 'cursor-pointer hover:shadow-md transition-shadow active:scale-[0.98]' : ''}`}
       onClick={handleClick}
       role={handleClick ? "button" : undefined}
       tabIndex={handleClick ? 0 : undefined}
+      aria-label={handleClick ? ariaLabel : undefined}
       onKeyDown={handleClick ? (e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
@@ -957,6 +980,7 @@ const StatusCard = React.memo(function StatusCard({
       onClick={handleClick}
       role={handleClick ? "button" : undefined}
       tabIndex={handleClick ? 0 : undefined}
+      aria-label={handleClick ? `${title}: ${count} bookings` : undefined}
       onKeyDown={handleClick ? (e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();

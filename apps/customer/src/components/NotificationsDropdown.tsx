@@ -16,7 +16,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useAuth } from "@/providers/AuthProvider";
-import { useNotifications } from "@/providers/NotificationsContext";
+import {
+  registerNotificationsRealtimeCallback,
+  useNotifications,
+} from "@/providers/NotificationsContext";
 import { api } from "@/lib/api-client";
 import { Colors } from "@/constants/colors";
 import {
@@ -41,6 +44,7 @@ export function NotificationsDropdown({ visible, onClose }: NotificationsDropdow
   const { refetchUnreadCount, adjustUnreadCount, replaceUnreadCount } = useNotifications();
   const [list, setList] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
 
   const load = useCallback(async () => {
     if (!user?.id) return;
@@ -50,12 +54,19 @@ export function NotificationsDropdown({ visible, onClose }: NotificationsDropdow
         notifications?: Notification[];
         data?: { notifications?: Notification[] };
       }>("/api/me/notifications");
+      if (res.error) {
+        // Surface the failure (parity with the provider dropdown) instead of
+        // silently rendering an empty "No notifications" state.
+        setError(true);
+        return;
+      }
       const body = res.data as { notifications?: Notification[]; data?: { notifications?: Notification[] } } | undefined;
       const items = body?.notifications ?? body?.data?.notifications ?? [];
       const arr = Array.isArray(items) ? items : [];
       setList(arr.slice(0, RECENT_LIMIT));
+      setError(false);
     } catch {
-      setList([]);
+      setError(true);
     } finally {
       setLoading(false);
     }
@@ -63,6 +74,16 @@ export function NotificationsDropdown({ visible, onClose }: NotificationsDropdow
 
   useEffect(() => {
     if (visible && user?.id) load();
+  }, [visible, user?.id, load]);
+
+  // Keep the open dropdown in sync with realtime notification changes (same
+  // source the full list uses), so a notification arriving while it's open
+  // appears without reopening.
+  useEffect(() => {
+    if (!visible || !user?.id) return;
+    return registerNotificationsRealtimeCallback(() => {
+      void load();
+    });
   }, [visible, user?.id, load]);
 
   const markRead = async (id: string, rollbackIfUnread: boolean) => {
@@ -179,6 +200,14 @@ export function NotificationsDropdown({ visible, onClose }: NotificationsDropdow
           {loading ? (
             <View style={styles.loadingWrap}>
               <ActivityIndicator size="small" color={Colors.primary} />
+            </View>
+          ) : error && list.length === 0 ? (
+            <View style={styles.emptyWrap}>
+              <Ionicons name="cloud-offline-outline" size={32} color={Colors.gray[300]} />
+              <Text style={styles.emptyText}>Couldn’t load notifications</Text>
+              <TouchableOpacity onPress={() => void load()} hitSlop={12} style={{ marginTop: 8 }}>
+                <Text style={styles.markAllRead}>Retry</Text>
+              </TouchableOpacity>
             </View>
           ) : list.length === 0 ? (
             <View style={styles.emptyWrap}>

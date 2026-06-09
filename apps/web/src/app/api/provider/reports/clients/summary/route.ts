@@ -215,6 +215,7 @@ export async function GET(request: NextRequest) {
       totalClients > 0 ? Math.round((totalBookedGross / totalClients) * 100) / 100 : 0;
     const averageLedgerEarnings =
       totalClients > 0 ? Math.round((totalLedgerEarnings / totalClients) * 100) / 100 : 0;
+    /** @deprecated Misleading name — equals averageBookedGross (in-window booked gross, not lifetime value). */
     const averageLifetimeValue = averageBookedGross;
 
     const completedBookingIds: string[] = [];
@@ -283,7 +284,7 @@ export async function GET(request: NextRequest) {
       `Distinct clients: customers with at least one appointment scheduled in this window (guest walk-ins without customer_id are excluded).`,
       `New clients: customers whose first-ever scheduled booking in this scope falls inside the window (${locPhrase}).`,
       `Returning (label): customers with two or more appointments scheduled inside this window — not lifetime repeat visits.`,
-      `Average booked gross is each client’s sum of booking.total_amount in this window. Ledger earnings is net provider_earnings settled in the same window — compare to Revenue report, not to booked gross.`,
+      `averageBookedGross is each client’s mean sum of booking.total_amount in this window. averageLifetimeValue is a deprecated alias of averageBookedGross (not lifetime value). Ledger earnings is net provider_earnings settled in the same window — compare to Revenue report, not to booked gross.`,
       `Retention % = (clients with 2+ bookings in window) ÷ (distinct clients in window).`,
       `Ratings average review.rating for completed bookings in the window, grouped by customer.`,
     ].join(" ");

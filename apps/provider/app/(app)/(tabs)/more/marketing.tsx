@@ -27,6 +27,7 @@ interface Campaign {
   name: string;
   type: string;
   subject?: string | null;
+  content?: string | null;
   status: string;
   recipient_type?: string;
   total_recipients: number;
@@ -95,7 +96,10 @@ export function MarketingCampaignsContent() {
   const { screenPadding } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editingCampaignId, setEditingCampaignId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
   const [sendingId, setSendingId] = useState<string | null>(null);
   const [form, setForm] = useState({
     name: "",
@@ -163,6 +167,91 @@ export function MarketingCampaignsContent() {
     }
   }, [form, refresh]);
 
+  const openEditCampaign = useCallback((campaign: Campaign) => {
+    setEditingCampaignId(campaign.id);
+    setForm({
+      name: campaign.name,
+      type: (campaign.type as "email" | "sms" | "whatsapp") || "email",
+      subject: campaign.subject ?? "",
+      content: "",
+      scheduledAt: campaign.scheduled_at ?? "",
+    });
+    void api.get<Campaign>(`/api/provider/campaigns/${campaign.id}`).then((res) => {
+      if (res.data && typeof res.data === "object" && "content" in res.data) {
+        setForm((prev) => ({
+          ...prev,
+          content: String((res.data as Campaign).content ?? ""),
+          subject: String((res.data as Campaign).subject ?? prev.subject),
+        }));
+      }
+    });
+    setEditOpen(true);
+  }, []);
+
+  const saveCampaignEdit = useCallback(async () => {
+    if (!editingCampaignId) return;
+    if (!form.name.trim() || !form.content.trim()) {
+      Alert.alert("Missing details", "Name and content are required.");
+      return;
+    }
+    if (form.type === "email" && !form.subject.trim()) {
+      Alert.alert("Missing subject", "Email campaigns require a subject.");
+      return;
+    }
+    let scheduled_at: string | null = null;
+    const rawSchedule = form.scheduledAt.trim();
+    if (rawSchedule) {
+      const parsed = Date.parse(rawSchedule);
+      if (!Number.isFinite(parsed)) {
+        Alert.alert("Invalid schedule", "Use a valid date/time.");
+        return;
+      }
+      scheduled_at = new Date(parsed).toISOString();
+    }
+    setSavingEdit(true);
+    try {
+      const res = await api.patch<Campaign>(`/api/provider/campaigns/${editingCampaignId}`, {
+        name: form.name.trim(),
+        type: form.type,
+        subject: form.type === "email" ? form.subject.trim() : undefined,
+        content: form.content.trim(),
+        scheduled_at,
+      });
+      if (res.error) {
+        Alert.alert("Could not update campaign", getApiErrorMessage(res.error, "Try again."));
+        return;
+      }
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setEditOpen(false);
+      setEditingCampaignId(null);
+      refresh();
+    } finally {
+      setSavingEdit(false);
+    }
+  }, [editingCampaignId, form, refresh]);
+
+  const deleteCampaign = useCallback(
+    (campaign: Campaign) => {
+      Alert.alert("Delete draft?", `Remove "${campaign.name}"? This cannot be undone.`, [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            const res = await api.delete(`/api/provider/campaigns/${campaign.id}`);
+            if (res.error) {
+              Alert.alert("Could not delete", getApiErrorMessage(res.error, "Try again."));
+              return;
+            }
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            refresh();
+          },
+        },
+      ]);
+    },
+    [refresh],
+  );
+
   const sendCampaign = useCallback(async (id: string) => {
     setSendingId(id);
     try {
@@ -206,7 +295,10 @@ export function MarketingCampaignsContent() {
       >
         <View style={twStyle("mb-3 flex-row items-center justify-end")}>
           <TouchableOpacity
-            onPress={() => setCreateOpen(true)}
+            onPress={() => {
+              setForm({ name: "", type: "email", subject: "", content: "", scheduledAt: "" });
+              setCreateOpen(true);
+            }}
             style={twStyle("flex-row items-center rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2")}
             activeOpacity={0.8}
           >
@@ -233,6 +325,7 @@ export function MarketingCampaignsContent() {
               const st = campaignStatusStyles(c.status);
               const canSendNow =
                 (c.status === "draft" || c.status === "scheduled") && (c.total_recipients ?? 0) > 0;
+              const canEditDraft = c.status === "draft" || c.status === "scheduled";
               return (
               <View
                 key={c.id}
@@ -267,7 +360,7 @@ export function MarketingCampaignsContent() {
                   </Text>
                   {(c.total_recipients ?? 0) === 0 && (c.status === "draft" || c.status === "scheduled") ? (
                     <Text style={twStyle("mt-1 text-xs text-amber-700")}>
-                      No clients match this campaign yet — add clients or pick a different audience on the web portal.
+                      No clients match this campaign yet — add clients or choose a different audience in Clients.
                     </Text>
                   ) : null}
                 </View>
@@ -276,6 +369,19 @@ export function MarketingCampaignsContent() {
                     {c.status}
                   </Text>
                 </View>
+                {canEditDraft ? (
+                  <View style={twStyle("ml-2 items-end gap-1")}>
+                    <TouchableOpacity
+                      onPress={() => openEditCampaign(c)}
+                      style={twStyle("rounded-full border border-gray-200 bg-white px-3 py-1.5")}
+                    >
+                      <Text style={twStyle("text-xs font-semibold text-gray-700")}>Edit</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => deleteCampaign(c)}>
+                      <Text style={twStyle("text-xs font-medium text-red-600")}>Delete</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
                 {canSendNow ? (
                   <TouchableOpacity
                     onPress={() => sendCampaign(c.id)}
@@ -375,6 +481,55 @@ export function MarketingCampaignsContent() {
               onPress={createCampaign}
               loading={creating}
               disabled={creating}
+              fullWidth
+            />
+          </View>
+        </BottomSheet>
+        <BottomSheet
+          visible={editOpen}
+          onClose={() => {
+            if (savingEdit) return;
+            setEditOpen(false);
+            setEditingCampaignId(null);
+            setForm({ name: "", type: "email", subject: "", content: "", scheduledAt: "" });
+          }}
+          title="Edit campaign"
+          subtitle="Draft and scheduled campaigns can be updated before sending"
+        >
+          <View style={twStyle("gap-3 pb-6")}>
+            <View>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Campaign name</Text>
+              <TextInput
+                value={form.name}
+                onChangeText={(t) => setForm((p) => ({ ...p, name: t }))}
+                style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
+              />
+            </View>
+            {form.type === "email" ? (
+              <View>
+                <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Subject</Text>
+                <TextInput
+                  value={form.subject}
+                  onChangeText={(t) => setForm((p) => ({ ...p, subject: t }))}
+                  style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
+                />
+              </View>
+            ) : null}
+            <View>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Message</Text>
+              <TextInput
+                value={form.content}
+                onChangeText={(t) => setForm((p) => ({ ...p, content: t }))}
+                multiline
+                textAlignVertical="top"
+                style={twStyle("min-h-[110px] rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
+              />
+            </View>
+            <ActionButton
+              label={savingEdit ? "Saving…" : "Save changes"}
+              onPress={saveCampaignEdit}
+              loading={savingEdit}
+              disabled={savingEdit}
               fullWidth
             />
           </View>

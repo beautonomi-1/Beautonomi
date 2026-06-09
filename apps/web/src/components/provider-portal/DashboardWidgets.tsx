@@ -287,21 +287,21 @@ export function QuickActionsWidget({
       icon: UserPlus,
       color: "bg-blue-500 hover:bg-blue-600",
       onClick: onNewClient,
-      href: "/provider/clients/new",
+      href: "/provider/clients",
     },
     {
       label: "New Sale",
       icon: DollarSign,
       color: "bg-green-500 hover:bg-green-600",
       onClick: onNewSale,
-      href: "/provider/sales/new",
+      href: "/provider/sales",
     },
     {
       label: "Messages",
       icon: MessageSquare,
       color: "bg-purple-500 hover:bg-purple-600",
       onClick: onMessages,
-      href: "/provider/inbox",
+      href: "/provider/messaging",
     },
   ];
 

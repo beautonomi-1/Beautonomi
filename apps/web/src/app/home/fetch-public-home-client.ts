@@ -19,15 +19,24 @@ function rememberCache(key: string, data: HomeApiResponse) {
   responseCache.set(key, { at: Date.now(), data });
 }
 
+export type FetchPublicHomeOptions = {
+  /** Bypass the short in-memory cache (explicit category click / pull-to-refresh). */
+  forceFresh?: boolean;
+};
+
 /**
  * Deduplicates concurrent GET /api/public/home calls with identical query strings
  * (e.g. five home sections firing together after a category change → one network request).
  * Also memoizes successful responses briefly so category toggles feel instant when repeated.
  */
-export function fetchPublicHomeClient(params: URLSearchParams): Promise<HomeApiResponse> {
+export function fetchPublicHomeClient(
+  params: URLSearchParams,
+  options?: FetchPublicHomeOptions,
+): Promise<HomeApiResponse> {
   const key = params.toString();
+  const forceFresh = options?.forceFresh === true;
   const hit = responseCache.get(key);
-  if (hit && Date.now() - hit.at < CACHE_TTL_MS) {
+  if (!forceFresh && hit && Date.now() - hit.at < CACHE_TTL_MS) {
     return Promise.resolve(hit.data);
   }
 

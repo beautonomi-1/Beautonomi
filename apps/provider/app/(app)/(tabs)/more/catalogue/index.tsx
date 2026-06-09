@@ -421,7 +421,7 @@ export default function CatalogueScreen() {
         <TouchableOpacity
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            router.push("/(app)/(tabs)/more/packages-list" as never);
+            router.push("/(app)/(tabs)/more/packages" as never);
           }}
           style={{
             flex: 1,
@@ -570,7 +570,9 @@ export default function CatalogueScreen() {
         <EmptyState
           icon="layers-outline"
           title="No services"
-          description="Add services to your catalogue"
+          description="Add services to your catalogue so clients can book them online."
+          actionLabel="Add service"
+          onAction={openAddSheet}
         />
       ) : (
         <FlatList

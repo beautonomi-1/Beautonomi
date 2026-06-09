@@ -22,7 +22,8 @@ const CONTRACTS: Record<string, MetricContract> = {
   providerNetEarnings: {
     key: "providerNetEarnings",
     label: "Provider Net Earnings",
-    formula: "provider_earnings + cancellation_fees + tips - abs(provider_refund_net_impact)",
+    formula:
+      "provider_earnings + cancellation_fees + tips + travel_fees + walk_in_additional_charges - abs(provider_refund_net_impact)",
     source: ["finance_transactions", "aggregateFinanceLedgerRows"],
     timezone: "tenant",
     cadence: "near_realtime",

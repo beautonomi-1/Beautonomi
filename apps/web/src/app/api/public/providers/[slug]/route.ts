@@ -5,6 +5,8 @@ import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import type { PublicProfilePromotion, PublicProviderDetail } from "@/types/beautonomi";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { resolveActiveBadge } from "@/lib/provider/active-badge";
+import { isProviderPubliclyVisible } from "@/lib/providers/public-provider-visibility";
 
 function mapPublicProfilePromotions(rows: unknown, currency: string): PublicProfilePromotion[] {
   if (!Array.isArray(rows)) return [];
@@ -83,8 +85,8 @@ export async function GET(
     }
 
 
-    // Fetch provider. The admin client bypasses RLS so providers with any status
-    // are accessible — consistent with the SSR getPublicProviderDetail loader.
+    // Fetch provider via admin client (bypasses RLS). Visibility is enforced below
+    // with isProviderPubliclyVisible — matching getPublicProviderDetail SSR loader.
     // Accept UUIDs in the slug position so mobile deep-links with only provider_id work.
     const PROVIDER_SELECT = `
       id, slug, business_name, business_type, description,
@@ -94,6 +96,7 @@ export async function GET(
       social_media_links, accepts_custom_requests,
       response_rate, response_time_hours, languages_spoken,
       offers_mobile_services, minimum_mobile_booking_amount,
+      status, deleted_at,
       user_id, users(include_in_search_engines)
     `;
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(decodedSlug);
@@ -114,7 +117,7 @@ export async function GET(
       }
     }
 
-    if (providerError || !provider) {
+    if (providerError || !provider || !isProviderPubliclyVisible(provider)) {
       return NextResponse.json(
         { data: null, error: { message: "Provider not found", code: "NOT_FOUND" } },
         { status: 404 }
@@ -201,6 +204,7 @@ export async function GET(
         .select(`
           total_points,
           current_badge_id,
+          badge_expires_at,
           provider_badges!provider_points_current_badge_id_fkey (
             id,
             name,
@@ -243,9 +247,11 @@ export async function GET(
         ? reviewRows.reduce((sum: number, r: { rating?: number | null }) => sum + Number(r.rating ?? 0), 0) / reviewCountLive
         : 0;
     
-    // Extract badge from points data (Supabase may return relation as array)
+    // Extract badge from points data (Supabase may return relation as array).
+    // Guarded so an expired (unmaintained) badge never shows publicly.
     let currentBadge = null;
-    const badge = Array.isArray(pointsData?.provider_badges) ? pointsData?.provider_badges?.[0] : pointsData?.provider_badges;
+    const rawBadge = Array.isArray(pointsData?.provider_badges) ? pointsData?.provider_badges?.[0] : pointsData?.provider_badges;
+    const badge = resolveActiveBadge(rawBadge, (pointsData as { badge_expires_at?: string | null } | null)?.badge_expires_at);
     if (badge) {
       currentBadge = {
         id: badge.id,

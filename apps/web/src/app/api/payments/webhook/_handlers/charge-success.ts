@@ -46,6 +46,12 @@ import {
   recordPaystackTerminalCharge,
   resolveKnownTerminalForCharge,
 } from "@/lib/payments/paystack-terminal-webhook";
+import {
+  recordAdsBudgetOrderPayment,
+  reverseAdsBudgetOrderPayment,
+} from "@/lib/ads/ads-budget-order-payment";
+import { recordProviderSubscriptionPayment } from "@/lib/subscriptions/provider-subscription-payment";
+import { recordSuccessfulProviderSubscriptionRenewalFromInvoice } from "@/app/api/payments/webhook/_handlers/subscription-events";
 
 async function lastResortCurrencyFromTenantId(
   tenantId: string | null | undefined,
@@ -269,6 +275,18 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
           customer,
           authorization,
         },
+        supabase,
+      );
+      return;
+    }
+    // Recurring subscription renewal: Paystack sends the subscription code on the
+    // charge (no order metadata). Recognize it idempotently — invoice.update for
+    // the same renewal dedupes on the shared transaction reference, so whichever
+    // event arrives first wins and the other is a no-op.
+    const renewalSubscriptionCode = extractPaystackSubscriptionCodeFromCharge(data);
+    if (renewalSubscriptionCode && reference) {
+      await handleSubscriptionRenewalChargeSuccess(
+        { reference, subscriptionCode: renewalSubscriptionCode, amount, fees, data },
         supabase,
       );
       return;
@@ -1017,7 +1035,7 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
         payment_method: "card",
       },
       ["push"],
-      { appType: "customer", tenantId: bookingData.tenant_id ?? null },
+      { appType: "customer", tenantId: bookingData.tenant_id ?? null, skipInApp: true },
     );
     await insertNotification({
       user_id: bookingData.customer_id,
@@ -1049,7 +1067,7 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
           payment_method: "card",
         },
         ["push"],
-        { appType: "provider", tenantId: bookingData.tenant_id ?? null },
+        { appType: "provider", tenantId: bookingData.tenant_id ?? null, skipInApp: true },
       );
       await insertNotification({
         user_id: providerUserId,
@@ -1148,7 +1166,7 @@ async function handleProductOrderChargeFailed(data: PaystackChargeData, supabase
         failure_reason: "Card payment failed",
       },
       ["push"],
-      { appType: "customer", tenantId: o.tenant_id ?? null },
+      { appType: "customer", tenantId: o.tenant_id ?? null, skipInApp: true },
     );
     await insertNotification({
       user_id: o.customer_id,
@@ -1177,15 +1195,19 @@ async function handleSubscriptionRenewalChargeFailed(
   supabase: SupabaseClient,
 ) {
   const { reference, amount, fees, message, gateway_response } = data;
+  // Stable fallback (no random UUID) so duplicate charge.failed deliveries for
+  // the same failing renewal dedupe. Bucket by day so a genuine failure in a
+  // later billing cycle is still recorded.
   const paystackRef =
     reference ||
-    `sub_renew_failed:${subscriptionCode}:${crypto.randomUUID()}`;
+    `sub_renew_failed:${subscriptionCode}:${new Date().toISOString().slice(0, 10)}`;
 
   const { data: existingTx } = await supabase
     .from("payment_transactions")
     .select("id")
     .eq("provider", "paystack")
     .eq("reference", paystackRef)
+    .eq("status", "failed")
     .maybeSingle();
   if (existingTx) {
     console.log(
@@ -1319,9 +1341,16 @@ async function processFailedPayment(data: PaystackChargeData, supabase: Supabase
       return;
     }
     if (metadata?.ads_budget_order_id) {
-      await supabase.from("ads_budget_orders")
-        .update({ status: "failed", updated_at: new Date().toISOString() })
-        .eq("id", metadata.ads_budget_order_id);
+      // Covers the success-then-failed race (a prior charge.success funded the
+      // campaign, then a later charge.failed/reversal arrives): stop serving and
+      // back out the revenue. For a never-paid order this just marks it failed.
+      await reverseAdsBudgetOrderPayment({
+        supabase,
+        orderId: String(metadata.ads_budget_order_id),
+        finalOrderStatus: "failed",
+        reason: gateway_response || message || "charge_failed",
+        reference,
+      });
       return;
     }
     console.error("Missing reference or booking_id in payment data");
@@ -2317,7 +2346,6 @@ async function handleProviderSubscriptionOrderSuccess(
 
   const amountInCurrency = convertFromSmallestUnit(amount || 0);
   const feesInCurrency = convertFromSmallestUnit(fees || 0);
-  const netAmount = amountInCurrency - feesInCurrency;
 
   await supabase.from("provider_subscription_orders")
     .update({
@@ -2349,35 +2377,20 @@ async function handleProviderSubscriptionOrderSuccess(
     { onConflict: "provider_id" },
   );
 
-  await supabase.from("payment_transactions").insert({
-    booking_id: null,
+  // Recognize the payment through the unified idempotent helper (one
+  // payment_transactions + finance_transactions per Paystack reference).
+  await recordProviderSubscriptionPayment({
+    supabase,
     reference,
-    amount: amountInCurrency,
-    fees: feesInCurrency,
-    net_amount: netAmount,
-    status: "success",
-    provider: "paystack",
-    transaction_type: "charge",
-    metadata: {
-      kind: "provider_subscription_order",
-      provider_subscription_order_id: orderId,
-      provider_id: providerId,
-      plan_id: planId,
-    },
-    created_at: new Date().toISOString(),
-  });
-
-  await supabase.from("finance_transactions").insert({
-    booking_id: null,
-    provider_id: providerId,
-    tenant_id: providerSubOrderFinanceTenantId,
-    transaction_type: "provider_subscription_payment",
-    amount: netAmount,
-    fees: feesInCurrency,
-    commission: 0,
-    net: netAmount,
-    description: `Provider subscription payment`,
-    created_at: new Date().toISOString(),
+    providerId,
+    amountMajor: amountInCurrency,
+    feesMajor: feesInCurrency,
+    planId,
+    orderId,
+    paymentTransactionType: "charge",
+    kind: "provider_subscription_order",
+    description: "Provider subscription payment",
+    tenantIdHint: providerSubOrderFinanceTenantId,
   });
 
   try {
@@ -2401,6 +2414,40 @@ async function handleProviderSubscriptionOrderSuccess(
   } catch (notificationError) {
     console.warn("Provider subscription payment notification failed:", notificationError);
   }
+}
+
+/**
+ * Recurring renewal that arrives as charge.success (rather than invoice.update).
+ * Resolves the provider from the Paystack subscription code, then recognizes the
+ * payment via the shared invoice recogniser. Idempotent across charge.success +
+ * invoice.update because both carry the same underlying transaction reference.
+ */
+async function handleSubscriptionRenewalChargeSuccess(
+  payload: { reference: string; subscriptionCode: string; amount: any; fees: any; data: any },
+  supabase: SupabaseClient,
+) {
+  const { reference, subscriptionCode, amount, fees, data } = payload;
+  const { data: sub } = await supabase
+    .from("provider_subscriptions")
+    .select("provider_id")
+    .eq("paystack_subscription_code", subscriptionCode)
+    .maybeSingle();
+  const providerId = (sub as { provider_id?: string } | null)?.provider_id;
+  if (!providerId) {
+    console.log(
+      `[subscription] renewal charge.success for unknown subscription_code ${subscriptionCode}; deferring to invoice.update`,
+    );
+    return;
+  }
+  await recordSuccessfulProviderSubscriptionRenewalFromInvoice(supabase, {
+    subscriptionCode,
+    invoiceCode: undefined,
+    amount: Number(amount || 0),
+    fees: Number(fees || 0),
+    paidAt: (data?.paid_at as string) || new Date().toISOString(),
+    payload: { transaction: { reference } },
+    providerId,
+  });
 }
 
 async function handleProviderSubscriptionOrderFailed(
@@ -2431,140 +2478,17 @@ async function handleAdsBudgetOrderSuccess(
     return;
   }
 
-  const { data: order } = await supabase
-    .from("ads_budget_orders")
-    .select("id, amount, status, campaign_id, provider_id")
-    .eq("id", orderId)
-    .single();
-
-  if (!order || (order as { status?: string }).status === "paid") {
-    return;
-  }
-
-  const row = order as { provider_id?: string | null; campaign_id?: string | null };
-  const providerId = String(row.provider_id || payload.metadata?.provider_id || "").trim();
-  const campaignId = String(row.campaign_id || payload.metadata?.campaign_id || "").trim();
-  if (!providerId || !campaignId) {
-    console.error("[ads_budget_order] missing provider_id or campaign_id on order row + metadata", {
-      orderId,
-      row,
-    });
-    return;
-  }
-
-  const amountMajor = convertFromSmallestUnit(Number(payload.amount || 0));
-  const expectedMajor = Number((order as { amount?: number | string | null }).amount ?? 0);
-  const statusStr = String((order as { status?: string }).status ?? "");
-  if (statusStr !== "paid" && Math.abs(amountMajor - expectedMajor) > 0.02) {
-    console.error("[ads_budget_order] Paystack amount does not match ads_budget_orders.amount", {
-      orderId,
-      paystackAmountMajor: amountMajor,
-      expectedMajor,
-      reference: payload.reference,
-    });
-    return;
-  }
-
-  const amountInCurrency = amountMajor;
-  const feesInCurrency = convertFromSmallestUnit(payload.fees || 0);
-  const netAmount = amountInCurrency - feesInCurrency;
-
-  const adsBudgetFinanceTenantId = await resolveTenantIdForFinanceLedger(supabase, {
-    tenant_id: null,
-    provider_id: providerId,
-  });
-
-  await supabase.from("ads_budget_orders")
-    .update({
-      status: "paid",
-      paystack_reference: payload.reference,
-      paid_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", orderId);
-
-  // Check billing model — prepaid fixed products should start after payment.
-  const { data: campaignRow } = await supabase
-    .from("ads_campaigns")
-    .select("billing_model, duration_days")
-    .eq("id", campaignId)
-    .single();
-
-  const campaignUpdate: Record<string, any> = {
-    budget: amountInCurrency,
-    updated_at: new Date().toISOString(),
-  };
-
-  if ((campaignRow as any)?.billing_model === "time_based") {
-    const now = new Date();
-    const days = Number((campaignRow as any).duration_days) || 7;
-    campaignUpdate.status = "active";
-    campaignUpdate.start_at = now.toISOString();
-    campaignUpdate.end_at = new Date(now.getTime() + days * 86400000).toISOString();
-  } else if ((campaignRow as any)?.billing_model === "impression_pack") {
-    campaignUpdate.status = "active";
-    campaignUpdate.start_at = new Date().toISOString();
-  } else if ((campaignRow as any)?.billing_model === "cpc_budget") {
-    campaignUpdate.status = "active";
-    campaignUpdate.start_at = new Date().toISOString();
-  }
-
-  await supabase.from("ads_campaigns")
-    .update(campaignUpdate)
-    .eq("id", campaignId)
-    .eq("provider_id", providerId);
-
-  await supabase.from("payment_transactions").insert({
-    booking_id: null,
+  // All funding side effects live in the shared idempotent finalize helper so
+  // the webhook and the client verify path can never diverge.
+  await recordAdsBudgetOrderPayment({
+    supabase,
+    orderId,
     reference: payload.reference,
-    amount: amountInCurrency,
-    fees: feesInCurrency,
-    net_amount: netAmount,
-    status: "success",
-    provider: "paystack",
-    transaction_type: "charge",
-    metadata: {
-      kind: "ads_budget_order",
-      ads_budget_order_id: orderId,
-      provider_id: providerId,
-      campaign_id: campaignId,
-    },
-    created_at: new Date().toISOString(),
+    amountMajor: convertFromSmallestUnit(Number(payload.amount || 0)),
+    feesMajor: convertFromSmallestUnit(Number(payload.fees || 0)),
+    providerIdHint: payload.metadata?.provider_id ? String(payload.metadata.provider_id) : null,
+    campaignIdHint: payload.metadata?.campaign_id ? String(payload.metadata.campaign_id) : null,
   });
-
-  const billingLabel = (campaignRow as any)?.billing_model === "time_based"
-    ? `Ads time-based boost (${(campaignRow as any)?.duration_days ?? "N"} days)`
-    : "Ads campaign budget (pre-pay)";
-
-  await supabase.from("finance_transactions").insert({
-    booking_id: null,
-    provider_id: providerId,
-    tenant_id: adsBudgetFinanceTenantId,
-    transaction_type: "provider_ads_payment",
-    amount: amountInCurrency,
-    fees: feesInCurrency,
-    commission: 0,
-    net: netAmount,
-    description: billingLabel,
-    created_at: new Date().toISOString(),
-  });
-
-  try {
-    const { notifyProviderTeamUsers } = await import("@/lib/notifications/notify-provider-team");
-    await notifyProviderTeamUsers(providerId, {
-      type: "ads_payment_confirmed",
-      title: "Ad payment confirmed",
-      message: `${billingLabel} payment confirmed. Your campaign is funded.`,
-      data: {
-        ads_budget_order_id: orderId,
-        campaign_id: campaignId,
-        amount: amountInCurrency,
-      },
-      action_url: "/provider/settings/ads",
-    });
-  } catch (notificationError) {
-    console.warn("Ads payment notification failed:", notificationError);
-  }
 }
 
 // ─── Customer standalone card verification (profile → add card) ─────────────
@@ -2695,7 +2619,6 @@ async function handleSubscriptionAuthorizationSuccess(
 
   const amountInCurrency = convertFromSmallestUnit(amount || 0);
   const feesInCurrency = convertFromSmallestUnit(fees || 0);
-  const netAmount = amountInCurrency - feesInCurrency;
 
   const subscriptionAuthTenantId = await resolveTenantIdForFinanceLedger(supabase, {
     tenant_id: null,
@@ -2739,23 +2662,22 @@ async function handleSubscriptionAuthorizationSuccess(
     });
   }
 
-  await supabase.from("payment_transactions").insert({
-    booking_id: null,
+  // Recognize the initial authorization charge through the unified idempotent
+  // helper. Previously this path posted only payment_transactions and NO
+  // finance_transactions, so the first paid month was never recognized as
+  // revenue until the next invoice — the helper closes that gap.
+  await recordProviderSubscriptionPayment({
+    supabase,
     reference,
-    amount: amountInCurrency,
-    fees: feesInCurrency,
-    net_amount: netAmount,
-    status: "success",
-    provider: "paystack",
-    transaction_type: "charge",
-    metadata: {
-      kind: "subscription_authorization",
-      provider_subscription_order_id: orderId,
-      provider_id: providerId,
-      plan_id: planId,
-      authorization_code: authCode,
-    },
-    created_at: new Date().toISOString(),
+    providerId,
+    amountMajor: amountInCurrency,
+    feesMajor: feesInCurrency,
+    planId,
+    orderId,
+    paymentTransactionType: "charge",
+    kind: "subscription_authorization",
+    description: "Provider subscription payment",
+    tenantIdHint: subscriptionAuthTenantId,
   });
 
   // Now automatically create the Paystack subscription

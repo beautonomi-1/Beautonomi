@@ -4,6 +4,12 @@ import { createClient } from "@supabase/supabase-js";
 import { differenceInCalendarDays } from "date-fns";
 import { getDayInTz } from "@/lib/dates/provider-tz";
 import { getProviderReportContext, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
+import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
+import {
+  CHANNEL_BASIS_NOTE,
+  computeBookingChannelBreakdown,
+} from "@/lib/reports/booking-channel-breakdown";
+import { RECOGNIZED_REVENUE_TYPES } from "@/lib/reports/provider-revenue-semantics";
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -25,7 +31,7 @@ export async function GET(request: NextRequest) {
 
     let bookingsQuery = supabaseAdmin
       .from("bookings")
-      .select("id, status, scheduled_at, cancellation_reason")
+      .select("id, status, scheduled_at, cancellation_reason, booking_source")
       .eq("provider_id", providerId)
       .gte("scheduled_at", fromDate.toISOString())
       .lte("scheduled_at", toDate.toISOString());
@@ -60,6 +66,20 @@ export async function GET(request: NextRequest) {
 
     const daysDiff = Math.max(1, differenceInCalendarDays(toDate, fromDate) + 1);
 
+    const { revenueByBooking } = await getProviderRevenue(
+      supabaseAdmin,
+      providerId,
+      fromDate,
+      toDate,
+      locationId || undefined,
+      { transactionTypes: RECOGNIZED_REVENUE_TYPES, timezone: reportContext.timezone },
+    );
+
+    const channel_breakdown = computeBookingChannelBreakdown({
+      bookings: all,
+      recognizedRevenueByBookingId: revenueByBooking,
+    });
+
     return successResponse({
       total_bookings: total,
       by_status: Array.from(statusCounts.entries()).map(([status, count]) => ({ status, count })),
@@ -71,8 +91,10 @@ export async function GET(request: NextRequest) {
       cancellation_reasons: Array.from(cancelReasons.entries())
         .map(([reason, count]) => ({ reason, count }))
         .sort((a, b) => b.count - a.count),
+      channel_breakdown,
+      channelBasisNote: CHANNEL_BASIS_NOTE,
       basisNote:
-        "Counts use bookings.scheduled_at in the selected range. This is operational volume — not ledger earnings (see Revenue or Sales history).",
+        "Counts use bookings.scheduled_at in the selected range. Channel revenue uses recognized ledger settlement dates (see channelBasisNote).",
       reportBasis: "Appointment date window; all statuses included unless filtered in detail reports.",
     });
   } catch (error) {

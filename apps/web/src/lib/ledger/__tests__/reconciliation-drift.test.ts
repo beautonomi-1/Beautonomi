@@ -63,6 +63,9 @@ const SHADOW_LEDGER_ALLOWLIST = [
   // 655: booking-level discount contra rows (GMV/net symmetry with promotion_discount).
   "membership_discount",
   "loyalty_discount",
+  // 664/665: reversal rows for ads + subscription funding integrity.
+  "provider_ads_refund",
+  "provider_subscription_refund",
 ] as const;
 
 /**
@@ -75,6 +78,8 @@ const POST_510_ALLOWLIST_MIGRATIONS: Record<string, string[]> = {
     "membership_discount",
     "loyalty_discount",
   ],
+  "664_ads_funding_integrity.sql": ["provider_ads_refund"],
+  "665_subscription_funding_integrity.sql": ["provider_subscription_refund"],
 };
 
 /**

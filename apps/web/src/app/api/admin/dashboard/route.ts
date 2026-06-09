@@ -387,10 +387,13 @@ export async function GET(request: NextRequest) {
 
       revenue_streams: {
         booking_commission: total.platform_take_net,
+        customer_paid_platform_fees: total.service_fee_revenue,
         subscriptions: total.subscription_net,
         ads: total.ads_net,
         service_fees: total.service_fee_revenue,
+        ecommerce_fees_detail: total.ecommerce_platform_fees,
         wallet_topups_cash_collected: wTotal,
+        manual_adjustments: total.manual_adjustments_net,
         total: platformNetTotal,
       },
 

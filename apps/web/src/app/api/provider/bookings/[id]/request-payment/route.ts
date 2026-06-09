@@ -193,7 +193,8 @@ export async function POST(
           booking_id: id,
         },
         ["push", "email"],
-        { appType: "customer", tenantId }
+        // In-app bell row inserted manually above; skip template auto-insert.
+        { appType: "customer", tenantId, skipInApp: true }
       );
     } catch (notifError) {
       console.error("Error sending additional payment request notification:", notifError);

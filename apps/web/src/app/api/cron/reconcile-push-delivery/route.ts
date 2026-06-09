@@ -39,6 +39,13 @@ const MIN_AGE_MINUTES = 4;
 const MAX_AGE_MINUTES = 45;
 const LOG_SCAN_LIMIT = 200;
 const MAX_REENQUEUE = 200;
+/**
+ * Devices not seen in this many days are almost certainly uninstalled or had
+ * their subscription rotated. Pruning them keeps targeting fast and avoids
+ * burning send legs on tombstones. Re-registration on next app launch restores
+ * an active device immediately, so this is safe.
+ */
+const STALE_DEVICE_DAYS = 90;
 
 type ReconcileMeta = {
   app_type: OneSignalAppType | null;
@@ -272,12 +279,31 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Prune stale devices (best-effort; never fails the reconcile run).
+    let prunedStale = 0;
+    try {
+      const staleCutoff = new Date(now - STALE_DEVICE_DAYS * 24 * 60 * 60_000).toISOString();
+      const { data: pruned, error: pruneErr } = await supabase
+        .from("user_devices")
+        .delete()
+        .lt("last_seen", staleCutoff)
+        .select("id");
+      if (pruneErr) {
+        console.warn("[reconcile-push-delivery] stale device prune failed:", pruneErr.message);
+      } else {
+        prunedStale = Array.isArray(pruned) ? pruned.length : 0;
+      }
+    } catch (pruneErr) {
+      console.warn("[reconcile-push-delivery] stale device prune error:", pruneErr);
+    }
+
     return NextResponse.json({
       ok: true,
       scanned,
       groups,
       undelivered,
       re_enqueued: reEnqueued,
+      pruned_stale_devices: prunedStale,
     });
   } catch (err) {
     Sentry.captureException(err, { tags: { cron: "reconcile-push-delivery" } });

@@ -332,7 +332,10 @@ async function sendMessageNotification(
         recipientUserIds,
         templateVars,
         template.channels || ["push"],
-        { appType }
+        // The in-app bell row is inserted below with the canonical new_message
+        // type + conversation deep link; skip the template auto-insert so a
+        // single message doesn't create two bell entries.
+        { appType, skipInApp: true }
       );
     } else {
       await sendToUsers(

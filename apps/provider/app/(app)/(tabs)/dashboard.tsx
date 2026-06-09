@@ -12,6 +12,7 @@ import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
 import { useProvider } from "@/providers/ProviderContext";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { ActiveLocationChip } from "@/components/reports/ActiveLocationChip";
 import { StatCard } from "@/components/ui/StatCard";
 import { Card } from "@/components/ui/Card";
 import { SectionHeader } from "@/components/ui/SectionHeader";
@@ -20,7 +21,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Avatar } from "@/components/ui/Avatar";
 import { ProviderDashboardExcellenceBanner } from "@/components/ProviderDashboardExcellenceBanner";
 import { DashboardSetupCard } from "@/components/setup/DashboardSetupCard";
-import { SkeletonDashboard } from "@/components/ui/Skeleton";
+import { Skeleton, SkeletonDashboard, SkeletonList } from "@/components/ui/Skeleton";
 import { ErrorState } from "@/components/ui/ErrorState";
 import {
   formatCurrency,
@@ -34,6 +35,7 @@ import { navigateToMoreScreen } from "@/lib/provider-tab-navigation";
 import { PROVIDER_DASHBOARD_REFRESH_EVENT } from "@/lib/provider-dashboard-events";
 import { normalizeTopServicesPayload } from "@/lib/normalize-top-services";
 import { newBookingScreenHref } from "@/lib/new-booking-nav-defaults";
+import { getProviderActivityIcon } from "@/lib/provider-activity-icons";
 import { Colors } from "@/constants/colors";
 
 interface DashboardMetrics {
@@ -55,6 +57,7 @@ interface DashboardMetrics {
   has_negative_payout_balance?: boolean;
   balance_owed_to_platform?: number;
   pending_payments_amount: number;
+  pending_payments_count?: number;
   completion_rate: number;
   no_show_rate: number;
   average_rating: number;
@@ -102,18 +105,161 @@ interface DashboardMetrics {
     is_distance_filter_enabled?: boolean;
   };
   dashboard_bundle_version?: number;
+  bookings_truncated?: boolean;
+  ledger_truncated?: boolean;
   insights?: {
     weekly_revenue: WeeklyRevenue[];
     top_services: TopService[];
     recent_activity: ActivityItem[];
     today_bookings: Booking[];
     upcoming_bookings: Booking[];
-    basis?: { upcoming?: string };
+    basis?: {
+      upcoming?: string;
+      activity?: string | null;
+      activity_window?: string | null;
+    };
   } | null;
   booking_eligibility?: {
     can_accept_online_bookings: boolean;
     booking_limit_message: string | null;
   } | null;
+  period_breakdown?: {
+    today: DashboardPeriodSlice;
+    this_week: DashboardPeriodSlice;
+    this_month: DashboardPeriodSlice;
+  } | null;
+  period_comparison?: {
+    today: DashboardPeriodComparison;
+    this_week: DashboardPeriodComparison;
+    this_month: DashboardPeriodComparison;
+  } | null;
+}
+
+type DashboardPeriodChannelMix = {
+  online: number;
+  walk_in: number;
+  provider: number;
+};
+
+type DashboardPeriodEarningsMix = {
+  service_earnings: number;
+  product_order_earnings: number;
+  membership_earnings: number;
+  additional_charge_earnings: number;
+  other_earnings: number;
+  tips: number;
+  travel_fees: number;
+  gift_card_sales: number;
+  membership_sales: number;
+  refunds: number;
+  recognized_total: number;
+};
+
+type DashboardPeriodSlice = {
+  revenue: number;
+  appointments: number;
+  retail_sales: number;
+  retail_sales_count: number;
+  earnings_mix: DashboardPeriodEarningsMix;
+  channel_mix?: DashboardPeriodChannelMix;
+  /**
+   * True when earnings_mix carries all-time totals (legacy fallback for an API
+   * that didn't send period_breakdown) rather than period-scoped values. The UI
+   * must label the breakdown "all-time" so the numbers aren't read as the period.
+   */
+  earnings_mix_is_all_time?: boolean;
+  booking_status: {
+    pending: number;
+    confirmed: number;
+    completed: number;
+    cancelled: number;
+    no_show: number;
+    scheduled_total: number;
+  };
+  performance: {
+    completion_rate: number;
+    no_show_rate: number;
+  };
+};
+
+type DashboardPeriodComparison = {
+  revenue_growth_pct: number;
+  appointments_growth_pct: number;
+  prior_revenue: number;
+  prior_appointments: number;
+  prior_label: string;
+};
+
+type PeriodChip = "today" | "week" | "month";
+type PeriodApiKey = "today" | "this_week" | "this_month";
+
+function periodApiKey(chip: PeriodChip): PeriodApiKey {
+  if (chip === "week") return "this_week";
+  if (chip === "month") return "this_month";
+  return "today";
+}
+
+function legacyPeriodSlice(m: DashboardMetrics, chip: PeriodChip): DashboardPeriodSlice {
+  const revenue =
+    chip === "today"
+      ? m.revenue_today ?? 0
+      : chip === "week"
+        ? m.revenue_this_week ?? 0
+        : m.revenue_this_month ?? 0;
+  const appointments =
+    chip === "today"
+      ? m.appointments_today ?? 0
+      : chip === "week"
+        ? m.appointments_this_week ?? 0
+        : m.appointments_this_month ?? 0;
+  const retail_sales =
+    chip === "today"
+      ? m.retail_sales_today ?? 0
+      : chip === "week"
+        ? m.retail_sales_this_week ?? 0
+        : m.retail_sales_this_month ?? 0;
+  const retail_sales_count =
+    chip === "today"
+      ? m.retail_sales_count_today ?? 0
+      : chip === "week"
+        ? m.retail_sales_count_this_week ?? 0
+        : m.retail_sales_count_this_month ?? 0;
+
+  return {
+    revenue,
+    appointments,
+    retail_sales,
+    retail_sales_count,
+    // These *_total fields are lifetime aggregates, not period-scoped, so flag
+    // the mix as all-time and let the UI relabel it (avoids mislabeling).
+    earnings_mix_is_all_time: true,
+    earnings_mix: {
+      service_earnings: m.service_earnings_total ?? 0,
+      product_order_earnings:
+        m.product_order_earnings_platform_total ?? m.product_order_earnings_total ?? 0,
+      membership_earnings: 0,
+      additional_charge_earnings: m.additional_charge_earnings_total ?? 0,
+      other_earnings: m.other_earnings_total ?? 0,
+      tips: m.tips_total ?? 0,
+      travel_fees: m.travel_fees_total ?? 0,
+      gift_card_sales: m.gift_card_sales_total ?? 0,
+      membership_sales: m.membership_sales_total ?? 0,
+      refunds: m.refunds_total ?? 0,
+      recognized_total: m.recognized_earnings_total ?? revenue,
+    },
+    booking_status: {
+      pending: m.pending_bookings ?? 0,
+      confirmed: m.confirmed_bookings ?? 0,
+      completed: m.completed_bookings ?? 0,
+      cancelled: m.cancelled_bookings ?? 0,
+      no_show: m.no_show_bookings ?? 0,
+      scheduled_total: appointments,
+    },
+    performance: {
+      completion_rate: m.completion_rate ?? 0,
+      no_show_rate: m.no_show_rate ?? 0,
+    },
+  };
 }
 
 interface Booking {
@@ -184,45 +330,6 @@ const DATE_RANGE_OPTIONS = [
   { label: "This Week", value: "week" },
   { label: "This Month", value: "month" },
 ];
-
-function getActivityIcon(type: string): {
-  name: keyof typeof Ionicons.glyphMap;
-  color: string;
-  bg: string;
-} {
-  switch (type) {
-    case "booking_created":
-    case "new_booking":
-      return { name: "book-outline", color: "#6366f1", bg: "#eef2ff" };
-    case "booking_completed":
-      return { name: "checkmark-circle-outline", color: "#22c55e", bg: "#f0fdf4" };
-    case "booking_cancelled":
-      return { name: "close-circle-outline", color: "#ef4444", bg: "#fef2f2" };
-    case "payment_received":
-    case "ledger_earnings":
-    case "booking_earnings":
-      return { name: "cash-outline", color: "#22c55e", bg: "#f0fdf4" };
-    case "product_order_earnings":
-    case "product_sale_completed":
-      return { name: "bag-handle-outline", color: "#059669", bg: "#ecfdf5" };
-    case "tip_recognized":
-      return { name: "heart-outline", color: "#16a34a", bg: "#f0fdf4" };
-    case "travel_fee_recognized":
-      return { name: "car-outline", color: "#7c3aed", bg: "#f5f3ff" };
-    case "additional_charge_earnings":
-      return { name: "add-circle-outline", color: "#0f766e", bg: "#f0fdfa" };
-    case "cancellation_fee_recognized":
-      return { name: "receipt-outline", color: "#b45309", bg: "#fffbeb" };
-    case "payout_sent":
-      return { name: "arrow-forward-circle-outline", color: "#7c3aed", bg: "#f5f3ff" };
-    case "new_review":
-      return { name: "star-outline", color: "#f59e0b", bg: "#fffbeb" };
-    case "new_client":
-      return { name: "person-add-outline", color: "#3b82f6", bg: "#eff6ff" };
-    default:
-      return { name: "ellipse-outline", color: "#6b7280", bg: "#f3f4f6" };
-  }
-}
 
 function WeeklyRevenueChart({ data, todayYmd }: { data: WeeklyRevenue[]; todayYmd?: string }) {
   const maxRevenue = Math.max(...data.map((d) => d.revenue), 1);
@@ -593,47 +700,31 @@ export default function DashboardScreen() {
   const dashMetricLg = isTablet ? 22 : 17;
   const dashMetricMd = isTablet ? 19 : 15;
 
-  const displayRevenue = useMemo(() => {
-    if (!m) return formatCurrency(0);
-    switch (dateRange) {
-      case "today":
-        return formatCurrency(m.revenue_today ?? 0);
-      case "week":
-        return formatCurrency(m.revenue_this_week ?? 0);
-      case "month":
-        return formatCurrency(m.revenue_this_month ?? 0);
-      default:
-        return formatCurrency(m.revenue_today ?? 0);
-    }
-  }, [m, dateRange]);
+  const periodKey = periodApiKey(dateRange as PeriodChip);
 
-  const displayAppointments = useMemo(() => {
-    if (!m) return 0;
-    switch (dateRange) {
-      case "today":
-        return m.appointments_today ?? 0;
-      case "week":
-        return m.appointments_this_week ?? 0;
-      case "month":
-        return m.appointments_this_month ?? 0;
-      default:
-        return m.appointments_today ?? 0;
-    }
-  }, [m, dateRange]);
+  const activePeriod = useMemo(() => {
+    if (!m) return null;
+    return m.period_breakdown?.[periodKey] ?? legacyPeriodSlice(m, dateRange as PeriodChip);
+  }, [m, periodKey, dateRange]);
 
-  const displayRetailSales = useMemo(() => {
-    if (!m) return formatCurrency(0);
-    switch (dateRange) {
-      case "today":
-        return formatCurrency(m.retail_sales_today ?? 0);
-      case "week":
-        return formatCurrency(m.retail_sales_this_week ?? 0);
-      case "month":
-        return formatCurrency(m.retail_sales_this_month ?? 0);
-      default:
-        return formatCurrency(m.retail_sales_today ?? 0);
-    }
-  }, [m, dateRange]);
+  const activeComparison = useMemo(() => {
+    if (!m) return null;
+    return m.period_comparison?.[periodKey] ?? null;
+  }, [m, periodKey]);
+
+  const displayRevenue = formatCurrency(activePeriod?.revenue ?? 0);
+  const displayAppointments = activePeriod?.appointments ?? 0;
+  const displayRetailSales = formatCurrency(activePeriod?.retail_sales ?? 0);
+  const earningsMix = activePeriod?.earnings_mix;
+  const bookingStatus = activePeriod?.booking_status;
+  const periodPerformance = activePeriod?.performance;
+
+  const revenueTrend = activeComparison
+    ? { value: activeComparison.revenue_growth_pct, label: `vs ${activeComparison.prior_label}` }
+    : undefined;
+  const appointmentsTrend = activeComparison
+    ? { value: activeComparison.appointments_growth_pct, label: `vs ${activeComparison.prior_label}` }
+    : undefined;
 
   const upcomingBasisFootnote =
     metrics?.insights?.basis?.upcoming ??
@@ -684,15 +775,25 @@ export default function DashboardScreen() {
     };
   }, [m, selectedLocationId]);
 
-  const chartData: WeeklyRevenue[] = useMemo(
-    () =>
-      weeklyRevenue ??
-      Array.from({ length: 7 }, (_, i) => ({
-        day: format(subDays(new Date(), 6 - i), "yyyy-MM-dd"),
-        revenue: 0,
-      })),
-    [weeklyRevenue],
-  );
+  const chartData: WeeklyRevenue[] = useMemo(() => {
+    if (weeklyRevenue) return weeklyRevenue;
+    const tz = provider?.timezone?.trim() || null;
+    if (tz) {
+      try {
+        const zNow = toZonedTime(new Date(), tz);
+        return Array.from({ length: 7 }, (_, i) => ({
+          day: formatInTimeZone(subDays(zNow, 6 - i), tz, "yyyy-MM-dd"),
+          revenue: 0,
+        }));
+      } catch {
+        /* fall through */
+      }
+    }
+    return Array.from({ length: 7 }, (_, i) => ({
+      day: format(subDays(new Date(), 6 - i), "yyyy-MM-dd"),
+      revenue: 0,
+    }));
+  }, [weeklyRevenue, provider?.timezone]);
   const insightsLoading = !secondaryEnabled;
 
   if (metricsLoading && !metrics && !metricsTimedOut) {
@@ -728,7 +829,8 @@ export default function DashboardScreen() {
 
   return (
     <ScreenContainer refreshing={refreshing} onRefresh={handleRefresh}>
-      <ScreenHeader title="Dashboard" subtitle={`${m?.appointments_today ?? 0} appointments today`} />
+      <ScreenHeader title="Dashboard" subtitle={`${displayAppointments} appointments ${periodLabel.toLowerCase()}`} />
+      <ActiveLocationChip />
 
       {provider?.status === "pending_approval" && (
         <View
@@ -920,11 +1022,11 @@ export default function DashboardScreen() {
             );
           }}
           activeOpacity={0.7}
-          accessibilityLabel="Record a walk-in booking"
+          accessibilityLabel="Create a walk-in appointment"
           accessibilityRole="button"
         >
           <Ionicons name="walk-outline" size={18} color="#111" />
-          <Text style={{ marginLeft: 8, fontWeight: "600", color: Colors.gray[900] }}>Walk-in</Text>
+          <Text style={{ marginLeft: 8, fontWeight: "600", color: Colors.gray[900] }}>Walk-in appt</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={{ minHeight: 48, flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white }}
@@ -937,12 +1039,36 @@ export default function DashboardScreen() {
           accessibilityRole="button"
         >
           <Ionicons name="pricetag-outline" size={18} color="#111" />
-          <Text style={{ marginLeft: 8, fontWeight: "600", color: Colors.gray[900] }}>Sale</Text>
+          <Text style={{ marginLeft: 8, fontWeight: "600", color: Colors.gray[900] }}>Retail</Text>
         </TouchableOpacity>
       </View>
 
+      <TouchableOpacity
+        style={{
+          minHeight: 48,
+          marginBottom: 16,
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "center",
+          borderRadius: 12,
+          borderWidth: 1,
+          borderColor: Colors.primaryRing,
+          backgroundColor: Colors.primarySoft,
+        }}
+        onPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          router.push("/(app)/(tabs)/sales" as never);
+        }}
+        activeOpacity={0.7}
+        accessibilityLabel="Open sell and point of sale checkout"
+        accessibilityRole="button"
+      >
+        <Ionicons name="card-outline" size={18} color={Colors.primary} />
+        <Text style={{ marginLeft: 8, fontWeight: "700", color: Colors.primary }}>Sell / POS</Text>
+      </TouchableOpacity>
+
       {/* Date Range Selector */}
-      <View style={{ marginBottom: 16 }}>
+      <View style={{ marginBottom: 8 }}>
         <FilterChipGroup
           options={DATE_RANGE_OPTIONS}
           selected={dateRange}
@@ -953,45 +1079,50 @@ export default function DashboardScreen() {
         />
       </View>
 
-      {/* Revenue Stats */}
-      <View
-        style={{ flexDirection: "row", flexWrap: "wrap" }}
-      >
-        <View style={{ width: statColumns === 4 ? "24%" : "48.5%", marginRight: 12, marginBottom: 12 }}>
+      <SectionHeader title={`This ${periodLabel}`} />
+      <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 12, marginTop: -4 }}>
+        Earnings use the day you were paid. Appointments use the day they are scheduled.
+      </Text>
+
+      <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
+        <View style={{ width: isTablet && columns >= 3 ? "31%" : "48.5%", marginRight: 12, marginBottom: 12 }}>
           <StatCard
-            title={`${periodLabel} Revenue earned`}
+            title="Revenue earned"
             value={displayRevenue}
-            subtitle="Recognized when paid (ledger date)"
+            subtitle="Counted on payment date"
             icon="wallet-outline"
             iconColor="#22c55e"
             iconBg="bg-green-50"
+            trend={revenueTrend}
             compact={!isTablet}
           />
         </View>
-        <View style={{ width: statColumns === 4 ? "24%" : "48.5%", marginRight: 12, marginBottom: 12 }}>
+        <View style={{ width: isTablet && columns >= 3 ? "31%" : "48.5%", marginRight: 12, marginBottom: 12 }}>
           <StatCard
-            title={`${periodLabel} Appointments`}
+            title="Appointments"
             value={String(displayAppointments)}
+            subtitle="Scheduled in period"
             icon="calendar-outline"
             iconColor="#6366f1"
             iconBg="bg-indigo-50"
+            trend={appointmentsTrend}
             compact={!isTablet}
           />
         </View>
-        <View style={{ width: statColumns === 4 ? "24%" : "48.5%", marginRight: 12, marginBottom: 12 }}>
+        <View style={{ width: isTablet && columns >= 3 ? "31%" : "48.5%", marginBottom: 12 }}>
           <TouchableOpacity
             activeOpacity={0.85}
             accessibilityRole="button"
-            accessibilityLabel={`${periodLabel} Retail sales, ${displayRetailSales}`}
+            accessibilityLabel={`Retail sales, ${displayRetailSales}`}
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               navigateToMoreScreen(router, "/(app)/(tabs)/more/walk-in-sale", { from: "dashboard" });
             }}
           >
             <StatCard
-              title={`${periodLabel} Retail sales`}
+              title="Retail sales"
               value={displayRetailSales}
-              subtitle="Walk-in POS (not platform payout)"
+              subtitle="In-person sales you collected"
               icon="pricetag-outline"
               iconColor="#059669"
               iconBg="bg-emerald-50"
@@ -999,142 +1130,98 @@ export default function DashboardScreen() {
             />
           </TouchableOpacity>
         </View>
-        <View style={{ width: statColumns === 4 ? "24%" : "48.5%", marginRight: 12, marginBottom: 12 }}>
-          <TouchableOpacity
-            activeOpacity={0.85}
-            accessibilityRole="button"
-            accessibilityLabel={`${payoutBalanceCard.title}, ${payoutBalanceCard.value}`}
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              router.push("/(app)/(tabs)/more/payouts" as never);
-            }}
-          >
-            <StatCard
-              title={payoutBalanceCard.title}
-              value={payoutBalanceCard.value}
-              subtitle={payoutBalanceCard.subtitle}
-              icon="cash-outline"
-              iconColor="#f59e0b"
-              iconBg="bg-amber-50"
-              compact={!isTablet}
-            />
-          </TouchableOpacity>
-        </View>
-        <View style={{ width: statColumns === 4 ? "24%" : "48.5%", marginBottom: 12 }}>
-          <StatCard
-            title="Pending Payments"
-            value={formatCurrency(m?.pending_payments_amount ?? 0)}
-            icon="time-outline"
-            iconColor="#f97316"
-            iconBg="bg-orange-50"
-            compact={!isTablet}
-          />
-        </View>
       </View>
 
-      <SectionHeader title="Earnings Mix" />
+      <SectionHeader title="How you earned it" />
       <View style={{ borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 14, marginBottom: 12 }}>
+        {activePeriod?.earnings_mix_is_all_time ? (
+          <Text style={{ fontSize: 11, color: Colors.gray[500], marginBottom: 10 }}>
+            Showing all-time totals (a per-period breakdown is not available for this view).
+          </Text>
+        ) : null}
         <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
           <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Services</Text>
           <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>
-            {formatCurrency(m?.service_earnings_total ?? 0)}
+            {formatCurrency(earningsMix?.service_earnings ?? 0)}
           </Text>
         </View>
         <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
-          <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Product orders (platform)</Text>
+          <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Online product orders</Text>
           <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>
-            {formatCurrency(
-              m?.product_order_earnings_platform_total ?? m?.product_order_earnings_total ?? 0,
-            )}
+            {formatCurrency(earningsMix?.product_order_earnings ?? 0)}
           </Text>
         </View>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
-          <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Retail (POS / collected)</Text>
-          <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>
-            {formatCurrency(m?.product_order_retail_total ?? 0)}
-          </Text>
-        </View>
-        <Text style={{ fontSize: 11, color: Colors.gray[500], marginBottom: 8 }}>
-          Ledger revenue cards exclude POS/collected retail; retail stat uses walk-in and cash/COD/Yoco orders by paid date.
-        </Text>
         <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
           <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Additional charges</Text>
           <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>
-            {formatCurrency(m?.additional_charge_earnings_total ?? 0)}
+            {formatCurrency(earningsMix?.additional_charge_earnings ?? 0)}
           </Text>
         </View>
         <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
           <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Tips</Text>
           <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>
-            {formatCurrency(m?.tips_total ?? 0)}
+            {formatCurrency(earningsMix?.tips ?? 0)}
           </Text>
         </View>
         <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
           <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Travel fees</Text>
           <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>
-            {formatCurrency(m?.travel_fees_total ?? 0)}
+            {formatCurrency(earningsMix?.travel_fees ?? 0)}
           </Text>
         </View>
-        {(m?.gift_card_sales_total ?? 0) > 0 ? (
+        {(earningsMix?.gift_card_sales ?? 0) > 0 ? (
           <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
             <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Gift card sales</Text>
             <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>
-              {formatCurrency(m?.gift_card_sales_total ?? 0)}
+              {formatCurrency(earningsMix?.gift_card_sales ?? 0)}
             </Text>
           </View>
         ) : null}
-        {(m?.membership_sales_total ?? 0) > 0 ? (
+        {(earningsMix?.membership_sales ?? 0) > 0 ? (
           <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
             <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Membership sales</Text>
             <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>
-              {formatCurrency(m?.membership_sales_total ?? 0)}
+              {formatCurrency(earningsMix?.membership_sales ?? 0)}
             </Text>
           </View>
         ) : null}
-        {(m?.refunds_total ?? 0) > 0 ? (
+        {(earningsMix?.refunds ?? 0) > 0 ? (
           <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
             <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Refunds</Text>
             <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>
-              -{formatCurrency(m?.refunds_total ?? 0)}
+              -{formatCurrency(earningsMix?.refunds ?? 0)}
             </Text>
           </View>
         ) : null}
-        {(m?.other_earnings_total ?? 0) > 0 ? (
+        {(earningsMix?.other_earnings ?? 0) > 0 ? (
           <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
             <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Other earnings</Text>
             <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>
-              {formatCurrency(m?.other_earnings_total ?? 0)}
+              {formatCurrency(earningsMix?.other_earnings ?? 0)}
             </Text>
           </View>
         ) : null}
-        {m?.earnings_mix_time_basis ? (
-          <Text style={{ fontSize: 11, color: Colors.gray[500], marginBottom: 8 }}>
-            {m.earnings_mix_time_basis}
-          </Text>
-        ) : null}
         <View style={{ marginTop: 4, borderTopWidth: 1, borderTopColor: Colors.gray[100], paddingTop: 8, flexDirection: "row", justifyContent: "space-between" }}>
-          <Text style={{ fontSize: 13, fontWeight: "700", color: Colors.gray[800] }}>Recognized total</Text>
+          <Text style={{ fontSize: 13, fontWeight: "700", color: Colors.gray[800] }}>
+            Total earned ({activePeriod?.earnings_mix_is_all_time ? "all-time" : periodLabel.toLowerCase()})
+          </Text>
           <Text style={{ fontSize: 15, fontWeight: "700", color: Colors.gray[900] }}>
-            {formatCurrency(m?.recognized_earnings_total ?? 0)}
+            {formatCurrency(earningsMix?.recognized_total ?? activePeriod?.revenue ?? 0)}
           </Text>
         </View>
       </View>
 
-      {/* Weekly Revenue Chart */}
-      <SectionHeader title="Recognized Earnings Trend (7 Days)" />
+      <SectionHeader title="Earnings trend (last 7 days)" />
       {insightsLoading ? (
         <Card variant="default" padding="md">
-          <View style={{ alignItems: "center", paddingVertical: 20 }}>
-            <Text style={{ fontSize: 13, color: Colors.gray[500] }}>Loading insights…</Text>
-          </View>
+          <Skeleton height={160} borderRadius={12} />
         </Card>
       ) : (
         <WeeklyRevenueChart data={chartData} todayYmd={today} />
       )}
 
-      {/* Bookings Overview - schedule count is period-scoped; status counts are all-time */}
       <SectionHeader
-        title="Booking Status"
+        title={`Booking status (${periodLabel.toLowerCase()})`}
         actionLabel="View All"
         onAction={() =>
           router.push("/(app)/(tabs)/bookings" as never)
@@ -1157,7 +1244,7 @@ export default function DashboardScreen() {
         </View>
         <View
           style={{ flex: 1, marginRight: 12, alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 12 }}
-          accessibilityLabel={`${m?.pending_bookings ?? 0} pending`}
+          accessibilityLabel={`${bookingStatus?.pending ?? 0} pending`}
         >
           <Text
             style={{ fontSize: dashMetricLg, fontWeight: "700", color: "#d97706" }}
@@ -1165,13 +1252,13 @@ export default function DashboardScreen() {
             adjustsFontSizeToFit={Platform.OS !== "web"}
             minimumFontScale={0.7}
           >
-            {m?.pending_bookings ?? 0}
+            {bookingStatus?.pending ?? 0}
           </Text>
           <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>Pending</Text>
         </View>
         <View
           style={{ flex: 1, marginRight: 12, alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 12 }}
-          accessibilityLabel={`${m?.confirmed_bookings ?? 0} confirmed`}
+          accessibilityLabel={`${bookingStatus?.confirmed ?? 0} confirmed`}
         >
           <Text
             style={{ fontSize: dashMetricLg, fontWeight: "700", color: "#4f46e5" }}
@@ -1179,13 +1266,13 @@ export default function DashboardScreen() {
             adjustsFontSizeToFit={Platform.OS !== "web"}
             minimumFontScale={0.7}
           >
-            {m?.confirmed_bookings ?? 0}
+            {bookingStatus?.confirmed ?? 0}
           </Text>
           <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>Confirmed</Text>
         </View>
         <View
           style={{ flex: 1, alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 12 }}
-          accessibilityLabel={`${m?.completed_bookings ?? 0} completed`}
+          accessibilityLabel={`${bookingStatus?.completed ?? 0} completed`}
         >
           <Text
             style={{ fontSize: dashMetricLg, fontWeight: "700", color: "#16a34a" }}
@@ -1193,18 +1280,119 @@ export default function DashboardScreen() {
             adjustsFontSizeToFit={Platform.OS !== "web"}
             minimumFontScale={0.7}
           >
-            {m?.completed_bookings ?? 0}
+            {bookingStatus?.completed ?? 0}
           </Text>
           <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>Completed</Text>
         </View>
       </View>
+      <View style={{ flexDirection: "row", marginTop: 8 }}>
+        <View
+          style={{ flex: 1, marginRight: 12, alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 12 }}
+          accessibilityLabel={`${bookingStatus?.cancelled ?? 0} cancelled`}
+        >
+          <Text
+            style={{ fontSize: dashMetricLg, fontWeight: "700", color: "#6b7280" }}
+            numberOfLines={1}
+            adjustsFontSizeToFit={Platform.OS !== "web"}
+            minimumFontScale={0.7}
+          >
+            {bookingStatus?.cancelled ?? 0}
+          </Text>
+          <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>Cancelled</Text>
+        </View>
+        <View
+          style={{ flex: 1, alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 12 }}
+          accessibilityLabel={`${bookingStatus?.no_show ?? 0} no show`}
+        >
+          <Text
+            style={{ fontSize: dashMetricLg, fontWeight: "700", color: "#dc2626" }}
+            numberOfLines={1}
+            adjustsFontSizeToFit={Platform.OS !== "web"}
+            minimumFontScale={0.7}
+          >
+            {bookingStatus?.no_show ?? 0}
+          </Text>
+          <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>No-show</Text>
+        </View>
+      </View>
 
-      {/* Top Services */}
-      <SectionHeader title="Top Services" />
+      {(activePeriod?.channel_mix?.online ?? 0) +
+        (activePeriod?.channel_mix?.walk_in ?? 0) +
+        (activePeriod?.channel_mix?.provider ?? 0) >
+        0 ? (
+        <>
+          <SectionHeader title={`Appointments by channel (${periodLabel.toLowerCase()})`} />
+          <Text style={{ marginTop: -6, marginBottom: 8, fontSize: 11, color: Colors.gray[500] }}>
+            Appointment counts — not revenue. Channel earnings are in Reports → Bookings.
+          </Text>
+          <View style={{ flexDirection: "row", marginBottom: 12 }}>
+            <View
+              style={{
+                flex: 1,
+                marginRight: 8,
+                alignItems: "center",
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: Colors.gray[100],
+                backgroundColor: Colors.white,
+                padding: 12,
+              }}
+              accessibilityRole="text"
+              accessibilityLabel={`${activePeriod?.channel_mix?.online ?? 0} online bookings ${periodLabel.toLowerCase()}`}
+            >
+              <Text style={{ fontSize: dashMetricLg, fontWeight: "700", color: "#3b82f6" }}>
+                {activePeriod?.channel_mix?.online ?? 0}
+              </Text>
+              <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>Online</Text>
+            </View>
+            <View
+              style={{
+                flex: 1,
+                marginRight: 8,
+                alignItems: "center",
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: Colors.gray[100],
+                backgroundColor: Colors.white,
+                padding: 12,
+              }}
+              accessibilityRole="text"
+              accessibilityLabel={`${activePeriod?.channel_mix?.walk_in ?? 0} walk-in bookings ${periodLabel.toLowerCase()}`}
+            >
+              <Text style={{ fontSize: dashMetricLg, fontWeight: "700", color: "#d97706" }}>
+                {activePeriod?.channel_mix?.walk_in ?? 0}
+              </Text>
+              <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>Walk-in</Text>
+            </View>
+            <View
+              style={{
+                flex: 1,
+                alignItems: "center",
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: Colors.gray[100],
+                backgroundColor: Colors.white,
+                padding: 12,
+              }}
+              accessibilityRole="text"
+              accessibilityLabel={`${activePeriod?.channel_mix?.provider ?? 0} provider-created bookings ${periodLabel.toLowerCase()}`}
+            >
+              <Text style={{ fontSize: dashMetricLg, fontWeight: "700", color: "#8b5cf6" }}>
+                {activePeriod?.channel_mix?.provider ?? 0}
+              </Text>
+              <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>Provider</Text>
+            </View>
+          </View>
+        </>
+      ) : null}
+
+      <SectionHeader title="Top services (last 30 days)" />
+      <Text style={{ marginTop: -6, marginBottom: 8, fontSize: 11, color: Colors.gray[500] }}>
+        Fixed 30-day window — not affected by the period selected above.
+      </Text>
       {insightsLoading ? (
-        <View style={{ alignItems: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingVertical: 24 }}>
-          <Ionicons name="hourglass-outline" size={24} color="#9ca3af" />
-          <Text style={{ marginTop: 8, fontSize: 13, color: Colors.gray[500] }}>Preparing top services…</Text>
+        <View style={{ borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 12 }}>
+          <SkeletonList rows={3} />
         </View>
       ) : topServicesError && !topServices ? (
         <TouchableOpacity onPress={refreshFallbackTopServices} activeOpacity={0.7} style={{ alignItems: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: "#fecaca", backgroundColor: "#fef2f2", paddingVertical: 16 }}>
@@ -1255,15 +1443,110 @@ export default function DashboardScreen() {
         </View>
       )}
 
-      {/* Performance */}
-      <SectionHeader title="Performance" />
-      <View style={{ flexDirection: "row" }}>
+      <SectionHeader title={`Performance (${periodLabel.toLowerCase()})`} />
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
         <View
-          style={{ flex: 1, marginRight: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16 }}
-          accessibilityLabel={`Rating: ${m?.average_rating?.toFixed(1) ?? "0.0"} from ${m?.total_reviews ?? 0} reviews`}
+          style={{ flex: 1, minWidth: "45%", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16 }}
+          accessibilityLabel={`Completion rate: ${formatPercentage(periodPerformance?.completion_rate ?? 0)}`}
+        >
+          <Text
+            style={{ fontSize: dashMetricMd, fontWeight: "700", color: Colors.gray[900] }}
+            numberOfLines={1}
+            adjustsFontSizeToFit={Platform.OS !== "web"}
+            minimumFontScale={0.75}
+          >
+            {formatPercentage(periodPerformance?.completion_rate ?? 0)}
+          </Text>
+          <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>Completion rate</Text>
+        </View>
+        <View
+          style={{ flex: 1, minWidth: "45%", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16 }}
+          accessibilityLabel={`No show rate: ${formatPercentage(periodPerformance?.no_show_rate ?? 0)}`}
+        >
+          <Text
+            style={{ fontSize: dashMetricMd, fontWeight: "700", color: Colors.gray[900] }}
+            numberOfLines={1}
+            adjustsFontSizeToFit={Platform.OS !== "web"}
+            minimumFontScale={0.75}
+          >
+            {formatPercentage(periodPerformance?.no_show_rate ?? 0)}
+          </Text>
+          <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>No-show rate</Text>
+        </View>
+      </View>
+      {(m?.bookings_truncated || m?.ledger_truncated) && (
+        <Text style={{ marginTop: 8, fontSize: 11, color: Colors.gray[500], paddingHorizontal: 4 }}>
+          {m?.bookings_truncated && m?.ledger_truncated
+            ? "Some booking and ledger totals may be incomplete for very high-volume accounts."
+            : m?.bookings_truncated
+              ? "Booking status counts may be incomplete for very high-volume accounts."
+              : "Period earnings may be incomplete for very high-volume accounts."}
+        </Text>
+      )}
+
+      <SectionHeader title="Balances now" />
+      <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 12, marginTop: -4 }}>
+        Current balances are not filtered by the period above.
+      </Text>
+      <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
+        <View style={{ width: "48.5%", marginRight: 12, marginBottom: 12 }}>
+          <TouchableOpacity
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel={`${payoutBalanceCard.title}, ${payoutBalanceCard.value}`}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push("/(app)/(tabs)/more/payouts" as never);
+            }}
+          >
+            <StatCard
+              title={payoutBalanceCard.title}
+              value={payoutBalanceCard.value}
+              subtitle={payoutBalanceCard.subtitle}
+              icon="cash-outline"
+              iconColor="#f59e0b"
+              iconBg="bg-amber-50"
+              compact={!isTablet}
+            />
+          </TouchableOpacity>
+        </View>
+        <View style={{ width: "48.5%", marginBottom: 12 }}>
+          <TouchableOpacity
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel={`Unpaid bookings, ${formatCurrency(m?.pending_payments_amount ?? 0)}`}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push("/(app)/(tabs)/more/bookings?status=pending_payment" as never);
+            }}
+          >
+            <StatCard
+              title="Unpaid bookings"
+              value={formatCurrency(m?.pending_payments_amount ?? 0)}
+              subtitle={
+                (m?.pending_payments_count ?? 0) > 0
+                  ? `${m?.pending_payments_count} booking${(m?.pending_payments_count ?? 0) === 1 ? "" : "s"} awaiting payment`
+                  : "Nothing outstanding"
+              }
+              icon="time-outline"
+              iconColor="#f97316"
+              iconBg="bg-orange-50"
+              compact={!isTablet}
+            />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <SectionHeader title="Your standing" />
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12, marginBottom: 8 }}>
+        <TouchableOpacity
+          style={{ flex: 1, minWidth: "45%", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16 }}
+          activeOpacity={0.8}
+          onPress={() => router.push("/(app)/(tabs)/more/reviews" as never)}
+          accessibilityLabel={`Rating ${m?.average_rating?.toFixed(1) ?? "0.0"} from ${m?.total_reviews ?? 0} reviews`}
         >
           <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <Ionicons name="star" size={18} color="#f59e0b" style={{ marginRight: 6 }} />
+            <Ionicons name="star" size={18} color="#f59e0b" />
             <Text
               style={{ marginLeft: 6, fontSize: dashMetricMd, fontWeight: "700", color: Colors.gray[900] }}
               numberOfLines={1}
@@ -1276,40 +1559,11 @@ export default function DashboardScreen() {
           <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>
             {m?.total_reviews ?? 0} reviews
           </Text>
-        </View>
-        <View
-          style={{ flex: 1, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16 }}
-          accessibilityLabel={`No show rate: ${formatPercentage(m?.no_show_rate ?? 0)}`}
-        >
-          <Text
-            style={{ fontSize: dashMetricMd, fontWeight: "700", color: Colors.gray[900] }}
-            numberOfLines={1}
-            adjustsFontSizeToFit={Platform.OS !== "web"}
-            minimumFontScale={0.75}
-          >
-            {formatPercentage(m?.no_show_rate ?? 0)}
-          </Text>
-          <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>No-show rate</Text>
-        </View>
-        <View
-          style={{ flex: 1, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16 }}
-          accessibilityLabel={`${m?.completed_bookings ?? 0} completed bookings`}
-        >
-          <Text
-            style={{ fontSize: dashMetricMd, fontWeight: "700", color: Colors.gray[900] }}
-            numberOfLines={1}
-            adjustsFontSizeToFit={Platform.OS !== "web"}
-            minimumFontScale={0.75}
-          >
-            {m?.completed_bookings ?? 0}
-          </Text>
-          <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>Completed</Text>
-        </View>
+        </TouchableOpacity>
       </View>
 
-      {/* Rewards & Achievements — always visible */}
       <SectionHeader
-        title="Rewards & Achievements"
+        title="Rewards & achievements"
         actionLabel="View All"
         onAction={() => {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -1459,11 +1713,22 @@ export default function DashboardScreen() {
       )}
 
       {/* Recent Activity */}
-      <SectionHeader title="Recent Activity" />
+      <SectionHeader
+        title="Recent activity"
+        actionLabel="View all"
+        onAction={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          router.push("/(app)/(tabs)/more/activity" as never);
+        }}
+      />
+      <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 12, marginTop: -4 }}>
+        {metrics?.insights?.basis?.activity_window
+          ? `Last 14 days (${metrics.insights.basis.activity_window}) · not filtered by the period above.`
+          : "Latest updates across bookings, payments, and reviews — not filtered by the period above."}
+      </Text>
       {insightsLoading ? (
-        <View style={{ alignItems: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingVertical: 24 }}>
-          <Ionicons name="hourglass-outline" size={24} color="#9ca3af" />
-          <Text style={{ marginTop: 8, fontSize: 13, color: Colors.gray[500] }}>Preparing recent activity…</Text>
+        <View style={{ borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 12 }}>
+          <SkeletonList rows={4} />
         </View>
       ) : activityError && !hasBundledInsights && fallbackActivityPayload == null ? (
         <TouchableOpacity onPress={refreshFallbackActivity} activeOpacity={0.7} style={{ alignItems: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: "#fecaca", backgroundColor: "#fef2f2", paddingVertical: 16 }}>
@@ -1480,7 +1745,7 @@ export default function DashboardScreen() {
       ) : (
         <View style={{ borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white }}>
           {recentActivity.map((item, idx) => {
-            const iconInfo = getActivityIcon(item.type);
+            const iconInfo = getProviderActivityIcon(item.type);
             return (
               <TouchableOpacity
                 key={item.id}

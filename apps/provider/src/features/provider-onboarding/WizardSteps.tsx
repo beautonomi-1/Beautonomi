@@ -794,6 +794,18 @@ function Step4Payment() {
           </>
         ) : null}
       </View>
+
+      <View
+        style={twStyle(
+          "rounded-[1.5rem] border border-amber-200 bg-amber-50 p-4 flex-row gap-3",
+        )}
+      >
+        <Ionicons name="information-circle-outline" size={20} color="#b45309" />
+        <Text style={twStyle("flex-1 text-[13px] leading-5 text-amber-900")}>
+          Bank payout account is required before go-live. Add it in the setup checklist under
+          Settings → Payout accounts after this wizard.
+        </Text>
+      </View>
     </View>
   );
 }

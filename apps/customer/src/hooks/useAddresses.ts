@@ -9,22 +9,8 @@
  */
 import { useState, useEffect, useCallback } from "react";
 import { api } from "@/lib/api-client";
-import { getBackendUrl, withWebApiTenantHeaders } from "@/config/public-env";
-import { getDeviceRegionCountryIso } from "@/lib/device-default-country-dial";
-
-/** Same origin resolution as `api` client — required when EXPO_PUBLIC_APP_URL is empty (native dev → localhost:3000). */
-function mapboxApiOrigin(): string {
-  return getBackendUrl().trim().replace(/\/$/, "");
-}
-
-function mapboxFetchInit(init?: RequestInit): RequestInit {
-  const merged = withWebApiTenantHeaders(init);
-  const h = new Headers(merged.headers as HeadersInit | undefined);
-  if (!h.has("X-Active-Market-Country")) {
-    h.set("X-Active-Market-Country", getDeviceRegionCountryIso());
-  }
-  return { ...merged, headers: h };
-}
+import { resolveMarketCountryIso } from "@/lib/market-country";
+import type { ConfigBundleMeta } from "@/lib/config-bundle";
 
 export interface SavedAddress {
   id: string;
@@ -53,6 +39,16 @@ export interface GeocodeSuggestion {
   context?: { id: string; text: string }[];
 }
 
+export type SearchAddressResult = {
+  results: GeocodeSuggestion[];
+  error: string | null;
+};
+
+export type ReverseGeocodeResult = {
+  feature: GeocodeSuggestion | null;
+  error: string | null;
+};
+
 function normalizeGeocodeFeature(f: any): GeocodeSuggestion {
   let center: [number, number] = [0, 0];
   if (Array.isArray(f?.center) && f.center.length >= 2) {
@@ -72,6 +68,10 @@ function normalizeGeocodeFeature(f: any): GeocodeSuggestion {
     properties: f?.properties && typeof f.properties === "object" ? f.properties : undefined,
     context: Array.isArray(f?.context) ? f.context : undefined,
   };
+}
+
+function filterValidSuggestions(list: GeocodeSuggestion[]): GeocodeSuggestion[] {
+  return list.filter((s) => s.place_name && s.center[0] !== 0 && s.center[1] !== 0);
 }
 
 export function useAddresses(enabled: boolean) {
@@ -144,8 +144,10 @@ export function useAddresses(enabled: boolean) {
 export interface SearchAddressOptions {
   /** Bias results near this point (longitude, latitude). */
   proximity?: { longitude: number; latitude: number };
-  /** ISO 3166-1 alpha-2 (default from device locale). */
+  /** ISO 3166-1 alpha-2. When omitted, resolved from bundle meta then device region. */
   country?: string;
+  /** Config bundle meta for market country resolution when `country` is omitted. */
+  bundleMeta?: ConfigBundleMeta | null;
   /**
    * Mapbox forward-geocode `types` filter. Omit for full fuzzy results (places, localities,
    * neighborhoods, addresses, POIs) — same as provider/web autocomplete. Pass e.g. `["address"]`
@@ -158,86 +160,80 @@ export interface SearchAddressOptions {
 
 export async function searchAddress(
   query: string,
-  options?: SearchAddressOptions
-): Promise<GeocodeSuggestion[]> {
-  if (!query || query.length < 2) return [];
-  const origin = mapboxApiOrigin();
-  if (!origin) return [];
-  try {
-    const body: Record<string, unknown> = {
-      query: query.trim(),
-      limit: options?.limit ?? 10,
-    };
-    // Scope to the caller-provided market country (the tenant's active market)
-    // when given. We deliberately DO NOT fall back to the device locale here:
-    // a phone set to a different region than the marketplace (e.g. an en-US
-    // device on a South African tenant) would otherwise filter Mapbox to the
-    // wrong country and return zero matches — which looked like broken
-    // autocomplete. Omitting `country` lets Mapbox return proximity-biased
-    // results instead. (The provider flow scopes by tenant/address country,
-    // not device locale, which is why it "just works".)
-    const country = options?.country?.trim();
-    if (country) body.country = country;
-    // Omit `types` by default so Mapbox returns the full fuzzy result set
-    // (addresses, places, suburbs/localities, neighborhoods, POIs) — matching
-    // the working provider autocomplete. Restricting to ["address"] hid most
-    // South African suburb/estate/place searches and looked like "no matches".
-    if (options?.types?.length) {
-      body.types = options.types;
-    }
-    if (options?.proximity) {
-      body.proximity = {
-        longitude: options.proximity.longitude,
-        latitude: options.proximity.latitude,
-      };
-    }
-    const res = await fetch(
-      `${origin}/api/mapbox/geocode`,
-      mapboxFetchInit({
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      }),
-    );
-    const json = (await res.json().catch(() => ({}))) as {
-      data?: unknown;
-      error?: { code?: string; message?: string };
-    };
-    if (!res.ok) {
-      return [];
-    }
-    const payload = json?.data;
-    const list = Array.isArray(payload) ? payload : [];
-    return list
-      .map(normalizeGeocodeFeature)
-      .filter((s) => s.place_name && s.center[0] !== 0 && s.center[1] !== 0);
-  } catch {
-    return [];
+  options?: SearchAddressOptions,
+): Promise<SearchAddressResult> {
+  if (!query || query.length < 2) {
+    return { results: [], error: null };
   }
+
+  const body: Record<string, unknown> = {
+    query: query.trim(),
+    limit: options?.limit ?? 10,
+  };
+
+  const country =
+    options?.country?.trim() ||
+    resolveMarketCountryIso(options?.bundleMeta);
+  if (country) body.country = country;
+
+  if (options?.types?.length) {
+    body.types = options.types;
+  }
+  if (options?.proximity) {
+    body.proximity = {
+      longitude: options.proximity.longitude,
+      latitude: options.proximity.latitude,
+    };
+  }
+
+  const res = await api.post<unknown[]>("/api/mapbox/geocode", body);
+
+  if (res.error) {
+    return {
+      results: [],
+      error: res.error.message ?? "Address search is unavailable. Check your connection and try again.",
+    };
+  }
+
+  const payload = res.data;
+  const list = Array.isArray(payload) ? payload : [];
+  return {
+    results: filterValidSuggestions(list.map(normalizeGeocodeFeature)),
+    error: null,
+  };
 }
 
 /** Reverse-geocode coordinates to a single address. Aligned with POST /api/mapbox/reverse-geocode. */
 export async function reverseGeocode(
   latitude: number,
-  longitude: number
-): Promise<GeocodeSuggestion | null> {
-  const origin = mapboxApiOrigin();
-  if (!origin) return null;
-  try {
-    const res = await fetch(
-      `${origin}/api/mapbox/reverse-geocode`,
-      mapboxFetchInit({
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ longitude, latitude }),
-      }),
-    );
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) return null;
-    const feature = json?.data ?? null;
-    if (!feature?.place_name || !Array.isArray(feature?.center) || feature.center.length < 2) return null;
-    return normalizeGeocodeFeature(feature);
-  } catch {
-    return null;
+  longitude: number,
+): Promise<ReverseGeocodeResult> {
+  const res = await api.post<unknown | null>("/api/mapbox/reverse-geocode", {
+    longitude,
+    latitude,
+  });
+
+  if (res.error) {
+    return {
+      feature: null,
+      error: res.error.message ?? "Could not resolve this location. Try again or drop a pin on the map.",
+    };
   }
+
+  const feature = res.data ?? null;
+  if (
+    !feature ||
+    typeof feature !== "object" ||
+    !("place_name" in feature) ||
+    typeof (feature as { place_name?: unknown }).place_name !== "string"
+  ) {
+    return { feature: null, error: null };
+  }
+
+  const normalized = normalizeGeocodeFeature(feature);
+  if (!normalized.place_name || normalized.center[0] === 0 && normalized.center[1] === 0) {
+    return { feature: null, error: null };
+  }
+
+  return { feature: normalized, error: null };
 }

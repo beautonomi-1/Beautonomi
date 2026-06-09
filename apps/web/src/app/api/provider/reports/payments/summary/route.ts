@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { MAX_REPORT_DAYS } from "@/lib/reports/constants";
+import { MAX_FINANCE_TRANSACTIONS, MAX_REPORT_DAYS } from "@/lib/reports/constants";
+import { fetchAllLedgerPages } from "@/lib/reports/fetch-all-ledger-pages";
 import {
   filterLedgerRowsForLocation,
   getProviderReportContext,
@@ -138,20 +139,22 @@ export async function GET(request: NextRequest) {
     const bookingIds = (bookings ?? []).map((b) => b.id);
 
     // ── 2. Finance transactions settled in the period (authoritative ledger) ──
-    const { data: ft } = await supabaseAdmin
+    const financeQuery = supabaseAdmin
       .from("finance_transactions")
       .select("transaction_type, amount, net, booking_id, product_order_id, created_at, refund_component")
       .eq("provider_id", providerId)
       .gte("created_at", fromDate.toISOString())
-      .lte("created_at", toDate.toISOString());
-    const ledgerLocationAttribution = summarizeLedgerLocationAttribution(
-      (ft ?? []) as FinanceRowFull[],
-      locationId,
+      .lte("created_at", toDate.toISOString())
+      .order("created_at", { ascending: true });
+    const ft = await fetchAllLedgerPages<FinanceRowFull>(
+      financeQuery as Parameters<typeof fetchAllLedgerPages>[0],
+      MAX_FINANCE_TRANSACTIONS,
     );
+    const ledgerLocationAttribution = summarizeLedgerLocationAttribution(ft, locationId);
     const financeRows = await filterLedgerRowsForLocation(
       supabaseAdmin,
       providerId,
-      (ft ?? []) as FinanceRowFull[],
+      ft,
       locationId,
     );
 

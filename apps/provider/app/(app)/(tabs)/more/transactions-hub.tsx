@@ -107,6 +107,7 @@ type Transaction = {
 type FinanceResponse = {
   earnings?: { total_earnings?: number };
   transactions?: Transaction[];
+  transactions_total?: number;
 };
 
 function formatDateTimeSafe(value: unknown): string {
@@ -123,12 +124,15 @@ export default function TransactionsHubScreen() {
   const { provider } = useProvider();
   const [refreshing, setRefreshing] = useState(false);
   const [range, setRange] = useState<"week" | "month" | "year" | "all">("month");
+  const [txLimit, setTxLimit] = useState(50);
   const showAllLocationsHint = (provider?.locations?.length ?? 0) > 1;
   /** Org-wide ledger snapshot: do not pass `location_id` — finance filters drop payouts and other non-booking rows when scoped to a branch, which made this hub look empty or wrong for multi-location businesses. */
-  const financeUrl = `/api/provider/finance?range=${range}`;
+  const financeUrl = `/api/provider/finance?range=${range}&tx_limit=${txLimit}`;
   const { data, loading, error, refresh } = useApi<FinanceResponse>(financeUrl);
 
   const transactions: Transaction[] = (data as FinanceResponse)?.transactions ?? [];
+  const transactionsTotal = (data as FinanceResponse)?.transactions_total ?? transactions.length;
+  const canLoadMoreTx = transactions.length < transactionsTotal && txLimit < 200;
   const periodCaption = recentListCaption(range);
 
   const onRefresh = useCallback(async () => {
@@ -205,7 +209,10 @@ export default function TransactionsHubScreen() {
             <FilterChipGroup
               options={FINANCE_RANGE_OPTIONS}
               selected={range}
-              onSelect={(v) => setRange(v as "week" | "month" | "year" | "all")}
+              onSelect={(v) => {
+                setTxLimit(50);
+                setRange(v as "week" | "month" | "year" | "all");
+              }}
             />
           </View>
           {showAllLocationsHint ? (
@@ -263,6 +270,32 @@ export default function TransactionsHubScreen() {
                 </View>
               );
             })}
+            {canLoadMoreTx ? (
+              <TouchableOpacity
+                onPress={() => setTxLimit((n) => Math.min(n + 50, 200))}
+                disabled={loading}
+                activeOpacity={0.75}
+                style={{
+                  marginTop: 4,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: Colors.gray[200],
+                  backgroundColor: Colors.white,
+                  paddingVertical: 14,
+                  opacity: loading ? 0.6 : 1,
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Load more transactions"
+              >
+                <Ionicons name="chevron-down" size={16} color={Colors.primary} />
+                <Text style={{ marginLeft: 6, fontSize: 14, fontWeight: "600", color: Colors.primary }}>
+                  {loading ? "Loading…" : `Load more (${transactions.length} of ${transactionsTotal})`}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         )}
       </ScrollView>

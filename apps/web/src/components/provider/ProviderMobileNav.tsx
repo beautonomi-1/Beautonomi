@@ -128,8 +128,6 @@ const navigationSections: NavSection[] = [
     items: [
       { icon: Tag, label: "Sales", href: "/provider/sales", permission: "view_sales" },
       { icon: Wallet, label: "Finance", href: "/provider/finance", permission: "view_sales" },
-      { icon: CreditCard, label: "Payments", href: "/provider/payments", permission: "view_sales" },
-      { icon: Coins, label: "Payouts", href: "/provider/payouts", permission: "view_sales" },
       { icon: PiggyBank, label: "Bank Accounts", href: "/provider/settings/payout-accounts", permission: "view_sales" },
       { icon: CreditCard, label: "Payment Methods", href: "/provider/settings/payments", permission: "edit_settings" },
       { icon: CreditCard, label: "Yoco", href: "/provider/settings/sales/yoco-integration", permission: "edit_settings", featureFlag: "payment_yoco" },

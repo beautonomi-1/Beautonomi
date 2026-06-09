@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
       supabase
         .from("bookings")
         .select(
-          "id, address_city, address_state, address_postal_code, location_type, total_price, status, scheduled_at"
+          "id, address_city, address_state, address_postal_code, location_type, total_amount, status, scheduled_at"
         )
         .eq("tenant_id", tenantId)
         .not("address_city", "is", null)
@@ -68,7 +68,7 @@ export async function GET(request: NextRequest) {
       // Booking value aggregation (all non-cancelled bookings, even without geo)
       supabase
         .from("bookings")
-        .select("id, total_price, location_type, status, address_city")
+        .select("id, total_amount, location_type, status, address_city")
         .eq("tenant_id", tenantId)
         .not("status", "eq", "cancelled"),
 
@@ -198,7 +198,7 @@ export async function GET(request: NextRequest) {
       address_state?: string | null;
       address_postal_code?: string | null;
       location_type?: string | null;
-      total_price?: number | null;
+      total_amount?: number | null;
       status?: string | null;
     };
     const bookingRows = (bookingGeoResult.data ?? []) as BookingGeoRow[];
@@ -213,7 +213,7 @@ export async function GET(request: NextRequest) {
         bookingsByCity[city] = { count: 0, value: 0, at_home: 0, at_salon: 0 };
       }
       bookingsByCity[city].count++;
-      bookingsByCity[city].value += Number(b.total_price || 0);
+      bookingsByCity[city].value += Number(b.total_amount || 0);
       if (b.location_type === "at_home" || b.location_type === "house_call") {
         bookingsByCity[city].at_home++;
       } else {
@@ -254,7 +254,7 @@ export async function GET(request: NextRequest) {
 
     // --- Booking Value by Location Type ---
     type BookingValRow = {
-      total_price?: number | null;
+      total_amount?: number | null;
       location_type?: string | null;
       status?: string | null;
       address_city?: string | null;
@@ -267,7 +267,7 @@ export async function GET(request: NextRequest) {
     let atSalonCount = 0;
 
     for (const v of valueRows) {
-      const val = Number(v.total_price || 0);
+      const val = Number(v.total_amount || 0);
       totalBookingValue += val;
       if (
         v.location_type === "at_home" ||

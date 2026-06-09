@@ -368,13 +368,58 @@ export async function POST(request: Request) {
         const disputeTx = typeof disputeData?.transaction === "object" && disputeData?.transaction
           ? (disputeData.transaction as Record<string, unknown>)
           : null;
+        const disputeRef = (disputeTx?.reference ?? disputeData?.reference) as string | undefined;
         console.warn(`[webhook] dispute event received: ${eventType}`, {
-          reference: (disputeTx?.reference ?? disputeData?.reference) as string | undefined,
+          reference: disputeRef,
           amount: (disputeData?.amount ?? disputeTx?.amount) as number | undefined,
           status: disputeData?.status as string | undefined,
           resolution: disputeData?.resolution as string | undefined,
           eventId,
         });
+        // Chargeback on an ads pre-pay: immediately stop serving and reverse the
+        // recognized revenue. Idempotent across dispute.create/remind/resolve.
+        if (disputeRef) {
+          try {
+            const { data: disputedTxn } = await (supabase.from("payment_transactions") as any)
+              .select("metadata")
+              .eq("reference", String(disputeRef))
+              .eq("status", "success")
+              .maybeSingle();
+            const disputedMeta = (disputedTxn?.metadata ?? {}) as Record<string, unknown>;
+            if (disputedMeta?.kind === "ads_budget_order" && disputedMeta?.ads_budget_order_id) {
+              const { reverseAdsBudgetOrderPayment } = await import(
+                "@/lib/ads/ads-budget-order-payment"
+              );
+              await reverseAdsBudgetOrderPayment({
+                supabase: supabase as never,
+                orderId: String(disputedMeta.ads_budget_order_id),
+                finalOrderStatus: "refunded",
+                reason: `chargeback:${eventType}`,
+                reference: String(disputeRef),
+              });
+            } else if (
+              disputedMeta?.kind === "provider_subscription_order" ||
+              disputedMeta?.kind === "subscription_authorization" ||
+              disputedMeta?.kind === "subscription_renewal"
+            ) {
+              // Chargeback on a subscription charge: reverse the recognized
+              // revenue, disable Paystack billing, and fall the provider to free.
+              const { reverseProviderSubscriptionPayment } = await import(
+                "@/lib/subscriptions/provider-subscription-payment"
+              );
+              await reverseProviderSubscriptionPayment({
+                supabase: supabase as never,
+                reason: `chargeback:${eventType}`,
+                reference: String(disputeRef),
+                orderId: (disputedMeta.provider_subscription_order_id as string) ?? null,
+                subscriptionCode: (disputedMeta.subscription_code as string) ?? null,
+                providerIdHint: (disputedMeta.provider_id as string) ?? null,
+              });
+            }
+          } catch (disputeReversalError) {
+            console.error("[webhook] dispute reversal failed:", disputeReversalError);
+          }
+        }
         response = NextResponse.json({ received: true });
       } else {
         console.log(`[webhook] unhandled event type: ${eventType}`, { eventId });

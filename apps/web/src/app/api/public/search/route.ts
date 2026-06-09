@@ -13,6 +13,7 @@ import {
   fuzzyTextRelevanceScore,
 } from "@/lib/search/fuzzy-rank";
 import { getProviderIdsForGlobalCategory } from "@/lib/categories/provider-ids-for-global-category";
+import { applyPublicProviderVisibility } from "@/lib/providers/public-provider-visibility";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -122,9 +123,10 @@ export async function GET(request: Request) {
     const limit = Number.isFinite(filters.limit) ? filters.limit || 20 : 20;
     const offset = (page - 1) * limit;
 
-    let query = supabase
-      .from("providers")
-      .select(`
+    let query = applyPublicProviderVisibility(
+      supabase
+        .from("providers")
+        .select(`
         id,
         slug,
         business_name,
@@ -139,8 +141,8 @@ export async function GET(request: Request) {
         currency,
         created_at
       `, { count: "exact" })
-      .eq("status", "active")
-      .eq("tenant_id", tenantId);
+        .eq("tenant_id", tenantId),
+    );
 
     // `users.include_in_search_engines` controls external SEO indexing only.
     // Home/search discovery must keep showing active providers to customers.
@@ -591,12 +593,13 @@ export async function GET(request: Request) {
         const supabaseAdmin = getSupabaseAdmin();
         const winnerProviderIds = [...new Set(winners.map((w) => w.provider_id))];
         const winnerToCampaign = new Map(winners.map((w) => [w.provider_id, w.campaign_id]));
-        const { data: sponsoredProviders } = await supabaseAdmin
-          .from("providers")
-          .select("id, slug, business_name, business_type, rating_average, review_count, thumbnail_url, avatar_url, is_featured, is_verified, currency")
-          .in("id", winnerProviderIds)
-          .eq("status", "active")
-          .eq("tenant_id", tenantId);
+        const { data: sponsoredProviders } = await applyPublicProviderVisibility(
+          (supabaseAdmin
+            .from("providers")
+            .select("id, slug, business_name, business_type, rating_average, review_count, thumbnail_url, avatar_url, is_featured, is_verified, currency")
+            .in("id", winnerProviderIds)
+            .eq("tenant_id", tenantId) as any),
+        );
         const { data: sponsoredLocations } = await supabaseAdmin
           .from("provider_locations")
           .select("provider_id, city, country, is_primary, latitude, longitude")

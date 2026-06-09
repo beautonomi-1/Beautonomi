@@ -13,6 +13,8 @@
  *   - `provider_invoice`         — provider invoice PDF
  *   - `customer_order_receipt`   — customer-facing product order receipt PDF
  *   - `provider_order_receipt`   — provider-facing product order receipt PDF
+ *   - `provider_ads_receipt`     — provider-facing ads budget order receipt PDF
+ *   - `provider_subscription_receipt` — provider-facing subscription payment receipt PDF (keyed on finance_transactions.id)
  *
  * The token binds: kind + subject id (booking/invoice/order) + user id (who
  * minted it) + expiry. Tampering with any of those breaks the signature.
@@ -26,7 +28,9 @@ export type ReceiptTokenKind =
   | "customer_booking_receipt"
   | "provider_invoice"
   | "customer_order_receipt"
-  | "provider_order_receipt";
+  | "provider_order_receipt"
+  | "provider_ads_receipt"
+  | "provider_subscription_receipt";
 
 export interface ReceiptTokenPayload {
   kind: ReceiptTokenKind;

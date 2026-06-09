@@ -44,7 +44,8 @@ src/app/provider/
 ├── messaging/         # Messaging system
 ├── marketing/         # Marketing automations
 ├── settings/          # Comprehensive settings
-└── get-started/       # Onboarding wizard
+├── onboarding/        # Signup wizard (new providers)
+└── get-started/       # Post-submit setup checklist
 ```
 
 ---

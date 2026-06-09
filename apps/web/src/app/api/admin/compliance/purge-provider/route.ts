@@ -13,6 +13,7 @@ import {
   type CompliancePurgeReportV2,
 } from "@/lib/account/compliance-purge-audit";
 import { writeAuditLog } from "@/lib/audit/audit";
+import { invalidatePublicProviderCache } from "@/lib/providers/invalidate-public-provider-cache";
 
 const bodySchema = z.object({
   provider_id: z.string().uuid(),
@@ -217,6 +218,8 @@ export async function POST(request: NextRequest) {
           auditInsert.ok === true ? { id: auditInsert.id } : { error: auditInsert.error },
       },
     });
+
+    invalidatePublicProviderCache();
 
     return successResponse({
       provider_id,

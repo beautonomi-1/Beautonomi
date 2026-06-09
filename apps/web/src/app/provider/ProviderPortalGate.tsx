@@ -4,6 +4,7 @@ import { useLayoutEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { useAuth } from "@/providers/AuthProvider";
+import { isProviderOnboardingRouteAllowed } from "@/lib/provider/onboarding-route-allowlist";
 
 const GATE_CACHE_KEY = "provider_gate_status";
 const GATE_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
@@ -92,25 +93,9 @@ export function ProviderPortalGate({ children }: { children: React.ReactNode }) 
         if (cancelled) return;
         const portal = res.data?.portal;
         if (portal === "provider_onboarding") {
-          const onboardingAllowedPrefixes = [
-            "/provider/get-started",
-            "/provider/onboarding",
-            "/provider/dashboard",
-            "/provider/subscription-checkout",
-            "/provider/subscription",
-            "/provider/settings/appointment-activity/business-details",
-            "/provider/settings/locations",
-            "/provider/settings/gallery",
-            "/provider/settings/operating-hours",
-            "/provider/settings/sales/yoco-integration",
-            "/provider/settings/sales/yoco-devices",
-            "/provider/settings/payments",
-            "/provider/settings/payout-accounts",
-            "/provider/catalogue/services",
-          ];
-          const canAccessSetupRoute = onboardingAllowedPrefixes.some(
-            (p) => pathname === p || pathname?.startsWith(`${p}/`)
-          );
+          const canAccessSetupRoute = pathname
+            ? isProviderOnboardingRouteAllowed(pathname)
+            : false;
 
           if (!canAccessSetupRoute) {
             router.replace("/provider/get-started");

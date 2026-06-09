@@ -131,7 +131,7 @@ export async function GET(request: Request) {
       totalPlatformRecognizedRevenue - referralPayouts;
     const providerRefundImpact = Math.abs(agg.provider_refund_net_impact);
     const providerNetAfterRefunds =
-      agg.provider_earnings_net + cancellationFeesRetained + agg.tips_gross - providerRefundImpact;
+      agg.provider_recognized_revenue_gross - providerRefundImpact;
     const gmvVariance = agg.service_collected_gross - bookingsGmv;
     const gmvVariancePct = bookingsGmv > 0 ? (gmvVariance / bookingsGmv) * 100 : 0;
     const outOfBalance = Math.abs(gmvVariance) > 1;

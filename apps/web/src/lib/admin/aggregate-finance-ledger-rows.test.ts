@@ -55,4 +55,17 @@ describe("aggregateFinanceLedgerRows", () => {
     expect(agg.provider_refund_net_impact).toBe(-90);
     expect(agg.refunds_gross).toBe(100);
   });
+
+  it("sums provider recognized revenue across earnings, tips, travel, cancellation and walk-in add-ons", () => {
+    const rows: FinanceLedgerRow[] = [
+      { transaction_type: "provider_earnings", net: 70 },
+      { transaction_type: "tip", net: 10 },
+      { transaction_type: "travel_fee", amount: 12, net: 12 },
+      { transaction_type: "cancellation_fee", net: 8 },
+      { transaction_type: "walk_in_additional_charge", net: 25 },
+    ];
+    const agg = aggregateFinanceLedgerRows(rows);
+    expect(agg.walk_in_additional_charges).toBe(25);
+    expect(agg.provider_recognized_revenue_gross).toBe(125);
+  });
 });

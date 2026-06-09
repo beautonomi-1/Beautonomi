@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { GET as cancellationsGET } from "../bookings/cancellations/route";
+import { GET as bookingsReportGET } from "../bookings/route";
 import { GET as bookingSummaryGET } from "../bookings/summary/route";
 import { GET as endOfDayGET } from "../end-of-day/route";
 import { GET as refundsGET } from "../payments/refunds/route";
@@ -405,6 +406,32 @@ describe("provider report routes sign-off coverage", () => {
     getPreviousPeriodRevenueMock.mockResolvedValue(50);
   });
 
+  it("bookings report exposes channel_breakdown with recognized revenue", async () => {
+    getProviderRevenueMock.mockResolvedValue({
+      totalRevenue: 122,
+      revenueByBooking: new Map([
+        ["booking-loc-a", 90],
+        ["wallet-booking", 0],
+      ]),
+      revenueByProductOrder: new Map(),
+      revenueByDate: new Map(),
+      latestSettlementAtByBooking: new Map(),
+      latestSettlementAtByProductOrder: new Map(),
+    });
+
+    const data = await json(
+      await bookingsReportGET(
+        request("/api/provider/reports/bookings?from=2026-05-02&to=2026-05-02&location_id=loc-a"),
+      ),
+    );
+
+    expect(Array.isArray(data.channel_breakdown)).toBe(true);
+    expect(data.channel_breakdown.length).toBeGreaterThan(0);
+    const online = data.channel_breakdown.find((r: { channel: string }) => r.channel === "online");
+    expect(online?.recognized_revenue).toBe(90);
+    expect(data.channelBasisNote).toContain("scheduled_at");
+  });
+
   it("bookings summary uses provider timezone day keys and location-filtered bookings", async () => {
     const data = await json(
       await bookingSummaryGET(
@@ -560,7 +587,9 @@ describe("provider report routes sign-off coverage", () => {
       ),
     );
 
-    expect(data.basisNote).toContain("lostRevenue");
+    expect(data.basisNote).toContain("ledgerNetRecognized");
+    expect(data.ledgerNetRecognized).toBe(0);
+    expect(data.lostRevenue).toBe(0);
     const offender = data.repeatOffenders.find((c: { name: string }) => c.name);
     expect(offender).toMatchObject({
       booked_value: 350,

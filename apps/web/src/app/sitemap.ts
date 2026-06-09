@@ -142,6 +142,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       .from("providers")
       .select("slug, updated_at, user_id")
       .eq("status", "active")
+      .is("deleted_at", null)
       .limit(1000);
     if (providerScope.mode === "scoped") {
       providersQuery = providersQuery.eq("tenant_id", providerScope.tenantId);

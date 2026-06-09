@@ -5,19 +5,32 @@
 
 const PAGE_SIZE = 1000;
 
-/** Paginate `.range(from, to)` until a page returns fewer than PAGE_SIZE rows. */
+/**
+ * Default safety bound: effectively unbounded so existing callers keep paging the full
+ * result set. Pass an explicit `maxRows` to stop early (mirrors
+ * {@link import("@/lib/reports/fetch-all-ledger-pages").fetchAllLedgerPages}).
+ */
+const DEFAULT_MAX_ROWS = Number.MAX_SAFE_INTEGER;
+
+/**
+ * Paginate `.range(from, to)` until a page returns fewer than PAGE_SIZE rows, or until
+ * `maxRows` rows have been fetched (whichever comes first). `maxRows` defaults to
+ * effectively unbounded so callers that want every row keep their existing behavior; the
+ * last page is shrunk so we never fetch more than `maxRows` rows.
+ */
 export async function fetchAllPaged<T>(
-  fetchPage: (from: number, to: number) => Promise<{ data: T[] | null; error: unknown }>
+  fetchPage: (from: number, to: number) => Promise<{ data: T[] | null; error: unknown }>,
+  maxRows: number = DEFAULT_MAX_ROWS,
 ): Promise<T[]> {
   const out: T[] = [];
   let from = 0;
-  while (true) {
-    const to = from + PAGE_SIZE - 1;
+  while (from < maxRows) {
+    const to = Math.min(from + PAGE_SIZE, maxRows) - 1;
     const { data, error } = await fetchPage(from, to);
     if (error) throw error;
     const chunk = data ?? [];
     out.push(...chunk);
-    if (chunk.length < PAGE_SIZE) break;
+    if (chunk.length < to - from + 1) break;
     from += PAGE_SIZE;
   }
   return out;

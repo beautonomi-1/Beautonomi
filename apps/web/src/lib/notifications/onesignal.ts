@@ -426,6 +426,143 @@ export type OneSignalSendOptions = {
  *
  * According to: https://documentation.onesignal.com/reference/create-notification
  */
+/**
+ * OneSignal returns `errors.invalid_player_ids` (subscription IDs it could not
+ * deliver to because the device unsubscribed / app was uninstalled) on a 200
+ * response. Historically these rows lingered in `user_devices` forever, so a
+ * user who reinstalled accumulated dead subscription IDs and every send wasted a
+ * leg on a tombstone. Prune them best-effort, scoped to the sending app so we
+ * never delete the other app's device for the same person. Never throws.
+ */
+async function pruneInvalidOneSignalDevices(
+  responseData: Record<string, unknown>,
+  appType: OneSignalAppType | undefined,
+): Promise<void> {
+  try {
+    const errors = responseData?.errors;
+    let invalidIds: string[] = [];
+    if (errors && typeof errors === "object" && !Array.isArray(errors)) {
+      const raw = (errors as Record<string, unknown>).invalid_player_ids;
+      if (Array.isArray(raw)) {
+        invalidIds = raw.filter((x): x is string => typeof x === "string" && x.trim().length > 0);
+      }
+    }
+    if (invalidIds.length === 0) return;
+
+    const supabase = getSupabaseAdmin();
+    let query = supabase.from("user_devices").delete().in("onesignal_player_id", invalidIds);
+    if (appType === "provider") {
+      query = query.eq("app_type", "provider");
+    } else if (appType === "customer") {
+      query = query.or("app_type.eq.customer,app_type.is.null");
+    }
+    const { error } = await query;
+    if (error) {
+      console.warn("[pruneInvalidOneSignalDevices] delete failed:", error.message);
+    } else {
+      console.log(
+        `[pruneInvalidOneSignalDevices] pruned ${invalidIds.length} invalid device(s) for app_type=${appType ?? "any"}`,
+      );
+    }
+  } catch (err) {
+    console.warn("[pruneInvalidOneSignalDevices] unexpected error:", err);
+  }
+}
+
+/**
+ * Native Android channel ids created by both apps in push-notifications-setup.ts.
+ * OneSignal routes to a native channel via `existing_android_channel_id`. Keep
+ * these strings in sync with the channel ids registered on the device.
+ */
+const ANDROID_CHANNEL_IDS = {
+  bookings: "bookings",
+  messages: "messages",
+  payments: "payments",
+  reminders: "reminders",
+  marketing: "marketing",
+  default: "default",
+} as const;
+
+/** Map a push payload's template_key/type to a native Android channel id. */
+function resolveExistingAndroidChannelId(data: unknown): string {
+  if (!data || typeof data !== "object") return ANDROID_CHANNEL_IDS.default;
+  const d = data as Record<string, unknown>;
+  const key = String(d.template_key ?? d.type ?? d.notification_type ?? "").toLowerCase();
+  if (!key) return ANDROID_CHANNEL_IDS.default;
+  if (key.includes("message") || key.includes("chat")) return ANDROID_CHANNEL_IDS.messages;
+  if (
+    key.includes("payment") ||
+    key.includes("payout") ||
+    key.includes("charge") ||
+    key.includes("refund") ||
+    key.includes("receipt") ||
+    key.includes("invoice")
+  ) {
+    return ANDROID_CHANNEL_IDS.payments;
+  }
+  if (key.includes("reminder")) return ANDROID_CHANNEL_IDS.reminders;
+  if (
+    key.includes("promo") ||
+    key.includes("marketing") ||
+    key.includes("offer") ||
+    key.includes("inspiration") ||
+    key.includes("news")
+  ) {
+    return ANDROID_CHANNEL_IDS.marketing;
+  }
+  if (
+    key.includes("booking") ||
+    key.includes("appointment") ||
+    key.includes("waitlist") ||
+    key.includes("review") ||
+    key.includes("dispute")
+  ) {
+    return ANDROID_CHANNEL_IDS.bookings;
+  }
+  return ANDROID_CHANNEL_IDS.default;
+}
+
+/**
+ * iOS notification category + action buttons, mirroring the categories both apps
+ * register via setNotificationCategoryAsync. Returns the APNs category id and the
+ * OneSignal `buttons` so the actions render. Action taps come back through the
+ * OneSignal click listener as `result.actionId`.
+ */
+function resolveIosActions(
+  data: unknown,
+  appType: OneSignalAppType | undefined,
+): { category?: string; buttons?: Array<{ id: string; text: string }> } {
+  if (!data || typeof data !== "object") return {};
+  const d = data as Record<string, unknown>;
+  const key = String(d.template_key ?? d.type ?? d.notification_type ?? "").toLowerCase();
+  if (!key) return {};
+
+  if (
+    appType === "provider" &&
+    (key === "new_booking" ||
+      key === "booking_request" ||
+      key.startsWith("provider_booking") ||
+      key === "provider_new_booking")
+  ) {
+    return {
+      category: "PROVIDER_BOOKING_REQUEST",
+      buttons: [
+        { id: "accept_booking", text: "Accept" },
+        { id: "decline_booking", text: "Decline" },
+      ],
+    };
+  }
+
+  if (key.includes("message") || key.includes("chat")) {
+    return {
+      category: "MESSAGE",
+      buttons: [{ id: "mark_read", text: "Mark as read" }],
+    };
+  }
+
+  return {};
+}
+
 async function sendOneSignalNotification(
   payload: {
     include_player_ids?: string[];
@@ -616,6 +753,21 @@ async function sendOneSignalNotification(
   if (payload.android_channel_id) {
     notification.android_channel_id = payload.android_channel_id;
   }
+  // Route to the matching native Android channel (created by both apps) so the
+  // OS can group/mute categories independently. Caller-provided ids win.
+  if (!notification.existing_android_channel_id) {
+    notification.existing_android_channel_id = resolveExistingAndroidChannelId(payload.data);
+  }
+  // iOS actionable categories + buttons (Accept/Decline, Mark as read).
+  {
+    const iosActions = resolveIosActions(payload.data, appType);
+    if (iosActions.category && !notification.ios_category) {
+      notification.ios_category = iosActions.category;
+    }
+    if (iosActions.buttons && iosActions.buttons.length > 0 && !notification.buttons) {
+      notification.buttons = iosActions.buttons;
+    }
+  }
   if (payload.ios_interruption_level) {
     notification.ios_interruption_level = payload.ios_interruption_level;
   }
@@ -734,6 +886,10 @@ async function sendOneSignalNotification(
       provider_response: responseData,
       channels: parseNotificationChannels(payload.channels ?? null),
     });
+
+    // Prune any subscription IDs OneSignal flagged as invalid on this send so
+    // dead/uninstalled devices don't accumulate in user_devices.
+    void pruneInvalidOneSignalDevices(responseData, appType);
 
     const notificationIdRaw = responseData.id;
     const notification_id =
@@ -1061,6 +1217,12 @@ export async function getNotificationTemplate(
 export type SendTemplateOptions = OneSignalSendOptions & {
   /** Tenant ID used to prefer tenant-specific templates over global ones. */
   tenantId?: string | null;
+  /**
+   * When true, suppress the automatic in-app bell row insert. Use this when the
+   * caller inserts its own in-app row (e.g. with a richer action_url or dedupe
+   * key) so the same event does not create two bell entries.
+   */
+  skipInApp?: boolean;
 };
 
 /**
@@ -1141,20 +1303,37 @@ export async function sendTemplateNotification(
   let quietHoursSuppressedPush = false;
 
   let channelsToSend: NotificationChannel[] = [...activeChannels];
-  if (options?.appType === "customer" && userIds.length > 0) {
-    const { intersectChannelsForCustomerRecipients } = await import(
-      "@/lib/notifications/customer-notification-channels"
-    );
+  if ((options?.appType === "customer" || options?.appType === "provider") && userIds.length > 0) {
     const nonPref = channelsToSend.filter((c) => c !== "email" && c !== "sms" && c !== "push");
     const triad = channelsToSend.filter((c): c is "email" | "sms" | "push" =>
       c === "email" || c === "sms" || c === "push"
     );
-    const allowed = await intersectChannelsForCustomerRecipients(
-      getSupabaseAdmin(),
-      userIds,
-      templateKey,
-      triad
-    );
+    let allowed: ("email" | "sms" | "push")[];
+    if (options.appType === "provider") {
+      // Providers store opt-outs on user_profiles.notification_preferences too
+      // (per provider user — owner or staff). Historically these were stored but
+      // never enforced on send; now they gate email/sms/push the same way the
+      // customer prefs do, with must-deliver bypass below.
+      const { intersectChannelsForProviderRecipients } = await import(
+        "@/lib/notifications/provider-notification-channels"
+      );
+      allowed = await intersectChannelsForProviderRecipients(
+        getSupabaseAdmin(),
+        userIds,
+        templateKey,
+        triad
+      );
+    } else {
+      const { intersectChannelsForCustomerRecipients } = await import(
+        "@/lib/notifications/customer-notification-channels"
+      );
+      allowed = await intersectChannelsForCustomerRecipients(
+        getSupabaseAdmin(),
+        userIds,
+        templateKey,
+        triad
+      );
+    }
     // Must-deliver pushes (everything except marketing/promo) bypass preference
     // gating so transactional notifications reach the device. Email/SMS prefs
     // are still respected.
@@ -1177,17 +1356,47 @@ export async function sendTemplateNotification(
   ) {
     try {
       const supabaseAdmin = getSupabaseAdmin();
-      const { data: profiles } = await supabaseAdmin
-        .from("user_profiles")
-        .select("user_id, notification_preferences")
-        .in("user_id", userIds);
+      const [{ data: profiles }, { data: tzRows }] = await Promise.all([
+        supabaseAdmin
+          .from("user_profiles")
+          .select("user_id, notification_preferences")
+          .in("user_id", userIds),
+        supabaseAdmin.from("users").select("id, timezone").in("id", userIds),
+      ]);
 
       if (profiles && profiles.length > 0) {
+        const tzByUser = new Map<string, string>(
+          (tzRows ?? []).map((u) => [
+            u.id as string,
+            (typeof u.timezone === "string" && u.timezone.trim()) || "Africa/Johannesburg",
+          ]),
+        );
         const now = new Date();
-        const nowHHMM = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+        // Quiet hours are wall-clock for the recipient, so evaluate "now" in
+        // each user's IANA timezone rather than the Vercel/server timezone —
+        // previously a user in another region was silenced at the wrong hours.
+        const hhmmInTz = (tz: string): string => {
+          try {
+            return new Intl.DateTimeFormat("en-GB", {
+              hour: "2-digit",
+              minute: "2-digit",
+              hour12: false,
+              timeZone: tz,
+            }).format(now);
+          } catch {
+            return new Intl.DateTimeFormat("en-GB", {
+              hour: "2-digit",
+              minute: "2-digit",
+              hour12: false,
+              timeZone: "Africa/Johannesburg",
+            }).format(now);
+          }
+        };
         const allInQuietHours = profiles.every((p) => {
           const prefs = p.notification_preferences as Record<string, unknown> | null;
           if (!prefs?.quiet_hours_enabled) return false;
+          const tz = tzByUser.get(p.user_id as string) ?? "Africa/Johannesburg";
+          const nowHHMM = hhmmInTz(tz);
           const start = String(prefs.quiet_hours_start ?? "22:00");
           const end = String(prefs.quiet_hours_end ?? "07:00");
           if (start <= end) {
@@ -1283,7 +1492,12 @@ export async function sendTemplateNotification(
   ]);
   /** Resolves when the in-app row insert completes — awaited for single-recipient badge accuracy. */
   let inAppInsertPromise: Promise<unknown> | null = null;
-  if (!SKIP_IN_APP_TEMPLATES.has(templateKey) && userIds.length > 0 && (title || body)) {
+  if (
+    !SKIP_IN_APP_TEMPLATES.has(templateKey) &&
+    !options?.skipInApp &&
+    userIds.length > 0 &&
+    (title || body)
+  ) {
     // Pull well-known context IDs out of template variables
     const inAppData: Record<string, unknown> = { template_key: templateKey };
     const WELL_KNOWN_VARS = [

@@ -1,6 +1,6 @@
 import React from "react";
 import { fireEvent, render, waitFor } from "@testing-library/react-native";
-import { Text, View } from "react-native";
+import { Alert, Text, View } from "react-native";
 
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
@@ -45,6 +45,12 @@ jest.mock("@/hooks/useResponsive", () => ({
 jest.mock("@/providers/AuthProvider", () => ({
   useAuth: () => ({
     signOut: mockSignOut,
+  }),
+}));
+
+jest.mock("@/providers/ProviderContext", () => ({
+  useProvider: () => ({
+    provider: null,
   }),
 }));
 
@@ -99,6 +105,10 @@ import OnboardingHubScreen from "../../app/(app)/onboarding";
 describe("OnboardingHubScreen", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.spyOn(Alert, "alert").mockImplementation((_title, _message, buttons) => {
+      const signOutButton = buttons?.find((button) => button.text === "Sign out");
+      void signOutButton?.onPress?.();
+    });
     mockSignOut.mockResolvedValue(undefined);
     mockUseApi.mockReturnValue({
       data: {
@@ -118,7 +128,7 @@ describe("OnboardingHubScreen", () => {
     expect(screen.getByText("Start your provider profile")).toBeTruthy();
     expect(screen.getByText("Set up your business profile")).toBeTruthy();
     expect(screen.getByText("Start business setup")).toBeTruthy();
-    expect(screen.getByText("Back to login")).toBeTruthy();
+    expect(screen.getByText("Sign out")).toBeTruthy();
     expect(screen.queryByText("Back to dashboard")).toBeNull();
     expect(screen.queryByText("Dashboard")).toBeNull();
   });
@@ -126,7 +136,7 @@ describe("OnboardingHubScreen", () => {
   it("signs out before navigating incomplete setup users back to login", async () => {
     const screen = render(<OnboardingHubScreen />);
 
-    fireEvent.press(screen.getByText("Back to login"));
+    fireEvent.press(screen.getByText("Sign out"));
 
     await waitFor(() => expect(mockSignOut).toHaveBeenCalled());
     expect(mockReplace).toHaveBeenCalledWith("/(auth)/login");

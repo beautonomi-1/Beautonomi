@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, RefreshControl, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, RefreshControl, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { Stack, router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -125,6 +125,10 @@ export default function GroupBookingDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showReschedule, setShowReschedule] = useState(false);
+  const [rescheduleDate, setRescheduleDate] = useState("");
+  const [rescheduleTime, setRescheduleTime] = useState("");
+  const [savingReschedule, setSavingReschedule] = useState(false);
 
   const load = useCallback(async (silent = false) => {
     if (!id) {
@@ -156,6 +160,33 @@ export default function GroupBookingDetailScreen() {
 
   const constrained = isTablet ? { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const } : {};
   const colors = statusColor(data?.status ?? "confirmed");
+  const isPrimaryContact = Boolean(data?.participants.some((p) => p.is_current_user && p.is_primary_contact));
+  const canRescheduleGroup =
+    isPrimaryContact && data != null && !["completed", "cancelled", "started"].includes(data.status);
+
+  const submitReschedule = useCallback(async () => {
+    if (!id) return;
+    const parsed = Date.parse(`${rescheduleDate}T${rescheduleTime}:00`);
+    if (!Number.isFinite(parsed)) {
+      Alert.alert("Invalid date/time", "Use YYYY-MM-DD and HH:MM (24-hour).");
+      return;
+    }
+    setSavingReschedule(true);
+    try {
+      const res = await api.post(`/api/me/group-bookings/${id}/reschedule`, {
+        new_datetime: new Date(parsed).toISOString(),
+      });
+      if (res.error) {
+        Alert.alert("Could not reschedule", getApiErrorMessage(res.error, "Try another time."));
+        return;
+      }
+      haptic.success();
+      setShowReschedule(false);
+      await load(true);
+    } finally {
+      setSavingReschedule(false);
+    }
+  }, [id, load, rescheduleDate, rescheduleTime]);
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.gray[50] }}>
@@ -208,6 +239,21 @@ export default function GroupBookingDetailScreen() {
                 <Text style={{ color: Colors.gray[500], fontSize: 12, fontWeight: "700", textTransform: "uppercase" }}>{data.ref_number}</Text>
                 <Text style={{ color: Colors.gray[900], fontSize: 24, fontWeight: "800", marginTop: 4 }}>{data.title}</Text>
                 <Text style={{ color: Colors.gray[700], marginTop: 8 }}>{formatDate(data.scheduled_at)} · {formatTime(data.scheduled_at)}</Text>
+                {canRescheduleGroup ? (
+                  <TouchableOpacity
+                    onPress={() => {
+                      const parsed = new Date(data.scheduled_at);
+                      if (Number.isFinite(parsed.getTime())) {
+                        setRescheduleDate(parsed.toISOString().slice(0, 10));
+                        setRescheduleTime(parsed.toISOString().slice(11, 16));
+                      }
+                      setShowReschedule(true);
+                    }}
+                    style={{ marginTop: 12, alignSelf: "flex-start", backgroundColor: Colors.primary, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10 }}
+                  >
+                    <Text style={{ color: Colors.white, fontWeight: "700", fontSize: 13 }}>Reschedule session</Text>
+                  </TouchableOpacity>
+                ) : null}
               </View>
               <View style={{ backgroundColor: colors.bg, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 }}>
                 <Text style={{ color: colors.fg, fontWeight: "700", fontSize: 12 }}>{humanStatus(data.status)}</Text>
@@ -374,6 +420,49 @@ export default function GroupBookingDetailScreen() {
             </View>
           </View>
         </ScrollView>
+      ) : null}
+      {showReschedule ? (
+        <View style={{ position: "absolute", left: 0, right: 0, bottom: 0, top: 0, backgroundColor: "rgba(0,0,0,0.35)", justifyContent: "flex-end" }}>
+          <View style={{ backgroundColor: Colors.white, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20 }}>
+            <Text style={{ fontSize: 18, fontWeight: "800", color: Colors.gray[900], marginBottom: 8 }}>Reschedule group session</Text>
+            <Text style={{ color: Colors.gray[600], fontSize: 13, marginBottom: 12 }}>
+              This moves the entire group to a new date and time. Availability is verified when you save.
+            </Text>
+            <Text style={{ color: Colors.gray[600], fontSize: 12, marginBottom: 6 }}>Date (YYYY-MM-DD)</Text>
+            <TextInput
+              value={rescheduleDate}
+              onChangeText={setRescheduleDate}
+              placeholder="2026-06-10"
+              autoCapitalize="none"
+              style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 10 }}
+            />
+            <Text style={{ color: Colors.gray[600], fontSize: 12, marginBottom: 6 }}>Time (HH:MM)</Text>
+            <TextInput
+              value={rescheduleTime}
+              onChangeText={setRescheduleTime}
+              placeholder="14:30"
+              autoCapitalize="none"
+              style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 10 }}
+            />
+            <View style={{ flexDirection: "row", gap: 10, marginTop: 12 }}>
+              <TouchableOpacity
+                onPress={() => setShowReschedule(false)}
+                style={{ flex: 1, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], paddingVertical: 14, alignItems: "center" }}
+              >
+                <Text style={{ fontWeight: "700", color: Colors.gray[700] }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => void submitReschedule()}
+                disabled={savingReschedule}
+                style={{ flex: 2, borderRadius: 12, backgroundColor: Colors.primary, paddingVertical: 14, alignItems: "center", opacity: savingReschedule ? 0.7 : 1 }}
+              >
+                <Text style={{ fontWeight: "700", color: Colors.white }}>
+                  {savingReschedule ? "Saving…" : "Save new time"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
       ) : null}
     </View>
   );

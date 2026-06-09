@@ -1,11 +1,12 @@
 import { useCallback } from "react";
-import { View, Text, TouchableOpacity } from "react-native";
+import { View, Text, TouchableOpacity, Alert } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useAuth } from "@/providers/AuthProvider";
+import { useProvider } from "@/providers/ProviderContext";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
@@ -40,8 +41,11 @@ type SetupStatus = {
 export default function OnboardingHubScreen() {
   const router = useRouter();
   const { signOut, user } = useAuth();
+  const { provider } = useProvider();
   const { screenPadding, isTablet, contentMaxWidth } = useResponsive();
   const { data, loading, error, refresh } = useApi<SetupStatus>("/api/provider/setup-status");
+
+  const isPendingApproval = provider?.status === "pending_approval";
 
   const status = data as SetupStatus | null;
   const isComplete = status?.isComplete ?? false;
@@ -82,10 +86,23 @@ export default function OnboardingHubScreen() {
     }
   };
 
-  const leaveSetup = async () => {
+  const confirmSignOut = () => {
     hapticLight();
-    await signOut();
-    router.replace("/(auth)/login" as never);
+    Alert.alert(
+      "Sign out?",
+      "You can finish setup later. Your progress is saved to your account.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Sign out",
+          style: "destructive",
+          onPress: async () => {
+            await signOut();
+            router.replace("/(auth)/login" as never);
+          },
+        },
+      ],
+    );
   };
 
   // §provider-setup-seamless-ux 2026-05: clicking a step now routes directly
@@ -166,7 +183,9 @@ export default function OnboardingHubScreen() {
             showBack={false}
             subtitle={
               isComplete
-                ? "Everything looks good"
+                ? isPendingApproval
+                  ? "Setup complete — under review"
+                  : "Everything looks good"
                 : hasSetupSteps
                   ? "A few steps to go live"
                   : "Start your provider profile"
@@ -212,15 +231,25 @@ export default function OnboardingHubScreen() {
               )}
             >
               <Text style={twStyle("text-[12px] font-semibold text-primary")}>
-                {isComplete ? "Ready to work" : "Guided setup · about 10–15 min"}
+                {isComplete
+                  ? isPendingApproval
+                    ? "Under review"
+                    : "Ready to work"
+                  : "Guided setup · about 10–15 min"}
               </Text>
             </View>
             <Text style={twStyle("text-center text-[24px] font-bold text-slate-900")}>
-              {isComplete ? "You're all set" : "Welcome to Beautonomi"}
+              {isComplete
+                ? isPendingApproval
+                  ? "Setup complete"
+                  : "You're all set"
+                : "Welcome to Beautonomi"}
             </Text>
             <Text style={twStyle("mt-2 max-w-sm text-center text-[15px] leading-relaxed text-slate-500")}>
               {isComplete
-                ? "Your profile is live. Accept bookings and manage your business from the app."
+                ? isPendingApproval
+                  ? "Your profile is under review. You can explore the app and finish optional setup while we approve your listing."
+                  : "Your profile is live. Accept bookings and manage your business from the app."
                 : !hasSetupSteps
                   ? "Create your business profile first. You can leave setup any time and come back when you're ready."
                 : remaining > 0
@@ -436,16 +465,16 @@ export default function OnboardingHubScreen() {
 
           {!isComplete && (
             <TouchableOpacity
-              onPress={() => void leaveSetup()}
+              onPress={confirmSignOut}
               style={twStyle(
                 "items-center rounded-full border-2 border-slate-200 bg-white py-4",
               )}
               activeOpacity={0.85}
-              accessibilityLabel="Back to login"
+              accessibilityLabel="Sign out"
               accessibilityRole="button"
             >
               <Text style={twStyle("text-[15px] font-semibold text-slate-700")}>
-                Back to login
+                Sign out
               </Text>
             </TouchableOpacity>
           )}

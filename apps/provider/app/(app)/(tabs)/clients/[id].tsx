@@ -198,6 +198,7 @@ export default function ClientDetailScreen() {
   const clientDetailFocusRef = useRef(true);
 
   const { execute: patchClient } = useApiMutation("patch");
+  const { execute: deleteClient, loading: deletingClient } = useApiMutation("delete");
   const { execute: postWinBack, loading: sendingWinBack } = useApiMutation<{ sent?: boolean }>("post");
 
   useFocusEffect(
@@ -402,6 +403,30 @@ export default function ClientDetailScreen() {
   }, [clientId, client, patchClient, refresh]);
 
   const membershipSubscriptionId = client?.salon_membership?.subscription_id ?? null;
+  const handleDeleteClient = useCallback(() => {
+    if (!clientId) return;
+    Alert.alert(
+      "Remove client?",
+      "This removes the client from your saved list. Past bookings and sales stay on record.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Remove",
+          style: "destructive",
+          onPress: async () => {
+            const { error: err } = await deleteClient(`/api/provider/clients/${clientId}`);
+            if (err) {
+              Alert.alert("Could not remove client", err);
+              return;
+            }
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            goBackToClients();
+          },
+        },
+      ],
+    );
+  }, [clientId, deleteClient, goBackToClients]);
+
   const sendMembershipWinBack = useCallback(async () => {
     if (!membershipSubscriptionId) return;
     Alert.alert(
@@ -569,6 +594,21 @@ export default function ClientDetailScreen() {
                   </View>
                 )}
               </View>
+            </View>
+
+            <View style={twStyle("mt-4 border-t border-gray-100 pt-4")}>
+              <TouchableOpacity
+                onPress={handleDeleteClient}
+                disabled={deletingClient}
+                style={twStyle("flex-row items-center justify-center rounded-xl border border-red-200 bg-red-50 px-4 py-3")}
+                accessibilityRole="button"
+                accessibilityLabel="Remove client from saved list"
+              >
+                <Ionicons name="trash-outline" size={16} color="#b91c1c" />
+                <Text style={twStyle("ml-2 text-sm font-semibold text-red-700")}>
+                  {deletingClient ? "Removing…" : "Remove from client list"}
+                </Text>
+              </TouchableOpacity>
             </View>
 
             {limitedPlatformLink ? (

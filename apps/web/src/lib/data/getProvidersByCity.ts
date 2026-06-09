@@ -40,6 +40,7 @@ export const getProvidersByCity = cache(
         .in("id", providerIds)
         .eq("tenant_id", tenantId)
         .eq("status", "active")
+        .is("deleted_at", null)
         .limit(limit);
 
       if (!providers) return [];

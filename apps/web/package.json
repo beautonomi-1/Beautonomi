@@ -39,6 +39,7 @@
     "@amplitude/engagement-browser": "^1.0.9",
     "@amplitude/plugin-session-replay-browser": "^1.28.0",
     "@beautonomi/admin-access": "workspace:*",
+    "@beautonomi/subscription-features": "workspace:*",
     "@beautonomi/maintenance-paths": "workspace:*",
     "@beautonomi/i18n": "workspace:*",
     "@beautonomi/phone": "workspace:*",

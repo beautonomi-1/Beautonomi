@@ -8,6 +8,7 @@ import { requireAdminSectionAny,
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS, ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog } from "@/lib/audit/audit";
+import { invalidatePublicProviderCache } from "@/lib/providers/invalidate-public-provider-cache";
 import { z } from "zod";
 
 /**
@@ -92,6 +93,8 @@ export async function PATCH(
     if (updateError || !updatedProvider) {
       return handleApiError(updateError, "Failed to update provider status");
     }
+
+    invalidatePublicProviderCache();
 
     await writeAuditLog({
       actor_user_id: user.id,

@@ -51,7 +51,7 @@ export async function sendAppointmentReminders(config: ReminderConfig = DEFAULT_
           providers!inner(
             id,
             business_name,
-            time_zone
+            timezone
           ),
           booking_services(
             id,
@@ -78,13 +78,16 @@ export async function sendAppointmentReminders(config: ReminderConfig = DEFAULT_
       for (const booking of bookings) {
         const reminderKey = `reminder_${hoursBefore}h_${booking.id}`;
 
-        // Check if reminder already sent
+        // Check if reminder already sent. The dedupe key is persisted in the
+        // `data` column by insertNotification (the `metadata` column is never
+        // written), so we must match on `data` — matching on `metadata` here
+        // never hit and let the hourly cron re-send the same reminder.
         const { data: existingNotification } = await supabaseAdmin
           .from("notifications")
           .select("id")
           .eq("user_id", booking.customer_id)
           .eq("type", "appointment_reminder")
-          .contains("metadata", { reminder_key: reminderKey })
+          .contains("data", { reminder_key: reminderKey })
           .limit(1);
 
         if (existingNotification && existingNotification.length > 0) {
@@ -102,7 +105,7 @@ export async function sendAppointmentReminders(config: ReminderConfig = DEFAULT_
         // Next.js server's locale/timezone, which drifted for any provider
         // outside that region.
         const providerTz =
-          (provider?.time_zone as string | null | undefined) || "Africa/Johannesburg";
+          (provider?.timezone as string | null | undefined) || "Africa/Johannesburg";
         const dateStr = scheduledDate.toLocaleDateString("en-ZA", {
           weekday: "long",
           year: "numeric",
@@ -147,7 +150,10 @@ export async function sendAppointmentReminders(config: ReminderConfig = DEFAULT_
               booking_id: booking.id,
             },
             config.channels,
-            { appType: "customer" }
+            // The in-app bell row is inserted manually above with the
+            // reminder_key dedupe payload, so suppress the template's
+            // auto-insert to avoid a duplicate bell entry per reminder.
+            { appType: "customer", skipInApp: true }
           );
 
           remindersSent.push(booking.id);
@@ -249,7 +255,7 @@ export async function sendRebookReminders() {
         .select("id")
         .eq("user_id", booking.customer_id)
         .eq("type", "rebook_reminder")
-        .contains("metadata", { reminder_key: reminderKey })
+        .contains("data", { reminder_key: reminderKey })
         .limit(1);
       if (existing && existing.length > 0) continue;
 
@@ -286,7 +292,8 @@ export async function sendRebookReminders() {
             booking_url: bookingUrlPath,
           },
           ["push", "email"],
-          { appType: "customer" }
+          // In-app bell row inserted manually above (with reminder_key dedupe).
+          { appType: "customer", skipInApp: true }
         );
         sent.push(reminderKey);
       } catch (e) {
@@ -323,7 +330,7 @@ export async function sendBookingReminder(bookingId: string, hoursBefore: number
         providers!inner(
           id,
           business_name,
-          time_zone
+          timezone
         ),
         booking_services(
           id,
@@ -346,7 +353,7 @@ export async function sendBookingReminder(bookingId: string, hoursBefore: number
 
     const scheduledDate = new Date(booking.scheduled_at);
     const providerTz =
-      (provider?.time_zone as string | null | undefined) || "Africa/Johannesburg";
+      (provider?.timezone as string | null | undefined) || "Africa/Johannesburg";
     const dateStr = scheduledDate.toLocaleDateString("en-ZA", {
       weekday: "long",
       year: "numeric",
@@ -389,7 +396,8 @@ export async function sendBookingReminder(bookingId: string, hoursBefore: number
         booking_id: booking.id,
       },
       ["push", "email"],
-      { appType: "customer" }
+      // In-app bell row inserted manually above; skip the template auto-insert.
+      { appType: "customer", skipInApp: true }
     );
 
     return { success: true };

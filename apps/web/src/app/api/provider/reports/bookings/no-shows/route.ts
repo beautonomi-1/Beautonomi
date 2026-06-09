@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
 import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
-import { DASHBOARD_REVENUE_TRANSACTION_TYPES, MAX_REPORT_DAYS, MAX_BOOKINGS_FOR_REPORT } from "@/lib/reports/constants";
+import { LEDGER_FULL_PROVIDER_NET_TYPES, MAX_REPORT_DAYS, MAX_BOOKINGS_FOR_REPORT } from "@/lib/reports/constants";
 import { getProviderReportContext, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
 
 export async function GET(request: NextRequest) {
@@ -162,7 +162,7 @@ export async function GET(request: NextRequest) {
             fromDate,
             toDate,
             locationId ?? null,
-            { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES, timezone: reportContext.timezone },
+            { transactionTypes: LEDGER_FULL_PROVIDER_NET_TYPES, timezone: reportContext.timezone },
           )
         : { revenueByBooking: new Map<string, number>() };
 
@@ -224,12 +224,15 @@ export async function GET(request: NextRequest) {
       totalNoShows,
       totalBookings,
       noShowRate,
+      /** Net ledger recognized for no-show bookings (provider_earnings + tip + travel_fee). Often zero when unpaid. */
+      ledgerNetRecognized: lostRevenue,
+      /** @deprecated Use ledgerNetRecognized — same value; name was misleading vs booked loss. */
       lostRevenue,
       repeatOffenders,
       staffBreakdown,
       recentNoShows: noShowBookings?.slice(0, 20) || [],
       basisNote:
-        "lostRevenue = ledger provider_earnings for no-show bookings in range (often zero). Repeat-offender booked_value uses appointment total_amount; ledger_earnings uses the same ledger rule.",
+        "ledgerNetRecognized sums net provider_earnings + tip + travel_fee ledger rows for no-show bookings in range (often zero when never paid). booked_value on repeat offenders uses appointment total_amount.",
       reportBasis:
         "No-show rate uses exact booking counts for the selected scheduled-date range. Recent no-shows and staff/client breakdowns are capped for display.",
     });

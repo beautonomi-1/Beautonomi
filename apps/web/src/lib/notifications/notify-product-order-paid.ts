@@ -158,6 +158,10 @@ export async function notifyProductOrderPaidIfTransitioned(
           {
             appType: "provider",
             tenantId: tenantId ?? undefined,
+            // notifyProviderTeamUsers already inserted the in-app bell rows for
+            // the whole team above; skip the template auto-insert to avoid a
+            // duplicate entry per team member.
+            skipInApp: true,
           },
         );
         await Promise.all(
@@ -186,7 +190,11 @@ export async function notifyProductOrderPaidIfTransitioned(
     }
 
     try {
-      await notifyOrderConfirmation(customerId, productOrderId, orderNumber, totalAmount, ["push", "email"]);
+      // The customer in-app bell row was inserted manually above; suppress the
+      // template auto-insert so the customer doesn't get two "order" entries.
+      await notifyOrderConfirmation(customerId, productOrderId, orderNumber, totalAmount, ["push", "email"], {
+        skipInApp: true,
+      });
     } catch (e) {
       console.warn("[notifyProductOrderPaid] customer template notify failed:", e);
     }

@@ -59,11 +59,83 @@ export function DashboardSetupCard() {
 
   if (loading && !data) return null;
   if (!data || data.isComplete) return null;
-  if ((data.steps ?? []).length === 0) return null;
+
+  const steps = data.steps ?? [];
+  const hasSetupSteps = steps.length > 0;
+
+  const openWizard = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.push("/(app)/onboarding/wizard" as never);
+  };
+
+  if (!hasSetupSteps) {
+    return (
+      <View
+        style={{
+          marginBottom: 16,
+          borderRadius: 20,
+          borderWidth: 1,
+          borderColor: "#fbcfe8",
+          backgroundColor: "#ffffff",
+          padding: 18,
+          shadowColor: "#831843",
+          shadowOpacity: 0.06,
+          shadowRadius: 14,
+          shadowOffset: { width: 0, height: 4 },
+          elevation: 2,
+        }}
+        accessibilityLabel="Start business setup"
+      >
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          <View
+            style={{
+              width: 48,
+              height: 48,
+              borderRadius: 16,
+              backgroundColor: "#fdf2f8",
+              alignItems: "center",
+              justifyContent: "center",
+              marginRight: 14,
+            }}
+          >
+            <Ionicons name="rocket" size={24} color={Colors.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", letterSpacing: -0.2 }}>
+              Start your business profile
+            </Text>
+            <Text style={{ fontSize: 13, color: "#6b7280", marginTop: 2 }}>
+              Complete setup to accept bookings and go live
+            </Text>
+          </View>
+        </View>
+        <TouchableOpacity
+          onPress={openWizard}
+          activeOpacity={0.88}
+          style={{
+            marginTop: 16,
+            backgroundColor: Colors.primary,
+            paddingVertical: 14,
+            borderRadius: 14,
+            alignItems: "center",
+            flexDirection: "row",
+            justifyContent: "center",
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Start business setup wizard"
+        >
+          <Text style={{ color: "#fff", fontSize: 15, fontWeight: "700", letterSpacing: 0.2 }}>
+            Start business setup
+          </Text>
+          <Ionicons name="arrow-forward" size={16} color="#fff" style={{ marginLeft: 8 }} />
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   const pct = Math.max(0, Math.min(100, data.completionPercentage));
-  const requiredTotal = data.steps.filter((s) => s.required).length;
-  const requiredDone = data.steps.filter((s) => s.required && s.completed).length;
+  const requiredTotal = steps.filter((s) => s.required).length;
+  const requiredDone = steps.filter((s) => s.required && s.completed).length;
 
   const openHub = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);

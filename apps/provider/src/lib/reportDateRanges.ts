@@ -78,7 +78,9 @@ export function getReportDateRange(
 export function formatReportRangeCaption(from: string, to: string): string {
   const parse = (s: string) => {
     const [y, m, d] = s.split("-").map(Number);
-    return new Date(y!, m! - 1, d!);
+    // Anchor at local noon: the caption only renders the literal Y/M/D, and
+    // midnight construction can roll back a day under a backward DST shift.
+    return new Date(y!, m! - 1, d!, 12);
   };
   const a = parse(from);
   const b = parse(to);

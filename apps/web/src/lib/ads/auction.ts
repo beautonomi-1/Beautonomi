@@ -86,13 +86,18 @@ export async function runAdsAuction(params: AuctionParams): Promise<AuctionWinne
 
   const now = new Date().toISOString();
 
-  // Active campaigns with budget remaining (and optional daily cap; pack campaigns cap by impression count)
+  // Active campaigns with budget remaining (and optional daily cap; pack campaigns cap by impression count).
+  // Serve-time funding guard (migration 664): a campaign only serves when it is
+  // backed by a verified, non-reversed payment (funded_at IS NOT NULL). This
+  // applies to ALL billing models — including time-based — so a failed/refunded/
+  // charged-back order can never keep ads live. Reversals clear funded_at.
   const { data: campaigns } = await supabase
     .from("ads_campaigns")
     .select(
-      "id, provider_id, budget, spent, daily_budget, bid_cpc, targeting, pack_impressions, billing_model, duration_days, start_at, end_at, providers!inner(tenant_id)"
+      "id, provider_id, budget, spent, daily_budget, bid_cpc, targeting, pack_impressions, billing_model, duration_days, start_at, end_at, funded_at, paid_order_id, providers!inner(tenant_id)"
     )
     .eq("status", "active")
+    .not("funded_at", "is", null)
     .eq("providers.tenant_id", tenantId);
 
   if (!campaigns?.length) return [];

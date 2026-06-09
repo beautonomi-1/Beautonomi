@@ -17,6 +17,10 @@ import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { addDays } from "date-fns";
 import { dateRangeBoundsUtc, formatDateYmd, nowInTz, resolveTz } from "@/lib/dates/provider-tz";
+import {
+  checkNewGateFeatureAccess,
+  SUBSCRIPTION_FEATURE_KEYS,
+} from "@/lib/subscriptions/feature-access";
 
 const createCustomOfferSchema = z.object({
   customer_id: z.string().uuid(),
@@ -76,6 +80,19 @@ export async function POST(request: NextRequest) {
       return errorResponse(
         "Custom offers are disabled for this market or your workspace. If this is unexpected, contact support — you can enable them from admin feature flags (commerce.provider_custom_offers).",
         "CUSTOM_OFFERS_DISABLED",
+        403,
+      );
+    }
+
+    const customRequestsOk = await checkNewGateFeatureAccess(
+      providerId,
+      SUBSCRIPTION_FEATURE_KEYS.customRequests,
+      supabase,
+    );
+    if (!customRequestsOk) {
+      return errorResponse(
+        "Custom requests and offers are not included in your current subscription plan. Upgrade to use this feature.",
+        "SUBSCRIPTION_FEATURE_DISABLED",
         403,
       );
     }

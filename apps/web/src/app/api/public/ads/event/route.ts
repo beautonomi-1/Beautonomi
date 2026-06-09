@@ -30,11 +30,15 @@ export async function POST(request: NextRequest) {
 
     const { data: campaign } = await supabase
       .from("ads_campaigns")
-      .select("id, status")
+      .select("id, status, funded_at")
       .eq("id", campaignId)
       .eq("provider_id", providerId)
       .maybeSingle();
-    if (!campaign || (eventType !== "book" && campaign.status !== "active")) {
+    // Billable events (impression/click) only count while the campaign is active
+    // AND funded (serve-time guard, migration 664). 'book' is post-click
+    // conversion attribution, so it is always allowed.
+    const isServing = campaign?.status === "active" && campaign?.funded_at != null;
+    if (!campaign || (eventType !== "book" && !isServing)) {
       return NextResponse.json(
         { data: null, error: { message: "Campaign not found or inactive", code: "NOT_FOUND" } },
         { status: 404 }

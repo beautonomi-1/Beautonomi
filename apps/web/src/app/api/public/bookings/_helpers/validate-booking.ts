@@ -233,6 +233,23 @@ export async function validateBooking(
     );
   }
 
+  const { checkNewGateFeatureAccess, SUBSCRIPTION_FEATURE_KEYS } = await import(
+    "@/lib/subscriptions/feature-access"
+  ); // dynamic import avoids circular deps in this large helper module
+  const onlineBookingOk = await checkNewGateFeatureAccess(
+    provider.id,
+    SUBSCRIPTION_FEATURE_KEYS.onlineBooking,
+    supabase,
+  );
+  if (!onlineBookingOk) {
+    return handleApiError(
+      new Error("Online booking is not available for this provider"),
+      "Online booking is not available for this provider at the moment.",
+      "SUBSCRIPTION_FEATURE_DISABLED",
+      403,
+    );
+  }
+
   /**
    * Hold snapshot (authoritative when `hold_id` is present for non-group bookings).
    *

@@ -17,6 +17,12 @@ const updateTimeBlockSchema = z.object({
   notes: z.string().nullable().optional(),
 });
 
+/** Parse an "HH:mm" (or "HH:mm:ss") string to minutes-since-midnight. */
+function timeStringToMinutes(time: string): number {
+  const [h = "0", m = "0"] = time.split(":");
+  return Number(h) * 60 + Number(m);
+}
+
 function normalizeRecurringPattern(
   raw: any,
   anchorDate: string,
@@ -140,7 +146,7 @@ export async function PATCH(
 
     const { data: existingBlock } = await supabase
       .from("time_blocks")
-      .select("id, date")
+      .select("id, date, start_time, end_time")
       .eq("id", id)
       .eq("provider_id", providerId)
       .single();
@@ -150,6 +156,22 @@ export async function PATCH(
     }
 
     const data = validationResult.data;
+
+    // Validate the effective range (merge incoming values with the stored row,
+    // since a partial update may change only one side of the window).
+    const effectiveStart = data.start_time ?? (existingBlock as any).start_time;
+    const effectiveEnd = data.end_time ?? (existingBlock as any).end_time;
+    if (
+      typeof effectiveStart === "string" &&
+      typeof effectiveEnd === "string" &&
+      timeStringToMinutes(effectiveEnd) <= timeStringToMinutes(effectiveStart)
+    ) {
+      return errorResponse(
+        "End time must be after start time",
+        "INVALID_TIME_RANGE",
+        400,
+      );
+    }
     const updateData: Record<string, any> = {};
     if (data.staff_id !== undefined) updateData.staff_id = data.staff_id;
     if (data.blocked_time_type_id !== undefined) updateData.blocked_time_type_id = data.blocked_time_type_id;

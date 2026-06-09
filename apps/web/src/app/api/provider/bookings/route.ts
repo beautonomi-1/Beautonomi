@@ -2312,7 +2312,9 @@ async function handleCreateProviderBooking(request: NextRequest) {
       );
 
       void import("@/lib/notifications/notification-service").then(({ notifyBookingConfirmed }) =>
-        notifyBookingConfirmed(booking.id, ["email", "push"]).catch((e) =>
+        // In-app bell row inserted manually above (new_appointment); skip the
+        // template auto-insert so the customer doesn't get two bell entries.
+        notifyBookingConfirmed(booking.id, ["email", "push"], { skipInApp: true }).catch((e) =>
           console.warn("Booking confirmation notification:", e)
         )
       );
@@ -2388,7 +2390,8 @@ async function handleCreateProviderBooking(request: NextRequest) {
                 payment_link: paymentLink,
               },
               channels,
-              { appType: "customer" }
+              // In-app bell row inserted manually above; skip template auto-insert.
+              { appType: "customer", skipInApp: true }
             );
           } catch (pushError) {
             console.warn(

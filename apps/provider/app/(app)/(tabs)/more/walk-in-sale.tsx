@@ -562,6 +562,7 @@ export default function WalkInSaleScreen() {
           terminal?: { terminal_code?: string; payment_link?: string | null; terminal_url?: string | null; qr_url?: string | null };
           expectedAmount?: number | null;
         }>(PAYSTACK_TERMINAL_PAYMENTS_ACTION_PATH, paystackTerminalCollectionIntentPayload({
+          // Intentionally "other": product order is created only after payment via product-sales.
           entity_type: "other",
           expected_amount: Number(cartTotalDue.toFixed(2)),
           customer_reference: customerReference,

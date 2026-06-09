@@ -54,11 +54,53 @@ const PROVIDER_BOOKING_TEMPLATE_KEYS = new Set([
 ]);
 
 /**
+ * When a push is tapped, mark the related in-app notification rows read on the
+ * server so the bell + OS badge decrement immediately. Best-effort; never throws.
+ */
+function markPushNotificationRead(data: Record<string, unknown>): void {
+  if (Platform.OS === "web") return;
+  const str = (v: unknown): string | undefined =>
+    typeof v === "string" && v.trim().length > 0 ? v.trim() : undefined;
+
+  const notificationId = str(data.notification_id);
+
+  const body: Record<string, string> = {};
+  const bookingId = str(data.booking_id) ?? str(data.bookingId);
+  if (bookingId) body.booking_id = bookingId;
+  const conversationId = str(data.conversation_id) ?? str(data.chat_id);
+  if (conversationId) body.conversation_id = conversationId;
+  const orderId = str(data.order_id) ?? str(data.product_order_id);
+  if (orderId) body.order_id = orderId;
+  const ticketId = str(data.ticket_id);
+  if (ticketId) body.ticket_id = ticketId;
+  const paymentId = str(data.payment_id);
+  if (paymentId) body.payment_id = paymentId;
+
+  void (async () => {
+    try {
+      if (notificationId) {
+        await api.post(`/api/provider/notifications/${notificationId}/read`, {});
+      }
+      if (Object.keys(body).length > 0) {
+        await api.post("/api/provider/notifications/mark-related-read", body);
+      }
+    } catch {
+      // Non-blocking — the badge reconciles on next realtime/foreground sync.
+    } finally {
+      emitNotificationBadgeRefresh();
+    }
+  })();
+}
+
+/**
  * Route to the correct screen based on notification payload.
  * Deep links map to provider-specific screens.
  * Supports: type, template_key, booking_id, client_id, conversation_id (or chat_id), etc.
  */
 function handleNotificationRoute(data: Record<string, unknown>) {
+  // Mark related in-app rows read up front (fire-and-forget) so every routing
+  // branch below benefits without duplicating the call.
+  markPushNotificationRead(data);
   try {
     const templateKey = String(data.template_key ?? "");
     const type = String(data.type ?? data.notification_type ?? "");
@@ -514,6 +556,17 @@ function usePushRegistration() {
                 ...(additionalData ?? {}),
                 ...(launchURL ? { url: launchURL, deep_link: launchURL } : {}),
               };
+              // iOS/Android action-button taps surface here as result.actionId.
+              const actionId = String(
+                (event as unknown as { result?: { actionId?: string } }).result?.actionId ?? "",
+              );
+              if (actionId === "mark_read") {
+                // "Mark as read" doesn't open the app — just clear it server-side.
+                markPushNotificationRead(merged);
+                return;
+              }
+              // accept_booking / decline_booking open the booking detail (which
+              // has the confirm/decline controls), in addition to default taps.
               if (Object.keys(merged).length > 0) {
                 enqueueOrRoutePushNotification(merged, handleNotificationRoute);
               } else {
@@ -631,6 +684,9 @@ function usePushRegistration() {
         if (!res.error) {
           registeredRef.current = true;
           lastRegisteredPlayerIdRef.current = id.trim();
+          // Persist so the foreground re-register effect treats this id as
+          // already-registered and doesn't re-POST /api/provider/devices.
+          void setRegisteredPlayerId(user.id, id.trim());
         }
       } catch (err) {
         captureError(err, { scope: "push_notifications:device_register_retry" });

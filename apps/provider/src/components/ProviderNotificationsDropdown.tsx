@@ -32,11 +32,23 @@ type Notification = {
   message?: string | null;
   type?: string | null;
   read?: boolean;
+  /** Raw server fields — kept so read-state matches the full list exactly. */
+  read_at?: string | null;
+  is_read?: boolean | null;
   timestamp?: string;
   link?: string;
   action_url?: string;
   data?: ProviderNotificationNavPayload["data"];
 };
+
+/**
+ * Unified read-state check, identical to the full notifications list, so the
+ * dropdown and list never disagree about whether an item is read. The API maps
+ * is_read -> read, but also spreads the raw row, so accept any of them.
+ */
+function isNotificationRead(n: Notification): boolean {
+  return Boolean(n.read_at || n.read || n.is_read);
+}
 
 type NotificationsResponse = {
   notifications?: Notification[];
@@ -83,7 +95,7 @@ export function ProviderNotificationsDropdown({ visible, onClose, onSeeAll }: Pr
     replaceUnreadCount(0);
     if (data?.notifications) {
       mutate({
-        notifications: data.notifications.map((n) => ({ ...n, read: true })),
+        notifications: data.notifications.map((n) => ({ ...n, read: true, is_read: true })),
         total_unread: 0,
       });
     }
@@ -107,13 +119,15 @@ export function ProviderNotificationsDropdown({ visible, onClose, onSeeAll }: Pr
   const handleRowPress = useCallback(
     async (n: Notification) => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      const wasUnread = !n.read;
+      const wasUnread = !isNotificationRead(n);
       if (wasUnread && data) {
         adjustUnreadCount(-1);
         mutate({
           ...data,
           notifications:
-            data.notifications?.map((x) => (x.id === n.id ? { ...x, read: true } : x)) ?? [],
+            data.notifications?.map((x) =>
+              x.id === n.id ? { ...x, read: true, is_read: true } : x,
+            ) ?? [],
           total_unread: Math.max(0, (data.total_unread ?? 0) - 1),
         });
       }
@@ -136,7 +150,7 @@ export function ProviderNotificationsDropdown({ visible, onClose, onSeeAll }: Pr
 
   const deleteNotification = useCallback(
     async (n: Notification) => {
-      const wasUnread = !n.read;
+      const wasUnread = !isNotificationRead(n);
       const prevData = data;
       if (wasUnread) adjustUnreadCount(-1);
       if (data?.notifications) {
@@ -238,7 +252,9 @@ export function ProviderNotificationsDropdown({ visible, onClose, onSeeAll }: Pr
                 </View>
               ) : (
                 <View style={twStyle("pb-2")}>
-                  {notifications.map((n) => (
+                  {notifications.map((n) => {
+                    const read = isNotificationRead(n);
+                    return (
                     <ReanimatedSwipeable
                       key={n.id}
                       friction={2}
@@ -268,7 +284,7 @@ export function ProviderNotificationsDropdown({ visible, onClose, onSeeAll }: Pr
                       <Pressable
                         onPress={() => void handleRowPress(n)}
                         style={twStyle(
-                          `mx-3 mt-2 rounded-xl border p-3 active:opacity-90 ${n.read ? "border-gray-100 bg-gray-50/50" : "border-indigo-100 bg-indigo-50/30"}`,
+                          `mx-3 mt-2 rounded-xl border p-3 active:opacity-90 ${read ? "border-gray-100 bg-gray-50/50" : "border-indigo-100 bg-indigo-50/30"}`,
                         )}
                         accessibilityRole="button"
                         accessibilityLabel={`${n.title ?? "Notification"}. ${n.message ?? ""}`}
@@ -277,7 +293,7 @@ export function ProviderNotificationsDropdown({ visible, onClose, onSeeAll }: Pr
                         <View style={twStyle("flex-row items-start justify-between")}>
                           <View style={[twStyle("flex-1 min-w-0"), { marginRight: 8 }]}>
                             <Text
-                              style={twStyle(`font-medium ${n.read ? "text-gray-700" : "text-gray-900"}`)}
+                              style={twStyle(`font-medium ${read ? "text-gray-700" : "text-gray-900"}`)}
                               numberOfLines={1}
                             >
                               {n.title ?? "Notification"}
@@ -291,11 +307,12 @@ export function ProviderNotificationsDropdown({ visible, onClose, onSeeAll }: Pr
                               <Text style={twStyle("mt-1.5 text-xs text-gray-400")}>{formatDateTimeSafe(n.timestamp)}</Text>
                             ) : null}
                           </View>
-                          {!n.read && <View style={twStyle("h-2 w-2 rounded-full bg-indigo-500 flex-shrink-0 mt-1.5")} />}
+                          {!read && <View style={twStyle("h-2 w-2 rounded-full bg-indigo-500 flex-shrink-0 mt-1.5")} />}
                         </View>
                       </Pressable>
                     </ReanimatedSwipeable>
-                  ))}
+                    );
+                  })}
                 </View>
               )}
             </ScrollView>

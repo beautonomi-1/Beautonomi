@@ -15,6 +15,7 @@ import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { verifyCronRequest } from "@/lib/cron-auth";
 import { insertNotification } from "@/lib/notifications/insert-notification";
 import { sendTemplateNotification } from "@/lib/notifications/onesignal";
+import { resolveCatalogPlanIdForProviderSubscription } from "@/lib/subscriptions/ensure-provider-free-subscription";
 
 const PAST_DUE_GRACE_DAYS = 3;
 
@@ -28,13 +29,26 @@ export async function GET(request: NextRequest) {
     const supabase = getSupabaseAdmin();
     const now = new Date().toISOString();
 
+    // Resolve the free catalog plan so an expiring paid subscription falls back
+    // to free cleanly — plan_id, the UI, and entitlement resolvers all agree
+    // (no lingering paid plan name on a lapsed account). When this cannot be
+    // resolved we still expire, and the resolvers' status-based free fallback
+    // keeps entitlements correct.
+    const freePlanId = await resolveCatalogPlanIdForProviderSubscription(supabase);
+    const expirePatch = (extra?: Record<string, unknown>) => ({
+      status: "expired" as const,
+      auto_renew: false,
+      paystack_subscription_code: null,
+      next_payment_date: null,
+      ...(freePlanId ? { plan_id: freePlanId } : {}),
+      updated_at: now,
+      ...(extra ?? {}),
+    });
+
     // 1. Cancel-at-period-end: cancelled_at set while still active; expire when billing period ends
     const { data: expired, error } = await supabase
       .from("provider_subscriptions")
-      .update({
-        status: "expired",
-        updated_at: now,
-      })
+      .update(expirePatch())
       .eq("status", "active")
       .not("cancelled_at", "is", null)
       .lt("expires_at", now)
@@ -54,10 +68,7 @@ export async function GET(request: NextRequest) {
     // (e.g. failed payment renewals where auto_renew was left true)
     const { data: naturalExpired, error: naturalError } = await supabase
       .from("provider_subscriptions")
-      .update({
-        status: "expired",
-        updated_at: now,
-      })
+      .update(expirePatch())
       .eq("status", "active")
       .is("cancelled_at", null)
       .eq("auto_renew", false)
@@ -81,10 +92,7 @@ export async function GET(request: NextRequest) {
 
     const { data: pastDueExpired, error: pastDueError } = await supabase
       .from("provider_subscriptions")
-      .update({
-        status: "expired",
-        updated_at: now,
-      })
+      .update(expirePatch())
       .eq("status", "past_due")
       .lt("updated_at", graceCutoff)
       .lt("expires_at", now)
@@ -146,7 +154,8 @@ export async function GET(request: NextRequest) {
               reason: sub.reason,
             },
             ["push"],
-            { appType: "provider" }
+            // In-app bell row inserted manually above; skip template auto-insert.
+            { appType: "provider", skipInApp: true }
           );
 
           notified++;

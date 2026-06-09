@@ -512,7 +512,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
         params.set("category", slug);
       }
       // Warm the home payload for all sections before route-state updates.
-      void fetchPublicHomeClient(params);
+      void fetchPublicHomeClient(params, { forceFresh: true });
       startCategoryTransition(() => {
         if (slug === "all") {
           router.replace("/", { scroll: false });

@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useTranslation } from "@beautonomi/i18n";
-import { View, Text, Switch, ScrollView, RefreshControl, ActivityIndicator, Alert, Platform } from "react-native";
+import { View, Text, Switch, ScrollView, RefreshControl, ActivityIndicator, Alert, Platform, Linking, TouchableOpacity } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
@@ -304,6 +305,78 @@ export default function NotificationsScreen() {
             saving={isSaving("messages.push")}
             onToggle={(v) => toggleNested("messages", "push", v)}
           />
+        </View>
+
+        {/* ── Push notifications matrix ── */}
+        <View style={{ marginBottom: 8, marginTop: 12 }}>
+          <SectionHeader
+            title="Push notifications"
+            subtitle="Choose which push alerts you receive on this device. Critical alerts (like payment and safety) are always delivered."
+          />
+          <ToggleRow
+            label="Booking reminders"
+            description="Push reminders before your upcoming appointments"
+            value={prefs.reminders?.push === true}
+            saving={isSaving("reminders.push")}
+            onToggle={(v) => toggleNested("reminders", "push", v)}
+          />
+          <ToggleRow
+            label="Account activity"
+            description="Push when a booking is confirmed, updated, or cancelled"
+            value={prefs.account_activity?.push === true}
+            saving={isSaving("account_activity.push")}
+            onToggle={(v) => toggleNested("account_activity", "push", v)}
+          />
+          <ToggleRow
+            label="Policies and reminders"
+            description="Push for policy updates and check-ins"
+            value={prefs.client_policies?.push === true}
+            saving={isSaving("client_policies.push")}
+            onToggle={(v) => toggleNested("client_policies", "push", v)}
+          />
+          <ToggleRow
+            label="Offers and promotions"
+            description="Push for deals, tips, and promotions"
+            value={prefs.inspiration_and_offers?.push === true}
+            saving={isSaving("inspiration_and_offers.push")}
+            onToggle={(v) => toggleNested("inspiration_and_offers", "push", v)}
+          />
+
+          {Platform.OS !== "web" && (
+            <TouchableOpacity
+              onPress={() => {
+                void Linking.openSettings().catch(() => {
+                  Alert.alert(
+                    "Open settings",
+                    "Open your device Settings to manage system notification permissions for Beautonomi.",
+                  );
+                });
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Open system notification settings"
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                backgroundColor: Colors.white,
+                borderRadius: 12,
+                padding: 16,
+                borderWidth: 1,
+                borderColor: Colors.gray[100],
+                marginTop: 4,
+              }}
+            >
+              <View style={{ flex: 1, marginRight: 12 }}>
+                <Text style={{ fontWeight: "500", color: Colors.gray[900] }}>
+                  System notification settings
+                </Text>
+                <Text style={{ fontSize: 13, color: Colors.gray[500], marginTop: 2 }}>
+                  Manage OS-level permissions if push isn’t arriving
+                </Text>
+              </View>
+              <Ionicons name="open-outline" size={20} color={Colors.primary} />
+            </TouchableOpacity>
+          )}
         </View>
       </ScrollView>
     </ScreenFrame>

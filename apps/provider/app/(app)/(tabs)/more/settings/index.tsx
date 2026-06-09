@@ -36,7 +36,7 @@ const SETTINGS_SECTIONS: { title: string; items: SettingItem[] }[] = [
       // freelancer Personal Profile setup step.
       { icon: "person-circle-outline", label: "Personal profile", subtitle: "Bio, headline & how customers see you", route: "/(app)/(tabs)/more/settings/personal-profile", color: "#ec4899" },
       { icon: "time-outline", label: "Operating Hours", subtitle: "Opening & closing times", route: "/(app)/(tabs)/more/settings/hours", color: "#3b82f6" },
-      { icon: "location-outline", label: "Locations", subtitle: "Manage your locations", route: "/(app)/(tabs)/more/settings/locations", color: "#22c55e" },
+      { icon: "location-outline", label: "Locations", subtitle: "Manage your locations", route: "/(app)/(tabs)/more/locations", color: "#22c55e" },
       { icon: "car-outline", label: "House calls & travel", subtitle: "Travel fees, radius and zones", route: "/(app)/(tabs)/more/settings/travel-fees", color: "#0891b2" },
       { icon: "navigate-outline", label: "Distance & radius", subtitle: "How far you travel for house calls", route: "/(app)/(tabs)/more/settings/distance-settings", color: "#0891b2" },
     ],
@@ -130,7 +130,6 @@ const SETTINGS_SECTIONS: { title: string; items: SettingItem[] }[] = [
   {
     title: "Integrations",
     items: [
-      { icon: "shield-checkmark-outline", label: "Staff Permissions", subtitle: "Per-staff access control", route: "/(app)/(tabs)/more/settings/staff-permissions", color: "#22c55e" },
       { icon: "analytics-outline", label: "Service Zone Analytics", subtitle: "At-home zone performance", route: "/(app)/(tabs)/more/settings/service-zones-analytics", color: "#0891b2" },
       { icon: "mail-outline", label: "Email Integration", subtitle: "SendGrid or Mailchimp", route: "/(app)/(tabs)/more/settings/email-integration", color: "#3b82f6" },
       { icon: "chatbubble-ellipses-outline", label: "SMS & WhatsApp", subtitle: "Twilio integration", route: "/(app)/(tabs)/more/settings/twilio-integration", color: "#22c55e" },
@@ -156,7 +155,6 @@ const SETTINGS_SECTIONS: { title: string; items: SettingItem[] }[] = [
   {
     title: "More",
     items: [
-      { icon: "link-outline", label: "Booking link", subtitle: "Booking page URLs & embed", route: "/(app)/(tabs)/more/settings/booking-link", color: "#6366f1" },
       { icon: "receipt-outline", label: "Receipt sequencing", subtitle: "Receipt numbers & format", route: "/(app)/(tabs)/more/settings/receipt-sequencing", color: "#0d9488" },
       { icon: "megaphone-outline", label: "Ads", subtitle: "Ad campaigns & spend", route: "/(app)/(tabs)/more/settings/ads", color: "#f59e0b" },
       { icon: "share-social-outline", label: "Marketing integrations", subtitle: "Connect marketing tools", route: "/(app)/(tabs)/more/settings/marketing-integrations", color: "#ec4899" },

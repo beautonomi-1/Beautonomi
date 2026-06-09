@@ -30,13 +30,22 @@ export async function POST(
     if (!providerId) return notFoundResponse("Provider not found");
 
     const { data: order, error: orderError } = await (supabase.from("product_orders") as any)
-      .select("id, provider_id, order_number, total_amount, payment_status, payment_method, status")
+      .select(
+        "id, provider_id, order_number, total_amount, payment_status, payment_method, status, order_source",
+      )
       .eq("id", id)
       .eq("provider_id", providerId)
       .maybeSingle();
 
     if (orderError) throw orderError;
     if (!order) return notFoundResponse("Order not found");
+    if (String(order.order_source ?? "") === "appointment") {
+      return errorResponse(
+        "This product is paid on the linked appointment — record payment on the booking.",
+        "PAYMENT_ON_BOOKING",
+        400,
+      );
+    }
     if (["cancelled", "refunded"].includes(String(order.status ?? ""))) {
       return errorResponse("Cannot collect payment for a cancelled or refunded order.", "INVALID_STATUS", 400);
     }

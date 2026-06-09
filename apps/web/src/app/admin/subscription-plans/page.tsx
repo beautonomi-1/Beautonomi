@@ -59,84 +59,45 @@ import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import WysiwygEditor from "@/components/admin/WysiwygEditor";
 import { isBlankHtmlContent } from "@/lib/html/pricing-feature-html-shared";
+import {
+  ALL_FEATURE_CATEGORY_KEYS,
+  CALENDAR_PROVIDERS as CALENDAR_PROVIDER_OPTIONS,
+  getFreePlanFeatures,
+  MARKETING_CHANNELS as MARKETING_CHANNEL_OPTIONS,
+  normalizeFeatures as normalizePlanFeatures,
+  REPORT_TYPES as REPORT_TYPE_OPTIONS,
+} from "@beautonomi/subscription-features";
 
-// Complex feature gating structure matching migration 133
-interface FeatureGating {
-  marketing_campaigns?: {
-    enabled: boolean;
-    channels?: string[];
-    max_campaigns_per_month?: number | null;
-    max_recipients_per_campaign?: number | null;
-    advanced_segmentation?: boolean;
-    custom_integrations?: boolean;
-  };
-  chat_messages?: {
-    enabled: boolean;
-    max_messages_per_month?: number | null;
-    file_attachments?: boolean;
-    group_chats?: boolean;
-  };
-  yoco_integration?: {
-    enabled: boolean;
-    max_devices?: number | null;
-    advanced_features?: boolean;
-  };
-  staff_management?: {
-    enabled: boolean;
-    max_staff_members?: number | null;
-  };
-  multi_location?: {
-    enabled: boolean;
-    max_locations?: number | null;
-  };
-  booking_limits?: {
-    enabled: boolean;
-    max_bookings_per_month?: number | null;
-  };
-  advanced_analytics?: {
-    enabled: boolean;
-    basic_reports?: boolean;
-    advanced_reports?: boolean;
-    data_export?: boolean;
-    api_access?: boolean;
-    report_types?: string[];
-  };
-  marketing_automations?: {
-    enabled: boolean;
-    max_automations?: number | null;
-  };
-  recurring_appointments?: {
-    enabled: boolean;
-    advanced_patterns?: boolean;
-  };
-  express_booking?: {
-    enabled: boolean;
-    max_links?: number | null;
-  };
-  calendar_sync?: {
-    enabled: boolean;
-    providers?: string[];
-    api_access?: boolean;
-  };
-  /** Intake, consent, and waiver forms (API: intake_forms) */
-  intake_forms?: {
-    enabled: boolean;
-  };
-  /** Rooms, chairs, equipment resources for services (API: service_resources) */
-  service_resources?: {
-    enabled: boolean;
-  };
-  /** Staff operational SMS in team notification settings */
-  staff_sms_notifications?: {
-    enabled: boolean;
-  };
-  /** Included platform ads budget (ZAR / month) where applicable */
-  platform_ads?: {
-    enabled: boolean;
-    included_credit_zar_per_month?: number | null;
-    note?: string;
-  };
-}
+/** Typed view for the legacy Next.js form; registry drives defaults and normalize. */
+type FeatureCategoryForm = {
+  enabled?: boolean;
+  channels?: string[];
+  providers?: string[];
+  report_types?: string[];
+  note?: string;
+  max_campaigns_per_month?: number | null;
+  max_recipients_per_campaign?: number | null;
+  max_messages_per_month?: number | null;
+  max_devices?: number | null;
+  max_staff_members?: number | null;
+  max_locations?: number | null;
+  max_bookings_per_month?: number | null;
+  max_automations?: number | null;
+  max_links?: number | null;
+  included_credit_zar_per_month?: number | null;
+  advanced_segmentation?: boolean;
+  custom_integrations?: boolean;
+  file_attachments?: boolean;
+  group_chats?: boolean;
+  advanced_features?: boolean;
+  basic_reports?: boolean;
+  advanced_reports?: boolean;
+  data_export?: boolean;
+  api_access?: boolean;
+  advanced_patterns?: boolean;
+};
+
+type FeatureGating = Record<string, FeatureCategoryForm>;
 
 interface PricingPlanLink {
   id: string;
@@ -193,103 +154,14 @@ interface SubscriptionPlan {
   pricing_plan?: PricingPlanLink | null;
 }
 
-// Default feature structure
-const getDefaultFeatures = (): FeatureGating => ({
-  marketing_campaigns: {
-    enabled: false,
-    channels: [],
-    max_campaigns_per_month: null,
-    max_recipients_per_campaign: null,
-    advanced_segmentation: false,
-    custom_integrations: false,
-  },
-  chat_messages: {
-    enabled: true,
-    max_messages_per_month: 50,
-    file_attachments: false,
-    group_chats: false,
-  },
-  yoco_integration: {
-    enabled: false,
-    max_devices: 0,
-    advanced_features: false,
-  },
-  staff_management: {
-    enabled: false,
-    max_staff_members: 0,
-  },
-  multi_location: {
-    enabled: true,
-    max_locations: 1,
-  },
-  booking_limits: {
-    enabled: true,
-    max_bookings_per_month: 10,
-  },
-  advanced_analytics: {
-    enabled: false,
-    basic_reports: false,
-    advanced_reports: false,
-    data_export: false,
-    api_access: false,
-    report_types: [],
-  },
-  marketing_automations: {
-    enabled: false,
-    max_automations: 0,
-  },
-  recurring_appointments: {
-    enabled: false,
-    advanced_patterns: false,
-  },
-  express_booking: {
-    enabled: false,
-    max_links: 0,
-  },
-  calendar_sync: {
-    enabled: false,
-    providers: [],
-    api_access: false,
-  },
-  intake_forms: {
-    enabled: true,
-  },
-  service_resources: {
-    enabled: true,
-  },
-  staff_sms_notifications: {
-    enabled: false,
-  },
-  platform_ads: {
-    enabled: false,
-    included_credit_zar_per_month: null,
-    note: "",
-  },
-});
+const getDefaultFeatures = (): FeatureGating => getFreePlanFeatures() as FeatureGating;
 
-// Available channels and providers
-const MARKETING_CHANNELS = ["email", "sms", "whatsapp"];
-const CALENDAR_PROVIDERS = ["google", "outlook", "ical"];
-const REPORT_TYPES = ["sales", "bookings", "staff", "clients", "products", "payments", "gift_cards", "packages"];
+const MARKETING_CHANNELS = MARKETING_CHANNEL_OPTIONS.map((c) => c.value);
+const CALENDAR_PROVIDERS = CALENDAR_PROVIDER_OPTIONS.map((p) => p.value);
+const REPORT_TYPES = REPORT_TYPE_OPTIONS.map((r) => r.value);
 
 /** Collapsible sections under Feature Gating (expand/collapse all). */
-const ALL_FEATURE_COLLAPSE_KEYS = [
-  "intake_forms",
-  "service_resources",
-  "staff_sms_notifications",
-  "platform_ads",
-  "marketing_campaigns",
-  "chat_messages",
-  "yoco_integration",
-  "staff_management",
-  "multi_location",
-  "booking_limits",
-  "advanced_analytics",
-  "marketing_automations",
-  "recurring_appointments",
-  "express_booking",
-  "calendar_sync",
-] as const;
+const ALL_FEATURE_COLLAPSE_KEYS = ALL_FEATURE_CATEGORY_KEYS;
 
 type PlansPageProps = { useMergedPlans?: boolean };
 
@@ -337,38 +209,8 @@ export default function SubscriptionPlansPage({ useMergedPlans = false }: PlansP
   const [linkTargetPricingId, setLinkTargetPricingId] = useState<string | null>(null);
   const [linkSelectedSubscriptionId, setLinkSelectedSubscriptionId] = useState<string>("");
 
-  // Helper to normalize features from API (handle both legacy array and complex object)
-  const normalizeFeatures = (features: any): FeatureGating => {
-    if (!features) return getDefaultFeatures();
-    if (Array.isArray(features)) return getDefaultFeatures(); // Legacy array format
-    if (typeof features === 'object') {
-      // Merge with defaults to ensure all fields exist
-      const defaults = getDefaultFeatures();
-      return {
-        ...defaults,
-        ...features,
-        marketing_campaigns: { ...defaults.marketing_campaigns, ...features.marketing_campaigns },
-        chat_messages: { ...defaults.chat_messages, ...features.chat_messages },
-        yoco_integration: { ...defaults.yoco_integration, ...features.yoco_integration },
-        staff_management: { ...defaults.staff_management, ...features.staff_management },
-        multi_location: { ...defaults.multi_location, ...features.multi_location },
-        booking_limits: { ...defaults.booking_limits, ...features.booking_limits },
-        advanced_analytics: { ...defaults.advanced_analytics, ...features.advanced_analytics },
-        marketing_automations: { ...defaults.marketing_automations, ...features.marketing_automations },
-        recurring_appointments: { ...defaults.recurring_appointments, ...features.recurring_appointments },
-        express_booking: { ...defaults.express_booking, ...features.express_booking },
-        calendar_sync: { ...defaults.calendar_sync, ...features.calendar_sync },
-        intake_forms: { ...defaults.intake_forms, ...(features as FeatureGating).intake_forms },
-        service_resources: { ...defaults.service_resources, ...(features as FeatureGating).service_resources },
-        staff_sms_notifications: {
-          ...defaults.staff_sms_notifications,
-          ...(features as FeatureGating).staff_sms_notifications,
-        },
-        platform_ads: { ...defaults.platform_ads, ...(features as FeatureGating).platform_ads },
-      };
-    }
-    return getDefaultFeatures();
-  };
+  const normalizeFeatures = (features: unknown): FeatureGating =>
+    normalizePlanFeatures(features) as FeatureGating;
 
   const fetchPlans = async () => {
     try {
@@ -689,7 +531,12 @@ export default function SubscriptionPlansPage({ useMergedPlans = false }: PlansP
 
   const getFeatureSummary = (plan: SubscriptionPlan): string => {
     const features = normalizeFeatures(plan.features);
-    const enabled = Object.values(features).filter((f) => f?.enabled).length;
+    const enabled = Object.values(features).filter(
+      (f) =>
+        typeof f === "object" &&
+        f !== null &&
+        (f as { enabled?: boolean }).enabled === true,
+    ).length;
     const total = Object.keys(features).length;
     return `${enabled}/${total} enabled`;
   };

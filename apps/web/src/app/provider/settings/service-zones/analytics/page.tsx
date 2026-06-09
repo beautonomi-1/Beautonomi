@@ -61,7 +61,9 @@ export default function ServiceZoneAnalyticsPage() {
 
   useEffect(() => {
     loadAnalytics();
-  }, []);
+    // Refetch whenever the date window changes so the table reflects the picker.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startDate, endDate]);
 
   const loadAnalytics = async () => {
     try {

@@ -5,6 +5,10 @@ import { z } from "zod";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import {
+  checkNewGateFeatureAccess,
+  SUBSCRIPTION_FEATURE_KEYS,
+} from "@/lib/subscriptions/feature-access";
 
 const packageItemSchema = z.object({
   offering_id: z.string().uuid().optional(),
@@ -219,6 +223,19 @@ export async function POST(request: NextRequest) {
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) {
       return errorResponse("Provider not found", "PROVIDER_NOT_FOUND", 404);
+    }
+
+    const packagesOk = await checkNewGateFeatureAccess(
+      providerId,
+      SUBSCRIPTION_FEATURE_KEYS.packages,
+      supabase,
+    );
+    if (!packagesOk) {
+      return errorResponse(
+        "Service packages are not included in your current subscription plan. Upgrade to create packages.",
+        "SUBSCRIPTION_FEATURE_DISABLED",
+        403,
+      );
     }
 
     const { data: prow } = await supabase

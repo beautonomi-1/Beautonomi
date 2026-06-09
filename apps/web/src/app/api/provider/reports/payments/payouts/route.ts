@@ -271,7 +271,10 @@ export async function GET(request: NextRequest) {
           "Walk-in cash or terminal takings with no finance_transactions (see end-of-day / payment summary). This report is not bank payout history.",
       },
       totalPayouts,
+      /** Net provider_earnings in range (excludes tips/travel — see basis.headlineTotal). */
       totalPayoutAmount,
+      /** Alias clarifying headline semantics — same as totalPayoutAmount. */
+      totalLedgerServiceEarnings: totalPayoutAmount,
       totalBookedAmount,
       totalBookedNetOfRefunds,
       totalPlatformFees,

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import { FinanceBookingPaymentsSection } from "./FinanceBookingPaymentsSection";
 import RoleGuard from "@/components/auth/RoleGuard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,6 +26,8 @@ import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalPro
 import { usePermissions } from "@/hooks/usePermissions";
 import { Lock } from "lucide-react";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
+import { formatStatusLabel } from "@/lib/locale/status-label";
+import { ActiveLocationChip } from "@/components/provider/ActiveLocationChip";
 import { PAYOUT_COUNTRIES, getCurrencyForCountry } from "@/lib/payments/payout-countries";
 import { ledgerRowDisplaySign } from "@/lib/provider/provider-ledger-transaction-view";
 
@@ -68,6 +71,14 @@ interface EarningsData {
   balance_owed_to_platform?: number;
   ledger_currencies?: string[];
   ledger_currency_note?: string | null;
+  payout_reconciliation?: {
+    recognized_payoutable_earnings: number;
+    on_hold: number;
+    excluded_provider_collected: number;
+    already_paid_out: number;
+    pending_payouts: number;
+    available_balance: number;
+  };
 }
 
 interface Transaction {
@@ -115,6 +126,14 @@ interface Bank {
   type: string;
 }
 
+interface NextPayoutDateData {
+  payout_schedule: string;
+  minimum_payout_amount: number;
+  payout_hold_days: number;
+  next_payout_date: string | null;
+  next_payout_description: string;
+}
+
 export default function ProviderFinance() {
   const { selectedLocationId, provider: portalProvider } = useProviderPortal();
   const { hasPermission } = usePermissions();
@@ -151,11 +170,20 @@ export default function ProviderFinance() {
   const [showTransactionDialog, setShowTransactionDialog] = useState(false);
   const [transactionDetails, setTransactionDetails] = useState<any>(null);
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
+  const [nextPayoutDate, setNextPayoutDate] = useState<NextPayoutDateData | null>(null);
 
   useEffect(() => {
     loadFinanceData();
     loadPayouts();
     loadPayoutAccounts();
+    void (async () => {
+      try {
+        const res = await fetcher.get<{ data: NextPayoutDateData }>("/api/provider/payouts/next-date");
+        setNextPayoutDate(res.data ?? null);
+      } catch {
+        setNextPayoutDate(null);
+      }
+    })();
     void (async () => {
       try {
         const res = await fetcher.get<{
@@ -407,6 +435,16 @@ export default function ProviderFinance() {
 
   const handleExport = () => {
     try {
+      // The CSV export is intentionally org-wide (all locations). If the page is
+      // currently scoped to a single branch, the export will NOT match those
+      // figures, so confirm before downloading to avoid a silent mismatch.
+      const multiLocation = (portalProvider?.locations?.length ?? 0) > 1;
+      if (multiLocation && selectedLocationId) {
+        const proceed = window.confirm(
+          "This CSV export covers all locations, not just the branch you're currently viewing. Continue?",
+        );
+        if (!proceed) return;
+      }
       const params = new URLSearchParams({ range: dateRange });
       const url = `/api/provider/finance/export?${params.toString()}`;
       // Browser will download due to Content-Disposition on the response.
@@ -483,12 +521,9 @@ export default function ProviderFinance() {
           <div>
             <h1 className="text-3xl font-semibold mb-2">Finance & Earnings</h1>
             <p className="text-gray-600">
-              Track earnings for the selected period and all-time payoutable balance
-              {" · "}
-              <Link href="/provider/payouts" className="text-primary-600 hover:underline">
-                Payout center
-              </Link>
+              Track earnings for the selected period, request payouts, and search customer payments in one place
             </p>
+            <ActiveLocationChip className="mt-2" />
           </div>
           <div className="flex flex-wrap gap-2 mt-4 md:mt-0 items-center">
             {canRequestPayout ? (
@@ -815,6 +850,49 @@ export default function ProviderFinance() {
           </div>
         </div>
 
+        {/* How your available balance is calculated (recognized revenue -> withdrawable) */}
+        {earnings.payout_reconciliation ? (
+          <div className="bg-white border rounded-lg p-6 mb-8">
+            <h3 className="text-sm font-semibold text-gray-900">How your available balance is calculated</h3>
+            <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+              Headline revenue reports can read higher than this because they include cash you collected
+              directly and ignore the hold period and pending requests. Here is the full bridge:
+            </p>
+            <dl className="mt-4 space-y-2 text-sm">
+              <div className="flex items-center justify-between">
+                <dt className="text-gray-700">Recognized payoutable earnings (net of refunds)</dt>
+                <dd className="font-medium text-gray-900">{fmt(earnings.payout_reconciliation.recognized_payoutable_earnings)}</dd>
+              </div>
+              <div className="flex items-center justify-between text-gray-500">
+                <dt>− Cash / Yoco / EFT you collected directly (not held by us)</dt>
+                <dd>{fmt(earnings.payout_reconciliation.excluded_provider_collected)}</dd>
+              </div>
+              <div className="flex items-center justify-between text-gray-500">
+                <dt>
+                  − On hold
+                  {(earnings.payout_hold_days ?? 0) > 0 ? ` (clears ${earnings.payout_hold_days} days after each booking)` : ""}
+                </dt>
+                <dd>{fmt(earnings.payout_reconciliation.on_hold)}</dd>
+              </div>
+              <div className="flex items-center justify-between text-gray-500">
+                <dt>− Pending / processing payout requests</dt>
+                <dd>{fmt(earnings.payout_reconciliation.pending_payouts)}</dd>
+              </div>
+              <div className="flex items-center justify-between text-gray-500">
+                <dt>− Already paid out</dt>
+                <dd>{fmt(earnings.payout_reconciliation.already_paid_out)}</dd>
+              </div>
+              <div className="flex items-center justify-between border-t pt-2 mt-2">
+                <dt className="font-semibold text-gray-900">= Available to withdraw</dt>
+                <dd className="font-semibold text-green-600">{fmt(earnings.payout_reconciliation.available_balance)}</dd>
+              </div>
+            </dl>
+            <p className="text-[11px] text-gray-400 mt-3 leading-relaxed">
+              Note: subscription and ads are billed to your card separately and are never deducted from this balance.
+            </p>
+          </div>
+        ) : null}
+
         {/* Revenue Streams */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
           <div className="bg-white border rounded-lg p-6">
@@ -975,6 +1053,30 @@ export default function ProviderFinance() {
           </div>
         </div>
 
+        {nextPayoutDate ? (
+          <div className="bg-white border rounded-lg p-6 mb-8">
+            <h2 className="text-xl font-semibold mb-2">Payout schedule</h2>
+            <p className="text-sm text-gray-600">{nextPayoutDate.next_payout_description}</p>
+            {nextPayoutDate.next_payout_date ? (
+              <p className="text-lg font-medium text-gray-900 mt-2">
+                Next scheduled payout:{" "}
+                {new Date(nextPayoutDate.next_payout_date).toLocaleDateString(undefined, {
+                  weekday: "long",
+                  year: "numeric",
+                  month: "long",
+                  day: "numeric",
+                })}
+              </p>
+            ) : null}
+            <p className="text-xs text-gray-500 mt-2">
+              Schedule: {nextPayoutDate.payout_schedule.replace(/_/g, " ")} · Minimum{" "}
+              {fmt(nextPayoutDate.minimum_payout_amount)} · Hold {nextPayoutDate.payout_hold_days} days
+            </p>
+          </div>
+        ) : null}
+
+        <FinanceBookingPaymentsSection />
+
         {/* Payouts */}
         {payouts.length > 0 && (
           <div className="bg-white border rounded-lg p-6 mb-8">
@@ -986,10 +1088,10 @@ export default function ProviderFinance() {
                 <div key={payout.id} className="flex items-center justify-between py-4 border-b last:border-0">
                   <div className="flex-1">
                     <p className="font-medium">
-                      Payout Request - {payout.currency} {payout.amount.toFixed(2)}
+                      Payout Request - {fmt(payout.amount)}
                     </p>
                     <p className="text-sm text-gray-600">
-                      Requested: {new Date(payout.requested_at).toLocaleDateString("en-US", {
+                      Requested: {new Date(payout.requested_at).toLocaleDateString(undefined, {
                         year: "numeric",
                         month: "long",
                         day: "numeric",
@@ -1010,7 +1112,7 @@ export default function ProviderFinance() {
                         : "bg-gray-100 text-gray-800"
                     }`}
                   >
-                    {payout.status}
+                    {formatStatusLabel(payout.status)}
                   </span>
                 </div>
               ))}
@@ -1045,6 +1147,7 @@ export default function ProviderFinance() {
                   key={transaction.id} 
                   transaction={transaction}
                   onClick={() => handleTransactionClick(transaction)}
+                  fmt={fmt}
                 />
               ))}
             </div>
@@ -1140,7 +1243,7 @@ function FinanceTransactionDetailBody({
           <div className="flex justify-between">
             <span className="text-gray-600">Date:</span>
             <span className="font-medium">
-              {new Date(transaction.date).toLocaleDateString("en-US", {
+              {new Date(transaction.date).toLocaleDateString(undefined, {
                 year: "numeric",
                 month: "long",
                 day: "numeric",
@@ -1151,12 +1254,12 @@ function FinanceTransactionDetailBody({
           </div>
           <div className="flex justify-between">
             <span className="text-gray-600">Status:</span>
-            <span className="font-medium capitalize">{transaction.status}</span>
+            <span className="font-medium">{formatStatusLabel(transaction.status)}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-gray-600">Type:</span>
-            <span className="font-medium capitalize">
-              {transaction.transaction_type?.replace("_", " ") || transaction.type}
+            <span className="font-medium">
+              {formatStatusLabel(transaction.transaction_type || transaction.type)}
             </span>
           </div>
         </div>
@@ -1170,14 +1273,14 @@ function FinanceTransactionDetailBody({
               <div className="flex justify-between">
                 <span className="text-gray-600">Gross Amount:</span>
                 <span className="font-medium">
-                  {transaction.currency} {transaction.amount.toFixed(2)}
+                  {fmt(transaction.amount)}
                 </span>
               </div>
               {transaction.fees && transaction.fees > 0 && (
                 <div className="flex justify-between">
                   <span className="text-gray-600">Fees:</span>
                   <span className="font-medium text-red-600">
-                    -{transaction.currency} {transaction.fees.toFixed(2)}
+                    -{fmt(transaction.fees)}
                   </span>
                 </div>
               )}
@@ -1185,14 +1288,14 @@ function FinanceTransactionDetailBody({
                 <div className="flex justify-between">
                   <span className="text-gray-600">Platform Commission:</span>
                   <span className="font-medium text-red-600">
-                    -{transaction.currency} {transaction.commission.toFixed(2)}
+                    -{fmt(transaction.commission)}
                   </span>
                 </div>
               )}
               <div className="flex justify-between pt-2 border-t">
                 <span className="font-semibold">Net Amount:</span>
                 <span className={`font-semibold ${primaryClass}`}>
-                  {transaction.currency} {signedPrimary.toFixed(2)}
+                  {fmt(signedPrimary)}
                 </span>
               </div>
             </>
@@ -1200,7 +1303,7 @@ function FinanceTransactionDetailBody({
             <div className="flex justify-between">
               <span className="font-semibold">Amount:</span>
               <span className={`font-semibold ${primaryClass}`}>
-                {transaction.currency} {signedPrimary.toFixed(2)}
+                {fmt(signedPrimary)}
               </span>
             </div>
           )}
@@ -1256,7 +1359,7 @@ function FinanceTransactionDetailBody({
   );
 }
 
-function TransactionRow({ transaction, onClick }: { transaction: Transaction; onClick: () => void }) {
+function TransactionRow({ transaction, onClick, fmt }: { transaction: Transaction; onClick: () => void; fmt: (amount: number) => string }) {
   const tt = transaction.transaction_type;
   const isPlatformRetained =
     transaction.type === "platform_fee" ||
@@ -1313,7 +1416,7 @@ function TransactionRow({ transaction, onClick }: { transaction: Transaction; on
       <div className="flex-1">
         <p className="font-medium">{transaction.description}</p>
         <p className="text-sm text-gray-600">
-          {new Date(transaction.date).toLocaleDateString("en-US", {
+          {new Date(transaction.date).toLocaleDateString(undefined, {
             year: "numeric",
             month: "long",
             day: "numeric",
@@ -1323,13 +1426,12 @@ function TransactionRow({ transaction, onClick }: { transaction: Transaction; on
       <div className="flex items-center gap-4">
         <p className={`font-semibold ${getTypeColor()}`}>
           {displaySign < 0 ? "-" : "+"}
-          {transaction.currency}{" "}
-          {displayAbs.toFixed(2)}
+          {fmt(displayAbs)}
         </p>
         <span
           className={`px-2 py-1 rounded text-xs font-medium ${getStatusColor()}`}
         >
-          {transaction.status}
+          {formatStatusLabel(transaction.status)}
         </span>
       </div>
     </div>

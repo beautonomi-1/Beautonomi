@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import { getMapboxService } from "@/lib/mapbox/mapbox";
+import {
+  isMapboxNotConfiguredError,
+  mapboxNotConfiguredResponse,
+} from "@/lib/mapbox/mapbox-config-errors";
 import { z } from "zod";
 
 const reverseGeocodeSchema = z.object({
@@ -46,16 +50,10 @@ export async function POST(request: Request) {
         data: result,
         error: null,
       });
-    } catch (mapboxError: any) {
-      if (
-        mapboxError.message?.includes("not configured") ||
-        mapboxError.message?.includes("MAPBOX_ACCESS_TOKEN")
-      ) {
-        console.warn("Mapbox not configured, returning null for reverse geocode");
-        return NextResponse.json({
-          data: null,
-          error: null,
-        });
+    } catch (mapboxError: unknown) {
+      if (isMapboxNotConfiguredError(mapboxError)) {
+        console.warn("Mapbox not configured for reverse geocode");
+        return NextResponse.json(mapboxNotConfiguredResponse(), { status: 503 });
       }
       throw mapboxError;
     }

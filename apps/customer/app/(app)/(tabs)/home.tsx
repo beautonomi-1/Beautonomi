@@ -446,7 +446,7 @@ export default function HomeScreen() {
 
   const navTabPadH = windowWidth < 360 ? 6 : 10;
 
-  const { data, loading, refreshing, error, refetch, silentRefetch } = useHomeData(
+  const { data, loading, feedLoading, refreshing, error, refetch, silentRefetch } = useHomeData(
     effectiveLat,
     effectiveLng,
     activeCategorySlug
@@ -755,7 +755,12 @@ export default function HomeScreen() {
               </TouchableOpacity>
             </View>
           ) : null}
-          {data ? (() => {
+          {feedLoading ? (
+            <View style={{ paddingTop: 8 }}>
+              <HomeSkeleton />
+            </View>
+          ) : null}
+          {!feedLoading && data ? (() => {
             const shouldAnimate = !hasAnimatedRef.current;
             if (shouldAnimate) hasAnimatedRef.current = true;
             const sections = (

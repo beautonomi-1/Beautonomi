@@ -53,6 +53,7 @@ export async function GET(request: Request) {
         status,
         payment_status,
         total_amount,
+        booking_source,
         created_at,
         scheduled_at,
         customer:users!bookings_customer_id_fkey(id, email, full_name),
@@ -100,6 +101,7 @@ export async function GET(request: Request) {
       booking_number?: string;
       status?: string;
       payment_status?: string;
+      booking_source?: string | null;
       total_amount?: number;
       created_at?: string;
       scheduled_at?: string;
@@ -114,6 +116,7 @@ export async function GET(request: Request) {
         "Booking Number": booking.booking_number ?? "",
         "Status": booking.status ?? "",
         "Payment Status": booking.payment_status ?? "",
+        "Booking Source": booking.booking_source ?? "online",
         "Total Amount": booking.total_amount ?? "",
         "Created At": booking.created_at ?? "",
         "Scheduled At": booking.scheduled_at ?? "",

@@ -83,8 +83,6 @@ const hubSections = [
     description: "Earnings, payouts, and pay runs",
     items: [
       { label: "Finance & earnings", href: "/provider/finance", icon: Wallet },
-      { label: "Payments", href: "/provider/payments", icon: CreditCard },
-      { label: "Payouts", href: "/provider/payouts", icon: Coins },
       { label: "Payroll", href: "/provider/team/payroll", icon: PiggyBank },
       { label: "Payout Accounts", href: "/provider/settings/payout-accounts", icon: Wallet },
     ],

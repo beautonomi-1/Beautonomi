@@ -48,6 +48,12 @@ const REPORTS: { title: string; description: string; spaTo: string; icon: Lucide
     icon: Gift,
   },
   {
+    title: "Membership report",
+    description: "Salon membership sales (liability) and active subscribers",
+    spaTo: "/reports/memberships",
+    icon: BarChart3,
+  },
+  {
     title: "Yoco reconciliation",
     description: "Payments sync debugging",
     spaTo: "/reports/yoco-reconciliation",

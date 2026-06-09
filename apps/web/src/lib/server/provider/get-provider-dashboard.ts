@@ -34,6 +34,7 @@ import {
 } from "@/lib/server/provider/fetch-upcoming-bookings-for-dashboard";
 import { MAX_FINANCE_TRANSACTIONS } from "@/lib/reports/constants";
 import { fetchAllLedgerPages } from "@/lib/reports/fetch-all-ledger-pages";
+import { fetchAllPaged } from "@/lib/provider-ops/postgrest-unbounded";
 import {
   PROVIDER_POINTS_SELECT,
   fetchProviderGamificationHealSignals,
@@ -43,10 +44,17 @@ import {
   buildProgressToNextBadge,
   resolveJoinedBadge,
 } from "@/lib/provider/build-gamification-view";
+import {
+  getPriorMonthMtdComparisonBounds,
+  getPriorWeekComparisonBounds,
+} from "@/lib/server/provider/dashboard-comparison-periods";
 import { getDashboardRecognizedRevenueBounds } from "@/lib/server/provider/dashboard-revenue-period-bounds";
+import { buildDashboardPeriodBreakdown } from "@/lib/server/provider/build-dashboard-period-breakdown";
 
 const DASHBOARD_CACHE_TTL_MS = 5000;
 const MAX_DASHBOARD_CACHE_ENTRIES = 400;
+/** Safety bound for dashboard booking status / schedule aggregates (paginated, not a silent 5k cap). */
+const MAX_DASHBOARD_BOOKINGS = 50_000;
 const dashboardResponseCache = new Map<string, { expiresAt: number; data: any }>();
 
 const PENDING_BOOKING_STATUSES = new Set(["pending", "pending_payment"]);
@@ -169,23 +177,23 @@ export async function getProviderDashboardResponse(request: NextRequest) {
       providerTz,
     );
 
-    // Optimize: Get only necessary fields for faster queries
-    // Load status, created_at, scheduled_at, and location_type in parallel with finance data
-    // Build bookings query with optional location filter
-    // IMPORTANT: Include 'id' and 'location_type' fields for location filtering and metrics
-    let bookingsQuery = supabaseAdmin
-      .from('bookings')
-      .select('id, status, created_at, scheduled_at, location_id, location_type')
-      .eq('provider_id', providerId)
-      .limit(5000);
-    
-    // If location filter is provided, show bookings for that location
-    // When no location is selected, show all bookings (including those with NULL location_id)
-    // Note: Bookings with NULL location_id (walk-in clients) are only shown when no location filter is applied
-    if (locationId) {
-      bookingsQuery = bookingsQuery.or(dashboardBookingLocationOrFilter(locationId));
-    }
-    // When no locationId is provided, the query will return all bookings including NULL location_id
+    // Load status, created_at, scheduled_at, and location_type in parallel with finance data.
+    // Paginate bookings so high-volume providers are not silently capped at PostgREST max_rows.
+    const fetchDashboardBookingsPage = async (from: number, to: number) => {
+      let q = supabaseAdmin
+        .from("bookings")
+        .select("id, status, created_at, scheduled_at, location_id, location_type, booking_source")
+        .eq("provider_id", providerId)
+        // `scheduled_at` is nullable and non-unique; add `id` as a stable tiebreaker so
+        // ties don't shift across page boundaries (skip/dupe rows in status tiles).
+        .order("scheduled_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(from, to);
+      if (locationId) {
+        q = q.or(dashboardBookingLocationOrFilter(locationId));
+      }
+      return q;
+    };
 
     // For finance transactions, we need to filter by location through bookings
     // This requires a join or subquery. For now, we'll filter finance transactions
@@ -199,17 +207,16 @@ export async function getProviderDashboardResponse(request: NextRequest) {
     // If location filter is provided, we'll need to filter finance transactions
     // by joining with bookings. For performance, we'll do this in memory after fetching.
     // The ledger is fully paginated (not capped) so lifetime totals never undercount.
-    const [bookingsResult, ledgerRows] = await Promise.all([
-      bookingsQuery,
+    const [allBookings, ledgerRows] = await Promise.all([
+      fetchAllPaged(async (from, to) => {
+        const { data, error } = await fetchDashboardBookingsPage(from, to);
+        return { data, error };
+      }, MAX_DASHBOARD_BOOKINGS).then((rows) => rows.slice(0, MAX_DASHBOARD_BOOKINGS)),
       fetchAllLedgerPages(financeQuery as any, MAX_FINANCE_TRANSACTIONS),
     ]);
 
-    if (bookingsResult.error) {
-      throw bookingsResult.error;
-    }
-
-    const allBookings = bookingsResult.data || [];
     const totalBookings = allBookings.length;
+    const bookingsTruncated = allBookings.length >= MAX_DASHBOARD_BOOKINGS;
     
     // Debug: Log booking statuses to help diagnose issues
     if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_DEBUG_DASHBOARD === "1") {
@@ -296,7 +303,10 @@ export async function getProviderDashboardResponse(request: NextRequest) {
     let upcomingBookingsToday = 0;
     let bookingsScheduledThisWeek = 0;
     let bookingsScheduledThisMonth = 0;
-    
+    let appointmentsYesterday = 0;
+    let appointmentsPriorWeek = 0;
+    let appointmentsPriorMonth = 0;
+
     const todayEndLocal = new Date(startOfTodayLocal);
     todayEndLocal.setDate(startOfTodayLocal.getDate() + 1);
     const todayEnd = fromBusinessTime(todayEndLocal, providerTz);
@@ -307,23 +317,55 @@ export async function getProviderDashboardResponse(request: NextRequest) {
       new Date(businessNow.getFullYear(), businessNow.getMonth() + 1, 1, 0, 0, 0, 0),
       providerTz,
     );
-    
+
+    const todayYmdForBounds = formatDateYmd(businessNow, providerTz);
+    const weekStartYmdForBounds = formatDateYmd(startOfWeekLocal, providerTz);
+    const yesterdayYmd = addDaysToYmd(todayYmdForBounds, -1);
+    const yesterdayBounds = dateRangeBoundsUtc(yesterdayYmd, yesterdayYmd, providerTz);
+    const startOfYesterday = new Date(yesterdayBounds.fromIso);
+    const endOfYesterday = new Date(yesterdayBounds.toIso);
+    const priorWeekComparison = getPriorWeekComparisonBounds({
+      timezone: providerTz,
+      businessNow,
+      startOfWeekLocal,
+    });
+    const priorMonthMtdComparison = getPriorMonthMtdComparisonBounds({
+      timezone: providerTz,
+      businessNow,
+    });
+    const startOfPriorWeek = priorWeekComparison.start;
+    const endOfPriorWeek = priorWeekComparison.end;
+    const startOfPriorMonthMtd = priorMonthMtdComparison.start;
+    const endOfPriorMonthMtd = priorMonthMtdComparison.end;
+
     for (const booking of allBookings) {
       const scheduledDate = booking.scheduled_at ? new Date(booking.scheduled_at) : null;
       const status = String(booking.status || "");
-      
+
       if (!scheduledDate || !SCHEDULE_COUNT_STATUSES.has(status)) continue;
-      
+
       if (scheduledDate >= startOfToday && scheduledDate < todayEnd) {
         upcomingBookingsToday++;
       }
-      
+
       if (scheduledDate >= startOfWeek && scheduledDate < startOfNextWeek) {
         bookingsScheduledThisWeek++;
       }
-      
+
       if (scheduledDate >= startOfMonth && scheduledDate < startOfNextMonth) {
         bookingsScheduledThisMonth++;
+      }
+
+      if (scheduledDate >= startOfYesterday && scheduledDate <= endOfYesterday) {
+        appointmentsYesterday++;
+      }
+
+      if (scheduledDate >= startOfPriorWeek && scheduledDate <= endOfPriorWeek) {
+        appointmentsPriorWeek++;
+      }
+
+      if (scheduledDate >= startOfPriorMonthMtd && scheduledDate <= endOfPriorMonthMtd) {
+        appointmentsPriorMonth++;
       }
     }
 
@@ -484,6 +526,44 @@ export async function getProviderDashboardResponse(request: NextRequest) {
         ? Math.round(((revenueThisMonth - revenueLastMonth) / Math.abs(revenueLastMonth)) * 100)
         : 0;
 
+    const revenueYesterday = sumRecognizedRevenue(startOfYesterday, endOfYesterday);
+    const revenuePriorWeek = sumRecognizedRevenue(startOfPriorWeek, endOfPriorWeek);
+    const revenuePriorMonthMtd = sumRecognizedRevenue(startOfPriorMonthMtd, endOfPriorMonthMtd);
+
+    const { period_breakdown, period_comparison } = buildDashboardPeriodBreakdown({
+      parsedRows,
+      bookings: allBookings,
+      windows: {
+        today: { start: startOfToday, end: revenuePeriodEnds.endOfToday },
+        this_week: { start: startOfWeek, end: revenuePeriodEnds.endOfWeek },
+        this_month: { start: startOfMonth, end: revenuePeriodEnds.endOfMonth },
+        yesterday: { start: startOfYesterday, end: endOfYesterday },
+        prior_week: { start: startOfPriorWeek, end: endOfPriorWeek },
+        prior_month: { start: startOfPriorMonthMtd, end: endOfPriorMonthMtd },
+      },
+      revenue: {
+        today: revenueToday,
+        this_week: revenueThisWeek,
+        this_month: revenueThisMonth,
+        yesterday: revenueYesterday,
+        prior_week: revenuePriorWeek,
+        prior_month: revenuePriorMonthMtd,
+      },
+      appointments: {
+        today: upcomingBookingsToday,
+        this_week: bookingsScheduledThisWeek,
+        this_month: bookingsScheduledThisMonth,
+        yesterday: appointmentsYesterday,
+        prior_week: appointmentsPriorWeek,
+        prior_month: appointmentsPriorMonth,
+      },
+      retail: {
+        today: retailTakings.today,
+        this_week: retailTakings.this_week,
+        this_month: retailTakings.this_month,
+      },
+    });
+
     // Keep dashboard available balance aligned with finance/payout APIs:
     // apply hold-days and exclude direct walk-in earnings that are not held by platform.
     const providerTenantId =
@@ -595,7 +675,11 @@ export async function getProviderDashboardResponse(request: NextRequest) {
             package_name?: string | null;
             products?: Array<{ product_name?: string; quantity?: number }>;
           }>;
-          basis?: { upcoming?: string };
+          basis?: {
+            upcoming?: string;
+            activity?: string | null;
+            activity_window?: string | null;
+          };
         }
       | null = null;
 
@@ -677,6 +761,8 @@ export async function getProviderDashboardResponse(request: NextRequest) {
         limit: 10,
       });
       const recentActivity = activityPayload.activities;
+      const activityBasis = activityPayload.basis;
+      const activityWindow = activityPayload.window;
 
       const bookingLimit = await checkBookingLimit(providerId, supabaseAdmin);
       bookingEligibility = {
@@ -694,6 +780,10 @@ export async function getProviderDashboardResponse(request: NextRequest) {
         upcoming_bookings: upcomingBookings,
         basis: {
           upcoming: upcomingBasis.upcoming || UPCOMING_BOOKINGS_BASIS,
+          activity: activityBasis?.window ?? activityBasis?.bookings ?? null,
+          activity_window: activityWindow
+            ? `${activityWindow.fromYmd}–${activityWindow.toYmd}`
+            : null,
         },
       };
     }
@@ -871,6 +961,12 @@ export async function getProviderDashboardResponse(request: NextRequest) {
         is_distance_filter_enabled: isDistanceFilterEnabled,
       },
       dashboard_bundle_version: includeInsights ? 1 : 0,
+      /** True when booking aggregates hit MAX_DASHBOARD_BOOKINGS — status counts may be incomplete. */
+      bookings_truncated: bookingsTruncated,
+      /** True when ledger rows hit MAX_FINANCE_TRANSACTIONS — lifetime totals may be incomplete. */
+      ledger_truncated: ledgerRows.length >= MAX_FINANCE_TRANSACTIONS,
+      period_breakdown,
+      period_comparison,
       insights,
       booking_eligibility: bookingEligibility,
     };

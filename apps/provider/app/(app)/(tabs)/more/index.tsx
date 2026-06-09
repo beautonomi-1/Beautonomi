@@ -166,6 +166,7 @@ const MENU_SECTIONS: { title: string; items: MenuItem[] }[] = [
       { icon: "card-outline", label: "Yoco payments", subtitle: "Connect Yoco and manage card devices", route: "/(app)/(tabs)/more/settings/yoco-devices", color: "#2563eb", bg: "#dbeafe" },
       { icon: "qr-code-outline", label: "Paystack Terminal", subtitle: "QR and link payments through Beautonomi payouts", route: "/(app)/(tabs)/more/paystack-terminal", color: "#16a34a", bg: "#dcfce7" },
       { icon: "ribbon-outline", label: "Subscription & plan", subtitle: "Upgrade, renew, cancel or change billing", route: "/(app)/(tabs)/more/settings/subscription", color: "#8b5cf6", bg: "#ede9fe" },
+      { icon: "cash-outline", label: "Payouts", subtitle: "Request payout & view history", route: "/(app)/(tabs)/more/payouts", color: "#047857", bg: "#d1fae5" },
       { icon: "wallet-outline", label: "Payout bank accounts", subtitle: "Add or manage payout accounts", route: "/(app)/(tabs)/more/settings/payout-accounts", color: "#059669", bg: "#d1fae5" },
       { icon: "swap-horizontal-outline", label: "Transactions & history", subtitle: "Payments, fees & sales", route: "/(app)/(tabs)/more/transactions-hub", color: "#0d9488", bg: "#ccfbf1" },
       { icon: "bar-chart-outline", label: "Reports", subtitle: "Analytics, activity & insights", route: "/(app)/(tabs)/more/reports", color: "#3b82f6", bg: "#eff6ff" },
@@ -207,6 +208,7 @@ const QUICK_ACTIONS: { icon: keyof typeof Ionicons.glyphMap; label: string; rout
   { icon: "phone-portrait-outline", label: "Yoco", route: "/(app)/(tabs)/more/settings/yoco-devices", color: "#2563eb" },
   { icon: "qr-code-outline", label: "Paystack Terminal", route: "/(app)/(tabs)/more/paystack-terminal", color: "#16a34a" },
   { icon: "ribbon-outline", label: "Subscription", route: "/(app)/(tabs)/more/settings/subscription", color: "#8b5cf6" },
+  { icon: "cash-outline", label: "Payouts", route: "/(app)/(tabs)/more/payouts", color: "#047857" },
   { icon: "wallet-outline", label: "Bank accounts", route: "/(app)/(tabs)/more/settings/payout-accounts", color: "#059669" },
 ];
 

@@ -18,7 +18,7 @@ import { StatCard } from "@/components/ui/StatCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonList } from "@/components/ui/Skeleton";
-import { formatCurrency, formatDate } from "@/lib/format";
+import { formatCurrency, formatDate, formatStatusLabel } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { ReportResponsiveStatRow } from "@/components/reports/ReportResponsiveStatRow";
@@ -189,11 +189,11 @@ export default function GiftCardReportScreen() {
                     }`)}
                   >
                     <Text
-                      style={twStyle(`text-[10px] font-medium capitalize ${
+                      style={twStyle(`text-[10px] font-medium ${
                         card.status === "active" ? "text-green-700" : card.status === "redeemed" ? "text-blue-700" : "text-gray-500"
                       }`)}
                     >
-                      {card.status}
+                      {formatStatusLabel(card.status)}
                     </Text>
                   </View>
                 </View>

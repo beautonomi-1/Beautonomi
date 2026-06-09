@@ -22,6 +22,8 @@ import { useTenantFeatureFlags, TENANT_PAYMENT_FEATURE_KEYS } from "@/hooks/useT
 import { publicEnv } from "@/config/publicEnv";
 import { RichTextEditor } from "@/components/admin/RichTextEditor";
 import { isBlankHtmlContent } from "@/lib/pricingFeatureHtml";
+import { getFreePlanFeatures, normalizeFeatures, type PlanFeaturesMap } from "@beautonomi/subscription-features";
+import { PlanFeatureEditor } from "./PlanFeatureEditor";
 
 type PricingPlanLink = {
   id?: string;
@@ -80,12 +82,12 @@ type PlansPayload =
       };
     };
 
-function formatFeaturesJson(row: PlanRow): string {
+function featuresFromRow(row: PlanRow): PlanFeaturesMap {
   const f = row.features;
   if (f && typeof f === "object" && !Array.isArray(f)) {
-    return JSON.stringify(f, null, 2);
+    return normalizeFeatures(f as Record<string, unknown>);
   }
-  return "{}";
+  return getFreePlanFeatures();
 }
 
 export function PlansListPage() {
@@ -134,7 +136,7 @@ export function PlansListPage() {
   const [nMaxLoc, setNMaxLoc] = useState("1");
   const [nMaxBookings, setNMaxBookings] = useState("");
   const [nMaxStaff, setNMaxStaff] = useState("");
-  const [nFeaturesJson, setNFeaturesJson] = useState("{}");
+  const [nFeatures, setNFeatures] = useState<PlanFeaturesMap>(() => getFreePlanFeatures());
 
   const [editId, setEditId] = useState<string | null>(null);
   const [editRow, setEditRow] = useState<PlanRow | null>(null);
@@ -153,8 +155,8 @@ export function PlansListPage() {
   const [eUpdateSubs, setEUpdateSubs] = useState(false);
   const [ePaystackMonthly, setEPaystackMonthly] = useState("");
   const [ePaystackYearly, setEPaystackYearly] = useState("");
-  /** Entitlements / gating — JSON object stored on subscription_plans.features */
-  const [eFeaturesJson, setEFeaturesJson] = useState("{}");
+  /** Entitlements / gating — stored on subscription_plans.features */
+  const [eFeatures, setEFeatures] = useState<PlanFeaturesMap>(() => getFreePlanFeatures());
   /** Public /pricing marketing card (pricing_plans + pricing_plan_features) */
   const [eShowPricing, setEShowPricing] = useState(false);
   const [ePriceDisplay, setEPriceDisplay] = useState("");
@@ -194,17 +196,7 @@ export function PlansListPage() {
 
   const createPlan = useMutation({
     mutationFn: () => {
-      let featuresObj: Record<string, unknown> = {};
-      try {
-        const parsed = JSON.parse(nFeaturesJson || "{}") as unknown;
-        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-          featuresObj = parsed as Record<string, unknown>;
-        } else {
-          throw new Error("Features must be a JSON object (not an array).");
-        }
-      } catch (e) {
-        throw new Error(e instanceof Error ? e.message : "Invalid features JSON");
-      }
+      const featuresObj = normalizeFeatures(nFeatures);
       return adminApi.postJson<unknown>("/api/admin/subscription-plans", {
         name: nName.trim(),
         description: nDesc.trim() || undefined,
@@ -236,7 +228,7 @@ export function PlansListPage() {
       setNMaxLoc("1");
       setNMaxBookings("");
       setNMaxStaff("");
-      setNFeaturesJson("{}");
+      setNFeatures(getFreePlanFeatures());
     },
   });
 
@@ -283,17 +275,7 @@ export function PlansListPage() {
     mutationFn: async () => {
       if (!editId) throw new Error("No plan selected");
 
-      let featuresObj: Record<string, unknown> = {};
-      try {
-        const parsed = JSON.parse(eFeaturesJson || "{}") as unknown;
-        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-          featuresObj = parsed as Record<string, unknown>;
-        } else {
-          throw new Error("Features must be a JSON object (not an array).");
-        }
-      } catch (e) {
-        throw new Error(e instanceof Error ? e.message : "Invalid features JSON");
-      }
+      const featuresObj = normalizeFeatures(eFeatures);
 
       const savedPlan = await adminApi.putJson<PlanRow>("/api/admin/subscription-plans", {
         id: editId,
@@ -414,7 +396,7 @@ export function PlansListPage() {
     setEMaxStaff(row.max_staff_members != null ? String(row.max_staff_members) : "");
     setEPaystackMonthly(String(row.paystack_plan_code_monthly ?? ""));
     setEPaystackYearly(String(row.paystack_plan_code_yearly ?? ""));
-    setEFeaturesJson(formatFeaturesJson(row));
+    setEFeatures(featuresFromRow(row));
     const pp = row.pricing_plan;
     setEShowPricing(!!pp?.id);
     setEPriceDisplay(String(pp?.price ?? ""));
@@ -643,16 +625,9 @@ export function PlansListPage() {
                 onChange={(e) => setNMaxStaff(e.target.value)}
               />
             </label>
-            <label className="text-sm sm:col-span-2">
-              Entitlements / feature flags (JSON object on subscription_plans.features)
-              <textarea
-                className="mt-1 w-full min-h-[120px] rounded border border-gray-300 px-2 py-2 font-mono text-xs"
-                value={nFeaturesJson}
-                onChange={(e) => setNFeaturesJson(e.target.value)}
-                placeholder="{}"
-                spellCheck={false}
-              />
-            </label>
+            <div className="sm:col-span-2">
+              <PlanFeatureEditor value={nFeatures} onChange={setNFeatures} />
+            </div>
           </div>
           <button
             type="button"
@@ -803,15 +778,9 @@ export function PlansListPage() {
               When saving price changes, propagate to existing Paystack subscriptions (update_existing_subscriptions)
             </label>
 
-            <label className="text-sm sm:col-span-2">
-              Feature permissions (JSON object on subscription_plans.features)
-              <textarea
-                className="mt-1 w-full min-h-[180px] rounded border border-gray-300 px-2 py-2 font-mono text-xs"
-                value={eFeaturesJson}
-                onChange={(e) => setEFeaturesJson(e.target.value)}
-                spellCheck={false}
-              />
-            </label>
+            <div className="sm:col-span-2">
+              <PlanFeatureEditor value={eFeatures} onChange={setEFeatures} />
+            </div>
 
             <div className="sm:col-span-2 border-t border-gray-200 pt-4">
               <h3 className="text-sm font-semibold text-gray-900">Public /pricing page (marketing)</h3>

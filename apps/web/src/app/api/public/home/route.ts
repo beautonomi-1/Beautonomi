@@ -13,6 +13,8 @@ import type { PublicProviderCard } from "@/types/beautonomi";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { buildAdReachKey, runAdsAuction, recordAdImpressions } from "@/lib/ads/auction";
 import { getProviderIdsForGlobalCategory } from "@/lib/categories/provider-ids-for-global-category";
+import { resolveActiveBadge } from "@/lib/provider/active-badge";
+import { applyPublicProviderVisibility } from "@/lib/providers/public-provider-visibility";
 
 export const dynamic = "force-dynamic";
 // Increase timeout for this route (Next.js default is 10s, we need more for parallel queries)
@@ -138,9 +140,11 @@ export async function GET(request: Request) {
     // Wrap selects so tenant scoping is always applied consistently.
     const providersTable = () => ({
       select: (...args: any[]) =>
-        (supabase.from("providers") as any)
-          .select(...args)
-          .eq("tenant_id", tenantId),
+        applyPublicProviderVisibility(
+          (supabase.from("providers") as any)
+            .select(...args)
+            .eq("tenant_id", tenantId),
+        ),
     });
     // Get category ID if category slug is provided (skip if "all")
     let categoryId: string | null = null;
@@ -787,6 +791,7 @@ export async function GET(request: Request) {
             provider_id,
             total_points,
             current_badge_id,
+            badge_expires_at,
             provider_badges!provider_points_current_badge_id_fkey (
               id,
               name,
@@ -802,17 +807,25 @@ export async function GET(request: Request) {
           .in("provider_id", Array.from(allProviderIds));
         if (providerPoints) {
           providerPoints.forEach((pp: any) => {
-            if (pp.current_badge_id && pp.provider_badges) {
+            // Hide expired (unmaintained) badges from public home cards.
+            const rawBadge = Array.isArray(pp.provider_badges)
+              ? pp.provider_badges[0]
+              : pp.provider_badges;
+            const activeBadge = resolveActiveBadge(
+              pp.current_badge_id ? rawBadge : null,
+              pp.badge_expires_at,
+            );
+            if (activeBadge) {
               badgeMap.set(pp.provider_id, {
-                id: pp.provider_badges.id,
-                name: pp.provider_badges.name,
-                slug: pp.provider_badges.slug,
-                description: pp.provider_badges.description,
-                icon_url: pp.provider_badges.icon_url,
-                tier: pp.provider_badges.tier,
-                color: pp.provider_badges.color,
-                requirements: pp.provider_badges.requirements,
-                benefits: pp.provider_badges.benefits,
+                id: activeBadge.id,
+                name: activeBadge.name,
+                slug: activeBadge.slug,
+                description: activeBadge.description,
+                icon_url: activeBadge.icon_url,
+                tier: activeBadge.tier,
+                color: activeBadge.color,
+                requirements: activeBadge.requirements,
+                benefits: activeBadge.benefits,
               });
             }
           });
@@ -1728,7 +1741,7 @@ export async function GET(request: Request) {
     };
       },
       [cacheKey],
-      { revalidate: 60 }
+      { revalidate: 60, tags: ["public-home", "public-providers"] }
     )();
 
     // Post-process: ranking, distance radius filter, sponsored ads (gated by module config)
@@ -1796,7 +1809,13 @@ export async function GET(request: Request) {
         const winnerProviderIds = auctionWinners.map((w) => w.provider_id);
         const winnerCampaignMap = new Map(auctionWinners.map((w) => [w.provider_id, w.campaign_id]));
         if (winnerProviderIds.length > 0) {
-          const { data: providersRaw } = await supabaseAdmin.from("providers").select("id, slug, business_name, business_type, rating_average, review_count, thumbnail_url, avatar_url, is_featured, is_verified, description, currency").in("id", winnerProviderIds).eq("status", "active").eq("tenant_id", tenantId);
+          const { data: providersRaw } = await supabaseAdmin
+            .from("providers")
+            .select("id, slug, business_name, business_type, rating_average, review_count, thumbnail_url, avatar_url, is_featured, is_verified, description, currency")
+            .in("id", winnerProviderIds)
+            .eq("tenant_id", tenantId)
+            .eq("status", "active")
+            .is("deleted_at", null);
           if (providersRaw?.length) {
             const allMap = new Map((data.all ?? []).map((p: PublicProviderCard) => [p.id, p]));
             for (const w of auctionWinners) {

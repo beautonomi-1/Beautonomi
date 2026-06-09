@@ -232,7 +232,8 @@ export async function POST(
             payment_link: paymentLink,
           },
           channels,
-          { appType: "customer" }
+          // In-app bell row inserted manually above; skip template auto-insert.
+          { appType: "customer", skipInApp: true }
         );
       } catch (pushError) {
         console.warn("OneSignal push notification failed:", pushError);

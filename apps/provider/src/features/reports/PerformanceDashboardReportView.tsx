@@ -4,7 +4,7 @@
 import { View, Text } from "react-native";
 import { format } from "date-fns";
 import { ReportPayloadView } from "@/features/reports/ReportPayloadView";
-import { formatCurrency } from "@/lib/format";
+import { formatCurrency, formatStatusLabel } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 
 type LedgerBlock = {
@@ -168,8 +168,8 @@ export function PerformanceDashboardReportView({ data }: { data: unknown }) {
               <Text style={twStyle("text-sm font-medium text-gray-900")}>
                 {row.scheduled_at ? format(new Date(row.scheduled_at), "MMM d, h:mm a") : "—"}
               </Text>
-              <Text style={twStyle("text-xs capitalize text-gray-500")}>
-                {(row.status ?? "").replace(/_/g, " ")}
+              <Text style={twStyle("text-xs text-gray-500")}>
+                {formatStatusLabel(row.status)}
               </Text>
             </View>
             <View style={twStyle("items-end")}>
@@ -193,8 +193,8 @@ export function PerformanceDashboardReportView({ data }: { data: unknown }) {
               <Text style={twStyle("text-sm font-medium text-gray-900")}>
                 {row.scheduled_at ? format(new Date(row.scheduled_at), "MMM d, h:mm a") : "—"}
               </Text>
-              <Text style={twStyle("text-xs capitalize text-gray-500")}>
-                {(row.status ?? "").replace(/_/g, " ")}
+              <Text style={twStyle("text-xs text-gray-500")}>
+                {formatStatusLabel(row.status)}
               </Text>
             </View>
             <View style={twStyle("items-end")}>

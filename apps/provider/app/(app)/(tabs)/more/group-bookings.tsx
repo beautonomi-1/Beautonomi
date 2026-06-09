@@ -24,6 +24,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useProviderStackBack } from "@/lib/provider-tab-navigation";
 import { addDays, format as formatDateFns, isSameDay, parseISO, startOfDay } from "date-fns";
 import { useApi, useApiMutation } from "@/hooks/useApi";
+import { useBookingAvailableSlots } from "@/hooks/useBookingAvailableSlots";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -193,11 +194,19 @@ interface PackageRow {
   items?: PackageItem[];
 }
 
+interface GroupBookingsAggregateStats {
+  completed_count: number;
+  session_booked_gross: number;
+  participant_booked_gross: number;
+  recognized_earnings: number;
+}
+
 interface GroupBookingsResponse {
   data: GroupBooking[];
   total: number;
   page: number;
   total_pages: number;
+  stats?: GroupBookingsAggregateStats;
 }
 
 interface AvailableSlotsApiRow {
@@ -268,6 +277,8 @@ type ParticipantFormRow = {
   serviceId: string;
   addOnIds: string[];
   notes: string;
+  /** Optional per-participant staff; defaults to group staff when empty */
+  staffId?: string;
   /** Linked provider_clients row – set when an existing client is picked via search */
   customerId?: string;
 };
@@ -374,7 +385,7 @@ function getServiceCategoryInfo(service: ServiceRow): { id: string; label: strin
 }
 
 function createBlankParticipant(id: string, serviceId = ""): ParticipantFormRow {
-  return { id, name: "", phone: "", email: "", serviceId, addOnIds: [], notes: "" };
+  return { id, name: "", phone: "", email: "", serviceId, addOnIds: [], notes: "", staffId: "" };
 }
 
 function getParticipantLine(
@@ -410,6 +421,8 @@ export default function GroupBookingsScreen() {
   const { width: windowWidth } = useWindowDimensions();
   const params = useLocalSearchParams<{
     open_group_id?: string;
+    open_edit?: string;
+    open_cancel?: string;
     openCreate?: string;
     from?: string;
     default_date?: string;
@@ -417,6 +430,7 @@ export default function GroupBookingsScreen() {
     default_staff_id?: string;
     default_location_id?: string;
   }>();
+  const pendingGroupDeepLinkRef = useRef<"edit" | "cancel" | null>(null);
   const { provider, selectedLocationId } = useProvider();
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
   const yocoEnabled = useFeatureFlag("payment_yoco");
@@ -575,6 +589,11 @@ export default function GroupBookingsScreen() {
     packageId: "" as string,
   });
   const [createParticipants, setCreateParticipants] = useState<ParticipantFormRow[]>([]);
+  const [createParticipantProgress, setCreateParticipantProgress] = useState<{
+    current: number;
+    total: number;
+    name: string;
+  } | null>(null);
   // Per-participant client search state (keyed by ParticipantFormRow.id)
   const [participantSearchMap, setParticipantSearchMap] = useState<
     Record<string, ParticipantClientSearchState>
@@ -713,40 +732,21 @@ export default function GroupBookingsScreen() {
     selectedLocationId,
   ]);
 
-  const createSlotsUrl = useMemo(() => {
-    if (!createSlotParams.date || !YMD_RE.test(createSlotParams.date)) return "";
-    let q =
-      `/api/provider/bookings/available-slots?date=${encodeURIComponent(createSlotParams.date)}` +
-      `&duration_minutes=${encodeURIComponent(String(createSlotParams.duration))}`;
-    if (createSlotParams.staffId) q += `&staff_ids=${encodeURIComponent(createSlotParams.staffId)}`;
-    if (createForm.locationType === "at_salon" && createSlotParams.locationId)
-      q += `&location_id=${encodeURIComponent(createSlotParams.locationId)}`;
-    if (createSlotParams.serviceIds.length > 0) {
-      q += `&service_ids=${encodeURIComponent(createSlotParams.serviceIds.join(","))}`;
-    }
-    q +=
-      createForm.locationType === "at_home"
-        ? "&mode=mobile&travel_buffer=30"
-        : "&mode=salon&travel_buffer=0";
-    return q;
+  const createSlotQuery = useMemo(() => {
+    if (!createSlotParams.date || !YMD_RE.test(createSlotParams.date)) return null;
+    return {
+      date: createSlotParams.date,
+      duration_minutes: createSlotParams.duration,
+      staff_ids: createSlotParams.staffId || undefined,
+      location_id: createForm.locationType === "at_salon" && createSlotParams.locationId ? createSlotParams.locationId : undefined,
+      service_ids: createSlotParams.serviceIds.length > 0 ? createSlotParams.serviceIds.join(",") : undefined,
+      mode: createForm.locationType === "at_home" ? "mobile" : "salon",
+      travel_buffer: createForm.locationType === "at_home" ? 30 : 0,
+    };
   }, [createForm.locationType, createSlotParams]);
 
-  const { data: createSlotsData, loading: createSlotsLoading } = useApi<AvailableSlotsApiResponse>(
-    createSlotsUrl,
-    { enabled: createSlotsUrl.length > 0 }
-  );
-
-  const createSlotRows = useMemo(() => {
-    if (Array.isArray(createSlotsData?.slot_grid) && createSlotsData.slot_grid.length > 0) {
-      return createSlotsData.slot_grid;
-    }
-    if (Array.isArray(createSlotsData?.slots)) {
-      return createSlotsData.slots.map(
-        (time) => ({ time, available: true }) as AvailableSlotsApiRow
-      );
-    }
-    return [] as AvailableSlotsApiRow[];
-  }, [createSlotsData]);
+  const { rows: createSlotRows, loading: createSlotsLoading, slotsData: createSlotsData } =
+    useBookingAvailableSlots(createSlotQuery, { enabled: !!createSlotQuery });
 
   const editSlotParams = useMemo(() => {
     const duration = Number(editForm.duration) || 60;
@@ -756,41 +756,22 @@ export default function GroupBookingsScreen() {
     return { date: editForm.date, duration, staffId, locationId, serviceIds };
   }, [editForm.date, editForm.duration, editingGroupContext]);
 
-  const editSlotsUrl = useMemo(() => {
-    if (!showEdit) return "";
-    if (!editSlotParams.date || !YMD_RE.test(editSlotParams.date)) return "";
-    let q =
-      `/api/provider/bookings/available-slots?date=${encodeURIComponent(editSlotParams.date)}` +
-      `&duration_minutes=${encodeURIComponent(String(editSlotParams.duration))}`;
-    if (editSlotParams.staffId) q += `&staff_ids=${encodeURIComponent(editSlotParams.staffId)}`;
-    if (editingGroupContext?.locationType !== "at_home" && editSlotParams.locationId)
-      q += `&location_id=${encodeURIComponent(editSlotParams.locationId)}`;
-    if (editSlotParams.serviceIds.length > 0) {
-      q += `&service_ids=${encodeURIComponent(editSlotParams.serviceIds.join(","))}`;
-    }
-    // Exclude the group being edited so it doesn't block its own current slot.
-    if (editingGroupId) q += `&exclude_group_booking_id=${encodeURIComponent(editingGroupId)}`;
-    q +=
-      editingGroupContext?.locationType === "at_home"
-        ? "&mode=mobile&travel_buffer=30"
-        : "&mode=salon&travel_buffer=0";
-    return q;
+  const editSlotQuery = useMemo(() => {
+    if (!showEdit || !editSlotParams.date || !YMD_RE.test(editSlotParams.date)) return null;
+    return {
+      date: editSlotParams.date,
+      duration_minutes: editSlotParams.duration,
+      staff_ids: editSlotParams.staffId || undefined,
+      location_id: editingGroupContext?.locationType !== "at_home" && editSlotParams.locationId ? editSlotParams.locationId : undefined,
+      service_ids: editSlotParams.serviceIds.length > 0 ? editSlotParams.serviceIds.join(",") : undefined,
+      mode: editingGroupContext?.locationType === "at_home" ? "mobile" : "salon",
+      travel_buffer: editingGroupContext?.locationType === "at_home" ? 30 : 0,
+      exclude_group_booking_id: editingGroupId || undefined,
+    };
   }, [showEdit, editSlotParams, editingGroupContext?.locationType, editingGroupId]);
 
-  const { data: editSlotsData, loading: editSlotsLoading } = useApi<AvailableSlotsApiResponse>(
-    editSlotsUrl,
-    { enabled: editSlotsUrl.length > 0 }
-  );
-
-  const editSlotRows = useMemo(() => {
-    if (Array.isArray(editSlotsData?.slot_grid) && editSlotsData.slot_grid.length > 0) {
-      return editSlotsData.slot_grid;
-    }
-    if (Array.isArray(editSlotsData?.slots)) {
-      return editSlotsData.slots.map((time) => ({ time, available: true }) as AvailableSlotsApiRow);
-    }
-    return [] as AvailableSlotsApiRow[];
-  }, [editSlotsData]);
+  const { rows: editSlotRows, loading: editSlotsLoading, slotsData: editSlotsData } =
+    useBookingAvailableSlots(editSlotQuery, { enabled: !!editSlotQuery });
 
   // Keep `selectedGroup` in sync when participant payment/check-in data changes,
   // not only when `group_bookings.updated_at` bumps (mark_paid often skips that).
@@ -859,6 +840,23 @@ export default function GroupBookingsScreen() {
       router.setParams({ open_group_id: "" });
     })();
   }, [groups, params.open_group_id, router]);
+
+  useEffect(() => {
+    if (params.open_edit === "1") pendingGroupDeepLinkRef.current = "edit";
+    if (params.open_cancel === "1") pendingGroupDeepLinkRef.current = "cancel";
+  }, [params.open_edit, params.open_cancel]);
+
+  useEffect(() => {
+    if (!selectedGroup?.id || !pendingGroupDeepLinkRef.current) return;
+    const action = pendingGroupDeepLinkRef.current;
+    pendingGroupDeepLinkRef.current = null;
+    router.setParams({ open_edit: "", open_cancel: "" } as never);
+    if (action === "edit") {
+      openEdit(selectedGroup);
+    } else if (action === "cancel") {
+      void handleCancel(selectedGroup);
+    }
+  }, [selectedGroup?.id]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -977,10 +975,20 @@ export default function GroupBookingsScreen() {
     const activeStatuses = new Set(["pending", "confirmed", "booked", "started"]);
     const upcoming = groups.filter((g) => activeStatuses.has(g.status)).length;
     const totalParticipants = groups.reduce((s, g) => s + (g.current_participants ?? 0), 0);
-    const revenue = groups
-      .filter((g) => g.status === "completed")
-      .reduce((s, g) => s + (Number(g.total_price) || 0), 0);
-    return { total: groupData?.total ?? groups.length, upcoming, totalParticipants, revenue };
+    const apiStats = groupData?.stats;
+    const bookedGross =
+      apiStats?.participant_booked_gross ??
+      groups
+        .filter((g) => g.status === "completed")
+        .reduce((s, g) => s + (Number(g.total_price) || 0), 0);
+    const recognizedEarnings = apiStats?.recognized_earnings ?? 0;
+    return {
+      total: groupData?.total ?? groups.length,
+      upcoming,
+      totalParticipants,
+      bookedGross,
+      recognizedEarnings,
+    };
   }, [groups, groupData]);
 
   async function handleCancel(group: GroupBooking) {
@@ -1789,6 +1797,7 @@ export default function GroupBookingsScreen() {
         addOnIds: p.addOnIds,
         notes: p.notes.trim(),
         customerId: p.customerId,
+        staffId: p.staffId?.trim() || createForm.staffId || "",
       }))
       .filter((p) => p.name.length > 0 || p.phone.length > 0 || p.email.length > 0);
 
@@ -1899,6 +1908,11 @@ export default function GroupBookingsScreen() {
     for (let idx = 0; idx < participantsToCreate.length; idx++) {
       const participant = participantsToCreate[idx];
       const line = participantLines[idx];
+      setCreateParticipantProgress({
+        current: idx + 1,
+        total: participantsToCreate.length,
+        name: participant.name || `Participant ${idx + 1}`,
+      });
       const res = await createParticipantBookingAndLink({
         groupId: createdGroupId,
         groupRef,
@@ -1908,7 +1922,7 @@ export default function GroupBookingsScreen() {
         serviceName: line.service ? serviceLabel(line.service) : undefined,
         addOns: line.addOns,
         packageId: createForm.packageId || null,
-        staffId: createForm.staffId,
+        staffId: participant.staffId || createForm.staffId,
         locationId: createForm.locationType === "at_home" ? null : createForm.locationId,
         locationType: createForm.locationType,
         address:
@@ -1955,12 +1969,14 @@ export default function GroupBookingsScreen() {
       } else {
         Alert.alert("Group creation failed", failSummary || "Could not add participants to the group.");
       }
+      setCreateParticipantProgress(null);
       refresh();
       return;
     }
 
     if (participantFailures.length > 0) {
       participantsSucceeded = true;
+      setCreateParticipantProgress(null);
       setCreateStep("form");
       setCreateReviewError(null);
       setShowCreate(false);
@@ -1985,6 +2001,7 @@ export default function GroupBookingsScreen() {
     }
 
     participantsSucceeded = true;
+    setCreateParticipantProgress(null);
 
     // §Group-booking-audit 2026-05 (auto mark_paid): only attempt to mark
     // paid AFTER every participant booking + link succeeded. If we hit this
@@ -2590,8 +2607,9 @@ export default function GroupBookingsScreen() {
           </View>
           <View style={twStyle("flex-1")}>
             <StatCard
-              title="Revenue"
-              value={formatCurrency(stats.revenue)}
+              title="Earned"
+              value={formatCurrency(stats.recognizedEarnings)}
+              subtitle={`Booked ${formatCurrency(stats.bookedGross)}`}
               icon="cash-outline"
               iconColor="#22c55e"
               iconBg="bg-green-50"
@@ -3590,7 +3608,7 @@ export default function GroupBookingsScreen() {
           <EmptyState
             icon="cube-outline"
             title="No packages yet"
-            description="Create a package from the Packages screen or the provider web portal."
+            description="Create a package from the Packages screen in More → Packages."
           />
         ) : (
           <ScrollView
@@ -3868,11 +3886,15 @@ export default function GroupBookingsScreen() {
                 style={{ flex: 1, marginRight: 8 }}
               />
               <ActionButton
-                label="Confirm & create"
+                label={
+                  createParticipantProgress
+                    ? `Adding ${createParticipantProgress.name} (${createParticipantProgress.current}/${createParticipantProgress.total})…`
+                    : "Confirm & create"
+                }
                 onPress={() => {
                   void handleCreate();
                 }}
-                loading={creatingGroup || creatingParticipantBooking || addingParticipant}
+                loading={creatingGroup || creatingParticipantBooking || addingParticipant || createParticipantProgress != null}
                 variant="brand"
                 style={{ flex: 2 }}
               />
@@ -4793,6 +4815,28 @@ export default function GroupBookingsScreen() {
                       );
                     })()}
                   </View>
+                  {teamMembers.length > 0 ? (
+                    <View style={twStyle("mt-3")}>
+                      <Text style={twStyle("mb-1 text-xs font-medium text-gray-600")}>
+                        Staff (optional — defaults to group staff)
+                      </Text>
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                        <SelectChip
+                          label="Group default"
+                          selected={!participant.staffId}
+                          onPress={() => updateCreateParticipantRow(participant.id, { staffId: "" })}
+                        />
+                        {teamMembers.map((m) => (
+                          <SelectChip
+                            key={`${participant.id}-staff-${m.id}`}
+                            label={m.name ?? "Staff"}
+                            selected={participant.staffId === m.id}
+                            onPress={() => updateCreateParticipantRow(participant.id, { staffId: m.id })}
+                          />
+                        ))}
+                      </ScrollView>
+                    </View>
+                  ) : null}
                   <Text style={twStyle("mb-1 mt-3 text-xs font-medium text-gray-600")}>
                     Participant notes
                   </Text>
@@ -5231,7 +5275,7 @@ export default function GroupBookingsScreen() {
           <EmptyState
             icon="cube-outline"
             title="No packages yet"
-            description="Create a package from the Packages screen or the provider web portal."
+            description="Create a package from the Packages screen in More → Packages."
           />
         ) : (
           <ScrollView

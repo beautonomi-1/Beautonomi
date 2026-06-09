@@ -40,6 +40,7 @@ import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import { api } from "@/lib/api-client";
+import { emitNotificationBadgeRefresh } from "@/lib/notification-badge-events";
 import { appendFormDataFileNative } from "@beautonomi/utils";
 import { pushInAppBrowser } from "@/lib/in-app-web";
 import {
@@ -261,6 +262,7 @@ export default function ChatScreen() {
     markReadRef.current(`/api/provider/conversations/${conversationId}/mark-read`, {});
     api
       .post("/api/provider/notifications/mark-related-read", { conversation_id: conversationId })
+      .then(() => emitNotificationBadgeRefresh())
       .catch(() => {});
   }, [conversationId]);
 

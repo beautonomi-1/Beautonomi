@@ -12,6 +12,10 @@ import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
+import {
+  checkNewGateFeatureAccess,
+  SUBSCRIPTION_FEATURE_KEYS,
+} from "@/lib/subscriptions/feature-access";
 
 async function getProviderId(userId: string, request: NextRequest): Promise<string | null> {
   const supabase = getSupabaseAdmin();
@@ -175,6 +179,18 @@ export async function POST(request: NextRequest) {
     if (!providerId) return errorResponse("Provider not found", "NOT_FOUND", 404);
 
     const supabase = getSupabaseAdmin();
+    const adsOk = await checkNewGateFeatureAccess(
+      providerId,
+      SUBSCRIPTION_FEATURE_KEYS.platformAds,
+      supabase,
+    );
+    if (!adsOk) {
+      return errorResponse(
+        "Platform ads are not included in your current subscription plan. Upgrade to create campaigns.",
+        "SUBSCRIPTION_FEATURE_DISABLED",
+        403,
+      );
+    }
     const { data: providerTenantRow } = await supabase
       .from("providers")
       .select("tenant_id")
@@ -287,6 +303,16 @@ export async function POST(request: NextRequest) {
     if (budget <= 0) {
       return successResponse(campaign);
     }
+
+    // §Ads-enterprise-hardening 2026-06: supersede any stale `pending` budget
+    // orders for this campaign before opening a fresh one, so a campaign never
+    // has multiple in-flight orders (mirrors the retry-checkout route).
+    await supabase
+      .from("ads_budget_orders")
+      .update({ status: "failed", updated_at: new Date().toISOString() })
+      .eq("campaign_id", campaign.id)
+      .eq("provider_id", providerId)
+      .eq("status", "pending");
 
     const { data: order, error: orderError } = await supabase
       .from("ads_budget_orders")
