@@ -126,7 +126,7 @@ export function SubscriptionCheckoutReviewSheet({
             <View style={twStyle("flex-row items-start gap-2 rounded-2xl border border-emerald-100 bg-emerald-50 p-3")}>
               <Ionicons name="shield-checkmark-outline" size={16} color="#047857" />
               <Text style={twStyle("flex-1 text-xs leading-5 text-emerald-800")}>
-                You're only charged after you confirm on the secure Paystack page. Your plan activates once payment is
+                You are only charged after you confirm on the secure Paystack page. Your plan activates once payment is
                 verified — never before.
               </Text>
             </View>

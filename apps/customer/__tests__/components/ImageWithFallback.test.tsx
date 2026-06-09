@@ -2,6 +2,15 @@ import React from "react";
 import { render, screen } from "@testing-library/react-native";
 import { ImageWithFallback } from "@/components/ImageWithFallback";
 
+jest.mock("expo-image", () => {
+  const React = require("react");
+  const { View } = require("react-native");
+  return {
+    Image: ({ accessibilityLabel, ...props }: { accessibilityLabel?: string }) =>
+      React.createElement(View, { accessibilityLabel, testID: "expo-image", ...props }),
+  };
+});
+
 describe("ImageWithFallback", () => {
   it("renders image when source is provided", () => {
     render(

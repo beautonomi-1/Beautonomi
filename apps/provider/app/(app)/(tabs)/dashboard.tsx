@@ -1136,7 +1136,7 @@ export default function DashboardScreen() {
       <View style={{ borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 14, marginBottom: 12 }}>
         {activePeriod?.earnings_mix_is_all_time ? (
           <Text style={{ fontSize: 11, color: Colors.gray[500], marginBottom: 10 }}>
-            Showing all-time totals (a per-period breakdown isn't available for this view).
+            Showing all-time totals (a per-period breakdown is not available for this view).
           </Text>
         ) : null}
         <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>

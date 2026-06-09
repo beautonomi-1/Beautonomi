@@ -594,11 +594,11 @@ export async function GET(request: Request) {
         const winnerProviderIds = [...new Set(winners.map((w) => w.provider_id))];
         const winnerToCampaign = new Map(winners.map((w) => [w.provider_id, w.campaign_id]));
         const { data: sponsoredProviders } = await applyPublicProviderVisibility(
-          supabaseAdmin
+          (supabaseAdmin
             .from("providers")
             .select("id, slug, business_name, business_type, rating_average, review_count, thumbnail_url, avatar_url, is_featured, is_verified, currency")
             .in("id", winnerProviderIds)
-            .eq("tenant_id", tenantId),
+            .eq("tenant_id", tenantId) as any),
         );
         const { data: sponsoredLocations } = await supabaseAdmin
           .from("provider_locations")
