@@ -7,6 +7,7 @@ import {
   handleApiError,
 } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { computeOrderSourceBreakdown } from "@/lib/reports/booking-channel-breakdown";
 import { MAX_REPORT_DAYS } from "@/lib/reports/constants";
 import {
   filterProductOrdersForLocation,
@@ -17,6 +18,7 @@ import {
 
 /** Full row from product_orders select — passed through location filter without stripping nested items */
 type ProductOrderSalesRow = LocationLinkedProductOrderRow & {
+  order_source?: string | null;
   product_order_items?: unknown;
 };
 
@@ -140,6 +142,7 @@ export async function GET(request: NextRequest) {
     let unitsFromOrders = 0;
     let revenueFromOrders = 0;
     let costFromOrders = 0;
+    const retailChannelOrders: { order_source?: string | null; units: number; revenue: number }[] = [];
 
     const pushBookingLine = (bp: any) => {
       const productId = bp.product_id;
@@ -238,8 +241,25 @@ export async function GET(request: NextRequest) {
 
     (sales || []).forEach((sale) => {
       if (!sale.product_order_items || !Array.isArray(sale.product_order_items)) return;
-      sale.product_order_items.forEach((item: unknown) => pushOrderLine(item));
+      let orderUnits = 0;
+      let orderRevenue = 0;
+      sale.product_order_items.forEach((item: unknown) => {
+        const quantity = Number((item as { quantity?: number }).quantity || 0);
+        const unitPrice = Number((item as { unit_price?: number }).unit_price || 0);
+        const totalPrice = Number((item as { total_price?: number }).total_price || 0);
+        const lineRevenue = totalPrice > 0 ? totalPrice : quantity * unitPrice;
+        orderUnits += quantity;
+        orderRevenue += lineRevenue;
+        pushOrderLine(item);
+      });
+      retailChannelOrders.push({
+        order_source: sale.order_source,
+        units: orderUnits,
+        revenue: orderRevenue,
+      });
     });
+
+    const by_channel = computeOrderSourceBreakdown({ orders: retailChannelOrders });
 
     const totalProductsSold = Array.from(productSalesMap.values()).reduce((sum, p) => sum + p.quantitySold, 0);
     const totalRevenue = Array.from(productSalesMap.values()).reduce((sum, p) => sum + p.revenue, 0);
@@ -301,6 +321,7 @@ export async function GET(request: NextRequest) {
       unitsFromOrders,
       revenueFromOrders,
       costFromOrders,
+      by_channel,
       totalProductsSold,
       totalRevenue,
       totalCost,

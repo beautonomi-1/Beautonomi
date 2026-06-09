@@ -3,6 +3,7 @@ import type { NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { csrfCheck, setCsrfCookie } from '@/lib/csrf';
 import { maybeMarketGeoRedirect } from '@/lib/seo/maybe-market-geo-redirect';
+import { isProviderOnboardingRouteAllowed } from '@/lib/provider/onboarding-route-allowlist';
 
 const ALLOWED_ORIGINS = [
   'http://localhost:8081',
@@ -500,7 +501,7 @@ export async function proxy(request: NextRequest) {
         }
 
         if (userRole === 'provider_onboarding') {
-          if (pathname.startsWith('/provider/get-started') || pathname.startsWith('/provider/embed')) {
+          if (isProviderOnboardingRouteAllowed(pathname)) {
             return response;
           }
           return NextResponse.redirect(new URL('/provider/get-started', request.url));

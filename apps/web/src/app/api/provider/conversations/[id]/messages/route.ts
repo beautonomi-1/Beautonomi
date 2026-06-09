@@ -293,7 +293,9 @@ export async function POST(
               conversation_id: id,
             },
             template.channels || ["push"],
-            { appType: "customer" }
+            // In-app bell row inserted below with the canonical new_message type;
+            // skip the template auto-insert to avoid a duplicate bell entry.
+            { appType: "customer", skipInApp: true }
           );
         } else {
           // Fallback: send push with message preview so customer always gets notified (like customer→provider)

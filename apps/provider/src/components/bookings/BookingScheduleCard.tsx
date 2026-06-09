@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { View, Text, TouchableOpacity, ActivityIndicator } from "react-native";
+import { View, Text, TouchableOpacity, ActivityIndicator, Alert } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import AnimatedRe, {
@@ -65,6 +65,10 @@ interface BookingScheduleCardProps {
    * otherwise be indistinguishable.
    */
   onApplyStatus: (id: string, action: ProviderBookingAction, msg: string) => void;
+  canReschedule?: boolean;
+  canCancel?: boolean;
+  onReschedule?: (booking: BookingScheduleCardBooking) => void;
+  onCancel?: (booking: BookingScheduleCardBooking) => void;
 }
 
 const STATUS_STYLE: Record<string, { bg: string; text: string }> = {
@@ -162,6 +166,10 @@ export function BookingScheduleCard({
   isNextUpcoming,
   onOpen,
   onApplyStatus,
+  canReschedule = false,
+  canCancel = false,
+  onReschedule,
+  onCancel,
 }: BookingScheduleCardProps) {
   const scale = useSharedValue(1);
   const statusOpacity = useSharedValue(1);
@@ -207,6 +215,29 @@ export function BookingScheduleCard({
   ].filter(Boolean) as { label: string; icon: keyof typeof Ionicons.glyphMap }[];
   const visibleTraits = traits.slice(0, 2);
   const overflowCount = Math.max(0, traits.length - visibleTraits.length);
+  const showManageMenu = canReschedule || canCancel;
+
+  const openManageMenu = () => {
+    const options: string[] = [];
+    const handlers: Array<() => void> = [];
+    if (canReschedule && onReschedule) {
+      options.push("Reschedule");
+      handlers.push(() => onReschedule(booking));
+    }
+    if (canCancel && onCancel) {
+      options.push("Cancel booking");
+      handlers.push(() => onCancel(booking));
+    }
+    if (options.length === 0) return;
+    Alert.alert("Manage booking", customerName, [
+      ...options.map((label, index) => ({
+        text: label,
+        onPress: handlers[index],
+        style: label === "Cancel booking" ? ("destructive" as const) : ("default" as const),
+      })),
+      { text: "Close", style: "cancel" },
+    ]);
+  };
 
   useEffect(() => {
     statusOpacity.value = 0.35;
@@ -327,7 +358,21 @@ export function BookingScheduleCard({
                 ) : null}
               </View>
 
-              <View style={twStyle("flex-row justify-end")}>
+              <View style={twStyle("flex-row items-center justify-end gap-2")}>
+                {showManageMenu ? (
+                  <TouchableOpacity
+                    onPress={(e) => {
+                      e.stopPropagation?.();
+                      void Haptics.selectionAsync();
+                      openManageMenu();
+                    }}
+                    style={twStyle("h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white")}
+                    accessibilityRole="button"
+                    accessibilityLabel="More booking actions"
+                  >
+                    <Ionicons name="ellipsis-horizontal" size={18} color="#4b5563" />
+                  </TouchableOpacity>
+                ) : null}
                 {cta ? (
                   <TouchableOpacity
                     onPress={() => {

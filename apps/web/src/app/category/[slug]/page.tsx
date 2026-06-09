@@ -163,6 +163,7 @@ export default async function CategoryPage({ params }: Props) {
         currency
       `)
       .eq("status", "active")
+      .is("deleted_at", null)
       .in("id", providerIds)
       .limit(20);
     if (tenantId) {

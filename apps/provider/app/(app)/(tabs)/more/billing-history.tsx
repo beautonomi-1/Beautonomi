@@ -4,12 +4,14 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { pushInAppBrowser } from "@/lib/in-app-web";
 import { useApi } from "@/hooks/useApi";
+import { api } from "@/lib/api-client";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Colors } from "@/constants/colors";
+import { formatCurrency, formatStatusLabel } from "@/lib/format";
 
 export interface BillingItem {
   id: string;
@@ -34,7 +36,10 @@ export function BillingHistoryContent() {
   const router = useRouter();
   const { screenPadding } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
-  const { data, loading, error, refresh } = useApi<BillingItem[]>("/api/provider/billing-history");
+  const [limit, setLimit] = useState(50);
+  const { data, loading, error, refresh } = useApi<BillingItem[]>(
+    `/api/provider/billing-history?limit=${limit}`,
+  );
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
@@ -45,9 +50,45 @@ export function BillingHistoryContent() {
   }, [refresh]);
 
   const items: BillingItem[] = Array.isArray(data) ? data : [];
-  const openInvoice = (item: BillingItem) => {
+  const canLoadMore = items.length >= limit && limit < 200;
+  const openInvoice = async (item: BillingItem) => {
     const url = item.invoice_url?.trim();
     if (!url) return;
+    // Ads receipt PDFs are session-protected; the native in-app browser can't
+    // attach the bearer token, so mint a short-lived signed URL first.
+    const adsMatch = url.match(/\/api\/provider\/ads\/orders\/([^/]+)\/receipt\/pdf/);
+    if (adsMatch?.[1]) {
+      try {
+        const res = await api.post<{ url?: string }>(
+          `/api/provider/ads/orders/${adsMatch[1]}/receipt/signed-url`,
+          {},
+        );
+        const signed = res.data?.url?.trim();
+        if (signed) {
+          pushInAppBrowser(router, signed, "Receipt");
+          return;
+        }
+      } catch {
+        // Fall through to a best-effort direct open below.
+      }
+    }
+    // Subscription receipts are also session-protected — mint a signed URL.
+    const subMatch = url.match(/\/api\/provider\/subscription\/receipts\/([^/]+)\/pdf/);
+    if (subMatch?.[1]) {
+      try {
+        const res = await api.post<{ url?: string }>(
+          `/api/provider/subscription/receipts/${subMatch[1]}/signed-url`,
+          {},
+        );
+        const signed = res.data?.url?.trim();
+        if (signed) {
+          pushInAppBrowser(router, signed, "Receipt");
+          return;
+        }
+      } catch {
+        // Fall through to a best-effort direct open below.
+      }
+    }
     pushInAppBrowser(router, url, "Invoice");
   };
 
@@ -135,7 +176,7 @@ export function BillingHistoryContent() {
                 {item.description ?? "Payment"}
               </Text>
               <Text style={{ marginTop: 2, fontSize: 14, color: Colors.gray[600] }}>
-                {item.currency} {Number(item.amount).toFixed(2)}
+                {formatCurrency(item.amount, item.currency)}
               </Text>
               <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>
                 {formatDateSafe(item.created_at)}
@@ -157,12 +198,12 @@ export function BillingHistoryContent() {
                   color: item.status === "paid" ? "#166534" : Colors.gray[700],
                 }}
               >
-                {item.status}
+                {formatStatusLabel(item.status)}
               </Text>
             </View>
             {item.invoice_url ? (
               <TouchableOpacity
-                onPress={() => openInvoice(item)}
+                onPress={() => void openInvoice(item)}
                 style={{
                   width: 36,
                   height: 36,
@@ -178,6 +219,31 @@ export function BillingHistoryContent() {
           </View>
         ))
       )}
+      {canLoadMore ? (
+        <TouchableOpacity
+          onPress={() => setLimit((n) => Math.min(n + 50, 200))}
+          disabled={loading}
+          activeOpacity={0.75}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: Colors.gray[200],
+            backgroundColor: Colors.white,
+            paddingVertical: 14,
+            opacity: loading ? 0.6 : 1,
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Load more billing history"
+        >
+          <Ionicons name="chevron-down" size={16} color={Colors.primary} />
+          <Text style={{ marginLeft: 6, fontSize: 14, fontWeight: "600", color: Colors.primary }}>
+            {loading ? "Loading…" : "Load more"}
+          </Text>
+        </TouchableOpacity>
+      ) : null}
     </ScrollView>
   );
 }

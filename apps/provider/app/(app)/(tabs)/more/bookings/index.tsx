@@ -179,6 +179,30 @@ function isNonTerminalScheduleBooking(b: Pick<Booking, "status" | "db_status">):
   return bookingLifecycleStatus(b) !== "completed";
 }
 
+function bookingListCanReschedule(
+  b: Pick<Booking, "status" | "db_status" | "scheduled_at" | "is_group_booking" | "group_booking_id">,
+  canEdit: boolean,
+): boolean {
+  if (!canEdit || !b.scheduled_at) return false;
+  if (b.is_group_booking && b.group_booking_id) return true;
+  if (b.is_group_booking) return false;
+  const status = bookingLifecycleStatus(b);
+  return ["pending", "pending_payment", "confirmed", "waiting", "checked_in", "in_progress", "booked"].includes(
+    status,
+  );
+}
+
+function bookingListCanCancel(
+  b: Pick<Booking, "status" | "db_status" | "is_group_booking" | "group_booking_id">,
+  canCancel: boolean,
+): boolean {
+  if (!canCancel) return false;
+  if (b.is_group_booking && b.group_booking_id) return true;
+  if (b.is_group_booking) return false;
+  const status = bookingLifecycleStatus(b);
+  return !["cancelled", "canceled", "no_show", "completed"].includes(status);
+}
+
 function formatBookingTime(value: string | null | undefined): string {
   if (!value) return "—";
   const parsed = new Date(value);
@@ -251,7 +275,7 @@ function ScheduleBlockRow({ block, onPress }: { block: TimeBlockRow; onPress: ()
 
 export default function BookingsListScreen() {
   const router = useRouter();
-  const routeParams = useLocalSearchParams<{ date?: string; booking_id?: string }>();
+  const routeParams = useLocalSearchParams<{ date?: string; booking_id?: string; status?: string }>();
   const insets = useSafeAreaInsets();
   const listBottomPadding = tabScreenScrollBottomPadding(insets.bottom, 16);
   const { screenPadding } = useResponsive();
@@ -267,6 +291,14 @@ export default function BookingsListScreen() {
   const [viewMode, setViewMode] = useState<ViewMode>("day");
   const [selectedDate, setSelectedDate] = useState(() => startOfDay(new Date()));
   const providerTimezone = provider?.timezone?.trim() || null;
+
+  useEffect(() => {
+    const rawStatus = typeof routeParams.status === "string" ? routeParams.status.trim() : "";
+    if (rawStatus && STATUS_OPTIONS.some((o) => o.value === rawStatus)) {
+      setStatusFilter(rawStatus);
+      setViewMode("overview");
+    }
+  }, [routeParams.status]);
 
   useEffect(() => {
     const rawDate = typeof routeParams.date === "string" ? routeParams.date.trim() : "";
@@ -314,6 +346,23 @@ export default function BookingsListScreen() {
   // list view. Mirrors the web /provider/bookings snapshot.
   type StatsRange = "today" | "week" | "month" | "all";
   const [statsRange, setStatsRange] = useState<StatsRange>("today");
+
+  interface BookingsStatsPayload {
+    booked_gmv: number;
+    recognized_revenue: number;
+    appointment_count: number;
+    pending_count: number;
+    in_progress_count: number;
+    completed_count: number;
+  }
+
+  const statsLocationQ = selectedLocationId
+    ? `&location_id=${encodeURIComponent(selectedLocationId)}`
+    : "";
+  const { data: bookingsStatsApi } = useApi<BookingsStatsPayload>(
+    `/api/provider/bookings/stats?range=${statsRange}${statsLocationQ}`,
+    { staleTimeMs: 30_000, enabled: viewMode === "overview" },
+  );
   // §Provider-realtime 2026-04: "live" indicator goes on for ~1s after
   // every successful refresh so the provider has visible feedback that
   // the list auto-updated (websocket or polling). Purely cosmetic.
@@ -458,6 +507,12 @@ export default function BookingsListScreen() {
     { staleTimeMs: 600_000 },
   );
   const { data: navCounts } = useApi<{ waiting_room: number }>("/api/provider/nav-counts", { staleTimeMs: 15_000 });
+  const { data: permissionData } = useApi<{
+    permissions?: { edit_appointments?: boolean; cancel_appointments?: boolean };
+  }>("/api/provider/permissions");
+  const canEditAppointments = permissionData?.permissions?.edit_appointments === true;
+  const canCancelAppointments =
+    permissionData?.permissions?.cancel_appointments === true || canEditAppointments;
 
   const timeBlocks = useMemo(() => (Array.isArray(timeBlocksRaw) ? timeBlocksRaw : []), [timeBlocksRaw]);
 
@@ -801,47 +856,27 @@ export default function BookingsListScreen() {
     [applyStatus],
   );
 
-  // §Mobile-parity 2026-04: stats snapshot computed across the full
-  // returned result set. Independent of the list's date range so the
-  // numbers still make sense when the list is filtered.
+  /** Server-backed stats (provider TZ + ledger); independent of paginated list window. */
   const statsSnapshot = useMemo(() => {
-    const allBookings: Booking[] = overviewBookingsMerged;
-    const now = new Date();
-    let start = 0;
-    let end = Number.POSITIVE_INFINITY;
-    if (statsRange !== "all") {
-      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      if (statsRange === "today") {
-        start = d.getTime();
-        end = start + 24 * 60 * 60 * 1000;
-      } else if (statsRange === "week") {
-        start = startOfWeek(d, { weekStartsOn: 1 }).getTime();
-        end = endOfWeek(d, { weekStartsOn: 1 }).getTime() + 1;
-      } else {
-        start = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-        end = new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime();
-      }
+    if (bookingsStatsApi) {
+      return {
+        count: bookingsStatsApi.appointment_count,
+        bookedGmv: bookingsStatsApi.booked_gmv,
+        recognizedRevenue: bookingsStatsApi.recognized_revenue,
+        pendingCount: bookingsStatsApi.pending_count,
+        inProgressCount: bookingsStatsApi.in_progress_count,
+        completedCount: bookingsStatsApi.completed_count,
+      };
     }
-    let count = 0;
-    let revenue = 0;
-    let pendingCount = 0;
-    let inProgressCount = 0;
-    let completedCount = 0;
-    for (const b of allBookings) {
-      const s = bookingLifecycleStatus(b);
-      if (s === "pending" || s === "pending_payment") pendingCount += 1;
-      if (s === "in_progress" || s === "started" || s === "waiting" || s === "checked_in") inProgressCount += 1;
-      if (s === "completed") completedCount += 1;
-      const ts = b.scheduled_at ? new Date(b.scheduled_at).getTime() : 0;
-      if (ts >= start && ts < end) {
-        count += 1;
-        if (s !== "cancelled" && s !== "canceled" && s !== "no_show") {
-          revenue += Number(b.total_amount || 0);
-        }
-      }
-    }
-    return { count, revenue, pendingCount, inProgressCount, completedCount };
-  }, [overviewBookingsMerged, statsRange]);
+    return {
+      count: 0,
+      bookedGmv: 0,
+      recognizedRevenue: 0,
+      pendingCount: 0,
+      inProgressCount: 0,
+      completedCount: 0,
+    };
+  }, [bookingsStatsApi]);
 
   const statsRangeLabel = useMemo(() => {
     if (statsRange === "today") return "Today";
@@ -875,6 +910,40 @@ export default function BookingsListScreen() {
     [router],
   );
 
+  const openBookingReschedule = useCallback(
+    (b: Booking) => {
+      if (b.is_group_booking && b.group_booking_id) {
+        router.push({
+          pathname: "/(app)/(tabs)/more/group-bookings",
+          params: { open_group_id: b.group_booking_id, open_edit: "1" },
+        } as never);
+        return;
+      }
+      router.push({
+        pathname: `/(app)/(tabs)/bookings/${b.id}`,
+        params: { openReschedule: "1" },
+      } as never);
+    },
+    [router],
+  );
+
+  const openBookingCancel = useCallback(
+    (b: Booking) => {
+      if (b.is_group_booking && b.group_booking_id) {
+        router.push({
+          pathname: "/(app)/(tabs)/more/group-bookings",
+          params: { open_group_id: b.group_booking_id, open_cancel: "1" },
+        } as never);
+        return;
+      }
+      router.push({
+        pathname: `/(app)/(tabs)/bookings/${b.id}`,
+        params: { openCancel: "1" },
+      } as never);
+    },
+    [router],
+  );
+
   const sectionKeyExtractor = useCallback((item: ScheduleItem, index: number) => {
     if (item.kind === "booking") return item.booking.id;
     return `block-${item.block.id}-${index}`;
@@ -901,10 +970,25 @@ export default function BookingsListScreen() {
           isNextUpcoming={item.booking.id === nextUpcomingId}
           onOpen={(booking) => openBooking(booking as Booking)}
           onApplyStatus={handleApplyStatus}
+          canReschedule={bookingListCanReschedule(item.booking, canEditAppointments)}
+          canCancel={bookingListCanCancel(item.booking, canCancelAppointments)}
+          onReschedule={(booking) => openBookingReschedule(booking as Booking)}
+          onCancel={(booking) => openBookingCancel(booking as Booking)}
         />
       );
     },
-    [currency, pendingIds, nextUpcomingId, openBooking, handleApplyStatus, router],
+    [
+      currency,
+      pendingIds,
+      nextUpcomingId,
+      openBooking,
+      handleApplyStatus,
+      router,
+      canEditAppointments,
+      canCancelAppointments,
+      openBookingReschedule,
+      openBookingCancel,
+    ],
   );
 
   /**
@@ -943,7 +1027,10 @@ export default function BookingsListScreen() {
             horizontal
             data={[
               { label: "New", sub: "Booking", icon: "calendar-outline", route: "/(app)/(tabs)/bookings/new", accent: true },
-              { label: "Walk-in", sub: "Queue", icon: "walk-outline", route: "/(app)/(tabs)/more/waiting-room" },
+              { label: "Sell", sub: "POS", icon: "card-outline", route: "/(app)/(tabs)/sales" },
+              { label: "Front", sub: "Desk queue", icon: "people-circle-outline", route: "/(app)/(tabs)/more/waiting-room" },
+              { label: "Walk-in", sub: "Appointment", icon: "walk-outline", route: "/(app)/(tabs)/bookings/new?walk_in=true" },
+              { label: "Retail", sub: "Product sale", icon: "bag-handle-outline", route: "/(app)/(tabs)/more/walk-in-sale" },
               { label: "Group", sub: "Booking", icon: "people-outline", route: "/(app)/(tabs)/more/group-bookings" },
               ...(provider?.offers_mobile_services
                 ? [
@@ -955,7 +1042,6 @@ export default function BookingsListScreen() {
                     } satisfies QuickActionTile,
                   ]
                 : []),
-              { label: "Sale", sub: "Walk-in", icon: "bag-handle-outline", route: "/(app)/(tabs)/more/walk-in-sale" },
               { label: "Block", sub: "Time", icon: "ban-outline", route: "/(app)/(tabs)/more/time-blocks" },
             ]}
             keyExtractor={(it: QuickActionTile) => it.label}
@@ -1082,9 +1168,14 @@ export default function BookingsListScreen() {
                     {daySummary.blockCount > 0 ? ` · ${daySummary.blockCount} blocked` : ""}
                   </Text>
                 </View>
-                <Text style={twStyle("text-base font-bold text-gray-900")}>
-                  {formatCurrency(daySummary.revenue, currency)}
-                </Text>
+                <View style={twStyle("items-end")}>
+                  <Text style={twStyle("text-[10px] font-semibold uppercase tracking-wide text-gray-500")}>
+                    Booked value
+                  </Text>
+                  <Text style={twStyle("text-base font-bold text-gray-900")}>
+                    {formatCurrency(daySummary.revenue, currency)}
+                  </Text>
+                </View>
               </View>
               {daySummary.pending > 0 ? (
                 <View style={twStyle("mt-2 self-start rounded-full bg-amber-50 px-2 py-1")}>
@@ -1221,10 +1312,15 @@ export default function BookingsListScreen() {
               <View style={[twStyle("flex-1 rounded-xl p-2.5 border"), { backgroundColor: "#fff0f7", borderColor: "#fbcfe8" }]}>
                 <View style={twStyle("flex-row items-center gap-1")}>
                   <Ionicons name="cash-outline" size={12} color="#be185d" />
-                  <Text style={[twStyle("text-[10px] font-semibold uppercase tracking-wide"), { color: "#be185d" }]}>Revenue</Text>
+                  <Text style={[twStyle("text-[10px] font-semibold uppercase tracking-wide"), { color: "#be185d" }]}>
+                    Earned
+                  </Text>
                 </View>
                 <Text style={twStyle("mt-0.5 text-[15px] font-bold text-gray-900")} numberOfLines={1}>
-                  {formatCurrency(statsSnapshot.revenue, currency)}
+                  {formatCurrency(statsSnapshot.recognizedRevenue, currency)}
+                </Text>
+                <Text style={twStyle("text-[10px] text-gray-500")} numberOfLines={1}>
+                  Booked {formatCurrency(statsSnapshot.bookedGmv, currency)}
                 </Text>
               </View>
             </View>

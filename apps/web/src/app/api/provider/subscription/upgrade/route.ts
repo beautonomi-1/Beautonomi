@@ -112,6 +112,24 @@ export async function POST(request: NextRequest) {
         provider_id: providerId,
       });
 
+      // Stop any active Paystack recurring billing before clearing the local
+      // code, otherwise Paystack keeps charging after the move to free.
+      const { data: existingPaidSub } = await supabaseAdmin
+        .from("provider_subscriptions")
+        .select("paystack_subscription_code")
+        .eq("provider_id", providerId)
+        .maybeSingle();
+      const existingPaystackCode = (existingPaidSub as { paystack_subscription_code?: string | null } | null)
+        ?.paystack_subscription_code;
+      if (existingPaystackCode) {
+        try {
+          const { disableSubscriptionByCode } = await import("@/lib/payments/paystack-complete");
+          await disableSubscriptionByCode(existingPaystackCode, { tenantId: subscriptionTenantId });
+        } catch (disableError) {
+          console.warn("[subscription/upgrade] failed to disable Paystack subscription:", disableError);
+        }
+      }
+
       const { data: subscription, error: subError } = await supabaseAdmin
         .from("provider_subscriptions")
         .upsert(

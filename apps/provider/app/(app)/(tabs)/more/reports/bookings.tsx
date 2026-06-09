@@ -17,7 +17,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { StatCard } from "@/components/ui/StatCard";
 import { SectionHeader } from "@/components/ui/SectionHeader";
-import { formatPercentage } from "@/lib/format";
+import { formatCurrency, formatPercentage, formatStatusLabel } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 import {
   getReportDateRange,
@@ -45,9 +45,30 @@ interface BookingsData {
   no_show_count?: number;
   avg_per_day?: number;
   cancellation_reasons?: { reason: string; count: number }[];
+  channel_breakdown?: {
+    channel: string;
+    count: number;
+    recognized_revenue: number;
+    percentage: number;
+  }[];
+  channelBasisNote?: string;
   basisNote?: string;
   reportBasis?: string;
 }
+
+const CHANNEL_LABELS: Record<string, string> = {
+  online: "Online",
+  walk_in: "Walk-in",
+  provider: "Provider-created",
+  unknown: "Unknown",
+};
+
+const CHANNEL_COLORS: Record<string, string> = {
+  online: "#3b82f6",
+  walk_in: "#f59e0b",
+  provider: "#8b5cf6",
+  unknown: "#9ca3af",
+};
 
 const STATUS_COLORS: Record<string, string> = {
   confirmed: "#22c55e",
@@ -76,6 +97,16 @@ export default function BookingsReport() {
       "",
       "By Status:",
       ...data.by_status.map((s) => `  ${s.status}: ${s.count}`),
+      "",
+      ...(data.channel_breakdown?.length
+        ? [
+            "By Channel:",
+            ...data.channel_breakdown.map(
+              (c) =>
+                `  ${CHANNEL_LABELS[c.channel] ?? c.channel}: ${c.count} (${formatCurrency(c.recognized_revenue)} recognized)`,
+            ),
+          ]
+        : []),
     ].filter(Boolean).join("\n");
     await Share.share({ message: text, title: "Booking Report" });
   }, [data, from, to]);
@@ -97,7 +128,11 @@ export default function BookingsReport() {
           ))}
         </ScrollView>
         <Text style={twStyle("text-xs text-gray-500")}>{rangeCaption}</Text>
-        <ReportBasisFootnote basisNote={data?.basisNote} reportBasis={data?.reportBasis} compact />
+        <ReportBasisFootnote
+          basisNote={data?.channelBasisNote ?? data?.basisNote}
+          reportBasis={data?.reportBasis}
+          compact
+        />
       </View>
 
       {loading && !data && <ActivityIndicator style={twStyle("my-8")} color="#3b82f6" />}
@@ -135,7 +170,7 @@ export default function BookingsReport() {
                 return (
                   <View key={i} style={i > 0 ? { marginTop: 8 } : undefined}>
                     <View style={twStyle("flex-row justify-between mb-1")}>
-                      <Text style={twStyle("text-sm text-gray-600 capitalize")}>{s.status.replace(/_/g, " ")}</Text>
+                      <Text style={twStyle("text-sm text-gray-600")}>{formatStatusLabel(s.status)}</Text>
                       <Text style={twStyle("text-sm font-semibold text-gray-900")}>{s.count} ({pct.toFixed(0)}%)</Text>
                     </View>
                     <View style={twStyle("h-2 rounded-full bg-gray-100")}>
@@ -144,6 +179,40 @@ export default function BookingsReport() {
                   </View>
                 );
               })}
+              </View>
+            </View>
+          )}
+
+          {data.channel_breakdown && data.channel_breakdown.length > 0 && (
+            <View>
+              <SectionHeader title="By Channel" />
+              <View style={twStyle("rounded-2xl border border-gray-100 bg-white p-4")}>
+                {data.channel_breakdown.map((c, i) => {
+                  const color = CHANNEL_COLORS[c.channel] || "#9ca3af";
+                  return (
+                    <View key={c.channel} style={i > 0 ? { marginTop: 10 } : undefined}>
+                      <View style={twStyle("flex-row justify-between mb-1")}>
+                        <Text style={twStyle("text-sm text-gray-600")}>
+                          {CHANNEL_LABELS[c.channel] ?? c.channel}
+                        </Text>
+                        <Text style={twStyle("text-sm font-semibold text-gray-900")}>
+                          {c.count} ({c.percentage.toFixed(0)}%)
+                        </Text>
+                      </View>
+                      <Text style={twStyle("text-xs text-gray-500 mb-1")}>
+                        {formatCurrency(c.recognized_revenue)} recognized
+                      </Text>
+                      <View style={twStyle("h-2 rounded-full bg-gray-100")}>
+                        <View
+                          style={[
+                            { width: `${Math.max(c.percentage, 1)}%`, backgroundColor: color },
+                            twStyle("h-full rounded-full"),
+                          ]}
+                        />
+                      </View>
+                    </View>
+                  );
+                })}
               </View>
             </View>
           )}

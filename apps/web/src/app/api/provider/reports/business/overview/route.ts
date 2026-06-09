@@ -183,6 +183,36 @@ export async function GET(request: NextRequest) {
     const noShows = bookings?.filter((b) => b.status === "no_show").length || 0;
 
     const uniqueClients = new Set(bookings?.map((b) => b.customer_id).filter(Boolean)).size;
+
+    let priorCustomersQuery = supabaseAdmin
+      .from("bookings")
+      .select("customer_id")
+      .eq("provider_id", providerId)
+      .lt("scheduled_at", fromDate.toISOString())
+      .not("customer_id", "is", null);
+    if (locationId) priorCustomersQuery = priorCustomersQuery.eq("location_id", locationId);
+    const { data: priorCustomerRows } = await priorCustomersQuery;
+    const customersBeforePeriod = new Set(
+      (priorCustomerRows ?? [])
+        .map((r) => (r as { customer_id?: string | null }).customer_id)
+        .filter((id): id is string => typeof id === "string" && id.length > 0),
+    );
+    const bookingCountPerCustomer = new Map<string, number>();
+    for (const b of bookings ?? []) {
+      const cid = b.customer_id;
+      if (!cid) continue;
+      bookingCountPerCustomer.set(cid, (bookingCountPerCustomer.get(cid) ?? 0) + 1);
+    }
+    const customersInPeriod = new Set(bookingCountPerCustomer.keys());
+    let newThisPeriod = 0;
+    let returningClients = 0;
+    for (const cid of customersInPeriod) {
+      if (!customersBeforePeriod.has(cid)) newThisPeriod += 1;
+      if ((bookingCountPerCustomer.get(cid) ?? 0) > 1) returningClients += 1;
+    }
+    const retentionRate =
+      uniqueClients > 0 ? Math.round((returningClients / uniqueClients) * 1000) / 10 : 0;
+
     const totalStaff = staff?.length || 0;
 
     const totalPayments = payments?.length || 0;
@@ -263,6 +293,11 @@ export async function GET(request: NextRequest) {
       cancelledBookings,
       noShows,
       uniqueClients,
+      new_this_period: newThisPeriod,
+      returning: returningClients,
+      retention_rate: retentionRate,
+      product_revenue: ledgerEarningsFromProductOrders,
+      product_orders_with_earnings: revenueByProductOrder.size,
       totalStaff,
       totalPayments,
       successfulPayments,

@@ -22,6 +22,11 @@ import {
   subscriptionPendingCopy,
   subscriptionFailedCopy,
 } from "@/lib/payments/providerPaystackReturn";
+import {
+  SubscriptionCheckoutReviewSheet,
+  type SubscriptionCheckoutReview,
+} from "@/components/subscription/SubscriptionCheckoutReviewSheet";
+import { AdsCheckoutProcessingOverlay } from "@/components/ads/AdsCheckoutProcessingOverlay";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { SectionHeader } from "@/components/ui/SectionHeader";
@@ -294,6 +299,10 @@ export default function SubscriptionScreen() {
    */
   const subscriptionReturnUrl = getSubscriptionPaystackReturnUrl();
   const [paymentOutcome, setPaymentOutcome] = useState<SubscriptionPaymentOutcome>({ phase: "idle" });
+  // Blocking overlay shown while we verify with Paystack and poll for the plan
+  // to provision — mirrors the ads / customer product-order checkout so the
+  // screen never appears frozen after the Paystack sheet closes.
+  const [verifying, setVerifying] = useState(false);
 
   const paystackCheckout = useInAppPaystackCheckout();
 
@@ -318,31 +327,36 @@ export default function SubscriptionScreen() {
         return;
       }
 
-      // Cross-confirm against Paystack so the screen never claims a plan is
-      // active before the webhook (and the bank) signs off.
-      const reference = extractPaystackReferenceFromUrl(result.url);
-      const verifyResult = reference ? await verifyPaystackWithRetry(reference) : null;
+      setVerifying(true);
+      try {
+        // Cross-confirm against Paystack so the screen never claims a plan is
+        // active before the webhook (and the bank) signs off.
+        const reference = extractPaystackReferenceFromUrl(result.url);
+        const verifyResult = reference ? await verifyPaystackWithRetry(reference) : null;
 
-      if (verifyResult?.status === "failed") {
-        const failed = subscriptionFailedCopy(verifyResult.errorMessage ?? null);
-        setPaymentOutcome({ phase: "failed", ...failed });
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        if (verifyResult?.status === "failed") {
+          const failed = subscriptionFailedCopy(verifyResult.errorMessage ?? null);
+          setPaymentOutcome({ phase: "failed", ...failed });
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          refresh();
+          return;
+        }
+
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        const provisioned = await pollSubscriptionProvisioned({
+          orderId: opts?.orderId ?? null,
+          maxAttempts: 6,
+          delayMs: 1500,
+        });
+        if (provisioned.state === "provisioned") {
+          setPaymentOutcome({ phase: "provisioned", ...subscriptionSuccessCopy(provisioned.subscription) });
+        } else {
+          setPaymentOutcome({ phase: "pending", ...subscriptionPendingCopy() });
+        }
         refresh();
-        return;
+      } finally {
+        setVerifying(false);
       }
-
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      const provisioned = await pollSubscriptionProvisioned({
-        orderId: opts?.orderId ?? null,
-        maxAttempts: 6,
-        delayMs: 1500,
-      });
-      if (provisioned.state === "provisioned") {
-        setPaymentOutcome({ phase: "provisioned", ...subscriptionSuccessCopy(provisioned.subscription) });
-      } else {
-        setPaymentOutcome({ phase: "pending", ...subscriptionPendingCopy() });
-      }
-      refresh();
     },
     [paystackCheckout, refresh, subscriptionReturnUrl],
   );
@@ -355,20 +369,43 @@ export default function SubscriptionScreen() {
     return [...free, ...paid];
   }, [plans, billingSegment]);
 
-  const confirmSecureCheckout = useCallback(
-    (params: { title: string; message: string; confirmLabel?: string }) =>
+  // Review sheet state. `requestReviewConfirm` opens a polished BottomSheet
+  // (plan, price breakdown, what-you-get, charged-only-after-confirm) and
+  // resolves true when the provider confirms, false when they dismiss —
+  // replacing the old Alert.alert confirm so checkout matches the gold standard.
+  const [reviewData, setReviewData] = useState<SubscriptionCheckoutReview | null>(null);
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const reviewResolverRef = useRef<((confirmed: boolean) => void) | null>(null);
+
+  const requestReviewConfirm = useCallback(
+    (review: SubscriptionCheckoutReview) =>
       new Promise<boolean>((resolve) => {
-        Alert.alert(params.title, params.message, [
-          { text: "Not now", style: "cancel", onPress: () => resolve(false) },
-          {
-            text: params.confirmLabel ?? "Continue to Paystack",
-            style: "default",
-            onPress: () => resolve(true),
-          },
-        ]);
+        reviewResolverRef.current = resolve;
+        setReviewSubmitting(false);
+        setReviewData(review);
       }),
     [],
   );
+
+  const handleReviewConfirm = useCallback(() => {
+    setReviewSubmitting(true);
+    reviewResolverRef.current?.(true);
+    reviewResolverRef.current = null;
+  }, []);
+
+  const handleReviewClose = useCallback(() => {
+    if (reviewResolverRef.current) {
+      reviewResolverRef.current(false);
+      reviewResolverRef.current = null;
+    }
+    setReviewData(null);
+    setReviewSubmitting(false);
+  }, []);
+
+  const closeReviewSheet = useCallback(() => {
+    setReviewData(null);
+    setReviewSubmitting(false);
+  }, []);
 
   useEffect(() => {
     const sub = AppState.addEventListener("change", (nextState) => {
@@ -464,39 +501,55 @@ export default function SubscriptionScreen() {
   }
 
   async function handleRenew() {
-    const confirmed = await confirmSecureCheckout({
-      title: "Review renewal",
-      message:
-        "We'll open secure Paystack checkout. Your plan renews only after Paystack confirms the payment.",
+    const priceLine = currentSubscriptionPriceLine(subscription);
+    const confirmed = await requestReviewConfirm({
+      heading: "Renewal",
+      title: subscription?.plan?.name ?? "Your plan",
+      subtitle: "Extend your current plan for another billing period.",
+      lineItems: [
+        { label: "Plan", value: subscription?.plan?.name ?? "Current plan" },
+        { label: "Amount due now", value: priceLine ?? "See checkout" },
+      ],
+      benefits: currentPlanBullets(subscription).slice(0, 5),
+      total: priceLine ?? "your plan",
       confirmLabel: "Renew securely",
+      recurring: true,
     });
     if (!confirmed) return;
 
-    const { error: err, data } = await postAction("/api/provider/subscription/renew", {
-      in_app: true,
-    });
-    if (err) {
-      Alert.alert("Error", err);
-      return;
-    }
-    const d = data as { payment_url?: string; is_free?: boolean; message?: string };
-    if (d?.is_free) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert("Done", d.message ?? "Plan renewed.");
+    try {
+      const { error: err, data } = await postAction("/api/provider/subscription/renew", {
+        in_app: true,
+      });
+      if (err) {
+        closeReviewSheet();
+        Alert.alert("Error", err);
+        return;
+      }
+      const d = data as { payment_url?: string; is_free?: boolean; message?: string };
+      if (d?.is_free) {
+        closeReviewSheet();
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Alert.alert("Done", d.message ?? "Plan renewed.");
+        refresh();
+        return;
+      }
+      const url = d?.payment_url;
+      const renewOrderId =
+        typeof (d as { order_id?: string })?.order_id === "string"
+          ? (d as { order_id?: string }).order_id
+          : undefined;
+      if (url) {
+        closeReviewSheet();
+        await openSubscriptionPaystack(url, "Renew subscription", { orderId: renewOrderId });
+      } else {
+        closeReviewSheet();
+        Alert.alert("No payment link", "Unable to start renewal. Please try again or contact support.");
+      }
       refresh();
-      return;
+    } finally {
+      closeReviewSheet();
     }
-    const url = d?.payment_url;
-    const renewOrderId =
-      typeof (d as { order_id?: string })?.order_id === "string"
-        ? (d as { order_id?: string }).order_id
-        : undefined;
-    if (url) {
-      await openSubscriptionPaystack(url, "Renew subscription", { orderId: renewOrderId });
-    } else {
-      Alert.alert("No payment link", "Unable to start renewal. Please try again or contact support.");
-    }
-    refresh();
   }
 
   async function handleBillingAction() {
@@ -555,10 +608,24 @@ export default function SubscriptionScreen() {
     const isPaidSelection = !(selectedPlan.is_free || selectedPlan.amount === 0);
 
     if (isPaidSelection) {
-      const confirmed = await confirmSecureCheckout({
-        title: "Review plan payment",
-        message: `${selectedPlan.name} is ${formatOptionPrice(selectedPlan)}. We'll open Paystack to complete the payment, then return here with a confirmation screen.`,
-        confirmLabel: "Pay securely",
+      const planFeatures = Array.isArray(selectedPlan.features)
+        ? selectedPlan.features.map((f) => stripHtmlToPlainText(f)).filter(Boolean).slice(0, 5)
+        : [];
+      const confirmed = await requestReviewConfirm({
+        heading: isFreeTierSubscription(subscription) ? "Upgrade" : "Switch plan",
+        title: selectedPlan.name,
+        subtitle: selectedPlan.description ? stripHtmlToPlainText(selectedPlan.description) : undefined,
+        lineItems: [
+          {
+            label: `${selectedPlan.name} (${billingPeriod === "yearly" ? "yearly" : "monthly"})`,
+            value: formatOptionPrice(selectedPlan),
+          },
+          { label: "Total due now", value: formatOptionPrice(selectedPlan) },
+        ],
+        benefits: planFeatures,
+        total: formatOptionPrice(selectedPlan),
+        confirmLabel: `Pay ${formatOptionPrice(selectedPlan)}`,
+        recurring: true,
       });
       if (!confirmed) return;
     }
@@ -645,6 +712,7 @@ export default function SubscriptionScreen() {
       refresh();
     } finally {
       setUpgradingId(null);
+      closeReviewSheet();
     }
   }
 
@@ -892,6 +960,17 @@ export default function SubscriptionScreen() {
       <View style={twStyle("h-10")} />
     </ScreenContainer>
     {paystackCheckout.modal}
+    <SubscriptionCheckoutReviewSheet
+      visible={reviewData != null}
+      review={reviewData}
+      submitting={reviewSubmitting}
+      onConfirm={handleReviewConfirm}
+      onClose={handleReviewClose}
+    />
+    <AdsCheckoutProcessingOverlay
+      visible={verifying}
+      message="Confirming your subscription payment…"
+    />
     </>
   );
 }

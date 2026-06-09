@@ -53,6 +53,7 @@ import AddressForm from "@/components/mapbox/AddressForm";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { isCompleteE164 } from "@/lib/phone";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { formatStatusLabel } from "@/lib/locale/status-label";
 
 interface BillingData {
   billingAddress: any;
@@ -71,6 +72,7 @@ interface BillingHistoryItem {
   type?: "subscription" | "ads" | string;
   description?: string | null;
   created_at: string;
+  invoice_url?: string | null;
 }
 
 export default function BillingSettings() {
@@ -673,9 +675,19 @@ function BillingHistorySection({ items }: { items: BillingHistoryItem[] }) {
               <span className="font-semibold text-slate-900">
                 {formatCurrency(item.amount, item.currency)}
               </span>
-              <Badge variant="secondary" className="capitalize">
-                {item.status}
+              <Badge variant="secondary">
+                {formatStatusLabel(item.status)}
               </Badge>
+              {item.invoice_url ? (
+                <a
+                  href={item.invoice_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  <FileText className="h-3.5 w-3.5" /> Receipt
+                </a>
+              ) : null}
             </div>
           </div>
         );
@@ -714,7 +726,7 @@ function InvoicesSection({
     return (
       <Badge variant={config.variant} className="flex items-center gap-1">
         <Icon className="w-3 h-3" />
-        {status.replace("_", " ").toUpperCase()}
+        {formatStatusLabel(status)}
       </Badge>
     );
   };

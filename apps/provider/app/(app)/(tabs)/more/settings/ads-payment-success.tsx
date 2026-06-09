@@ -52,6 +52,12 @@ export default function AdsPaymentSuccessScreen() {
     router.replace({ pathname: "/(app)/(tabs)/dashboard" });
   }, [router]);
 
+  const goToReceipts = useCallback(() => {
+    if (navigatedRef.current) return;
+    navigatedRef.current = true;
+    router.replace({ pathname: "/(app)/(tabs)/more/billing-history" });
+  }, [router]);
+
   // Celebrate + auto-return into the app so the user is never stranded on a
   // dead-end success screen (mirrors the customer booking success overlay).
   useEffect(() => {
@@ -89,12 +95,21 @@ export default function AdsPaymentSuccessScreen() {
             <Text style={twStyle("text-sm font-bold text-white")}>View ads dashboard</Text>
           </TouchableOpacity>
           <TouchableOpacity
+            onPress={goToReceipts}
+            style={twStyle("mt-3 w-full flex-row items-center justify-center gap-2 rounded-2xl border border-emerald-200 px-5 py-3.5")}
+            accessibilityRole="button"
+            accessibilityLabel="View receipt"
+          >
+            <Ionicons name="receipt-outline" size={16} color="#047857" />
+            <Text style={twStyle("text-sm font-semibold text-emerald-700")}>View receipt</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
             onPress={goToDashboard}
-            style={twStyle("mt-3 w-full items-center rounded-2xl border border-emerald-200 px-5 py-3.5")}
+            style={twStyle("mt-3 w-full items-center rounded-2xl px-5 py-3")}
             accessibilityRole="button"
             accessibilityLabel="Go to dashboard"
           >
-            <Text style={twStyle("text-sm font-semibold text-emerald-700")}>Go to dashboard</Text>
+            <Text style={twStyle("text-sm font-semibold text-gray-500")}>Go to dashboard</Text>
           </TouchableOpacity>
           <Text style={twStyle("mt-5 text-center text-xs text-gray-400")}>
             Taking you to your campaigns…

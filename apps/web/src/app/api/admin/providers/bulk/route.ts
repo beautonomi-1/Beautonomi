@@ -7,6 +7,7 @@ import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { syncProviderVerificationState } from "@/lib/verification/sync-provider-verification";
+import { invalidatePublicProviderCache } from "@/lib/providers/invalidate-public-provider-cache";
 import { z } from "zod";
 
 const bulkActionSchema = z.object({
@@ -108,6 +109,10 @@ export async function POST(request: NextRequest) {
       const n = updatedRows?.length ?? 0;
       results.success = n;
       results.failed = provider_ids.length - n;
+    }
+
+    if (action === "approve" || action === "suspend" || action === "reject") {
+      invalidatePublicProviderCache();
     }
 
     // Log audit trail

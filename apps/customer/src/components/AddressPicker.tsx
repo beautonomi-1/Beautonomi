@@ -36,6 +36,7 @@ import { ensureForegroundLocationPermission } from "@/lib/native-permissions";
 import { useResponsive } from "@/hooks/useResponsive";
 import { RADIUS_INPUT, RADIUS_CARD } from "@/constants/layout";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { resolveDefaultCountryName, resolveMarketCountryIso } from "@/lib/market-country";
 import { AddressMapPinModal, type ResolvedPinAddress } from "./AddressMapPinModal";
 import { useTranslation } from "@beautonomi/i18n";
 
@@ -78,20 +79,9 @@ export function AddressPicker({
   const { t } = useTranslation();
   const { contentPadding } = useResponsive();
   const { bundle } = useConfigBundle();
-  const defaultCountryLabel = bundle?.meta?.tenant_region?.name?.trim() || "—";
-  // Scope address search to the tenant's active market (ISO 3166-1 alpha-2),
-  // mirroring the provider location step. Falls back to undefined (no country
-  // filter, proximity-biased) when the bundle hasn't resolved a market yet.
-  const marketCountryIso = (() => {
-    const raw = (
-      bundle?.meta?.active_market_country ||
-      bundle?.meta?.tenant_region?.code ||
-      ""
-    )
-      .trim()
-      .toUpperCase();
-    return /^[A-Z]{2}$/.test(raw) ? raw : undefined;
-  })();
+  const bundleMeta = bundle?.meta ?? null;
+  const defaultCountryLabel = resolveDefaultCountryName(bundleMeta);
+  const marketCountryIso = resolveMarketCountryIso(bundleMeta);
   const { user } = useAuth();
   const {
     addresses,
@@ -103,6 +93,7 @@ export function AddressPicker({
   const [suggestions, setSuggestions] = useState<GeocodeSuggestion[]>([]);
   const [searching, setSearching] = useState(false);
   const [gettingLocation, setGettingLocation] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [mapPinVisible, setMapPinVisible] = useState(false);
   const lastKnownCoordsRef = useRef<{ latitude: number; longitude: number } | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -111,21 +102,28 @@ export function AddressPicker({
     if (!visible) {
       setQuery("");
       setSuggestions([]);
+      setSearchError(null);
       setMapPinVisible(false);
     } else if (initialQuery?.trim()) {
       setQuery(initialQuery.trim());
       if (initialQuery.trim().length >= 3) {
         setSearching(true);
+        setSearchError(null);
         const proximity = lastKnownCoordsRef.current
           ? { longitude: lastKnownCoordsRef.current.longitude, latitude: lastKnownCoordsRef.current.latitude }
           : undefined;
-        searchAddress(initialQuery.trim(), { proximity, country: marketCountryIso }).then((results) => {
+        searchAddress(initialQuery.trim(), {
+          proximity,
+          country: marketCountryIso,
+          bundleMeta,
+        }).then(({ results, error }) => {
           setSuggestions(results);
+          setSearchError(error);
           setSearching(false);
         });
       }
     }
-  }, [visible, initialQuery, marketCountryIso]);
+  }, [visible, initialQuery, marketCountryIso, bundleMeta]);
 
   const handleSearch = useCallback(
     (text: string) => {
@@ -133,19 +131,26 @@ export function AddressPicker({
       if (debounceRef.current) clearTimeout(debounceRef.current);
       if (text.length < 2) {
         setSuggestions([]);
+        setSearchError(null);
         return;
       }
       debounceRef.current = setTimeout(async () => {
         setSearching(true);
+        setSearchError(null);
         const proximity = lastKnownCoordsRef.current
           ? { longitude: lastKnownCoordsRef.current.longitude, latitude: lastKnownCoordsRef.current.latitude }
           : undefined;
-        const results = await searchAddress(text, { proximity, country: marketCountryIso });
+        const { results, error } = await searchAddress(text, {
+          proximity,
+          country: marketCountryIso,
+          bundleMeta,
+        });
         setSuggestions(results);
+        setSearchError(error);
         setSearching(false);
       }, 300);
     },
-    [marketCountryIso],
+    [marketCountryIso, bundleMeta],
   );
 
   const parseStructuredFromSuggestion = useCallback(
@@ -227,7 +232,7 @@ export function AddressPicker({
       haptic.light();
       Keyboard.dismiss();
 
-      const fallbackCountry = defaultCountryLabel !== "—" ? defaultCountryLabel : "";
+      const fallbackCountry = defaultCountryLabel;
 
       // 1) Prefer the address the map modal already resolved via Mapbox v6 — the
       //    same lookup that powered the live preview, with the best coverage.
@@ -253,11 +258,12 @@ export function AddressPicker({
       }
 
       // 2) Fall back to the server reverse-geocode (v5) used elsewhere.
-      let feature: GeocodeSuggestion | null = null;
-      try {
-        feature = await reverseGeocode(lat, lng);
-      } catch {
-        feature = null;
+      const { feature, error: reverseError } = await reverseGeocode(lat, lng);
+      if (reverseError) {
+        Alert.alert(
+          t("customer.mobile.components.addressPicker.locationErrorTitle"),
+          reverseError,
+        );
       }
       if (feature?.place_name) {
         applyGeocodeFeature(feature);
@@ -293,8 +299,21 @@ export function AddressPicker({
       ? { longitude: lastKnownCoordsRef.current.longitude, latitude: lastKnownCoordsRef.current.latitude }
       : undefined;
     setSearching(true);
+    setSearchError(null);
     try {
-      const results = await searchAddress(q, { proximity, country: marketCountryIso });
+      const { results, error } = await searchAddress(q, {
+        proximity,
+        country: marketCountryIso,
+        bundleMeta,
+      });
+      if (error) {
+        setSearchError(error);
+        Alert.alert(
+          t("customer.mobile.components.addressPicker.noResultsTitle"),
+          error,
+        );
+        return;
+      }
       if (results.length > 0) {
         handleSuggestionSelect(results[0]);
         return;
@@ -306,7 +325,7 @@ export function AddressPicker({
     } finally {
       setSearching(false);
     }
-  }, [query, handleSuggestionSelect, marketCountryIso, t]);
+  }, [query, handleSuggestionSelect, marketCountryIso, bundleMeta, t]);
 
   const handleUseCurrentLocation = useCallback(async () => {
     if (gettingLocation) return;
@@ -319,6 +338,10 @@ export function AddressPicker({
         message: t("customer.mobile.components.addressPicker.locationAccessBody"),
       });
       if (!allowed) {
+        Alert.alert(
+          t("customer.mobile.components.addressPicker.locationAccessTitle"),
+          t("customer.mobile.components.addressPicker.locationAccessBody"),
+        );
         return;
       }
       const loc = await Location.getCurrentPositionAsync({
@@ -331,7 +354,13 @@ export function AddressPicker({
       let structured: AddressPickerSelection["structured"] | undefined;
       let displayName = "Current location";
 
-      const feature = await reverseGeocode(lat, lng);
+      const { feature, error: reverseError } = await reverseGeocode(lat, lng);
+      if (reverseError) {
+        Alert.alert(
+          t("customer.mobile.components.addressPicker.locationErrorTitle"),
+          reverseError,
+        );
+      }
       if (feature?.place_name && feature?.center) {
         displayName = feature.place_name;
         const mapped = mapGeocodeFeatureToAddressParts(feature, {
@@ -339,7 +368,7 @@ export function AddressPicker({
         });
         structured = {
           address_line1: mapped.address_line1 || "Current location",
-          city: mapped.city || "—",
+          city: mapped.city || "",
           state: mapped.state || undefined,
           postal_code: mapped.postal_code || undefined,
           country: mapped.country || defaultCountryLabel,
@@ -347,7 +376,7 @@ export function AddressPicker({
       } else {
         structured = {
           address_line1: "Current location",
-          city: "—",
+          city: "",
           country: defaultCountryLabel,
         };
       }
@@ -373,7 +402,8 @@ export function AddressPicker({
 
   const searchActive = query.trim().length >= 2;
   const showSuggestionPanel = searchActive && (searching || suggestions.length > 0);
-  const showNoMatches = searchActive && !searching && suggestions.length === 0;
+  const showNoMatches = searchActive && !searching && suggestions.length === 0 && !searchError;
+  const showSearchError = searchActive && !searching && !!searchError;
 
   const renderSuggestionItem = useCallback(
     ({ item }: { item: GeocodeSuggestion }) => (
@@ -488,6 +518,18 @@ export function AddressPicker({
                 </View>
               ) : null}
 
+              {showSearchError ? (
+                <View style={[styles.noMatchesBox, styles.searchErrorBox]}>
+                  <Ionicons
+                    name="warning-outline"
+                    size={18}
+                    color="#B45309"
+                    style={{ marginRight: 8, marginTop: 1 }}
+                  />
+                  <Text style={styles.searchErrorText}>{searchError}</Text>
+                </View>
+              ) : null}
+
               {showNoMatches ? (
                 <View style={styles.noMatchesBox}>
                   <Ionicons
@@ -509,7 +551,7 @@ export function AddressPicker({
                   flexDirection: "row",
                   alignItems: "center",
                   paddingVertical: 14,
-                  marginTop: showSuggestionPanel || showNoMatches ? 8 : 12,
+                  marginTop: showSuggestionPanel || showNoMatches || showSearchError ? 8 : 12,
                   borderBottomWidth: 1,
                   borderColor: Colors.gray[100],
                 }}
@@ -714,6 +756,16 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 13,
     color: Colors.gray[600],
+    lineHeight: 18,
+  },
+  searchErrorBox: {
+    backgroundColor: "#FFFBEB",
+    borderColor: "#FDE68A",
+  },
+  searchErrorText: {
+    flex: 1,
+    fontSize: 13,
+    color: "#92400E",
     lineHeight: 18,
   },
 });

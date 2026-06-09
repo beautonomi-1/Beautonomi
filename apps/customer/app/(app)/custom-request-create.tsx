@@ -23,6 +23,10 @@ import { haptic } from "@/lib/haptics";
 import { Colors } from "@/constants/colors";
 import { appendFormDataFileNative } from "@beautonomi/utils";
 import { getApiErrorMessage } from "@/lib/api-error";
+import { AddressPicker, type AddressPickerSelection } from "@/components/AddressPicker";
+import { resolveDefaultCountryName } from "@/lib/market-country";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { Ionicons } from "@expo/vector-icons";
 
 type GlobalCategory = { id: string; name: string };
 type AvailabilitySlot = { start: string; end?: string; is_available?: boolean; staff_id?: string | null };
@@ -123,6 +127,11 @@ export default function CustomRequestCreateScreen() {
   const [addressCity, setAddressCity] = useState("");
   const [addressState, setAddressState] = useState("");
   const [addressPostalCode, setAddressPostalCode] = useState("");
+  const [addressCountry, setAddressCountry] = useState("");
+  const [atHomeCoords, setAtHomeCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [addressPickerVisible, setAddressPickerVisible] = useState(false);
+  const { bundle } = useConfigBundle();
+  const defaultCountryName = resolveDefaultCountryName(bundle?.meta ?? null);
   const [serviceCategoryId, setServiceCategoryId] = useState<string | null>(null);
   const [categories, setCategories] = useState<GlobalCategory[]>([]);
   const [selectedDate, setSelectedDate] = useState(() => dateKey(new Date()));
@@ -254,6 +263,27 @@ export default function CustomRequestCreateScreen() {
     setImageUrls((prev) => prev.filter((_, i) => i !== idx));
   };
 
+  const handleAddressPickerSelect = useCallback((selection: AddressPickerSelection) => {
+    if (selection.structured) {
+      setAddressLine1(selection.structured.address_line1);
+      setAddressLine2(selection.structured.address_line2 ?? "");
+      setAddressCity(selection.structured.city);
+      setAddressState(selection.structured.state ?? "");
+      setAddressPostalCode(selection.structured.postal_code ?? "");
+      setAddressCountry(selection.structured.country || defaultCountryName);
+    } else {
+      const parts = (selection.displayName || selection.label || "")
+        .split(",")
+        .map((part) => part.trim())
+        .filter(Boolean);
+      setAddressLine1(parts[0] || selection.label || "");
+      setAddressCity(parts[1] || "");
+      setAddressCountry(defaultCountryName);
+    }
+    setAtHomeCoords({ latitude: selection.latitude, longitude: selection.longitude });
+    setAddressPickerVisible(false);
+  }, [defaultCountryName]);
+
   const submit = async () => {
     if (!provider_id) {
       setSubmitError(cr("providerMissingBody"));
@@ -304,6 +334,12 @@ export default function CustomRequestCreateScreen() {
       Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), msg);
       return;
     }
+    if (locationType === "at_home" && !atHomeCoords) {
+      const msg = cr("addressCoordsRequiredBody", { defaultValue: "Select your address using search, current location, or the map pin so we can locate you." });
+      setSubmitError(msg);
+      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), msg);
+      return;
+    }
 
     setSubmitError(null);
     setSubmitting(true);
@@ -326,6 +362,7 @@ export default function CustomRequestCreateScreen() {
         address_city: locationType === "at_home" ? addressCity : undefined,
         address_state: locationType === "at_home" ? addressState : undefined,
         address_postal_code: locationType === "at_home" ? addressPostalCode : undefined,
+        address_country: locationType === "at_home" ? (addressCountry.trim() || defaultCountryName) : undefined,
         image_urls: imageUrls,
       });
       if (res.error) {
@@ -454,13 +491,44 @@ export default function CustomRequestCreateScreen() {
         {locationType === "at_home" && (
           <View style={{ marginTop: 16 }}>
             <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 8 }}>{cr("addressLabel", { defaultValue: "Your address" })}</Text>
+            <TouchableOpacity
+              onPress={() => {
+                haptic.light();
+                setAddressPickerVisible(true);
+              }}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                borderWidth: 1,
+                borderColor: Colors.primary,
+                borderRadius: 12,
+                paddingHorizontal: 16,
+                paddingVertical: 12,
+                marginBottom: 12,
+                backgroundColor: Colors.primaryLight,
+              }}
+            >
+              <Ionicons name="search-outline" size={18} color={Colors.primary} />
+              <Text style={{ marginLeft: 10, fontSize: 14, fontWeight: "600", color: Colors.primary }}>
+                {cr("searchAddress", { defaultValue: "Search or use current location" })}
+              </Text>
+            </TouchableOpacity>
             <TextInput style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, marginBottom: 8 }} placeholder={cr("addressLine1", { defaultValue: "Street address" })} placeholderTextColor={Colors.gray[400]} value={addressLine1} onChangeText={setAddressLine1} />
             <TextInput style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, marginBottom: 8 }} placeholder={cr("addressLine2", { defaultValue: "Unit / Suite (optional)" })} placeholderTextColor={Colors.gray[400]} value={addressLine2} onChangeText={setAddressLine2} />
             <View style={{ flexDirection: "row", marginBottom: 8 }}>
               <TextInput style={{ flex: 1, borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, marginRight: 8 }} placeholder={cr("addressCity", { defaultValue: "City" })} placeholderTextColor={Colors.gray[400]} value={addressCity} onChangeText={setAddressCity} />
               <TextInput style={{ flex: 1, borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12 }} placeholder={cr("addressPostalCode", { defaultValue: "Postal Code" })} placeholderTextColor={Colors.gray[400]} value={addressPostalCode} onChangeText={setAddressPostalCode} />
             </View>
-            <TextInput style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12 }} placeholder={cr("addressState", { defaultValue: "Province / State" })} placeholderTextColor={Colors.gray[400]} value={addressState} onChangeText={setAddressState} />
+            <TextInput style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, marginBottom: 8 }} placeholder={cr("addressState", { defaultValue: "Province / State" })} placeholderTextColor={Colors.gray[400]} value={addressState} onChangeText={setAddressState} />
+            {atHomeCoords ? (
+              <Text style={{ fontSize: 12, color: Colors.gray[500] }}>
+                {cr("addressPinned", { defaultValue: "Location pinned on map" })}
+              </Text>
+            ) : (
+              <Text style={{ fontSize: 12, color: "#B45309" }}>
+                {cr("addressCoordsHint", { defaultValue: "Use search, current location, or map pin to set your location." })}
+              </Text>
+            )}
           </View>
         )}
 
@@ -631,6 +699,12 @@ export default function CustomRequestCreateScreen() {
         </TouchableOpacity>
       </ScrollView>
       </KeyboardAvoidingView>
+      <AddressPicker
+        visible={addressPickerVisible}
+        onClose={() => setAddressPickerVisible(false)}
+        onSelect={handleAddressPickerSelect}
+        onUseCurrentLocation={() => setAddressPickerVisible(false)}
+      />
     </>
   );
 }

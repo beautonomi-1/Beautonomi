@@ -19,6 +19,7 @@ import { subDays, subMonths, subYears, startOfMonth, endOfMonth } from "date-fns
 import { toZonedTime } from "date-fns-tz";
 import { dateRangeBoundsUtc, formatDateYmd } from "@/lib/dates/provider-tz";
 import { fetchAllLedgerPages } from "@/lib/reports/fetch-all-ledger-pages";
+import { recognizedRevenueInRange } from "@/lib/reports/provider-revenue-semantics";
 
 
 /**
@@ -44,6 +45,13 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const locationId = searchParams.get("location_id");
     const transactionFeed = searchParams.get("transaction_feed");
+    // Caller-controlled size of the returned transaction feed (load-more on the
+    // mobile transactions hub / web finance page). Defaults to 50, capped at 200
+    // so a single response can never balloon unbounded.
+    const txLimit = Math.min(
+      Math.max(parseInt(searchParams.get("tx_limit") ?? "50", 10) || 50, 50),
+      200,
+    );
     const transactionListAllLocations = transactionFeed === "all";
     const providerId = await getProviderIdForUser(user.id, supabase);
 
@@ -299,11 +307,23 @@ export async function GET(request: NextRequest) {
       .filter((r: any) => r.transaction_type === "provider_earnings" && r.booking_id)
       .filter((r: any) => { const d = new Date(r.created_at); return d >= startDate && d <= now; })
       .reduce((s: number, r: any) => s + Number(r.net ?? r.amount ?? 0), 0);
+    const isProductOrderEarnings = (r: { transaction_type?: string; booking_id?: string | null; product_order_id?: string | null }) =>
+      r.transaction_type === "provider_earnings" && !r.booking_id && !!r.product_order_id;
+    const isMembershipEarnings = (r: { transaction_type?: string; booking_id?: string | null; product_order_id?: string | null }) =>
+      r.transaction_type === "provider_earnings" && !r.booking_id && !r.product_order_id;
+
     const productSalesEarningsTotal = rows
-      .filter((r: any) => r.transaction_type === "provider_earnings" && !r.booking_id)
+      .filter((r: any) => isProductOrderEarnings(r))
       .reduce((s: number, r: any) => s + Number(r.net ?? r.amount ?? 0), 0);
     const productSalesEarningsThisPeriod = rows
-      .filter((r: any) => r.transaction_type === "provider_earnings" && !r.booking_id)
+      .filter((r: any) => isProductOrderEarnings(r))
+      .filter((r: any) => { const d = new Date(r.created_at); return d >= startDate && d <= now; })
+      .reduce((s: number, r: any) => s + Number(r.net ?? r.amount ?? 0), 0);
+    const membershipEarningsTotal = rows
+      .filter((r: any) => isMembershipEarnings(r))
+      .reduce((s: number, r: any) => s + Number(r.net ?? r.amount ?? 0), 0);
+    const membershipEarningsThisPeriod = rows
+      .filter((r: any) => isMembershipEarnings(r))
       .filter((r: any) => { const d = new Date(r.created_at); return d >= startDate && d <= now; })
       .reduce((s: number, r: any) => s + Number(r.net ?? r.amount ?? 0), 0);
     /** Booking ledger uses `service_fee`; ecommerce uses `platform_fee` — both are platform-retained customer fees. */
@@ -332,7 +352,13 @@ export async function GET(request: NextRequest) {
 
     const membershipSalesTotal = sumAmount(["membership_sale"], { start: startDate, end: now });
     const giftCardSalesTotal = sumAmount(["gift_card_sale"], { start: startDate, end: now });
-    /** Travel fee rows store gross in `amount` with net=0 (travel is included in provider_earnings). */
+    /**
+     * Travel fee rows store the gross travel fee in BOTH `amount` and `net` (the
+     * Paystack webhook handler and the create_finance_ledger_from_payment trigger
+     * both write net = travel_fee). Travel is excluded from the commission base, so
+     * it is NOT folded into provider_earnings — it is a standalone payoutable row.
+     * Summing `amount` here is equivalent to `net` for these rows.
+     */
     const sumTravelFeeAmount = (within?: { start: Date; end: Date }) =>
       rows
         .filter((r: any) => r.transaction_type === "travel_fee")
@@ -376,6 +402,11 @@ export async function GET(request: NextRequest) {
       }, 0);
 
     const thisMonthTotal = providerEarningsThis;
+    const recognizedRevenueTotal = recognizedRevenueInRange(rows);
+    const recognizedRevenueThisPeriod = recognizedRevenueInRange(rows, {
+      start: startDate,
+      end: now,
+    });
     const lastMonthTotal = providerEarningsLast;
 
     const growthPercentage =
@@ -396,7 +427,7 @@ export async function GET(request: NextRequest) {
     const minimumPayoutAmount = Number(payoutSettingsData.minimum_payout_amount ?? 100);
 
     // Available balance and pending payouts: use ledger + payouts table (aligned with payouts API validation).
-    const { availableBalance, pendingPayoutsSum, rawBalance, hasNegativeBalance } = await getAvailablePayoutBalance(
+    const { availableBalance, pendingPayoutsSum, rawBalance, hasNegativeBalance, breakdown: payoutBreakdown } = await getAvailablePayoutBalance(
       db,
       providerId,
       {
@@ -455,7 +486,7 @@ export async function GET(request: NextRequest) {
     // semantics are kept aligned with the shared mapper (PROVIDER_LEDGER_VISIBLE_TYPES +
     // isProviderEarningsRefundComponent + ledgerRowDisplaySign) so totals reconcile with
     // GET /api/provider/transactions.
-    const transactions = rowsForTransactionList
+    const visibleTransactionRows = rowsForTransactionList
       .filter((r: any) => PROVIDER_LEDGER_VISIBLE_TYPES.has(r.transaction_type))
       // A refund posts one row per component (migration 654). Show only the provider's
       // own refund legs in the feed; the platform-fee/tax/commission legs and parallel
@@ -464,8 +495,10 @@ export async function GET(request: NextRequest) {
       .filter(
         (r: any) =>
           r.transaction_type !== "refund" || isProviderEarningsRefundComponent(r.refund_component),
-      )
-      .slice(0, 50)
+      );
+    const transactionsTotal = visibleTransactionRows.length;
+    const transactions = visibleTransactionRows
+      .slice(0, txLimit)
       .map((r: any) => ({
         id: r.id,
         booking_id: r.booking_id || null,
@@ -501,10 +534,30 @@ export async function GET(request: NextRequest) {
          * `membership_sales_this_period` (those are separate liability / deferred-revenue flows — F19).
          */
         total_earnings: providerEarningsTotal,
+        /** Sum of RECOGNIZED_REVENUE_TYPES in the selected date range (matches dashboard total earned). */
+        recognized_revenue_total: recognizedRevenueThisPeriod,
+        recognized_revenue_all_time: recognizedRevenueTotal,
+        /** Alias: provider_earnings net for the selected range (not calendar month unless range=month). */
+        period_provider_earnings: thisMonthTotal,
         pending_payouts: pendingPayouts,
         available_balance: availableBalance,
         raw_payout_balance: rawBalance,
         has_negative_payout_balance: hasNegativeBalance,
+        /**
+         * Bridge from recognized payoutable earnings to the withdrawable figure so the UI can
+         * explain why "available to withdraw" differs from headline recognized-revenue reports:
+         *   recognized_payoutable_earnings − on_hold − pending_payouts − already_paid_out = available_balance
+         * `excluded_provider_collected` is the cash/Yoco/EFT the provider already took directly
+         * (never platform-held, so never withdrawable) — the main reason reports read higher.
+         */
+        payout_reconciliation: {
+          recognized_payoutable_earnings: payoutBreakdown.recognizedPayoutableEarnings,
+          on_hold: payoutBreakdown.onHold,
+          excluded_provider_collected: payoutBreakdown.excludedProviderCollected,
+          already_paid_out: payoutBreakdown.completedPayouts,
+          pending_payouts: payoutBreakdown.pendingPayouts,
+          available_balance: payoutBreakdown.availableBalance,
+        },
         balance_owed_to_platform: hasNegativeBalance ? Math.abs(rawBalance) : 0,
         ledger_currencies: ledgerCurrencies,
         ledger_currency_note,
@@ -517,6 +570,8 @@ export async function GET(request: NextRequest) {
         bookings_earnings_this_period: bookingEarningsThisPeriod,
         product_sales_earnings_total: productSalesEarningsTotal,
         product_sales_earnings_this_period: productSalesEarningsThisPeriod,
+        membership_earnings_total: membershipEarningsTotal,
+        membership_earnings_this_period: membershipEarningsThisPeriod,
         platform_fees_deducted: platformFeesDeducted,
         platform_fees_deducted_this_period: platformFeesDeductedThisPeriod,
         gift_card_sales_this_period: giftCardSalesTotal,
@@ -541,11 +596,17 @@ export async function GET(request: NextRequest) {
         promo_discounts_total: discountsAllTime.promo_discounts_applied,
       },
       transactions: transactions,
+      transactions_total: transactionsTotal,
+      transactions_returned: transactions.length,
       language_context: {
         audience: "provider",
         metric_labels: {
           available_balance: "platform-held payoutable balance",
-          total_earnings: "provider earnings",
+          total_earnings: "provider earnings (provider_earnings ledger rows only)",
+          recognized_revenue_total:
+            "recognized provider revenue in selected range (services, tips, travel, cancellation fees, walk-in add-ons)",
+          period_provider_earnings:
+            "provider_earnings net for the selected range — same value as this_month field",
           product_sales_earnings_total: "platform-held ecommerce provider earnings",
           walk_in_additional_charges_total: "cash register/end-of-day collection",
           gift_card_sales_this_period:
@@ -556,6 +617,8 @@ export async function GET(request: NextRequest) {
         },
         glossary: {
           available_balance: "Amount currently available for payout after hold period and prior payouts.",
+          payout_reconciliation:
+            "Bridge from recognized payoutable earnings to what you can withdraw. Headline revenue reports include cash/Yoco/EFT you collected directly (excluded_provider_collected) and ignore the hold period, pending requests, and amounts already paid out — so they will read higher than available_balance. This is expected, not an error.",
           pending_payouts: "Payout requests created but not yet completed.",
           refunds_total: "Total refund-related deductions affecting your earnings in the selected range.",
           platform_fees_deducted:

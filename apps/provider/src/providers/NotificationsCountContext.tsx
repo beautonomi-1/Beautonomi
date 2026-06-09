@@ -41,6 +41,13 @@ export function NotificationsCountProvider({ children }: { children: ReactNode }
     setCountBias(0);
   }, [data?.total_unread]);
 
+  // Clear any optimistic bias the instant the authenticated user changes
+  // (sign-out, or A→B account switch) so user B's badge never inherits user A's
+  // optimistic offset before the user-keyed server count loads.
+  useEffect(() => {
+    setCountBias(0);
+  }, [user?.id]);
+
   const baseUnread = data?.total_unread ?? 0;
   const totalUnread = Math.max(0, baseUnread + countBias);
   /** True once the server has returned a real count. Until then we must not

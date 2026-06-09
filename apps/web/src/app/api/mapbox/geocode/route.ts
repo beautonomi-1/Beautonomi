@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import { getMapboxService } from "@/lib/mapbox/mapbox";
+import {
+  isMapboxNotConfiguredError,
+  mapboxNotConfiguredGeocodeResponse,
+} from "@/lib/mapbox/mapbox-config-errors";
 import { z } from "zod";
 
 const geocodeSchema = z.object({
@@ -56,18 +60,11 @@ export async function POST(request: Request) {
         data: results,
         error: null,
       });
-    } catch (mapboxError: any) {
-      // If Mapbox is not configured, return empty results instead of error
-      // This allows the form to work with manual entry
-      if (mapboxError.message?.includes("not configured") || 
-          mapboxError.message?.includes("MAPBOX_ACCESS_TOKEN")) {
-        console.warn("Mapbox not configured, returning empty results for geocode");
-        return NextResponse.json({
-          data: [],
-          error: null,
-        });
+    } catch (mapboxError: unknown) {
+      if (isMapboxNotConfiguredError(mapboxError)) {
+        console.warn("Mapbox not configured for geocode");
+        return NextResponse.json(mapboxNotConfiguredGeocodeResponse(), { status: 503 });
       }
-      // Re-throw other errors
       throw mapboxError;
     }
   } catch (error: any) {

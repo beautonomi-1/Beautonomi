@@ -97,10 +97,11 @@ export const getLocationHubProviders = cache(
 
       let locQuery = supabase
         .from("provider_locations")
-        .select("provider_id, city, country, is_primary, location_type, providers!inner(tenant_id, status)")
+        .select("provider_id, city, country, is_primary, location_type, providers!inner(tenant_id, status, deleted_at)")
         .eq("is_active", true)
         .eq("providers.tenant_id", tenantId)
         .eq("providers.status", "active")
+        .is("providers.deleted_at", null)
         .ilike("country", `%${query.countryMatch.trim()}%`);
 
       if (query.cityName?.trim()) {
@@ -130,6 +131,7 @@ export const getLocationHubProviders = cache(
         .in("id", providerIds)
         .eq("tenant_id", tenantId)
         .eq("status", "active")
+        .is("deleted_at", null)
         .eq("users.include_in_search_engines", true);
 
       if (!providers?.length) return [];

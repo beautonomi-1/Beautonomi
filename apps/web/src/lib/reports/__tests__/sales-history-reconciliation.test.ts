@@ -214,6 +214,27 @@ describe("provider sales history — gross vs provider_net reconciliation", () =
     );
   });
 
+  it("commission-enabled walk-in add-on: net-of-commission flows to provider_net, gross reconciles (migration 660)", async () => {
+    // RPC bumped total_amount by the 150 add-on; the ledger holds the recognition row at
+    // net-of-commission (amount gross) plus the platform commission `payment` leg.
+    const rows = await run({
+      users: usersTable,
+      bookings: [booking("b-walkin-comm", 150)],
+      finance_transactions: [
+        ft("b-walkin-comm", "walk_in_additional_charge", { amount: 150, net: 135, commission: 0 }),
+        ft("b-walkin-comm", "payment", { amount: 150, commission: 15, net: 15 }),
+      ],
+    });
+    const r = rows.find((x) => x.id === "b-walkin-comm")!;
+    expect(r.gross_total).toBe(150);
+    // Provider recognized take is net-of-commission, NOT gross.
+    expect(r.provider_net).toBe(135);
+    expect(r.commission).toBe(15);
+    expect(r.provider_net + r.commission + r.platform_fee + r.tax + r.discount_contra).toBe(
+      r.gross_total,
+    );
+  });
+
   it("custom offer + online add-on: provider_earnings(base+addon) + addon commission reconcile", async () => {
     const rows = await run({
       users: usersTable,

@@ -9,6 +9,8 @@ import { NextResponse } from "next/server";
 import { convertFromSmallestUnit } from "@/lib/payments/paystack";
 import type { PaystackEvent, SupabaseClient } from "./shared";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
+import { reverseAdsBudgetOrderPayment } from "@/lib/ads/ads-budget-order-payment";
+import { reverseProviderSubscriptionPayment } from "@/lib/subscriptions/provider-subscription-payment";
 
 // ─── Exported Handler ────────────────────────────────────────────────────────
 
@@ -155,8 +157,38 @@ async function handleRefundProcessed(data: Record<string, unknown>, supabase: Su
     // Non-booking refund: check if this is a product order refund via metadata
     const metadata = (txn as any)?.metadata ?? {};
     const productOrderId = metadata?.product_order_id ?? null;
+    const adsBudgetOrderId =
+      metadata?.kind === "ads_budget_order" ? (metadata?.ads_budget_order_id ?? null) : null;
+    const subscriptionKind = [
+      "provider_subscription_order",
+      "subscription_authorization",
+      "subscription_renewal",
+    ].includes(metadata?.kind)
+      ? metadata.kind
+      : null;
 
-    if (productOrderId) {
+    if (adsBudgetOrderId) {
+      // Ads pre-pay refund: stop serving and fully back out the recognized
+      // revenue via the shared idempotent reverse helper (posts provider_ads_refund).
+      await reverseAdsBudgetOrderPayment({
+        supabase,
+        orderId: String(adsBudgetOrderId),
+        finalOrderStatus: "refunded",
+        reason: "paystack_refund",
+        reference: String(reference),
+      });
+    } else if (subscriptionKind) {
+      // Subscription refund: back out the recognized revenue (provider_subscription_refund),
+      // disable Paystack recurring billing, and fall the provider back to free.
+      await reverseProviderSubscriptionPayment({
+        supabase,
+        reason: "paystack_refund",
+        reference: String(reference),
+        orderId: metadata?.provider_subscription_order_id ?? null,
+        subscriptionCode: metadata?.subscription_code ?? null,
+        providerIdHint: metadata?.provider_id ?? null,
+      });
+    } else if (productOrderId) {
       const { data: orderRow } = await supabase
         .from("product_orders")
         .select("id, provider_id, tenant_id, order_number, payment_status, total_amount, platform_fee")

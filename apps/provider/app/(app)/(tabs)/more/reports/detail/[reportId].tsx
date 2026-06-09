@@ -8,7 +8,9 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
+  Alert,
 } from "react-native";
+import { formatInTimeZone } from "date-fns-tz";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -16,6 +18,7 @@ import { useApi } from "@/hooks/useApi";
 import { useProvider } from "@/providers/ProviderContext";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { ActiveLocationChip } from "@/components/reports/ActiveLocationChip";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { FilterChipGroup } from "@/components/ui/FilterChip";
 import { ReportPayloadView } from "@/features/reports/ReportPayloadView";
@@ -32,23 +35,32 @@ import { RefundsReportView } from "@/features/reports/RefundsReportView";
 import { PaymentMethodsReportView } from "@/features/reports/PaymentMethodsReportView";
 import { PayoutsReportView } from "@/features/reports/PayoutsReportView";
 import { YocoReconciliationReportView } from "@/features/reports/YocoReconciliationReportView";
+import { PaystackReconciliationReportView } from "@/features/reports/PaystackReconciliationReportView";
 import { InventoryReportView } from "@/features/reports/InventoryReportView";
 import { ProductSalesReportView } from "@/features/reports/ProductSalesReportView";
 import { TopProductsReportView } from "@/features/reports/TopProductsReportView";
 import { PackageSalesReportView } from "@/features/reports/PackageSalesReportView";
 import { PackageUsageReportView } from "@/features/reports/PackageUsageReportView";
+import { MembershipReportView } from "@/features/reports/MembershipReportView";
 import { PerformanceDashboardReportView } from "@/features/reports/PerformanceDashboardReportView";
 import { PeriodComparisonReportView } from "@/features/reports/PeriodComparisonReportView";
+import {
+  StaffCommissionReportView,
+  StaffHoursReportView,
+  NoShowsReportView,
+  NewClientsReportView,
+  ClientLifetimeValueReportView,
+} from "@/features/reports/GenericFormattedReportViews";
 import {
   REPORT_DETAIL_REGISTRY,
   type ReportDetailDefinition,
 } from "@/features/reports/reportDetailRegistry";
 import { twStyle } from "@/lib/twStyle";
 import { Colors } from "@/constants/colors";
-import { format } from "date-fns";
 import {
   getReportDateRange,
   formatReportRangeCaption,
+  resolveReportTimezone,
   type ReportDateRangeKey,
 } from "@/lib/reportDateRanges";
 import { shareReportAsCsv } from "@/lib/reportExportCsv";
@@ -120,7 +132,11 @@ export default function ReportDetailScreen() {
   const [dateRange, setDateRange] = useState<ReportDateRangeKey>("month");
   const [periodMQY, setPeriodMQY] = useState("month");
   const [periodDMWY, setPeriodDMWY] = useState("month");
-  const [eodDate, setEodDate] = useState(() => format(new Date(), "yyyy-MM-dd"));
+  // End-of-day defaults to "today" in the business timezone (not the device's),
+  // so a provider travelling/abroad still lands on their own trading day.
+  const [eodDate, setEodDate] = useState(() =>
+    formatInTimeZone(new Date(), resolveReportTimezone(provider?.timezone), "yyyy-MM-dd"),
+  );
 
   const { from, to } = useMemo(
     () => getReportDateRange(dateRange, { timezone: provider?.timezone }),
@@ -146,7 +162,7 @@ export default function ReportDetailScreen() {
     try {
       await shareReportAsCsv(String(reportId), def?.title ?? "Report", data);
     } catch {
-      /* ignore */
+      Alert.alert("Export failed", "We couldn't share this report. Please try again.");
     }
   }, [data, def?.title, reportId]);
 
@@ -160,7 +176,7 @@ export default function ReportDetailScreen() {
   }
 
   return (
-    <ScreenContainer>
+    <ScreenContainer refreshing={loading && data != null} onRefresh={refresh}>
       <ScreenHeader
         title={def.title}
         showBack
@@ -178,6 +194,8 @@ export default function ReportDetailScreen() {
           </TouchableOpacity>
         }
       />
+
+      <ActiveLocationChip />
 
       {def.query === "fromTo" && (
         <View style={twStyle("mb-2")}>
@@ -262,6 +280,8 @@ export default function ReportDetailScreen() {
           <PayoutsReportView data={data} />
         ) : reportId === "yoco-reconciliation" ? (
           <YocoReconciliationReportView data={data} />
+        ) : reportId === "paystack-terminal-reconciliation" ? (
+          <PaystackReconciliationReportView data={data} />
         ) : reportId === "inventory" ? (
           <InventoryReportView data={data} />
         ) : reportId === "product-sales" ? (
@@ -272,10 +292,22 @@ export default function ReportDetailScreen() {
           <PackageSalesReportView data={data} />
         ) : reportId === "package-usage" ? (
           <PackageUsageReportView data={data} />
+        ) : reportId === "membership-sales" ? (
+          <MembershipReportView data={data} />
         ) : reportId === "performance-dashboard" ? (
           <PerformanceDashboardReportView data={data} />
         ) : reportId === "comparison" ? (
           <PeriodComparisonReportView data={data} />
+        ) : reportId === "staff-commission" ? (
+          <StaffCommissionReportView data={data} />
+        ) : reportId === "staff-hours" ? (
+          <StaffHoursReportView data={data} />
+        ) : reportId === "no-shows" ? (
+          <NoShowsReportView data={data} />
+        ) : reportId === "new-clients" ? (
+          <NewClientsReportView data={data} />
+        ) : reportId === "client-lifetime-value" ? (
+          <ClientLifetimeValueReportView data={data} />
         ) : (
           <ReportPayloadView data={data} />
         ))}

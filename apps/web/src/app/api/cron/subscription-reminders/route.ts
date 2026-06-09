@@ -116,7 +116,8 @@ export async function GET(request: NextRequest) {
             business_name: provider.name || "",
           },
           ["push"],
-          { appType: "provider" }
+          // In-app bell row inserted manually above; skip template auto-insert.
+          { appType: "provider", skipInApp: true }
         );
 
         sent++;

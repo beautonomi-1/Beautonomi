@@ -1,10 +1,11 @@
-import { useState, useCallback, useMemo } from "react";
-import { View, Text, TouchableOpacity, Alert } from "react-native";
+import { useState, useCallback, useMemo, useEffect } from "react";
+import { View, Text, TouchableOpacity, Alert, ActivityIndicator } from "react-native";
 import { FlashList } from "@shopify/flash-list";
 import { useRouter } from "expo-router";
 import ReanimatedSwipeable from "react-native-gesture-handler/ReanimatedSwipeable";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi, useApiMutation } from "@/hooks/useApi";
+import { api } from "@/lib/api-client";
 import { useAuth } from "@/providers/AuthProvider";
 import { useNotificationsCount } from "@/providers/NotificationsCountContext";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -48,7 +49,10 @@ interface Notification {
 interface NotificationsResponse {
   notifications: Notification[];
   total_unread: number;
+  has_more?: boolean;
 }
+
+const PAGE_SIZE = 20;
 
 type FilterValue = "all" | "unread" | "bookings" | "payments";
 
@@ -217,20 +221,51 @@ export default function NotificationsScreen() {
     loading,
     error: notificationsError,
     refresh,
-    mutate: mutateRaw,
-  } = useApi<NotificationsResponse>("/api/provider/notifications", { enabled: !!session });
-  const notifications = rawData?.notifications ?? null;
-  const isUnread = (n: Notification) => !(n.read_at || n.read === true || n.is_read === true);
-  const mutate = useCallback(
-    (updated: Notification[]) =>
-      mutateRaw({
-        notifications: updated,
-        total_unread: updated.filter(
-          (n) => !(n.read_at || n.read === true || n.is_read === true),
-        ).length,
-      }),
-    [mutateRaw],
+  } = useApi<NotificationsResponse>(
+    `/api/provider/notifications?limit=${PAGE_SIZE}&offset=0`,
+    { enabled: !!session },
   );
+
+  // Local list is the source of truth for rendering + optimistic updates.
+  // The first page comes from useApi (so pull-to-refresh + cache work); older
+  // pages are appended via loadMore. Re-seed whenever page 1 changes.
+  const [items, setItems] = useState<Notification[] | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  useEffect(() => {
+    if (rawData?.notifications) {
+      setItems(rawData.notifications);
+      setHasMore(Boolean(rawData.has_more));
+    }
+  }, [rawData]);
+
+  const notifications = items;
+  const isUnread = (n: Notification) => !(n.read_at || n.read === true || n.is_read === true);
+  const mutate = useCallback((updated: Notification[]) => setItems(updated), []);
+
+  const loadMore = useCallback(async () => {
+    if (loadingMore || !hasMore || !items || items.length === 0) return;
+    setLoadingMore(true);
+    try {
+      const res = await api.get<NotificationsResponse | { data?: NotificationsResponse }>(
+        `/api/provider/notifications?limit=${PAGE_SIZE}&offset=${items.length}`,
+      );
+      const body = (res.data as { data?: NotificationsResponse })?.data ?? (res.data as NotificationsResponse | undefined);
+      const next = body?.notifications ?? [];
+      setItems((prev) => {
+        const base = prev ?? [];
+        const seen = new Set(base.map((n) => n.id));
+        return [...base, ...next.filter((n) => !seen.has(n.id))];
+      });
+      setHasMore(Boolean(body?.has_more));
+    } catch {
+      // Keep current list; user can scroll again to retry.
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [loadingMore, hasMore, items]);
+
   const { execute: patchNotification } = useApiMutation("patch");
   const { execute: postAction } = useApiMutation("post");
   const { execute: deleteNotification } = useApiMutation("delete");
@@ -430,6 +465,18 @@ export default function NotificationsScreen() {
           showsVerticalScrollIndicator={true}
           refreshing={refreshing}
           onRefresh={handleRefresh}
+          // Only auto-paginate when viewing the full unfiltered list — client-side
+          // filters operate on already-loaded rows, so paging under a filter would
+          // fetch by total offset and could skip/duplicate filtered items.
+          onEndReached={filter === "all" ? loadMore : undefined}
+          onEndReachedThreshold={0.5}
+          ListFooterComponent={
+            filter === "all" && loadingMore ? (
+              <View style={{ paddingVertical: 16 }}>
+                <ActivityIndicator size="small" color={Colors.primary} />
+              </View>
+            ) : null
+          }
           contentContainerStyle={{ paddingBottom: 120 }}
         />
       )}

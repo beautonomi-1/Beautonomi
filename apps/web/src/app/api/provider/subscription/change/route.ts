@@ -72,6 +72,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Stop any active Paystack recurring billing BEFORE we clear the local code,
+    // otherwise Paystack keeps charging the card after the provider moved to free.
+    const { data: currentSub } = await supabaseAdmin
+      .from("provider_subscriptions")
+      .select("paystack_subscription_code")
+      .eq("provider_id", providerId)
+      .maybeSingle();
+    const currentPaystackCode = (currentSub as { paystack_subscription_code?: string | null } | null)
+      ?.paystack_subscription_code;
+    if (currentPaystackCode) {
+      try {
+        const { disableSubscriptionByCode } = await import("@/lib/payments/paystack-complete");
+        await disableSubscriptionByCode(currentPaystackCode, { tenantId: subscriptionTenantId });
+      } catch (disableError) {
+        console.warn("[subscription/change] failed to disable Paystack subscription:", disableError);
+      }
+    }
+
     const reactivatePatch = {
       plan_id,
       status: "active" as const,

@@ -50,6 +50,10 @@ export type FinanceLedgerAggregate = {
   service_fee_revenue: number;
   /** Travel fee pass-through amount. */
   travel_fees: number;
+  /** Walk-in / POS additional charges recognized as provider revenue. */
+  walk_in_additional_charges: number;
+  /** Sum of provider_earnings + tips + travel + cancellation + walk-in add-ons (gross recognized). */
+  provider_recognized_revenue_gross: number;
   /** Additional charge revenue (gateway-settled). */
   additional_charge_gross: number;
   /** Net impact from controlled manual finance adjustments. */
@@ -155,6 +159,13 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
   const serviceCollectedNet = serviceCollectedGross - gatewayFeesServices;
 
   const cancellationFeesRetained = sum(tx, ["cancellation_fee"], "net");
+  const walkInAdditionalCharges = sum(tx, ["walk_in_additional_charge"], "net");
+  const providerRecognizedRevenueGross =
+    sum(tx, ["provider_earnings"], "net") +
+    sum(tx, ["tip"], "net") +
+    sum(tx, ["travel_fee"], "net") +
+    cancellationFeesRetained +
+    walkInAdditionalCharges;
   const promotionDiscounts = sum(tx, ["promotion_discount"], "amount");
   const giftCardLiabilityReductions = sum(tx, ["gift_card_liability_reduction"], "amount");
 
@@ -215,6 +226,8 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
     platform_fee_revenue: bookingPlatformFees,
     service_fee_revenue: bookingPlatformFees,
     travel_fees: sum(tx, ["travel_fee"], "amount"),
+    walk_in_additional_charges: walkInAdditionalCharges,
+    provider_recognized_revenue_gross: providerRecognizedRevenueGross,
     additional_charge_gross: additionalChargeGross,
     manual_adjustments_net: manualAdjustmentsNet,
   };

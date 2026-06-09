@@ -1,8 +1,15 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireAdminSection, successResponse, handleApiError, notFoundResponse } from "@/lib/supabase/api-helpers";
+import {
+  requireAdminSection,
+  successResponse,
+  handleApiError,
+  notFoundResponse,
+  errorResponse,
+} from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";
+import { planFeaturesSchema } from "@beautonomi/subscription-features";
 
 /**
  * DELETE /api/admin/subscription-plans/[id]
@@ -91,6 +98,18 @@ export async function PATCH(
     const { id } = await params;
 
     const body = await request.json() as Record<string, unknown>;
+    if (body.features !== undefined) {
+      const parsed = planFeaturesSchema.safeParse(body.features);
+      if (!parsed.success) {
+        return errorResponse(
+          "Invalid features payload",
+          "VALIDATION_ERROR",
+          400,
+          parsed.error.issues,
+        );
+      }
+      body.features = parsed.data;
+    }
     const allowedFields = [
       "slug",
       "name",

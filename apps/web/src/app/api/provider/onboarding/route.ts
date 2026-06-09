@@ -9,6 +9,7 @@ import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { syncVariantOfferings } from "../services/_helpers/sync-variants";
 import { buildOnboardingCompletionResponse } from "@/lib/provider/build-onboarding-completion-response";
+import { inferProviderTimezoneFromLocation } from "@/lib/regions/infer-provider-timezone";
 
 const slugifyCategory = (value: string): string =>
   value
@@ -381,12 +382,26 @@ export async function POST(request: NextRequest) {
     const autoApprove = (platformSettings as any)?.features?.auto_approve_providers === true;
 
     // Create provider profile using admin client to avoid RLS issues
+    // §Timezone-truthfulness audit 2026-06: set the provider's display zone
+    // explicitly from the onboarding location so non-SA providers don't silently
+    // inherit the column DEFAULT 'Africa/Johannesburg'. Prefers coordinates
+    // (geo-tz), else maps single-zone countries; `undefined` lets the column
+    // default apply as the final safe floor (later resolvable in Settings).
+    const derivedTimezone =
+      inferProviderTimezoneFromLocation({
+        country: address.country,
+        city: address.city,
+        latitude: address.latitude,
+        longitude: address.longitude,
+      }) ?? undefined;
+
     // Note: Address and operating_hours are stored in provider_locations, not providers table
     const { data: provider, error: providerError } = await (supabaseAdmin
       .from("providers") as any)
       .insert({
         tenant_id: tenantId,
         user_id: user.id,
+        timezone: derivedTimezone,
         business_name,
         business_type: business_type === "mobile" ? "freelancer" : "salon", // Map: "mobile" -> "freelancer", "salon"/"both" -> "salon"
         slug: slug,

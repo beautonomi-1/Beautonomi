@@ -5,6 +5,24 @@
 
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
+/**
+ * Pure grading of review points from a rating + the configurable rule map.
+ * Mirrors the SQL `provider_review_points()` (migration 663) so the app-layer
+ * backup award and the DB trigger always agree. Base + 4-star/5-star bonus.
+ */
+export function computeReviewPoints(rating: number, rules: Record<string, number>): number {
+  const basePoints = rules["review_received"] ?? 0;
+  let points = basePoints > 0 ? basePoints : 5;
+  if (rating >= 5) {
+    const bonus = rules["review_received_5star_bonus"] ?? 0;
+    points += bonus > 0 ? bonus : 10;
+  } else if (rating >= 4) {
+    const bonus = rules["review_received_4star_bonus"] ?? 0;
+    points += bonus > 0 ? bonus : 5;
+  }
+  return points;
+}
+
 /** Fetch point rules from DB (used when awarding). Returns map of source -> points. */
 async function getPointRules(): Promise<Record<string, number>> {
   const supabase = getSupabaseAdmin();
@@ -91,6 +109,17 @@ export async function awardPointsForBooking(providerId: string, bookingId: strin
   try {
     const supabase = getSupabaseAdmin();
 
+    // Backup app-layer award must obey the same eligibility as the DB trigger.
+    const { data: booking } = await supabase
+      .from("bookings")
+      .select("status, payment_status")
+      .eq("id", bookingId)
+      .eq("provider_id", providerId)
+      .maybeSingle();
+    if (!booking || booking.status !== "completed" || booking.payment_status === "refunded") {
+      return;
+    }
+
     // Deduplicate: skip if points already awarded for this booking
     const { data: existing } = await supabase
       .from("provider_point_transactions")
@@ -102,8 +131,8 @@ export async function awardPointsForBooking(providerId: string, bookingId: strin
     if (existing) return;
 
     const rules = await getPointRules();
-    const points = rules["booking_completed"] ?? 10;
-    if (points <= 0) return;
+    const configuredPoints = rules["booking_completed"] ?? 0;
+    const points = configuredPoints > 0 ? configuredPoints : 10;
     await awardProviderPoints(
       providerId,
       points,
@@ -134,12 +163,7 @@ export async function awardPointsForReview(providerId: string, reviewId: string,
     if (existing) return;
 
     const rules = await getPointRules();
-    let points = rules["review_received"] ?? 5;
-    if (rating >= 5) {
-      points += rules["review_received_5star_bonus"] ?? 10;
-    } else if (rating >= 4) {
-      points += rules["review_received_4star_bonus"] ?? 5;
-    }
+    const points = computeReviewPoints(rating, rules);
     if (points <= 0) return;
     await awardProviderPoints(
       providerId,

@@ -21,6 +21,7 @@ import type { PaystackEvent, SupabaseClient } from "./shared";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
+import { recordProviderSubscriptionPayment } from "@/lib/subscriptions/provider-subscription-payment";
 
 /** Map Paystack subscription status to provider_subscriptions status (active | cancelled | expired | past_due). */
 function mapPaystackStatusToDb(status: string): "active" | "past_due" {
@@ -76,26 +77,42 @@ async function handleSubscriptionCreate(payload: any, supabase: SupabaseClient) 
     return;
   }
 
-  // Find provider by customer code or email
+  // Resolve the provider. Primary path: match the Paystack customer email to a
+  // user, then that user's provider. Fallback: when the email does not match (a
+  // common cause of "subscription created but never linked" bugs), look the
+  // provider up directly by the Paystack customer code already stored on a row.
+  let provider: { id: string; tenant_id?: string | null } | null = null;
+
   const { data: customer } = await supabase
     .from("users")
     .select("id, email")
     .eq("email", payload.customer?.email || "")
-    .single();
+    .maybeSingle();
 
-  if (!customer) {
-    console.error("Customer not found for subscription:", customerCode);
-    return;
+  if (customer) {
+    const { data: providerByUser } = await supabase
+      .from("providers")
+      .select("id, tenant_id")
+      .eq("user_id", (customer as { id: string }).id)
+      .maybeSingle();
+    provider = (providerByUser as typeof provider) ?? null;
   }
 
-  const { data: provider } = await supabase
-    .from("providers")
-    .select("id, tenant_id")
-    .eq("user_id", customer.id)
-    .single();
+  if (!provider && customerCode) {
+    const { data: subByCustomer } = await supabase
+      .from("provider_subscriptions")
+      .select("provider_id, providers:provider_id(id, tenant_id)")
+      .eq("paystack_customer_code", customerCode)
+      .maybeSingle();
+    const rawJoined = (subByCustomer as unknown as
+      | { providers?: { id: string; tenant_id?: string | null } | { id: string; tenant_id?: string | null }[] | null }
+      | null)?.providers;
+    const joined = Array.isArray(rawJoined) ? rawJoined[0] : rawJoined;
+    if (joined?.id) provider = joined;
+  }
 
   if (!provider) {
-    console.error("Provider not found for user:", customer.id);
+    console.error("Provider not found for subscription (email + customer_code fallback failed):", customerCode);
     return;
   }
 
@@ -265,11 +282,16 @@ export async function recordSuccessfulProviderSubscriptionRenewalFromInvoice(
   },
 ): Promise<void> {
   const { subscriptionCode, invoiceCode, amount, fees, paidAt, payload, providerId } = args;
+  // Prefer the underlying Paystack transaction reference so a renewal that
+  // surfaces as BOTH charge.success and invoice.update is recognized exactly
+  // once (both events carry the same transaction reference). Fall back to the
+  // invoice code, then a synthetic key, when the transaction ref is absent.
   const txnReference =
-    (invoiceCode && String(invoiceCode)) ||
     (typeof (payload as { transaction?: { reference?: string } }).transaction?.reference === "string"
       ? (payload as { transaction: { reference: string } }).transaction.reference
-      : `sub_renew:${subscriptionCode}:${String(paidAt)}`);
+      : null) ||
+    (invoiceCode && String(invoiceCode)) ||
+    `sub_renew:${subscriptionCode}:${String(paidAt)}`;
 
   const { data: existingTx } = await supabase
     .from("payment_transactions")
@@ -292,13 +314,7 @@ export async function recordSuccessfulProviderSubscriptionRenewalFromInvoice(
     .eq("paystack_subscription_code", subscriptionCode)
     .single();
 
-  const renewalFinanceTenantId = await resolveTenantIdForFinanceLedger(supabase, {
-    tenant_id: (subscriptionDetails as { tenant_id?: string | null } | null)?.tenant_id ?? null,
-    provider_id: providerId,
-  });
-
   const now = new Date();
-  const expiresAt = new Date(now);
   type SubDetailsRow = {
     billing_period?: string | null;
     plan_id?: string;
@@ -306,13 +322,19 @@ export async function recordSuccessfulProviderSubscriptionRenewalFromInvoice(
     tenant_id?: string | null;
   };
   const billingPeriodForExpiry = (subscriptionDetails as SubDetailsRow | null)?.billing_period ?? "monthly";
-  if (billingPeriodForExpiry === "yearly") {
-    expiresAt.setFullYear(expiresAt.getFullYear() + 1);
-  } else {
-    expiresAt.setMonth(expiresAt.getMonth() + 1);
-  }
 
-  const nextPaymentDate = (payload as { next_payment_date?: string }).next_payment_date || expiresAt;
+  // Anchor access to the actual billing period end. Paystack's
+  // `next_payment_date` is the authoritative period boundary; only when it is
+  // absent do we fall back to computing now + one billing cycle.
+  const rawNextPaymentDate = (payload as { next_payment_date?: string }).next_payment_date;
+  const computedPeriodEnd = new Date(now);
+  if (billingPeriodForExpiry === "yearly") {
+    computedPeriodEnd.setFullYear(computedPeriodEnd.getFullYear() + 1);
+  } else {
+    computedPeriodEnd.setMonth(computedPeriodEnd.getMonth() + 1);
+  }
+  const expiresAt = rawNextPaymentDate ? new Date(rawNextPaymentDate) : computedPeriodEnd;
+  const nextPaymentDate = rawNextPaymentDate || expiresAt;
 
   await supabase
     .from("provider_subscriptions")
@@ -325,34 +347,22 @@ export async function recordSuccessfulProviderSubscriptionRenewalFromInvoice(
     })
     .eq("paystack_subscription_code", subscriptionCode);
 
-  await supabase.from("payment_transactions").insert({
-    booking_id: null,
+  // Recognize the renewal payment through the unified idempotent helper so the
+  // money is posted exactly once (charge.success / invoice.update overlap and
+  // duplicate webhooks all dedupe on txnReference).
+  await recordProviderSubscriptionPayment({
+    supabase,
     reference: txnReference,
-    amount: amountInCurrency,
-    fees: feesInCurrency,
-    net_amount: netAmount,
-    status: "success",
-    provider: "paystack",
-    transaction_type: "provider_subscription_payment",
-    metadata: {
-      subscription_code: subscriptionCode,
-      invoice_code: invoiceCode ?? null,
-      kind: "subscription_renewal",
-    },
-    created_at: new Date().toISOString(),
-  });
-
-  await supabase.from("finance_transactions").insert({
-    booking_id: null,
-    provider_id: providerId,
-    tenant_id: renewalFinanceTenantId,
-    transaction_type: "provider_subscription_payment",
-    amount: netAmount,
-    fees: feesInCurrency,
-    commission: 0,
-    net: netAmount,
-    description: `Provider subscription renewal payment`,
-    created_at: new Date().toISOString(),
+    providerId,
+    amountMajor: amountInCurrency,
+    feesMajor: feesInCurrency,
+    planId: (subscriptionDetails as SubDetailsRow | null)?.plan_id ?? null,
+    subscriptionCode,
+    invoiceCode: invoiceCode ?? null,
+    paymentTransactionType: "provider_subscription_payment",
+    kind: "subscription_renewal",
+    description: "Provider subscription renewal payment",
+    tenantIdHint: (subscriptionDetails as SubDetailsRow | null)?.tenant_id ?? null,
   });
 
   if (subscriptionDetails) {
@@ -522,9 +532,28 @@ async function handleSubscriptionInvoice(
       })
       .eq("paystack_subscription_code", subscriptionCode);
 
+    // Idempotency: a failed-renewal webhook can arrive more than once. Dedupe on
+    // the failed payment_transactions reference so we don't pile up rows / notify
+    // repeatedly. Fall back to a stable synthetic key when the invoice code is
+    // absent so dedupe still works.
+    const failedReference =
+      (invoiceCode && String(invoiceCode)) || `sub_renew_failed:${subscriptionCode}`;
+    const { data: existingFailedTx } = await supabase
+      .from("payment_transactions")
+      .select("id")
+      .eq("provider", "paystack")
+      .eq("reference", failedReference)
+      .eq("status", "failed")
+      .maybeSingle();
+
+    if (existingFailedTx) {
+      console.log(`[subscription] renewal failure already recorded for ref ${failedReference}`);
+      return;
+    }
+
     await supabase.from("payment_transactions").insert({
       booking_id: null,
-      reference: invoiceCode,
+      reference: failedReference,
       amount: convertFromSmallestUnit(amount),
       fees: convertFromSmallestUnit(fees),
       net_amount: convertFromSmallestUnit(amount - fees),

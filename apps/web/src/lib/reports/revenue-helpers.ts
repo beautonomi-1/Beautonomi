@@ -1,6 +1,7 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 
-import { LEDGER_FULL_PROVIDER_NET_TYPES } from "./constants";
+import { LEDGER_FULL_PROVIDER_NET_TYPES, MAX_FINANCE_TRANSACTIONS } from "./constants";
+import { fetchAllLedgerPages } from "./fetch-all-ledger-pages";
 import { filterLedgerRowsForLocation, reportDateKey } from "./provider-report-utils";
 
 export type ProviderRevenueResult = {
@@ -49,19 +50,25 @@ export async function getProviderRevenue(
       ? [...options.transactionTypes]
       : [...LEDGER_FULL_PROVIDER_NET_TYPES];
 
-  // Date-bounded query: do not cap rows — a capped query would undercount high-volume providers.
-  const { data: financeTransactions } = await supabaseAdmin
+  // Date-bounded query paginated across PostgREST max_rows pages (commonly 1000).
+  const financeQuery = supabaseAdmin
     .from("finance_transactions")
     .select("id, transaction_type, amount, net, booking_id, product_order_id, created_at")
     .eq("provider_id", providerId)
     .in("transaction_type", types)
     .gte("created_at", fromDate.toISOString())
-    .lte("created_at", toDate.toISOString());
+    .lte("created_at", toDate.toISOString())
+    .order("created_at", { ascending: true });
+
+  const financeTransactions = await fetchAllLedgerPages(
+    financeQuery as Parameters<typeof fetchAllLedgerPages>[0],
+    MAX_FINANCE_TRANSACTIONS,
+  );
 
   const validTransactions = await filterLedgerRowsForLocation(
     supabaseAdmin,
     providerId,
-    financeTransactions || [],
+    financeTransactions,
     locationId,
   );
 

@@ -24,6 +24,7 @@ interface BookingListRow {
   customer_id?: string;
   provider_id?: string;
   status?: string;
+  booking_source?: string;
   scheduled_at?: string;
   total_amount?: number;
   total_paid?: number;
@@ -35,7 +36,20 @@ interface BookingListRow {
   services?: { offering_name?: string; name?: string }[];
 }
 
-type BookingsPayload = BookingListRow[] | { bookings: BookingListRow[]; total?: number };
+type BookingsListStats = {
+  total: number;
+  pending: number;
+  confirmed: number;
+  in_progress: number;
+  completed: number;
+  cancelled: number;
+  no_show: number;
+  completed_gmv: number;
+};
+
+type BookingsPayload =
+  | BookingListRow[]
+  | { bookings: BookingListRow[]; total?: number; stats?: BookingsListStats };
 
 const LIMIT = 50;
 
@@ -133,7 +147,25 @@ export function BookingsPage() {
 
   const visible = grouped[tab as keyof typeof grouped] ?? grouped.all;
 
+  const apiStats = useMemo(() => {
+    const d = q.data;
+    if (!d || Array.isArray(d)) return null;
+    return d.stats ?? null;
+  }, [q.data]);
+
   const stats = useMemo(() => {
+    if (apiStats) {
+      return {
+        total: apiStats.total,
+        pending: apiStats.pending,
+        confirmed: apiStats.confirmed,
+        in_progress: apiStats.in_progress,
+        completed: apiStats.completed,
+        cancelled: apiStats.cancelled,
+        no_show: apiStats.no_show,
+        revenue: apiStats.completed_gmv,
+      };
+    }
     const bookings = allRows;
     return {
       total: bookings.length,
@@ -147,7 +179,7 @@ export function BookingsPage() {
         .filter((b) => b.status === "completed")
         .reduce((s, b) => s + (b.total_amount || 0), 0),
     };
-  }, [q.data]);
+  }, [apiStats, allRows]);
 
   async function exportCsv() {
     const params = new URLSearchParams();
@@ -233,7 +265,7 @@ export function BookingsPage() {
               ["Completed", stats.completed],
               ["Cancelled", stats.cancelled],
               ["No show", stats.no_show],
-              ["Revenue (completed)", `R ${stats.revenue.toLocaleString()}`],
+              ["Booked GMV (completed)", `R ${stats.revenue.toLocaleString()}`],
             ] as const
           ).map(([label, value]) => (
             <div key={label} className="min-w-[100px]">
@@ -365,6 +397,11 @@ export function BookingsPage() {
                       <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium uppercase text-gray-700">
                         {b.status ?? "—"}
                       </span>
+                      {b.booking_source ? (
+                        <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium capitalize text-indigo-800">
+                          {b.booking_source.replace(/_/g, " ")}
+                        </span>
+                      ) : null}
                       {b.payment_status ? (
                         <span
                           className={`rounded-full px-2 py-0.5 text-xs font-medium ${

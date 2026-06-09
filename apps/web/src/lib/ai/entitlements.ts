@@ -4,23 +4,41 @@
  */
 
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import {
+  SUBSCRIPTION_ENTITLED_STATUSES,
+  SUBSCRIPTION_PAST_DUE_GRACE_DAYS,
+} from "@/lib/subscriptions/feature-access";
 
 /**
- * Resolve active subscription plan id for a provider.
+ * Resolve the entitled subscription plan id for a provider.
+ *
+ * Uses the same status semantics as the rest of the stack
+ * (`SUBSCRIPTION_ENTITLED_STATUSES`): active + trialing always count; past_due
+ * counts only within the grace window. A lapse returns null so callers fall
+ * back to the free tier.
  */
 export async function determineProviderPlan(providerId: string): Promise<string | null> {
   const supabase = getSupabaseAdmin();
   const nowIso = new Date().toISOString();
+  const graceCutoff = new Date(
+    Date.now() - SUBSCRIPTION_PAST_DUE_GRACE_DAYS * 24 * 60 * 60 * 1000,
+  ).toISOString();
   const { data } = await supabase
     .from("provider_subscriptions")
-    .select("plan_id")
+    .select("plan_id, status, updated_at")
     .eq("provider_id", providerId)
-    .in("status", ["active", "trialing"])
+    .in("status", SUBSCRIPTION_ENTITLED_STATUSES as unknown as string[])
     .or(`expires_at.gte.${nowIso},expires_at.is.null`)
-    .order("created_at", { ascending: false })
+    .order("status", { ascending: true })
     .limit(1)
     .maybeSingle();
-  return (data as { plan_id?: string } | null)?.plan_id ?? null;
+  const row = data as { plan_id?: string; status?: string; updated_at?: string } | null;
+  if (!row?.plan_id) return null;
+  // past_due only grants access within the grace window.
+  if (row.status === "past_due" && row.updated_at && row.updated_at < graceCutoff) {
+    return null;
+  }
+  return row.plan_id;
 }
 
 export interface AiEntitlement {

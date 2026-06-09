@@ -111,6 +111,12 @@ export const REPORT_DETAIL_REGISTRY: Record<string, ReportDetailDefinition> = {
     query: "fromTo",
     extraSearch: () => "&limit=300",
   },
+  "paystack-terminal-reconciliation": {
+    title: "Paystack Terminal reconciliation",
+    subtitle: "Terminal captures, allocations, and payout readiness",
+    apiPath: "payments/paystack-terminal-reconciliation",
+    query: "none",
+  },
   inventory: {
     title: "Product & inventory",
     subtitle: "Catalogue snapshot — variants, tracking, alerts (provider-wide)",
@@ -134,6 +140,12 @@ export const REPORT_DETAIL_REGISTRY: Record<string, ReportDetailDefinition> = {
     title: "Package usage",
     subtitle: "Usage events & distinct clients (incl. group participants) — see facts",
     apiPath: "packages/usage",
+    query: "fromTo",
+  },
+  "membership-sales": {
+    title: "Membership sales",
+    subtitle: "Gross liability sales, recognized earnings, active subscribers",
+    apiPath: "memberships",
     query: "fromTo",
   },
   "performance-dashboard": {

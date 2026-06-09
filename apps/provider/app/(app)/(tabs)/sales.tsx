@@ -15,7 +15,7 @@ import { useFromTransactionsHub, useProviderStackBack } from "@/lib/provider-tab
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { YocoPaymentSheet } from "@/components/YocoPaymentSheet";
-import { format, subDays } from "date-fns";
+import { getReportDateRange } from "@/lib/reportDateRanges";
 import { useApi, useApiPost } from "@/hooks/useApi";
 import { useFocusedApi } from "@/hooks/useFocusedApi";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -244,7 +244,7 @@ export default function SalesScreen() {
     return base;
   }, [paystackTerminalEnabled, yocoEnabled]);
   const adsSelfServeAvailable = Boolean(adsModule?.enabled) || adsFeatureOn;
-  const { selectedLocationId } = useProvider();
+  const { provider, selectedLocationId } = useProvider();
   const locQ = selectedLocationId ? `&location_id=${selectedLocationId}` : "";
   const locQFirst = selectedLocationId ? `?location_id=${selectedLocationId}` : "";
   const [dateRange, setDateRange] = useState("month");
@@ -303,19 +303,24 @@ export default function SalesScreen() {
   });
 
   const dateParams = useMemo(() => {
-    const now = new Date();
-    const today = format(now, "yyyy-MM-dd");
+    const tz = provider?.timezone ?? null;
     switch (dateRange) {
-      case "today":
-        return `&date_from=${today}&date_to=${today}`;
-      case "week":
-        return `&date_from=${format(subDays(now, 7), "yyyy-MM-dd")}&date_to=${today}`;
-      case "month":
-        return `&date_from=${format(new Date(now.getFullYear(), now.getMonth(), 1), "yyyy-MM-dd")}&date_to=${today}`;
+      case "today": {
+        const { from, to } = getReportDateRange("today", { timezone: tz });
+        return `&date_from=${from}&date_to=${to}`;
+      }
+      case "week": {
+        const { from, to } = getReportDateRange("week", { timezone: tz });
+        return `&date_from=${from}&date_to=${to}`;
+      }
+      case "month": {
+        const { from, to } = getReportDateRange("month", { timezone: tz });
+        return `&date_from=${from}&date_to=${to}`;
+      }
       default:
         return "";
     }
-  }, [dateRange]);
+  }, [dateRange, provider?.timezone]);
 
   const searchQ = salesSearchDebounced
     ? `&search=${encodeURIComponent(salesSearchDebounced)}`
@@ -795,8 +800,17 @@ export default function SalesScreen() {
     });
     if (patch.error) {
       Alert.alert(
-        "Update failed",
-        "Payment succeeded but the sale could not be marked complete. Check Sales for a pending entry.",
+        "Payment received — finish recording",
+        "The terminal payment succeeded but this sale is still pending. Tap Finish recording to retry without charging the customer again.",
+        [
+          { text: "Later", style: "cancel" },
+          {
+            text: "Finish recording",
+            onPress: () => {
+              void finalizeYocoSale(result);
+            },
+          },
+        ],
       );
       return;
     }
@@ -1390,7 +1404,7 @@ export default function SalesScreen() {
             {pt("salesScreen.saleCompleteTitle", undefined, "Sale complete!")}
           </Text>
           <Text style={{ marginTop: 4, fontSize: 14, color: Colors.gray[500] }}>
-            {receiptData.client} · {format(new Date(receiptData.date), "MMM d, HH:mm")}
+            {receiptData.client} · {formatDate(receiptData.date, "MMM d, HH:mm")}
           </Text>
         </View>
 

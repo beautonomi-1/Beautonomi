@@ -161,6 +161,8 @@ describe("notifyProductOrderPaidIfTransitioned", () => {
       "BO-99",
       500,
       ["push", "email"],
+      // skipInApp: this caller owns the rich in-app row via insertNotification.
+      { skipInApp: true },
     );
     expect(mockSendTemplateNotification).toHaveBeenCalledWith(
       "product_order_placed",

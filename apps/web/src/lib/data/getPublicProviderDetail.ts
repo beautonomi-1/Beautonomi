@@ -3,9 +3,14 @@ import { headers } from "next/headers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { haversineDistanceKm } from "@/lib/geo/distance";
 import { resolveTenantIdFromServerHeaders } from "@/lib/tenant/resolve-tenant-from-headers";
+import { resolveActiveBadge } from "@/lib/provider/active-badge";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import type { PublicProfilePromotion, PublicProviderDetail } from "@/types/beautonomi";
+import {
+  isProviderPubliclyVisible,
+  type ProviderVisibilityRow,
+} from "@/lib/providers/public-provider-visibility";
 
 function isUnmappedPreviewOrDevHost(host: string): boolean {
   const h = host.toLowerCase();
@@ -128,7 +133,7 @@ export const getPublicProviderDetail = cache(
           supabase
             .from("provider_points")
             .select(
-              `total_points, current_badge_id,
+              `total_points, current_badge_id, badge_expires_at,
               provider_badges!provider_points_current_badge_id_fkey (
                 id, name, slug, description, icon_url, tier, color, requirements, benefits
               )`,
@@ -143,11 +148,12 @@ export const getPublicProviderDetail = cache(
       const policies = policiesResult.data;
       const pointsData = pointsResult.data as Record<string, any> | null;
 
-      // Badge
+      // Badge (guarded: hide once the maintenance window has elapsed)
       let currentBadge = null;
-      const badge = Array.isArray(pointsData?.provider_badges)
+      const rawBadge = Array.isArray(pointsData?.provider_badges)
         ? pointsData?.provider_badges?.[0]
         : pointsData?.provider_badges;
+      const badge = resolveActiveBadge(rawBadge, pointsData?.badge_expires_at);
       if (badge) {
         currentBadge = {
           id: badge.id,
@@ -359,58 +365,46 @@ async function resolveProvider(
   originalSlug: string,
   tenantId: string,
 ): Promise<Record<string, any> | null> {
+  const visibilitySelect = PROVIDER_SELECT + ", status, deleted_at";
+
   // Primary: by decoded slug
   const { data } = await supabase
     .from("providers")
-    .select(PROVIDER_SELECT)
+    .select(visibilitySelect)
     .eq("slug", decodedSlug)
     .eq("tenant_id", tenantId)
     .eq("status", "active")
+    .is("deleted_at", null)
     .maybeSingle();
-  if (data) return data;
+  if (data && isProviderPubliclyVisible(data as ProviderVisibilityRow)) return data;
 
   // Retry with original slug
   if (decodedSlug !== originalSlug) {
     const retry = await supabase
       .from("providers")
-      .select(PROVIDER_SELECT)
+      .select(visibilitySelect)
       .eq("slug", originalSlug)
       .eq("tenant_id", tenantId)
       .eq("status", "active")
+      .is("deleted_at", null)
       .maybeSingle();
-    if (retry.data) return retry.data;
+    if (retry.data && isProviderPubliclyVisible(retry.data as ProviderVisibilityRow)) return retry.data;
   }
 
   // Try UUID lookup
   if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(originalSlug)) {
     const { data: byId } = await supabase
       .from("providers")
-      .select(PROVIDER_SELECT)
+      .select(visibilitySelect)
       .eq("id", originalSlug)
       .eq("tenant_id", tenantId)
       .eq("status", "active")
+      .is("deleted_at", null)
       .maybeSingle();
-    if (byId) return byId;
+    if (byId && isProviderPubliclyVisible(byId as ProviderVisibilityRow)) return byId;
   }
 
-  // Last attempt: without status filter (reject suspended/banned/etc.)
-  const last = await supabase
-    .from("providers")
-    .select(PROVIDER_SELECT + ", status")
-    .eq("slug", decodedSlug)
-    .eq("tenant_id", tenantId)
-    .maybeSingle();
-  const lastRowUnknown = last.data as unknown as Record<string, unknown> | null | undefined;
-  if (lastRowUnknown == null || typeof lastRowUnknown !== "object") {
-    return null;
-  }
-  if (!("status" in lastRowUnknown)) {
-    return null;
-  }
-  const row = lastRowUnknown as { status?: string } & Record<string, unknown>;
-  const nonPublic = ["suspended", "deactivated", "banned", "deleted"];
-  if (nonPublic.includes(String(row.status ?? ""))) return null;
-  return lastRowUnknown as Record<string, any>;
+  return null;
 }
 
 async function resolveProviderAcrossTenants(
@@ -422,15 +416,13 @@ async function resolveProviderAcrossTenants(
   for (const candidate of candidates) {
     const { data } = await supabase
       .from("providers")
-      .select(PROVIDER_SELECT + ", status")
+      .select(PROVIDER_SELECT + ", status, deleted_at")
       .eq("slug", candidate)
       .order("updated_at", { ascending: false })
       .limit(1)
       .maybeSingle();
-    const row = data as ({ status?: string } & Record<string, any>) | null;
-    if (!row) continue;
-    const nonPublic = ["suspended", "deactivated", "banned", "deleted"];
-    if (nonPublic.includes(String(row.status ?? ""))) return null;
+    const row = data as ({ status?: string; deleted_at?: string | null } & Record<string, any>) | null;
+    if (!row || !isProviderPubliclyVisible(row)) continue;
     return row;
   }
   return null;

@@ -17,6 +17,12 @@ const createTimeBlockSchema = z.object({
   notes: z.string().nullable().optional(),
 });
 
+/** Parse an "HH:mm" (or "HH:mm:ss") string to minutes-since-midnight. */
+function timeStringToMinutes(time: string): number {
+  const [h = "0", m = "0"] = time.split(":");
+  return Number(h) * 60 + Number(m);
+}
+
 /**
  * Normalize recurring_pattern to the format the availability engine expects:
  *   { frequency: "weekly"|"daily"|"monthly", days?: number[], end_date?: string }
@@ -208,6 +214,14 @@ export async function POST(request: NextRequest) {
     }
 
     const data = validationResult.data;
+
+    if (timeStringToMinutes(data.end_time) <= timeStringToMinutes(data.start_time)) {
+      return errorResponse(
+        "End time must be after start time",
+        "INVALID_TIME_RANGE",
+        400,
+      );
+    }
 
     // Get provider ID
     const providerId = await getProviderIdForUser(user.id, supabase);

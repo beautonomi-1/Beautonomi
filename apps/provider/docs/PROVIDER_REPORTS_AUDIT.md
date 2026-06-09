@@ -11,6 +11,7 @@ Per-endpoint metric, date axis, and ledger vs booked gross rules: [docs/PROVIDER
 - **Product:** **Provider dashboard** links to non-existent flat routes were fixed to real nested report URLs. **Payouts** copy everywhere clarifies **ledger / platform-held earnings**, not bank payout history. **Mobile + web** catalogs were relabeled and **Product Sales** was moved under **Product & inventory** on mobile to reduce duplicate “surfaces.”
 - **Tests:** Vitest for `reportDateKey` / `eachReportDateKey`, route-level provider report sign-off coverage, and Jest for `reportDateRanges` plus **catalog ↔ `REPORT_DETAIL_REGISTRY` parity**.
 - **Final sign-off pass:** Production-like reconciliation was completed against the code-level accounting sources and route behavior. Live Yoco / bank payout / Supabase production datasets were not available locally, so external reconciliation remains a deployment/staging acceptance item, not a code blocker.
+- **QA hardening pass (2026-06):** Web money surfaces consolidated into `/provider/finance` (legacy `/provider/payouts`, `/provider/payments`, `/provider/more/finance-hub` redirect); customer payment search + payout schedule folded into Finance; Paystack Terminal reconciliation added to reports hub (web + mobile); orphan mobile `reports/clients` redirects to `detail/client-summary`; dashboard quick-action dead links fixed; mobile report badges disambiguated; shared `REVENUE_GLOSSARY` on mobile reports hub.
 
 ## B. Report inventory (surfaces → API)
 

@@ -5,6 +5,7 @@ import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { computeAdminBookingsListStats } from "@/lib/admin/bookings-list-stats";
 
 /**
  * GET /api/admin/bookings
@@ -21,40 +22,29 @@ export async function GET(request: NextRequest) {
     const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
     const { searchParams } = new URL(request.url);
 
-    let query = supabase
-      .from("bookings")
-      .select("*", { count: "exact" })
-      .eq("tenant_id", tenantId);
-
     const status = searchParams.get("status");
-    if (status && status !== "all") {
-      query = query.eq("status", status);
-    }
-
     const date = searchParams.get("date");
-    if (date) {
-      const startDate = new Date(date);
-      startDate.setHours(0, 0, 0, 0);
-      const endDate = new Date(startDate);
-      endDate.setDate(endDate.getDate() + 1);
-      query = query
-        .gte("scheduled_at", startDate.toISOString())
-        .lt("scheduled_at", endDate.toISOString());
-    }
-
     const providerId = searchParams.get("provider_id");
-    if (providerId) {
-      query = query.eq("provider_id", providerId);
-    }
-
     const customerId = searchParams.get("customer_id");
-    if (customerId) {
-      query = query.eq("customer_id", customerId);
-    }
-
     const search = searchParams.get("search")?.trim();
-    let searchCustomerIds: string[] | null = null;
-    let searchProviderIds: string[] | null = null;
+    let searchOrClauses: string[] | null = null;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const applyListFilters = (base: any) => {
+      let q = base.eq("tenant_id", tenantId);
+      if (status && status !== "all") q = q.eq("status", status);
+      if (date) {
+        const startDate = new Date(date);
+        startDate.setHours(0, 0, 0, 0);
+        const endDate = new Date(startDate);
+        endDate.setDate(endDate.getDate() + 1);
+        q = q.gte("scheduled_at", startDate.toISOString()).lt("scheduled_at", endDate.toISOString());
+      }
+      if (providerId) q = q.eq("provider_id", providerId);
+      if (customerId) q = q.eq("customer_id", customerId);
+      if (searchOrClauses && searchOrClauses.length > 0) q = q.or(searchOrClauses.join(","));
+      return q;
+    };
 
     if (search) {
       const safe = search.replace(/[%_]/g, "");
@@ -70,7 +60,7 @@ export async function GET(request: NextRequest) {
         .select("id")
         .or(`full_name.ilike.%${safe}%,email.ilike.%${safe}%,phone.ilike.%${safe}%`)
         .limit(200);
-      searchCustomerIds = (matchingCustomers ?? []).map((u: { id: string }) => u.id);
+      const searchCustomerIds = (matchingCustomers ?? []).map((u: { id: string }) => u.id);
 
       const { data: matchingProviders } = await supabase
         .from("providers")
@@ -78,7 +68,7 @@ export async function GET(request: NextRequest) {
         .eq("tenant_id", tenantId)
         .ilike("business_name", `%${safe}%`)
         .limit(200);
-      searchProviderIds = (matchingProviders ?? []).map((p: { id: string }) => p.id);
+      const searchProviderIds = (matchingProviders ?? []).map((p: { id: string }) => p.id);
 
       const bookingIds = (matchingBookings ?? []).map((b: { id: string }) => b.id);
       const allIds = [...bookingIds];
@@ -87,11 +77,26 @@ export async function GET(request: NextRequest) {
         if (allIds.length > 0) orClauses.push(`id.in.(${allIds.join(",")})`);
         if (searchCustomerIds.length > 0) orClauses.push(`customer_id.in.(${searchCustomerIds.join(",")})`);
         if (searchProviderIds.length > 0) orClauses.push(`provider_id.in.(${searchProviderIds.join(",")})`);
-        query = query.or(orClauses.join(","));
+        searchOrClauses = orClauses;
       } else {
-        return successResponse({ bookings: [], total: 0, page: 0, limit: 0 });
+        return successResponse({
+          bookings: [],
+          total: 0,
+          page: 0,
+          limit: 0,
+          stats: computeAdminBookingsListStats([]),
+        });
       }
     }
+
+    const statsResult = await applyListFilters(
+      supabase.from("bookings").select("status, total_amount"),
+    );
+    const stats = statsResult.error
+      ? computeAdminBookingsListStats([])
+      : computeAdminBookingsListStats(statsResult.data ?? []);
+
+    let query = applyListFilters(supabase.from("bookings").select("*", { count: "exact" }));
 
     const limitParam = searchParams.get("limit");
     const limit = limitParam ? Math.min(500, Math.max(1, parseInt(limitParam, 10) || 200)) : 200;
@@ -112,12 +117,12 @@ export async function GET(request: NextRequest) {
         errorDetails: error.details
       });
       // Return empty array instead of throwing to avoid 500 error
-      return successResponse({ bookings: [], total: count ?? 0, page: rawPage, limit });
+      return successResponse({ bookings: [], total: count ?? 0, page: rawPage, limit, stats });
     }
 
     // Handle case where no bookings are found
     if (!bookings || bookings.length === 0) {
-      return successResponse([]);
+      return successResponse({ bookings: [], total: count ?? 0, page: rawPage, limit, stats });
     }
 
     // Fetch related data separately
@@ -178,7 +183,7 @@ export async function GET(request: NextRequest) {
     }
     const locationsMap = new Map(locationsData.map((l) => [l.id, l]));
 
-    type BookingFull = BookingRow & { id: string; booking_number?: string; status?: string; location_type?: string; location_id?: string; address?: string; scheduled_at?: string; completed_at?: string | null; cancelled_at?: string | null; cancellation_reason?: string | null; services?: unknown[]; addons?: unknown[]; package_id?: string | null; subtotal?: number; tip_amount?: number; total_amount?: number; total_paid?: number; total_refunded?: number; wallet_amount?: number; gift_card_amount?: number; currency?: string; payment_status?: string; payment_method?: string | null; special_requests?: string | null; loyalty_points_earned?: number; created_at?: string; updated_at?: string };
+    type BookingFull = BookingRow & { id: string; booking_number?: string; status?: string; booking_source?: string | null; location_type?: string; location_id?: string; address?: string; scheduled_at?: string; completed_at?: string | null; cancelled_at?: string | null; cancellation_reason?: string | null; services?: unknown[]; addons?: unknown[]; package_id?: string | null; subtotal?: number; tip_amount?: number; total_amount?: number; total_paid?: number; total_refunded?: number; wallet_amount?: number; gift_card_amount?: number; currency?: string; payment_status?: string; payment_method?: string | null; special_requests?: string | null; loyalty_points_earned?: number; created_at?: string; updated_at?: string };
     const transformedBookings = (bookings as BookingFull[]).map((booking) => {
       const totalAmount = Number(booking.total_amount ?? 0);
       const totalPaid = Number(booking.total_paid ?? 0);
@@ -215,6 +220,7 @@ export async function GET(request: NextRequest) {
         provider_id: booking.provider_id,
         provider_name: provider?.business_name || null,
         status: _resolvedStatus,
+        booking_source: booking.booking_source ?? "online",
         location_type: booking.location_type,
         location_id: booking.location_id,
         location_name: location?.name || null,
@@ -249,6 +255,7 @@ export async function GET(request: NextRequest) {
       total: count ?? transformedBookings.length,
       page: rawPage,
       limit,
+      stats,
     });
   } catch (error) {
     return handleApiError(error, "Failed to fetch bookings");

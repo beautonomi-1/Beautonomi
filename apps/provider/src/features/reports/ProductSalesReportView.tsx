@@ -42,6 +42,10 @@ function isProductSalesPayload(data: unknown): data is {
   unitsFromOrders?: number;
   revenueFromOrders?: number;
   costFromOrders?: number;
+  by_channel?: {
+    online?: { source?: string; units?: number; revenue?: number };
+    walk_in?: { source?: string; units?: number; revenue?: number };
+  };
   topProducts?: TopProduct[];
   productsByCategory?: CategoryRow[];
 } {
@@ -191,6 +195,28 @@ export function ProductSalesReportView({ data }: { data: unknown }) {
               </Text>
             </View>
           </View>
+          {data.by_channel ? (
+            <View style={twStyle("flex-row flex-wrap gap-3")}>
+              <View style={twStyle("min-w-[140px] flex-1 rounded-2xl border border-blue-100 bg-blue-50/85 px-4 py-3")}>
+                <Text style={twStyle("text-xs font-medium text-blue-950")}>Online retail</Text>
+                <Text style={twStyle("mt-2 text-lg font-semibold tabular-nums text-blue-950")}>
+                  {formatCurrency(Number(data.by_channel.online?.revenue ?? 0))}
+                </Text>
+                <Text style={twStyle("text-xs text-blue-950/80")}>
+                  {Number(data.by_channel.online?.units ?? 0)} units
+                </Text>
+              </View>
+              <View style={twStyle("min-w-[140px] flex-1 rounded-2xl border border-orange-100 bg-orange-50/85 px-4 py-3")}>
+                <Text style={twStyle("text-xs font-medium text-orange-950")}>Walk-in retail</Text>
+                <Text style={twStyle("mt-2 text-lg font-semibold tabular-nums text-orange-950")}>
+                  {formatCurrency(Number(data.by_channel.walk_in?.revenue ?? 0))}
+                </Text>
+                <Text style={twStyle("text-xs text-orange-950/80")}>
+                  {Number(data.by_channel.walk_in?.units ?? 0)} units
+                </Text>
+              </View>
+            </View>
+          ) : null}
         </>
       )}
 

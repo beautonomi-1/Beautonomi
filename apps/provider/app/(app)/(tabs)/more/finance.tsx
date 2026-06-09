@@ -6,6 +6,7 @@ import {
   RefreshControl,
   TouchableOpacity,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
 import { useProvider } from "@/providers/ProviderContext";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -15,9 +16,16 @@ import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { twStyle } from "@/lib/twStyle";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { formatCurrency } from "@/lib/format";
+import { PayoutReconciliationCard } from "@/components/PayoutReconciliationCard";
+import { ActiveLocationChip } from "@/components/reports/ActiveLocationChip";
+import { Colors } from "@/constants/colors";
 
 interface FinanceEarnings {
   total_earnings: number;
+  recognized_revenue_total?: number;
+  recognized_revenue_all_time?: number;
+  period_provider_earnings?: number;
   pending_payouts: number;
   available_balance: number;
   this_month: number;
@@ -49,6 +57,15 @@ interface FinanceEarnings {
   membership_discounts_total?: number;
   loyalty_discounts_total?: number;
   promo_discounts_total?: number;
+  payout_hold_days?: number;
+  payout_reconciliation?: {
+    recognized_payoutable_earnings: number;
+    on_hold: number;
+    excluded_provider_collected: number;
+    already_paid_out: number;
+    pending_payouts: number;
+    available_balance: number;
+  };
 }
 
 interface FinanceTransaction {
@@ -70,6 +87,7 @@ interface FinanceTransaction {
 interface FinanceData {
   earnings: FinanceEarnings;
   transactions: FinanceTransaction[];
+  transactions_total?: number;
 }
 
 function formatDateTimeSafe(value: unknown): string {
@@ -82,14 +100,6 @@ function formatDateTimeSafe(value: unknown): string {
     hour: "2-digit",
     minute: "2-digit",
   });
-}
-
-function formatCurrency(amount: number, currency: string): string {
-  const abs = Math.abs(amount);
-  const sign = amount < 0 ? "−" : "";
-  if (abs >= 1_000_000) return `${sign}${currency}${(abs / 1e6).toFixed(2)}m`;
-  if (abs >= 1_000) return `${sign}${currency}${(abs / 1000).toFixed(2)}k`;
-  return `${sign}${currency}${abs.toFixed(2)}`;
 }
 
 function formatType(type: string): string {
@@ -139,11 +149,12 @@ const RANGE_OPTIONS: { value: "week" | "month" | "year" | "all"; label: string }
 export function FinanceOverviewContent() {
   const [refreshing, setRefreshing] = useState(false);
   const [range, setRange] = useState<"week" | "month" | "year" | "all">("month");
+  const [txLimit, setTxLimit] = useState(50);
   const { screenPadding } = useResponsive();
   const { selectedLocationId, provider } = useProvider();
   const currency = getTenantDefaultCurrency();
   /** Branch-scoped earnings when a location is selected; `transaction_feed=all` keeps the activity list org-wide (same as Transactions hub). */
-  const url = `/api/provider/finance?range=${range}&transaction_feed=all${
+  const url = `/api/provider/finance?range=${range}&transaction_feed=all&tx_limit=${txLimit}${
     selectedLocationId ? `&location_id=${encodeURIComponent(selectedLocationId)}` : ""
   }`;
   const { data, loading, error, refresh } = useApi<FinanceData>(url);
@@ -174,6 +185,8 @@ export function FinanceOverviewContent() {
 
   const earnings = data?.earnings ?? ({} as FinanceEarnings);
   const transactions = data?.transactions ?? [];
+  const transactionsTotal = data?.transactions_total ?? transactions.length;
+  const canLoadMoreTx = transactions.length < transactionsTotal && txLimit < 200;
   const rangeLabel =
     range === "week" ? "Last 7 days" :
     range === "month" ? "Month to date" :
@@ -186,7 +199,10 @@ export function FinanceOverviewContent() {
         {RANGE_OPTIONS.map((opt) => (
           <TouchableOpacity
             key={opt.value}
-            onPress={() => setRange(opt.value)}
+            onPress={() => {
+              setTxLimit(50);
+              setRange(opt.value);
+            }}
             style={[twStyle(`rounded-full px-3.5 py-2 ${range === opt.value ? "bg-emerald-600" : "bg-gray-100"}`), { marginRight: 8, marginBottom: 8 }]}
           >
             <Text
@@ -220,13 +236,21 @@ export function FinanceOverviewContent() {
           )}
         </View>
 
+        {earnings.payout_reconciliation ? (
+          <PayoutReconciliationCard
+            reconciliation={earnings.payout_reconciliation}
+            currency={currency}
+            payoutHoldDays={earnings.payout_hold_days}
+          />
+        ) : null}
+
         <View style={twStyle("mb-4 flex-row")}>
           <View style={[twStyle("flex-1 rounded-2xl border border-gray-100 bg-white p-4"), { marginRight: 12 }]}>
             <Text style={twStyle("text-xs font-medium text-gray-500")}>
-              {rangeLabel} earnings
+              {rangeLabel} — total earned (ledger)
             </Text>
             <Text style={twStyle("mt-1 text-lg font-bold text-gray-900")}>
-              {formatCurrency(earnings.this_month ?? 0, currency)}
+              {formatCurrency(earnings.recognized_revenue_total ?? earnings.this_month ?? 0, currency)}
             </Text>
             {(earnings.growth_percentage ?? 0) !== 0 && (
               <Text
@@ -238,12 +262,17 @@ export function FinanceOverviewContent() {
             )}
           </View>
           <View style={twStyle("flex-1 rounded-2xl border border-gray-100 bg-white p-4")}>
-            <Text style={twStyle("text-xs font-medium text-gray-500")}>Selected period total</Text>
+            <Text style={twStyle("text-xs font-medium text-gray-500")}>
+              {rangeLabel} — service earnings only
+            </Text>
             <Text style={twStyle("mt-1 text-lg font-bold text-gray-900")}>
-              {formatCurrency(earnings.total_earnings ?? 0, currency)}
+              {formatCurrency(
+                earnings.period_provider_earnings ?? earnings.this_month ?? earnings.total_earnings ?? 0,
+                currency,
+              )}
             </Text>
             <Text style={twStyle("mt-1 text-[10px] text-gray-500")}>
-              Not the same basis as payout balance
+              provider_earnings rows only; tips/travel are separate below
             </Text>
           </View>
         </View>
@@ -418,6 +447,23 @@ export function FinanceOverviewContent() {
           </View>
         )}
 
+        {canLoadMoreTx ? (
+          <TouchableOpacity
+            onPress={() => setTxLimit((n) => Math.min(n + 50, 200))}
+            disabled={loading}
+            activeOpacity={0.75}
+            style={twStyle(
+              `mt-3 flex-row items-center justify-center rounded-2xl border border-gray-200 bg-white py-3 ${loading ? "opacity-60" : ""}`,
+            )}
+            accessibilityRole="button"
+            accessibilityLabel="Load more transactions"
+          >
+            <Ionicons name="chevron-down" size={16} color={Colors.primary} />
+            <Text style={twStyle("ml-1 text-sm font-semibold text-primary")}>
+              {loading ? "Loading…" : `Load more (${transactions.length} of ${transactionsTotal})`}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
       </ScrollView>
     </>
   );
@@ -427,6 +473,7 @@ export default function FinanceScreen() {
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader title="Finance" showBack />
+      <ActiveLocationChip />
       <FinanceOverviewContent />
     </ScreenContainer>
   );

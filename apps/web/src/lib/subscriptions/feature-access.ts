@@ -7,6 +7,26 @@
 
 import { getSupabaseServer } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  type NewGateFeatureKey,
+  resolveNewGateFeatureEnabled,
+} from "@beautonomi/subscription-features";
+
+/**
+ * SINGLE SOURCE OF TRUTH for which provider_subscriptions.status values grant
+ * paid entitlements. Every resolver (this file's getProviderSubscriptionTier,
+ * the AI resolver `determineProviderPlan`, and the SQL
+ * `get_provider_subscription_plan`) must agree on this set:
+ *
+ *   - `active` / `trialing` → full plan access.
+ *   - `past_due`            → access only within {@link SUBSCRIPTION_PAST_DUE_GRACE_DAYS}
+ *                             of the status change (single failed-charge grace).
+ *   - anything else (`cancelled`, `expired`, `pending`) → fall back to free.
+ *
+ * Any lapse therefore always resolves to the free tier.
+ */
+export const SUBSCRIPTION_ENTITLED_STATUSES = ["active", "trialing", "past_due"] as const;
+export const SUBSCRIPTION_PAST_DUE_GRACE_DAYS = 3;
 
 export interface MarketingFeatureAccess {
   enabled: boolean;
@@ -113,9 +133,10 @@ async function getProviderSubscriptionTier(
   features: any;
   isFree: boolean;
 } | null> {
-  // Try to get active subscription (include rows with null expires_at for lifetime/free plans).
-  // Also include past_due subscriptions within a 3-day grace period so providers don't
-  // immediately lose access on a single failed charge retry.
+  // Single source of truth for "entitled" status (see SUBSCRIPTION_ENTITLED_STATUSES):
+  // active + trialing grant full access; past_due grants access only within the
+  // 3-day grace window; everything else (cancelled/expired/pending) falls back
+  // to the free tier. Rows with null expires_at never expire (lifetime / free).
   const nowIso = new Date().toISOString();
   const graceCutoff = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
   const { data: subscription, error: subscriptionError } = await supabase
@@ -132,7 +153,7 @@ async function getProviderSubscriptionTier(
       )
     `)
     .eq("provider_id", providerId)
-    .in("status", ["active", "past_due"])
+    .in("status", ["active", "trialing", "past_due"])
     // Null expires_at = never expires (lifetime / free rows); do not use expires_at.gte alone.
     .or(`expires_at.gte.${nowIso},expires_at.is.null`)
     .order("status", { ascending: true })
@@ -233,7 +254,32 @@ async function getProviderSubscriptionTier(
 export const SUBSCRIPTION_FEATURE_KEYS = {
   intakeForms: "intake_forms",
   serviceResources: "service_resources",
+  giftCards: "gift_cards",
+  packages: "packages",
+  posWalkIn: "pos_walk_in",
+  customRequests: "custom_requests",
+  platformAds: "platform_ads",
+  onlineBooking: "online_booking",
 } as const;
+
+export type { NewGateFeatureKey };
+
+/**
+ * New subscription gates — fail-open when the key is missing on legacy plans.
+ */
+export async function checkNewGateFeatureAccess(
+  providerId: string,
+  featureKey: NewGateFeatureKey,
+  supabaseClient?: SupabaseClient,
+): Promise<boolean> {
+  const supabase = supabaseClient ?? (await getSupabaseServer());
+  const tier = await getProviderSubscriptionTier(supabase, providerId);
+  if (!tier) return false;
+  return resolveNewGateFeatureEnabled(
+    tier.features as Record<string, unknown>,
+    featureKey,
+  );
+}
 
 /**
  * Staff operational SMS (team notification prefs) — opt-in per plan via `features.staff_sms_notifications`.

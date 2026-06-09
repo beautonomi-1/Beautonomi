@@ -18,6 +18,7 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import { api } from "@/lib/api-client";
+import { emitNotificationBadgeRefresh } from "@/lib/notification-badge-events";
 import { useAuth } from "@/providers/AuthProvider";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -120,7 +121,10 @@ export default function SupportTicketDetailScreen() {
   useEffect(() => {
     const tid = typeof id === "string" ? id : Array.isArray(id) ? id[0] : "";
     if (!tid) return;
-    void api.post("/api/provider/notifications/mark-related-read", { ticket_id: tid }).catch(() => {});
+    void api
+      .post("/api/provider/notifications/mark-related-read", { ticket_id: tid })
+      .then(() => emitNotificationBadgeRefresh())
+      .catch(() => {});
   }, [id]);
 
   const loadTicket = useCallback(async () => {

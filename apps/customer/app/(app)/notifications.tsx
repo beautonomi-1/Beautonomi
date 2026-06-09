@@ -53,7 +53,7 @@ export default function NotificationsScreen() {
   const { t } = useTranslation();
   const nc = useCallback((key: string) => t(`customer.mobile.screens.notificationsCenter.${key}`), [t]);
   const { user } = useAuth();
-  const { refetchUnreadCount, adjustUnreadCount, replaceUnreadCount } = useNotifications();
+  const { unreadCount, refetchUnreadCount, adjustUnreadCount, replaceUnreadCount } = useNotifications();
   const insets = useSafeAreaInsets();
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const constraint = (isTablet || Platform.OS === "web")
@@ -248,7 +248,16 @@ export default function NotificationsScreen() {
 
   const notifKeyExtractor = useCallback((n: Notification) => n.id, []);
 
-  const hasUnread = useMemo(() => list.some((n) => !n.is_read), [list]);
+  // Drive "mark all read" visibility from the authoritative server unread count
+  // (context badge + server total hint), not just the currently loaded page, so
+  // the action still shows when unread items exist beyond page 1.
+  const hasUnread = useMemo(
+    () =>
+      unreadCount > 0 ||
+      (typeof totalUnreadHint === "number" && totalUnreadHint > 0) ||
+      list.some((n) => !n.is_read),
+    [unreadCount, totalUnreadHint, list],
+  );
 
   const onEndReached = useCallback(() => {
     if (loading || loadingMore || !hasMore || loadError) return;

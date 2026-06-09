@@ -2,7 +2,6 @@
  * Hook for user location – used for "Nearest" providers on Home.
  */
 import { useCallback, useEffect, useState } from "react";
-import { Platform } from "react-native";
 import * as Location from "expo-location";
 import { ensureForegroundLocationPermission } from "@/lib/native-permissions";
 import { useNativePermissionsOnboardingGate } from "@/providers/NativePermissionsOnboardingProvider";
@@ -12,6 +11,10 @@ export interface Coords {
   longitude: number;
 }
 
+function isLocationGranted(permission: Location.LocationPermissionResponse): boolean {
+  return permission.granted === true || permission.status === "granted";
+}
+
 export function useLocation() {
   const { gate } = useNativePermissionsOnboardingGate();
   const [coords, setCoords] = useState<Coords | null>(null);
@@ -19,19 +22,20 @@ export function useLocation() {
   const [loading, setLoading] = useState(true);
 
   const getLocation = useCallback(() => {
-    if (Platform.OS === "web") {
-      setLoading(false);
-      return;
-    }
-    if (gate.phase !== "complete") {
-      setLoading(false);
-      return;
-    }
-
     let cancelled = false;
 
     (async () => {
       try {
+        if (gate.phase !== "complete") {
+          const current = await Location.getForegroundPermissionsAsync();
+          if (!isLocationGranted(current)) {
+            if (!cancelled) {
+              setLoading(false);
+            }
+            return;
+          }
+        }
+
         const allowed = await ensureForegroundLocationPermission({
           title: "Location permission",
           message: "Allow location access to show nearby professionals and travel times.",
@@ -50,6 +54,7 @@ export function useLocation() {
           latitude: loc.coords.latitude,
           longitude: loc.coords.longitude,
         });
+        setError(null);
       } catch (e) {
         if (!cancelled) {
           setError(e instanceof Error ? e.message : "Failed to get location");

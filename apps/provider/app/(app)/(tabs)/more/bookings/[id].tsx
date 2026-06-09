@@ -38,6 +38,7 @@ import { pushInAppBrowser } from "@/lib/in-app-web";
 import { ArrivalQrScannerModal } from "@/components/ArrivalQrScannerModal";
 import * as Haptics from "expo-haptics";
 import { api, getApiBaseUrl } from "@/lib/api-client";
+import { emitNotificationBadgeRefresh } from "@/lib/notification-badge-events";
 import {
   PAYSTACK_TERMINAL_PAYMENTS_ACTION_PATH,
   paystackTerminalCollectionIntentPayload,
@@ -78,6 +79,12 @@ import {
   mapProviderBookingActionError,
 } from "@/lib/provider-booking-action-policy";
 import { getBookingNextStepCard } from "@/lib/provider-booking-next-step-card";
+import { BookingEditSheet } from "@/components/bookings/BookingEditSheet";
+import { BookingDateStrip, BookingTimeSlotGrid } from "@/components/bookings/BookingDateTimePicker";
+import { BookingLiveSyncIndicator } from "@/components/bookings/BookingLiveSyncIndicator";
+import { useBookingAvailableSlots } from "@/hooks/useBookingAvailableSlots";
+import { formatBookingLiveStageLabel, formatBookingEtaLabel } from "@/lib/booking-live-stage";
+import type { BookingEditPatchPayload } from "@/lib/booking-edit-types";
 
 function extractIsoDatePart(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -245,6 +252,9 @@ type BookingDetail = {
   display_time_zone?: string | null;
   subtotal?: number;
   discount_amount?: number;
+  promotion_discount_amount?: number;
+  membership_discount_amount?: number;
+  loyalty_discount_amount?: number;
   discount_code?: string | null;
   discount_reason?: string | null;
   tax_amount?: number;
@@ -317,14 +327,37 @@ type BookingDetail = {
   } | null;
 };
 
-type AppointmentProductOrderResponse = {
-  orders?: {
-    id: string;
-    order_number?: string | null;
-    status?: string | null;
-    payment_status?: string | null;
-  }[];
+type AppointmentProductOrder = {
+  id: string;
+  order_number?: string | null;
+  status?: string | null;
+  payment_status?: string | null;
+  order_source?: string | null;
+  fulfillment_type?: string | null;
+  payment_method?: string | null;
 };
+
+type AppointmentProductOrderResponse = {
+  orders?: AppointmentProductOrder[];
+};
+
+function isCollectionFulfillment(fulfillmentType?: string | null): boolean {
+  const ft = (fulfillmentType ?? "").toLowerCase();
+  return ft === "collection" || ft === "pickup" || ft === "";
+}
+
+function appointmentProductFulfillmentLabel(status?: string | null): string {
+  const s = (status ?? "confirmed").toLowerCase();
+  if (s === "delivered") return "Collected";
+  if (s === "cancelled") return "Cancelled";
+  if (s === "refunded") return "Refunded";
+  return "Awaiting collection";
+}
+
+function isTerminalProductOrderStatus(status?: string | null): boolean {
+  const s = (status ?? "").toLowerCase();
+  return s === "delivered" || s === "cancelled" || s === "refunded";
+}
 
 type ProviderPermissionsResponse = {
   permissions?: {
@@ -559,12 +592,15 @@ function AutoYocoCollectGate({ shouldRun, onTrigger }: { shouldRun: boolean; onT
 
 export default function BookingDetailScreen() {
   const router = useRouter();
-  const { id, focusPayment, collectYoco, collectPaystack, return_group_id } = useLocalSearchParams<{
+  const { id, focusPayment, collectYoco, collectPaystack, return_group_id, openReschedule, openCancel } =
+    useLocalSearchParams<{
     id: string;
     focusPayment?: string;
     collectYoco?: string;
     collectPaystack?: string;
     return_group_id?: string;
+    openReschedule?: string;
+    openCancel?: string;
   }>();
   const [etaMinutes, setEtaMinutes] = useState<number | null>(null);
   const { data, loading, error, refresh } = useApi<BookingDetail>(`/api/provider/bookings/${id}`);
@@ -589,6 +625,7 @@ export default function BookingDetailScreen() {
       if (!bookingIdStr) return;
       void api
         .post("/api/provider/notifications/mark-related-read", { booking_id: bookingIdStr })
+        .then(() => emitNotificationBadgeRefresh())
         .catch(() => {});
     }, [bookingIdStr]),
   );
@@ -597,10 +634,15 @@ export default function BookingDetailScreen() {
     bookingIdStr && (data?.products?.length ?? 0) > 0
       ? `/api/provider/product-orders?booking_id=${encodeURIComponent(bookingIdStr)}&limit=50`
       : "";
-  const { data: appointmentProductOrdersData } = useApi<AppointmentProductOrderResponse>(appointmentProductOrdersUrl);
+  const {
+    data: appointmentProductOrdersData,
+    refresh: refreshProductOrders,
+  } = useApi<AppointmentProductOrderResponse>(appointmentProductOrdersUrl);
   const appointmentProductOrders = appointmentProductOrdersData?.orders ?? [];
   const { execute: postMutation, loading: mutating } = useApiMutation<{ booking?: BookingDetail; message?: string }>("post");
   const { execute: patchMutation, loading: patchLoading } = useApiMutation<{ booking?: BookingDetail }>("patch");
+  const [collectingProductOrderId, setCollectingProductOrderId] = useState<string | null>(null);
+  const [preparingFulfillment, setPreparingFulfillment] = useState(false);
   const [showStatusPicker, setShowStatusPicker] = useState(false);
   /** Shown immediately on status actions so the chip updates before refetch finishes */
   const [optimisticBookingStatus, setOptimisticBookingStatus] = useState<{ db_status: string; status: string } | null>(
@@ -664,6 +706,7 @@ export default function BookingDetailScreen() {
   }, [data?.services, data?.scheduled_at]);
 
   // Reschedule
+  const [showEditAppointment, setShowEditAppointment] = useState(false);
   const [showReschedule, setShowReschedule] = useState(false);
   const [rescheduleDate, setRescheduleDate] = useState<Date>(() => new Date());
   const [rescheduleTime, setRescheduleTime] = useState("");
@@ -753,8 +796,8 @@ export default function BookingDetailScreen() {
     data,
   ]);
 
-  const rescheduleAvailableSlotsUrl = useMemo(() => {
-    if (!showReschedule || !rescheduleDateStr || !bookingIdStr) return "";
+  const rescheduleSlotQuery = useMemo(() => {
+    if (!showReschedule || !rescheduleDateStr || !bookingIdStr) return null;
     const b = data;
     const staffIds = [...new Set((b?.services ?? []).map((s) => s.staff_id).filter((x): x is string => !!x))];
     const offeringIds = [
@@ -766,34 +809,27 @@ export default function BookingDetailScreen() {
     ];
     const locId = b?.location_id?.trim();
     const isHome = b?.location_type === "at_home";
-    const mode = isHome ? "mobile" : "salon";
-    const travelBuffer = isHome ? rescheduleTravelBufferMinutes : 0;
-    let q = `/api/provider/bookings/available-slots?date=${encodeURIComponent(rescheduleDateStr)}&duration_minutes=${encodeURIComponent(String(durationMinutes))}&exclude_booking_id=${encodeURIComponent(bookingIdStr)}`;
-    if (staffIds.length > 0) q += `&staff_ids=${encodeURIComponent(staffIds.join(","))}`;
-    if (offeringIds.length > 0) q += `&service_ids=${encodeURIComponent(offeringIds.join(","))}`;
-    if (locId) q += `&location_id=${encodeURIComponent(locId)}`;
-    q += `&mode=${encodeURIComponent(mode)}&travel_buffer=${encodeURIComponent(String(travelBuffer))}`;
-    return q;
+    return {
+      date: rescheduleDateStr,
+      duration_minutes: durationMinutes,
+      staff_ids: staffIds.length > 0 ? staffIds.join(",") : undefined,
+      service_ids: offeringIds.length > 0 ? offeringIds.join(",") : undefined,
+      location_id: locId || undefined,
+      mode: isHome ? "mobile" : "salon",
+      travel_buffer: isHome ? rescheduleTravelBufferMinutes : 0,
+      exclude_booking_id: bookingIdStr,
+    };
   }, [showReschedule, rescheduleDateStr, bookingIdStr, durationMinutes, data, rescheduleTravelBufferMinutes]);
 
-  type RescheduleSlotRow = { time: string; available: boolean; reason?: string };
-  type RescheduleSlotsResponse = {
-    slots: string[];
-    slot_grid?: RescheduleSlotRow[];
-    provider_timezone?: string | null;
-  };
+  const {
+    rows: rescheduleTimeRows,
+    loading: rescheduleSlotsLoading,
+    providerTimezone: rescheduleSlotsTimezone,
+    refresh: refreshRescheduleSlots,
+    slotsData: rescheduleSlotsData,
+  } = useBookingAvailableSlots(rescheduleSlotQuery, { enabled: showReschedule });
 
-  const { data: rescheduleSlotsData, loading: rescheduleSlotsLoading } = useApi<RescheduleSlotsResponse>(
-    rescheduleAvailableSlotsUrl,
-    { enabled: !!rescheduleAvailableSlotsUrl }
-  );
-
-  const rescheduleTimeRows = useMemo((): RescheduleSlotRow[] => {
-    const grid = rescheduleSlotsData?.slot_grid;
-    if (grid && grid.length > 0) return grid;
-    const legacy = rescheduleSlotsData?.slots ?? [];
-    return legacy.map((time) => ({ time, available: true }));
-  }, [rescheduleSlotsData]);
+  const [lastLiveUpdateAt, setLastLiveUpdateAt] = useState<number | null>(null);
 
   // Notes
   const [editingNotes, setEditingNotes] = useState(false);
@@ -866,10 +902,15 @@ export default function BookingDetailScreen() {
 
   const refreshBookingDetail = useCallback(async () => {
     await Promise.all([refresh(), refreshCharges(), refreshResources()]);
+    setLastLiveUpdateAt(Date.now());
   }, [refresh, refreshCharges, refreshResources]);
 
   const refreshBookingDetailRef = useRef(refreshBookingDetail);
   refreshBookingDetailRef.current = refreshBookingDetail;
+  const showRescheduleRef = useRef(showReschedule);
+  showRescheduleRef.current = showReschedule;
+  const refreshRescheduleSlotsRef = useRef(refreshRescheduleSlots);
+  refreshRescheduleSlotsRef.current = refreshRescheduleSlots;
 
   useEffect(() => {
     if (!bookingIdStr) return;
@@ -889,6 +930,9 @@ export default function BookingDetailScreen() {
           debounceTimer = setTimeout(() => {
             debounceTimer = null;
             void refreshBookingDetailRef.current();
+            if (showRescheduleRef.current) {
+              void refreshRescheduleSlotsRef.current();
+            }
           }, 400);
         },
       )
@@ -904,6 +948,17 @@ export default function BookingDetailScreen() {
     };
   }, [bookingIdStr]);
 
+  // Pull a fresh slot grid only when the sheet transitions open. Depending on
+  // `refreshRescheduleSlots` here would refetch (and bust the cache) on every
+  // date tap, since its identity changes with the slot URL. The natural fetch
+  // on URL change covers subsequent date changes; realtime events refresh via
+  // refreshRescheduleSlotsRef in the subscription handler above.
+  useEffect(() => {
+    if (showReschedule) {
+      void refreshRescheduleSlotsRef.current();
+    }
+  }, [showReschedule]);
+
   // Refetch all detail satellite data on focus; otherwise payment/add-on/resource
   // state can stay stale after web or another-device changes.
   useFocusEffect(
@@ -913,6 +968,12 @@ export default function BookingDetailScreen() {
       }
     }, [id, refreshBookingDetail]),
   );
+
+  useEffect(() => {
+    if (data) {
+      setLastLiveUpdateAt(Date.now());
+    }
+  }, [data]);
 
   // Send additional charge (POST request-payment: additional_charges row + notify customer)
   const [showRequestPayment, setShowRequestPayment] = useState(false);
@@ -1083,6 +1144,25 @@ export default function BookingDetailScreen() {
       }
     }
   }, [data?.scheduled_at, showReschedule]);
+
+  const listActionOpenedRef = useRef(false);
+  useEffect(() => {
+    if (!data || listActionOpenedRef.current) return;
+    if (providerParamTruthy(openReschedule) && canEditAppointments) {
+      listActionOpenedRef.current = true;
+      if (data.scheduled_at) {
+        const datePart = extractIsoDatePart(data.scheduled_at);
+        if (datePart) setRescheduleDate(parseISO(datePart));
+        setRescheduleTime(extractIsoTimePart(data.scheduled_at));
+      }
+      setShowReschedule(true);
+      return;
+    }
+    if (providerParamTruthy(openCancel) && canCancelAppointments) {
+      listActionOpenedRef.current = true;
+      setShowCancelModal(true);
+    }
+  }, [data, openReschedule, openCancel, canEditAppointments, canCancelAppointments]);
 
   // Audit log load (must be before early return to satisfy rules of hooks)
   useEffect(() => {
@@ -1672,24 +1752,38 @@ export default function BookingDetailScreen() {
     }
   }
 
-  async function finalizeYocoBookingPayment(result: { reference: string }) {
+  async function finalizeYocoBookingPayment(
+    result: { reference: string },
+    options?: { skipSalePatch?: boolean },
+  ) {
     if (!id || !result.reference) return;
     const saleId = yocoBookingSaleIdRef.current ?? yocoBookingSaleId;
     if (!saleId) {
       Alert.alert("Error", "Missing sale record. Try again.");
       return;
     }
-    const patchRes = await api.patch(`/api/provider/sales/${saleId}`, {
-      payment_status: "completed",
-      payment_provider: "yoco",
-      payment_provider_id: result.reference,
-    });
-    if (patchRes.error) {
-      Alert.alert(
-        "Update failed",
-        "The terminal payment succeeded but the sale could not be finalized. Check Sales for a pending entry.",
-      );
-      return;
+    if (!options?.skipSalePatch) {
+      const patchRes = await api.patch(`/api/provider/sales/${saleId}`, {
+        payment_status: "completed",
+        payment_provider: "yoco",
+        payment_provider_id: result.reference,
+      });
+      if (patchRes.error) {
+        Alert.alert(
+          "Payment received — finish recording",
+          "The terminal payment succeeded but the linked sale could not be finalized. Tap Finish recording to retry without charging again.",
+          [
+            { text: "Later", style: "cancel" },
+            {
+              text: "Finish recording",
+              onPress: () => {
+                void finalizeYocoBookingPayment(result);
+              },
+            },
+          ],
+        );
+        return;
+      }
     }
     const chargeForBooking = yocoPendingChargeAmountRef.current ?? yocoTerminalAmount;
     const res = await postMutation(`/api/provider/bookings/${id}/mark-paid`, {
@@ -1701,8 +1795,17 @@ export default function BookingDetailScreen() {
     });
     if (res.error) {
       Alert.alert(
-        "Booking payment",
-        `The sale was saved, but updating the booking failed: ${res.error}`,
+        "Payment received — finish recording",
+        `The card payment went through but the booking still shows unpaid: ${res.error}`,
+        [
+          { text: "Later", style: "cancel" },
+          {
+            text: "Finish recording",
+            onPress: () => {
+              void finalizeYocoBookingPayment(result, { skipSalePatch: true });
+            },
+          },
+        ],
       );
       await refresh();
       return;
@@ -1788,6 +1891,40 @@ export default function BookingDetailScreen() {
     }
     setOptimisticBookingStatus(null);
     await refresh();
+  };
+
+  const handleMarkProductCollected = async (orderId: string) => {
+    setCollectingProductOrderId(orderId);
+    const { error, errorCode } = await patchMutation(`/api/provider/product-orders/${orderId}`, {
+      status: "delivered",
+    });
+    setCollectingProductOrderId(null);
+    if (error) {
+      Alert.alert("Could not mark collected", mapProviderBookingActionError(error, errorCode));
+      return;
+    }
+    await Promise.all([refreshProductOrders(), refresh()]);
+    Alert.alert("Done", "Product marked as collected.");
+  };
+
+  const handlePrepareProductFulfillment = async () => {
+    if (!id || !appointmentProductOrdersUrl) return;
+    setPreparingFulfillment(true);
+    const { error, errorCode } = await patchMutation(`/api/provider/bookings/${id}`, {});
+    if (error) {
+      setPreparingFulfillment(false);
+      Alert.alert("Could not prepare fulfillment", mapProviderBookingActionError(error, errorCode));
+      return;
+    }
+    await refreshProductOrders();
+    const linked = await api.get<AppointmentProductOrderResponse>(appointmentProductOrdersUrl);
+    setPreparingFulfillment(false);
+    if (!linked.data?.orders?.length) {
+      Alert.alert(
+        "Fulfillment",
+        "No product order was linked yet. If products are on this visit, try again or contact support.",
+      );
+    }
   };
 
   const handleReschedule = async () => {
@@ -1888,6 +2025,16 @@ export default function BookingDetailScreen() {
     } finally {
       setRescheduling(false);
     }
+  };
+
+  const handleSaveAppointmentEdit = async (payload: BookingEditPatchPayload) => {
+    if (!id) return { error: "Missing booking" };
+    const { error: err, errorCode } = await patchMutation(`/api/provider/bookings/${id}`, payload);
+    if (err) {
+      return { error: err, errorCode: errorCode ?? undefined };
+    }
+    await refresh();
+    return {};
   };
 
   const handleSaveNotes = async () => {
@@ -2328,6 +2475,13 @@ export default function BookingDetailScreen() {
   const canSendPaymentLink =
     paymentLinkEnabled && canProcessPayments && outstanding > 0 && b.status !== "cancelled";
   const canReschedule = canEditAppointments && (isActive || isStarted) && Boolean(b.scheduled_at);
+  const canEditLineItems =
+    canEditAppointments &&
+    (isActive || isStarted) &&
+    !b.is_group_booking &&
+    currentDbStatus !== "cancelled" &&
+    currentDbStatus !== "no_show" &&
+    b.status !== "completed";
   const nextStep = getBookingNextStepCard(b, { outstanding, isAtHome, isAtSalon });
   const primaryServiceName = services[0]?.offering_name ?? "Appointment";
   const serviceCountLabel =
@@ -2595,6 +2749,22 @@ export default function BookingDetailScreen() {
                 </TouchableOpacity>
               ) : null}
           </View>
+          <BookingLiveSyncIndicator lastUpdatedAt={lastLiveUpdateAt} />
+          {isEnRoute || isArrived ? (
+            <View style={twStyle("mb-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2")}>
+              <Text style={twStyle("text-sm font-semibold text-emerald-900")}>
+                {formatBookingLiveStageLabel(b.current_stage) ?? "Live appointment"}
+              </Text>
+              {isEnRoute && (b as { estimated_arrival?: string }).estimated_arrival ? (
+                <Text style={twStyle("mt-0.5 text-xs text-emerald-800")}>
+                  {formatBookingEtaLabel((b as { estimated_arrival?: string }).estimated_arrival)}
+                </Text>
+              ) : null}
+              {isArrived && (b as { arrival_otp_verified?: boolean }).arrival_otp_verified ? (
+                <Text style={twStyle("mt-0.5 text-xs text-emerald-800")}>Arrival verified</Text>
+              ) : null}
+            </View>
+          ) : null}
           <Text style={twStyle("text-sm text-gray-600")}>
             {formatDateTimeSafe(b.scheduled_at, b.display_time_zone ?? providerTimezone)}
           </Text>
@@ -2713,6 +2883,16 @@ export default function BookingDetailScreen() {
                 accessibilityLabel="Reschedule booking"
               >
                 <Text style={twStyle("text-sm font-semibold text-primary")}>Reschedule</Text>
+              </TouchableOpacity>
+            ) : null}
+            {canEditLineItems ? (
+              <TouchableOpacity
+                onPress={() => setShowEditAppointment(true)}
+                style={twStyle("rounded-xl border border-gray-900 px-4 py-2.5")}
+                accessibilityRole="button"
+                accessibilityLabel="Edit appointment services and products"
+              >
+                <Text style={twStyle("text-sm font-semibold text-gray-900")}>Edit appointment</Text>
               </TouchableOpacity>
             ) : null}
             {canEditAppointments ? (
@@ -3729,6 +3909,12 @@ export default function BookingDetailScreen() {
                 </View>
               );
             })}
+            {b.payment_status ? (
+              <Text style={twStyle("text-xs text-gray-500 mt-1 mb-2")}>
+                Appointment payment: {(b.payment_status ?? "pending").replace(/_/g, " ")}
+                {b.payment_status === "paid" ? " — product payment is on this booking" : ""}
+              </Text>
+            ) : null}
             {appointmentProductOrders.length > 0 ? (
               <>
                 {appointmentProductOrders.length > 1 ? (
@@ -3736,27 +3922,84 @@ export default function BookingDetailScreen() {
                     {appointmentProductOrders.length} product orders linked to this visit
                   </Text>
                 ) : null}
-                {appointmentProductOrders.map((ord) => (
-                  <TouchableOpacity
-                    key={ord.id}
-                    onPress={() =>
-                      router.push(
-                        `/(app)/(tabs)/more/product-orders?order=${encodeURIComponent(ord.id)}` as never,
-                      )
-                    }
-                    style={twStyle("mt-1 rounded-xl border border-amber-200 bg-amber-50 p-3 flex-row items-center justify-between")}
-                  >
-                    <View style={twStyle("flex-1 pr-3")}>
-                      <Text style={twStyle("text-sm font-semibold text-amber-950")}>Product pickup linked</Text>
-                      <Text style={twStyle("text-xs text-amber-800 mt-0.5")}>
-                        {ord.order_number ?? "Product order"} · {(ord.status ?? "confirmed").replace(/_/g, " ")}
-                      </Text>
+                {appointmentProductOrders.map((ord) => {
+                  const fulfillmentLabel = appointmentProductFulfillmentLabel(ord.status);
+                  const isTerminal = isTerminalProductOrderStatus(ord.status);
+                  const isCollection = isCollectionFulfillment(ord.fulfillment_type);
+                  const isCollecting = collectingProductOrderId === ord.id;
+                  return (
+                    <View
+                      key={ord.id}
+                      style={twStyle("mt-1 rounded-xl border border-amber-200 bg-amber-50 p-3")}
+                    >
+                      <View style={twStyle("flex-row items-start justify-between")}>
+                        <View style={twStyle("flex-1 pr-3")}>
+                          <Text style={twStyle("text-sm font-semibold text-amber-950")}>
+                            {isCollection ? "Product pickup" : "Product delivery"}
+                          </Text>
+                          <Text style={twStyle("text-xs text-amber-800 mt-0.5")}>
+                            {ord.order_number ?? "Product order"} · {fulfillmentLabel}
+                          </Text>
+                          {(ord.payment_status ?? "").toLowerCase() === "paid" ? (
+                            <Text style={twStyle("text-xs text-emerald-800 mt-0.5")}>Paid on appointment</Text>
+                          ) : null}
+                        </View>
+                      </View>
+                      {!isTerminal ? (
+                        isCollection ? (
+                          <TouchableOpacity
+                            onPress={() => void handleMarkProductCollected(ord.id)}
+                            disabled={isCollecting || patchLoading}
+                            style={twStyle(
+                              `mt-2 flex-row items-center justify-center rounded-lg bg-amber-900 px-3 py-2${isCollecting || patchLoading ? " opacity-60" : ""}`,
+                            )}
+                            accessibilityRole="button"
+                            accessibilityLabel="Mark product collected"
+                          >
+                            {isCollecting ? (
+                              <ActivityIndicator size="small" color="#fff" />
+                            ) : (
+                              <Text style={twStyle("text-sm font-semibold text-white")}>Mark collected</Text>
+                            )}
+                          </TouchableOpacity>
+                        ) : (
+                          <TouchableOpacity
+                            onPress={() =>
+                              router.push(
+                                `/(app)/(tabs)/more/product-orders?order=${encodeURIComponent(ord.id)}` as never,
+                              )
+                            }
+                            style={twStyle("mt-2 flex-row items-center justify-center rounded-lg border border-amber-300 bg-white px-3 py-2")}
+                            accessibilityRole="button"
+                            accessibilityLabel="Manage delivery and tracking"
+                          >
+                            <Text style={twStyle("text-sm font-semibold text-amber-900")}>
+                              Manage delivery & tracking
+                            </Text>
+                          </TouchableOpacity>
+                        )
+                      ) : null}
                     </View>
-                    <Text style={twStyle("text-sm font-semibold text-amber-800")}>Fulfill</Text>
-                  </TouchableOpacity>
-                ))}
+                  );
+                })}
               </>
-            ) : null}
+            ) : (
+              <TouchableOpacity
+                onPress={() => void handlePrepareProductFulfillment()}
+                disabled={preparingFulfillment || patchLoading}
+                style={twStyle(
+                  `mt-2 flex-row items-center justify-center rounded-xl border border-dashed border-amber-300 bg-amber-50/50 px-3 py-2.5${preparingFulfillment || patchLoading ? " opacity-60" : ""}`,
+                )}
+                accessibilityRole="button"
+                accessibilityLabel="Prepare product fulfillment"
+              >
+                {preparingFulfillment ? (
+                  <ActivityIndicator size="small" color="#92400e" />
+                ) : (
+                  <Text style={twStyle("text-sm font-medium text-amber-900")}>Prepare fulfillment</Text>
+                )}
+              </TouchableOpacity>
+            )}
           </View>
         )}
 
@@ -3831,6 +4074,39 @@ export default function BookingDetailScreen() {
         </View>
       </ScrollView>
 
+      <BookingEditSheet
+        visible={showEditAppointment}
+        booking={{
+          scheduled_at: b.scheduled_at,
+          special_requests: b.special_requests,
+          discount_amount: b.discount_amount,
+          discount_reason: b.discount_reason,
+          promotion_discount_amount: b.promotion_discount_amount,
+          membership_discount_amount: b.membership_discount_amount,
+          loyalty_discount_amount: b.loyalty_discount_amount,
+          tax_rate: b.tax_rate,
+          travel_fee: b.travel_fee_amount ?? (b as { travel_fee?: number }).travel_fee,
+          tip_amount: b.tip_amount,
+          service_fee_amount: b.service_fee_amount,
+          location_id: b.location_id,
+          version: b.version,
+          services: b.services,
+          products: b.products?.map((p) => ({
+            product_id: p.product_id,
+            product_name: p.product_name,
+            product_variant_id: (p as { product_variant_id?: string | null }).product_variant_id,
+            product_variant:
+              p.product_variant && typeof p.product_variant === "object"
+                ? (p.product_variant as { option_values?: unknown })
+                : null,
+            quantity: p.quantity,
+            unit_price: p.unit_price,
+          })),
+        }}
+        onClose={() => setShowEditAppointment(false)}
+        onSave={handleSaveAppointmentEdit}
+      />
+
       {/* Reschedule modal */}
       <BottomSheet
         visible={showReschedule}
@@ -3839,64 +4115,19 @@ export default function BookingDetailScreen() {
       >
         <View>
           <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Date</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={twStyle("mb-3")}>
-            {Array.from({ length: 14 }, (_, i) => {
-              const d = addDays(startOfDay(new Date()), i);
-              const isSelected = isSameDay(d, rescheduleDate);
-              return (
-                <TouchableOpacity
-                  key={d.toISOString()}
-                  onPress={() => setRescheduleDate(d)}
-                  style={[twStyle("items-center rounded-xl px-3 py-2.5 mr-2"), isSelected ? twStyle("bg-gray-900") : twStyle("border border-gray-200 bg-white")]}
-                >
-                  <Text style={twStyle(`text-[10px] ${isSelected ? "text-gray-300" : "text-gray-500"}`)}>{format(d, "EEE")}</Text>
-                  <Text style={twStyle(`text-base font-bold ${isSelected ? "text-white" : "text-gray-900"}`)}>{format(d, "d")}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
+          <View style={twStyle("mb-3")}>
+            <BookingDateStrip selectedDate={rescheduleDate} onSelectDate={setRescheduleDate} />
+          </View>
           <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Time</Text>
-          <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled>
-            <View style={twStyle("flex-row flex-wrap")}>
-              {rescheduleSlotsLoading && rescheduleTimeRows.length === 0 ? (
-                <Text style={twStyle("text-sm text-gray-500")}>Loading slots…</Text>
-              ) : null}
-              {!rescheduleSlotsLoading && rescheduleTimeRows.length === 0 ? (
-                <Text style={twStyle("text-sm text-gray-500")}>No times for this date</Text>
-              ) : null}
-              {rescheduleTimeRows.map((row) => {
-                const isSelected = rescheduleTime === row.time;
-                const unavailable = !row.available;
-                const chip = unavailable
-                  ? twStyle("border border-red-200 bg-red-50")
-                  : isSelected
-                    ? twStyle("bg-gray-900")
-                    : twStyle("border border-gray-200 bg-white");
-                return (
-                  <TouchableOpacity
-                    key={row.time}
-                    disabled={unavailable}
-                    onPress={() => {
-                      if (unavailable) return;
-                      setRescheduleTime(row.time);
-                    }}
-                    style={[twStyle("rounded-lg px-3 py-2 mr-2 mb-2"), chip]}
-                    accessibilityState={{ disabled: unavailable, selected: isSelected }}
-                  >
-                    <Text
-                      style={twStyle(
-                        `text-sm font-medium ${
-                          unavailable ? "text-red-300 line-through" : isSelected ? "text-white" : "text-gray-700"
-                        }`,
-                      )}
-                    >
-                      {row.time}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </ScrollView>
+          <BookingTimeSlotGrid
+            rows={rescheduleTimeRows}
+            selectedTime={rescheduleTime}
+            onSelectTime={setRescheduleTime}
+            loading={rescheduleSlotsLoading}
+            providerTimezone={rescheduleSlotsTimezone}
+            layout="wrap"
+            maxHeight={220}
+          />
           <ActionButton
             label={rescheduling ? "Rescheduling…" : "Confirm reschedule"}
             onPress={handleReschedule}

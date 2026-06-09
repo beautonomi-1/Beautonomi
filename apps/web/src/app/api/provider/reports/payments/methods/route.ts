@@ -62,13 +62,18 @@ export async function GET(request: NextRequest) {
       ...result,
       /** @deprecated use totalLineItems */
       totalPayments: result.totalLineItems,
+      compatFieldsNote:
+        "failedCount, failedAmount, and successRate on each method are legacy placeholders (always 0 failed / 100% success). This report only includes settled captures and completed booking_payments — not gateway failure analytics. See diagnostics.failedCaptureAttemptsInRange for failed gateway attempts in range.",
       methods: result.methods.map((m) => ({
         ...m,
         /** @deprecated all included rows are settled or logged completed */
         successfulCount: m.totalCount,
+        /** @deprecated compat stub — not real failure stats; see basis.compatFields */
         failedCount: 0,
         successfulAmount: m.totalAmount,
+        /** @deprecated compat stub */
         failedAmount: 0,
+        /** @deprecated compat stub — not real success rate; see basis.compatFields */
         successRate: m.totalCount > 0 ? 100 : 0,
       })),
     });

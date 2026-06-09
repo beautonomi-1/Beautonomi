@@ -123,13 +123,6 @@ const navigationSections: { title: string; items: NavItemConfig[] }[] = [
     items: [
       { icon: Tag, label: "Sales", href: "/provider/sales", permission: "view_sales" as keyof StaffPermissions },
       { icon: Wallet, label: "Finance", href: "/provider/finance", permission: "view_sales" as keyof StaffPermissions },
-      // §Provider-launch (audit 2026-04): the /provider/payments list page
-      // already exists (transactions tied to bookings/orders), but had no
-      // sidebar entry — so providers had no way to reach it except by typing
-      // the URL. Group it with Finance/Payouts so the transaction history is
-      // discoverable alongside other money surfaces.
-      { icon: CreditCard, label: "Payments", href: "/provider/payments", permission: "view_sales" as keyof StaffPermissions },
-      { icon: Coins, label: "Payouts", href: "/provider/payouts", permission: "view_sales" as keyof StaffPermissions },
       { icon: PiggyBank, label: "Bank Accounts", href: "/provider/settings/payout-accounts", permission: "view_sales" as keyof StaffPermissions },
       { icon: CreditCard, label: "Yoco", href: "/provider/settings/sales/yoco-integration", permission: "edit_settings" as keyof StaffPermissions, featureFlag: "payment_yoco" },
       { icon: QrCode, label: "Paystack Terminal", href: "/provider/settings/sales/paystack-terminal", permission: "edit_settings" as keyof StaffPermissions, featureFlag: "payment_paystack_virtual_terminal" },
@@ -243,8 +236,12 @@ const isActiveRoute = (pathname: string, href: string) => {
   if (href === "/provider/gamification") {
     return pathname.startsWith("/provider/gamification");
   }
-  if (href === "/provider/payouts") {
-    return pathname.startsWith("/provider/payouts");
+  if (href === "/provider/finance") {
+    return (
+      pathname.startsWith("/provider/finance") ||
+      pathname.startsWith("/provider/payouts") ||
+      pathname.startsWith("/provider/payments")
+    );
   }
   if (href === "/provider/subscription") {
     return pathname.startsWith("/provider/subscription");

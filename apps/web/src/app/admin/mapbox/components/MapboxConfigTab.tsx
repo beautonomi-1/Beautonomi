@@ -59,6 +59,7 @@ interface MapboxConfig {
 }
 
 type PublicEndpointStatus = "idle" | "checking" | "ok" | "no_token" | "disabled" | "error";
+type GeocodingEndpointStatus = "idle" | "checking" | "ok" | "not_configured" | "error";
 
 const LINKS = [
   { label: "Access tokens", href: "https://account.mapbox.com/access-tokens/" },
@@ -73,6 +74,7 @@ export default function MapboxConfigTab() {
   const [showAccessToken, setShowAccessToken] = useState(false);
   const [showPublicToken, setShowPublicToken] = useState(false);
   const [publicCheck, setPublicCheck] = useState<PublicEndpointStatus>("idle");
+  const [geocodingCheck, setGeocodingCheck] = useState<GeocodingEndpointStatus>("idle");
   const [guideOpen, setGuideOpen] = useState(false);
   const [formData, setFormData] = useState({
     access_token: "",
@@ -80,6 +82,37 @@ export default function MapboxConfigTab() {
     style_url: "",
     is_enabled: true,
   });
+
+  const verifyGeocodingEndpoint = useCallback(async () => {
+    setGeocodingCheck("checking");
+    try {
+      const res = await fetch("/api/mapbox/geocode", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: "Johannesburg", limit: 1, country: "ZA" }),
+        cache: "no-store",
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        data?: unknown[];
+        error?: { code?: string; message?: string };
+      };
+      if (res.status === 503 && json?.error?.code === "MAPBOX_NOT_CONFIGURED") {
+        setGeocodingCheck("not_configured");
+        return;
+      }
+      if (!res.ok) {
+        setGeocodingCheck("error");
+        return;
+      }
+      if (Array.isArray(json?.data)) {
+        setGeocodingCheck("ok");
+        return;
+      }
+      setGeocodingCheck("error");
+    } catch {
+      setGeocodingCheck("error");
+    }
+  }, []);
 
   const verifyPublicEndpoint = useCallback(async () => {
     setPublicCheck("checking");
@@ -145,8 +178,9 @@ export default function MapboxConfigTab() {
   useEffect(() => {
     if (!isLoading) {
       void verifyPublicEndpoint();
+      void verifyGeocodingEndpoint();
     }
-  }, [isLoading, verifyPublicEndpoint]);
+  }, [isLoading, verifyPublicEndpoint, verifyGeocodingEndpoint]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -163,6 +197,7 @@ export default function MapboxConfigTab() {
       toast.success("Mapbox configuration saved");
       await loadConfig();
       await verifyPublicEndpoint();
+      await verifyGeocodingEndpoint();
     } catch (error) {
       toast.error(formatFetchError(error, "Failed to save configuration"));
     } finally {
@@ -233,10 +268,13 @@ export default function MapboxConfigTab() {
               variant="outline"
               size="sm"
               className="shrink-0 gap-1.5"
-              onClick={() => void verifyPublicEndpoint()}
-              disabled={publicCheck === "checking"}
+              onClick={() => {
+                void verifyPublicEndpoint();
+                void verifyGeocodingEndpoint();
+              }}
+              disabled={publicCheck === "checking" || geocodingCheck === "checking"}
             >
-              {publicCheck === "checking" ? (
+              {publicCheck === "checking" || geocodingCheck === "checking" ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <RefreshCw className="h-4 w-4" />
@@ -308,6 +346,66 @@ export default function MapboxConfigTab() {
                 <div>
                   <p className="font-medium text-slate-900">Status pending</p>
                   <p className="text-sm text-slate-600">Run a check to validate the public configuration.</p>
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-start gap-3 rounded-xl border border-slate-100 bg-white p-4">
+            {geocodingCheck === "checking" && (
+              <>
+                <Loader2 className="mt-0.5 h-5 w-5 animate-spin text-slate-400" />
+                <div>
+                  <p className="font-medium text-slate-900">Checking server geocoding…</p>
+                  <p className="text-sm text-slate-600">
+                    Probing <code className="rounded bg-slate-100 px-1 text-xs">POST /api/mapbox/geocode</code> for
+                    address autocomplete and reverse-geocode.
+                  </p>
+                </div>
+              </>
+            )}
+            {geocodingCheck === "ok" && (
+              <>
+                <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+                <div>
+                  <p className="font-medium text-slate-900">Server geocoding ready</p>
+                  <p className="text-sm text-slate-600">
+                    Address search and reverse-geocode are working. Customer and provider apps will receive suggestions
+                    from this endpoint.
+                  </p>
+                </div>
+              </>
+            )}
+            {geocodingCheck === "not_configured" && (
+              <>
+                <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+                <div>
+                  <p className="font-medium text-slate-900">Server geocoding not configured</p>
+                  <p className="text-sm text-slate-600">
+                    Mobile address autocomplete will show an error until you save a <strong>secret</strong> Mapbox token
+                    below (or set <code className="rounded bg-slate-100 px-1 text-xs">MAPBOX_ACCESS_TOKEN</code> on the
+                    server). A public token alone is used as fallback when no secret is stored.
+                  </p>
+                </div>
+              </>
+            )}
+            {geocodingCheck === "error" && (
+              <>
+                <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
+                <div>
+                  <p className="font-medium text-slate-900">Geocoding check failed</p>
+                  <p className="text-sm text-slate-600">
+                    The geocode endpoint returned an unexpected error. Save credentials and Re-check.
+                  </p>
+                </div>
+              </>
+            )}
+            {geocodingCheck === "idle" && (
+              <>
+                <Radio className="mt-0.5 h-5 w-5 shrink-0 text-slate-400" />
+                <div>
+                  <p className="font-medium text-slate-900">Server geocoding pending</p>
+                  <p className="text-sm text-slate-600">Run Re-check to validate address search on the server.</p>
                 </div>
               </>
             )}

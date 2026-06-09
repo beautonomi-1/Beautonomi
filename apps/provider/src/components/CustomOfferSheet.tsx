@@ -10,6 +10,7 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useApi } from "@/hooks/useApi";
+import { useBookingAvailableSlots } from "@/hooks/useBookingAvailableSlots";
 import { api } from "@/lib/api-client";
 import { twStyle } from "@/lib/twStyle";
 import { getCachedConfigBundle, getTenantDefaultCurrency } from "@/lib/config-bundle";
@@ -143,25 +144,30 @@ export function CustomOfferSheet({
     return 30;
   }, [locationType, travelPreviewMinutes]);
 
-  const slotsUrl = useMemo(() => {
-    if (!visible || !selectedDateKey) return "";
+  const slotQuery = useMemo(() => {
+    if (!visible || !selectedDateKey) return null;
     const durationNum = Number(duration);
-    if (!Number.isFinite(durationNum) || durationNum < 15) return "";
-    let q = `/api/provider/bookings/available-slots?date=${encodeURIComponent(selectedDateKey)}&duration_minutes=${encodeURIComponent(String(durationNum))}`;
-    if (staffId) q += `&staff_ids=${encodeURIComponent(staffId)}`;
-    if (locationType === "at_salon" && locationId) q += `&location_id=${encodeURIComponent(locationId)}`;
-    q +=
-      locationType === "at_home"
-        ? `&mode=mobile&travel_buffer=${encodeURIComponent(String(atHomeTravelBufferMinutes))}`
-        : "&mode=salon&travel_buffer=0";
-    return q;
-  }, [duration, locationId, locationType, selectedDateKey, staffId, visible, atHomeTravelBufferMinutes]);
-  const { data: slotsData, loading: slotsLoading } = useApi<AvailableSlotsResponse>(slotsUrl, { enabled: slotsUrl.length > 0 });
-  const slotRows = useMemo(() => {
-    if (Array.isArray(slotsData?.slot_grid) && slotsData.slot_grid.length > 0) return slotsData.slot_grid;
-    if (Array.isArray(slotsData?.slots)) return slotsData.slots.map((time) => ({ time, available: true }));
-    return [] as AvailableSlotRow[];
-  }, [slotsData]);
+    if (!Number.isFinite(durationNum) || durationNum < 15) return null;
+    return {
+      date: selectedDateKey,
+      duration_minutes: durationNum,
+      staff_ids: staffId || undefined,
+      location_id: locationType === "at_salon" && locationId ? locationId : undefined,
+      mode: locationType === "at_home" ? "mobile" : "salon",
+      travel_buffer: locationType === "at_home" ? atHomeTravelBufferMinutes : 0,
+    };
+  }, [visible, duration, selectedDateKey, staffId, locationId, locationType, atHomeTravelBufferMinutes]);
+
+  const { rows: slotRows, loading: slotsLoading, providerTimezone: slotsProviderTimezone } =
+    useBookingAvailableSlots(slotQuery, { enabled: !!slotQuery });
+
+  const slotsData = useMemo(
+    () =>
+      slotRows.length > 0
+        ? { slot_grid: slotRows, provider_timezone: slotsProviderTimezone }
+        : null,
+    [slotRows, slotsProviderTimezone],
+  );
 
   const resetForm = useCallback(() => {
     setServiceName("");

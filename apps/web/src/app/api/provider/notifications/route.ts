@@ -43,22 +43,24 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const limit = parseInt(searchParams.get("limit") || "20");
+    const limit = Math.max(1, Math.min(100, parseInt(searchParams.get("limit") || "20")));
+    const offset = Math.max(0, parseInt(searchParams.get("offset") || "0") || 0);
     const unreadOnly = searchParams.get("unread_only") === "true";
 
-    const listCacheKey = `${user.id}:${limit}:${unreadOnly}`;
+    const listCacheKey = `${user.id}:${limit}:${offset}:${unreadOnly}`;
     const cached = notificationsListCache.get(listCacheKey);
     const now = Date.now();
     if (cached && cached.expiresAt > now) {
       return successResponse(cached.payload);
     }
 
+    // Fetch one extra row to cheaply determine has_more without a second count.
     let query = supabase
       .from("notifications")
       .select("*")
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
-      .limit(limit);
+      .range(offset, offset + limit); // inclusive range → limit + 1 rows
 
     if (unreadOnly) {
       query = query.eq("is_read", false);
@@ -78,8 +80,13 @@ export async function GET(request: NextRequest) {
       .eq("user_id", user.id)
       .eq("is_read", false);
     
+    // We requested limit + 1 rows; if we got the extra one there are more pages.
+    const rows = notifications || [];
+    const hasMore = rows.length > limit;
+    const pageRows = hasMore ? rows.slice(0, limit) : rows;
+
     // Transform notifications to match frontend expectations (map is_read to read, action_url to link)
-    const transformedNotifications = (notifications || []).map((n: any) => ({
+    const transformedNotifications = pageRows.map((n: any) => ({
       ...n,
       read: n.is_read,
       timestamp: n.created_at,
@@ -89,6 +96,9 @@ export async function GET(request: NextRequest) {
     const payload = {
       notifications: transformedNotifications,
       total_unread: unreadCount || 0,
+      has_more: hasMore,
+      offset,
+      limit,
     };
     notificationsListCache.set(listCacheKey, {
       expiresAt: now + NOTIFICATIONS_LIST_CACHE_TTL_MS,

@@ -9,3 +9,20 @@ export function dashboardBookingLocationOrFilter(locationId: string): string {
     `and(location_id.is.null,booking_source.eq.walk_in)`,
   ].join(",");
 }
+
+/** In-memory branch filter matching {@link dashboardBookingLocationOrFilter}. */
+export function bookingMatchesDashboardLocation(
+  locationId: string | null | undefined,
+  booking: {
+    location_id?: string | null;
+    location_type?: string | null;
+    booking_source?: string | null;
+  },
+): boolean {
+  if (!locationId) return true;
+  const loc = booking.location_id ?? null;
+  if (loc === locationId) return true;
+  if (loc == null && booking.location_type === "at_home") return true;
+  if (loc == null && booking.booking_source === "walk_in") return true;
+  return false;
+}

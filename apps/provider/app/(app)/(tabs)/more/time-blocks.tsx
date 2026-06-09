@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -12,7 +12,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import { format, startOfMonth, endOfMonth } from "date-fns";
+import { format, startOfMonth, endOfMonth, addMonths } from "date-fns";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -76,6 +76,45 @@ function timeToMinutes(time: string): number {
   return Number(h) * 60 + Number(m);
 }
 
+/** Render an "HH:mm" 24h string as a locale-friendly 12h label, e.g. "2:30 PM". */
+function formatTimeLabel(time: string): string {
+  const [h = "0", m = "0"] = time.split(":");
+  const hours = Number(h);
+  const minutes = Number(m);
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) return time;
+  const period = hours >= 12 ? "PM" : "AM";
+  const hour12 = hours % 12 === 0 ? 12 : hours % 12;
+  return `${hour12}:${String(minutes).padStart(2, "0")} ${period}`;
+}
+
+/** Human-readable duration between two "HH:mm" times, e.g. "1 hr 30 min". */
+function formatDurationLabel(start: string, end: string): string {
+  const mins = timeToMinutes(end) - timeToMinutes(start);
+  if (mins <= 0) return "";
+  const hours = Math.floor(mins / 60);
+  const remainder = mins % 60;
+  const parts: string[] = [];
+  if (hours > 0) parts.push(`${hours} hr`);
+  if (remainder > 0) parts.push(`${remainder} min`);
+  return parts.join(" ");
+}
+
+/** Confirmation bar shown under the iOS spinner so it always has a dismiss path. */
+function PickerDoneBar({ onDone }: { onDone: () => void }) {
+  return (
+    <View style={twStyle("flex-row justify-end border-t border-gray-100 px-3 py-2")}>
+      <TouchableOpacity
+        onPress={onDone}
+        style={twStyle("rounded-lg bg-gray-900 px-5 py-2")}
+        accessibilityLabel="Done"
+        accessibilityRole="button"
+      >
+        <Text style={twStyle("text-sm font-semibold text-white")}>Done</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 /** Content-only for use in Schedule hub (Time blocks tab). */
 export function TimeBlocksContent() {
   const { screenPadding } = useResponsive();
@@ -89,22 +128,26 @@ export function TimeBlocksContent() {
   const [customTypeName, setCustomTypeName] = useState("");
   const [blockDate, setBlockDate] = useState(() => new Date());
   const [startTime, setStartTime] = useState("09:00");
-  const [endTime, setEndTime] = useState("17:00");
+  const [endTime, setEndTime] = useState("10:00");
   const [isRecurring, setIsRecurring] = useState(false);
   const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null);
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showStartPicker, setShowStartPicker] = useState(false);
-  const [showEndPicker, setShowEndPicker] = useState(false);
+  // Single mutually-exclusive picker so date/start/end spinners can never stack.
+  const [activePicker, setActivePicker] = useState<"date" | "start" | "end" | null>(null);
   const [typeSheetOpen, setTypeSheetOpen] = useState(false);
   const [editingType, setEditingType] = useState<BlockedTimeType | null>(null);
   const [typeName, setTypeName] = useState("");
   const [typeDescription, setTypeDescription] = useState("");
   const [typeColor, setTypeColor] = useState("#FF0077");
   const [typeActive, setTypeActive] = useState(true);
+  const [viewMonth, setViewMonth] = useState(() => startOfMonth(new Date()));
 
-  const now = new Date();
-  const dateFrom = format(startOfMonth(now), "yyyy-MM-dd");
-  const dateTo = format(endOfMonth(now), "yyyy-MM-dd");
+  // Four-month window anchored on the selected month (month + next three).
+  const dateFrom = format(startOfMonth(viewMonth), "yyyy-MM-dd");
+  const dateTo = format(endOfMonth(addMonths(viewMonth, 3)), "yyyy-MM-dd");
+  const rangeCaption = useMemo(() => {
+    const endMonth = addMonths(viewMonth, 3);
+    return `${format(viewMonth, "MMM yyyy")} – ${format(endMonth, "MMM yyyy")}`;
+  }, [viewMonth]);
   const url = `/api/provider/time-blocks?date_from=${dateFrom}&date_to=${dateTo}`;
 
   const { data, loading, error, refresh } = useApi<TimeBlock[]>(url);
@@ -154,10 +197,11 @@ export function TimeBlocksContent() {
     setSelectedTypeId(null);
     setCustomTypeName("");
     setBlockDate(new Date());
-    setStartTime("12:00");
-    setEndTime("13:00");
+    setStartTime("09:00");
+    setEndTime("10:00");
     setIsRecurring(false);
     setSelectedStaffId(null);
+    setActivePicker(null);
     setAddOpen(true);
   };
 
@@ -168,10 +212,11 @@ export function TimeBlocksContent() {
     setSelectedTypeId(block.blocked_time_type_id ?? null);
     setCustomTypeName("");
     setBlockDate(new Date(`${block.date}T12:00:00`));
-    setStartTime(block.start_time?.slice(0, 5) || "12:00");
-    setEndTime(block.end_time?.slice(0, 5) || "13:00");
+    setStartTime(block.start_time?.slice(0, 5) || "09:00");
+    setEndTime(block.end_time?.slice(0, 5) || "10:00");
     setIsRecurring(block.is_recurring === true);
     setSelectedStaffId(block.team_member_id ?? null);
+    setActivePicker(null);
     setAddOpen(true);
   };
 
@@ -360,6 +405,29 @@ export function TimeBlocksContent() {
         }
         showsVerticalScrollIndicator={false}
       >
+        <View style={twStyle("mb-4 flex-row items-center justify-between rounded-2xl border border-gray-200 bg-white px-3 py-2")}>
+          <TouchableOpacity
+            onPress={() => setViewMonth((m) => startOfMonth(addMonths(m, -1)))}
+            style={twStyle("h-9 w-9 items-center justify-center rounded-full bg-gray-100")}
+            accessibilityRole="button"
+            accessibilityLabel="Previous months"
+          >
+            <Ionicons name="chevron-back" size={20} color="#374151" />
+          </TouchableOpacity>
+          <View style={twStyle("flex-1 px-2")}>
+            <Text style={twStyle("text-center text-sm font-semibold text-gray-900")}>{rangeCaption}</Text>
+            <Text style={twStyle("text-center text-[11px] text-gray-500")}>Showing 4 months of blocks</Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => setViewMonth((m) => startOfMonth(addMonths(m, 1)))}
+            style={twStyle("h-9 w-9 items-center justify-center rounded-full bg-gray-100")}
+            accessibilityRole="button"
+            accessibilityLabel="Next months"
+          >
+            <Ionicons name="chevron-forward" size={20} color="#374151" />
+          </TouchableOpacity>
+        </View>
+
         <View style={twStyle("mb-4 flex-row rounded-2xl bg-gray-100 p-1")}>
           {[
             { key: "blocks" as const, label: "Time blocks" },
@@ -384,8 +452,8 @@ export function TimeBlocksContent() {
           blocks.length === 0 ? (
             <EmptyState
               icon="ban-outline"
-              title="No time blocks this month"
-              description="Block off slots (lunch, meetings, personal time) so clients can't book."
+              title="No time blocks in this range"
+              description={`No blocks between ${rangeCaption}. Block off slots (lunch, meetings, personal time) so clients can't book.`}
               actionLabel="Add time block"
               onAction={openAdd}
             />
@@ -549,6 +617,7 @@ export function TimeBlocksContent() {
         onClose={() => {
           setAddOpen(false);
           setEditingBlock(null);
+          setActivePicker(null);
         }}
         title={editingBlock ? "Edit time block" : "Add time block"}
         subtitle={editingBlock ? "Update the blocked slot shown on your calendar" : "Block off a slot so clients can't book"}
@@ -698,49 +767,94 @@ export function TimeBlocksContent() {
 
         <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Date</Text>
         <TouchableOpacity
-          onPress={() => setShowDatePicker(true)}
-          style={twStyle("mb-4 flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
+          onPress={() => setActivePicker((p) => (p === "date" ? null : "date"))}
+          style={twStyle(
+            `mb-${activePicker === "date" && Platform.OS === "ios" ? "0" : "4"} flex-row items-center rounded-xl border ${
+              activePicker === "date" ? "border-indigo-400 bg-indigo-50" : "border-gray-200 bg-gray-50"
+            } px-4 py-3`,
+          )}
+          accessibilityLabel={`Date: ${format(blockDate, "EEE, d MMM yyyy")}`}
+          accessibilityRole="button"
         >
           <Ionicons name="calendar-outline" size={20} color="#6b7280" />
           <Text style={twStyle("ml-2 text-base text-gray-900")}>
             {format(blockDate, "EEE, d MMM yyyy")}
           </Text>
         </TouchableOpacity>
-        {showDatePicker && (
-          <DateTimePicker
-            value={blockDate}
-            mode="date"
-            display={Platform.OS === "ios" ? "spinner" : "default"}
-            onChange={(_: any, d?: Date) => {
-              setShowDatePicker(Platform.OS === "ios");
-              if (d) setBlockDate(d);
-            }}
-          />
-        )}
+        {activePicker === "date" &&
+          (Platform.OS === "ios" ? (
+            <View style={twStyle("mb-4 rounded-xl border border-gray-200 bg-white")}>
+              <DateTimePicker
+                value={blockDate}
+                mode="date"
+                display="spinner"
+                onChange={(_: any, d?: Date) => {
+                  if (d) setBlockDate(d);
+                }}
+              />
+              <PickerDoneBar onDone={() => setActivePicker(null)} />
+            </View>
+          ) : (
+            <DateTimePicker
+              value={blockDate}
+              mode="date"
+              display="default"
+              onChange={(_: any, d?: Date) => {
+                setActivePicker(null);
+                if (d) setBlockDate(d);
+              }}
+            />
+          ))}
+
         <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Start time</Text>
         <TouchableOpacity
-          onPress={() => setShowStartPicker(true)}
-          style={twStyle("mb-4 flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
+          onPress={() => setActivePicker((p) => (p === "start" ? null : "start"))}
+          style={twStyle(
+            `mb-${activePicker === "start" && Platform.OS === "ios" ? "0" : "4"} flex-row items-center rounded-xl border ${
+              activePicker === "start" ? "border-indigo-400 bg-indigo-50" : "border-gray-200 bg-gray-50"
+            } px-4 py-3`,
+          )}
+          accessibilityLabel={`Start time: ${formatTimeLabel(startTime)}`}
+          accessibilityRole="button"
         >
           <Ionicons name="time-outline" size={20} color="#6b7280" />
-          <Text style={twStyle("ml-2 text-base text-gray-900")}>{startTime}</Text>
+          <Text style={twStyle("ml-2 text-base text-gray-900")}>{formatTimeLabel(startTime)}</Text>
         </TouchableOpacity>
-        {showStartPicker && (
-          <DateTimePicker
-            value={new Date(`2000-01-01T${startTime}:00`)}
-            mode="time"
-            display={Platform.OS === "ios" ? "spinner" : "default"}
-            onChange={(_: any, d?: Date) => {
-              setShowStartPicker(Platform.OS === "ios");
-              if (d) {
-                const nextStart = format(d, "HH:mm");
-                const duration = Math.max(15, timeToMinutes(endTime) - timeToMinutes(startTime));
-                setStartTime(nextStart);
-                setEndTime(addMinutesToTime(nextStart, duration));
-              }
-            }}
-          />
-        )}
+        {activePicker === "start" &&
+          (Platform.OS === "ios" ? (
+            <View style={twStyle("mb-4 rounded-xl border border-gray-200 bg-white")}>
+              <DateTimePicker
+                value={new Date(`2000-01-01T${startTime}:00`)}
+                mode="time"
+                display="spinner"
+                onChange={(_: any, d?: Date) => {
+                  if (d) {
+                    const nextStart = format(d, "HH:mm");
+                    const duration = Math.max(15, timeToMinutes(endTime) - timeToMinutes(startTime));
+                    setStartTime(nextStart);
+                    setEndTime(addMinutesToTime(nextStart, duration));
+                  }
+                }}
+              />
+              <PickerDoneBar onDone={() => setActivePicker(null)} />
+            </View>
+          ) : (
+            <DateTimePicker
+              value={new Date(`2000-01-01T${startTime}:00`)}
+              mode="time"
+              display="default"
+              onChange={(_: any, d?: Date) => {
+                setActivePicker(null);
+                if (d) {
+                  const nextStart = format(d, "HH:mm");
+                  const duration = Math.max(15, timeToMinutes(endTime) - timeToMinutes(startTime));
+                  setStartTime(nextStart);
+                  setEndTime(addMinutesToTime(nextStart, duration));
+                }
+              }}
+            />
+          ))}
+
         <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Duration</Text>
         <View style={twStyle("mb-4 flex-row flex-wrap")}>
           {QUICK_DURATIONS.map((minutes) => {
@@ -762,23 +876,60 @@ export function TimeBlocksContent() {
         </View>
         <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>End time</Text>
         <TouchableOpacity
-          onPress={() => setShowEndPicker(true)}
-          style={twStyle("mb-4 flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
+          onPress={() => setActivePicker((p) => (p === "end" ? null : "end"))}
+          style={twStyle(
+            `mb-${activePicker === "end" && Platform.OS === "ios" ? "0" : "2"} flex-row items-center rounded-xl border ${
+              activePicker === "end" ? "border-indigo-400 bg-indigo-50" : "border-gray-200 bg-gray-50"
+            } px-4 py-3`,
+          )}
+          accessibilityLabel={`End time: ${formatTimeLabel(endTime)}`}
+          accessibilityRole="button"
         >
           <Ionicons name="time-outline" size={20} color="#6b7280" />
-          <Text style={twStyle("ml-2 text-base text-gray-900")}>{endTime}</Text>
+          <Text style={twStyle("ml-2 text-base text-gray-900")}>{formatTimeLabel(endTime)}</Text>
         </TouchableOpacity>
-        {showEndPicker && (
-          <DateTimePicker
-            value={new Date(`2000-01-01T${endTime}:00`)}
-            mode="time"
-            display={Platform.OS === "ios" ? "spinner" : "default"}
-            onChange={(_: any, d?: Date) => {
-              setShowEndPicker(Platform.OS === "ios");
-              if (d) setEndTime(format(d, "HH:mm"));
-            }}
-          />
+        {activePicker === "end" &&
+          (Platform.OS === "ios" ? (
+            <View style={twStyle("mt-2 rounded-xl border border-gray-200 bg-white")}>
+              <DateTimePicker
+                value={new Date(`2000-01-01T${endTime}:00`)}
+                mode="time"
+                display="spinner"
+                onChange={(_: any, d?: Date) => {
+                  if (d) setEndTime(format(d, "HH:mm"));
+                }}
+              />
+              <PickerDoneBar onDone={() => setActivePicker(null)} />
+            </View>
+          ) : (
+            <DateTimePicker
+              value={new Date(`2000-01-01T${endTime}:00`)}
+              mode="time"
+              display="default"
+              onChange={(_: any, d?: Date) => {
+                setActivePicker(null);
+                if (d) setEndTime(format(d, "HH:mm"));
+              }}
+            />
+          ))}
+
+        {/* Live duration preview / end-before-start warning */}
+        {timeToMinutes(endTime) > timeToMinutes(startTime) ? (
+          <View style={twStyle("mb-4 mt-3 flex-row items-center rounded-xl bg-indigo-50 px-4 py-2.5")}>
+            <Ionicons name="hourglass-outline" size={16} color="#6366f1" />
+            <Text style={twStyle("ml-2 text-sm font-medium text-indigo-700")}>
+              {formatTimeLabel(startTime)} – {formatTimeLabel(endTime)} ({formatDurationLabel(startTime, endTime)})
+            </Text>
+          </View>
+        ) : (
+          <View style={twStyle("mb-4 mt-3 flex-row items-center rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5")}>
+            <Ionicons name="alert-circle-outline" size={16} color="#b45309" />
+            <Text style={twStyle("ml-2 flex-1 text-sm font-medium text-amber-800")}>
+              End time must be after the start time.
+            </Text>
+          </View>
         )}
+
         {/* Repeat weekly toggle */}
         <TouchableOpacity
           onPress={() => setIsRecurring((v) => !v)}
@@ -836,6 +987,7 @@ export function TimeBlocksContent() {
           label={creating || creatingType || updatingBlock ? "Saving…" : editingBlock ? "Save changes" : "Add block"}
           onPress={handleSaveBlock}
           loading={creating || creatingType || updatingBlock}
+          disabled={timeToMinutes(endTime) <= timeToMinutes(startTime)}
           fullWidth
         />
       </BottomSheet>

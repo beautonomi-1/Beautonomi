@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { fetcher } from "@/lib/http/fetcher";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
+import { formatStatusLabel } from "@/lib/locale/status-label";
 
 type PaystackTerminalReportRow = {
   id: string;
@@ -21,6 +23,7 @@ type PaystackTerminalReportRow = {
 
 export default function PaystackTerminalReconciliationPage() {
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
+  const { format: fmt } = useReportCurrency();
   const [rows, setRows] = useState<PaystackTerminalReportRow[]>([]);
   const [totals, setTotals] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
@@ -80,10 +83,10 @@ export default function PaystackTerminalReconciliationPage() {
         {["received", "allocated", "unallocated", "held", "eligible", "declined"].map((key) => (
           <Card key={key}>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm capitalize text-gray-500">{key}</CardTitle>
+              <CardTitle className="text-sm text-gray-500">{formatStatusLabel(key)}</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-semibold">{Number(totals[key] ?? 0).toFixed(2)}</p>
+              <p className="text-2xl font-semibold">{fmt(Number(totals[key] ?? 0))}</p>
             </CardContent>
           </Card>
         ))}
@@ -102,7 +105,7 @@ export default function PaystackTerminalReconciliationPage() {
                 <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                   <div>
                     <p className="font-medium">
-                      {row.currency} {Number(row.paid_amount ?? 0).toFixed(2)}
+                      {fmt(Number(row.paid_amount ?? 0))}
                     </p>
                     <p className="font-mono text-xs text-gray-500">{row.paystack_reference}</p>
                     <p className="text-xs text-gray-500">
@@ -110,9 +113,9 @@ export default function PaystackTerminalReconciliationPage() {
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <Badge variant="outline">{row.allocation_status}</Badge>
-                    <Badge variant="secondary">{row.amount_match_status}</Badge>
-                    <Badge>{row.payout_eligibility_status}</Badge>
+                    <Badge variant="outline">{formatStatusLabel(row.allocation_status)}</Badge>
+                    <Badge variant="secondary">{formatStatusLabel(row.amount_match_status)}</Badge>
+                    <Badge>{formatStatusLabel(row.payout_eligibility_status)}</Badge>
                   </div>
                 </div>
               </div>

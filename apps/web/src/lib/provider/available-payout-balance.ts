@@ -23,7 +23,32 @@ export type GetAvailablePayoutBalanceOptions = {
  * Note: the exclusion keys off the booking's *completed payment tenders*, not
  * booking_source. A provider-created (booking_source='provider') or online booking
  * paid in cash/Yoco must still be excluded — the platform holds nothing to pay out.
+ *
+ * Subscription & ads charges are deliberately NOT netted here. They are billed to the
+ * provider's own card via Paystack (subscription-events.ts / charge-success.ts write the
+ * `provider_subscription_payment` / `provider_ads_payment` rows only after a successful
+ * card charge). Netting them against the payout balance would double-charge the provider
+ * (once on the card, again out of their booking earnings), so those rows are ignored.
+ *
+ * Also returns a `breakdown` that reconciles recognized payoutable earnings to the final
+ * available figure (recognized − onHold − completedPayouts − pending = available), plus the
+ * provider-collected cash that was excluded, so the UI can explain why "available to
+ * withdraw" differs from headline recognized-revenue reports.
  */
+export type PayoutBalanceBreakdown = {
+  /** Released, payout-eligible platform-held earnings net of refunds (= the figure paid out from). */
+  recognizedPayoutableEarnings: number;
+  /** provider_earnings/tip/travel still inside the payout hold window (will release later). */
+  onHold: number;
+  /** provider_earnings/tip/travel excluded because the booking was settled in provider-collected cash. */
+  excludedProviderCollected: number;
+  /** Completed payouts already transferred (finance_transactions type 'payout'). */
+  completedPayouts: number;
+  /** Pending + processing payout requests reserved against the balance. */
+  pendingPayouts: number;
+  /** Final withdrawable amount (floored at 0). */
+  availableBalance: number;
+};
 const PLATFORM_HELD_PAYMENT_PROVIDERS = new Set([
   "paystack",
   "stripe",
@@ -40,6 +65,7 @@ export async function getAvailablePayoutBalance(
   pendingPayoutsSum: number;
   rawBalance: number;
   hasNegativeBalance: boolean;
+  breakdown: PayoutBalanceBreakdown;
 }> {
   const allTime = "1970-01-01T00:00:00.000Z";
   const now = new Date();
@@ -55,11 +81,23 @@ export async function getAvailablePayoutBalance(
   // - cancellation_fee: provider-retained income when a customer cancels late
   // - payout: completed payouts (subtracted)
   // - refund: refund clawbacks (negative amounts)
+  //
+  // provider_subscription_payment / provider_ads_payment are intentionally NOT queried:
+  // they are charged to the provider's card (Paystack) and must not also be netted out of
+  // the payout balance (see the function doc — that would double-charge the provider).
   const { data: ledgerRows, error: ledgerError } = await supabase
     .from("finance_transactions")
     .select("id, transaction_type, amount, net, created_at, booking_id, refund_component")
     .eq("provider_id", providerId)
-    .in("transaction_type", ["provider_earnings", "payout", "refund", "cancellation_fee", "tip", "travel_fee", "service_fee"])
+    .in("transaction_type", [
+      "provider_earnings",
+      "payout",
+      "refund",
+      "cancellation_fee",
+      "tip",
+      "travel_fee",
+      "service_fee",
+    ])
     .gte("created_at", allTime)
     .lte("created_at", nowIso)
     .order("created_at", { ascending: false });
@@ -97,10 +135,24 @@ export async function getAvailablePayoutBalance(
 
   let onlineEarnings = 0;
   let completedPayouts = 0;
+  // Reconciliation buckets (do not affect the balance math; exposed in `breakdown`):
+  let onHoldAmount = 0; // provider_earnings/tip/travel skipped only because of the hold window
+  let excludedProviderCollectedAmount = 0; // earnings/tip/travel kept by the provider in cash
 
   // Exclude only when we positively know the booking was settled entirely by
   // provider-collected tenders (at least one completed payment, none platform-held).
-  // If we have no payment info, do not hide earnings.
+  //
+  // FAIL-OPEN: if a booking has no completed booking_payments rows we do NOT hide
+  // its earnings. This is intentional and safe:
+  //   - Walk-in cash/Yoco/EFT bookings post their provider take as
+  //     walk_in_additional_charge (net of commission) which is NOT in this query at
+  //     all, and migrations 659/660 ensure walk-in add-ons never write
+  //     provider_earnings — so there is no provider_earnings row to over-include.
+  //   - A provider_earnings/tip/travel_fee row only exists when the platform
+  //     actually processed money (Paystack/Stripe/Flutterwave/wallet/gift card),
+  //     all of which write a completed booking_payments row. The "no payment info"
+  //     case therefore covers legacy/manual rows where excluding would wrongly
+  //     withhold money the platform is holding.
   const excludeProviderCollected = (bookingId: string | null | undefined): boolean => {
     if (!bookingId) return false;
     const meta = bookingMap[bookingId];
@@ -112,12 +164,11 @@ export async function getAvailablePayoutBalance(
   for (const r of rows) {
     const row = r as any;
     if (row.transaction_type === "payout") {
-      completedPayouts += Number(row.amount || 0);
-      continue;
-    }
-    if (row.transaction_type === "provider_subscription_payment" || row.transaction_type === "provider_ads_payment") {
-      // F16: subscription/ads are platform-billed charges against the provider's platform-held balance.
-      onlineEarnings -= Math.abs(Number(row.net ?? row.amount ?? 0));
+      // recordPayoutLedger writes amount === net === net_amount, so these agree
+      // today. Prefer `net` (falling back to amount) for consistency with every
+      // other branch and to stay correct if a payout ledger row ever carries fees
+      // (net < amount) — we must subtract the net amount actually paid out.
+      completedPayouts += Number(row.net ?? row.amount ?? 0);
       continue;
     }
     if (row.transaction_type === "refund") {
@@ -144,15 +195,29 @@ export async function getAvailablePayoutBalance(
     }
     // Tips and travel fees are platform-held pass-throughs owed to the provider.
     if (row.transaction_type === "tip" || row.transaction_type === "travel_fee") {
-      if (excludeProviderCollected(row.booking_id)) continue;
-      if (holdDays > 0 && row.created_at && row.created_at > availableFrom) continue;
-      onlineEarnings += Number(row.net ?? row.amount ?? 0);
+      const value = Number(row.net ?? row.amount ?? 0);
+      if (excludeProviderCollected(row.booking_id)) {
+        excludedProviderCollectedAmount += value;
+        continue;
+      }
+      if (holdDays > 0 && row.created_at && row.created_at > availableFrom) {
+        onHoldAmount += value;
+        continue;
+      }
+      onlineEarnings += value;
       continue;
     }
     if (row.transaction_type !== "provider_earnings") continue;
-    if (holdDays > 0 && row.created_at && row.created_at > availableFrom) continue;
-    if (excludeProviderCollected(row.booking_id)) continue;
-    onlineEarnings += Number(row.net ?? row.amount ?? 0);
+    const earnings = Number(row.net ?? row.amount ?? 0);
+    if (excludeProviderCollected(row.booking_id)) {
+      excludedProviderCollectedAmount += earnings;
+      continue;
+    }
+    if (holdDays > 0 && row.created_at && row.created_at > availableFrom) {
+      onHoldAmount += earnings;
+      continue;
+    }
+    onlineEarnings += earnings;
   }
 
   const { data: pendingRows } = await supabase
@@ -168,6 +233,16 @@ export async function getAvailablePayoutBalance(
   const rawBalance = round2(rawAvailable);
   const availableBalance = Math.max(0, rawBalance);
   const hasNegativeBalance = rawBalance < -0.01;
+  const roundedPending = round2(pendingPayoutsSum);
 
-  return { availableBalance, pendingPayoutsSum: round2(pendingPayoutsSum), rawBalance, hasNegativeBalance };
+  const breakdown: PayoutBalanceBreakdown = {
+    recognizedPayoutableEarnings: round2(onlineEarnings),
+    onHold: round2(onHoldAmount),
+    excludedProviderCollected: round2(excludedProviderCollectedAmount),
+    completedPayouts: round2(completedPayouts),
+    pendingPayouts: roundedPending,
+    availableBalance,
+  };
+
+  return { availableBalance, pendingPayoutsSum: roundedPending, rawBalance, hasNegativeBalance, breakdown };
 }

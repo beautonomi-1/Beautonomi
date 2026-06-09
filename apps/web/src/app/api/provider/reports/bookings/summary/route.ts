@@ -2,7 +2,12 @@ import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
 import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
-import { DASHBOARD_REVENUE_TRANSACTION_TYPES, MAX_REPORT_DAYS, MAX_BOOKINGS_FOR_REPORT } from "@/lib/reports/constants";
+import {
+  computeBookingChannelBreakdown,
+  normalizeBookingChannel,
+} from "@/lib/reports/booking-channel-breakdown";
+import { RECOGNIZED_REVENUE_TYPES } from "@/lib/reports/provider-revenue-semantics";
+import { MAX_REPORT_DAYS, MAX_BOOKINGS_FOR_REPORT } from "@/lib/reports/constants";
 import { getProviderReportContext, reportDateKey, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
 
 export async function GET(request: NextRequest) {
@@ -74,7 +79,7 @@ export async function GET(request: NextRequest) {
     }
 
     const dashOpts = {
-      transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES,
+      transactionTypes: RECOGNIZED_REVENUE_TYPES,
       timezone: reportContext.timezone,
     };
 
@@ -103,7 +108,7 @@ export async function GET(request: NextRequest) {
       const bookingRevenue = revenueByBooking.get(booking.id) || 0;
       statusRevenue[status] = (statusRevenue[status] || 0) + bookingRevenue;
 
-      const source = (booking as any).booking_source || "unknown";
+      const source = normalizeBookingChannel((booking as { booking_source?: string | null }).booking_source);
       sourceCounts[source] = (sourceCounts[source] || 0) + 1;
       sourceRevenue[source] = (sourceRevenue[source] || 0) + bookingRevenue;
     });

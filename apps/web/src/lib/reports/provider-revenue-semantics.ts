@@ -217,11 +217,20 @@ export function isPlatformAdditionalChargeProviderEarnings(row: DashboardEarning
  * double-count. Includes platform-settled add-ons (provider_earnings) and walk-in
  * add-ons (`walk_in_additional_charge`).
  */
+export function isMembershipProviderEarnings(row: DashboardEarningsMixRow): boolean {
+  return (
+    row.transaction_type === "provider_earnings" &&
+    !row.booking_id &&
+    !row.product_order_id
+  );
+}
+
 export function computeDashboardEarningsMix(rows: ReadonlyArray<DashboardEarningsMixRow>) {
   let platformAdditionalChargeEarnings = 0;
   let walkInAdditionalChargeEarnings = 0;
   let bookingEarningsTotal = 0;
   let productOrderEarningsTotal = 0;
+  let membershipEarningsTotal = 0;
   let otherEarningsTotal = 0;
 
   for (const r of rows) {
@@ -242,6 +251,10 @@ export function computeDashboardEarningsMix(rows: ReadonlyArray<DashboardEarning
       }
       continue;
     }
+    if (isMembershipProviderEarnings(r)) {
+      membershipEarningsTotal += net;
+      continue;
+    }
     otherEarningsTotal += net;
   }
 
@@ -252,6 +265,7 @@ export function computeDashboardEarningsMix(rows: ReadonlyArray<DashboardEarning
     serviceEarningsTotal: bookingEarningsTotal - platformAdditionalChargeEarnings,
     bookingEarningsTotal,
     productOrderEarningsTotal,
+    membershipEarningsTotal,
     additionalChargeEarningsTotal,
     platformAdditionalChargeEarnings,
     walkInAdditionalChargeEarnings,

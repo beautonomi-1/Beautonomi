@@ -5,7 +5,10 @@ import { createClient } from "@supabase/supabase-js";
 import { differenceInCalendarDays } from "date-fns";
 import { formatDateYmd } from "@/lib/dates/provider-tz";
 import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
-import { CLIENT_METRICS_BASIS_NOTE } from "@/lib/reports/client-ledger-metrics";
+import {
+  CLIENT_METRICS_BASIS_NOTE,
+  sumLedgerEarningsByCustomer,
+} from "@/lib/reports/client-ledger-metrics";
 
 type ClientSummary = {
   id: string;
@@ -65,6 +68,7 @@ export async function GET(request: NextRequest) {
     const clientMap = new Map<string, {
       customerId: string;
       totalSpent: number;
+      totalEarned: number;
       totalBookings: number;
       firstVisit: Date;
       lastVisit: Date;
@@ -78,6 +82,7 @@ export async function GET(request: NextRequest) {
       const existing = clientMap.get(booking.customer_id) || {
         customerId: booking.customer_id,
         totalSpent: 0,
+        totalEarned: 0,
         totalBookings: 0,
         firstVisit: visitDate,
         lastVisit: visitDate,
@@ -91,6 +96,20 @@ export async function GET(request: NextRequest) {
       if (visitDate > existing.lastVisit) existing.lastVisit = visitDate;
       clientMap.set(booking.customer_id, existing);
     });
+
+    const ledgerByCustomer = await sumLedgerEarningsByCustomer(
+      supabaseAdmin,
+      providerId,
+      new Date("2000-01-01T00:00:00.000Z"),
+      new Date(),
+      locationId,
+      tz,
+      (bookings ?? []).map((b) => ({ id: b.id, customer_id: b.customer_id })),
+    );
+    for (const [customerId, earned] of ledgerByCustomer.entries()) {
+      const row = clientMap.get(customerId);
+      if (row) row.totalEarned = earned;
+    }
 
     // Calculate averages and enrich data
     const clientLTV = Array.from(clientMap.values()).map((client) => {
@@ -136,6 +155,9 @@ export async function GET(request: NextRequest) {
       ? enrichedLTV[Math.floor(totalClients / 2)]?.totalSpent || 0
       : 0;
     const totalLTV = enrichedLTV.reduce((sum, c) => sum + c.totalSpent, 0);
+    const totalLedgerEarnings = enrichedLTV.reduce((sum, c) => sum + (c.totalEarned ?? 0), 0);
+    const averageLedgerEarnings =
+      totalClients > 0 ? totalLedgerEarnings / totalClients : 0;
     const averageVisits = totalClients > 0
       ? enrichedLTV.reduce((sum, c) => sum + c.totalBookings, 0) / totalClients
       : 0;
@@ -150,6 +172,8 @@ export async function GET(request: NextRequest) {
       averageLTV,
       medianLTV,
       totalLTV,
+      totalLedgerEarnings,
+      averageLedgerEarnings,
       averageVisits,
       highValueClients: highValue.length,
       mediumValueClients: mediumValue.length,
@@ -160,9 +184,9 @@ export async function GET(request: NextRequest) {
         { segment: "Medium Value", count: mediumValue.length, avgLTV: mediumValue.length > 0 ? mediumValue.reduce((sum, c) => sum + c.totalSpent, 0) / mediumValue.length : 0 },
         { segment: "Low Value", count: lowValue.length, avgLTV: lowValue.length > 0 ? lowValue.reduce((sum, c) => sum + c.totalSpent, 0) / lowValue.length : 0 },
       ],
-      basisNote: `${CLIENT_METRICS_BASIS_NOTE} LTV segments use completed appointment booked gross only.`,
+      basisNote: `${CLIENT_METRICS_BASIS_NOTE} LTV segments use completed appointment booked gross; totalEarned is ledger recognized per client.`,
       reportBasis:
-        "All-time completed bookings by scheduled date: totalSpent = sum of booking.total_amount (booked gross). Not ledger provider_earnings. Cancellations and no-shows excluded.",
+        "All-time completed bookings: totalSpent = sum of booking.total_amount (booked gross). totalEarned = sum of ledger recognized revenue per booking (provider take-home components). Cancellations and no-shows excluded.",
     });
   } catch (error) {
     return handleApiError(error, "LIFETIME_VALUE_ERROR", 500);

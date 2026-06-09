@@ -34,18 +34,34 @@ export async function GET(request: NextRequest) {
     const tenantRegion = await getTenantRegionConfig(effectiveTenantId);
     const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
+    // Caller-controlled page size for load-more (default 50, capped at 200).
+    const limit = Math.min(
+      Math.max(parseInt(request.nextUrl.searchParams.get("limit") ?? "50", 10) || 50, 50),
+      200,
+    );
+
     const { data: txns } = await supabaseAdmin
       .from("finance_transactions")
       .select("id, amount, currency, created_at, description, transaction_type, metadata")
       .eq("provider_id", providerId)
       .in("transaction_type", ["provider_subscription_payment", "provider_ads_payment"])
       .order("created_at", { ascending: false })
-      .limit(50);
+      .limit(limit);
 
     const items = (txns || []).map((t: any) => {
       const isAds = t.transaction_type === "provider_ads_payment";
-      const metadataDescription =
-        (t.metadata as { description?: string } | null)?.description ?? null;
+      const meta = (t.metadata as { description?: string; ads_budget_order_id?: string } | null) ?? null;
+      const metadataDescription = meta?.description ?? null;
+      // Ads payments carry their funding order id in metadata; expose a
+      // downloadable PDF receipt for it (mirrors product-order receipts).
+      const adsOrderId = isAds ? (meta?.ads_budget_order_id ?? null) : null;
+      // Subscription payments expose a finance-transaction-keyed receipt so
+      // both one-off orders and recurring renewals get a downloadable PDF.
+      const invoiceUrl = isAds
+        ? adsOrderId
+          ? `/api/provider/ads/orders/${adsOrderId}/receipt/pdf`
+          : null
+        : `/api/provider/subscription/receipts/${t.id}/pdf`;
       return {
         id: t.id,
         amount: Number(t.amount || 0),
@@ -57,7 +73,7 @@ export async function GET(request: NextRequest) {
           metadataDescription ||
           (isAds ? "Ads campaign payment" : "Subscription payment"),
         created_at: t.created_at,
-        invoice_url: null,
+        invoice_url: invoiceUrl,
       };
     });
 

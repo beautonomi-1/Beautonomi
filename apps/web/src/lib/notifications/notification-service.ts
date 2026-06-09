@@ -12,7 +12,10 @@ import { formatCurrency } from "@/lib/utils";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { formatInTimeZone } from "date-fns-tz";
 import { normalizeProviderTimezone } from "@/lib/availability/time-utils";
-import { computePackageAppliedForDisplay } from "@/lib/bookings/display-invariants";
+import {
+  computePackageAppliedForDisplay,
+  DEFAULT_BOOKING_DISPLAY_TIMEZONE,
+} from "@/lib/bookings/display-invariants";
 
 /**
  * §Cross-app audit 2026-04 (multi-staff push): historically every
@@ -54,11 +57,19 @@ async function resolveProviderRecipients(
 /**
  * B13: IANA timezone used when a booking row doesn't carry its provider's
  * zone yet (older rows, or callers that haven't joined `providers.timezone`).
- * Defaults to UTC so we never silently emit server-local dates to customers
- * in another zone; callers should pass the real provider timezone whenever
- * possible via {@link formatBookingDate} / {@link formatBookingTime}.
+ *
+ * §Timezone-parity audit 2026-06: this previously defaulted to "UTC", which
+ * diverged from EVERY other booking-time surface. The receipt/invoice and
+ * booking-detail paths fall back to {@link DEFAULT_BOOKING_DISPLAY_TIMEZONE}
+ * ("Africa/Johannesburg") via `resolveTz` (`@/lib/dates/provider-tz`) and
+ * `safeTimezone` (`@/lib/bookings/display-datetime`). For a provider whose
+ * `timezone` column is NULL/blank, a 05:00 (UTC+2) appointment rendered as
+ * 05:00 on the receipt but 03:00 in the push/SMS/email/in-app notification —
+ * the exact UTC-offset gap the customer reported. We now share the SAME
+ * platform-default fallback so notifications match the receipt/invoice in
+ * every zone. The stored UTC `scheduled_at` is never mutated — only display.
  */
-const FALLBACK_NOTIFICATION_TIMEZONE = "UTC";
+const FALLBACK_NOTIFICATION_TIMEZONE = DEFAULT_BOOKING_DISPLAY_TIMEZONE;
 
 /**
  * §Launch-audit 2026-04-18: legacy provider rows can carry offset-style
@@ -286,7 +297,11 @@ function buildCustomerPricingBreakdownHtml(booking: Record<string, unknown>, cur
 /**
  * Send booking confirmed notification
  */
-export async function notifyBookingConfirmed(bookingId: string, channels?: NotificationChannel[]) {
+export async function notifyBookingConfirmed(
+  bookingId: string,
+  channels?: NotificationChannel[],
+  options?: { skipInApp?: boolean },
+) {
   const booking = await getBookingDetails(bookingId);
   if (!booking) return { success: false, error: "Booking not found" };
 
@@ -347,7 +362,7 @@ export async function notifyBookingConfirmed(bookingId: string, channels?: Notif
     [booking.customer_id],
     variables,
     channels,
-    { appType: "customer" }
+    { appType: "customer", skipInApp: options?.skipInApp }
   );
 }
 
@@ -1545,9 +1560,10 @@ export async function notifyProviderPayoutProcessed(
     transaction_id: transactionId,
   };
 
+  const recipients = await resolveProviderRecipients(providerId, provider.user_id);
   return await sendTemplateNotification(
     "provider_payout_processed",
-    [provider.user_id],
+    recipients,
     variables,
     channels,
     { appType: "provider" }
@@ -1582,9 +1598,10 @@ export async function notifyProviderPayoutScheduled(
     payment_method: paymentMethod,
   };
 
+  const recipients = await resolveProviderRecipients(providerId, provider.user_id);
   return await sendTemplateNotification(
     "provider_payout_scheduled",
-    [provider.user_id],
+    recipients,
     variables,
     channels,
     { appType: "provider" }
@@ -1617,9 +1634,10 @@ export async function notifyProviderPayoutFailed(
     failure_reason: failureReason,
   };
 
+  const recipients = await resolveProviderRecipients(providerId, provider.user_id);
   return await sendTemplateNotification(
     "provider_payout_failed",
-    [provider.user_id],
+    recipients,
     variables,
     channels,
     { appType: "provider" }
@@ -2481,7 +2499,8 @@ export async function notifyOrderConfirmation(
   orderId: string,
   orderNumber: string,
   totalAmount: number,
-  channels: NotificationChannel[] = ["push", "email"]
+  channels: NotificationChannel[] = ["push", "email"],
+  options?: { skipInApp?: boolean }
 ) {
   const variables = {
     order_number: orderNumber,
@@ -2494,7 +2513,7 @@ export async function notifyOrderConfirmation(
     [userId],
     variables,
     channels,
-    { appType: "customer" }
+    { appType: "customer", skipInApp: options?.skipInApp }
   );
 }
 
@@ -3001,7 +3020,10 @@ export async function notifySafetyAlert(bookingId: string, channels?: Notificati
     "safety_alert",
     [booking.customer_id],
     {},
-    channels
+    channels,
+    // Target the customer OneSignal app explicitly so the alert routes to the
+    // correct app credentials/devices instead of the default.
+    { appType: "customer" }
   );
 }
 

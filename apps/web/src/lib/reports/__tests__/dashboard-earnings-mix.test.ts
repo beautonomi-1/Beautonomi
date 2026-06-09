@@ -54,4 +54,23 @@ describe("computeDashboardEarningsMix", () => {
     expect(mix.serviceEarningsTotal).toBe(280);
     expect(mix.additionalChargeEarningsTotal).toBe(0);
   });
+
+  it("separates membership earnings from product order earnings", () => {
+    const mix = computeDashboardEarningsMix([
+      {
+        transaction_type: "provider_earnings",
+        net: 40,
+        product_order_id: "po1",
+      },
+      {
+        transaction_type: "provider_earnings",
+        net: 120,
+        description: "Provider earnings from membership sale",
+      },
+    ]);
+
+    expect(mix.productOrderEarningsTotal).toBe(40);
+    expect(mix.membershipEarningsTotal).toBe(120);
+    expect(mix.otherEarningsTotal).toBe(0);
+  });
 });

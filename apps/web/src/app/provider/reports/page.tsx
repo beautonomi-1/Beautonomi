@@ -21,6 +21,8 @@ import { fetcher } from "@/lib/http/fetcher";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 import { addLocationIdToUrl } from "@/app/provider/reports/utils/report-api-url";
 import { useReportLocationQuery } from "@/app/provider/reports/utils/use-report-location-query";
+import { REVENUE_GLOSSARY } from "@/lib/reports/revenue-glossary";
+import { ActiveLocationChip } from "@/components/provider/ActiveLocationChip";
 
 const reportCategories = [
   {
@@ -87,6 +89,7 @@ const reportCategories = [
       { id: "payment-methods", name: "Payment Methods", href: "/provider/reports/payments/methods" },
       { id: "payouts", name: "Payout earnings (ledger)", href: "/provider/reports/payments/payouts" },
       { id: "yoco-reconciliation", name: "Yoco reconciliation", href: "/provider/reports/payments/yoco-reconciliation" },
+      { id: "paystack-terminal-reconciliation", name: "Paystack Terminal reconciliation", href: "/provider/reports/payments/paystack-terminal-reconciliation" },
     ],
   },
   {
@@ -150,6 +153,7 @@ export default function ReportsPage() {
   const { selectedLocationId } = useReportLocationQuery();
   const [quickStats, setQuickStats] = useState<QuickStats | null>(null);
   const [isLoadingStats, setIsLoadingStats] = useState(true);
+  const [statsError, setStatsError] = useState(false);
 
   useEffect(() => {
     loadQuickStats();
@@ -158,6 +162,7 @@ export default function ReportsPage() {
   const loadQuickStats = async () => {
     try {
       setIsLoadingStats(true);
+      setStatsError(false);
       // Get stats from business overview endpoint (more accurate than dashboard)
       type BusinessOverviewData = { totalRevenue?: number; totalBookings?: number; uniqueClients?: number; revenueGrowth?: number };
       const response = await fetcher.get<{ data: BusinessOverviewData }>(
@@ -183,13 +188,10 @@ export default function ReportsPage() {
           growthRate: financeData?.growth_percentage || 0,
         });
       } catch {
-        // Silently handle subscription errors - don't show stats if subscription required
-        setQuickStats({
-          totalRevenue: 0,
-          totalBookings: 0,
-          activeClients: 0,
-          growthRate: 0,
-        });
+        // Both sources failed: surface an error instead of implying real zeros
+        // (showing R0 earnings to an owner who actually traded is misleading).
+        setQuickStats(null);
+        setStatsError(true);
       }
     } finally {
       setIsLoadingStats(false);
@@ -209,14 +211,32 @@ export default function ReportsPage() {
         subtitle="Comprehensive insights into your business performance"
       />
 
+      <ActiveLocationChip className="mb-4" />
+
       <div className="space-y-6">
         {/* Quick Stats Cards */}
+        {statsError ? (
+          <Card className="border-amber-200 bg-amber-50">
+            <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-amber-900">
+                We couldn&apos;t load this month&apos;s summary right now. Your detailed reports below are still available.
+              </p>
+              <button
+                type="button"
+                onClick={loadQuickStats}
+                className="inline-flex h-9 items-center justify-center rounded-md border border-amber-300 bg-white px-4 text-sm font-medium text-amber-900 hover:bg-amber-100"
+              >
+                Try again
+              </button>
+            </CardContent>
+          </Card>
+        ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card className="border-gray-200">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600 mb-1">Ledger earnings (MTD)</p>
+                  <p className="text-sm text-gray-600 mb-1" title={REVENUE_GLOSSARY.recognizedRevenue.definition}>Ledger earnings (MTD)</p>
                   <p className="text-2xl font-semibold text-gray-900">
                     {isLoadingStats ? (
                       <span className="text-gray-400">Loading...</span>
@@ -289,6 +309,7 @@ export default function ReportsPage() {
             </CardContent>
           </Card>
         </div>
+        )}
 
         {/* Report Categories */}
         <div className="space-y-6">

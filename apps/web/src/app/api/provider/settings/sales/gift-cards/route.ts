@@ -10,6 +10,10 @@ import {
 import { z } from "zod";
 import { getPlatformSalesDefaults } from "@/lib/platform-sales-settings";
 import type { UserRole } from "@/types/beautonomi";
+import {
+  checkNewGateFeatureAccess,
+  SUBSCRIPTION_FEATURE_KEYS,
+} from "@/lib/subscriptions/feature-access";
 
 const PROVIDER_SETTINGS_ROLES = [
   "provider_owner",
@@ -99,6 +103,21 @@ export async function PATCH(request: NextRequest) {
     }
 
     const body = patchSchema.parse(await request.json());
+
+    if (body.gift_cards_enabled) {
+      const giftCardsOk = await checkNewGateFeatureAccess(
+        providerId,
+        SUBSCRIPTION_FEATURE_KEYS.giftCards,
+        supabase,
+      );
+      if (!giftCardsOk) {
+        return errorResponse(
+          "Gift cards are not included in your current subscription plan. Upgrade to enable gift card sales.",
+          "SUBSCRIPTION_FEATURE_DISABLED",
+          403,
+        );
+      }
+    }
 
     const { data, error } = await supabase
       .from("providers")

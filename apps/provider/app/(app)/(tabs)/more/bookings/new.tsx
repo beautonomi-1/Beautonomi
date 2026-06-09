@@ -49,6 +49,8 @@ import { useDefaultPhoneDial } from "@/hooks/useDefaultPhoneDial";
 import { Colors } from "@/constants/colors";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { calculateBookingTotals, percentOf, safeNum } from "@beautonomi/utils";
+import { BookingDateStrip, BookingTimeSlotGrid } from "@/components/bookings/BookingDateTimePicker";
+import { useBookingAvailableSlots } from "@/hooks/useBookingAvailableSlots";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -365,103 +367,6 @@ interface AvailableSlotsApiResponse {
 const SCHEDULING_DURATION_HINT =
   "Pick a service first so we can show accurate times based on duration.";
 
-type NewBookingDateChipProps = {
-  date: Date;
-  selectedDate: Date;
-  today: Date;
-  minWidth: number;
-  onSelectDate: (d: Date) => void;
-};
-
-const NewBookingDateChip = memo(function NewBookingDateChip({
-  date: d,
-  selectedDate,
-  today,
-  minWidth,
-  onSelectDate,
-}: NewBookingDateChipProps) {
-  const isActive = isSameDay(d, selectedDate);
-  const isToday = isSameDay(d, today);
-  return (
-    <TouchableOpacity
-      style={[twStyle(`items-center rounded-2xl px-3 py-2.5 ${
-        isActive ? "bg-gray-900" : isToday ? "border border-emerald-200 bg-emerald-50" : "border border-gray-200 bg-white"
-      }`), { minWidth, marginRight: 8 }]}
-      onPress={() => onSelectDate(d)}
-      accessibilityRole="radio"
-      accessibilityState={{ checked: isActive }}
-      accessibilityLabel={format(d, "EEEE, MMMM d")}
-    >
-      <Text
-        style={twStyle(`text-[10px] font-semibold ${isActive ? "text-gray-300" : isToday ? "text-emerald-700" : "text-gray-500"}`)}
-      >
-        {isToday ? "Today" : format(d, "EEE")}
-      </Text>
-      <Text style={twStyle(`text-base font-bold ${isActive ? "text-white" : "text-gray-900"}`)}>{format(d, "d")}</Text>
-      <Text style={twStyle(`text-[10px] ${isActive ? "text-gray-300" : isToday ? "text-emerald-700" : "text-gray-500"}`)}>
-        {format(d, "MMM")}
-      </Text>
-    </TouchableOpacity>
-  );
-});
-
-type NewBookingTimeSlotChipProps = {
-  row: AvailableSlotsApiRow;
-  isActive: boolean;
-  chipWidth: number;
-  /** Column index in the 3-column grid (controls horizontal gutter). */
-  columnIndex: number;
-  onSelect: (time: string) => void;
-};
-
-const NewBookingTimeSlotChip = memo(function NewBookingTimeSlotChip({
-  row,
-  isActive,
-  chipWidth,
-  columnIndex,
-  onSelect,
-}: NewBookingTimeSlotChipProps) {
-  const unavailable = !row.available;
-  const baseChip = unavailable
-    ? "border border-red-200 bg-red-50"
-    : isActive
-      ? "border border-emerald-700 bg-emerald-600"
-      : "border border-emerald-200 bg-emerald-50";
-  return (
-    <TouchableOpacity
-      disabled={unavailable}
-      style={[
-        twStyle(`rounded-lg px-2 py-2 ${baseChip}`),
-        { width: chipWidth, marginBottom: 8, marginRight: columnIndex % 3 === 2 ? 0 : 8 },
-      ]}
-      onPress={() => {
-        if (unavailable) return;
-        onSelect(row.time);
-      }}
-      accessibilityRole="radio"
-      accessibilityState={{ checked: isActive, disabled: unavailable }}
-      accessibilityLabel={
-        unavailable ? `${row.time}, unavailable${row.reason ? `, ${row.reason}` : ""}` : `Time ${row.time}`
-      }
-    >
-      <Text
-        style={twStyle(
-          `text-center text-sm font-medium ${
-            unavailable ? "text-red-300 line-through" : isActive ? "text-white" : "text-emerald-800"
-          }`,
-        )}
-      >
-        {row.time}
-      </Text>
-      {unavailable && row.reason ? (
-        <Text style={twStyle("mt-0.5 text-center text-[10px] text-red-400")} numberOfLines={2}>
-          {row.reason}
-        </Text>
-      ) : null}
-    </TouchableOpacity>
-  );
-});
-
 /** Default mobile travel buffer minutes — keep aligned with `HOUSE_CALL_CONFIG.DEFAULT_TRAVEL_BUFFER_MINUTES` in apps/web. */
 const DEFAULT_MOBILE_TRAVEL_BUFFER_MINUTES = 30;
 
@@ -534,9 +439,12 @@ export default function NewBookingScreen() {
     `/api/provider/clients?search=${encodeURIComponent(clientSearch)}`,
     { enabled: clientSearch.trim().length >= 2 }
   );
-  const searchedClients = useMemo<Client[] | null>(() => {
-    if (!rawSearchedClients) return null;
-    return rawSearchedClients.map((c) => ({
+  const { data: rawBrowseClients, loading: browseClientsLoading } = useApi<ApiClient[]>(
+    "/api/provider/clients/serviced?limit=25",
+    { enabled: clientMode === "search" && clientSearch.trim().length < 2 }
+  );
+  const mapApiClientRow = useCallback(
+    (c: ApiClient): Client => ({
       id: c.id,
       customer_id: c.customer_id,
       full_name: c.customer?.full_name || "Unknown",
@@ -544,8 +452,21 @@ export default function NewBookingScreen() {
       phone: c.customer?.phone || "",
       avatar_url: c.customer?.avatar_url ?? null,
       salon_membership: c.salon_membership ?? null,
-    }));
-  }, [rawSearchedClients]);
+    }),
+    [],
+  );
+  const searchedClients = useMemo<Client[] | null>(() => {
+    if (!rawSearchedClients) return null;
+    return rawSearchedClients.map(mapApiClientRow);
+  }, [rawSearchedClients, mapApiClientRow]);
+  const browsableClients = useMemo<Client[] | null>(() => {
+    if (!rawBrowseClients) return null;
+    return rawBrowseClients.map(mapApiClientRow);
+  }, [rawBrowseClients, mapApiClientRow]);
+  const displayClients =
+    clientSearch.trim().length >= 2 ? searchedClients : browsableClients;
+  const displayClientsLoading =
+    clientSearch.trim().length >= 2 ? clientsLoading : browseClientsLoading;
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [newClientFirst, setNewClientFirst] = useState("");
   const [newClientLast, setNewClientLast] = useState("");
@@ -554,10 +475,6 @@ export default function NewBookingScreen() {
 
   // --- Date / Time ---
   const today = useMemo(() => startOfDay(new Date()), []);
-  const dateOptions = useMemo(
-    () => Array.from({ length: DATE_RANGE_DAYS }, (_, i) => addDays(today, i)),
-    [today]
-  );
   const [selectedDate, setSelectedDate] = useState<Date>(() => {
     if (params.date) {
       const parsed = parseISO(params.date);
@@ -742,8 +659,8 @@ export default function NewBookingScreen() {
   }, [yocoEnabled, paystackTerminalEnabled, paymentLinkEnabled, paymentMethod]);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [conflictWarning, setConflictWarning] = useState<string | null>(null);
-  const [, setCheckingAvailability] = useState(false);
-  const dateOptionsFlatListRef = useRef<FlatList<Date>>(null);
+  const [checkingAvailability, setCheckingAvailability] = useState(false);
+  const [slotAutoSnapMessage, setSlotAutoSnapMessage] = useState<string | null>(null);
 
   const homeAddressCountryFallback = useMemo(
     () => addressCountry.trim() || bundle?.meta?.tenant_region?.name?.trim() || "South Africa",
@@ -1351,56 +1268,24 @@ export default function NewBookingScreen() {
     };
   }, [selectedDate, summary.totalMinutes, selectedServices, selectedLocationId, locationType, atHomeTravelBufferMinutes]);
 
-  const availableSlotsUrl = useMemo(() => {
-    const p = slotParams;
-    if (!p.date) return "";
-    let q = `/api/provider/bookings/available-slots?date=${encodeURIComponent(p.date)}&duration_minutes=${encodeURIComponent(String(p.duration_minutes))}`;
-    if (p.staff_ids) q += `&staff_ids=${encodeURIComponent(p.staff_ids)}`;
-    if (p.location_id) q += `&location_id=${encodeURIComponent(p.location_id)}`;
-    if (p.service_ids) q += `&service_ids=${encodeURIComponent(p.service_ids)}`;
-    q += `&mode=${encodeURIComponent(p.mode)}&travel_buffer=${encodeURIComponent(String(p.travel_buffer))}`;
-    return q;
-  }, [slotParams]);
+  const {
+    rows: timePickerRows,
+    loading: availableSlotsLoading,
+    providerTimezone: slotsProviderTimezone,
+    slotsData: availableSlotsData,
+  } = useBookingAvailableSlots(slotParams.date ? slotParams : null, {
+    enabled: !!slotParams.date,
+  });
 
-  const { data: availableSlotsData, loading: availableSlotsLoading } = useApi<AvailableSlotsApiResponse>(
-    availableSlotsUrl,
-    { enabled: !!slotParams.date && availableSlotsUrl.length > 0 }
-  );
-
-  const schedulingTimezone =
-    (typeof availableSlotsData?.provider_timezone === "string" && availableSlotsData.provider_timezone.trim().length > 0
-      ? availableSlotsData.provider_timezone.trim()
-      : null) || profileTimezone;
-
-  const timePickerRows = useMemo((): AvailableSlotsApiRow[] => {
-    const grid = availableSlotsData?.slot_grid;
-    if (grid && grid.length > 0) return grid;
-    const legacy = availableSlotsData?.slots;
-    if (legacy && legacy.length > 0) {
-      return legacy.map((time) => ({ time, available: true }));
-    }
-    return [];
-  }, [availableSlotsData]);
+  const schedulingTimezone = slotsProviderTimezone || profileTimezone;
 
   const needsServiceFirstForScheduling =
     selectedServices.length === 0 && selectedProducts.length === 0;
-
-  const dateChipMinWidth = isTablet ? 76 : 64;
-  const dateChipStride = dateChipMinWidth + 8;
-
-  const dateInitialScrollIndex = useMemo(() => {
-    const i = dateOptions.findIndex((d) => isSameDay(d, selectedDate));
-    const idx = i >= 0 ? i : 0;
-    return Math.min(idx, Math.max(0, dateOptions.length - 1));
-  }, [dateOptions, selectedDate]);
 
   const handleSelectTimeSlot = useCallback((time: string) => {
     setSelectedTime(time);
     setShowTimePicker(false);
   }, []);
-
-  const timeSlotGridOuterWidth = Math.min(windowWidth - 32, 400);
-  const timeSlotChipWidth = Math.max(64, Math.floor((timeSlotGridOuterWidth - 16) / 3));
 
   const apiAvailableTimes = useMemo(() => {
     const fromGrid = availableSlotsData?.slot_grid?.filter((s) => s.available).map((s) => s.time);
@@ -1503,6 +1388,18 @@ export default function NewBookingScreen() {
       return apiAvailableTimes[0] ?? "";
     });
   }, [apiAvailableTimes, selectedDate]);
+
+  const prevSelectedTimeRef = useRef(selectedTime);
+  useEffect(() => {
+    const prev = prevSelectedTimeRef.current;
+    prevSelectedTimeRef.current = selectedTime;
+    if (!prev || !selectedTime || prev === selectedTime) return;
+    if (!apiAvailableTimes.includes(prev) && apiAvailableTimes.includes(selectedTime)) {
+      setSlotAutoSnapMessage(`Time adjusted to ${selectedTime} — previous slot unavailable`);
+      const timer = setTimeout(() => setSlotAutoSnapMessage(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [selectedTime, apiAvailableTimes]);
 
   // Solo team member: every service line should carry staff_id for slot filtering + create payload.
   useEffect(() => {
@@ -2451,13 +2348,18 @@ export default function NewBookingScreen() {
                             accessibilityLabel="Search clients"
                           />
                         </View>
-                        {clientsLoading && (
+                        {clientSearch.trim().length < 2 ? (
+                          <Text style={twStyle("mt-2 text-xs text-gray-500")}>
+                            Recent clients — or type 2+ characters to search everyone.
+                          </Text>
+                        ) : null}
+                        {displayClientsLoading && (
                           <ActivityIndicator size="small" color="#111" style={twStyle("mt-2")} />
                         )}
-                        {searchedClients && searchedClients.length > 0 && (
+                        {displayClients && displayClients.length > 0 && (
                           <View style={twStyle("mt-2 max-h-40 rounded-xl border border-gray-100 bg-white")}>
                             <ScrollView nestedScrollEnabled>
-                              {searchedClients.map((c) => (
+                              {displayClients.map((c) => (
                                 <TouchableOpacity
                                   key={c.id}
                                   style={twStyle("flex-row items-center border-b border-gray-50 px-3 py-2.5")}
@@ -2770,38 +2672,9 @@ export default function NewBookingScreen() {
               {needsServiceFirstForScheduling ? (
                 <Text style={twStyle("mb-2 text-xs text-amber-800")}>{SCHEDULING_DURATION_HINT}</Text>
               ) : null}
-              <FlatList<Date>
-                ref={dateOptionsFlatListRef}
-                horizontal
-                data={dateOptions}
-                keyExtractor={(d: Date) => d.toISOString()}
-                showsHorizontalScrollIndicator={false}
-                style={twStyle("mb-4")}
-                contentContainerStyle={{ paddingVertical: 4 }}
-                initialScrollIndex={dateInitialScrollIndex}
-                getItemLayout={(_data: ArrayLike<Date> | null | undefined, index: number) => ({
-                  length: dateChipStride,
-                  offset: dateChipStride * index,
-                  index,
-                })}
-                onScrollToIndexFailed={(info: { index: number }) => {
-                  requestAnimationFrame(() => {
-                    dateOptionsFlatListRef.current?.scrollToOffset({
-                      offset: Math.max(0, info.index) * dateChipStride,
-                      animated: false,
-                    });
-                  });
-                }}
-                renderItem={({ item: d }: ListRenderItemInfo<Date>) => (
-                  <NewBookingDateChip
-                    date={d}
-                    selectedDate={selectedDate}
-                    today={today}
-                    minWidth={dateChipMinWidth}
-                    onSelectDate={setSelectedDate}
-                  />
-                )}
-              />
+              <View style={twStyle("mb-4")}>
+                <BookingDateStrip selectedDate={selectedDate} onSelectDate={setSelectedDate} isTablet={isTablet} />
+              </View>
 
               {/* -------- TIME -------- */}
               <SectionLabel label="Time" required />
@@ -3712,51 +3585,22 @@ export default function NewBookingScreen() {
               Provider-created bookings save immediately. Countdown timers only apply to customer checkout holds; held checkout slots show here as unavailable.
             </Text>
           </View>
-          {availableSlotsLoading && timePickerRows.length === 0 ? (
-            <Text style={twStyle("py-4 text-center text-sm text-gray-500")}>Loading times…</Text>
+          {slotAutoSnapMessage ? (
+            <View style={twStyle("mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2")}>
+              <Text style={twStyle("text-xs text-amber-800")}>{slotAutoSnapMessage}</Text>
+            </View>
           ) : null}
-          {!availableSlotsLoading && timePickerRows.length === 0 ? (
-            <Text style={twStyle("py-4 text-center text-sm text-gray-500")}>No times for this date</Text>
+          {needsServiceFirstForScheduling ? (
+            <Text style={twStyle("mb-2 text-xs text-amber-800")}>{SCHEDULING_DURATION_HINT}</Text>
           ) : null}
-          {timePickerRows.length > 0 ? (
-            <>
-              {needsServiceFirstForScheduling ? (
-                <Text style={twStyle("mb-2 text-xs text-amber-800")}>{SCHEDULING_DURATION_HINT}</Text>
-              ) : null}
-              <View style={twStyle("mb-3 flex-row flex-wrap items-center")}>
-                <View style={twStyle("mr-4 flex-row items-center")}>
-                  <View style={twStyle("mr-1.5 h-2 w-2 rounded-full bg-emerald-400")} />
-                  <Text style={twStyle("text-xs text-gray-600")}>Open</Text>
-                </View>
-                <View style={twStyle("flex-row items-center")}>
-                  <View style={twStyle("mr-1.5 h-2 w-2 rounded-full bg-red-300")} />
-                  <Text style={twStyle("text-xs text-gray-600")}>Unavailable</Text>
-                </View>
-              </View>
-              <FlatList<AvailableSlotsApiRow>
-                data={timePickerRows}
-                numColumns={3}
-                keyExtractor={(row: AvailableSlotsApiRow) => row.time}
-                style={{ maxHeight: 360 }}
-                columnWrapperStyle={twStyle("flex-row")}
-                removeClippedSubviews
-                initialNumToRender={24}
-                windowSize={7}
-                maxToRenderPerBatch={18}
-                keyboardShouldPersistTaps="handled"
-                nestedScrollEnabled
-                renderItem={({ item: row, index }: ListRenderItemInfo<AvailableSlotsApiRow>) => (
-                  <NewBookingTimeSlotChip
-                    row={row}
-                    isActive={selectedTime === row.time}
-                    chipWidth={timeSlotChipWidth}
-                    columnIndex={index}
-                    onSelect={handleSelectTimeSlot}
-                  />
-                )}
-              />
-            </>
-          ) : null}
+          <BookingTimeSlotGrid
+            rows={timePickerRows}
+            selectedTime={selectedTime}
+            onSelectTime={handleSelectTimeSlot}
+            loading={availableSlotsLoading}
+            providerTimezone={schedulingTimezone}
+            layout="grid"
+          />
         </BottomSheet>
 
         {/* -------- STAFF PICKER SHEET -------- */}
@@ -4080,9 +3924,16 @@ export default function NewBookingScreen() {
           }}
         >
           <ActionButton
-            label={isRecurring ? "Review Repeating Booking" : "Review Booking"}
+            label={
+              checkingAvailability
+                ? "Checking availability…"
+                : isRecurring
+                  ? "Review Repeating Booking"
+                  : "Review Booking"
+            }
             onPress={handleReview}
-            disabled={selectedServices.length === 0 && selectedProducts.length === 0}
+            disabled={(selectedServices.length === 0 && selectedProducts.length === 0) || checkingAvailability}
+            loading={checkingAvailability}
             fullWidth
             size="lg"
             variant="brand"

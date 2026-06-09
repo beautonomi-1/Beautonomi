@@ -20,6 +20,31 @@ const MAX_LEDGER_SCAN = 50_000;
 
 const VISIBLE_TYPES_LIST = Array.from(PROVIDER_LEDGER_VISIBLE_TYPES);
 
+function signedContributionForSummary(row: ProviderLedgerUiRow): number {
+  if (row.type === "earning" || row.type === "tip") return row.amount;
+  if (row.type === "payout" || row.type === "refund" || row.type === "fee") return -row.amount;
+  if (row.type === "adjustment") return (row.sign ?? 1) * row.amount;
+  return 0;
+}
+
+function summarizeTransactions(rows: ProviderLedgerUiRow[]) {
+  let totalIn = 0;
+  let totalOut = 0;
+  for (const row of rows) {
+    if (row.type === "earning" || row.type === "tip") totalIn += row.amount;
+    if (row.type === "payout" || row.type === "refund") totalOut += row.amount;
+  }
+  const net = rows.reduce((s, r) => s + signedContributionForSummary(r), 0);
+  return {
+    total_in: totalIn,
+    total_out: totalOut,
+    net,
+    row_count: rows.length,
+    basis_note:
+      "Server totals for the full selected period (org-wide). List below may show fewer rows due to the limit parameter.",
+  };
+}
+
 export async function GET(request: NextRequest) {
   try {
     const permissionCheck = await requireAnyPermission(["view_sales", "view_reports", "process_payments"], request);
@@ -40,10 +65,10 @@ export async function GET(request: NextRequest) {
     const locationId = sp.get("location_id") || null;
     const fromDate = providerTransactionsPeriodStart(period, reportContext.timezone);
 
-    const mapped: ProviderLedgerUiRow[] = [];
+    const allMapped: ProviderLedgerUiRow[] = [];
     let offset = 0;
 
-    while (mapped.length < limit && offset < MAX_LEDGER_SCAN) {
+    while (offset < MAX_LEDGER_SCAN) {
       const { data: pageRaw, error: pageError } = await supabaseAdmin
         .from("finance_transactions")
         .select(
@@ -67,17 +92,21 @@ export async function GET(request: NextRequest) {
 
       for (const t of txns) {
         const ui = mapFinanceLedgerRowToProviderUi(t);
-        if (ui) {
-          mapped.push(ui);
-          if (mapped.length >= limit) break;
-        }
+        if (ui) allMapped.push(ui);
       }
 
       if (page.length < LEDGER_PAGE_SIZE) break;
       offset += LEDGER_PAGE_SIZE;
     }
 
-    return successResponse(mapped);
+    const summary = summarizeTransactions(allMapped);
+    const transactions = allMapped.slice(0, limit);
+
+    return successResponse({
+      transactions,
+      summary,
+      truncated_list: allMapped.length > limit,
+    });
   } catch (error) {
     console.error("Error fetching transactions:", error);
     return handleApiError(error, "Failed to load transactions");

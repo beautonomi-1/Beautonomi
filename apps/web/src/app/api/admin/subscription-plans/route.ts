@@ -14,66 +14,7 @@ import {
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
-
-// Complex feature gating structure matching migration 133
-const featureGatingSchema = z.object({
-  marketing_campaigns: z.object({
-    enabled: z.boolean(),
-    channels: z.array(z.string()).optional(),
-    max_campaigns_per_month: z.number().nullable().optional(),
-    max_recipients_per_campaign: z.number().nullable().optional(),
-    advanced_segmentation: z.boolean().optional(),
-    custom_integrations: z.boolean().optional(),
-  }).optional(),
-  chat_messages: z.object({
-    enabled: z.boolean(),
-    max_messages_per_month: z.number().nullable().optional(),
-    file_attachments: z.boolean().optional(),
-    group_chats: z.boolean().optional(),
-  }).optional(),
-  yoco_integration: z.object({
-    enabled: z.boolean(),
-    max_devices: z.number().nullable().optional(),
-    advanced_features: z.boolean().optional(),
-  }).optional(),
-  staff_management: z.object({
-    enabled: z.boolean(),
-    max_staff_members: z.number().nullable().optional(),
-  }).optional(),
-  multi_location: z.object({
-    enabled: z.boolean(),
-    max_locations: z.number().nullable().optional(),
-  }).optional(),
-  booking_limits: z.object({
-    enabled: z.boolean(),
-    max_bookings_per_month: z.number().nullable().optional(),
-  }).optional(),
-  advanced_analytics: z.object({
-    enabled: z.boolean(),
-    basic_reports: z.boolean().optional(),
-    advanced_reports: z.boolean().optional(),
-    data_export: z.boolean().optional(),
-    api_access: z.boolean().optional(),
-    report_types: z.array(z.string()).optional(),
-  }).optional(),
-  marketing_automations: z.object({
-    enabled: z.boolean(),
-    max_automations: z.number().nullable().optional(),
-  }).optional(),
-  recurring_appointments: z.object({
-    enabled: z.boolean(),
-    advanced_patterns: z.boolean().optional(),
-  }).optional(),
-  express_booking: z.object({
-    enabled: z.boolean(),
-    max_links: z.number().nullable().optional(),
-  }).optional(),
-  calendar_sync: z.object({
-    enabled: z.boolean(),
-    providers: z.array(z.string()).optional(),
-    api_access: z.boolean().optional(),
-  }).optional(),
-});
+import { planFeaturesSchema } from "@beautonomi/subscription-features";
 
 function makePlanSlug(name: string, explicit?: string | null): string {
   if (explicit?.trim()) return explicit.trim().slice(0, 120);
@@ -92,7 +33,7 @@ const createPlanSchema = z.object({
   price_monthly: z.number().min(0).optional(),
   price_yearly: z.number().min(0).optional(),
   currency: z.string().optional(),
-  features: z.union([featureGatingSchema, z.record(z.string(), z.any())]).optional(), // Support both complex structure and legacy array
+  features: planFeaturesSchema.optional(),
   is_free: z.boolean().default(false),
   is_active: z.boolean().default(true),
   is_popular: z.boolean().default(false),

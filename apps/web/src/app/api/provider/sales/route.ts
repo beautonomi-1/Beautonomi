@@ -10,6 +10,10 @@ import {
 import { dateRangeBoundsUtc } from "@/lib/dates/provider-tz";
 import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
 import { requireYocoPlatformEnabledForProvider } from "@/lib/payments/yoco-feature-gate";
+import {
+  checkNewGateFeatureAccess,
+  SUBSCRIPTION_FEATURE_KEYS,
+} from "@/lib/subscriptions/feature-access";
 
 /** Values allowed by `sales.payment_method` CHECK (see migration 129). */
 const DB_SALE_PAYMENT_METHODS = new Set([
@@ -349,6 +353,19 @@ export async function POST(request: NextRequest) {
         new Error('Provider profile not found'),
         'NOT_FOUND',
         404
+      );
+    }
+
+    const posOk = await checkNewGateFeatureAccess(
+      providerId,
+      SUBSCRIPTION_FEATURE_KEYS.posWalkIn,
+      supabase,
+    );
+    if (!posOk) {
+      return handleApiError(
+        new Error("POS and walk-in sales are not included in your current subscription plan."),
+        "SUBSCRIPTION_FEATURE_DISABLED",
+        403,
       );
     }
 

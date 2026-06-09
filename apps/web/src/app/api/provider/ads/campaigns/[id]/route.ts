@@ -33,7 +33,7 @@ export async function PATCH(
     const supabase = getSupabaseAdmin();
     const { data: existing } = await supabase
       .from("ads_campaigns")
-      .select("id, provider_id, pack_impressions, budget, spent, billing_model, start_at, end_at")
+      .select("id, provider_id, pack_impressions, budget, spent, billing_model, start_at, end_at, funded_at")
       .eq("id", campaignId)
       .single();
     if (!existing || existing.provider_id !== providerId) {
@@ -46,6 +46,16 @@ export async function PATCH(
     if (updates.status === "active") {
       const budget = Number((existing as any).budget ?? 0);
       const spent = Number((existing as any).spent ?? 0);
+      // Serve-time funding guard (migration 664): only a verified, non-reversed
+      // payment (funded_at) may (re)activate a campaign. A provider cannot flip an
+      // unfunded/reversed campaign back to active by hand.
+      if (!(existing as any).funded_at) {
+        return errorResponse(
+          "This campaign needs a paid budget before it can be activated.",
+          "ADS_PAYMENT_REQUIRED",
+          400
+        );
+      }
       if (budget <= 0 || (!isTimeBased && budget - spent <= 0)) {
         return errorResponse(
           "This campaign needs a paid budget before it can be activated.",

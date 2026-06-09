@@ -12,7 +12,20 @@ import { useModuleConfig, useFeatureFlag } from "@/providers/ConfigBundleProvide
 import { fetcher } from "@/lib/http/fetcher";
 import { formatApiErrorMessage } from "@/lib/http/api-error";
 import { toast } from "sonner";
-import { Plus, Loader2, Pause, Play, MousePointer, Eye, Users, Banknote } from "lucide-react";
+import {
+  Plus,
+  Loader2,
+  Pause,
+  Play,
+  MousePointer,
+  Eye,
+  Users,
+  Banknote,
+  Check,
+  Megaphone,
+  ShieldCheck,
+  Lock,
+} from "lucide-react";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
@@ -199,6 +212,21 @@ export default function ProviderAdsPage() {
   const [updating, setUpdating] = useState<string | null>(null);
   const [paymentConfirmedBanner, setPaymentConfirmedBanner] = useState(false);
   const [editCampaign, setEditCampaign] = useState<Campaign | null>(null);
+  // §Ads-enterprise-hardening 2026-06: world-class web checkout. A review modal
+  // (price breakdown + what-you-get + Sponsored disclosure + charged-after-
+  // confirm note) replaces the immediate redirect-and-toast, and a redirecting
+  // state covers the hop to Paystack so the click never feels unacknowledged.
+  const [checkoutReview, setCheckoutReview] = useState<{
+    heading: string;
+    title: string;
+    subtitle?: string;
+    benefits: string[];
+    lineItems: { label: string; value: string }[];
+    total: string;
+    confirmLabel: string;
+    run: () => Promise<void>;
+  } | null>(null);
+  const [checkoutSubmitting, setCheckoutSubmitting] = useState(false);
   const [form, setForm] = useState({
     budget: "",
     daily_budget: "",
@@ -326,7 +354,44 @@ export default function ProviderAdsPage() {
     }
   }, [searchParams, loadCampaigns, loadPerformance]);
 
-  const createDraft = async () => {
+  const createDraft = () => {
+    const num = parseFloat(createForm.budget);
+    if (!Number.isFinite(num) || num < 0) {
+      toast.error("Enter a valid total budget");
+      return;
+    }
+    if (num <= 0) {
+      // No payment needed — create the free draft immediately.
+      void runCreateDraft();
+      return;
+    }
+    const dailyCap = createForm.daily_budget ? parseFloat(createForm.daily_budget) : null;
+    const bidCpc = createForm.bid_cpc ? parseFloat(createForm.bid_cpc) : 0;
+    const lineItems = [{ label: "Campaign budget", value: fmt(num) }];
+    if (dailyCap && Number.isFinite(dailyCap) && dailyCap > 0) {
+      lineItems.push({ label: "Daily cap", value: fmt(dailyCap) });
+    }
+    if (bidCpc && Number.isFinite(bidCpc) && bidCpc > 0) {
+      lineItems.push({ label: "Bid per click", value: `${fmt(bidCpc)}/click` });
+    }
+    lineItems.push({ label: "Total due", value: fmt(num) });
+    setCheckoutReview({
+      heading: "CPC budget",
+      title: `${fmt(num)} campaign budget`,
+      subtitle: "Pay-per-click campaign with full control over spend and bids.",
+      benefits: [
+        "Sponsored placement in eligible category searches",
+        "You only pay as your ad earns clicks",
+        "Pause or end anytime — unspent budget stops serving",
+      ],
+      lineItems,
+      total: fmt(num),
+      confirmLabel: `Pay ${fmt(num)}`,
+      run: runCreateDraft,
+    });
+  };
+
+  const runCreateDraft = async () => {
     const num = parseFloat(createForm.budget);
     if (!Number.isFinite(num) || num < 0) {
       toast.error("Enter a valid total budget");
@@ -369,7 +434,27 @@ export default function ProviderAdsPage() {
     }
   };
 
-  const buyPack = async (pack: ImpressionPack) => {
+  const buyPack = (pack: ImpressionPack) => {
+    setCheckoutReview({
+      heading: "Impression pack",
+      title: `${formatCompactNumber(pack.impressions)} sponsored impressions`,
+      subtitle: "Prepaid reach — placements deliver until the pack is fully shown.",
+      benefits: [
+        `${formatCompactNumber(pack.impressions)} guaranteed sponsored impressions`,
+        "Delivery starts only after payment is verified",
+        "No bidding or daily caps to manage",
+      ],
+      lineItems: [
+        { label: "Impression pack", value: formatCompactNumber(pack.impressions) },
+        { label: "Total due", value: fmt(Number(pack.price_zar)) },
+      ],
+      total: fmt(Number(pack.price_zar)),
+      confirmLabel: `Pay ${fmt(Number(pack.price_zar))}`,
+      run: () => runBuyPack(pack),
+    });
+  };
+
+  const runBuyPack = async (pack: ImpressionPack) => {
     setCreatingPackId(pack.id);
     try {
       const res = await fetcher.post<{
@@ -401,6 +486,67 @@ export default function ProviderAdsPage() {
       toast.error("Failed to create campaign");
     } finally {
       setCreatingPackId(null);
+    }
+  };
+
+  const runBuyTimePack = async (tp: TimePack) => {
+    setCreatingPackId(tp.id);
+    try {
+      const targeting =
+        createForm.global_category_ids.length > 0
+          ? { global_category_ids: createForm.global_category_ids }
+          : {};
+      const res = await fetcher.post<{
+        data: Campaign | { campaign: Campaign; requires_payment?: boolean; payment_url?: string | null };
+      }>("/api/provider/ads/campaigns", { time_pack_id: tp.id, targeting });
+      const payload = res.data as {
+        payment_url?: string | null;
+        requires_payment?: boolean;
+        campaign?: Campaign;
+      };
+      if (payload?.requires_payment && payload?.payment_url) {
+        toast.success("Redirecting to secure payment…");
+        window.location.href = payload.payment_url;
+        return;
+      }
+      toast.success("Campaign created.");
+      loadCampaigns();
+    } catch {
+      toast.error("Failed to create campaign");
+    } finally {
+      setCreatingPackId(null);
+    }
+  };
+
+  const openTimePackReview = (tp: TimePack) => {
+    const daysLabel = tp.duration_days === 1 ? "1 day" : `${tp.duration_days} days`;
+    setCheckoutReview({
+      heading: "Time boost",
+      title: tp.label?.trim() ? tp.label : `${daysLabel} boost`,
+      subtitle: `Flat fee — sponsored placement for ${daysLabel}.`,
+      benefits: [
+        `Sponsored placement for the full ${daysLabel}`,
+        "Predictable flat price — no per-click charges",
+        "Goes live only after payment is verified",
+      ],
+      lineItems: [
+        { label: "Boost duration", value: daysLabel },
+        { label: "Total due", value: fmt(Number(tp.price_zar)) },
+      ],
+      total: fmt(Number(tp.price_zar)),
+      confirmLabel: `Pay ${fmt(Number(tp.price_zar))}`,
+      run: () => runBuyTimePack(tp),
+    });
+  };
+
+  const confirmCheckout = async () => {
+    if (!checkoutReview) return;
+    setCheckoutSubmitting(true);
+    try {
+      await checkoutReview.run();
+    } finally {
+      setCheckoutSubmitting(false);
+      setCheckoutReview(null);
     }
   };
 
@@ -540,15 +686,23 @@ export default function ProviderAdsPage() {
               <strong>Payment confirmed.</strong> Your campaign is now funded and will go live
               shortly. Refresh in a moment if it isn&apos;t showing as active yet.
             </span>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="shrink-0 border-emerald-300"
-              onClick={() => setPaymentConfirmedBanner(false)}
-            >
-              Dismiss
-            </Button>
+            <div className="flex shrink-0 items-center gap-2">
+              <a
+                href="/provider/settings/billing"
+                className="inline-flex items-center rounded-md border border-emerald-300 px-3 py-1.5 text-sm font-medium text-emerald-800 hover:bg-emerald-100"
+              >
+                View receipt
+              </a>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="border-emerald-300"
+                onClick={() => setPaymentConfirmedBanner(false)}
+              >
+                Dismiss
+              </Button>
+            </div>
           </AlertDescription>
         </Alert>
       )}
@@ -665,42 +819,7 @@ export default function ProviderAdsPage() {
                       >
                         <button
                           type="button"
-                          onClick={async () => {
-                            setCreatingPackId(tp.id);
-                            try {
-                              const targeting =
-                                createForm.global_category_ids.length > 0
-                                  ? { global_category_ids: createForm.global_category_ids }
-                                  : {};
-                              const res = await fetcher.post<{
-                                data:
-                                  | Campaign
-                                  | {
-                                      campaign: Campaign;
-                                      requires_payment?: boolean;
-                                      payment_url?: string | null;
-                                    };
-                              }>("/api/provider/ads/campaigns", {
-                                time_pack_id: tp.id,
-                                targeting,
-                              });
-                              const payload = res.data as {
-                                payment_url?: string | null;
-                                requires_payment?: boolean;
-                                campaign?: Campaign;
-                              };
-                              if (payload?.requires_payment && payload?.payment_url) {
-                                window.location.href = payload.payment_url;
-                                return;
-                              }
-                              toast.success("Campaign created.");
-                              loadCampaigns();
-                            } catch {
-                              toast.error("Failed to create campaign");
-                            } finally {
-                              setCreatingPackId(null);
-                            }
-                          }}
+                          onClick={() => openTimePackReview(tp)}
                           disabled={creatingPackId !== null}
                           className="w-full rounded-[14px] bg-background p-4 text-left transition hover:bg-muted/40 disabled:opacity-50 min-h-[148px] flex flex-col"
                         >
@@ -1159,6 +1278,111 @@ export default function ProviderAdsPage() {
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
               ) : null}
               Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* §Ads-enterprise-hardening 2026-06: pre-payment review modal — parity
+        with the customer product-order review. Shows the price breakdown,
+        what-you-get, the Sponsored disclosure, and an explicit charged-only-
+        after-confirm note before handing off to the secure Paystack page. */}
+      <Dialog
+        open={!!checkoutReview}
+        onOpenChange={(open) => {
+          if (!open && !checkoutSubmitting) setCheckoutReview(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Review your boost</DialogTitle>
+            <DialogDescription>
+              Confirm the details below. You&apos;re only charged after you approve the payment on the
+              secure Paystack page.
+            </DialogDescription>
+          </DialogHeader>
+          {checkoutReview ? (
+            <div className="grid gap-4 py-2">
+              <div className="rounded-xl border border-indigo-100 bg-indigo-50 p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-indigo-700">
+                  {checkoutReview.heading}
+                </p>
+                <p className="mt-1 text-lg font-bold text-indigo-950">{checkoutReview.title}</p>
+                {checkoutReview.subtitle ? (
+                  <p className="mt-1 text-sm text-indigo-900/75">{checkoutReview.subtitle}</p>
+                ) : null}
+              </div>
+
+              {checkoutReview.benefits.length > 0 ? (
+                <ul className="space-y-2">
+                  {checkoutReview.benefits.map((benefit) => (
+                    <li key={benefit} className="flex items-start gap-2 text-sm text-foreground">
+                      <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                      <span>{benefit}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+
+              <div className="rounded-lg border p-4">
+                {checkoutReview.lineItems.map((item, idx) => {
+                  const isTotal = idx === checkoutReview.lineItems.length - 1;
+                  return (
+                    <div
+                      key={item.label}
+                      className={`flex items-center justify-between ${idx > 0 ? "mt-2" : ""} ${
+                        isTotal ? "mt-3 border-t pt-3" : ""
+                      }`}
+                    >
+                      <span
+                        className={
+                          isTotal ? "text-sm font-semibold" : "text-sm text-muted-foreground"
+                        }
+                      >
+                        {item.label}
+                      </span>
+                      <span className={isTotal ? "text-base font-bold" : "text-sm font-medium"}>
+                        {item.value}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="flex items-start gap-2 rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">
+                <Megaphone className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>
+                  Your listing will appear as a <strong>Sponsored</strong> result in eligible
+                  searches while the campaign is funded and active.
+                </span>
+              </div>
+              <div className="flex items-start gap-2 rounded-lg border border-emerald-100 bg-emerald-50 p-3 text-xs text-emerald-800">
+                <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>
+                  You&apos;re only charged after you confirm on Paystack. Your campaign goes live once
+                  payment is verified — never before.
+                </span>
+              </div>
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setCheckoutReview(null)}
+              disabled={checkoutSubmitting}
+            >
+              Not now
+            </Button>
+            <Button onClick={() => void confirmCheckout()} disabled={checkoutSubmitting}>
+              {checkoutSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Opening secure checkout…
+                </>
+              ) : (
+                <>
+                  <Lock className="mr-2 h-4 w-4" /> {checkoutReview?.confirmLabel ?? "Pay securely"}
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

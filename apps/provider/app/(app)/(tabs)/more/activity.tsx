@@ -16,8 +16,9 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
-import { formatCurrencyShort, formatTimeAgo } from "@/lib/format";
+import { formatCurrency, formatTimeAgo } from "@/lib/format";
 import { Colors } from "@/constants/colors";
+import { getProviderActivityIcon } from "@/lib/provider-activity-icons";
 import { twStyle } from "@/lib/twStyle";
 
 interface DashboardData {
@@ -47,7 +48,7 @@ interface ActivityItem {
   type: string;
   description: string;
   created_at: string;
-  data?: { booking_id?: string; client_name?: string; amount?: number };
+  data?: { booking_id?: string; product_order_id?: string; client_name?: string; amount?: number };
 }
 
 interface ActivityFeedPayload {
@@ -63,35 +64,11 @@ function unwrapActivityFeed(data: ActivityFeedPayload | ActivityItem[] | null | 
   return data.activities ?? [];
 }
 
-function getActivityIcon(type: string): {
-  name: keyof typeof Ionicons.glyphMap;
-  color: string;
-  bg: string;
-} {
-  switch (type) {
-    case "booking_created":
-      return { name: "book-outline", color: "#6366f1", bg: "#eef2ff" };
-    case "booking_completed":
-      return { name: "checkmark-circle-outline", color: "#22c55e", bg: "#f0fdf4" };
-    case "booking_cancelled":
-      return { name: "close-circle-outline", color: "#ef4444", bg: "#fef2f2" };
-    case "payment_received":
-    case "ledger_earnings":
-      return { name: "cash-outline", color: "#059669", bg: "#ecfdf5" };
-    case "payout_sent":
-      return { name: "arrow-forward-circle-outline", color: "#7c3aed", bg: "#f5f3ff" };
-    case "new_review":
-      return { name: "star-outline", color: "#f59e0b", bg: "#fffbeb" };
-    default:
-      return { name: "ellipse-outline", color: "#6b7280", bg: "#f3f4f6" };
-  }
-}
-
-const formatCurrency = formatCurrencyShort;
 
 export default function ActivityScreen() {
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
+  const [feedLimit, setFeedLimit] = useState(25);
   const { screenPadding } = useResponsive();
   const { selectedLocationId } = useProvider();
 
@@ -101,10 +78,10 @@ export default function ActivityScreen() {
 
   const activityFeedUrl = useMemo(() => {
     const p = new URLSearchParams();
-    p.set("limit", "25");
+    p.set("limit", String(feedLimit));
     if (selectedLocationId) p.set("location_id", selectedLocationId);
     return `/api/provider/activity?${p.toString()}`;
-  }, [selectedLocationId]);
+  }, [selectedLocationId, feedLimit]);
 
   const { data, loading, error, refresh } = useApi<DashboardData>(dashboardUrl);
   const {
@@ -306,7 +283,7 @@ export default function ActivityScreen() {
 
         <Text style={twStyle("mb-2 text-sm font-semibold text-gray-800")}>Recent timeline</Text>
         <Text style={twStyle("mb-3 text-xs leading-4 text-gray-500")}>
-          Newest first · bookings (created), ledger earnings & payouts, reviews
+          Newest first · appointments, retail, ledger earnings, refunds, payouts, reviews
         </Text>
 
         {feedLoading && recent.length === 0 ? (
@@ -332,7 +309,7 @@ export default function ActivityScreen() {
         ) : (
           <View style={twStyle("overflow-hidden rounded-2xl border border-gray-100 bg-white")}>
             {recent.map((item, idx) => {
-              const iconInfo = getActivityIcon(item.type);
+              const iconInfo = getProviderActivityIcon(item.type);
               return (
                 <TouchableOpacity
                   key={item.id}
@@ -341,6 +318,13 @@ export default function ActivityScreen() {
                     if (item.data?.booking_id) {
                       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                       router.push(`/(app)/(tabs)/bookings/${item.data.booking_id}` as never);
+                      return;
+                    }
+                    if (item.data?.product_order_id) {
+                      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      router.push(
+                        `/(app)/(tabs)/more/orders-hub?order=${encodeURIComponent(item.data.product_order_id)}` as never,
+                      );
                     }
                   }}
                   style={twStyle(
@@ -371,6 +355,24 @@ export default function ActivityScreen() {
             })}
           </View>
         )}
+
+        {recent.length >= feedLimit && feedLimit < 100 ? (
+          <TouchableOpacity
+            onPress={() => setFeedLimit((n) => Math.min(n + 25, 100))}
+            disabled={feedLoading}
+            activeOpacity={0.75}
+            style={twStyle(
+              `mt-3 flex-row items-center justify-center rounded-2xl border border-gray-200 bg-white py-3 ${feedLoading ? "opacity-60" : ""}`,
+            )}
+            accessibilityRole="button"
+            accessibilityLabel="Load more activity"
+          >
+            <Ionicons name="chevron-down" size={16} color={Colors.primary} />
+            <Text style={twStyle("ml-1 text-sm font-semibold text-primary")}>
+              {feedLoading ? "Loading…" : "Load more"}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
       </ScrollView>
     </ScreenContainer>
   );

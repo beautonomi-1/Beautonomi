@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
@@ -194,7 +194,7 @@ interface OnboardingData {
   selected_plan_name?: string;
 }
 
-/** Muted secondary actions (Edit / Cancel) — light grey, readable contrast, 14px body text (WCAG-friendly on white). */
+/** Muted secondary actions (Edit / Cancel) â€” light grey, readable contrast, 14px body text (WCAG-friendly on white). */
 const ONBOARDING_SOFT_SECONDARY_BTN =
   "h-10 min-h-10 shrink-0 rounded-full border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-700 shadow-sm hover:border-slate-300 hover:bg-slate-100 hover:text-slate-900 focus-visible:ring-2 focus-visible:ring-slate-400/35 transition-all";
 
@@ -209,7 +209,7 @@ const ONBOARDING_MAIN_CARD =
 const ONBOARDING_STEP_TITLE = "text-3xl sm:text-4xl font-semibold tracking-tight text-slate-900";
 const ONBOARDING_STEP_DESC = "mt-3 text-lg text-slate-600 leading-relaxed max-w-xl";
 /**
- * §Provider-launch (2026-05): nav row sticks to the bottom of the viewport on
+ * Â§Provider-launch (2026-05): nav row sticks to the bottom of the viewport on
  * mobile so primary CTAs (Back / Skip / Next / Submit) are always reachable
  * without scrolling past long step bodies (Mangomint/Fresha-style sticky footer).
  * Desktop retains the inline card-bottom layout.
@@ -231,8 +231,8 @@ function digitsOnlyPhone(s: string | null | undefined): string {
 }
 
 /**
- * Coerce profile / draft / pasted values to compact E.164 (+country…, no spaces).
- * Handles: full E.164, "+27 082…", national with leading 0, legacy 9-digit SA mobile without 0.
+ * Coerce profile / draft / pasted values to compact E.164 (+countryâ€¦, no spaces).
+ * Handles: full E.164, "+27 082â€¦", national with leading 0, legacy 9-digit SA mobile without 0.
  */
 function coerceOwnerPhoneToE164ForForm(raw: string | undefined): string {
   if (!raw?.trim()) return "";
@@ -506,7 +506,7 @@ export default function ProviderOnboarding() {
   };
 
   /**
-   * §Provider-launch (2026-05): keep the draft payload tiny by guaranteeing
+   * Â§Provider-launch (2026-05): keep the draft payload tiny by guaranteeing
    * `thumbnail_url`/`avatar_url`/`gallery` are public storage URLs (never
    * base64 `data:` strings). The Photos step uploads on pick, but legacy
    * drafts hydrated from sessionStorage might still contain inline images.
@@ -750,7 +750,7 @@ export default function ProviderOnboarding() {
         setCurrentStep(8);
         return;
       }
-      // §Provider-launch (2026-05): hard-stop if any photo URL is still an
+      // Â§Provider-launch (2026-05): hard-stop if any photo URL is still an
       // inline base64 `data:` blob (would otherwise produce the same 413
       // FUNCTION_PAYLOAD_TOO_LARGE the user reported on Submit & Launch).
       if (
@@ -839,8 +839,8 @@ export default function ProviderOnboarding() {
         return;
       }
 
-      // §Provider-launch (audit 2026-04): never log the full onboarding
-      // payload — it contains owner name, email, phone, address, ID
+      // Â§Provider-launch (audit 2026-04): never log the full onboarding
+      // payload â€” it contains owner name, email, phone, address, ID
       // numbers, and banking details. Surface just enough signal for
       // debugging without leaking PII into the browser console.
       if (process.env.NODE_ENV !== "production") {
@@ -903,7 +903,7 @@ export default function ProviderOnboarding() {
       try {
         sessionStorage.removeItem(ONBOARDING_DRAFT_STORAGE_KEY);
       } catch {}
-      // §provider-launch (2026-06): no get-started detour. Send the provider to
+      // Â§provider-launch (2026-06): no get-started detour. Send the provider to
       // the optional, skippable identity-verification step (the verification
       // settings screen in onboarding mode), which continues to the dashboard.
       setTimeout(() => {
@@ -920,7 +920,7 @@ export default function ProviderOnboarding() {
           details: error.details,
         });
 
-        // §Provider-launch (2026-05): translate Vercel's raw FUNCTION_PAYLOAD_TOO_LARGE
+        // Â§Provider-launch (2026-05): translate Vercel's raw FUNCTION_PAYLOAD_TOO_LARGE
         // (413) into something actionable. Surfaces when, despite the data-URL
         // guards above, the payload is still too big (e.g. an upstream proxy
         // limit or a corrupted draft).
@@ -1019,7 +1019,7 @@ export default function ProviderOnboarding() {
                 </p>
                 {isSavingDraft && (
                   <p className="text-[10px] font-medium text-slate-500 mt-0.5 animate-pulse">
-                    Saving…
+                    Savingâ€¦
                   </p>
                 )}
               </div>
@@ -1112,7 +1112,7 @@ export default function ProviderOnboarding() {
                     disabled={isSubmitting}
                     className={`${ONBOARDING_BTN_NEXT} bg-primary text-white hover:bg-primary-hover disabled:opacity-50`}
                   >
-                    {isSubmitting ? "Submitting…" : "Submit & launch"}
+                    {isSubmitting ? "Submittingâ€¦" : "Submit & launch"}
                   </Button>
                 )}
               </div>
@@ -1139,28 +1139,28 @@ function Step1TeamSize({
       subtitle: "It's just me",
       description: "Perfect for independent professionals",
       badge: "Most Popular",
-      icon: "👤",
+      icon: "ðŸ‘¤",
     },
     {
       id: "small",
       title: "Small Team",
-      subtitle: "2 – 10 staff members",
+      subtitle: "2 â€“ 10 staff members",
       description: "Growing business with a small team",
-      icon: "👥",
+      icon: "ðŸ‘¥",
     },
     {
       id: "medium",
       title: "Medium Team",
-      subtitle: "11 – 20 staff members",
+      subtitle: "11 â€“ 20 staff members",
       description: "Established business with a solid team",
-      icon: "👨‍👩‍👧‍👦",
+      icon: "ðŸ‘¨â€ðŸ‘©â€ðŸ‘§â€ðŸ‘¦",
     },
     {
       id: "large",
       title: "Large Team",
       subtitle: "20+ staff members",
       description: "Large operation with multiple staff",
-      icon: "🏢",
+      icon: "ðŸ¢",
     },
   ];
 
@@ -1210,378 +1210,13 @@ function Step1TeamSize({
         })}
       </div>
       <p className="text-sm text-slate-500 text-center mt-6">
-        We use this to tailor your setup. You&apos;ll choose salon, mobile, or both in the next
-        step.
+        We use this to tailor your setup. You&apos;ll confirm whether you work from a salon, go
+        mobile, or both in the Business details step.
       </p>
     </div>
   );
 }
 
-// Legacy Step1BusinessInfo - keeping for reference, will be replaced
-function _Step1BusinessInfo({
-  data,
-  updateData,
-}: {
-  data: Partial<OnboardingData>;
-  updateData: (updates: Partial<OnboardingData>) => void;
-}) {
-  const [previousSoftwareOptions, setPreviousSoftwareOptions] = useState<
-    Array<{ id: string; name: string; slug: string }>
-  >([]);
-  const [isLoadingSoftwareOptions, setIsLoadingSoftwareOptions] = useState(true);
-
-  useEffect(() => {
-    const loadPreviousSoftwareOptions = async () => {
-      try {
-        const response = await fetcher.get<{
-          data: Array<{ id: string; name: string; slug: string }>;
-        }>("/api/public/previous-software-options");
-        setPreviousSoftwareOptions(response.data || []);
-      } catch (error) {
-        console.error("Error loading previous software options:", error);
-        // Fallback to empty array - the select will just be empty
-        setPreviousSoftwareOptions([]);
-      } finally {
-        setIsLoadingSoftwareOptions(false);
-      }
-    };
-    loadPreviousSoftwareOptions();
-  }, []);
-  return (
-    <div className="space-y-4 sm:space-y-5 md:space-y-6">
-      <Alert className="bg-blue-50 border-blue-200">
-        <Sparkles className="w-4 h-4 text-blue-600" />
-        <AlertDescription className="text-blue-800 text-sm">
-          <strong>Quick Setup:</strong> We'll automatically configure most settings for you!
-          {data.business_type === "mobile" &&
-            " As a freelancer, we'll mark you as mobile-ready and help you select service zones."}
-          {data.business_type === "both" &&
-            " We'll help you set up both salon and mobile services."}
-          {(!data.business_type || data.business_type === "salon") &&
-            " We'll help you get started quickly with smart defaults."}
-        </AlertDescription>
-      </Alert>
-
-      <div>
-        <Label
-          htmlFor="business_name"
-          className="text-sm sm:text-base font-semibold text-gray-900 mb-2 block"
-        >
-          Business Name <span className="text-primary">*</span>
-        </Label>
-        <Input
-          id="business_name"
-          value={data.business_name || ""}
-          onChange={(e) => updateData({ business_name: e.target.value })}
-          placeholder="Enter your business name"
-          className="h-12 sm:h-14 text-base border-gray-300 focus:border-primary focus:ring-primary rounded-lg"
-          required
-        />
-      </div>
-      <div>
-        <Label
-          htmlFor="business_type"
-          className="text-sm sm:text-base font-semibold text-gray-900 mb-2 block"
-        >
-          Business Type <span className="text-primary">*</span>
-        </Label>
-        <select
-          id="business_type"
-          value={data.business_type || "salon"}
-          onChange={(e) => {
-            const newType = e.target.value as any;
-            updateData({ business_type: newType });
-
-            // Show helpful message about what will be auto-configured
-            if (newType === "mobile") {
-              toast.info(
-                "We'll automatically mark you as mobile-ready and help you set up service zones!",
-                { duration: 4000 }
-              );
-            }
-          }}
-          className="w-full h-12 sm:h-14 px-4 text-base border border-gray-300 rounded-lg focus:border-primary focus:ring-primary bg-white"
-        >
-          <option value="salon">Salon/Studio (Fixed Location)</option>
-          <option value="mobile">Freelancer (Mobile/At-Home Services)</option>
-          <option value="both">Both (Salon + Mobile Services)</option>
-        </select>
-        <p className="text-xs sm:text-sm text-gray-600 mt-2 leading-relaxed">
-          {data.business_type === "mobile" && (
-            <span>
-              <strong>Freelancer mode:</strong> You'll be automatically set up as mobile-ready
-              staff. We'll help you select service zones where you can provide at-home services.
-            </span>
-          )}
-          {data.business_type === "salon" && (
-            <span>Salons have a fixed location where customers visit for services.</span>
-          )}
-          {data.business_type === "both" && (
-            <span>
-              <strong>Hybrid mode:</strong> You operate both a fixed location and provide
-              mobile/at-home services. We'll help you configure both.
-            </span>
-          )}
-          {!data.business_type && (
-            <span>Select your business model. You can upgrade from freelancer to salon later.</span>
-          )}
-        </p>
-      </div>
-      <div>
-        <Label
-          htmlFor="website"
-          className="text-sm sm:text-base font-semibold text-gray-900 mb-2 block"
-        >
-          Website URL
-          <span className="text-gray-500 font-normal text-xs sm:text-sm ml-2">
-            (Optional but recommended)
-          </span>
-        </Label>
-        <Input
-          id="website"
-          type="url"
-          value={data.website || ""}
-          onChange={(e) => {
-            let value = e.target.value.trim();
-            // Auto-add https:// if missing
-            if (value && !value.match(/^https?:\/\//)) {
-              value = `https://${value}`;
-            }
-            updateData({ website: value || undefined });
-          }}
-          placeholder="https://yourwebsite.com"
-          className="h-12 sm:h-14 text-base border-gray-300 focus:border-primary focus:ring-primary rounded-lg"
-        />
-        <p className="text-xs sm:text-sm text-gray-600 mt-1">
-          Your website helps customers learn more about you and improves your search visibility.
-        </p>
-      </div>
-      <div>
-        <Label
-          htmlFor="years_in_business"
-          className="text-sm sm:text-base font-semibold text-gray-900 mb-2 block"
-        >
-          Years in Business
-          <span className="text-gray-500 font-normal text-xs sm:text-sm ml-2">(Optional)</span>
-        </Label>
-        <select
-          id="years_in_business"
-          value={data.years_in_business || ""}
-          onChange={(e) => {
-            const value = e.target.value;
-            updateData({ years_in_business: value ? parseInt(value) : undefined });
-          }}
-          className="w-full h-12 sm:h-14 px-4 text-base border border-gray-300 rounded-lg focus:border-primary focus:ring-primary bg-white"
-        >
-          <option value="">Select years...</option>
-          <option value="0">Just starting (0 years)</option>
-          <option value="1">1 year</option>
-          <option value="2">2 years</option>
-          <option value="3">3 years</option>
-          <option value="4">4 years</option>
-          <option value="5">5 years</option>
-          <option value="6">6-10 years</option>
-          <option value="11">11-15 years</option>
-          <option value="16">16-20 years</option>
-          <option value="21">20+ years</option>
-        </select>
-        <p className="text-xs sm:text-sm text-gray-600 mt-1">
-          Your experience helps build trust with customers.
-        </p>
-      </div>
-      <div>
-        <Label
-          htmlFor="description"
-          className="text-sm sm:text-base font-semibold text-gray-900 mb-2 block"
-        >
-          Business Description
-          <span className="text-gray-500 font-normal text-xs sm:text-sm ml-2">
-            (Recommended: 50-500 characters)
-          </span>
-        </Label>
-        <Textarea
-          id="description"
-          value={data.description || ""}
-          onChange={(e) => {
-            const value = e.target.value;
-            if (value.length <= 2000) {
-              updateData({ description: value });
-            }
-          }}
-          placeholder="Tell customers about your business, your expertise, what makes you unique, and what they can expect..."
-          className="min-h-[120px] sm:min-h-[140px] text-base border-gray-300 focus:border-primary focus:ring-primary rounded-lg resize-none"
-          maxLength={2000}
-        />
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mt-2">
-          <p className="text-xs sm:text-sm text-gray-600">
-            {data.description && data.description.length < 50 ? (
-              <span className="text-amber-600 font-medium">
-                Consider adding more details ({data.description.length}/50 minimum recommended)
-              </span>
-            ) : (
-              <span>
-                {data.description?.length || 0}/2000 characters
-                {data.description && data.description.length >= 50 && (
-                  <span className="text-green-600 ml-2 font-medium">✓ Good length</span>
-                )}
-              </span>
-            )}
-          </p>
-          <button
-            type="button"
-            onClick={() => {
-              const templates = [
-                "Welcome to [Business Name]! We specialize in [service type] with [X] years of experience. Our team is dedicated to providing exceptional service in a relaxing, professional environment. We use only premium products and stay up-to-date with the latest techniques and trends.",
-                "At [Business Name], we believe beauty is an art form. Our skilled professionals are passionate about helping you look and feel your best. From [service 1] to [service 2], we offer a full range of services tailored to your unique needs.",
-                "[Business Name] is your trusted partner for all your beauty and wellness needs. Located in [location], we've been serving the community since [year]. Our commitment to excellence and customer satisfaction sets us apart.",
-              ];
-              const randomTemplate = templates[Math.floor(Math.random() * templates.length)];
-              updateData({ description: randomTemplate });
-            }}
-            className="text-xs sm:text-sm text-primary hover:text-primary-hover font-medium hover:underline transition-colors"
-          >
-            Use template
-          </button>
-        </div>
-      </div>
-      <div>
-        <Label
-          htmlFor="previous_software"
-          className="text-sm sm:text-base font-semibold text-gray-900 mb-2 block"
-        >
-          Previous Salon Software <span className="text-gray-500 font-normal">(Optional)</span>
-        </Label>
-        {isLoadingSoftwareOptions ? (
-          <div className="h-12 sm:h-14 border border-gray-300 rounded-lg flex items-center justify-center">
-            <p className="text-sm text-gray-500">Loading options...</p>
-          </div>
-        ) : (
-          <>
-            <ChipCombobox
-              singleSelect
-              value={
-                data.previous_software === "other" && data.previous_software_other
-                  ? data.previous_software_other
-                  : data.previous_software || null
-              }
-              onChange={(v) => {
-                if (!v) {
-                  updateData({ previous_software: undefined, previous_software_other: undefined });
-                  return;
-                }
-                const known = new Set([
-                  "none",
-                  "other",
-                  ...previousSoftwareOptions.map((o) => o.slug),
-                ]);
-                if (known.has(v)) {
-                  updateData({
-                    previous_software: v,
-                    previous_software_other:
-                      v === "other" ? data.previous_software_other : undefined,
-                  });
-                } else {
-                  updateData({ previous_software: "other", previous_software_other: v });
-                }
-              }}
-              staticSuggestions={[
-                { value: "none", label: "None / First time using salon software" },
-                ...previousSoftwareOptions.map((o) => ({ value: o.slug, label: o.name })),
-                { value: "other", label: "Other" },
-              ]}
-              allowFreeForm
-              placeholder="Select or type software..."
-              aria-label="Previous salon software"
-            />
-            {data.previous_software === "other" && !data.previous_software_other && (
-              <Input
-                id="previous_software_other"
-                value={data.previous_software_other || ""}
-                onChange={(e) => updateData({ previous_software_other: e.target.value })}
-                placeholder="Enter the name of the software"
-                className="mt-3 h-12 sm:h-14 text-base border-gray-300 focus:border-primary focus:ring-primary rounded-lg"
-              />
-            )}
-          </>
-        )}
-        <p className="text-xs sm:text-sm text-gray-600 mt-2 leading-relaxed">
-          Help us understand where providers are coming from. This information is only visible to
-          administrators.
-        </p>
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 md:gap-5">
-        <div>
-          <Label
-            htmlFor="phone"
-            className="text-sm sm:text-base font-semibold text-gray-900 mb-2 block"
-          >
-            Phone <span className="text-primary">*</span>
-          </Label>
-          <PhoneInput
-            inputId="provider-onboarding-legacy-business-phone"
-            label=""
-            value={data.phone || ""}
-            onChange={(e164) => updateData({ phone: e164 })}
-            placeholder="Phone number"
-            required
-          />
-        </div>
-        <div>
-          <Label
-            htmlFor="email"
-            className="text-sm sm:text-base font-semibold text-gray-900 mb-2 block"
-          >
-            Email <span className="text-primary">*</span>
-          </Label>
-          <Input
-            id="email"
-            type="email"
-            value={data.email || ""}
-            onChange={(e) => updateData({ email: e.target.value })}
-            placeholder="business@example.com"
-            className="h-12 sm:h-14 text-base border-gray-300 focus:border-primary focus:ring-primary rounded-lg"
-            required
-          />
-        </div>
-      </div>
-      <div>
-        <Label
-          htmlFor="languages_spoken"
-          className="text-sm sm:text-base font-semibold text-gray-900 mb-2 block"
-        >
-          Languages You Speak
-          <span className="text-gray-500 font-normal text-xs sm:text-sm ml-2">(Optional)</span>
-        </Label>
-        <p className="text-xs sm:text-sm text-gray-600 mb-2">
-          Select or type the languages you can communicate in with clients. At least one language is
-          required.
-        </p>
-        <ChipCombobox
-          singleSelect={false}
-          value={data.languages_spoken?.length ? data.languages_spoken : ["English"]}
-          onChange={(next) => updateData({ languages_spoken: next.length ? next : ["English"] })}
-          staticSuggestions={[
-            "English",
-            "Afrikaans",
-            "Zulu",
-            "Xhosa",
-            "Sesotho",
-            "Tswana",
-            "Venda",
-            "Tsonga",
-            "Swati",
-            "Ndebele",
-            "Southern Sotho",
-            "Northern Sotho",
-          ].map((l) => ({ value: l, label: l }))}
-          allowFreeForm
-          placeholder="Add language..."
-          aria-label="Languages you speak"
-        />
-      </div>
-    </div>
-  );
-}
 
 // Step 2: Identity - Name, Email, Phone with Verification
 function Step2Identity({
@@ -1596,7 +1231,7 @@ function Step2Identity({
   const [verificationCode, setVerificationCode] = useState("");
   const [codeSent, setCodeSent] = useState(false);
   const [countdown, setCountdown] = useState(0);
-  /** E.164 used with `updateUser({ phone })` — must match `verifyOtp` phone. */
+  /** E.164 used with `updateUser({ phone })` â€” must match `verifyOtp` phone. */
   const [pendingPhoneE164, setPendingPhoneE164] = useState("");
 
   // Countdown timer
@@ -1756,10 +1391,10 @@ function Step2Identity({
             </Button>
           </div>
           <p className="mt-3 text-xs leading-relaxed text-slate-500">
-            We’ll SMS a {SUPABASE_AUTH_OTP_LENGTH}-digit code (valid for about{" "}
+            Weâ€™ll SMS a {SUPABASE_AUTH_OTP_LENGTH}-digit code (valid for about{" "}
             {Math.max(1, Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60))}{" "}
             {Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60) === 1 ? "minute" : "minutes"}).
-            For South Africa, enter the local number only (omit +27)—for example{" "}
+            For South Africa, enter the local number only (omit +27)â€”for example{" "}
             <span className="whitespace-nowrap font-medium text-slate-700">82 123 4567</span> or{" "}
             <span className="whitespace-nowrap font-medium text-slate-700">082 123 4567</span>.
           </p>
@@ -1838,7 +1473,7 @@ function Step8Photos({
   const [avatarPreview, setAvatarPreview] = useState<string | null>(data.avatar_url || null);
   const [galleryFiles, setGalleryFiles] = useState<File[]>([]);
   const [galleryPreviews, setGalleryPreviews] = useState<string[]>(data.gallery || []);
-  // §Provider-launch (2026-05): uploads run on pick (not on submit) so the
+  // Â§Provider-launch (2026-05): uploads run on pick (not on submit) so the
   // draft + final POST only ever carry public storage URLs. Track per-slot
   // uploading state so the UI can disable buttons + show a spinner.
   const [uploadingThumbnail, setUploadingThumbnail] = useState(false);
@@ -2117,7 +1752,7 @@ function Step8Photos({
                 <Upload className="w-4 h-4 mr-2" />
               )}
               {uploadingThumbnail
-                ? "Uploading…"
+                ? "Uploadingâ€¦"
                 : thumbnailPreview
                   ? "Change Thumbnail"
                   : "Upload Thumbnail"}
@@ -2195,7 +1830,7 @@ function Step8Photos({
                 <Upload className="w-4 h-4 mr-2" />
               )}
               {uploadingAvatar
-                ? "Uploading…"
+                ? "Uploadingâ€¦"
                 : avatarPreview
                   ? "Change profile image"
                   : "Upload profile image"}
@@ -2246,7 +1881,7 @@ function Step8Photos({
           ) : (
             <Upload className="w-4 h-4 mr-2" />
           )}
-          {uploadingGallery ? "Uploading…" : "Add Portfolio Images"}
+          {uploadingGallery ? "Uploadingâ€¦" : "Add Portfolio Images"}
         </Label>
 
         {galleryPreviews.length > 0 && (
@@ -2382,9 +2017,7 @@ function Step3BusinessDetails({
               Complete profiles build trust
             </p>
             <p className="text-sm leading-relaxed text-slate-600">
-              Add a clear description, the languages you speak, and optionally a website or social
-              links.
-              {data.team_size === "freelancer" && " (Mobile/studio preference is set later)."}
+              Choose how you operate, then add a clear description, languages, and optional links.
             </p>
           </div>
         </div>
@@ -2406,11 +2039,47 @@ function Step3BusinessDetails({
       </section>
 
       <section className="space-y-3">
+        <Label className="text-sm font-semibold text-slate-900">
+          Business type <span className="text-slate-400">*</span>
+        </Label>
+        <p className={helperMuted}>
+          Determines location, service zones, and travel-fee setup.
+        </p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {(
+            [
+              { id: "salon", title: "Salon / studio", sub: "Clients visit your location" },
+              { id: "mobile", title: "Mobile / at-home", sub: "You travel to clients" },
+              { id: "both", title: "Both", sub: "Fixed location + mobile visits" },
+            ] as const
+          ).map((opt) => {
+            const selected = (data.business_type || "salon") === opt.id;
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => updateData({ business_type: opt.id })}
+                className={`rounded-[1.5rem] border p-4 text-left transition-all ${
+                  selected
+                    ? "border-slate-900 bg-slate-900/5 shadow-sm"
+                    : "border-slate-100 bg-white hover:border-slate-200"
+                }`}
+                aria-pressed={selected}
+              >
+                <p className="text-sm font-semibold text-slate-900">{opt.title}</p>
+                <p className="mt-1 text-xs text-slate-500">{opt.sub}</p>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="space-y-3">
         <Label htmlFor="description" className="text-sm font-semibold text-slate-900">
           Business Description <span className="text-slate-400 font-normal">(Recommended)</span>
         </Label>
         <p className={helperMuted}>
-          Describe your services, style, and what makes you special—this appears on your public
+          Describe your services, style, and what makes you specialâ€”this appears on your public
           profile.
         </p>
         <Textarea
@@ -2429,7 +2098,7 @@ function Step3BusinessDetails({
             data.description.length > 0 &&
             data.description.length < 50 && (
               <p className="text-sm font-medium text-amber-600">
-                Consider adding more detail—we recommend at least 50 characters.
+                Consider adding more detailâ€”we recommend at least 50 characters.
               </p>
             )}
         </div>
@@ -2450,16 +2119,16 @@ function Step3BusinessDetails({
           }
           className={`w-full ${inputClass} px-4`}
         >
-          <option value="">Select years…</option>
+          <option value="">Select yearsâ€¦</option>
           <option value="0">Just starting (0 years)</option>
           <option value="1">1 year</option>
           <option value="2">2 years</option>
           <option value="3">3 years</option>
           <option value="4">4 years</option>
           <option value="5">5 years</option>
-          <option value="6">6–10 years</option>
-          <option value="11">11–15 years</option>
-          <option value="16">16–20 years</option>
+          <option value="6">6â€“10 years</option>
+          <option value="11">11â€“15 years</option>
+          <option value="16">16â€“20 years</option>
           <option value="21">20+ years</option>
         </select>
       </section>
@@ -2471,7 +2140,7 @@ function Step3BusinessDetails({
         </Label>
         <p className={helper}>
           Select or type every language you&apos;re comfortable using with clients. At least one
-          language is required—we default to English until you add more.
+          language is requiredâ€”we default to English until you add more.
         </p>
         <div className="mt-2">
           <ChipCombobox
@@ -2480,13 +2149,13 @@ function Step3BusinessDetails({
             onChange={(next) => updateData({ languages_spoken: next.length ? next : ["English"] })}
             staticSuggestions={STEP3_LANGUAGE_SUGGESTIONS}
             allowFreeForm
-            placeholder="Add language…"
+            placeholder="Add languageâ€¦"
             aria-label="Languages you speak"
           />
         </div>
       </section>
 
-      {/* Website — collapsible */}
+      {/* Website â€” collapsible */}
       <section className={`${fieldShell} overflow-hidden`}>
         <div className="flex items-center justify-between gap-4 border-b border-slate-100 bg-slate-50/80 px-4 py-3.5 sm:px-5">
           <div className="flex min-w-0 items-center gap-3">
@@ -2494,7 +2163,7 @@ function Step3BusinessDetails({
             <div>
               <p className="text-base font-semibold text-slate-900">Website URL</p>
               <p className={`${helperMuted} mt-0.5`}>
-                Optional — helps customers learn more and can help discovery.
+                Optional â€” helps customers learn more and can help discovery.
               </p>
             </div>
           </div>
@@ -2538,7 +2207,7 @@ function Step3BusinessDetails({
         ) : null}
       </section>
 
-      {/* Social — collapsible */}
+      {/* Social â€” collapsible */}
       <section className={`${fieldShell} overflow-hidden`}>
         <div className="flex items-center justify-between gap-4 border-b border-slate-100 bg-slate-50/80 px-4 py-3.5 sm:px-5">
           <div className="flex min-w-0 items-center gap-3">
@@ -2546,7 +2215,7 @@ function Step3BusinessDetails({
             <div>
               <p className="text-base font-semibold text-slate-900">Social media links</p>
               <p className={`${helperMuted} mt-0.5`}>
-                Optional but recommended — helps clients find and follow you.
+                Optional but recommended â€” helps clients find and follow you.
               </p>
             </div>
           </div>
@@ -2869,39 +2538,18 @@ function Step4PaymentSetup({
         )}
       </div>
 
-      {/* Payout Setup */}
+      {/* Payout — deferred to post-wizard setup checklist */}
       <div className="mt-8 pt-6 border-t border-gray-200">
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
-          <p className="text-sm text-blue-800">
-            <strong>Payout Setup:</strong> To receive payments from bookings, you'll need to add
-            your bank account details. You can complete this now or set it up later in Settings.
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <p className="text-sm font-medium text-amber-900">
+            Bank payout account (required before go-live)
+          </p>
+          <p className="mt-1 text-sm text-amber-800">
+            Add your bank details in the setup checklist after this wizard — under{" "}
+            <strong>Settings → Payout accounts</strong>. Platform-held earnings cannot be withdrawn
+            until your payout account is verified.
           </p>
         </div>
-        <div className="flex items-center justify-between p-4 bg-white border-2 border-gray-200 rounded-xl">
-          <div>
-            <h3 className="text-base font-semibold text-gray-900 mb-1">Bank Account for Payouts</h3>
-            <p className="text-sm text-gray-600">Add your bank details to receive payments</p>
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => {
-              // Open payout setup in a new tab or modal
-              // For now, mark as "will set up later"
-              updateData({ payout_setup_complete: false });
-              toast.info(
-                "You can set up your payout account after onboarding in Settings → Payout Accounts"
-              );
-            }}
-            className="border-primary text-primary hover:bg-primary/5"
-          >
-            Set Up Later
-          </Button>
-        </div>
-        <p className="text-xs text-gray-500 mt-2">
-          You can complete payout setup after onboarding. Payments will be held until your bank
-          account is verified.
-        </p>
       </div>
     </div>
   );
@@ -3317,7 +2965,7 @@ function Step7Location({
                 <p className={`${helperMuted} text-sm`}>
                   <span className="font-semibold text-slate-800">House calls or no shop yet?</span>{" "}
                   Use the address you travel from (e.g. home). Pick a Mapbox suggestion or drop a
-                  pin so we capture coordinates for zones and fees—you can add a public salon
+                  pin so we capture coordinates for zones and feesâ€”you can add a public salon
                   listing later.
                 </p>
               </div>
@@ -3379,7 +3027,7 @@ function Step7Location({
           <p
             className={`${helperMuted} mt-3 rounded-xl border border-amber-200/80 bg-amber-50/90 px-4 py-3 text-amber-950`}
           >
-            No GPS yet — select a suggestion or use{" "}
+            No GPS yet â€” select a suggestion or use{" "}
             <strong className="font-semibold">Drop pin on map</strong> so the next step can suggest
             service zones.
           </p>
@@ -3399,7 +3047,7 @@ function Step7Location({
         <Label htmlFor="address_line2" className="text-sm font-semibold text-slate-900">
           Apartment, suite, etc. <span className="text-slate-400 font-normal">(Optional)</span>
         </Label>
-        <p className={helperMuted}>Unit or floor — helps couriers and clients find you.</p>
+        <p className={helperMuted}>Unit or floor â€” helps couriers and clients find you.</p>
         <Input
           id="address_line2"
           value={data.address?.line2 || ""}
@@ -3437,7 +3085,7 @@ function Step7Location({
         />
         {data.address?.city ? (
           <p className="text-sm font-medium text-emerald-800">
-            Filled from Mapbox — you can edit if needed.
+            Filled from Mapbox â€” you can edit if needed.
           </p>
         ) : null}
       </section>
@@ -3488,13 +3136,13 @@ function Step7Location({
           Country <span className="text-primary">*</span>
         </Label>
         <p className={helperMuted}>
-          Used to bias search results — change before typing if you operate outside South Africa.
+          Used to bias search results â€” change before typing if you operate outside South Africa.
         </p>
         {isLoadingCountries ? (
           <div
             className={cn(fieldClass, "flex items-center justify-center border border-slate-200")}
           >
-            <p className="text-sm text-slate-600">Loading countries…</p>
+            <p className="text-sm text-slate-600">Loading countriesâ€¦</p>
           </div>
         ) : (
           <select
@@ -3605,7 +3253,7 @@ function Step9ServiceZones({
         <div className="rounded-[1.5rem] border border-slate-100 bg-slate-50/50 px-8 py-10 text-center shadow-sm">
           <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-2 border-slate-900 border-t-transparent" />
           <p className="text-sm font-medium text-slate-800">
-            Finding service zones for your location…
+            Finding service zones for your locationâ€¦
           </p>
         </div>
       </div>
@@ -3638,7 +3286,7 @@ function Step9ServiceZones({
       {suggestedZones.length === 0 ? (
         <div className="rounded-[1.5rem] border border-amber-100 bg-amber-50/50 p-5 shadow-sm">
           <p className="text-sm font-medium text-amber-900">
-            No zones matched this address yet. You can add service zones later under Settings →
+            No zones matched this address yet. You can add service zones later under Settings â†’
             Service Zones.
           </p>
         </div>
@@ -3712,7 +3360,8 @@ function Step9ServiceZones({
                     </div>
                     <p className="mb-1 text-sm font-medium text-sky-800">{zone.match_reason}</p>
                     <p className="text-xs text-slate-600">
-                      Travel fees per zone can be customized after onboarding.
+                      Travel fees use platform defaults for now. Customize per-km or tiered pricing
+                      in Settings → Travel fees after signup (required for mobile providers).
                     </p>
                   </div>
                 </div>
@@ -3724,7 +3373,7 @@ function Step9ServiceZones({
             <div className="rounded-2xl border border-primary/25 bg-primary/[0.06] p-4 sm:rounded-3xl sm:p-5">
               <p className="text-sm font-medium text-slate-900">
                 <span className="text-primary">{selectedZoneIds.length}</span> zone
-                {selectedZoneIds.length !== 1 ? "s" : ""} selected — set travel fees anytime after
+                {selectedZoneIds.length !== 1 ? "s" : ""} selected â€” set travel fees anytime after
                 signup.
               </p>
             </div>
@@ -3820,7 +3469,7 @@ function Step10GlobalCategories({
       <div className="flex items-center justify-center py-14">
         <div className="rounded-2xl border border-slate-200 bg-slate-50/80 px-8 py-10 text-center shadow-sm sm:rounded-3xl">
           <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-          <p className="text-sm font-medium text-slate-800">Loading categories…</p>
+          <p className="text-sm font-medium text-slate-800">Loading categoriesâ€¦</p>
         </div>
       </div>
     );
@@ -4021,7 +3670,7 @@ function Step11ServiceCatalog({
                     </span>
                     <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-800">
                       {service.supports_at_salon && "At Salon"}
-                      {service.supports_at_salon && service.supports_at_home && " • "}
+                      {service.supports_at_salon && service.supports_at_home && " â€¢ "}
                       {service.supports_at_home && "At Home"}
                     </span>
                   </div>
@@ -4118,7 +3767,7 @@ function Step11ServiceCatalog({
                     <span>
                       {formService.description?.length || 0}/500 characters
                       {formService.description && formService.description.length >= 20 && (
-                        <span className="text-green-600 ml-2">✓ Good length</span>
+                        <span className="text-green-600 ml-2">âœ“ Good length</span>
                       )}
                     </span>
                   )}
@@ -4581,7 +4230,7 @@ function Step12Hours({
           {isFreelancer ? (
             <span>
               <strong className="text-emerald-900">Freelancer hours:</strong> We started you on
-              broad weekday hours (8:00–20:00); tweak them to match how you actually work. You can
+              broad weekday hours (8:00â€“20:00); tweak them to match how you actually work. You can
               change this anytime in Settings.
             </span>
           ) : (
@@ -4753,7 +4402,7 @@ function Step13Review({ data }: { data: Partial<OnboardingData> }) {
               <div key={index} className="border-b border-slate-200 pb-4 last:border-0 last:pb-0">
                 <div className="text-sm">
                   <div className="mb-1 font-medium text-slate-900">
-                    {service.title} — {service.duration_minutes} min — {service.currency}{" "}
+                    {service.title} â€” {service.duration_minutes} min â€” {service.currency}{" "}
                     {service.price}
                   </div>
                   {service.description && (
@@ -4767,7 +4416,7 @@ function Step13Review({ data }: { data: Partial<OnboardingData> }) {
                     <div className="mt-2 space-y-1 border-l-2 border-slate-200 pl-4">
                       {service.addons.map((addon, addonIndex) => (
                         <div key={addonIndex} className="text-xs text-slate-700">
-                          + {addon.name} — {addon.currency} {addon.price}
+                          + {addon.name} â€” {addon.currency} {addon.price}
                           {addon.duration_minutes &&
                             addon.duration_minutes > 0 &&
                             ` (+${addon.duration_minutes} min)`}
@@ -4803,7 +4452,7 @@ function Step13Review({ data }: { data: Partial<OnboardingData> }) {
                 >
                   <span className="capitalize font-semibold text-slate-900">{day}</span>
                   <span className="text-slate-700">
-                    {hours.closed ? "Closed" : `${hours.open} – ${hours.close}`}
+                    {hours.closed ? "Closed" : `${hours.open} â€“ ${hours.close}`}
                   </span>
                 </div>
               ))}
@@ -4895,7 +4544,7 @@ function Step14PlanSelection({
       <div className="flex items-center justify-center py-14">
         <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50/90 px-6 py-5 shadow-sm sm:rounded-3xl">
           <Loader2 className="h-8 w-8 animate-spin text-primary" aria-hidden />
-          <span className="text-sm font-medium text-slate-800">Loading plans…</span>
+          <span className="text-sm font-medium text-slate-800">Loading plansâ€¦</span>
         </div>
       </div>
     );
@@ -5048,7 +4697,7 @@ function Step14PlanSelection({
           >
             <strong>{selectedIsFree ? "Free plan selected." : "Paid plan selected."}</strong>{" "}
             {selectedIsFree
-              ? "After you submit, you'll be on this plan immediately — no payment needed."
+              ? "After you submit, you'll be on this plan immediately â€” no payment needed."
               : "After you submit, you'll be taken to a secure Paystack page to complete payment."}
           </AlertDescription>
         </Alert>

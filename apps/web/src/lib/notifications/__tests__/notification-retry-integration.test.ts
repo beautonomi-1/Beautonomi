@@ -76,6 +76,17 @@ function createSupabaseForTemplateSend() {
           }),
         };
       }
+      if (table === "user_profiles") {
+        // Provider preference gating reads notification_preferences (opt-in defaults).
+        return {
+          select: vi.fn().mockReturnValue({
+            in: vi.fn().mockResolvedValue({
+              data: [{ user_id: USER_ID, notification_preferences: null }],
+              error: null,
+            }),
+          }),
+        };
+      }
       if (table === "notification_logs") {
         return { insert: vi.fn().mockResolvedValue({ error: null }) };
       }

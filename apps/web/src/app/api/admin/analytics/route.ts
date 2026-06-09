@@ -10,6 +10,7 @@ import {
   resolveFinanceLedgerRowProviderId,
 } from "@/lib/admin/finance-ledger-tenant";
 import { isCashRefundComponent } from "@/lib/ledger/refund-components";
+import { normalizeBookingChannel } from "@/lib/reports/booking-channel-breakdown";
 
 export async function GET(request: NextRequest) {
   try {
@@ -200,7 +201,7 @@ export async function GET(request: NextRequest) {
         .from('bookings')
         .select('status')
         .eq('tenant_id', tenantId)
-        .gte('created_at', startDate.toISOString());
+        .gte('scheduled_at', startDate.toISOString());
 
       if (error) {
         console.error('Error fetching booking status:', error);
@@ -233,7 +234,15 @@ export async function GET(request: NextRequest) {
           supabase,
           tenantId,
           { start: startDate.toISOString() },
-          { transactionTypes: ["provider_earnings", "travel_fee", "tip"] },
+          {
+            transactionTypes: [
+              "provider_earnings",
+              "travel_fee",
+              "tip",
+              "cancellation_fee",
+              "walk_in_additional_charge",
+            ],
+          },
         );
       } catch (err) {
         console.error("Error fetching top providers ledger:", err);
@@ -274,6 +283,32 @@ export async function GET(request: NextRequest) {
       return [];
     };
 
+    const getBookingsByChannel = async () => {
+      const { data, error } = await supabase
+        .from("bookings")
+        .select("booking_source")
+        .eq("tenant_id", tenantId)
+        .gte("scheduled_at", startDate.toISOString());
+
+      if (error) {
+        console.error("Error fetching bookings by channel:", error);
+        return [];
+      }
+
+      const counts = new Map<string, number>();
+      (data || []).forEach((b: { booking_source?: string | null }) => {
+        const channel = normalizeBookingChannel(b.booking_source);
+        counts.set(channel, (counts.get(channel) ?? 0) + 1);
+      });
+
+      const total = [...counts.values()].reduce((s, c) => s + c, 0);
+      return [...counts.entries()].map(([channel, count]) => ({
+        channel,
+        count,
+        percentage: total > 0 ? (count / total) * 100 : 0,
+      }));
+    };
+
     // Run all queries in parallel (users = customers only for growth chart)
     const [
       usersTimeSeries,
@@ -283,14 +318,16 @@ export async function GET(request: NextRequest) {
       providerStatusBreakdown,
       bookingStatusBreakdown,
       topProviders,
+      bookingsByChannel,
     ] = await Promise.all([
       getDailyTimeSeries("users", "created_at"),
       getDailyTimeSeries("providers", "created_at"),
-      getDailyTimeSeries("bookings", "created_at"),
+      getDailyTimeSeries("bookings", "scheduled_at"),
       getRevenueTimeSeries(),
       getProviderStatusBreakdown(),
       getBookingStatusBreakdown(),
       getTopProviders(),
+      getBookingsByChannel(),
     ]);
 
     return successResponse({
@@ -304,8 +341,12 @@ export async function GET(request: NextRequest) {
       breakdowns: {
         providerStatus: providerStatusBreakdown,
         bookingStatus: bookingStatusBreakdown,
+        bookingsByChannel,
       },
+      bookingsByChannel,
       topProviders,
+      channelBasisNote:
+        "Bookings use scheduled_at in the selected period (matches the bookings report). Channel labels from booking_source (null treated as online). Counts only — not revenue.",
     });
   } catch (error) {
     return handleApiError(error, 'Failed to load analytics');

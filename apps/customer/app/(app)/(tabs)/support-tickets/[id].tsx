@@ -17,6 +17,7 @@ import {
 import { useRouter, useLocalSearchParams, useNavigation } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { api } from "@/lib/api-client";
+import { emitNotificationBadgeRefresh } from "@/lib/notification-badge-events";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { useAuth } from "@/providers/AuthProvider";
 import { Colors } from "@/constants/colors";
@@ -231,7 +232,10 @@ export default function SupportTicketDetailScreen() {
   useEffect(() => {
     const tid = typeof id === "string" ? id : Array.isArray(id) ? id[0] : "";
     if (!tid) return;
-    void api.post("/api/me/notifications/mark-related-read", { ticket_id: tid }).catch(() => {});
+    void api
+      .post("/api/me/notifications/mark-related-read", { ticket_id: tid })
+      .then(() => emitNotificationBadgeRefresh())
+      .catch(() => {});
   }, [id]);
 
   useLayoutEffect(() => {

@@ -173,6 +173,13 @@ export default function SubscriptionPage() {
     "success" | "failed" | "pending" | null
   >(null);
   const [billingTab, setBillingTab] = useState<"monthly" | "yearly">("monthly");
+  // Pre-payment review dialog (gold-standard checkout): show the plan, price,
+  // what-you-get, and a charged-only-after-confirm note before redirecting to
+  // Paystack — instead of an immediate, silent redirect.
+  const [reviewPlan, setReviewPlan] = useState<SubscriptionPlan | null>(null);
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  // Blocking overlay while we verify with Paystack on return from checkout.
+  const [verifying, setVerifying] = useState(false);
 
   const visiblePlans = useMemo(() => {
     if (!plans.length) return [];
@@ -240,6 +247,7 @@ export default function SubscriptionPage() {
       }
 
       if (isPaymentSuccess && reference) {
+        setVerifying(true);
         try {
           const verifyPayload = await verifyWithRetry<{ status?: string; message?: string }>(
             reference,
@@ -253,6 +261,8 @@ export default function SubscriptionPage() {
           }
         } catch {
           // Webhooks still reconcile this path; the banner below reflects the latest order state.
+        } finally {
+          setVerifying(false);
         }
       }
 
@@ -331,7 +341,22 @@ export default function SubscriptionPage() {
     };
   }, [router]);
 
+  // Paid plans open the review dialog first; free plans activate immediately.
   const handleUpgrade = async (planId: string) => {
+    const plan = plans.find((p) => p.id === planId);
+    if (!plan) {
+      toast.error("Plan not found");
+      return;
+    }
+    if (plan.is_free || planDisplayPrice(plan) === 0) {
+      await proceedUpgrade(planId);
+      return;
+    }
+    setReviewSubmitting(false);
+    setReviewPlan(plan);
+  };
+
+  const proceedUpgrade = async (planId: string) => {
     try {
       const plan = plans.find((p) => p.id === planId);
       if (!plan) throw new Error("Plan not found");
@@ -355,6 +380,8 @@ export default function SubscriptionPage() {
       if (data.is_free) {
         toast.success("Free subscription activated!");
         setShowUpgradeDialog(false);
+        setReviewPlan(null);
+        setReviewSubmitting(false);
         loadData();
         return;
       }
@@ -363,6 +390,8 @@ export default function SubscriptionPage() {
       if (data.subscription_id && !data.requires_payment) {
         toast.success("Subscription activated successfully!");
         setShowUpgradeDialog(false);
+        setReviewPlan(null);
+        setReviewSubmitting(false);
         loadData();
         return;
       }
@@ -402,10 +431,14 @@ export default function SubscriptionPage() {
 
       toast.success("Subscription checkout started");
       setShowUpgradeDialog(false);
+      setReviewPlan(null);
+      setReviewSubmitting(false);
     } catch (error) {
       const msg = error instanceof FetchError ? error.message : "Failed to upgrade subscription";
       toast.error(msg);
       console.error("Error upgrading subscription:", error);
+      setReviewPlan(null);
+      setReviewSubmitting(false);
     }
   };
 
@@ -960,8 +993,132 @@ export default function SubscriptionPage() {
           plans={plans}
           onUpgrade={handleUpgrade}
         />
+
+        <SubscriptionReviewDialog
+          plan={reviewPlan}
+          submitting={reviewSubmitting}
+          onConfirm={() => {
+            if (!reviewPlan) return;
+            setReviewSubmitting(true);
+            void proceedUpgrade(reviewPlan.id);
+          }}
+          onClose={() => {
+            if (reviewSubmitting) return;
+            setReviewPlan(null);
+          }}
+        />
       </div>
+
+      {verifying ? (
+        <div className="fixed inset-0 z-[60] flex flex-col items-center justify-center bg-black/55 px-8 text-center">
+          <div className="mb-5 h-12 w-12 animate-spin rounded-full border-4 border-white/30 border-t-white" />
+          <p className="text-lg font-bold text-white">Confirming your payment…</p>
+          <p className="mt-2 max-w-sm text-sm text-white/80">
+            Don&apos;t close this tab — we&apos;re confirming with the payment provider and
+            activating your plan.
+          </p>
+        </div>
+      ) : null}
     </SettingsDetailLayout>
+  );
+}
+
+function SubscriptionReviewDialog({
+  plan,
+  submitting,
+  onConfirm,
+  onClose,
+}: {
+  plan: SubscriptionPlan | null;
+  submitting: boolean;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  const priceLine = plan
+    ? `${formatPlanPriceMain(plan)}${formatPlanPricePeriod(plan)}`
+    : "";
+  return (
+    <Dialog
+      open={plan != null}
+      onOpenChange={(isOpen) => {
+        if (!isOpen) onClose();
+      }}
+    >
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Review your plan</DialogTitle>
+          <DialogDescription>
+            Confirm the details below before paying securely.
+          </DialogDescription>
+        </DialogHeader>
+        {plan ? (
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-pink-100 bg-pink-50 p-4">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-pink-700">
+                {plan.billing_period === "yearly" ? "Yearly plan" : "Monthly plan"}
+              </p>
+              <p className="mt-1 text-xl font-bold text-gray-950">{plan.name}</p>
+              {plan.description ? (
+                <div className="mt-1 text-sm leading-relaxed text-gray-600 [&_a]:text-[#FF0077] [&_a]:underline [&_p]:m-0">
+                  <PricingFeatureHtml html={plan.description} className="block" />
+                </div>
+              ) : null}
+            </div>
+
+            {Array.isArray(plan.features) && plan.features.length > 0 ? (
+              <ul className="space-y-2">
+                {plan.features.slice(0, 6).map((feature, index) => (
+                  <li key={index} className="flex items-start gap-2 text-sm text-gray-700">
+                    <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-600" />
+                    <div className="min-w-0 flex-1 [&_a]:text-[#FF0077] [&_a]:underline [&_p]:m-0">
+                      <PricingFeatureHtml html={feature} className="block leading-snug" />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+
+            <div className="rounded-2xl border border-gray-200 bg-white p-4">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-600">{plan.name}</span>
+                <span className="text-sm font-medium text-gray-800">{priceLine}</span>
+              </div>
+              <div className="mt-3 flex items-center justify-between border-t border-gray-100 pt-3">
+                <span className="text-sm font-semibold text-gray-900">Total due now</span>
+                <span className="text-base font-bold text-gray-950">{priceLine}</span>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-2 rounded-2xl bg-gray-50 p-3 text-xs leading-relaxed text-gray-500">
+              <Calendar className="mt-0.5 h-4 w-4 flex-shrink-0 text-gray-400" />
+              <span>
+                This plan renews automatically each billing period. You can{" "}
+                <span className="font-semibold text-gray-700">cancel anytime</span> and keep access
+                until the end of the period you paid for.
+              </span>
+            </div>
+
+            <div className="flex items-start gap-2 rounded-2xl border border-emerald-100 bg-emerald-50 p-3 text-xs leading-relaxed text-emerald-800">
+              <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-700" />
+              <span>
+                You&apos;re only charged after you confirm on the secure Paystack page. Your plan
+                activates once payment is verified — never before.
+              </span>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-1">
+              <Button variant="outline" onClick={onClose} disabled={submitting}>
+                Not now
+              </Button>
+              <Button onClick={onConfirm} disabled={submitting}>
+                <CreditCard className="mr-2 h-4 w-4" />
+                {submitting ? "Opening secure checkout…" : `Pay ${priceLine}`}
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      </DialogContent>
+    </Dialog>
   );
 }
 

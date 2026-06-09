@@ -23,6 +23,7 @@ import {
 } from "@/lib/paystack-webview-utils";
 import * as ExpoLinking from "expo-linking";
 import { api } from "@/lib/api-client";
+import { emitNotificationBadgeRefresh } from "@/lib/notification-badge-events";
 import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
 import { supabase } from "@/lib/supabase/client";
 import { getBackendUrl, webApiTenantHeaders } from "@/config/public-env";
@@ -192,7 +193,10 @@ export default function ProductOrderDetailScreen() {
 
   useEffect(() => {
     if (!id || typeof id !== "string") return;
-    void api.post("/api/me/notifications/mark-related-read", { order_id: id }).catch(() => {});
+    void api
+      .post("/api/me/notifications/mark-related-read", { order_id: id })
+      .then(() => emitNotificationBadgeRefresh())
+      .catch(() => {});
   }, [id]);
 
   if (loading) {

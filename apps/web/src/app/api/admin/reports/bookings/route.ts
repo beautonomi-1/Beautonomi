@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { normalizeBookingChannel } from "@/lib/reports/booking-channel-breakdown";
 
 export async function GET(request: NextRequest) {
   try {
@@ -44,7 +45,7 @@ export async function GET(request: NextRequest) {
     // Get bookings
     const { data: bookings } = await supabase
       .from('bookings')
-      .select('scheduled_at, status, provider_id')
+      .select('scheduled_at, status, provider_id, booking_source, total_amount')
       .eq('tenant_id', tenantId)
       .gte('scheduled_at', startDate.toISOString())
       .lte('scheduled_at', endDate.toISOString());
@@ -58,8 +59,21 @@ export async function GET(request: NextRequest) {
     let cancelled = 0;
     let noShow = 0;
 
-    type BookingRow = { scheduled_at?: string; status?: string; provider_id?: string };
+    const channelCounts = new Map<string, { count: number; completed: number }>();
+
+    type BookingRow = {
+      scheduled_at?: string;
+      status?: string;
+      provider_id?: string;
+      booking_source?: string | null;
+      total_amount?: number;
+    };
     (bookings || []).forEach((booking: BookingRow) => {
+      const channel = normalizeBookingChannel(booking.booking_source);
+      const ch = channelCounts.get(channel) ?? { count: 0, completed: 0 };
+      ch.count += 1;
+      if (booking.status === "completed") ch.completed += 1;
+      channelCounts.set(channel, ch);
       const date = new Date(booking.scheduled_at).toISOString().split('T')[0];
       
       // By day
@@ -110,13 +124,32 @@ export async function GET(request: NextRequest) {
       current.setDate(current.getDate() + 1);
     }
 
+    let completedGmv = 0;
+    for (const booking of bookings ?? []) {
+      if ((booking as BookingRow).status === "completed") {
+        completedGmv += Number((booking as BookingRow).total_amount ?? 0);
+      }
+    }
+    const avgBookingValue = completed > 0 ? completedGmv / completed : 0;
+
     const completionRate = totalBookings > 0 ? (completed / totalBookings) * 100 : 0;
     const cancellationRate = totalBookings > 0 ? (cancelled / totalBookings) * 100 : 0;
     const noShowRate = totalBookings > 0 ? (noShow / totalBookings) * 100 : 0;
 
+    const channelBreakdown = [...channelCounts.entries()].map(([channel, data]) => ({
+      channel,
+      count: data.count,
+      completed: data.completed,
+      completion_rate: data.count > 0 ? (data.completed / data.count) * 100 : 0,
+      percentage: totalBookings > 0 ? (data.count / totalBookings) * 100 : 0,
+    }));
+
     return successResponse({
       period,
       totalBookings,
+      channelBreakdown,
+      channelBasisNote:
+        "Counts use bookings.scheduled_at in the selected range. Channel labels from booking_source (null treated as online).",
       bookingsByDay: bookingsByDayArray,
       bookingsByStatus: Object.entries(bookingsByStatus).map(([status, count]) => ({
         status,
@@ -130,6 +163,8 @@ export async function GET(request: NextRequest) {
       completionRate,
       cancellationRate,
       noShowRate,
+      completedGmv,
+      avgBookingValue,
     });
   } catch (error) {
     return handleApiError(error, 'Failed to load booking report');

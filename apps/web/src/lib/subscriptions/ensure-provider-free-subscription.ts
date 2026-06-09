@@ -98,8 +98,11 @@ async function validatePreferredFreeSubscriptionPlanId(
 /**
  * Prefer an active free plan; then free-tier-default; then any active catalog plan so limit RPCs
  * always resolve a plan when migrations were skipped or flags are inconsistent.
+ *
+ * Exported so the subscription payment reversal helper and the expiry cron can
+ * resolve the free catalog plan to fall a lapsed/refunded provider back to free.
  */
-async function resolveCatalogPlanIdForProviderSubscription(
+export async function resolveCatalogPlanIdForProviderSubscription(
   supabaseAdmin: SupabaseClient
 ): Promise<string | null> {
   const { data: freeActive } = await supabaseAdmin

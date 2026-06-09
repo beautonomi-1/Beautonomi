@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
 
     const reportContext = await getProviderReportContext(supabaseAdmin, providerId);
     const searchParams = request.nextUrl.searchParams;
-    const limit = Math.min(parseInt(searchParams.get("limit") ?? "10", 10), 50);
+    const limit = Math.min(parseInt(searchParams.get("limit") ?? "10", 10), 100);
     const locationId = searchParams.get("location_id");
 
     const payload = await buildProviderActivityFeed(supabaseAdmin, providerId, {

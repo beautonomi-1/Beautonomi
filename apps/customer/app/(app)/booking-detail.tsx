@@ -23,12 +23,15 @@ import { useAuth } from "@/providers/AuthProvider";
 import { useModuleConfig } from "@/providers/ConfigBundleProvider";
 import { APP_URL, getBackendUrl, withWebApiTenantHeaders } from "@/config/public-env";
 import { api } from "@/lib/api-client";
+import { emitNotificationBadgeRefresh } from "@/lib/notification-badge-events";
 import { Colors } from "@/constants/colors";
 import { usePaystackPayment } from "@/hooks/usePaystackPayment";
 import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
 import { StaticMapImage, openInMaps } from "@/components/StaticMapImage";
+import { BookingLiveSyncIndicator } from "@/components/bookings/BookingLiveSyncIndicator";
+import { formatBookingLiveStageLabel } from "@/lib/booking-live-stage";
 import { SafetyPanicButton } from "@/components/SafetyPanicButton";
 import { haptic } from "@/lib/haptics";
 import { getApiErrorMessage } from "@/lib/api-error";
@@ -208,6 +211,7 @@ export default function BookingDetailScreen() {
   const [additionalPayGiftCode, setAdditionalPayGiftCode] = useState("");
   const [myReview, setMyReview] = useState<BookingReviewSummary | null>(null);
   const hasLoadedOnce = useRef(false);
+  const [lastLiveUpdateAt, setLastLiveUpdateAt] = useState<number | null>(null);
   const referralPostedBookingIds = useRef<Set<string>>(new Set());
 
   const load = useCallback(async (opts?: { silent?: boolean }) => {
@@ -241,6 +245,7 @@ export default function BookingDetailScreen() {
         if (row) {
           setBooking(row);
           setError(null);
+          setLastLiveUpdateAt(Date.now());
         } else if (!opts?.silent) {
           setBooking(null);
           setError(bd("loadBookingNotFound"));
@@ -330,7 +335,10 @@ export default function BookingDetailScreen() {
   useFocusEffect(
     useCallback(() => {
       if (!id) return;
-      void api.post("/api/me/notifications/mark-related-read", { booking_id: id }).catch(() => {});
+      void api
+        .post("/api/me/notifications/mark-related-read", { booking_id: id })
+        .then(() => emitNotificationBadgeRefresh())
+        .catch(() => {});
     }, [id]),
   );
 
@@ -491,6 +499,7 @@ export default function BookingDetailScreen() {
           debounceTimer = setTimeout(() => {
             debounceTimer = null;
             loadRef.current({ silent: true });
+            setLastLiveUpdateAt(Date.now());
             haptic.success();
           }, 400);
         },
@@ -1651,6 +1660,14 @@ export default function BookingDetailScreen() {
                 </View>
               </View>
             </View>
+            <BookingLiveSyncIndicator lastUpdatedAt={lastLiveUpdateAt} />
+            {(isProviderEnRoute || isProviderArrived) && formatBookingLiveStageLabel(booking.current_stage) ? (
+              <View style={{ marginBottom: 12, borderRadius: 12, backgroundColor: "#ecfdf5", borderWidth: 1, borderColor: "#a7f3d0", padding: 12 }}>
+                <Text style={{ fontSize: 14, fontWeight: "600", color: "#065f46" }}>
+                  {formatBookingLiveStageLabel(booking.current_stage)}
+                </Text>
+              </View>
+            ) : null}
             {/* ETA (at-home, when provider en route and backend provides it) */}
             {isAtHome && isProviderEnRoute && estimatedArrival && (() => {
               const eta = getCustomerEtaUiParts((booking as { estimated_arrival?: string }).estimated_arrival);

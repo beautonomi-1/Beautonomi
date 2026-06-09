@@ -71,9 +71,54 @@ function handleNotificationRoute(
       action_url: link || undefined,
     };
     navigateFromNotification(n);
+    // Mark the related in-app rows read so the bell + OS badge decrement now.
+    markPushNotificationRead(data);
   } catch {
     // Silently fail on routing errors
   }
+}
+
+/**
+ * When a push is tapped, mark the related in-app notification rows read on the
+ * server so the bell + OS badge decrement immediately (previously the synthetic
+ * `is_read: true` was local-only and the count stayed inflated until the user
+ * opened the list). Server route also pushes a badge_sync to all devices; we
+ * additionally emit a local badge refresh for instant in-app context update.
+ * Best-effort: never throws.
+ */
+function markPushNotificationRead(data: Record<string, unknown>): void {
+  if (Platform.OS === "web") return;
+  const str = (v: unknown): string | undefined =>
+    typeof v === "string" && v.trim().length > 0 ? v.trim() : undefined;
+
+  const notificationId = str(data.notification_id);
+
+  const body: Record<string, string> = {};
+  const bookingId = str(data.booking_id) ?? str(data.bookingId);
+  if (bookingId) body.booking_id = bookingId;
+  const conversationId = str(data.conversation_id) ?? str(data.chat_id);
+  if (conversationId) body.conversation_id = conversationId;
+  const orderId = str(data.order_id) ?? str(data.product_order_id);
+  if (orderId) body.order_id = orderId;
+  const ticketId = str(data.ticket_id);
+  if (ticketId) body.ticket_id = ticketId;
+  const paymentId = str(data.payment_id);
+  if (paymentId) body.payment_id = paymentId;
+
+  void (async () => {
+    try {
+      if (notificationId) {
+        await api.post(`/api/me/notifications/${notificationId}/read`, {});
+      }
+      if (Object.keys(body).length > 0) {
+        await api.post("/api/me/notifications/mark-related-read", body);
+      }
+    } catch {
+      // Non-blocking — the badge will reconcile on next realtime/foreground sync.
+    } finally {
+      emitNotificationBadgeRefresh();
+    }
+  })();
 }
 
 function usePushRegistration() {
@@ -201,6 +246,15 @@ function usePushRegistration() {
               ...additionalData,
               ...(launchUrl ? { url: launchUrl, deep_link: launchUrl } : {}),
             };
+            // iOS/Android action-button taps surface here as result.actionId.
+            const actionId = String(
+              (event as unknown as { result?: { actionId?: string } }).result?.actionId ?? "",
+            );
+            if (actionId === "mark_read") {
+              // "Mark as read" doesn't open the app — just clear it server-side.
+              markPushNotificationRead(merged);
+              return;
+            }
             enqueueOrRoutePushNotification(merged, (payload) =>
               handleNotificationRoute(payload, {
                 launchUrl,
@@ -303,6 +357,9 @@ function usePushRegistration() {
         if (!res.error) {
           registeredRef.current = true;
           lastRegisteredPlayerIdRef.current = id.trim();
+          // Persist so the foreground re-register effect sees this id as
+          // already-registered and doesn't re-POST /api/me/devices on next focus.
+          void setRegisteredPlayerId(user.id, id.trim());
         } else if (isTransientApiFailure(res.error)) {
           // Backgrounded mutation torn down on resume — the foreground
           // re-register effect retries; don't surface a false error.

@@ -29,6 +29,7 @@ const API_PATHS: Record<string, string> = {
   providers: "/api/admin/reports/providers",
   customers: "/api/admin/reports/customers",
   "gift-cards": "/api/admin/reports/gift-cards",
+  memberships: "/api/admin/reports/memberships",
   "yoco-reconciliation": "/api/admin/reports/yoco-reconciliation",
   "support-performance": "/api/admin/reports/support-performance",
   "support-workload": "/api/admin/reports/support-workload",
@@ -40,6 +41,7 @@ const TITLES: Record<string, string> = {
   providers: "Provider report",
   customers: "Customer report",
   "gift-cards": "Gift card report",
+  memberships: "Membership report",
   "yoco-reconciliation": "Yoco reconciliation",
   "support-performance": "Support performance",
   "support-workload": "Support workload & drivers",
@@ -107,7 +109,11 @@ function RevenueReport({ data }: { data: Record<string, unknown> }) {
           { label: "Booking commission (net)", value: fmtMoney(pr.booking_commission_net), sub: "After refund contra & gateway fees" },
           { label: "Subscription net", value: fmtMoney(pr.subscription_net) },
           { label: "Ads net", value: fmtMoney(pr.ads_net) },
-          { label: "Provider earnings", value: fmtMoney(pr.provider_earnings_net), sub: "Paid to providers (ledger)" },
+          {
+            label: "Provider service earnings",
+            value: fmtMoney(pr.provider_earnings_net),
+            sub: "provider_earnings ledger rows only — tips/travel/add-ons are separate",
+          },
           { label: "Refunds", value: fmtMoney(pr.refunds_abs_gross ?? pr.refunds_gross), sub: "Absolute refunds to customers" },
           { label: "Gateway fees", value: fmtMoney(pr.gateway_fees_total), sub: "Paystack/Yoco processing" },
         ]
@@ -136,6 +142,39 @@ function RevenueReport({ data }: { data: Record<string, unknown> }) {
       </AdminPanel>
 
       <KpiGrid items={kpis} />
+
+      {Array.isArray(data.channelGmvBreakdown) && (data.channelGmvBreakdown as Record<string, unknown>[]).length > 0 && (
+        <AdminPanel>
+          <SectionHeading>Booking GMV by channel</SectionHeading>
+          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            {(data.channelGmvBreakdown as Record<string, unknown>[]).map((row) => (
+              <div key={String(row.channel)} className="rounded-lg bg-gray-50 px-4 py-3">
+                <p className="text-xs capitalize text-gray-500">{String(row.channel ?? "").replace(/_/g, " ")}</p>
+                <p className="mt-0.5 text-xl font-bold tabular-nums">{fmtMoney(row.gmv)}</p>
+                <p className="text-xs text-gray-400">{fmt(row.bookings)} bookings</p>
+              </div>
+            ))}
+          </div>
+        </AdminPanel>
+      )}
+
+      {data.productOrdersBySource && typeof data.productOrdersBySource === "object" ? (
+        <AdminPanel>
+          <SectionHeading>Product orders by source</SectionHeading>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            {(["online", "walk_in"] as const).map((key) => {
+              const row = (data.productOrdersBySource as Record<string, { revenue?: number; units?: number }>)[key];
+              return (
+                <div key={key} className="rounded-lg bg-gray-50 px-4 py-3">
+                  <p className="text-xs capitalize text-gray-500">{key.replace(/_/g, " ")}</p>
+                  <p className="mt-0.5 text-xl font-bold tabular-nums">{fmtMoney(row?.revenue)}</p>
+                  <p className="text-xs text-gray-400">{fmt(row?.units)} orders</p>
+                </div>
+              );
+            })}
+          </div>
+        </AdminPanel>
+      ) : null}
 
       {gcm && (
         <AdminPanel>
@@ -380,6 +419,9 @@ function CustomersReport({ data }: { data: Record<string, unknown> }) {
 
 // ── Bookings ──────────────────────────────────────────────────────────────────
 function BookingsReport({ data }: { data: Record<string, unknown> }) {
+  const channelBreakdown = Array.isArray(data.channelBreakdown)
+    ? (data.channelBreakdown as Record<string, unknown>[])
+    : [];
   const byStatus = Array.isArray(data.bookingsByStatus)
     ? (data.bookingsByStatus as Record<string, unknown>[])
     : [];
@@ -418,6 +460,22 @@ function BookingsReport({ data }: { data: Record<string, unknown> }) {
   return (
     <div className="space-y-6">
       {kpis.length > 0 && <KpiGrid items={kpis} />}
+      {channelBreakdown.length > 0 && (
+        <AdminPanel>
+          <SectionHeading>Bookings by channel</SectionHeading>
+          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            {channelBreakdown.map((row, i) => (
+              <div key={i} className="rounded-lg bg-gray-50 px-4 py-3">
+                <p className="text-xs capitalize text-gray-500">{String(row.channel ?? "").replace(/_/g, " ")}</p>
+                <p className="mt-0.5 text-xl font-bold tabular-nums">{fmt(row.count)}</p>
+                <p className="text-xs text-gray-400">
+                  {fmt(row.completed)} completed ({typeof row.completion_rate === "number" ? row.completion_rate.toFixed(0) : "—"}%)
+                </p>
+              </div>
+            ))}
+          </div>
+        </AdminPanel>
+      )}
       {byStatus.length > 0 && (
         <AdminPanel>
           <SectionHeading>Bookings by status</SectionHeading>
@@ -504,6 +562,50 @@ function BookingsReport({ data }: { data: Record<string, unknown> }) {
 }
 
 // ── Gift cards ────────────────────────────────────────────────────────────────
+function MembershipsReport({ data }: { data: Record<string, unknown> }) {
+  const byDay = Array.isArray(data.salesByDay) ? (data.salesByDay as Record<string, unknown>[]) : [];
+  const kpis = [
+    { label: "Paid orders", value: fmt(data.totalSold) },
+    { label: "Gross sales (liability)", value: fmtMoney(data.totalSalesValue) },
+    { label: "Recognized provider earnings", value: fmtMoney(data.totalRecognizedEarnings) },
+    { label: "Active subscribers", value: fmt(data.activeSubscribers) },
+  ].filter((k) => k.value !== "—");
+
+  return (
+    <div className="space-y-6">
+      {typeof data.reportBasis === "string" ? (
+        <AdminPanel>
+          <p className="text-xs leading-5 text-gray-600">{data.reportBasis}</p>
+        </AdminPanel>
+      ) : null}
+      {kpis.length > 0 && <KpiGrid items={kpis} />}
+      {byDay.length > 0 && (
+        <AdminPanel>
+          <SectionHeading>Sales by day</SectionHeading>
+          <AdminDataTable className="mt-3">
+            <AdminTableHead>
+              <tr>
+                <AdminTh>Date</AdminTh>
+                <AdminTh>Gross sales</AdminTh>
+                <AdminTh>Count</AdminTh>
+              </tr>
+            </AdminTableHead>
+            <AdminTableBody>
+              {byDay.slice(0, 30).map((row, i) => (
+                <tr key={i}>
+                  <AdminTd>{String(row.date ?? "—")}</AdminTd>
+                  <AdminTd>{fmtMoney(row.sales)}</AdminTd>
+                  <AdminTd>{fmt(row.count)}</AdminTd>
+                </tr>
+              ))}
+            </AdminTableBody>
+          </AdminDataTable>
+        </AdminPanel>
+      )}
+    </div>
+  );
+}
+
 function GiftCardsReport({ data }: { data: Record<string, unknown> }) {
   const byDay = Array.isArray(data.salesByDay)
     ? (data.salesByDay as Record<string, unknown>[])
@@ -1397,14 +1499,21 @@ export function ReportDetailPage() {
             if (exportBusy) return;
             setExportBusy(true);
             const EXPORT_ENDPOINTS: Record<string, string> = {
-              revenue: "/api/admin/export/finance",
+              revenue: "/api/admin/export/analytics",
               providers: "/api/admin/export/providers",
               customers: "/api/admin/export/users",
               bookings: "/api/admin/export/bookings",
               "yoco-reconciliation": "/api/admin/export/transactions",
             };
             const endpoint = EXPORT_ENDPOINTS[reportKey] ?? "/api/admin/export/analytics";
-            const params = reportKey === "revenue" ? periodToDateParams(period) : new URLSearchParams({ period });
+            const params =
+              reportKey === "revenue"
+                ? (() => {
+                    const p = periodToDateParams(period);
+                    p.set("report_type", "revenue");
+                    return p;
+                  })()
+                : new URLSearchParams({ period });
             void downloadAdminBlob(
               `${endpoint}?${params}`,
               `${reportKey}-${period}.csv`
@@ -1423,6 +1532,7 @@ export function ReportDetailPage() {
       {reportKey === "customers" && <CustomersReport data={data} />}
       {reportKey === "bookings" && <BookingsReport data={data} />}
       {reportKey === "gift-cards" && <GiftCardsReport data={data} />}
+      {reportKey === "memberships" && <MembershipsReport data={data} />}
       {reportKey === "yoco-reconciliation" && <YocoReport data={data} />}
       {reportKey === "support-performance" && <SupportPerformanceReport data={data} />}
       {reportKey === "support-workload" && <SupportWorkloadReport data={data} />}
@@ -1432,6 +1542,7 @@ export function ReportDetailPage() {
         "customers",
         "bookings",
         "gift-cards",
+        "memberships",
         "yoco-reconciliation",
         "support-performance",
         "support-workload",

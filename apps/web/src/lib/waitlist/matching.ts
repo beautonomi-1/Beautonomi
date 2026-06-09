@@ -121,7 +121,8 @@ export async function matchWaitlistOnCancellation(supabase: any, cancelledBookin
             provider_id: booking.provider_id,
           },
           ["push", "email"],
-          { appType: "customer" }
+          // In-app bell row inserted manually above; skip template auto-insert.
+          { appType: "customer", skipInApp: true }
         );
       } catch (notifError) {
         console.error(`Error notifying waitlist entry ${entry.id}:`, notifError);
@@ -233,7 +234,8 @@ export async function checkWaitlistForAvailability(
             provider_id: providerId,
           },
           ["push", "email"],
-          { appType: "customer" }
+          // In-app bell row inserted manually above; skip template auto-insert.
+          { appType: "customer", skipInApp: true }
         );
 
         notified++;

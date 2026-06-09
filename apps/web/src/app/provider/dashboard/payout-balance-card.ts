@@ -42,7 +42,7 @@ export function buildPayoutBalanceCardView(
     title: "Available to withdraw",
     value: Math.max(0, stats.available_balance ?? 0),
     subtitle,
-    href: "/provider/payouts",
+    href: "/provider/finance",
     color: "blue",
   };
 }

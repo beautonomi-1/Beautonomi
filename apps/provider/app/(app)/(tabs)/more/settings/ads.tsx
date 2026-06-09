@@ -36,6 +36,8 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { LoadingState } from "@/components/ui/LoadingState";
+import { AdsCheckoutProcessingOverlay } from "@/components/ads/AdsCheckoutProcessingOverlay";
+import { AdsCheckoutReviewSheet, type AdsCheckoutReview } from "@/components/ads/AdsCheckoutReviewSheet";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -414,6 +416,14 @@ export default function AdsSettingsScreen() {
   const [creatingPackId, setCreatingPackId] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const appStateRef = useRef(AppState.currentState);
+  // §Ads-enterprise-hardening 2026-06: world-class checkout UX. A polished
+  // review/summary sheet replaces the native Alert confirm, and a full-screen
+  // processing overlay covers the verify + provisioning poll so the flow never
+  // looks frozen — matching the customer product-order checkout.
+  const [processing, setProcessing] = useState(false);
+  const [reviewState, setReviewState] = useState<AdsCheckoutReview | null>(null);
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const reviewResolverRef = useRef<((ok: boolean) => void) | null>(null);
 
   const packCardWidth = Math.round(Math.min(182, Math.max(154, (Math.min(width, contentMaxWidth) - screenPadding * 2 - 40) / 2)));
   const packSnapGap = 12;
@@ -521,50 +531,58 @@ export default function AdsSettingsScreen() {
         return;
       }
 
-      // Cross-confirm against Paystack so we never optimistically claim a
-      // campaign is live before the bank/webhook signs off.
-      const reference = extractPaystackReferenceFromUrl(result.url);
-      const verifyResult = reference ? await verifyPaystackWithRetry(reference) : null;
+      // The Paystack sheet has closed with a success redirect; now block the UI
+      // with a processing overlay while we verify + poll provisioning so the
+      // provider never sees an ambiguous in-between state.
+      setProcessing(true);
+      try {
+        // Cross-confirm against Paystack so we never optimistically claim a
+        // campaign is live before the bank/webhook signs off.
+        const reference = extractPaystackReferenceFromUrl(result.url);
+        const verifyResult = reference ? await verifyPaystackWithRetry(reference) : null;
 
-      if (verifyResult?.status === "failed") {
-        const failed = adsFailedCopy(verifyResult.errorMessage ?? null);
-        setPaymentOutcome({ phase: "failed", campaignId, ...failed });
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        await loadAll();
-        return;
-      }
+        if (verifyResult?.status === "failed") {
+          const failed = adsFailedCopy(verifyResult.errorMessage ?? null);
+          setPaymentOutcome({ phase: "failed", campaignId, ...failed });
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          await loadAll();
+          return;
+        }
 
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-      if (campaignId) {
-        const provisioned = await pollCampaignProvisioned(campaignId, {
-          maxAttempts: 6,
-          delayMs: 1500,
-        });
-        if (provisioned.state === "provisioned") {
-          const copy = adsSuccessCopy(provisioned.campaign, tenantCurrency);
-          setPaymentOutcome({ phase: "provisioned", campaignId, ...copy });
-          // replace (not push) so the Paystack auth-session history is reset and
-          // the back gesture lands the user cleanly back in the app.
-          router.replace({
-            pathname: "/(app)/(tabs)/more/settings/ads-payment-success",
-            params: { campaign_id: campaignId, title: copy.title, body: copy.body },
+        if (campaignId) {
+          const provisioned = await pollCampaignProvisioned(campaignId, {
+            maxAttempts: 6,
+            delayMs: 1500,
           });
+          if (provisioned.state === "provisioned") {
+            const copy = adsSuccessCopy(provisioned.campaign, tenantCurrency);
+            setPaymentOutcome({ phase: "provisioned", campaignId, ...copy });
+            // replace (not push) so the Paystack auth-session history is reset and
+            // the back gesture lands the user cleanly back in the app.
+            router.replace({
+              pathname: "/(app)/(tabs)/more/settings/ads-payment-success",
+              params: { campaign_id: campaignId, title: copy.title, body: copy.body },
+            });
+          } else {
+            const copy = adsPendingCopy();
+            setPaymentOutcome({ phase: "pending", campaignId, ...copy });
+          }
         } else {
           const copy = adsPendingCopy();
-          setPaymentOutcome({ phase: "pending", campaignId, ...copy });
+          setPaymentOutcome({ phase: "pending", ...copy });
         }
-      } else {
-        const copy = adsPendingCopy();
-        setPaymentOutcome({ phase: "pending", ...copy });
-      }
 
-      await loadAll();
-      // Server-side provisioning lands a beat after the webhook returns 200;
-      // a short follow-up refresh prevents transient stale cards.
-      setTimeout(() => {
-        void loadAll();
-      }, 1500);
+        await loadAll();
+        // Server-side provisioning lands a beat after the webhook returns 200;
+        // a short follow-up refresh prevents transient stale cards.
+        setTimeout(() => {
+          void loadAll();
+        }, 1500);
+      } finally {
+        setProcessing(false);
+      }
     },
     [adsPaystackCheckout, loadAll, router, tenantCurrency],
   );
@@ -643,19 +661,38 @@ export default function AdsSettingsScreen() {
     loadAll();
   }, [loadAll]);
 
-  const confirmAdsCheckout = useCallback(
-    (params: { title: string; message: string; confirmLabel?: string }) =>
+  /**
+   * §Ads-enterprise-hardening 2026-06: present the polished review sheet and
+   * resolve true/false when the provider confirms or dismisses. Mirrors the
+   * previous promise-based confirm contract so call sites stay simple.
+   */
+  const requestAdsCheckout = useCallback(
+    (review: AdsCheckoutReview) =>
       new Promise<boolean>((resolve) => {
-        Alert.alert(params.title, params.message, [
-          { text: "Not now", style: "cancel", onPress: () => resolve(false) },
-          {
-            text: params.confirmLabel ?? "Continue to Paystack",
-            onPress: () => resolve(true),
-          },
-        ]);
+        reviewResolverRef.current = resolve;
+        setReviewSubmitting(false);
+        setReviewState(review);
       }),
     [],
   );
+
+  const handleReviewConfirm = useCallback(() => {
+    Haptics.selectionAsync();
+    setReviewSubmitting(true);
+    const resolver = reviewResolverRef.current;
+    reviewResolverRef.current = null;
+    setReviewState(null);
+    setReviewSubmitting(false);
+    resolver?.(true);
+  }, []);
+
+  const handleReviewClose = useCallback(() => {
+    const resolver = reviewResolverRef.current;
+    reviewResolverRef.current = null;
+    setReviewState(null);
+    setReviewSubmitting(false);
+    resolver?.(false);
+  }, []);
 
   const handleCreateCampaign = useCallback(async () => {
     const budgetNum = parseFloat(createForm.budget.replace(/,/g, "."));
@@ -664,10 +701,28 @@ export default function AdsSettingsScreen() {
       return;
     }
     if (budgetNum > 0) {
-      const confirmed = await confirmAdsCheckout({
-        title: "Review ad budget",
-        message: `You are about to fund this campaign with ${formatMoney(budgetNum, tenantCurrency)}. Paystack will confirm the payment before the campaign is funded.`,
-        confirmLabel: "Pay securely",
+      const dailyCap = createForm.daily_budget ? parseFloat(createForm.daily_budget.replace(/,/g, ".")) : null;
+      const bidCpc = createForm.bid_cpc ? parseFloat(createForm.bid_cpc.replace(/,/g, ".")) : 0;
+      const lineItems = [{ label: "Campaign budget", value: formatMoney(budgetNum, tenantCurrency) }];
+      if (dailyCap && Number.isFinite(dailyCap) && dailyCap > 0) {
+        lineItems.push({ label: "Daily cap", value: formatMoney(dailyCap, tenantCurrency) });
+      }
+      if (bidCpc && Number.isFinite(bidCpc) && bidCpc > 0) {
+        lineItems.push({ label: "Bid per click", value: `${formatMoney(bidCpc, tenantCurrency)}/click` });
+      }
+      lineItems.push({ label: "Total due", value: formatMoney(budgetNum, tenantCurrency) });
+      const confirmed = await requestAdsCheckout({
+        heading: "CPC budget",
+        title: `${formatMoney(budgetNum, tenantCurrency)} campaign budget`,
+        subtitle: "Pay-per-click campaign with full control over spend and bids.",
+        benefits: [
+          "Sponsored placement in eligible category searches",
+          "You only pay as your ad earns clicks",
+          "Pause or end anytime — unspent budget stops serving",
+        ],
+        lineItems,
+        total: formatMoney(budgetNum, tenantCurrency),
+        confirmLabel: `Pay ${formatMoney(budgetNum, tenantCurrency)}`,
       });
       if (!confirmed) return;
     }
@@ -708,14 +763,25 @@ export default function AdsSettingsScreen() {
     } finally {
       setCreating(false);
     }
-  }, [createForm, loadAll, tenantCurrency, confirmAdsCheckout, openAdsPaystack]);
+  }, [createForm, loadAll, tenantCurrency, requestAdsCheckout, openAdsPaystack]);
 
   const handleBuyPack = useCallback(
     async (pack: ImpressionPack) => {
-      const confirmed = await confirmAdsCheckout({
-        title: "Review impression pack",
-        message: `${formatCompactNumber(pack.impressions)} impressions for ${formatMoney(pack.price_zar, tenantCurrency)}. Paystack will confirm payment before delivery starts.`,
-        confirmLabel: "Buy pack",
+      const confirmed = await requestAdsCheckout({
+        heading: "Impression pack",
+        title: `${formatCompactNumber(pack.impressions)} sponsored impressions`,
+        subtitle: "Prepaid reach — placements deliver until the pack is fully shown.",
+        benefits: [
+          `${formatCompactNumber(pack.impressions)} guaranteed sponsored impressions`,
+          "Delivery starts only after payment is verified",
+          "No bidding or daily caps to manage",
+        ],
+        lineItems: [
+          { label: "Impression pack", value: formatCompactNumber(pack.impressions) },
+          { label: "Total due", value: formatMoney(pack.price_zar, tenantCurrency) },
+        ],
+        total: formatMoney(pack.price_zar, tenantCurrency),
+        confirmLabel: `Pay ${formatMoney(pack.price_zar, tenantCurrency)}`,
       });
       if (!confirmed) return;
 
@@ -756,7 +822,7 @@ export default function AdsSettingsScreen() {
         setCreatingPackId(null);
       }
     },
-    [loadAll, createForm.global_category_ids, confirmAdsCheckout, tenantCurrency, openAdsPaystack]
+    [loadAll, createForm.global_category_ids, requestAdsCheckout, tenantCurrency, openAdsPaystack]
   );
 
   const handleUpdateCampaign = useCallback(async () => {
@@ -1152,10 +1218,23 @@ export default function AdsSettingsScreen() {
                   <TouchableOpacity
                     key={tp.id}
                     onPress={async () => {
-                      const confirmed = await confirmAdsCheckout({
-                        title: "Review time boost",
-                        message: `${tp.label} for ${formatMoney(tp.price_zar, tenantCurrency)}. Your sponsored placement starts only after Paystack confirms payment.`,
-                        confirmLabel: "Buy boost",
+                      const daysLabel =
+                        tp.duration_days === 1 ? "1 day" : `${tp.duration_days} days`;
+                      const confirmed = await requestAdsCheckout({
+                        heading: "Time boost",
+                        title: tp.label?.trim() ? tp.label : `${daysLabel} boost`,
+                        subtitle: `Flat fee — sponsored placement for ${daysLabel}.`,
+                        benefits: [
+                          `Sponsored placement for the full ${daysLabel}`,
+                          "Predictable flat price — no per-click charges",
+                          "Goes live only after payment is verified",
+                        ],
+                        lineItems: [
+                          { label: "Boost duration", value: daysLabel },
+                          { label: "Total due", value: formatMoney(tp.price_zar, tenantCurrency) },
+                        ],
+                        total: formatMoney(tp.price_zar, tenantCurrency),
+                        confirmLabel: `Pay ${formatMoney(tp.price_zar, tenantCurrency)}`,
                       });
                       if (!confirmed) return;
 
@@ -1738,7 +1817,19 @@ export default function AdsSettingsScreen() {
         )}
       </BottomSheet>
     </ScreenContainer>
+    <AdsCheckoutReviewSheet
+      visible={!!reviewState}
+      review={reviewState}
+      submitting={reviewSubmitting}
+      onConfirm={handleReviewConfirm}
+      onClose={handleReviewClose}
+    />
     {adsPaystackCheckout.modal}
+    <AdsCheckoutProcessingOverlay
+      visible={processing}
+      message="Confirming your payment…"
+      hint="Don't close the app — we're verifying with Paystack and funding your campaign."
+    />
     </>
   );
 }
