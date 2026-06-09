@@ -47,11 +47,11 @@ const baseStats = {
 const fmt = (n: number) => `R${n.toFixed(2)}`;
 
 describe("buildPayoutBalanceCardView", () => {
-  it("uses finance-aligned available balance with payouts link", () => {
+  it("uses finance-aligned available balance with finance link", () => {
     const view = buildPayoutBalanceCardView(baseStats, fmt);
     expect(view.title).toBe("Available to withdraw");
     expect(view.value).toBe(1250.5);
-    expect(view.href).toBe("/provider/payouts");
+    expect(view.href).toBe("/provider/finance");
     expect(view.subtitle).toContain("Platform-held");
   });
 

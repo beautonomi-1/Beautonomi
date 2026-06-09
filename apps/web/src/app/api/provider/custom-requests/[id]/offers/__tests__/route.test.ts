@@ -40,6 +40,11 @@ vi.mock("@/lib/server/feature-flags", () => ({
   isFeatureEnabledServer: (...args: unknown[]) => mockIsFeatureEnabledServer(...args),
 }));
 
+vi.mock("@/lib/subscriptions/feature-access", () => ({
+  checkNewGateFeatureAccess: vi.fn().mockResolvedValue(true),
+  SUBSCRIPTION_FEATURE_KEYS: { customRequests: "custom_requests" },
+}));
+
 function makeSupabase(request: Record<string, unknown> | null) {
   return {
     from(table: string) {
