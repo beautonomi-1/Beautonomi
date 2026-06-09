@@ -3,7 +3,7 @@
  * Copy Vite admin SPA output into Next public tree so `/admin/*` can be served as static files.
  * Invoked from `next-build.mjs` before `next build`.
  */
-import { cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -33,4 +33,21 @@ if (!existsSync(adminDist)) {
 mkdirSync(join(root, "public"), { recursive: true });
 rmSync(target, { recursive: true, force: true });
 cpSync(adminDist, target, { recursive: true });
+
+const indexHtmlPath = join(target, "index.html");
+if (existsSync(indexHtmlPath)) {
+  const indexHtml = readFileSync(indexHtmlPath, "utf8");
+  const assetRefs = [
+    ...indexHtml.matchAll(/(?:src|href)=["'](?:\/admin\/)?(assets\/[^"']+)["']/g),
+  ].map((match) => match[1]);
+  const missingAssets = assetRefs.filter((relPath) => !existsSync(join(target, relPath)));
+  if (missingAssets.length > 0) {
+    console.error(
+      "[admin-spa] synced index.html references assets that are missing on disk:\n" +
+        missingAssets.map((asset) => `  - ${asset}`).join("\n"),
+    );
+    process.exit(1);
+  }
+}
+
 console.log("[admin-spa] synced apps/admin-web/dist → apps/web/public/admin");
