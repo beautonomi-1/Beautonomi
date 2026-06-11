@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 
 describe("OnboardingWizardContext mount guard", () => {
-  it("auto-finalizes when provider exists on submit step without focus override", () => {
+  it("does not auto-submit on load; finalizes via explicit submit when provider exists", () => {
     const ctxPath = path.join(
       __dirname,
       "../../src/features/provider-onboarding/OnboardingWizardContext.tsx",
@@ -10,7 +10,8 @@ describe("OnboardingWizardContext mount guard", () => {
     const src = fs.readFileSync(ctxPath, "utf8");
 
     expect(src).toContain("probeProviderProfileExists");
-    expect(src).toContain("providerExists && resolved === onSubmitStep && !hasFocusOverride");
+    expect(src).toContain("Do not auto-submit on load");
+    expect(src).toContain("providerProfileExists && currentStep === STEPS.length");
     expect(src).toContain('"/api/provider/onboarding"');
     expect(src).toContain("resolveCheckoutFlagsForRecovery");
     expect(src).toContain("timeout: 120_000");
