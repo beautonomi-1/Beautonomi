@@ -507,11 +507,8 @@ export async function proxy(request: NextRequest) {
           return NextResponse.redirect(new URL('/provider/get-started', request.url));
         }
 
-        // Check if user is provider or admin
-        if (!['provider_owner', 'provider_staff', 'superadmin'].includes(userRole)) {
-          // Redirect non-provider users to the partner signup/onboarding entry.
-          return NextResponse.redirect(new URL('/become-a-partner', request.url));
-        }
+        // Redirect non-provider users to onboarding (matches ProviderPortalGate).
+          return NextResponse.redirect(new URL('/provider/onboarding', request.url));
 
         return response;
       } catch (error) {

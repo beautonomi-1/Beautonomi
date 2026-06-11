@@ -762,6 +762,12 @@ function useOneSignalLogout() {
       void clearRegisteredPlayerId();
       void (async () => {
         try {
+          const Notifications = await import("expo-notifications");
+          await Notifications.setBadgeCountAsync(0);
+        } catch {
+          // Native module unavailable
+        }
+        try {
           const playerId = await logoutOneSignal();
           if (playerId) {
             await api.fetch("/api/provider/devices", {

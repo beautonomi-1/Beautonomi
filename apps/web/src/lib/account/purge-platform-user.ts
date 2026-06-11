@@ -17,6 +17,46 @@ function authDeleteErrorCode(error: unknown): string | undefined {
   return undefined;
 }
 
+type ResidualBlockerRow = {
+  table_schema: string | null;
+  table_name: string | null;
+  column_name: string | null;
+  constraint_name: string | null;
+  delete_action: string | null;
+  blocking_rows: number | null;
+};
+
+/**
+ * Calls the read-only diagnostic (migration 670) to translate the opaque
+ * Supabase "Database error deleting user" into the exact tables/constraints
+ * still referencing the user's auth-delete cascade closure.
+ */
+async function describeResidualDeleteBlockers(
+  admin: SupabaseClient,
+  userId: string,
+): Promise<string | null> {
+  try {
+    const { data, error } = await admin.rpc("compliance_diagnose_user_delete_blockers", {
+      p_user_id: userId,
+    });
+    if (error) {
+      console.error("[purge-user] diagnose blockers RPC failed:", error.message);
+      return null;
+    }
+    const rows = (data as ResidualBlockerRow[] | null) ?? [];
+    if (rows.length === 0) return null;
+    return rows
+      .map(
+        (r) =>
+          `${r.table_schema}.${r.table_name}.${r.column_name} (${r.constraint_name}, ${r.delete_action}, ${r.blocking_rows} row(s))`,
+      )
+      .join("; ");
+  } catch (e) {
+    console.error("[purge-user] diagnose blockers threw:", e);
+    return null;
+  }
+}
+
 /**
  * DB-side cleanup for FKs that still use NO ACTION toward users/auth (see migrations 440, 631).
  * Also deletes owned-provider bookings first so provider → offerings CASCADE does not hit
@@ -60,11 +100,15 @@ export async function purgePlatformUserAccountFully(
 
   const { error: delError } = await admin.auth.admin.deleteUser(userId);
   if (delError) {
-    return {
-      ok: false,
-      message: delError.message,
-      code: authDeleteErrorCode(delError),
-    };
+    const code = authDeleteErrorCode(delError);
+    let message = delError.message;
+    // The auth error ("Database error deleting user") never names the blocking
+    // table. Surface the precise residual FK blockers so the operator/dev can act.
+    if (code === "AUTH_DELETE_DATABASE_ERROR") {
+      const blockers = await describeResidualDeleteBlockers(admin, userId);
+      if (blockers) message = `${delError.message} — residual references: ${blockers}`;
+    }
+    return { ok: false, message, code };
   }
   return { ok: true, storage_attachments_removed };
 }

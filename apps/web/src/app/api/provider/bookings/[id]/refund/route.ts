@@ -106,7 +106,10 @@ export async function POST(
         customer_id,
         currency,
         tenant_id,
-        location_id
+        location_id,
+        loyalty_points_used,
+        loyalty_points_redeemed,
+        gift_card_amount
       `)
       .eq("id", bookingId)
       .eq("provider_id", providerId)
@@ -242,6 +245,7 @@ export async function POST(
         p_reference_id: bookingId,
         p_reference_type: "booking_refund",
         p_tenant_id: walletTenantId,
+        p_idempotency_key: `provider_booking_refund:${refundId}`,
       });
 
       if (walletError) {
@@ -350,7 +354,39 @@ export async function POST(
       }
     }
 
-    return successResponse({ 
+    if (isFullyRefunded) {
+      try {
+        const pointsToRefund = Number(
+          (booking as { loyalty_points_used?: number | null }).loyalty_points_used ??
+            (booking as { loyalty_points_redeemed?: number | null }).loyalty_points_redeemed ??
+            0,
+        );
+        if (pointsToRefund > 0 && booking.customer_id) {
+          const { refundRedeemedLoyaltyPoints } = await import("@/lib/loyalty/refund-redeemed-points");
+          await refundRedeemedLoyaltyPoints(supabaseAdmin, {
+            bookingId,
+            customerId: booking.customer_id,
+            pointsRedeemed: pointsToRefund,
+            reason: "provider_refund",
+          });
+        }
+      } catch (loyaltyErr) {
+        console.warn("Failed to restore loyalty points on full refund:", loyaltyErr);
+      }
+
+      const giftCardAmount = Number((booking as { gift_card_amount?: number | null }).gift_card_amount ?? 0);
+      if (giftCardAmount > 0) {
+        try {
+          await (supabaseAdmin.rpc as any)("void_gift_card_redemption", {
+            p_booking_id: bookingId,
+          });
+        } catch (gcErr) {
+          console.warn("Gift card void on full provider refund failed:", gcErr);
+        }
+      }
+    }
+
+    return successResponse({
       refund,
       refund_method: refundMethod,
       message:

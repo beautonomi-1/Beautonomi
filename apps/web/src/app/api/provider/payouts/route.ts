@@ -155,7 +155,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { availableBalance, rawBalance, hasNegativeBalance } = await getAvailablePayoutBalance(
+    const { availableBalance, rawBalance, hasNegativeBalance, breakdown } = await getAvailablePayoutBalance(
       getSupabaseAdmin(),
       providerId,
       {
@@ -262,46 +262,47 @@ export async function POST(request: NextRequest) {
     const randomSuffix = Math.random().toString(36).substring(2, 7).toUpperCase();
     const payoutNumber = `PAY-${dateStamp}-${randomSuffix}`;
 
-    const { data: payout, error: payoutError } = await supabaseAdmin
-      .from("payouts")
-      .insert({
-        provider_id: providerId,
-        payout_number: payoutNumber,
-        amount: numAmount,
-        currency: payoutCurrency,
-        status: "pending",
-        payout_method: "bank_transfer",
-        payout_account_details: Object.keys(payoutAccountDetails).length > 0 ? payoutAccountDetails : {},
-        platform_fee_amount: 0,
-        platform_fee_percentage: Number(payoutSettings.platform_commission_percentage ?? 0),
-        net_amount: numAmount,
-        scheduled_at: now.toISOString(),
-      })
-      .select()
-      .single();
+    const maxAvailableBeforeReserve =
+      Math.round((availableBalance + breakdown.pendingPayouts) * 100) / 100;
+
+    const payoutPayload = {
+      payout_number: payoutNumber,
+      amount: numAmount,
+      currency: payoutCurrency,
+      status: "pending",
+      payout_method: "bank_transfer",
+      payout_account_details: Object.keys(payoutAccountDetails).length > 0 ? payoutAccountDetails : {},
+      platform_fee_amount: 0,
+      platform_fee_percentage: Number(payoutSettings.platform_commission_percentage ?? 0),
+      net_amount: numAmount,
+      scheduled_at: now.toISOString(),
+    };
+
+    const { data: payoutRows, error: payoutError } = await supabaseAdmin.rpc(
+      "insert_payout_request_guarded",
+      {
+        p_provider_id: providerId,
+        p_max_available_before_reserve: maxAvailableBeforeReserve,
+        p_payout: payoutPayload,
+      },
+    );
 
     if (payoutError) {
+      const msg = payoutError.message ?? "";
+      if (msg.includes("INSUFFICIENT_BALANCE")) {
+        return errorResponse(
+          `Insufficient balance. Available: ${availableRounded}, Requested: ${requestRounded}`,
+          "INSUFFICIENT_BALANCE",
+          400,
+        );
+      }
       throw payoutError;
     }
 
-    // Concurrent payout guard: re-check balance now that our pending payout is in the table.
-    // getAvailablePayoutBalance sums pending+processing payouts as a reserve, so if another
-    // request slipped through simultaneously, the balance will now be negative.
-    const { availableBalance: balancePostInsert } = await getAvailablePayoutBalance(
-      getSupabaseAdmin(),
-      providerId,
-      { holdDays, tenantId: (prow as { tenant_id?: string | null } | null)?.tenant_id ?? null }
-    );
-    if (balancePostInsert < -1e-6) {
-      // Race condition detected — roll back our payout row and reject.
-      await supabaseAdmin.from("payouts").delete().eq("id", payout.id);
-      return errorResponse(
-        `Insufficient balance after concurrent check. Available: ${Math.max(0, balancePostInsert + numAmount).toFixed(2)}, Requested: ${numAmount}. Another payout may have been submitted simultaneously.`,
-        "INSUFFICIENT_BALANCE",
-        400
-      );
+    const payout = Array.isArray(payoutRows) ? payoutRows[0] : payoutRows;
+    if (!payout) {
+      return errorResponse("Failed to create payout request", "INTERNAL_ERROR", 500);
     }
-
 
     try {
       await supabaseAdmin.from("notifications").insert({

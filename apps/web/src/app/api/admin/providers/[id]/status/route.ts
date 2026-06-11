@@ -9,6 +9,7 @@ import { ADMIN_SECTION_PROVIDERS_OPERATIONS, ADMIN_SECTION_PROVIDER_OPS } from "
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { invalidatePublicProviderCache } from "@/lib/providers/invalidate-public-provider-cache";
+import { markProviderOnboardingLifecycleComplete } from "@/lib/provider-ops/mark-provider-onboarding-lifecycle-complete";
 import { z } from "zod";
 
 /**
@@ -66,7 +67,7 @@ export async function PATCH(
     // Verify provider exists
     const { data: provider } = await supabase
       .from("providers")
-      .select("id, status")
+      .select("id, status, user_id, tenant_id")
       .eq("tenant_id", tenantId)
       .eq("id", id)
       .single();
@@ -92,6 +93,17 @@ export async function PATCH(
 
     if (updateError || !updatedProvider) {
       return handleApiError(updateError, "Failed to update provider status");
+    }
+
+    if (dbStatus === "active") {
+      const ownerId = (provider as { user_id?: string | null }).user_id;
+      if (ownerId) {
+        await markProviderOnboardingLifecycleComplete(supabase, {
+          providerId: id,
+          userId: ownerId,
+          tenantId: (provider as { tenant_id?: string | null }).tenant_id ?? tenantId,
+        });
+      }
     }
 
     invalidatePublicProviderCache();

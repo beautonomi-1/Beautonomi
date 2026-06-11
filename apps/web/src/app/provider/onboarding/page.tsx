@@ -707,39 +707,20 @@ export default function ProviderOnboarding() {
     try {
       setIsSubmitting(true);
 
-      // Final validation
-      const validation = validateStep(1);
-      if (!validation.valid) {
-        validation.errors.forEach((error) => toast.error(error));
-        return;
+      // Validate every applicable wizard step (mirrors mobile submit).
+      for (let s = 1; s <= STEPS.length; s++) {
+        const stepMeta = STEPS[s - 1];
+        if (stepMeta.conditional && !stepMeta.conditional(formData)) {
+          continue;
+        }
+        const stepValidation = validateStep(s);
+        if (!stepValidation.valid) {
+          stepValidation.errors.forEach((error) => toast.error(error));
+          setCurrentStep(s);
+          return;
+        }
       }
 
-      // Validate required fields
-      if (!formData.team_size) {
-        toast.error("Please select your team size");
-        return;
-      }
-      if (
-        !formData.owner_name ||
-        !formData.owner_email ||
-        !isValidOwnerPhoneE164(formData.owner_phone)
-      ) {
-        toast.error("Please complete your identity information");
-        return;
-      }
-      if (!formData.phone_verified) {
-        toast.error("Please verify your phone number");
-        return;
-      }
-      if (!formData.business_name || !formData.address) {
-        toast.error("Please complete all required fields");
-        return;
-      }
-
-      if (!formData.global_category_ids || formData.global_category_ids.length === 0) {
-        toast.error("Please select at least one service category");
-        return;
-      }
       if (!formData.thumbnail_url?.trim()) {
         toast.error("Please upload a main thumbnail photo before submitting");
         setCurrentStep(8);
@@ -989,7 +970,7 @@ export default function ProviderOnboarding() {
 
   return (
     <RoleGuard
-      allowedRoles={["customer", "provider_owner"]}
+      allowedRoles={["customer", "provider_owner", "provider_onboarding"]}
       redirectTo="/become-a-partner"
       showLoading={true}
     >
@@ -1019,7 +1000,7 @@ export default function ProviderOnboarding() {
                 </p>
                 {isSavingDraft && (
                   <p className="text-[10px] font-medium text-slate-500 mt-0.5 animate-pulse">
-                    Savingâ€¦
+                    Saving…
                   </p>
                 )}
               </div>
@@ -1112,7 +1093,7 @@ export default function ProviderOnboarding() {
                     disabled={isSubmitting}
                     className={`${ONBOARDING_BTN_NEXT} bg-primary text-white hover:bg-primary-hover disabled:opacity-50`}
                   >
-                    {isSubmitting ? "Submittingâ€¦" : "Submit & launch"}
+                    {isSubmitting ? "Submitting…" : "Submit & launch"}
                   </Button>
                 )}
               </div>
@@ -1391,7 +1372,7 @@ function Step2Identity({
             </Button>
           </div>
           <p className="mt-3 text-xs leading-relaxed text-slate-500">
-            Weâ€™ll SMS a {SUPABASE_AUTH_OTP_LENGTH}-digit code (valid for about{" "}
+            We'll SMS a {SUPABASE_AUTH_OTP_LENGTH}-digit code (valid for about{" "}
             {Math.max(1, Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60))}{" "}
             {Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60) === 1 ? "minute" : "minutes"}).
             For South Africa, enter the local number only (omit +27)â€”for example{" "}
@@ -1752,7 +1733,7 @@ function Step8Photos({
                 <Upload className="w-4 h-4 mr-2" />
               )}
               {uploadingThumbnail
-                ? "Uploadingâ€¦"
+                ? "Uploading…"
                 : thumbnailPreview
                   ? "Change Thumbnail"
                   : "Upload Thumbnail"}
@@ -1830,7 +1811,7 @@ function Step8Photos({
                 <Upload className="w-4 h-4 mr-2" />
               )}
               {uploadingAvatar
-                ? "Uploadingâ€¦"
+                ? "Uploading…"
                 : avatarPreview
                   ? "Change profile image"
                   : "Upload profile image"}
@@ -1881,7 +1862,7 @@ function Step8Photos({
           ) : (
             <Upload className="w-4 h-4 mr-2" />
           )}
-          {uploadingGallery ? "Uploadingâ€¦" : "Add Portfolio Images"}
+          {uploadingGallery ? "Uploading…" : "Add Portfolio Images"}
         </Label>
 
         {galleryPreviews.length > 0 && (
@@ -2119,7 +2100,7 @@ function Step3BusinessDetails({
           }
           className={`w-full ${inputClass} px-4`}
         >
-          <option value="">Select yearsâ€¦</option>
+          <option value="">Select years…</option>
           <option value="0">Just starting (0 years)</option>
           <option value="1">1 year</option>
           <option value="2">2 years</option>
@@ -2149,7 +2130,7 @@ function Step3BusinessDetails({
             onChange={(next) => updateData({ languages_spoken: next.length ? next : ["English"] })}
             staticSuggestions={STEP3_LANGUAGE_SUGGESTIONS}
             allowFreeForm
-            placeholder="Add languageâ€¦"
+            placeholder="Add language…"
             aria-label="Languages you speak"
           />
         </div>

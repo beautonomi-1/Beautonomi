@@ -12,6 +12,8 @@ import { LoadingState } from "@/components/ui/LoadingState";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { StatCard } from "@/components/ui/StatCard";
 import { formatCurrency } from "@/lib/format";
+import { getReportDateRange } from "@/lib/reportDateRanges";
+import { useProvider } from "@/providers/ProviderContext";
 import { twStyle } from "@/lib/twStyle";
 
 interface ZoneStat {
@@ -44,15 +46,11 @@ interface AnalyticsResponse {
 export default function ServiceZonesAnalyticsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [period, setPeriod] = useState<"week" | "month" | "quarter">("month");
-  const now = new Date();
-  const start =
-    period === "week"
-      ? new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-      : period === "month"
-        ? new Date(now.getFullYear(), now.getMonth(), 1)
-        : new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1);
-  const startStr = start.toISOString().slice(0, 10);
-  const endStr = now.toISOString().slice(0, 10);
+  const { provider } = useProvider();
+  const rangeKey = period === "week" ? "week" : period === "month" ? "month" : "3months";
+  const { from: startStr, to: endStr } = getReportDateRange(rangeKey, {
+    timezone: provider?.timezone,
+  });
 
   const { data, loading, refresh } = useApi<AnalyticsResponse>(
     `/api/provider/service-zones/analytics?start_date=${startStr}&end_date=${endStr}`

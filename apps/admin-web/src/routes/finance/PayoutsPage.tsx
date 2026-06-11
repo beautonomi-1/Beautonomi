@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_FINANCE } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
+import { AdminApiError } from "@beautonomi/admin-api-client";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { adminTabButtonClass, adminToolbarButtonClass } from "@/lib/adminUi";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
@@ -162,6 +163,16 @@ export function PayoutsPage() {
 
   const invalidate = () => void qc.invalidateQueries({ queryKey: adminQueryKeys.payouts.all() });
 
+  const handlePayoutMutationError = (e: Error) => {
+    if (e instanceof AdminApiError && (e.status === 409 || e.code === "STATE_CONFLICT")) {
+      invalidate();
+      adminToast.warning("Already processed by another admin — list refreshed");
+      setModal(null);
+      return;
+    }
+    adminToast.error(e.message);
+  };
+
   const exportMut = useMutation({
     mutationFn: async () => {
       const blob = await adminApi.downloadBlob(`/api/admin/payouts?${buildQueryString({ export: "csv", limit: "5000" })}`, {
@@ -199,7 +210,7 @@ export function PayoutsPage() {
         adminToast.warning(`${result.skipped_count} payout${result.skipped_count === 1 ? "" : "s"} skipped. Review readiness/errors.`);
       }
     },
-    onError: (e: Error) => adminToast.error(e.message),
+    onError: handlePayoutMutationError,
   });
 
   const approveMut = useMutation({
@@ -209,7 +220,7 @@ export function PayoutsPage() {
       setModal(null);
       adminToast.success("Payout approved");
     },
-    onError: (e: Error) => adminToast.error(e.message),
+    onError: handlePayoutMutationError,
   });
 
   const rejectMut = useMutation({
@@ -221,7 +232,7 @@ export function PayoutsPage() {
       setReason("");
       adminToast.success("Payout rejected");
     },
-    onError: (e: Error) => adminToast.error(e.message),
+    onError: handlePayoutMutationError,
   });
 
   const markPaidMut = useMutation({
@@ -230,7 +241,7 @@ export function PayoutsPage() {
       invalidate();
       adminToast.success("Marked as paid");
     },
-    onError: (e: Error) => adminToast.error(e.message),
+    onError: handlePayoutMutationError,
   });
 
   const markFailedMut = useMutation({
@@ -242,7 +253,7 @@ export function PayoutsPage() {
       setReason("");
       adminToast.success("Payout marked failed");
     },
-    onError: (e: Error) => adminToast.error(e.message),
+    onError: handlePayoutMutationError,
   });
 
   const transferMut = useMutation({
@@ -260,7 +271,7 @@ export function PayoutsPage() {
       setModal(null);
       adminToast.success("Transfer initiated");
     },
-    onError: (e: Error) => adminToast.error(e.message),
+    onError: handlePayoutMutationError,
   });
 
   const finalizeTransferMut = useMutation({
@@ -272,7 +283,7 @@ export function PayoutsPage() {
       setTransferOtp("");
       adminToast.success("Transfer finalized");
     },
-    onError: (e: Error) => adminToast.error(e.message),
+    onError: handlePayoutMutationError,
   });
 
   function setStatus(next: string) {

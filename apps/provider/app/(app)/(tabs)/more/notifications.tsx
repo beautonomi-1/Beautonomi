@@ -215,7 +215,7 @@ export default function NotificationsScreen() {
   const [filter, setFilter] = useState<FilterValue>("all");
 
   const { session } = useAuth();
-  const { refresh: refreshCount, adjustUnreadCount, replaceUnreadCount } = useNotificationsCount();
+  const { refresh: refreshCount, adjustUnreadCount, replaceUnreadCount, totalUnread } = useNotificationsCount();
   const {
     data: rawData,
     loading,
@@ -279,7 +279,8 @@ export default function NotificationsScreen() {
     }
   }, [refresh, refreshCount]);
 
-  const unreadCount = notifications?.filter((n) => isUnread(n)).length ?? 0;
+  const localUnreadCount = notifications?.filter((n) => isUnread(n)).length ?? 0;
+  const unreadCount = totalUnread > 0 ? totalUnread : localUnreadCount;
 
   const filteredNotifications = useMemo(() => {
     if (!notifications) return [];
@@ -324,8 +325,7 @@ export default function NotificationsScreen() {
 
   const navigateToNotification = useCallback(
     (notif: Notification): boolean => {
-      navigateFromProviderNotification(router, notif);
-      return true;
+      return navigateFromProviderNotification(router, notif);
     },
     [router],
   );
@@ -338,12 +338,7 @@ export default function NotificationsScreen() {
       // optimistic mutate handles the badge locally; failures roll back.
       const alreadyRead =
         !!notif.read_at || !!notif.is_read || !!notif.read;
-      const navigated = navigateToNotification(notif);
-      // If no deep-link route exists, stay on the notifications screen — the
-      // notification is still marked read so the badge clears correctly.
-      if (!navigated && !alreadyRead) {
-        // Nothing to show; fall through to mark-read below.
-      }
+      navigateToNotification(notif);
       if (alreadyRead) return;
 
       const readTs = new Date().toISOString();

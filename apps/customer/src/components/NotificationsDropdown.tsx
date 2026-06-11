@@ -41,7 +41,7 @@ export function NotificationsDropdown({ visible, onClose }: NotificationsDropdow
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const { refetchUnreadCount, adjustUnreadCount, replaceUnreadCount } = useNotifications();
+  const { refetchUnreadCount, adjustUnreadCount, replaceUnreadCount, unreadCount } = useNotifications();
   const [list, setList] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
@@ -53,7 +53,7 @@ export function NotificationsDropdown({ visible, onClose }: NotificationsDropdow
       const res = await api.get<{
         notifications?: Notification[];
         data?: { notifications?: Notification[] };
-      }>("/api/me/notifications");
+      }>("/api/me/notifications?limit=10");
       if (res.error) {
         // Surface the failure (parity with the provider dropdown) instead of
         // silently rendering an empty "No notifications" state.
@@ -153,7 +153,7 @@ export function NotificationsDropdown({ visible, onClose }: NotificationsDropdow
     router.push("/(app)/notifications");
   };
 
-  const hasUnread = list.some((n) => !n.is_read);
+  const hasUnread = unreadCount > 0 || list.some((n) => !n.is_read);
 
   if (!visible) return null;
 

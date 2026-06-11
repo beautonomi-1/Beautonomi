@@ -125,4 +125,16 @@ describe("navigateFromProviderNotification", () => {
 
     expect(router.push).toHaveBeenCalledWith("/(app)/(tabs)/more/settings/ads");
   });
+
+  it("returns false when no route matches (stay on current screen)", () => {
+    const router = { push: jest.fn() };
+
+    const navigated = navigateFromProviderNotification(router as never, {
+      id: "notification-unknown",
+      type: "unknown_type",
+    });
+
+    expect(navigated).toBe(false);
+    expect(router.push).not.toHaveBeenCalled();
+  });
 });

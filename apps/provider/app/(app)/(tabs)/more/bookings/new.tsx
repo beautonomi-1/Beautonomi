@@ -48,7 +48,7 @@ import { ensureForegroundLocationPermission } from "@/lib/native-permissions";
 import { useDefaultPhoneDial } from "@/hooks/useDefaultPhoneDial";
 import { Colors } from "@/constants/colors";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { calculateBookingTotals, percentOf, safeNum } from "@beautonomi/utils";
+import { calculateBookingTotals, effectiveTravelFee, percentOf, safeNum } from "@beautonomi/utils";
 import { BookingDateStrip, BookingTimeSlotGrid } from "@/components/bookings/BookingDateTimePicker";
 import { useBookingAvailableSlots } from "@/hooks/useBookingAvailableSlots";
 
@@ -1144,7 +1144,7 @@ export default function NewBookingScreen() {
     const taxRatePercent = safeNum(paymentSettings?.taxRatePercent);
     const taxRate = taxRatePercent / 100;
     const taxInclusive = paymentSettings?.taxInclusive ?? true;
-    const travelFeeNum = safeNum(travelFee);
+    const travelFeeNum = effectiveTravelFee(locationType, safeNum(travelFee));
     const tipNum = safeNum(tipAmount);
     const pricing = calculateBookingTotals({
       subtotal,
@@ -1184,6 +1184,7 @@ export default function NewBookingScreen() {
     discountType,
     paymentSettings,
     travelFee,
+    locationType,
     tipAmount,
     promoApplied,
     selectedPackageId,
@@ -1921,7 +1922,7 @@ export default function NewBookingScreen() {
               service_fee_percentage: 0,
               service_fee_amount: 0,
               tip_amount: summary.tipNum,
-              travel_fee: summary.travelFeeNum,
+              travel_fee: locationType === "at_home" ? summary.travelFeeNum : 0,
               total_amount: summary.total,
             },
             ...(locationType === "at_home"
@@ -2828,9 +2829,20 @@ export default function NewBookingScreen() {
                       if (loc.val === "walk_in") {
                         setIsWalkIn(true);
                         setLocationType("at_salon");
+                        setTravelFee("");
+                        travelFeeUserLockedRef.current = false;
+                        setTravelPreviewMinutes(null);
+                        setTravelPreviewDistanceKm(null);
                       } else {
                         setIsWalkIn(false);
-                        setLocationType(loc.val as "at_salon" | "at_home");
+                        const next = loc.val as "at_salon" | "at_home";
+                        setLocationType(next);
+                        if (next !== "at_home") {
+                          setTravelFee("");
+                          travelFeeUserLockedRef.current = false;
+                          setTravelPreviewMinutes(null);
+                          setTravelPreviewDistanceKm(null);
+                        }
                       }
                     }}
                     accessibilityRole="radio"
@@ -3539,7 +3551,7 @@ export default function NewBookingScreen() {
               <Text style={twStyle("text-sm text-gray-500")}>VAT ({summary.taxRatePercent ?? 0}%)</Text>
               <Text style={twStyle("text-sm text-gray-700")}>{formatCurrency(summary.tax, tenantCurrency)}</Text>
             </View>
-            {summary.travelFeeNum > 0 && (
+            {locationType === "at_home" && summary.travelFeeNum > 0 && (
               <View style={twStyle("flex-row justify-between")}>
                 <Text style={twStyle("text-sm text-gray-500")}>Travel fee</Text>
                 <Text style={twStyle("text-sm text-gray-700")}>{formatCurrency(summary.travelFeeNum, tenantCurrency)}</Text>

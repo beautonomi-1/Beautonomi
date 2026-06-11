@@ -52,6 +52,14 @@ type FinanceSummary = {
   refunds_gross: number;
   gift_card_sales: number;
   membership_sales: number;
+  promotion_discounts?: number;
+  membership_discounts?: number;
+  loyalty_discounts?: number;
+  loyalty_redemptions?: number;
+  wallet_topup_ledger?: number;
+  payouts_paid_total?: number;
+  travel_fees?: number;
+  walk_in_additional_charges?: number;
   service_fee_revenue?: number;
   wallet_topup_revenue: number;
   referral_payouts: number;
@@ -73,10 +81,13 @@ type FinanceSummary = {
     provider_earnings?: number;
     cancellation_fees?: number;
     tips?: number;
+    travel_fees?: number;
+    walk_in_additional_charges?: number;
     taxes_collected?: number;
     refunds?: number;
     refund_impact_net?: number;
     net_after_refunds?: number;
+    payouts_paid_total?: number;
   };
   liabilities?: {
     wallet_topups_cash_collected?: number;
@@ -299,16 +310,28 @@ export function FinanceOverviewPage() {
   const providerRevenueDrivers = useMemo(() => {
     if (!summary) return [];
     return [
-      { label: "Provider earnings", value: summary.provider_revenue?.provider_earnings ?? summary.provider_earnings ?? 0 },
+      { label: "Provider service earnings", value: summary.provider_revenue?.provider_earnings ?? summary.provider_earnings ?? 0 },
       { label: "Cancellation fees retained", value: summary.provider_revenue?.cancellation_fees ?? summary.cancellation_fees_retained ?? 0 },
-      { label: "Tips collected", value: summary.provider_revenue?.tips ?? summary.tips_gross ?? 0 },
+      { label: "Tips (pass-through)", value: summary.provider_revenue?.tips ?? summary.tips_gross ?? 0 },
+      { label: "Travel fees (pass-through)", value: summary.provider_revenue?.travel_fees ?? summary.travel_fees ?? 0 },
+      {
+        label: "Walk-in add-on charges",
+        value: summary.provider_revenue?.walk_in_additional_charges ?? summary.walk_in_additional_charges ?? 0,
+      },
     ];
   }, [summary]);
 
   const providerDeductions = useMemo(() => {
     if (!summary) return [];
     return [
-      { label: "Refund impact (provider side)", value: Math.abs(summary.provider_revenue?.refund_impact_net ?? 0) },
+      {
+        label: "Provider-earnings refund clawback",
+        value: Math.abs(summary.provider_revenue?.refund_impact_net ?? 0),
+      },
+      {
+        label: "Payouts paid",
+        value: Math.abs(summary.provider_revenue?.payouts_paid_total ?? summary.payouts_paid_total ?? 0),
+      },
     ];
   }, [summary]);
 
@@ -488,9 +511,10 @@ export function FinanceOverviewPage() {
               </li>
               <li>
                 <strong>Cancellation fees retained</strong> sums provider-retained ledger activity for cancellations in
-                the date range. <strong>Refunds (gross)</strong> sums ledger <code className="rounded bg-gray-100 px-1">refund</code>{" "}
-                row amounts. <strong>Provider net activity</strong> combines earnings, retained fees, tips, and
-                provider-side refund impact.
+                the date range. <strong>Refunds (gross)</strong> sums customer cash refund legs only (excludes parallel
+                discount/tender rows). <strong>Provider net activity</strong> is recognized revenue (earnings, tips,
+                travel, cancellation, walk-in add-ons) minus provider-earnings refund clawback — not payout
+                disbursements.
               </li>
             </ul>
           </details>
@@ -563,6 +587,14 @@ export function FinanceOverviewPage() {
               <SummaryMetricCard label="Cancellation fees (provider-retained)" value={summary.cancellation_fees_retained ?? 0} />
               <SummaryMetricCard label="Gift card sales" value={summary.gift_card_sales} />
               <SummaryMetricCard label="Membership sales" value={summary.membership_sales} />
+              <SummaryMetricCard label="Promotion discounts" value={summary.promotion_discounts ?? 0} />
+              <SummaryMetricCard label="Membership discounts" value={summary.membership_discounts ?? 0} />
+              <SummaryMetricCard label="Loyalty discounts" value={summary.loyalty_discounts ?? 0} />
+              <SummaryMetricCard label="Loyalty redemptions" value={summary.loyalty_redemptions ?? 0} />
+              <SummaryMetricCard
+                label="Payouts paid"
+                value={Math.abs(summary.payouts_paid_total ?? summary.provider_revenue?.payouts_paid_total ?? 0)}
+              />
               <SummaryMetricCard
                 label="Wallet top-ups cash collected"
                 value={summary.liabilities?.wallet_topups_cash_collected ?? summary.wallet_topup_revenue ?? 0}
@@ -581,14 +613,14 @@ export function FinanceOverviewPage() {
             <AdminPanel>
               <h2 className="mb-2 text-base font-semibold text-gray-900">Cancellation &amp; refund reconciliation</h2>
               <p className="mb-4 text-sm text-gray-600">
-                Compare policy retention on cancelled bookings (booking table) with wallet credits recorded in the finance ledger for the same period.
+                Ledger-backed cancellation retention vs customer cash refunded in the same period (split-refund aware).
               </p>
               <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
                 <table className="w-full min-w-[20rem] text-sm">
                   <tbody className="divide-y divide-gray-100">
                     <tr>
                       <th scope="row" className="bg-gray-50/80 px-3 py-2.5 text-left font-medium text-gray-700">
-                        Cancellation fees — provider-retained (bookings)
+                        Cancellation fees — provider-retained (ledger)
                       </th>
                       <td className="px-3 py-2.5 text-right tabular-nums text-gray-900">
                         {formatAdminCurrency(cancellationReconciliation.cancellationFeesRetained)}
@@ -596,7 +628,7 @@ export function FinanceOverviewPage() {
                     </tr>
                     <tr>
                       <th scope="row" className="bg-gray-50/80 px-3 py-2.5 text-left font-medium text-gray-700">
-                        Ledger refund rows (sum of amount)
+                        Customer cash refunded (gross)
                       </th>
                       <td className="px-3 py-2.5 text-right tabular-nums text-gray-900">
                         {formatAdminCurrency(cancellationReconciliation.ledgerRefundAmountSum)}
@@ -612,7 +644,7 @@ export function FinanceOverviewPage() {
                     </tr>
                     <tr>
                       <th scope="row" className="bg-gray-50/80 px-3 py-2.5 text-left font-medium text-gray-700">
-                        Platform commission refund impact (sum of refund net)
+                        Platform refund contra (commission reversal)
                       </th>
                       <td className="px-3 py-2.5 text-right tabular-nums text-gray-900">
                         {formatAdminCurrency(cancellationReconciliation.platformRefundImpact)}
@@ -633,7 +665,7 @@ export function FinanceOverviewPage() {
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <SummaryMetricCard label="Subscription revenue (net)" value={summary.subscription_net} />
               <SummaryMetricCard label="Ads revenue (net)" value={summary.ads_net ?? 0} />
-              <SummaryMetricCard label="Subscription fees (gross)" value={summary.subscription_collected_gross} />
+              <SummaryMetricCard label="Subscription collected (gross)" value={summary.subscription_collected_gross} />
               <SummaryMetricCard label="Tips collected (provider pass-through)" value={summary.pass_through?.tips_collected ?? summary.tips_gross} />
               <SummaryMetricCard label="Taxes collected (pass-through)" value={summary.pass_through?.taxes_collected ?? summary.taxes_gross} />
             </div>

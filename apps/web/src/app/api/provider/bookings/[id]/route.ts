@@ -1079,40 +1079,11 @@ export async function PATCH(
       updateData.cancellation_reason = cancellation_reason;
     }
     
-    // Auto-compute cancellation fee when cancelling without explicit fee
-    // (supports mobile clients that don't send a fee).
+    // Provider-initiated cancel: full customer refund by default (fee only when explicitly sent).
     if (cancellation_fee !== undefined) {
       updateData.cancellation_fee = cancellation_fee;
-    } else if (requestedDbStatus === "cancelled" && (currentBooking as any)?.cancellation_fee == null) {
-      try {
-        const { getCancellationPolicy, canCancelBooking } = await import("@/lib/bookings/cancellation-policy");
-        const { computeCancellationRefundAmount } = await import("@/lib/bookings/refund-processing");
-        const locType = ((currentBooking as any)?.location_type as "at_salon" | "at_home") || "at_salon";
-        const policy = await getCancellationPolicy(getSupabaseAdmin(), providerId, locType);
-        if (policy) {
-          const checkResult = canCancelBooking(
-            {
-              id,
-              created_at: (currentBooking as any).created_at,
-              scheduled_at: (currentBooking as any).scheduled_at,
-              location_type: locType,
-            },
-            policy,
-            new Date(),
-            { forbidLateSelfService: false }
-          );
-          if (checkResult.isLateCancellation) {
-            const bookingTotal = Number((currentBooking as any).total_amount ?? 0);
-            const policyRefundAmount = computeCancellationRefundAmount(bookingTotal, policy, true);
-            const autoFee = Math.round(Math.max(0, bookingTotal - policyRefundAmount) * 100) / 100;
-            if (autoFee > 0) {
-              updateData.cancellation_fee = autoFee;
-            }
-          }
-        }
-      } catch (autoFeeErr) {
-        console.error("[provider PATCH] auto cancellation_fee computation failed:", autoFeeErr);
-      }
+    } else if (requestedDbStatus === "cancelled") {
+      updateData.cancellation_fee = 0;
     }
 
     // Keep total_amount consistent with cancellation_fee math (DB trigger-enforced formula).
@@ -1301,43 +1272,76 @@ export async function PATCH(
       console.warn("[provider PATCH bookings/:id] cancellation reason audit log failed:", auditErr2);
     }
 
-    // When a provider cancels a booking and applies a cancellation fee, record it in the
-    // finance ledger so it appears in revenue and accounting reports.
+    // Finance settlement for cancellations and no-shows (refunds + ledger + loyalty).
     const updatedToCancelled = updateData.status === "cancelled";
-    const appliedCancelFee = Number(updateData.cancellation_fee ?? (currentBooking as Record<string, unknown>)?.cancellation_fee ?? 0);
-    if (updatedToCancelled && appliedCancelFee > 0) {
+    const updatedToNoShow = updateData.status === "no_show";
+    const preCancelGrossTotal = Number((currentBooking as Record<string, unknown>)?.total_amount ?? 0);
+
+    if (updatedToCancelled || updatedToNoShow) {
       try {
-        const { resolveTenantIdForFinanceLedger } = await import("@/lib/finance/resolve-tenant-id-for-ledger");
-        const providerAdminForLedger = getSupabaseAdmin();
-        const bookingTenantId = (currentBooking as Record<string, unknown>)?.tenant_id as string | null;
-        const cancelFeeTenantId = await resolveTenantIdForFinanceLedger(providerAdminForLedger, {
-          tenant_id: bookingTenantId,
+        const { getCancellationPolicy } = await import("@/lib/bookings/cancellation-policy");
+        const {
+          settleBookingCancellation,
+          settleBookingNoShow,
+        } = await import("@/lib/bookings/settle-booking-cancellation");
+        const { getTenantRegionConfig } = await import("@/lib/regions/config");
+        const { LAST_RESORT_CURRENCY } = await import("@/lib/regions/last-resort-currency");
+
+        const cb = currentBooking as Record<string, unknown>;
+        const locType = (cb.location_type as "at_salon" | "at_home") || "at_salon";
+        const policy = await getCancellationPolicy(getSupabaseAdmin(), providerId, locType);
+        const bookingTenantId = cb.tenant_id as string | null;
+        const tenantRegion = bookingTenantId ? await getTenantRegionConfig(bookingTenantId) : null;
+        const currency =
+          (cb.currency as string) || tenantRegion?.defaultCurrency || LAST_RESORT_CURRENCY;
+
+        const financialSnapshot = {
+          id,
           provider_id: providerId,
-        });
-        const bookingRef = (currentBooking as Record<string, unknown>)?.booking_number as string | undefined;
-        // Idempotent: only insert if no existing cancellation_fee row for this booking
-        const { data: existingCancelFeeRow } = await providerAdminForLedger
-          .from("finance_transactions")
-          .select("id")
-          .eq("booking_id", id)
-          .eq("transaction_type", "cancellation_fee")
-          .maybeSingle();
-        if (!existingCancelFeeRow) {
-          await providerAdminForLedger.from("finance_transactions").insert({
-            tenant_id: cancelFeeTenantId,
-            booking_id: id,
-            provider_id: providerId,
-            transaction_type: "cancellation_fee",
-            amount: appliedCancelFee,
-            fees: 0,
-            commission: 0,
-            net: appliedCancelFee,
-            description: `Cancellation fee for booking ${bookingRef ?? id} — provider-retained (provider cancellation)`,
-            created_at: new Date().toISOString(),
+          customer_id: cb.customer_id as string | null,
+          booking_number: cb.booking_number as string | null,
+          tenant_id: bookingTenantId,
+          subtotal: cb.subtotal as number | null,
+          discount_amount: cb.discount_amount as number | null,
+          tax_amount: cb.tax_amount as number | null,
+          service_fee_amount: cb.service_fee_amount as number | null,
+          travel_fee: cb.travel_fee as number | null,
+          tip_amount: cb.tip_amount as number | null,
+          total_amount: preCancelGrossTotal,
+          total_paid: cb.total_paid as number | null,
+          total_refunded: cb.total_refunded as number | null,
+          wallet_amount: cb.wallet_amount as number | null,
+          gift_card_amount: cb.gift_card_amount as number | null,
+          loyalty_points_used: cb.loyalty_points_used as number | null,
+          loyalty_points_redeemed: cb.loyalty_points_redeemed as number | null,
+          loyalty_points_earned: cb.loyalty_points_earned as number | null,
+        };
+
+        if (updatedToNoShow) {
+          const { data: provRow } = await getSupabaseAdmin()
+            .from("providers")
+            .select("no_show_fee_enabled, no_show_fee_amount")
+            .eq("id", providerId)
+            .maybeSingle();
+          await settleBookingNoShow({
+            booking: financialSnapshot,
+            currency,
+            noShowFeeEnabled: Boolean((provRow as { no_show_fee_enabled?: boolean } | null)?.no_show_fee_enabled),
+            noShowFeeAmount: Number((provRow as { no_show_fee_amount?: number } | null)?.no_show_fee_amount ?? 0),
+            policy,
+          });
+        } else {
+          await settleBookingCancellation({
+            booking: financialSnapshot,
+            cancelledBy: "provider",
+            currency,
+            policy,
+            explicitCancellationFee: Number(updateData.cancellation_fee ?? 0),
+            refundBookingTotal: preCancelGrossTotal,
           });
         }
-      } catch (cancelFeeErr) {
-        console.error("[provider PATCH] cancellation_fee ledger insert failed:", cancelFeeErr);
+      } catch (settleErr) {
+        console.error("[provider PATCH] booking cancellation settlement failed:", settleErr);
       }
     }
 
@@ -1657,72 +1661,10 @@ export async function PATCH(
         }
 
         if (dbStatus === "cancelled") {
-          const loyaltyPointsEarned = (currentBooking as BookingRow).loyalty_points_earned || 0;
-          if (loyaltyPointsEarned > 0 && customerId) {
-            try {
-              const { data: existingClaw } = await supabaseAdminPatch
-                .from("loyalty_points_ledger")
-                .select("id")
-                .eq("booking_id", id)
-                .eq("customer_id", customerId)
-                .contains("metadata", { source: "booking_cancel_earn_clawback" })
-                .maybeSingle();
-
-              if (!existingClaw) {
-                const { error: clawErr } = await (supabaseAdminPatch.rpc as any)("append_loyalty_ledger_entry", {
-                  p_customer_id: customerId,
-                  p_transaction_type: "adjusted",
-                  p_points_amount: -loyaltyPointsEarned,
-                  p_booking_id: id,
-                  p_description: `Points reversed for cancelled booking ${(currentBooking as BookingRow).booking_number || id}`,
-                  p_metadata: { source: "booking_cancel_earn_clawback" },
-                  p_expires_at: null,
-                });
-                if (clawErr) {
-                  console.error("Loyalty clawback RPC failed on cancel:", clawErr);
-                } else {
-                  console.log(`Reversed ${loyaltyPointsEarned} loyalty points for cancelled booking ${id}`);
-                }
-              }
-            } catch (loyaltyError) {
-              console.error("Failed to reverse loyalty points on cancellation:", loyaltyError);
-            }
-          }
-
-          // §Release-audit 2026-04: also refund any points the customer
-          // REDEEMED on this booking. Without this, points spent on a booking
-          // are lost when the provider cancels it (only earned points were
-          // being reversed before).
-          try {
-            const { data: redeemedRow } = await supabaseAdmin
-              .from("bookings")
-              .select("loyalty_points_used, loyalty_points_redeemed, customer_id")
-              .eq("id", id)
-              .maybeSingle();
-            const pointsToRefund = Number(
-              (redeemedRow as { loyalty_points_used?: number | null; loyalty_points_redeemed?: number | null } | null)?.loyalty_points_used ??
-                (redeemedRow as { loyalty_points_redeemed?: number | null } | null)?.loyalty_points_redeemed ??
-                0,
-            );
-            const refundCustomerId =
-              (redeemedRow as { customer_id?: string | null } | null)?.customer_id || customerId;
-            if (pointsToRefund > 0 && refundCustomerId) {
-              const { refundRedeemedLoyaltyPoints } = await import("@/lib/loyalty/refund-redeemed-points");
-              await refundRedeemedLoyaltyPoints(supabaseAdmin, {
-                bookingId: id,
-                customerId: refundCustomerId,
-                pointsRedeemed: pointsToRefund,
-                reason: "provider_cancel",
-              });
-            }
-          } catch (loyaltyRefundErr) {
-            console.error('[provider cancel] failed to refund redeemed loyalty points:', loyaltyRefundErr);
-          }
-
-          // Send cancellation notification
+          // Send cancellation notification (finance handled by settleBookingCancellation above)
           await sendCancellationNotification(id, {
             cancelledBy: 'provider',
-            refundInfo: 'Please contact provider for refund details',
+            refundInfo: 'A refund has been credited to the customer wallet when payment was collected through the platform.',
           });
 
           try {

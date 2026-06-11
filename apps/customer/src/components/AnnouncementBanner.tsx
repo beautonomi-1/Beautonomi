@@ -9,6 +9,7 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "@/lib/api-client";
 import { Colors } from "@/constants/colors";
+import { emitNotificationBadgeRefresh } from "@/lib/notification-badge-events";
 
 type NotifRow = {
   id: string;
@@ -147,6 +148,8 @@ export function AnnouncementBanner() {
           onPress={async () => {
             try {
               await AsyncStorage.setItem(`announcement_banner_dismissed_${row.id}`, "1");
+              await api.post(`/api/me/notifications/${row.id}/read`, {});
+              emitNotificationBadgeRefresh();
             } catch {
               /* ignore */
             }

@@ -15,6 +15,7 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { useResponsive } from "@/hooks/useResponsive";
 import { twStyle } from "@/lib/twStyle";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { formatCurrency } from "@/lib/format";
 
 interface PayStub {
   pay_run_id: string;
@@ -132,7 +133,7 @@ export default function MyEarningsScreen() {
                       {format(new Date(stub.pay_period_end), "MMM d, yyyy")}
                     </Text>
                     <Text style={twStyle("text-sm text-gray-500 mt-0.5")}>
-                      Net: {currency} {Number(stub.net_pay).toFixed(2)}
+                      Net: {formatCurrency(Number(stub.net_pay), currency)}
                     </Text>
                   </View>
                   <View style={twStyle("flex-row items-center gap-2")}>
@@ -149,24 +150,24 @@ export default function MyEarningsScreen() {
                 {isExpanded && (
                   <View style={twStyle("border-t border-gray-100 px-4 pb-4 pt-2")}>
                     <View style={twStyle("gap-2")}>
-                      <Row label="Gross pay" value={`${currency} ${Number(stub.gross_pay).toFixed(2)}`} />
-                      <Row label="Commission" value={`${currency} ${Number(stub.commission_amount).toFixed(2)}`} />
-                      <Row label="Hourly" value={`${currency} ${Number(stub.hourly_amount).toFixed(2)}`} />
-                      <Row label="Salary" value={`${currency} ${Number(stub.salary_amount).toFixed(2)}`} />
-                      <Row label="Tips" value={`${currency} ${Number(stub.tips_amount).toFixed(2)}`} />
+                      <Row label="Gross pay" value={formatCurrency(Number(stub.gross_pay), currency)} />
+                      <Row label="Commission" value={formatCurrency(Number(stub.commission_amount), currency)} />
+                      <Row label="Hourly" value={formatCurrency(Number(stub.hourly_amount), currency)} />
+                      <Row label="Salary" value={formatCurrency(Number(stub.salary_amount), currency)} />
+                      <Row label="Tips" value={formatCurrency(Number(stub.tips_amount), currency)} />
                       <View style={twStyle("flex-row justify-between py-1")}>
                         <Text style={twStyle("text-sm text-red-600")}>
                           Deductions (Tax, UIF, Other)
                         </Text>
                         <Text style={twStyle("text-sm font-medium text-red-600")}>
-                          -{currency} {deductions.toFixed(2)}
+                          -{formatCurrency(deductions, currency)}
                         </Text>
                       </View>
                     </View>
                     <View style={twStyle("flex-row justify-between pt-3 mt-2 border-t border-gray-200")}>
                       <Text style={twStyle("font-semibold text-gray-900")}>Net pay</Text>
                       <Text style={twStyle("font-semibold text-gray-900")}>
-                        {currency} {Number(stub.net_pay).toFixed(2)}
+                        {formatCurrency(Number(stub.net_pay), currency)}
                       </Text>
                     </View>
                     {stub.notes && (

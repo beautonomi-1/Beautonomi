@@ -68,7 +68,7 @@ export async function POST(
       }
     }
 
-    // Update payout status
+    // Update payout status (optimistic lock: only pending → processing)
     const { data: updatedPayout, error: updateError } = await supabase
       .from("payouts")
       .update({
@@ -79,14 +79,22 @@ export async function POST(
         admin_notes: body.notes || null,
       })
       .eq("id", id)
+      .eq("status", "pending")
       .select(`
         *,
         provider:providers!payouts_provider_id_fkey(id, business_name, slug, user_id)
       `)
-      .single();
+      .maybeSingle();
 
-    if (updateError || !updatedPayout) {
+    if (updateError) {
       return handleApiError(updateError, "Failed to approve payout");
+    }
+    if (!updatedPayout) {
+      return errorResponse(
+        "Payout was already processed by another admin",
+        "STATE_CONFLICT",
+        409,
+      );
     }
 
     await writeAuditLog({

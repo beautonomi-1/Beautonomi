@@ -73,6 +73,10 @@ export const STEPS: OnboardingStepMeta[] = [
   { id: 15, title: "Plan", description: "Choose a subscription" },
 ];
 
+/** Step id for the Categories step (used in submit validation redirects). */
+export const CATEGORIES_STEP_ID =
+  STEPS.find((s) => s.title === "Categories")?.id ?? 11;
+
 export function stepIsVisible(stepId: number, data: Partial<OnboardingFormData>): boolean {
   const meta = STEPS[stepId - 1];
   if (!meta) return false;

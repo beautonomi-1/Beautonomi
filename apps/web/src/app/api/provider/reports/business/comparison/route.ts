@@ -20,7 +20,10 @@ import {
 } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
 import { dateRangeBoundsUtc, formatDateYmd } from "@/lib/dates/provider-tz";
-import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
+import {
+  getProviderNetAfterRefundsDetailed,
+  getProviderRevenue,
+} from "@/lib/reports/revenue-helpers";
 import { DASHBOARD_REVENUE_TRANSACTION_TYPES } from "@/lib/reports/constants";
 import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
 
@@ -117,23 +120,42 @@ export async function GET(request: NextRequest) {
     }
 
     const dashOpts = { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES, timezone: tz };
+    const netOpts = { timezone: tz };
 
-    const currentRev = await getProviderRevenue(
-      supabaseAdmin,
-      providerId,
-      currentFromDate,
-      currentToDate,
-      locationId ?? null,
-      dashOpts,
-    );
-    const previousRev = await getProviderRevenue(
-      supabaseAdmin,
-      providerId,
-      previousFromDate,
-      previousToDate,
-      locationId ?? null,
-      dashOpts,
-    );
+    const [currentRev, previousRev, currentService, previousService] = await Promise.all([
+      getProviderNetAfterRefundsDetailed(
+        supabaseAdmin,
+        providerId,
+        currentFromDate,
+        currentToDate,
+        locationId ?? null,
+        netOpts,
+      ),
+      getProviderNetAfterRefundsDetailed(
+        supabaseAdmin,
+        providerId,
+        previousFromDate,
+        previousToDate,
+        locationId ?? null,
+        netOpts,
+      ),
+      getProviderRevenue(
+        supabaseAdmin,
+        providerId,
+        currentFromDate,
+        currentToDate,
+        locationId ?? null,
+        dashOpts,
+      ),
+      getProviderRevenue(
+        supabaseAdmin,
+        providerId,
+        previousFromDate,
+        previousToDate,
+        locationId ?? null,
+        dashOpts,
+      ),
+    ]);
 
     const currentRevenue = currentRev.totalRevenue;
     const previousRevenue = previousRev.totalRevenue;
@@ -203,7 +225,8 @@ export async function GET(request: NextRequest) {
       `Current column: ${currentLabel.toLowerCase()} — ${curFromYmd} through ${curToYmd}. ` +
       `Previous column: ${previousLabel.toLowerCase()} — ${prevFromYmd} through ${prevToYmd}. ` +
       `Until the period ends, current and previous ranges differ in length (period-to-date vs a complete prior calendar period). ` +
-      `Ledger headline revenue sums provider_earnings with finance_transactions.created_at in each range (includes product-order earnings). ` +
+      `Headline revenue = recognized provider revenue net of refund clawbacks by finance_transactions.created_at. ` +
+      `service_earnings sub-line = provider_earnings only. ` +
       `Booking-linked ledger split is used for “avg per booking”. ` +
       `Scheduled booking counts use bookings.scheduled_at and exclude cancelled and no_show. ` +
       `Distinct clients = unique customer_id on those bookings.`;
@@ -212,7 +235,9 @@ export async function GET(request: NextRequest) {
       currentWindow: currentLabel,
       previousWindow: previousLabel,
       ledgerHeadline:
-        "Sum of net provider_earnings rows in range (settlement timestamp created_at). Includes earnings linked to bookings and product orders.",
+        "Recognized provider revenue net of refund clawbacks (settlement timestamp created_at).",
+      serviceEarnings:
+        "provider_earnings only — used for avg-per-booking splits, not headline revenue.",
       averagePerBooking:
         "Ledger attributed to bookings ÷ count of scheduled appointments (non-cancelled/no-show). Not booking.total_amount.",
       bookings:
@@ -230,6 +255,8 @@ export async function GET(request: NextRequest) {
       },
       current: {
         revenue: currentRevenue,
+        recognized_revenue_net: currentRevenue,
+        service_earnings: currentService.totalRevenue,
         ledgerFromBookings: currentLedgerBookings,
         ledgerFromProductOrders: currentLedgerOrders,
         bookings: currentBookingsCount,
@@ -240,6 +267,8 @@ export async function GET(request: NextRequest) {
       },
       previous: {
         revenue: previousRevenue,
+        recognized_revenue_net: previousRevenue,
+        service_earnings: previousService.totalRevenue,
         ledgerFromBookings: previousLedgerBookings,
         ledgerFromProductOrders: previousLedgerOrders,
         bookings: previousBookingsCount,

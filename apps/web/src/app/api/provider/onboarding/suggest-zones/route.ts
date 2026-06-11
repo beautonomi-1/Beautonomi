@@ -10,7 +10,7 @@ import { getMapboxService } from "@/lib/mapbox/mapbox";
  */
 export async function POST(request: NextRequest) {
   try {
-    await requireRoleInApi(["customer", "provider_owner", "superadmin"], request);    const supabase = await getSupabaseServer(request);
+    await requireRoleInApi(["customer", "provider_owner", "provider_onboarding", "superadmin"], request);    const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
     const { address, latitude, longitude, city, postal_code, country: _country } = body;

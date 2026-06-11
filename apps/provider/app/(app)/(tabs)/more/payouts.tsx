@@ -36,6 +36,7 @@ interface Payout {
   requested_at?: string;
   processed_at?: string | null;
   failure_reason?: string | null;
+  rejected_at?: string | null;
   notes?: string | null;
 }
 
@@ -69,7 +70,7 @@ function formatDateSafe(value: unknown): string {
   return parsed.toLocaleDateString();
 }
 
-function payoutStatusMeta(status: string): {
+function payoutStatusMeta(payout: Pick<Payout, "status" | "rejected_at">): {
   label: string;
   description: string;
   icon: IoniconName;
@@ -78,6 +79,18 @@ function payoutStatusMeta(status: string): {
   iconBg: string;
   iconColor: string;
 } {
+  const status = payout.status;
+  if (status === "failed" && payout.rejected_at) {
+    return {
+      label: "Rejected",
+      description: "Finance rejected this payout request. The amount is released back when applicable.",
+      icon: "close-circle-outline",
+      chipBg: "bg-orange-100",
+      chipText: "text-orange-800",
+      iconBg: "bg-orange-100",
+      iconColor: "#ea580c",
+    };
+  }
   if (status === "completed") {
     return {
       label: "Paid",
@@ -422,7 +435,7 @@ export function PayoutsContent() {
               <Text style={twStyle("ml-2 font-medium text-emerald-700")}>Request payout</Text>
             </TouchableOpacity>
             {payouts.map((p) => {
-              const meta = payoutStatusMeta(p.status);
+              const meta = payoutStatusMeta(p);
               return (
                 <View
                   key={p.id}

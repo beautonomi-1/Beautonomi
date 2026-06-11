@@ -41,6 +41,17 @@ import { Checkbox } from "@/components/ui/checkbox";
 
 type CampaignPaymentState = "none" | "unpaid" | "pending" | "failed" | "paid";
 
+type CampaignLifecycle =
+  | "awaiting_payment"
+  | "confirming"
+  | "payment_failed"
+  | "active"
+  | "paused"
+  | "budget_exhausted"
+  | "expired"
+  | "delivered"
+  | "cancelled";
+
 type Campaign = {
   id: string;
   status: string;
@@ -57,11 +68,13 @@ type Campaign = {
   created_at: string;
   /** §Provider-paystack-audit 2026-05: server-derived payment recovery state. */
   payment_state?: CampaignPaymentState;
+  lifecycle?: CampaignLifecycle;
   latest_budget_order?: {
     id: string;
     status: string;
     amount: number;
     currency: string | null;
+    created_at?: string;
   } | null;
 };
 
@@ -181,6 +194,46 @@ type CampaignPerformance = {
 const formatCompactNumber = (value: number | null | undefined) =>
   new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(Number(value ?? 0));
 
+const formatCtr = (impressions: number, clicks: number): string => {
+  const denom = Number(impressions || 0);
+  if (denom <= 0) return "—";
+  const ctr = (Number(clicks || 0) / denom) * 100;
+  if (!Number.isFinite(ctr)) return "—";
+  return `${ctr >= 10 ? ctr.toFixed(0) : ctr.toFixed(1)}%`;
+};
+
+const PENDING_ORDER_FRESH_MS = 30 * 60 * 1000;
+
+function isFreshPendingOrder(order: Campaign["latest_budget_order"]): boolean {
+  if (!order || order.status !== "pending") return false;
+  if (!order.created_at) return true;
+  return Date.now() - new Date(order.created_at).getTime() < PENDING_ORDER_FRESH_MS;
+}
+
+const LIFECYCLE_BADGE: Record<
+  CampaignLifecycle,
+  { label: string; className: string }
+> = {
+  awaiting_payment: { label: "Awaiting payment", className: "border-amber-300 text-amber-700" },
+  confirming: { label: "Confirming payment", className: "border-blue-300 text-blue-700" },
+  payment_failed: { label: "Payment failed", className: "border-red-300 text-red-700" },
+  active: { label: "Active", className: "border-emerald-300 text-emerald-700" },
+  paused: { label: "Paused", className: "border-amber-300 text-amber-800" },
+  budget_exhausted: { label: "Budget exhausted", className: "border-slate-300 text-slate-700" },
+  expired: { label: "Expired", className: "border-slate-300 text-slate-700" },
+  delivered: { label: "Delivered", className: "border-slate-300 text-slate-700" },
+  cancelled: { label: "Cancelled", className: "border-slate-300 text-slate-600" },
+};
+
+function isPastCampaign(lifecycle: CampaignLifecycle | undefined): boolean {
+  return (
+    lifecycle === "budget_exhausted" ||
+    lifecycle === "expired" ||
+    lifecycle === "delivered" ||
+    lifecycle === "cancelled"
+  );
+}
+
 type ImpressionPack = { id: string; impressions: number; price_zar: number; display_order: number };
 type TimePack = {
   id: string;
@@ -227,6 +280,7 @@ export default function ProviderAdsPage() {
     run: () => Promise<void>;
   } | null>(null);
   const [checkoutSubmitting, setCheckoutSubmitting] = useState(false);
+  const [showEndedCampaigns, setShowEndedCampaigns] = useState(false);
   const [form, setForm] = useState({
     budget: "",
     daily_budget: "",
@@ -642,6 +696,64 @@ export default function ProviderAdsPage() {
     await setStatus(campaign.id, "ended");
   };
 
+  const abandonPendingOrder = async (campaign: Campaign) => {
+    const orderId = campaign.latest_budget_order?.id;
+    if (!orderId) return;
+    setUpdating(campaign.id);
+    try {
+      await fetcher.post(`/api/provider/ads/budget-orders/${orderId}/abandon`, {});
+      await loadCampaigns();
+      toast.success("Payment cancelled. You can try again or remove the campaign.");
+    } catch (err) {
+      toast.error(formatApiErrorMessage(err, "Couldn't cancel the payment"));
+    } finally {
+      setUpdating(null);
+    }
+  };
+
+  const viewCampaignReceipt = async (campaign: Campaign) => {
+    const orderId = campaign.latest_budget_order?.id;
+    if (!orderId) {
+      toast.error("No paid order found for this campaign.");
+      return;
+    }
+    setUpdating(campaign.id);
+    try {
+      const res = await fetcher.post<{ data?: { url?: string } }>(
+        `/api/provider/ads/orders/${orderId}/receipt/signed-url`,
+        {},
+      );
+      const url = res.data?.url;
+      if (!url) {
+        toast.error("Couldn't open the receipt.");
+        return;
+      }
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      toast.error(formatApiErrorMessage(err, "Couldn't open the receipt"));
+    } finally {
+      setUpdating(null);
+    }
+  };
+
+  const buyAgainCampaign = (campaign: Campaign) => {
+    setCreateForm({
+      budget: String(campaign.budget ?? ""),
+      daily_budget: campaign.daily_budget != null ? String(campaign.daily_budget) : "",
+      bid_cpc: campaign.bid_cpc != null ? String(campaign.bid_cpc) : "",
+      global_category_ids: campaign.targeting?.global_category_ids ?? [],
+    });
+    if (isTimeBasedCampaign(campaign)) {
+      toast.message("Pick a time boost below to run another campaign with the same targeting.");
+      return;
+    }
+    if (isImpressionPackCampaign(campaign)) {
+      toast.message("Pick an impression pack below to run another campaign with the same targeting.");
+      return;
+    }
+    createDraft();
+  };
+
   const openEdit = (c: Campaign) => {
     setEditCampaign(c);
     setForm({
@@ -786,6 +898,23 @@ export default function ProviderAdsPage() {
 
       <SectionCard title="Campaigns">
         <div className="space-y-4">
+          {campaigns.some((c) => isPastCampaign(c.lifecycle)) ? (
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm text-muted-foreground">
+                {showEndedCampaigns
+                  ? "Showing active and past campaigns."
+                  : "Past campaigns are hidden."}
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setShowEndedCampaigns((v) => !v)}
+              >
+                {showEndedCampaigns ? "Hide past campaigns" : "Show past campaigns"}
+              </Button>
+            </div>
+          ) : null}
           {enabled && (
             <>
               <div className="rounded-xl border border-indigo-100 bg-indigo-50 p-4">
@@ -1017,13 +1146,17 @@ export default function ProviderAdsPage() {
             </>
           )}
 
-          {campaigns.length === 0 ? (
+          {campaigns.filter((c) => showEndedCampaigns || !isPastCampaign(c.lifecycle)).length === 0 ? (
             <p className="text-muted-foreground">
-              No campaigns yet. Create a draft to get started.
+              {campaigns.length === 0
+                ? "No campaigns yet. Create a draft to get started."
+                : "No active campaigns. Show past campaigns to review ended boosts."}
             </p>
           ) : (
             <ul className="space-y-3">
-              {campaigns.map((c) => {
+              {campaigns
+                .filter((c) => showEndedCampaigns || !isPastCampaign(c.lifecycle))
+                .map((c) => {
                 const metrics = campaignPerformance[c.id] ?? {
                   impressions: 0,
                   reach: 0,
@@ -1031,7 +1164,17 @@ export default function ProviderAdsPage() {
                   books: 0,
                   spent: Number(c.spent ?? 0),
                 };
-                const displayStatus = effectiveCampaignStatus(c, nowMs, metrics);
+                const lifecycle = c.lifecycle;
+                const lifecycleBadge =
+                  lifecycle && LIFECYCLE_BADGE[lifecycle]
+                    ? LIFECYCLE_BADGE[lifecycle]
+                    : null;
+                const paymentState = c.payment_state ?? "none";
+                const freshPending = paymentState === "pending" && isFreshPendingOrder(c.latest_budget_order);
+                const canActivate =
+                  (c.status === "draft" || c.status === "paused") &&
+                  Number(c.budget) > Number(c.spent ?? 0) &&
+                  paymentState === "paid";
                 const progress = campaignProgress(c, nowMs, metrics);
                 const remaining =
                   c.billing_model === "time_based"
@@ -1052,13 +1195,14 @@ export default function ProviderAdsPage() {
                     key={c.id}
                     className="flex flex-wrap items-center justify-between gap-3 p-4 border rounded-lg"
                   >
-                    <div className="space-y-1">
+                    <div className="space-y-1 flex-1 min-w-[16rem]">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-medium">Campaign</span>
-                        <Badge variant={displayStatus === "active" ? "default" : "secondary"}>
-                          {displayStatus}
-                        </Badge>
-                        <Badge variant="outline">{campaignModelLabel(c)}</Badge>
+                        <span className="font-medium capitalize">{campaignModelLabel(c)}</span>
+                        {lifecycleBadge ? (
+                          <Badge variant="outline" className={lifecycleBadge.className}>
+                            {lifecycleBadge.label}
+                          </Badge>
+                        ) : null}
                       </div>
                       <p className="text-sm text-muted-foreground">
                         {c.billing_model === "time_based"
@@ -1084,6 +1228,24 @@ export default function ProviderAdsPage() {
                           {remaining}
                         </p>
                       </div>
+                      <div className="flex flex-wrap gap-2 pt-2">
+                        {[
+                          ["Impr.", formatCompactNumber(metrics.impressions)],
+                          ["Reach", formatCompactNumber(metrics.reach)],
+                          ["Clicks", formatCompactNumber(metrics.clicks)],
+                          ["CTR", formatCtr(metrics.impressions, metrics.clicks)],
+                          ["Bookings", formatCompactNumber(metrics.books)],
+                          ["Spend", fmt(Number(metrics.spent ?? 0))],
+                        ].map(([label, value]) => (
+                          <div
+                            key={label}
+                            className="rounded-md border bg-muted/30 px-2.5 py-1.5 text-xs"
+                          >
+                            <span className="text-muted-foreground">{label}</span>{" "}
+                            <span className="font-semibold">{value}</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       <Button
@@ -1095,20 +1257,9 @@ export default function ProviderAdsPage() {
                         {canEditBudgetFields(c) ? "Edit" : "Edit targeting"}
                       </Button>
                       {/* §Provider-paystack-audit 2026-05: surface payment_state
-                      so unpaid / failed drafts get explicit Try-again /
-                      Cancel actions instead of the passive awaiting badge. */}
-                      {c.payment_state === "unpaid" || c.payment_state === "failed" ? (
+                      so unpaid / failed / pending drafts get explicit actions. */}
+                      {paymentState === "unpaid" || paymentState === "failed" ? (
                         <>
-                          <Badge
-                            variant="outline"
-                            className={
-                              c.payment_state === "failed"
-                                ? "border-red-300 text-red-700"
-                                : "border-amber-300 text-amber-700"
-                            }
-                          >
-                            {c.payment_state === "failed" ? "payment failed" : "awaiting payment"}
-                          </Badge>
                           <Button
                             size="sm"
                             onClick={() => void retryCampaignPayment(c)}
@@ -1119,7 +1270,7 @@ export default function ProviderAdsPage() {
                             ) : (
                               <Banknote className="h-4 w-4 mr-1" />
                             )}
-                            {c.payment_state === "failed"
+                            {paymentState === "failed"
                               ? "Try payment again"
                               : "Complete payment"}
                           </Button>
@@ -1132,12 +1283,30 @@ export default function ProviderAdsPage() {
                             Cancel campaign
                           </Button>
                         </>
-                      ) : c.payment_state === "pending" ? (
-                        <Badge variant="outline" className="border-blue-300 text-blue-700">
-                          confirming payment…
-                        </Badge>
-                      ) : (c.status === "draft" || c.status === "paused") &&
-                        Number(c.budget) > Number(c.spent ?? 0) ? (
+                      ) : paymentState === "pending" ? (
+                        <>
+                          <Button
+                            size="sm"
+                            onClick={() => void retryCampaignPayment(c)}
+                            disabled={updating === c.id}
+                          >
+                            {updating === c.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Banknote className="h-4 w-4 mr-1" />
+                            )}
+                            Resume payment
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => void abandonPendingOrder(c)}
+                            disabled={updating === c.id}
+                          >
+                            Cancel payment
+                          </Button>
+                        </>
+                      ) : canActivate ? (
                         <Button
                           size="sm"
                           onClick={() => setStatus(c.id, "active")}
@@ -1150,7 +1319,7 @@ export default function ProviderAdsPage() {
                           )}
                           Activate
                         </Button>
-                      ) : displayStatus === "active" ? (
+                      ) : lifecycle === "active" ? (
                         <Button
                           variant="outline"
                           size="sm"
@@ -1165,9 +1334,31 @@ export default function ProviderAdsPage() {
                           Pause
                         </Button>
                       ) : null}
-                      {displayStatus !== "ended" &&
-                      c.payment_state !== "unpaid" &&
-                      c.payment_state !== "failed" ? (
+                      {(paymentState === "paid" || c.latest_budget_order?.status === "paid") &&
+                      c.latest_budget_order?.id ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void viewCampaignReceipt(c)}
+                          disabled={updating === c.id}
+                        >
+                          View receipt
+                        </Button>
+                      ) : null}
+                      {isPastCampaign(lifecycle) ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => buyAgainCampaign(c)}
+                          disabled={updating === c.id}
+                        >
+                          Buy again
+                        </Button>
+                      ) : null}
+                      {!isPastCampaign(lifecycle) &&
+                      paymentState !== "unpaid" &&
+                      paymentState !== "failed" &&
+                      !(paymentState === "pending" && freshPending) ? (
                         <Button
                           variant="ghost"
                           size="sm"

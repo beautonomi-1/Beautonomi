@@ -9,6 +9,7 @@ import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { syncVariantOfferings } from "../services/_helpers/sync-variants";
 import { buildOnboardingCompletionResponse } from "@/lib/provider/build-onboarding-completion-response";
+import { markProviderOnboardingLifecycleComplete } from "@/lib/provider-ops/mark-provider-onboarding-lifecycle-complete";
 import { inferProviderTimezoneFromLocation } from "@/lib/regions/infer-provider-timezone";
 
 const slugifyCategory = (value: string): string =>
@@ -1431,6 +1432,14 @@ export async function POST(request: NextRequest) {
           },
           { onConflict: "user_id" }
         );
+
+      if (autoApprove) {
+        await markProviderOnboardingLifecycleComplete(supabaseAdmin, {
+          providerId,
+          userId: user.id,
+          tenantId,
+        });
+      }
 
       // Run lead matching by phone and email
       const matchConditions: string[] = [];

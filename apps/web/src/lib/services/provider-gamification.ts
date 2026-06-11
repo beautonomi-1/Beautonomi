@@ -187,7 +187,7 @@ export async function checkProviderMilestones(providerId: string): Promise<void>
     // Get provider stats
     const { data: provider, error: providerError } = await supabase
       .from('providers')
-      .select('total_bookings, review_count, rating_average, total_earnings')
+      .select('total_bookings, review_count, rating_average')
       .eq('id', providerId)
       .single();
 

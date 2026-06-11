@@ -23,6 +23,7 @@ import {
 } from "./finalize-onboarding";
 import {
   countVisibleSteps,
+  CATEGORIES_STEP_ID,
   getNextStep,
   getPreviousStep,
   INITIAL_FORM,
@@ -189,34 +190,9 @@ export function OnboardingWizardProvider({ children, initialStep }: OnboardingWi
               : step;
           setCurrentStepState(resolved);
 
-          const onSubmitStep = STEPS.length;
-          const hasFocusOverride = typeof initialStepRef.current === "number";
-          if (providerExists && resolved === onSubmitStep && !hasFocusOverride) {
-            const payload = buildSubmitPayload(merged);
-            const res = await api.post<OnboardingCompletionData>(
-              "/api/provider/onboarding",
-              payload as Record<string, unknown>,
-              { timeout: 120_000 },
-            );
-            const completionData =
-              !res.error && res.data
-                ? res.data
-                : await resolveCheckoutFlagsForRecovery(merged);
-            try {
-              await finalizeOnboardingSuccess({
-                data: completionData,
-                formData: merged,
-                router,
-                refreshProvider,
-                userId: user?.id,
-                showSuccessAlert: false,
-              });
-            } catch (e) {
-              if (!cancelled) {
-                Alert.alert("Error", e instanceof Error ? e.message : "Could not continue setup.");
-              }
-            }
-          }
+          // Do not auto-submit on load — the provider must tap Submit on the
+          // Plan step. Auto-submitting here surprised users returning to fix
+          // draft data and could re-run onboarding against stale state.
         }
       } catch (e) {
         if (!cancelled) {
@@ -377,7 +353,7 @@ export function OnboardingWizardProvider({ children, initialStep }: OnboardingWi
     }
     if (!formData.global_category_ids?.length) {
       Alert.alert("Categories", "Select at least one category.");
-      setCurrentStepState(10);
+      setCurrentStepState(CATEGORIES_STEP_ID);
       return;
     }
 

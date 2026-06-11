@@ -8,8 +8,9 @@ import {
   handleApiError,
 } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
-import { LEDGER_FULL_PROVIDER_NET_TYPES, MAX_REPORT_DAYS } from "@/lib/reports/constants";
+import { getProviderNetAfterRefundsByBooking } from "@/lib/reports/revenue-helpers";
+import { MAX_REPORT_DAYS } from "@/lib/reports/constants";
+import { RECOGNIZED_REVENUE_TYPES } from "@/lib/reports/provider-revenue-semantics";
 import { getProviderReportContext, reportDateKey, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
 
 const PAGE_SIZE = 1000;
@@ -114,23 +115,21 @@ export async function GET(request: NextRequest) {
 
     const cancelledIds = lightRows.map((r) => r.id);
 
-    const ledgerOpts = {
-      transactionTypes: LEDGER_FULL_PROVIDER_NET_TYPES,
-      timezone: tz,
-    };
-
-    const { revenueByBooking } = await getProviderRevenue(
-      supabaseAdmin,
-      providerId,
-      fromDate,
-      toDate,
-      locationId ?? null,
-      ledgerOpts,
-    );
+    const netByBooking =
+      cancelledIds.length > 0
+        ? await getProviderNetAfterRefundsByBooking(
+            supabaseAdmin,
+            providerId,
+            fromDate,
+            toDate,
+            locationId ?? null,
+            { bookingIds: cancelledIds },
+          )
+        : new Map<string, number>();
 
     let lostRevenue = 0;
     for (const bookingId of cancelledIds) {
-      lostRevenue += revenueByBooking.get(bookingId) || 0;
+      lostRevenue += netByBooking.get(bookingId) || 0;
     }
 
     const reasonMap = new Map<string, number>();
@@ -231,14 +230,14 @@ export async function GET(request: NextRequest) {
     });
 
     const reportBasis =
-      "Cancellation rate = cancelled appointments ÷ all appointments, both filtered by scheduled date in your window. Lost revenue sums ledger net posted in the window for those cancellations.";
+      "Cancellation rate = cancelled appointments ÷ all appointments, both filtered by scheduled date in your window. Net impact sums recognized ledger revenue (incl. retained cancellation fees) minus refund clawbacks for those cancellations.";
 
     const basisNote = [
       `Timezone for chart dates: ${tz}.`,
       `Denominator (total bookings) and numerator (cancelled count) both use bookings.scheduled_at within the reporting window (all statuses included in the denominator).`,
       `Reason mix and daily counts include every cancelled booking in that scheduled window — not a sample.`,
       `Daily breakdown buckets each cancellation by provider-local calendar day of cancelled_at when set; otherwise scheduled_at (same-day fallback when cancel timestamp missing).`,
-      `Lost revenue sums finance_transactions net for booking_ids in this cancelled set, where transactions have created_at in the reporting window and types: ${LEDGER_FULL_PROVIDER_NET_TYPES.join(", ")}. Cash or offline settlements may have no ledger rows. Refunds or reversals in-period reduce this figure.`,
+      `Net impact sums recognized provider revenue net of refund clawbacks per cancelled booking_id, where transactions have created_at in the reporting window and types: ${RECOGNIZED_REVENUE_TYPES.join(", ")} plus refund rows. Retained cancellation_fee is included; reversed service earnings reduce the total.`,
       `Recent cancellations lists up to ${RECENT_LIMIT} rows ordered by cancelled_at (newest first).`,
     ].join(" ");
 
@@ -252,7 +251,7 @@ export async function GET(request: NextRequest) {
       recentCancellations,
       reportBasis,
       basisNote,
-      ledgerTransactionTypes: [...LEDGER_FULL_PROVIDER_NET_TYPES],
+      ledgerTransactionTypes: [...RECOGNIZED_REVENUE_TYPES, "refund"],
       timezone: tz,
     } satisfies CancellationsReportResponse);
   } catch (error) {

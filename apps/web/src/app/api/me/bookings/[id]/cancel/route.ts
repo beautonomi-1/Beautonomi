@@ -3,11 +3,14 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, handleApiError, requireAuthInApi } from "@/lib/supabase/api-helpers";
 import { getCancellationPolicy, canCancelBooking } from "@/lib/bookings/cancellation-policy";
+import { describeCancellationRefund } from "@/lib/bookings/refund-processing";
 import {
-  computeCancellationRefundAmount,
-  describeCancellationRefund,
-  roundCurrency2,
-} from "@/lib/bookings/refund-processing";
+  computeCancellationFeeForSettlement,
+  computeEffectiveCollectedAmount,
+  settleBookingCancellation,
+  type BookingFinancialSnapshot,
+} from "@/lib/bookings/settle-booking-cancellation";
+import { roundCurrency2 } from "@/lib/bookings/refund-processing";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { trackServer } from "@/lib/analytics/amplitude/server";
@@ -35,7 +38,7 @@ export async function POST(
     const { data: booking, error: bookingError } = await supabase
       .from('bookings')
       .select(
-        'id, provider_id, location_type, scheduled_at, created_at, status, customer_id, version, booking_number, subtotal, discount_amount, tax_amount, service_fee_amount, travel_fee, tip_amount, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, currency, cancellation_fee, customer_package_entitlement_id, loyalty_points_used, loyalty_points_redeemed, group_booking_id'
+        'id, provider_id, tenant_id, location_type, scheduled_at, created_at, status, customer_id, version, booking_number, subtotal, discount_amount, tax_amount, service_fee_amount, travel_fee, tip_amount, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, currency, cancellation_fee, customer_package_entitlement_id, loyalty_points_used, loyalty_points_redeemed, loyalty_points_earned, group_booking_id'
       )
       .eq('id', bookingId)
       .single();
@@ -156,33 +159,44 @@ export async function POST(
     const cancelCurrency =
       (bFin.currency as string) || tenantRegionForCancel?.defaultCurrency || LAST_RESORT_CURRENCY;
     const bookingTotal = Number(bFin.total_amount ?? 0);
-    const totalPaid = roundCurrency2(Math.max(0, Number((booking as { total_paid?: number | null }).total_paid ?? 0)));
-    const walletCollected = roundCurrency2(
-      Math.max(0, Number((booking as { wallet_amount?: number | null }).wallet_amount ?? 0))
-    );
-    const giftCardCollected = roundCurrency2(
-      Math.max(0, Number((booking as { gift_card_amount?: number | null }).gift_card_amount ?? 0))
-    );
-    const effectiveCollectedAmount = roundCurrency2(
-      Math.max(
-        0,
-        Math.max(totalPaid, walletCollected + giftCardCollected) -
-          Number((booking as { total_refunded?: number | null }).total_refunded ?? 0),
-      )
-    );
     const isLate = checkResult.isLateCancellation === true;
-    const policyRefundAmount = computeCancellationRefundAmount(bookingTotal, policy, isLate);
-    /** Wallet credit must not exceed money actually collected across card, wallet, and gift card. */
-    const walletRefundAmount = roundCurrency2(Math.min(policyRefundAmount, effectiveCollectedAmount));
-    const cancellationFeeApplied = roundCurrency2(Math.max(0, bookingTotal - policyRefundAmount));
-    const newTotalAmount = roundCurrency2(
-      Number(bFin.subtotal ?? 0) -
-        Number(bFin.discount_amount ?? 0) +
-        Number(bFin.tax_amount ?? 0) +
-        Number(bFin.service_fee_amount ?? 0) +
-        Number(bFin.travel_fee ?? 0) +
-        Number(bFin.tip_amount ?? 0) -
-        cancellationFeeApplied
+
+    const financialSnapshot: BookingFinancialSnapshot = {
+      id: bookingId,
+      provider_id: booking.provider_id,
+      customer_id: booking.customer_id,
+      booking_number: (booking as { booking_number?: string | null }).booking_number,
+      tenant_id:
+        (booking as { tenant_id?: string | null }).tenant_id ??
+        provForCurrency?.tenant_id ??
+        null,
+      subtotal: bFin.subtotal,
+      discount_amount: bFin.discount_amount,
+      tax_amount: bFin.tax_amount,
+      service_fee_amount: bFin.service_fee_amount,
+      travel_fee: bFin.travel_fee,
+      tip_amount: bFin.tip_amount,
+      total_amount: bookingTotal,
+      total_paid: (booking as { total_paid?: number | null }).total_paid,
+      total_refunded: (booking as { total_refunded?: number | null }).total_refunded,
+      wallet_amount: (booking as { wallet_amount?: number | null }).wallet_amount,
+      gift_card_amount: (booking as { gift_card_amount?: number | null }).gift_card_amount,
+      loyalty_points_used: (booking as { loyalty_points_used?: number | null }).loyalty_points_used,
+      loyalty_points_redeemed: (booking as { loyalty_points_redeemed?: number | null })
+        .loyalty_points_redeemed,
+      loyalty_points_earned: (booking as { loyalty_points_earned?: number | null }).loyalty_points_earned,
+    };
+
+    const { cancellationFeeApplied, policyRefundAmount } = computeCancellationFeeForSettlement({
+      booking: financialSnapshot,
+      cancelledBy: "customer",
+      currency: cancelCurrency,
+      policy,
+      isLateCancellation: isLate,
+      refundBookingTotal: bookingTotal,
+    });
+    const walletRefundAmount = roundCurrency2(
+      Math.min(policyRefundAmount, computeEffectiveCollectedAmount(financialSnapshot)),
     );
 
     const currentVersion = (booking as BookingRow).version ?? 0;
@@ -194,7 +208,6 @@ export async function POST(
         cancelled_by: user.id,
         cancellation_reason: body.reason || 'Customer cancellation',
         cancellation_fee: cancellationFeeApplied,
-        total_amount: newTotalAmount,
         version: currentVersion + 1,
         updated_at: new Date().toISOString(),
       })
@@ -327,7 +340,10 @@ export async function POST(
     if (isGroupBooking && groupBookingData) {
       try {
         const { cancelGroupBooking, getGroupBookingParticipantsForCancellation } = await import('@/lib/bookings/group-booking-cancellation');
-        await cancelGroupBooking(supabase, groupBookingData.id, user.id, body.reason || 'Customer cancellation');
+        await cancelGroupBooking(supabase, groupBookingData.id, user.id, body.reason || 'Customer cancellation', {
+          settleFinance: true,
+          financeActor: "customer",
+        });
 
         // Notify all participants directly via OneSignal. Previously this used a
         // server-side fetch('/api/notifications/send-email') which is unsafe in a
@@ -394,72 +410,27 @@ export async function POST(
       console.error('Error matching waitlist on cancellation:', waitlistError);
     }
 
-    // Wallet credit (uses pre-adjustment total so percentages match what the customer paid)
-    if (checkResult.allowed) {
+    // Finance settlement: wallet refund, ledger clawbacks, cancellation fee, loyalty, gift card.
+    // Skip for group primaries: cancelGroupBooking(settleFinance: true) above already settled
+    // every participant booking (including this one); settling again would re-run
+    // processBookingRefund against a stale snapshot and double-credit the wallet.
+    if (checkResult.allowed && !isGroupBooking) {
       try {
-        const { processBookingRefund } = await import("@/lib/bookings/refund-processing");
-        const refundResult = await processBookingRefund(
-          bookingId,
-          bookingTotal,
-          cancelCurrency,
+        const settlement = await settleBookingCancellation({
+          booking: financialSnapshot,
+          cancelledBy: "customer",
+          currency: cancelCurrency,
           policy,
-          { isLateCancellation: isLate, maxWalletCredit: effectiveCollectedAmount }
-        );
-
-        if (refundResult.success && refundResult.amount && refundResult.amount > 0) {
-          console.log(`Refund processed: ${refundResult.amount} ${bFin.currency}`);
+          isLateCancellation: isLate,
+          refundBookingTotal: bookingTotal,
+        });
+        if (settlement.refundResult.success && settlement.refundResult.amount) {
+          console.log(
+            `Refund processed: ${settlement.refundResult.amount} ${bFin.currency}`,
+          );
         }
-      } catch (refundError) {
-        console.error("Error processing refund during cancellation:", refundError);
-      }
-    }
-
-    // §Release-audit 2026-04: refund any loyalty points the customer redeemed
-    // on this booking. Without this, points spent on a booking are silently
-    // lost when the booking is cancelled.
-    try {
-      const pointsToRefund = Number(
-        (booking as { loyalty_points_used?: number | null; loyalty_points_redeemed?: number | null }).loyalty_points_used ??
-          (booking as { loyalty_points_redeemed?: number | null }).loyalty_points_redeemed ??
-          0,
-      );
-      if (pointsToRefund > 0) {
-        const { refundRedeemedLoyaltyPoints } = await import("@/lib/loyalty/refund-redeemed-points");
-        await refundRedeemedLoyaltyPoints(adminSupabase, {
-          bookingId,
-          customerId: user.id,
-          pointsRedeemed: pointsToRefund,
-          reason: "customer_cancel",
-        });
-      }
-    } catch (loyaltyRefundErr) {
-      console.error("[cancel] failed to refund redeemed loyalty points:", loyaltyRefundErr);
-    }
-
-    // Record cancellation fee as a dedicated finance_transaction (provider-retained income).
-    // Convention: amount = absolute fee (positive), net = positive (provider keeps it).
-    if (cancellationFeeApplied > 0) {
-      try {
-        const { resolveTenantIdForFinanceLedger } = await import("@/lib/finance/resolve-tenant-id-for-ledger");
-        const cancelFeeTenantId = await resolveTenantIdForFinanceLedger(adminSupabase, {
-          tenant_id: provForCurrency?.tenant_id ?? null,
-          provider_id: booking.provider_id,
-        });
-        const bookingRef = (booking as { booking_number?: string }).booking_number || bookingId.slice(0, 8);
-        await adminSupabase.from("finance_transactions").insert({
-          tenant_id: cancelFeeTenantId,
-          booking_id: bookingId,
-          provider_id: booking.provider_id,
-          transaction_type: "cancellation_fee",
-          amount: cancellationFeeApplied,
-          fees: 0,
-          commission: 0,
-          net: cancellationFeeApplied,
-          description: `Cancellation fee for booking ${bookingRef} — provider-retained (${isLate ? "late cancellation" : "early cancellation"})`,
-          created_at: new Date().toISOString(),
-        });
-      } catch (feeErr) {
-        console.error("[cancel] failed to record cancellation_fee finance_transaction:", feeErr);
+      } catch (settleErr) {
+        console.error("Error processing cancellation settlement:", settleErr);
       }
     }
 

@@ -19,7 +19,7 @@ import { Colors } from "@/constants/colors";
 import { PROVIDER_REPORT_CATEGORIES, type ProviderReportItem } from "./reportCatalog";
 
 interface AnalyticsSummary {
-  revenue: { thisMonth: number; growth: string };
+  revenue: { thisMonth: number; current_period?: number; growth: string };
   bookings: { thisMonth: number; upcoming: number; growth: string };
   customers: { total: number };
   basis?: {
@@ -75,7 +75,7 @@ export default function ReportsIndex() {
     })).filter((cat) => cat.reports.length > 0);
   }, [search]);
 
-  const revenueThisMonth = analytics?.revenue?.thisMonth ?? 0;
+  const revenueThisMonth = analytics?.revenue?.current_period ?? analytics?.revenue?.thisMonth ?? 0;
   const bookingsThisMonth = analytics?.bookings?.thisMonth ?? 0;
   const customersTotal = analytics?.customers?.total ?? 0;
   const revenueGrowth = analytics?.revenue?.growth ?? "0";

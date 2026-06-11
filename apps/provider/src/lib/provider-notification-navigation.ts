@@ -49,7 +49,7 @@ function getUuidAfterSegment(link: string, segment: string): string {
  * Map notification link/data to provider app route and navigate.
  * Shared by the header dropdown and any legacy entry points.
  */
-export function navigateFromProviderNotification(router: Router, n: ProviderNotificationNavPayload): void {
+export function navigateFromProviderNotification(router: Router, n: ProviderNotificationNavPayload): boolean {
   const link = n.link ?? n.action_url ?? "";
   const data = n.data ?? {};
 
@@ -65,7 +65,7 @@ export function navigateFromProviderNotification(router: Router, n: ProviderNoti
   const ticketIdFromData = typeof data.ticket_id === "string" && data.ticket_id.trim() ? data.ticket_id.trim() : "";
   if (ticketIdFromData) {
     router.push(`/(app)/(tabs)/more/support-tickets/${ticketIdFromData}` as never);
-    return;
+    return true;
   }
   if (link.includes("support/tickets") || link.includes("help/my-tickets")) {
     const m = link.match(/(?:support\/tickets|my-tickets)\/([a-f0-9-]{36})/i);
@@ -74,7 +74,7 @@ export function navigateFromProviderNotification(router: Router, n: ProviderNoti
     } else {
       router.push("/(app)/(tabs)/more/support-tickets" as never);
     }
-    return;
+    return true;
   }
 
   if (link.includes("calendar")) {
@@ -96,7 +96,7 @@ export function navigateFromProviderNotification(router: Router, n: ProviderNoti
     } else {
       router.push("/(app)/(tabs)/bookings" as never);
     }
-    return;
+    return true;
   }
 
   /** Pending confirmations & physical queue — prefer Front Desk over the bookings hub */
@@ -114,7 +114,7 @@ export function navigateFromProviderNotification(router: Router, n: ProviderNoti
     linkLc.includes("settings/ads")
   ) {
     router.push("/(app)/(tabs)/more/settings/ads" as never);
-    return;
+    return true;
   }
   const pendingBooking =
     dbStatus === "pending" ||
@@ -150,7 +150,7 @@ export function navigateFromProviderNotification(router: Router, n: ProviderNoti
     }
     const q = params.toString();
     router.push((q ? `/(app)/(tabs)/more/waiting-room?${q}` : "/(app)/(tabs)/more/waiting-room") as never);
-    return;
+    return true;
   }
 
   // ── On-demand requests — must come before custom-request block so that
@@ -166,7 +166,7 @@ export function navigateFromProviderNotification(router: Router, n: ProviderNoti
     } else {
       router.push("/(app)/(tabs)/bookings" as never);
     }
-    return;
+    return true;
   }
 
   // ── Custom requests / offers ─────────────────────────────────────────────
@@ -177,7 +177,7 @@ export function navigateFromProviderNotification(router: Router, n: ProviderNoti
         getLinkParam(link, "request_id")) || "";
   if (customRequestId) {
     router.push(`/(app)/(tabs)/more/custom-requests/${customRequestId}` as never);
-    return;
+    return true;
   }
   if (
     nTypeLc === "custom_offer" ||
@@ -185,7 +185,7 @@ export function navigateFromProviderNotification(router: Router, n: ProviderNoti
     nTypeLc.includes("custom_request")
   ) {
     router.push("/(app)/(tabs)/more/custom-requests" as never);
-    return;
+    return true;
   }
 
   if (data.booking_id) {
@@ -195,17 +195,17 @@ export function navigateFromProviderNotification(router: Router, n: ProviderNoti
     params.set("booking_id", String(data.booking_id));
     const q = params.toString();
     router.push((q ? `/(app)/(tabs)/bookings?${q}` : `/(app)/(tabs)/bookings/${data.booking_id}`) as never);
-    return;
+    return true;
   }
   if (data.conversation_id) {
     router.push(`/(app)/(tabs)/chats/${data.conversation_id}` as never);
-    return;
+    return true;
   }
   if (productOrderIdFromData) {
     router.push(
       `/(app)/(tabs)/more/orders-hub?order=${encodeURIComponent(productOrderIdFromData)}` as never,
     );
-    return;
+    return true;
   }
   if (link) {
     const groupBookingId =
@@ -218,12 +218,12 @@ export function navigateFromProviderNotification(router: Router, n: ProviderNoti
         ? `/(app)/(tabs)/more/group-bookings?open_group_id=${encodeURIComponent(groupBookingId)}`
         : "/(app)/(tabs)/more/group-bookings";
       router.push(route as never);
-      return;
+      return true;
     }
     const idMatch = link.match(/\/bookings\/([a-f0-9-]+)/i) || link.match(/\/booking\/([a-f0-9-]+)/i);
     if (idMatch) {
       router.push(`/(app)/(tabs)/bookings/${idMatch[1]}` as never);
-      return;
+      return true;
     }
     if (link.includes("messaging") || link.includes("messages")) {
       const convMatch = link.match(/conversation[=:]([a-f0-9-]+)/i) || link.match(/\/([a-f0-9-]+)$/);
@@ -232,7 +232,7 @@ export function navigateFromProviderNotification(router: Router, n: ProviderNoti
       } else {
         router.push("/(app)/(tabs)/chats" as never);
       }
-      return;
+      return true;
     }
     if (link.includes("ecommerce/orders") || link.includes("/product-orders")) {
       const oid = productOrderIdFromData;
@@ -241,31 +241,31 @@ export function navigateFromProviderNotification(router: Router, n: ProviderNoti
       } else {
         router.push("/(app)/(tabs)/more/orders-hub" as never);
       }
-      return;
+      return true;
     }
     if (link.includes("ecommerce/returns")) {
       router.push("/(app)/(tabs)/more/orders-hub?tab=returns" as never);
-      return;
+      return true;
     }
     if (link.includes("reports/packages")) {
       router.push("/(app)/(tabs)/more/reports/packages" as never);
-      return;
+      return true;
     }
     if (link.includes("reports")) {
       router.push("/(app)/(tabs)/more/reports" as never);
-      return;
+      return true;
     }
     if (link.includes("packages")) {
       router.push("/(app)/(tabs)/more/packages-list" as never);
-      return;
+      return true;
     }
     if (link.includes("express-booking") || link.includes("booking-link")) {
       router.push("/(app)/(tabs)/more/express-booking" as never);
-      return;
+      return true;
     }
     if (link.includes("finance") || link.includes("payout")) {
       router.push("/(app)/(tabs)/more/finance" as never);
-      return;
+      return true;
     }
     if (link.includes("clients")) {
       const clientMatch = link.match(/\/([a-f0-9-]+)$/);
@@ -274,36 +274,35 @@ export function navigateFromProviderNotification(router: Router, n: ProviderNoti
       } else {
         router.push("/(app)/(tabs)/clients" as never);
       }
-      return;
+      return true;
     }
-    router.push("/(app)/(tabs)/dashboard" as never);
-    return;
+    return false;
   }
 
   if (nType.includes("booking") || nType.includes("appointment")) {
     // Prefer the bookings hub over calendar so pending/new-booking alerts are not
     // confused with a calendar-only "front desk" view.
     router.push("/(app)/(tabs)/bookings" as never);
-    return;
+    return true;
   }
   if (nType.includes("message") || nType.includes("chat")) {
     router.push("/(app)/(tabs)/chats" as never);
-    return;
+    return true;
   }
   if (nType.includes("review")) {
     router.push("/(app)/(tabs)/more/reviews" as never);
-    return;
+    return true;
   }
   if (nType.includes("payout") || nType.includes("earning")) {
     // Payouts and earnings → Finance screen (consistent with push notification routing)
     router.push("/(app)/(tabs)/more/finance" as never);
-    return;
+    return true;
   }
   if (nType.includes("payment")) {
     // Payment notifications → Finance screen so provider sees the transaction
     router.push("/(app)/(tabs)/more/finance" as never);
-    return;
+    return true;
   }
 
-  router.push("/(app)/(tabs)/dashboard" as never);
+  return false;
 }

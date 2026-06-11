@@ -94,8 +94,8 @@ describe("aggregateFinanceLedgerRows — admin finance scenarios", () => {
     expect(agg.platform_refund_contra).toBe(-10);
     /** Gross 10 (from payment.net) - 10 contra = 0. */
     expect(agg.platform_commission_net).toBe(0);
-    /** Provider impact is the refund net minus the platform contra share. */
-    expect(agg.provider_refund_net_impact).toBe(-90); // -100 net - (-10) contra
+    /** Provider impact counts only provider-earnings refund legs (legacy row = full clawback). */
+    expect(agg.provider_refund_net_impact).toBe(-100);
     expect(agg.refunds_abs_gross).toBe(100);
     expect(agg.refunds_gross).toBe(100);
   });

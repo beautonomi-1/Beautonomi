@@ -44,14 +44,27 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { twStyle } from "@/lib/twStyle";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { getApiErrorMessage } from "@/lib/api-error";
+import { pushInAppBrowser } from "@/lib/in-app-web";
 
 type CampaignPaymentState = "none" | "unpaid" | "pending" | "failed" | "paid";
+
+type CampaignLifecycle =
+  | "awaiting_payment"
+  | "confirming"
+  | "payment_failed"
+  | "active"
+  | "paused"
+  | "budget_exhausted"
+  | "expired"
+  | "delivered"
+  | "cancelled";
 
 type LatestBudgetOrder = {
   id: string;
   status: "pending" | "paid" | "failed" | "refunded" | string;
   amount: number;
   currency: string | null;
+  created_at?: string;
 };
 
 type Campaign = {
@@ -70,6 +83,7 @@ type Campaign = {
   created_at: string;
   /** §Provider-paystack-audit 2026-05: server-derived state for the action row. */
   payment_state?: CampaignPaymentState;
+  lifecycle?: CampaignLifecycle;
   latest_budget_order?: LatestBudgetOrder | null;
 };
 
@@ -200,6 +214,38 @@ const STATUS_COLOR: Record<string, string> = {
   paused: "#f59e0b",
   ended: "#94a3b8",
 };
+
+const PENDING_ORDER_FRESH_MS = 30 * 60 * 1000;
+
+const LIFECYCLE_BADGE: Record<
+  CampaignLifecycle,
+  { label: string; color: string }
+> = {
+  awaiting_payment: { label: "Awaiting payment", color: "#b45309" },
+  confirming: { label: "Confirming payment", color: "#1d4ed8" },
+  payment_failed: { label: "Payment failed", color: "#dc2626" },
+  active: { label: "Active", color: "#16a34a" },
+  paused: { label: "Paused", color: "#d97706" },
+  budget_exhausted: { label: "Budget exhausted", color: "#64748b" },
+  expired: { label: "Expired", color: "#64748b" },
+  delivered: { label: "Delivered", color: "#64748b" },
+  cancelled: { label: "Cancelled", color: "#64748b" },
+};
+
+function isFreshPendingOrder(order: LatestBudgetOrder | null | undefined): boolean {
+  if (!order || order.status !== "pending") return false;
+  if (!order.created_at) return true;
+  return Date.now() - new Date(order.created_at).getTime() < PENDING_ORDER_FRESH_MS;
+}
+
+function isPastCampaign(lifecycle: CampaignLifecycle | undefined): boolean {
+  return (
+    lifecycle === "budget_exhausted" ||
+    lifecycle === "expired" ||
+    lifecycle === "delivered" ||
+    lifecycle === "cancelled"
+  );
+}
 
 const packCardShadow = Platform.select({
   ios: {
@@ -402,6 +448,7 @@ export default function AdsSettingsScreen() {
   // we can show model-specific copy and never falsely claim a campaign is live
   // before the webhook has provisioned the budget on the server.
   const [paymentOutcome, setPaymentOutcome] = useState<AdsPaymentOutcome>({ phase: "idle" });
+  const [showEndedCampaigns, setShowEndedCampaigns] = useState(false);
   const [packs, setPacks] = useState<ImpressionPack[]>([]);
   const [timePacks, setTimePacks] = useState<TimePack[]>([]);
   const [availableModels, setAvailableModels] = useState<string[]>([]);
@@ -954,6 +1001,74 @@ export default function AdsSettingsScreen() {
     [handleSetStatus],
   );
 
+  const handleAbandonPendingOrder = useCallback(
+    async (campaign: Campaign) => {
+      const orderId = campaign.latest_budget_order?.id;
+      if (!orderId) return;
+      setUpdating(campaign.id);
+      try {
+        const res = await api.post(`/api/provider/ads/budget-orders/${orderId}/abandon`, {});
+        if (res.error) {
+          Alert.alert("Error", getApiErrorMessage(res.error, "Couldn't cancel the payment"));
+          return;
+        }
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        loadAll();
+      } catch (e: unknown) {
+        Alert.alert("Error", getApiErrorMessage(e, "Couldn't cancel the payment"));
+      } finally {
+        setUpdating(null);
+      }
+    },
+    [loadAll],
+  );
+
+  const handleViewReceipt = useCallback(
+    async (campaign: Campaign) => {
+      const orderId = campaign.latest_budget_order?.id;
+      if (!orderId) {
+        Alert.alert("Receipt unavailable", "No paid order found for this campaign.");
+        return;
+      }
+      setUpdating(campaign.id);
+      try {
+        const res = await api.post<{ url?: string }>(
+          `/api/provider/ads/orders/${orderId}/receipt/signed-url`,
+          {},
+        );
+        if (res.error) {
+          Alert.alert("Error", getApiErrorMessage(res.error, "Couldn't open the receipt"));
+          return;
+        }
+        const signed = res.data?.url?.trim();
+        if (!signed) {
+          Alert.alert("Error", "Couldn't open the receipt.");
+          return;
+        }
+        pushInAppBrowser(router, signed, "Receipt");
+      } catch (e: unknown) {
+        Alert.alert("Error", getApiErrorMessage(e, "Couldn't open the receipt"));
+      } finally {
+        setUpdating(null);
+      }
+    },
+    [router],
+  );
+
+  const handleBuyAgain = useCallback((campaign: Campaign) => {
+    setCreateForm({
+      budget: String(campaign.budget ?? ""),
+      daily_budget: campaign.daily_budget != null ? String(campaign.daily_budget) : "",
+      bid_cpc: campaign.bid_cpc != null ? String(campaign.bid_cpc) : "",
+      global_category_ids: campaign.targeting?.global_category_ids ?? [],
+    });
+    if (isTimeBasedCampaign(campaign) || isImpressionPackCampaign(campaign)) {
+      Alert.alert("Buy again", "Pick a boost or pack above to run another campaign with the same targeting.");
+      return;
+    }
+    setCreateOpen(true);
+  }, []);
+
   const openEdit = (c: Campaign) => {
     setEditCampaign(c);
     setEditForm({
@@ -1433,7 +1548,18 @@ export default function AdsSettingsScreen() {
                 </Text>
               </View>
             ) : null}
-            {campaigns.length === 0 ? (
+            {campaigns.some((c) => isPastCampaign(c.lifecycle)) ? (
+              <TouchableOpacity
+                onPress={() => setShowEndedCampaigns((v) => !v)}
+                style={twStyle("mb-3 self-start rounded-lg border border-gray-300 bg-white px-3 py-2")}
+              >
+                <Text style={twStyle("text-xs font-semibold text-gray-700")}>
+                  {showEndedCampaigns ? "Hide past campaigns" : "Show past campaigns"}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+            {campaigns.filter((c) => showEndedCampaigns || !isPastCampaign(c.lifecycle)).length === 0 ? (
+              campaigns.length === 0 ? (
               // §Ads-mobile-audit 2026-05: empty state previously referenced
               // "packs above" even when no packs were configured. Now the
               // copy + CTA adapts to what's actually available so the
@@ -1470,9 +1596,19 @@ export default function AdsSettingsScreen() {
                   />
                 ) : null}
               </View>
+              ) : (
+              <View style={twStyle("rounded-2xl border border-gray-200 bg-gray-50 p-5")}>
+                <Text style={twStyle("text-sm font-semibold text-gray-900")}>No active campaigns</Text>
+                <Text style={twStyle("mt-1 text-xs text-gray-600")}>
+                  Past campaigns are hidden. Tap show past campaigns to review ended boosts.
+                </Text>
+              </View>
+              )
             ) : (
               <View style={twStyle("gap-3")}>
-                {campaigns.map((c) => {
+                {campaigns
+                  .filter((c) => showEndedCampaigns || !isPastCampaign(c.lifecycle))
+                  .map((c) => {
                   const metrics = campaignPerformance[c.id] ?? {
                     impressions: 0,
                     reach: 0,
@@ -1480,18 +1616,16 @@ export default function AdsSettingsScreen() {
                     books: 0,
                     spent: Number(c.spent ?? 0),
                   };
-                  const displayStatus = effectiveCampaignStatus(c, nowMs, metrics);
+                  const lifecycle = c.lifecycle;
+                  const lifecycleBadge =
+                    lifecycle && LIFECYCLE_BADGE[lifecycle] ? LIFECYCLE_BADGE[lifecycle] : null;
                   const hasBudgetLeft = Number(c.budget) > Number(c.spent ?? 0);
                   const isUnfundedDraft =
                     (c.status === "draft" || c.status === "paused") && !hasBudgetLeft;
-                  /**
-                   * §Provider-paystack-audit 2026-05: prefer the server-derived
-                   * `payment_state` so unpaid / pending / failed drafts each get
-                   * their own badge + CTA. Fall back to the legacy "awaiting"
-                   * label only if the server didn't return the new field yet.
-                   */
                   const paymentState: CampaignPaymentState =
                     c.payment_state ?? (isUnfundedDraft ? "unpaid" : "none");
+                  const freshPending =
+                    paymentState === "pending" && isFreshPendingOrder(c.latest_budget_order);
                   const canActivate =
                     (c.status === "draft" || c.status === "paused") &&
                     hasBudgetLeft &&
@@ -1502,23 +1636,13 @@ export default function AdsSettingsScreen() {
                       <View style={twStyle("flex-row items-start justify-between gap-2 flex-wrap")}>
                         <View style={twStyle("flex-1 min-w-[60%]")}>
                           <View style={twStyle("flex-row items-center gap-2 flex-wrap mb-1")}>
-                            <Text style={twStyle("text-sm font-semibold text-gray-900")}>Campaign</Text>
-                            <View
-                              style={[twStyle("rounded-md px-2 py-0.5"), { backgroundColor: `${STATUS_COLOR[displayStatus] ?? "#6b7280"}22` }]}
-                            >
-                              <Text style={[twStyle("text-xs font-semibold"), { color: STATUS_COLOR[displayStatus] ?? "#6b7280" }]}>
-                                {displayStatus}
+                            <Text style={twStyle("text-sm font-semibold text-gray-900 capitalize")}>
+                              {campaignModelLabel(c)}
+                            </Text>
+                            {lifecycleBadge ? (
+                              <Text style={[twStyle("text-xs font-semibold"), { color: lifecycleBadge.color }]}>
+                                {lifecycleBadge.label}
                               </Text>
-                            </View>
-                            <View style={twStyle("rounded-md border border-gray-200 px-2 py-0.5")}>
-                              <Text style={twStyle("text-xs font-medium text-gray-600")}>{campaignModelLabel(c)}</Text>
-                            </View>
-                            {paymentState === "unpaid" ? (
-                              <Text style={twStyle("text-xs font-medium text-amber-700")}>awaiting payment</Text>
-                            ) : paymentState === "pending" ? (
-                              <Text style={twStyle("text-xs font-medium text-blue-700")}>confirming payment…</Text>
-                            ) : paymentState === "failed" ? (
-                              <Text style={twStyle("text-xs font-medium text-red-700")}>payment failed</Text>
                             ) : null}
                           </View>
                           <Text style={twStyle("text-sm text-gray-600 leading-5")}>{campaignSummaryLine(c, tenantCurrency)}</Text>
@@ -1597,6 +1721,23 @@ export default function AdsSettingsScreen() {
                               <Text style={twStyle("text-gray-700 text-xs font-medium")}>Cancel campaign</Text>
                             </TouchableOpacity>
                           </>
+                        ) : paymentState === "pending" ? (
+                          <>
+                            <TouchableOpacity
+                              onPress={() => void handleRetryAdsPayment(c)}
+                              disabled={updating === c.id}
+                              style={twStyle("rounded-lg bg-indigo-600 px-3 py-2")}
+                            >
+                              <Text style={twStyle("text-white text-xs font-semibold")}>Resume payment</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              onPress={() => void handleAbandonPendingOrder(c)}
+                              disabled={updating === c.id}
+                              style={twStyle("rounded-lg border border-gray-300 bg-white px-3 py-2")}
+                            >
+                              <Text style={twStyle("text-gray-700 text-xs font-medium")}>Cancel payment</Text>
+                            </TouchableOpacity>
+                          </>
                         ) : null}
                         {canActivate ? (
                           <TouchableOpacity
@@ -1607,7 +1748,7 @@ export default function AdsSettingsScreen() {
                             <Text style={twStyle("text-white text-xs font-semibold")}>Activate</Text>
                           </TouchableOpacity>
                         ) : null}
-                        {displayStatus === "active" ? (
+                        {lifecycle === "active" ? (
                           <TouchableOpacity
                             onPress={() => handleSetStatus(c.id, "paused")}
                             disabled={updating === c.id}
@@ -1616,7 +1757,29 @@ export default function AdsSettingsScreen() {
                             <Text style={twStyle("text-amber-900 text-xs font-semibold")}>Pause</Text>
                           </TouchableOpacity>
                         ) : null}
-                        {displayStatus !== "ended" && paymentState !== "unpaid" && paymentState !== "failed" ? (
+                        {(paymentState === "paid" || c.latest_budget_order?.status === "paid") &&
+                        c.latest_budget_order?.id ? (
+                          <TouchableOpacity
+                            onPress={() => void handleViewReceipt(c)}
+                            disabled={updating === c.id}
+                            style={twStyle("rounded-lg border border-gray-300 bg-white px-3 py-2")}
+                          >
+                            <Text style={twStyle("text-gray-800 text-xs font-medium")}>View receipt</Text>
+                          </TouchableOpacity>
+                        ) : null}
+                        {isPastCampaign(lifecycle) ? (
+                          <TouchableOpacity
+                            onPress={() => handleBuyAgain(c)}
+                            disabled={updating === c.id}
+                            style={twStyle("rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-2")}
+                          >
+                            <Text style={twStyle("text-indigo-900 text-xs font-semibold")}>Buy again</Text>
+                          </TouchableOpacity>
+                        ) : null}
+                        {!isPastCampaign(lifecycle) &&
+                        paymentState !== "unpaid" &&
+                        paymentState !== "failed" &&
+                        !(paymentState === "pending" && freshPending) ? (
                           <TouchableOpacity
                             onPress={() => handleSetStatus(c.id, "ended")}
                             disabled={updating === c.id}

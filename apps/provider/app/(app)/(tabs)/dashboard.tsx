@@ -34,6 +34,7 @@ import { trackDashboardView } from "@/lib/analytics";
 import { navigateToMoreScreen } from "@/lib/provider-tab-navigation";
 import { PROVIDER_DASHBOARD_REFRESH_EVENT } from "@/lib/provider-dashboard-events";
 import { normalizeTopServicesPayload } from "@/lib/normalize-top-services";
+import { getReportDateRange } from "@/lib/reportDateRanges";
 import { newBookingScreenHref } from "@/lib/new-booking-nav-defaults";
 import { getProviderActivityIcon } from "@/lib/provider-activity-icons";
 import { Colors } from "@/constants/colors";
@@ -528,14 +529,19 @@ export default function DashboardScreen() {
       staleTimeMs: 60_000,
     },
   );
+  const topServicesRange = useMemo(() => {
+    const key = dateRange === "week" ? "week" : dateRange === "month" ? "month" : "today";
+    return getReportDateRange(key, { timezone: provider?.timezone });
+  }, [dateRange, provider?.timezone]);
+
   const {
     data: fallbackTopServices,
     error: fallbackTopServicesError,
     refresh: refreshFallbackTopServices,
   } = useApi<unknown>(
-    `/api/provider/reports/top-services?limit=5${locQ}`,
+    `/api/provider/reports/top-services?limit=5&from=${topServicesRange.from}&to=${topServicesRange.to}${locQ}`,
     {
-      enabled: isFocused && secondaryEnabled && metrics !== null && !hasBundledInsights,
+      enabled: isFocused && secondaryEnabled && metrics !== null,
       staleTimeMs: 60_000,
     },
   );
@@ -574,14 +580,11 @@ export default function DashboardScreen() {
   const upcomingError = hasBundledInsights ? null : fallbackUpcomingError;
 
   const weeklyRevenue = metrics?.insights?.weekly_revenue ?? fallbackWeeklyRevenue ?? null;
-  const topServices =
-    metrics?.insights?.top_services ??
-    normalizeTopServicesPayload(fallbackTopServices) ??
-    null;
+  const topServices = normalizeTopServicesPayload(fallbackTopServices) ?? null;
   const recentActivity =
     metrics?.insights?.recent_activity ?? unwrapActivityFeedPayload(fallbackActivityPayload);
   const bookingEligibility = metrics?.booking_eligibility ?? fallbackBookingEligibility ?? null;
-  const topServicesError = hasBundledInsights ? null : fallbackTopServicesError;
+  const topServicesError = fallbackTopServicesError;
   const activityError = hasBundledInsights ? null : fallbackActivityError;
 
   const refreshRealtimeDashboardData = useCallback(() => {
@@ -589,8 +592,11 @@ export default function DashboardScreen() {
     if (!hasBundledInsights) {
       tasks.push(refreshFallbackUpcoming());
       if (secondaryEnabled) {
-        tasks.push(refreshFallbackWeekly(), refreshFallbackTopServices(), refreshFallbackActivity());
+        tasks.push(refreshFallbackWeekly(), refreshFallbackActivity());
       }
+    }
+    if (secondaryEnabled) {
+      tasks.push(refreshFallbackTopServices());
     }
     if (!hasBundledBookingEligibility) {
       tasks.push(refreshFallbackBookingEligibility());
@@ -615,8 +621,11 @@ export default function DashboardScreen() {
       if (!hasBundledInsights) {
         tasks.push(refreshFallbackUpcoming());
         if (secondaryEnabled) {
-          tasks.push(refreshFallbackWeekly(), refreshFallbackTopServices(), refreshFallbackActivity());
+          tasks.push(refreshFallbackWeekly(), refreshFallbackActivity());
         }
+      }
+      if (secondaryEnabled) {
+        tasks.push(refreshFallbackTopServices());
       }
       if (!hasBundledBookingEligibility) {
         tasks.push(refreshFallbackBookingEligibility());
@@ -1386,9 +1395,9 @@ export default function DashboardScreen() {
         </>
       ) : null}
 
-      <SectionHeader title="Top services (last 30 days)" />
+      <SectionHeader title={`Top services (${periodLabel.toLowerCase()})`} />
       <Text style={{ marginTop: -6, marginBottom: 8, fontSize: 11, color: Colors.gray[500] }}>
-        Fixed 30-day window — not affected by the period selected above.
+        Completed appointments scheduled {topServicesRange.from} – {topServicesRange.to}.
       </Text>
       {insightsLoading ? (
         <View style={{ borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 12 }}>

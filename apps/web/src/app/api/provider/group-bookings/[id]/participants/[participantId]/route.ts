@@ -101,6 +101,13 @@ export async function DELETE(
       if (bookingError) {
         throw bookingError;
       }
+
+      try {
+        const { settleBookingFinanceById } = await import("@/lib/bookings/settle-booking-cancellation");
+        await settleBookingFinanceById(admin, part.booking_id, "provider");
+      } catch (settleErr) {
+        console.error("[group participant remove] finance settlement failed:", settleErr);
+      }
     }
 
     await recalculateGroupBookingTotal(admin, groupId);

@@ -43,6 +43,8 @@ export interface AnalyticsData {
   earnings_breakdown?: {
     basis?: string;
     all_time?: {
+      recognized_revenue_net?: number;
+      service_earnings?: number;
       service_earnings_net: number;
       tips_net: number;
       cancellation_fees: number;
@@ -53,6 +55,8 @@ export interface AnalyticsData {
       start: string;
       end: string;
       period?: string;
+      recognized_revenue_net?: number;
+      service_earnings?: number;
       service_earnings_net: number;
       tips_net: number;
       cancellation_fees: number;
@@ -245,7 +249,7 @@ export default function AnalyticsScreen() {
             </View>
             <Text style={twStyle("mt-1 text-xs text-gray-500")}>Upcoming (scheduled)</Text>
             <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
-              {book.thisMonth ?? 0} created in period
+              {book.thisMonth ?? 0} scheduled in period
             </Text>
           </View>
           <View style={twStyle("min-w-[45%] flex-1 rounded-2xl border border-gray-100 bg-white p-4")}>
@@ -294,7 +298,8 @@ export default function AnalyticsScreen() {
                 <Text style={twStyle("text-xs font-semibold text-gray-700")}>This period</Text>
                 <View style={twStyle("mt-2 gap-2")}>
                   {[
-                    ["Service earnings (net)", curEb.service_earnings_net],
+                    ["Recognized revenue (net)", curEb.recognized_revenue_net ?? curEb.service_earnings_net],
+                    ["Service earnings", curEb.service_earnings ?? 0],
                     ["Tips (net)", curEb.tips_net],
                     ["Cancellation fees", curEb.cancellation_fees],
                     ["Refunds (incl. negative earnings)", curEb.refunds],
@@ -313,7 +318,8 @@ export default function AnalyticsScreen() {
                 <Text style={twStyle("text-xs font-semibold text-gray-700")}>All time (ledger)</Text>
                 <View style={twStyle("mt-2 gap-2")}>
                   {[
-                    ["Service earnings (net)", allEb.service_earnings_net],
+                    ["Recognized revenue (net)", allEb.recognized_revenue_net ?? allEb.service_earnings_net],
+                    ["Service earnings", allEb.service_earnings ?? 0],
                     ["Tips (net)", allEb.tips_net],
                     ["Cancellation fees", allEb.cancellation_fees],
                     ["Refunds", allEb.refunds],
@@ -385,7 +391,7 @@ export default function AnalyticsScreen() {
           <>
             <SectionHeader
               title={trendsSectionTitle(apiPeriod)}
-              subtitle={data?.trends_meta?.description ?? "Ledger vs bookings created per bucket"}
+              subtitle={data?.trends_meta?.description ?? "Ledger vs appointments scheduled per bucket"}
             />
             <View style={twStyle("mb-4 overflow-hidden rounded-2xl border border-gray-100 bg-white")}>
               {trends.map((t, i) => (

@@ -1,8 +1,9 @@
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
-import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
-import { LEDGER_FULL_PROVIDER_NET_TYPES, MAX_REPORT_DAYS, MAX_BOOKINGS_FOR_REPORT } from "@/lib/reports/constants";
+import { getProviderNetAfterRefundsByBooking } from "@/lib/reports/revenue-helpers";
+import { MAX_REPORT_DAYS, MAX_BOOKINGS_FOR_REPORT } from "@/lib/reports/constants";
+import { RECOGNIZED_REVENUE_TYPES } from "@/lib/reports/provider-revenue-semantics";
 import { getProviderReportContext, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
 
 export async function GET(request: NextRequest) {
@@ -154,17 +155,21 @@ export async function GET(request: NextRequest) {
     const noShowBookingIds = noShowBookings?.map((b) => b.id) || [];
     let lostRevenue = 0;
 
-    const { revenueByBooking: noShowLedgerByBooking } =
+    const noShowLedgerByBooking =
       noShowBookingIds.length > 0
-        ? await getProviderRevenue(
+        ? await getProviderNetAfterRefundsByBooking(
             supabaseAdmin,
             providerId,
             fromDate,
             toDate,
             locationId ?? null,
-            { transactionTypes: LEDGER_FULL_PROVIDER_NET_TYPES, timezone: reportContext.timezone },
+            { bookingIds: noShowBookingIds },
           )
-        : { revenueByBooking: new Map<string, number>() };
+        : new Map<string, number>();
+
+    for (const bookingId of noShowBookingIds) {
+      lostRevenue += noShowLedgerByBooking.get(bookingId) || 0;
+    }
 
     // Group by client (repeat offenders)
     const repeatOffenderMap = new Map<
@@ -187,10 +192,6 @@ export async function GET(request: NextRequest) {
         existing.ledger_earnings += noShowLedgerByBooking.get(booking.id) || 0;
         repeatOffenderMap.set(clientId, existing);
       }
-    });
-
-    noShowBookingIds.forEach((bookingId) => {
-      lostRevenue += noShowLedgerByBooking.get(bookingId) || 0;
     });
 
     const repeatOffenders = Array.from(repeatOffenderMap.values())
@@ -224,7 +225,7 @@ export async function GET(request: NextRequest) {
       totalNoShows,
       totalBookings,
       noShowRate,
-      /** Net ledger recognized for no-show bookings (provider_earnings + tip + travel_fee). Often zero when unpaid. */
+      /** Net recognized revenue for no-show bookings (incl. retained no-show/cancellation fees, net of refunds). */
       ledgerNetRecognized: lostRevenue,
       /** @deprecated Use ledgerNetRecognized — same value; name was misleading vs booked loss. */
       lostRevenue,

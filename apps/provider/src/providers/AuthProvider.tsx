@@ -363,10 +363,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
           }
 
-          // Ensure role is set to provider_owner for OAuth sign-ins
-          await supabase.auth.updateUser({
-            data: { role: "provider_owner" },
-          });
+          // Ensure role is set to provider_owner for OAuth sign-ins when no role exists yet
+          const { data: u } = await supabase.auth.getUser();
+          const existingRole =
+            (u.user?.user_metadata as { role?: string } | undefined)?.role ?? null;
+          if (!existingRole) {
+            await supabase.auth.updateUser({
+              data: { role: "provider_owner" },
+            });
+          }
         } else if (result.type === "cancel") {
           return { error: new Error("Sign-in was cancelled") };
         } else {

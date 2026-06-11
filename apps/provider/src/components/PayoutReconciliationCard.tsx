@@ -41,12 +41,18 @@ export function PayoutReconciliationCard({ reconciliation, currency, payoutHoldD
     <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
       <Text style={twStyle("text-sm font-semibold text-gray-900")}>How your available balance is calculated</Text>
       <Text style={twStyle("mt-1 text-xs text-gray-500")}>
-        Revenue reports can read higher because they include cash you collected directly and ignore the
-        hold period and pending requests. Full bridge:
+        Revenue reports can read higher than withdrawable because they include cash you collected directly.
+        Full bridge:
       </Text>
       <View style={twStyle("mt-3")}>
         <Row label="Recognized payoutable earnings (net of refunds)" value={reconciliation.recognized_payoutable_earnings} />
-        <Row label="− Cash / Yoco / EFT you collected directly" value={reconciliation.excluded_provider_collected} muted />
+        {reconciliation.excluded_provider_collected > 0 ? (
+          <Row
+            label="Excluded: cash / Yoco / EFT you collected directly (not held by us)"
+            value={reconciliation.excluded_provider_collected}
+            muted
+          />
+        ) : null}
         <Row
           label={`− On hold${payoutHoldDays && payoutHoldDays > 0 ? ` (clears ${payoutHoldDays} days after each booking)` : ""}`}
           value={reconciliation.on_hold}

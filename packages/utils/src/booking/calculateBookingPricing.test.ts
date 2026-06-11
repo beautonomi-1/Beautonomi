@@ -1,8 +1,17 @@
 import { describe, it, expect } from "vitest";
 import {
   calculateBookingTotals,
+  effectiveTravelFee,
   type BookingPricingInput,
 } from "./calculateBookingPricing";
+
+describe("effectiveTravelFee", () => {
+  it("returns fee only for at_home", () => {
+    expect(effectiveTravelFee("at_home", 50)).toBe(50);
+    expect(effectiveTravelFee("at_salon", 50)).toBe(0);
+    expect(effectiveTravelFee("walk_in", 25)).toBe(0);
+  });
+});
 
 /** Round to 2 decimals for comparison (mirrors server Math.round(x*100)/100). */
 const r = (n: number) => Math.round(n * 100) / 100;
@@ -669,5 +678,23 @@ describe("webhook proportional commission", () => {
     const totalCommBase = r(depositCommBase + remainingCommBase);
 
     expect(totalCommBase).toBe(r(fullBase));
+  });
+});
+
+describe("calculateBookingTotals — membership and loyalty discounts", () => {
+  it("applies platform fee on post-membership/loyalty base", () => {
+    const result = calculateBookingTotals({
+      ...base,
+      subtotal: 1000,
+      discountAmount: 100,
+      promotionDiscountAmount: 50,
+      membershipDiscountAmount: 80,
+      loyaltyDiscountAmount: 20,
+      platformFeePercentage: 0.1,
+    });
+    // 1000 - 100 - 50 - 80 - 20 = 750
+    expect(result.afterDiscount).toBe(750);
+    expect(r(result.platformFeeAmount)).toBe(75);
+    expect(r(result.totalAmount)).toBe(825);
   });
 });

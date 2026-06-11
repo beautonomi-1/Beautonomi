@@ -17,7 +17,7 @@ import {
   successResponse,
   handleApiError,
   errorResponse,
-  getProviderIdForUser,
+  userHasProviderAccessAdmin,
 } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
@@ -26,11 +26,6 @@ import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
-
-async function getProviderId(userId: string, request: NextRequest): Promise<string | null> {
-  const supabase = getSupabaseAdmin();
-  return getProviderIdForUser(userId, supabase as never, { request });
-}
 
 type CampaignRow = {
   id: string;
@@ -49,26 +44,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   try {
     const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
     const tenantId = await resolveTenantIdWithZaFallback(request);
-    const providerId = await getProviderId(user.id, request);
-    if (!providerId) return errorResponse("Provider not found", "NOT_FOUND", 404);
-
-    const { data: providerTenantRow } = await getSupabaseAdmin()
-      .from("providers")
-      .select("tenant_id")
-      .eq("id", providerId)
-      .maybeSingle();
-    if (
-      !resourceTenantMatchesHostTenant(
-        tenantId,
-        (providerTenantRow as { tenant_id?: string | null } | null)?.tenant_id
-      )
-    ) {
-      return errorResponse(
-        "Your provider account is not on this market. Use the site or app for the correct region.",
-        "TENANT_MISMATCH",
-        403
-      );
-    }
 
     const { id: campaignId } = await params;
     const body = await request.json().catch(() => ({}));
@@ -81,10 +56,32 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         "id, provider_id, status, budget, spent, billing_model, pack_impressions, duration_days, start_at, end_at"
       )
       .eq("id", campaignId)
-      .single();
+      .maybeSingle();
 
-    if (!campaign || (campaign as CampaignRow).provider_id !== providerId) {
+    if (!campaign) {
       return errorResponse("Campaign not found", "NOT_FOUND", 404);
+    }
+    const campaignProviderId = String((campaign as CampaignRow).provider_id ?? "");
+    if (!campaignProviderId || !(await userHasProviderAccessAdmin(supabase, user.id, campaignProviderId))) {
+      return errorResponse("You do not have access to this campaign", "FORBIDDEN", 403);
+    }
+
+    const { data: providerTenantRow } = await supabase
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", campaignProviderId)
+      .maybeSingle();
+    if (
+      !resourceTenantMatchesHostTenant(
+        tenantId,
+        (providerTenantRow as { tenant_id?: string | null } | null)?.tenant_id
+      )
+    ) {
+      return errorResponse(
+        "Your provider account is not on this market. Use the site or app for the correct region.",
+        "TENANT_MISMATCH",
+        403
+      );
     }
     const c = campaign as CampaignRow;
     if (c.status === "ended") {
@@ -127,7 +124,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         .from("ads_budget_orders")
         .select("amount")
         .eq("campaign_id", campaignId)
-        .eq("provider_id", providerId)
+        .eq("provider_id", campaignProviderId)
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -148,7 +145,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       .from("ads_budget_orders")
       .update({ status: "failed", updated_at: new Date().toISOString() })
       .eq("campaign_id", campaignId)
-      .eq("provider_id", providerId)
+      .eq("provider_id", campaignProviderId)
       .eq("status", "pending");
 
     const tenantRegion = await getTenantRegionConfig(tenantId);
@@ -157,7 +154,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { data: order, error: orderError } = await supabase
       .from("ads_budget_orders")
       .insert({
-        provider_id: providerId,
+        provider_id: campaignProviderId,
         campaign_id: campaignId,
         amount: amountDue,
         currency,
@@ -192,7 +189,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       callback_url: callbackUrl,
       metadata: {
         ads_budget_order_id: order.id,
-        provider_id: providerId,
+        provider_id: campaignProviderId,
         campaign_id: campaignId,
         cancel_action: cancelAction,
       },

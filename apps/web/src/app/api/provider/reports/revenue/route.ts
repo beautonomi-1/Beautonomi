@@ -7,7 +7,11 @@ import {
   handleApiError,
 } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { getProviderRevenue, getPreviousPeriodRevenue } from "@/lib/reports/revenue-helpers";
+import {
+  getProviderNetAfterRefundsDetailed,
+  getProviderRevenue,
+  getPreviousPeriodNetAfterRefunds,
+} from "@/lib/reports/revenue-helpers";
 import { DASHBOARD_REVENUE_TRANSACTION_TYPES } from "@/lib/reports/constants";
 import {
   eachReportDateKey,
@@ -31,11 +35,24 @@ export async function GET(request: NextRequest) {
     const { fromDate, toDate, fromYmd, toYmd } = reportDateRangeFromParams(sp, reportContext.timezone, { defaultDays: 30 });
 
     const dashOpts = { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES, timezone: reportContext.timezone };
+    const netOpts = { timezone: reportContext.timezone };
 
-    const [{ totalRevenue, revenueByBooking, revenueByProductOrder, revenueByDate }, previousRevenue, cancelFeeResult] =
-      await Promise.all([
+    const [
+      { totalRevenue, revenueByBooking, revenueByProductOrder, revenueByDate },
+      serviceEarningsResult,
+      previousRevenue,
+      cancelFeeResult,
+    ] = await Promise.all([
+      getProviderNetAfterRefundsDetailed(
+        supabaseAdmin,
+        providerId,
+        fromDate,
+        toDate,
+        locationId,
+        netOpts,
+      ),
       getProviderRevenue(supabaseAdmin, providerId, fromDate, toDate, locationId, dashOpts),
-      getPreviousPeriodRevenue(supabaseAdmin, providerId, fromDate, toDate, locationId, dashOpts),
+      getPreviousPeriodNetAfterRefunds(supabaseAdmin, providerId, fromDate, toDate, locationId),
       supabaseAdmin
         .from("finance_transactions")
         .select("net, booking_id, product_order_id")
@@ -126,8 +143,9 @@ export async function GET(request: NextRequest) {
 
     const reportBasis =
       `Window ${fromYmd}–${toYmd} (${reportContext.timezone}). ` +
-      `Headline total_revenue sums provider_earnings ledger rows (finance_transactions.created_at) — includes product-order earnings. ` +
-      `Cancellation fees from cancellation_fee rows add to total_revenue_inclusive. ` +
+      `Headline total_revenue = recognized provider revenue net of refund clawbacks (finance_transactions.created_at). ` +
+      `service_earnings = provider_earnings only sub-line. ` +
+      `Cancellation fees are already included in recognized revenue; total_revenue_inclusive kept for backward compatibility. ` +
       `Service and staff breakdowns allocate **booking-linked** ledger only across booking_services lines by price share — retail-only ledger does not appear there. ` +
       `Daily trend rolls up ledger net by calendar day (recognition date). ` +
       `avg_per_booking is mean booking-linked ledger ÷ count of bookings with positive ledger allocation — not booking.total_amount. ` +
@@ -135,7 +153,9 @@ export async function GET(request: NextRequest) {
 
     const basis = {
       headline:
-        "provider_earnings transaction_type; settlement timestamp finance_transactions.created_at.",
+        "Recognized provider revenue net of refund clawbacks; settlement timestamp finance_transactions.created_at.",
+      serviceEarnings:
+        "provider_earnings only — sub-line; breakdowns allocate booking-linked net after refunds.",
       bookingsMix:
         "Product-order earnings appear in headline total and daily trend but not in per-service/staff booking allocation.",
       breakdown:
@@ -150,6 +170,8 @@ export async function GET(request: NextRequest) {
       fromYmd,
       toYmd,
       total_revenue: totalRevenue,
+      recognized_revenue_net: totalRevenue,
+      service_earnings: serviceEarningsResult.totalRevenue,
       ledger_from_bookings: ledgerFromBookings,
       ledger_from_product_orders: ledgerFromProductOrders,
       cancellation_fees: cancellationFees,

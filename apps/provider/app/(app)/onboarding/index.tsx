@@ -46,6 +46,7 @@ export default function OnboardingHubScreen() {
   const { data, loading, error, refresh } = useApi<SetupStatus>("/api/provider/setup-status");
 
   const isPendingApproval = provider?.status === "pending_approval";
+  const isSuspended = provider?.status === "suspended";
 
   const status = data as SetupStatus | null;
   const isComplete = status?.isComplete ?? false;
@@ -232,24 +233,36 @@ export default function OnboardingHubScreen() {
             >
               <Text style={twStyle("text-[12px] font-semibold text-primary")}>
                 {isComplete
-                  ? isPendingApproval
-                    ? "Under review"
-                    : "Ready to work"
-                  : "Guided setup · about 10–15 min"}
+                  ? isSuspended
+                    ? "Account suspended"
+                    : isPendingApproval
+                      ? "Under review"
+                      : "Ready to work"
+                  : isSuspended
+                    ? "Account suspended"
+                    : "Guided setup · about 10–15 min"}
               </Text>
             </View>
             <Text style={twStyle("text-center text-[24px] font-bold text-slate-900")}>
               {isComplete
-                ? isPendingApproval
-                  ? "Setup complete"
-                  : "You're all set"
-                : "Welcome to Beautonomi"}
+                ? isSuspended
+                  ? "Account suspended"
+                  : isPendingApproval
+                    ? "Setup complete"
+                    : "You're all set"
+                : isSuspended
+                  ? "Account suspended"
+                  : "Welcome to Beautonomi"}
             </Text>
             <Text style={twStyle("mt-2 max-w-sm text-center text-[15px] leading-relaxed text-slate-500")}>
               {isComplete
-                ? isPendingApproval
-                  ? "Your profile is under review. You can explore the app and finish optional setup while we approve your listing."
-                  : "Your profile is live. Accept bookings and manage your business from the app."
+                ? isSuspended
+                  ? "Your provider account is suspended. Contact support to restore access before accepting new bookings."
+                  : isPendingApproval
+                    ? "Your profile is under review. You can explore the app and finish optional setup while we approve your listing."
+                    : "Your profile is live. Accept bookings and manage your business from the app."
+                : isSuspended
+                  ? "Your provider account is suspended. Contact support to restore access."
                 : !hasSetupSteps
                   ? "Create your business profile first. You can leave setup any time and come back when you're ready."
                 : remaining > 0

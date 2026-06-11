@@ -7,13 +7,12 @@ import {
   handleApiError,
 } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
-import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
-import { DASHBOARD_REVENUE_TRANSACTION_TYPES } from "@/lib/reports/constants";
+import { getProviderNetAfterRefundsDetailed } from "@/lib/reports/revenue-helpers";
 import { eachReportDateKey, getProviderReportContext, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
 
 /**
  * GET /api/provider/reports/weekly-revenue
- * Daily totals aligned with main dashboard revenue (provider_earnings only), same as `revenue_today` / `revenue_this_week`.
+ * Daily recognized provider revenue net of refund clawbacks — aligned with dashboard headline.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -38,13 +37,13 @@ export async function GET(request: NextRequest) {
       defaultDays: 7,
     });
 
-    const { revenueByDate } = await getProviderRevenue(
+    const { revenueByDate } = await getProviderNetAfterRefundsDetailed(
       supabaseAdmin,
       providerId,
       startDate,
       endDate,
       locationId,
-      { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES, timezone: reportContext.timezone },
+      { timezone: reportContext.timezone },
     );
 
     const result = eachReportDateKey(fromYmd, toYmd).map((key) => {

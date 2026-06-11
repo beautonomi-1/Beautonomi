@@ -12,10 +12,9 @@ import LoadingTimeout from "@/components/ui/loading-timeout";
 
 export default function ProviderPage() {
   const router = useRouter();
-  const { user, role, isLoading, refreshUser } = useAuth();
+  const { user, role, isLoading } = useAuth();
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [initialMode, setInitialMode] = useState<"login" | "signup">("login");
-  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Redirect if already logged in as provider
   useEffect(() => {
@@ -27,74 +26,17 @@ export default function ProviderPage() {
     }
   }, [user, role, isLoading, router]);
 
-  // Show loading state while checking auth
-  if (isLoading) {
+  // Logged-in customers and legacy provider_onboarding users → start onboarding
+  useEffect(() => {
+    if (!isLoading && user && role !== "provider_owner" && role !== "provider_staff") {
+      router.replace("/provider/onboarding");
+    }
+  }, [user, role, isLoading, router]);
+
+  if (isLoading || (user && role !== "provider_owner" && role !== "provider_staff")) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
         <LoadingTimeout loadingMessage="Loading..." timeoutMs={5000} />
-      </div>
-    );
-  }
-
-  // If user is logged in but not a provider, show message
-  if (user && role !== "provider_owner" && role !== "provider_staff") {
-    const handleRefresh = async () => {
-      setIsRefreshing(true);
-      try {
-        await refreshUser();
-        // Wait a moment for state to update
-        setTimeout(() => {
-          setIsRefreshing(false);
-        }, 1000);
-      } catch (error) {
-        console.error("Error refreshing user:", error);
-        setIsRefreshing(false);
-      }
-    };
-
-    return (
-      <div className="min-h-screen bg-white">
-        <div className="container mx-auto px-4 py-16">
-          <div className="max-w-2xl mx-auto text-center">
-            <h1 className="text-3xl font-bold mb-4">Provider Access Required</h1>
-            <p className="text-gray-600 mb-4">
-              You need a provider account to access this area. Please contact support to upgrade your account.
-            </p>
-            {/* Debug information */}
-            {process.env.NODE_ENV === 'development' && (
-              <div className="mb-6 p-4 bg-gray-100 rounded-lg text-left">
-                <p className="text-sm text-gray-600 mb-2">
-                  <strong>Debug Info:</strong>
-                </p>
-                <p className="text-sm text-gray-600">
-                  <strong>User ID:</strong> {user.id}
-                </p>
-                <p className="text-sm text-gray-600">
-                  <strong>Detected Role:</strong> {role || "null"} {role === "customer" && "(default)"}
-                </p>
-                <p className="text-sm text-gray-600">
-                  <strong>Email:</strong> {user.email}
-                </p>
-              </div>
-            )}
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Button 
-                onClick={handleRefresh} 
-                variant="outline"
-                disabled={isRefreshing}
-              >
-                {isRefreshing ? "Refreshing..." : "Refresh Account Data"}
-              </Button>
-              <Button onClick={() => router.push("/")} variant="outline">
-                Go to Home
-              </Button>
-            </div>
-            <p className="text-xs text-gray-500 mt-4">
-              If you believe you should have provider access, try clicking "Refresh Account Data" above, 
-              or contact support with your user ID: {user.id}
-            </p>
-          </div>
-        </div>
       </div>
     );
   }

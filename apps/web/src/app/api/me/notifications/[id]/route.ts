@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, successResponse, handleApiError, notFoundResponse } from "@/lib/supabase/api-helpers";
 import { syncPushBadgeCountAllApps } from "@/lib/notifications/sync-push-badge-count";
+import { invalidateProviderNotificationsListCache } from "@/lib/notifications/provider-notifications-list-cache";
 
 /**
  * GET /api/me/notifications/[id]
@@ -65,6 +66,7 @@ export async function DELETE(
 
     if (error) throw error;
     void syncPushBadgeCountAllApps(user.id);
+    invalidateProviderNotificationsListCache(user.id);
     return successResponse({ success: true });
   } catch (error) {
     return handleApiError(error, "Failed to delete notification");

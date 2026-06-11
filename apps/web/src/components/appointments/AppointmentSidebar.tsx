@@ -19,6 +19,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import type { AppointmentSidebarProps, AppointmentService, AppointmentProduct, CreateFormData, CancelReason } from "./types";
 import { calculateBookingPricing } from "./pricing";
+import { effectiveTravelFee } from "@beautonomi/utils";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -1196,9 +1197,11 @@ export function AppointmentSidebar({
 
   // Helper function to calculate pricing — passes tax-inclusive mode from provider settings
   const calculatePricing = useCallback(
-    (servicesList: AppointmentService[], productsList: AppointmentProduct[], travelFee: number, discountAmount: number, taxRate: number, serviceFeePercentage: number, tipAmount: number) =>
-      calculateBookingPricing(servicesList, productsList, travelFee, discountAmount, taxRate, serviceFeePercentage, tipAmount, { taxInclusive: taxInclusiveMode }),
-    [taxInclusiveMode],
+    (servicesList: AppointmentService[], productsList: AppointmentProduct[], travelFee: number, discountAmount: number, taxRate: number, serviceFeePercentage: number, tipAmount: number, kind: AppointmentKind = formData.kind) => {
+      const fee = effectiveTravelFee(kind === AppointmentKind.AT_HOME ? "at_home" : "at_salon", travelFee);
+      return calculateBookingPricing(servicesList, productsList, fee, discountAmount, taxRate, serviceFeePercentage, tipAmount, { taxInclusive: taxInclusiveMode });
+    },
+    [taxInclusiveMode, formData.kind],
   );
 
   // Load service variants
@@ -3311,13 +3314,30 @@ export function AppointmentSidebar({
                           !isActive && "border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50",
                         )}
                         onClick={() =>
-                          setFormData((prev) => ({
-                            ...prev,
-                            kind,
-                            ...(kind === AppointmentKind.WALK_IN
-                              ? { isRecurring: false }
-                              : {}),
-                          }))
+                          setFormData((prev) => {
+                            const nextKind = kind;
+                            const clearedTravel = nextKind === AppointmentKind.AT_HOME ? prev.travelFee : 0;
+                            const pricing = calculatePricing(
+                              prev.services,
+                              prev.products,
+                              clearedTravel,
+                              prev.discountAmount,
+                              prev.taxRate,
+                              prev.serviceFeePercentage,
+                              prev.tipAmount,
+                              nextKind,
+                            );
+                            return {
+                              ...prev,
+                              kind: nextKind,
+                              travelFee: clearedTravel,
+                              travelFeeOverride: nextKind === AppointmentKind.AT_HOME ? prev.travelFeeOverride : null,
+                              ...(nextKind === AppointmentKind.WALK_IN ? { isRecurring: false } : {}),
+                              totalAmount: pricing.totalAmount,
+                              taxAmount: pricing.taxAmount,
+                              serviceFeeAmount: pricing.serviceFeeAmount,
+                            };
+                          })
                         }
                       >
                         <div className={cn(
@@ -3364,7 +3384,7 @@ export function AppointmentSidebar({
                           <p className="text-gray-500 text-xs mt-0.5">{formData.addressCity} {formData.addressPostalCode}</p>
                         </div>
                       </div>
-                      {formData.travelFee > 0 && (
+                      {formData.kind === AppointmentKind.AT_HOME && formData.travelFee > 0 && (
                         <div className="px-3.5 py-2.5 bg-blue-100/50 border-t border-blue-200/60 flex justify-between items-center">
                           <span className="text-xs text-blue-700 font-medium">Travel fee</span>
                           <span className="text-sm font-semibold text-blue-800">
@@ -4468,7 +4488,7 @@ export function AppointmentSidebar({
                   )}
                   
                   {/* Travel Fee */}
-                  {formData.travelFee > 0 && (
+                  {formData.kind === AppointmentKind.AT_HOME && formData.travelFee > 0 && (
                     <div className="flex justify-between text-xs sm:text-xs md:text-sm">
                       <span className="text-gray-500 flex items-center gap-1">
                         <MapPin className="w-3 h-3" />

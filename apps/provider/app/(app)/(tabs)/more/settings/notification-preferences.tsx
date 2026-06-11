@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
-import { View, Text, Switch, Alert, TouchableOpacity } from "react-native";
+import { View, Text, Switch, Alert, TouchableOpacity, Platform, Linking } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import * as Notifications from "expo-notifications";
 import { useApi, useApiMutation } from "@/hooks/useApi";
+import { requestOneSignalPushPermission } from "@/lib/onesignal-client";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
@@ -97,6 +99,49 @@ export default function NotificationPreferencesScreen() {
   const { execute: testNotif, loading: testing } = useApiMutation("post");
   const [local, setLocal] = useState<NotifPreferences>(DEFAULT_PREFS);
   const [dirty, setDirty] = useState(false);
+  const [pushPermissionStatus, setPushPermissionStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    void Notifications.getPermissionsAsync().then(({ status }) => setPushPermissionStatus(status));
+  }, []);
+
+  async function handleEnablePushNotifications() {
+    if (Platform.OS === "web") return;
+    const current = await Notifications.getPermissionsAsync();
+    setPushPermissionStatus(current.status);
+    if (current.status === "granted") {
+      Alert.alert("Push enabled", "Notifications are already allowed for this device.");
+      return;
+    }
+    if (current.status === "undetermined" || current.canAskAgain) {
+      const accepted = await requestOneSignalPushPermission(false);
+      const next = await Notifications.getPermissionsAsync();
+      setPushPermissionStatus(next.status);
+      if (accepted || next.status === "granted") {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Alert.alert("Push enabled", "You will receive push alerts on this device.");
+      } else {
+        Alert.alert(
+          "Enable notifications",
+          "Allow notifications in system settings to receive push alerts.",
+          [
+            { text: "Not now", style: "cancel" },
+            { text: "Open Settings", onPress: () => void Linking.openSettings() },
+          ],
+        );
+      }
+      return;
+    }
+    Alert.alert(
+      "Enable notifications",
+      "Push was blocked for Beautonomi Provider. Open system settings to turn notifications on.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Open Settings", onPress: () => void Linking.openSettings() },
+      ],
+    );
+  }
 
   useEffect(() => {
     if (!prefs) return;
@@ -208,6 +253,30 @@ export default function NotificationPreferencesScreen() {
         showBack
         subtitle="Control how you receive alerts"
       />
+
+      {Platform.OS !== "web" && (
+        <TouchableOpacity
+          style={twStyle("mb-4 flex-row items-center rounded-xl border border-gray-200 bg-white p-3")}
+          onPress={() => void handleEnablePushNotifications()}
+        >
+          <Ionicons
+            name={pushPermissionStatus === "granted" ? "notifications" : "notifications-off-outline"}
+            size={18}
+            color={pushPermissionStatus === "granted" ? "#10b981" : "#6366f1"}
+          />
+          <View style={twStyle("ml-2 flex-1")}>
+            <Text style={twStyle("text-sm font-medium text-gray-900")}>
+              {pushPermissionStatus === "granted" ? "Push notifications enabled" : "Enable push notifications"}
+            </Text>
+            <Text style={twStyle("text-xs text-gray-500")}>
+              {pushPermissionStatus === "granted"
+                ? "This device can receive push alerts"
+                : "Turn on system permission if you skipped push during setup"}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+        </TouchableOpacity>
+      )}
 
       {/* Test notification */}
       <TouchableOpacity

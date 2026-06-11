@@ -56,23 +56,12 @@ export async function POST(
     }
 
     try {
-      const { sendToUser } = await import("@/lib/notifications/onesignal");
-      if (bookingRow.customer_id) {
-        await sendToUser(
-          bookingRow.customer_id,
-          {
-            title: "Booking Cancelled",
-            message: `Your booking ${bookingRow.booking_number ?? ""} has been cancelled.`,
-            data: {
-              type: "booking_cancelled",
-              booking_id: id,
-            },
-            url: `/account-settings/bookings/${id}`,
-          },
-          ["push"],
-          { appType: "customer" }
-        );
-      }
+      const { notifyBookingCancelled } = await import("@/lib/notifications/notification-service");
+      const refundInfo =
+        typeof body.refund_info === "string" && body.refund_info.trim()
+          ? body.refund_info.trim()
+          : "This booking was cancelled by our team.";
+      await notifyBookingCancelled(id, "system", refundInfo);
     } catch (notifError) {
       console.error("Error sending notification:", notifError);
     }

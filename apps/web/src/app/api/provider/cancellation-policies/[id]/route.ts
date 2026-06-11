@@ -12,6 +12,7 @@ const updatePolicySchema = z.object({
   fee_amount: z.number().min(0).optional(),
   fee_type: z.enum(["fixed", "percentage"]).optional(),
   is_default: z.boolean().optional(),
+  location_type: z.enum(["at_salon", "at_home", "both"]).nullable().optional(),
 });
 
 /**
@@ -116,6 +117,9 @@ export async function PATCH(
     if (validationResult.data.is_default !== undefined) {
       updateData.is_default = validationResult.data.is_default;
     }
+    if (validationResult.data.location_type !== undefined) {
+      updateData.location_type = validationResult.data.location_type;
+    }
     const enforcement = deriveEnforcementFields(merged);
     updateData.hours_before_cutoff = enforcement.hours_before_cutoff;
     updateData.late_cancellation_type = enforcement.late_cancellation_type;
@@ -142,6 +146,7 @@ export async function PATCH(
       fee_amount: policy.fee_amount ?? 0,
       fee_type: policy.fee_type || 'fixed',
       is_default: policy.is_default ?? false,
+      location_type: policy.location_type ?? null,
       provider_id: policy.provider_id,
       created_at: policy.created_at,
       updated_at: policy.updated_at,

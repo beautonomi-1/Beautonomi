@@ -350,14 +350,14 @@ describe("getAvailablePayoutBalance", () => {
     );
 
     expect(result.breakdown).toEqual({
-      recognizedPayoutableEarnings: 200,
+      recognizedPayoutableEarnings: 260,
       onHold: 60,
       excludedProviderCollected: 40,
       completedPayouts: 30,
       pendingPayouts: 25,
       availableBalance: 145,
     });
-    // recognized 200 - completed 30 - pending 25 = 145.
+    // recognized 260 - onHold 60 - completed 30 - pending 25 = 145.
     expect(result.rawBalance).toBe(145);
     expect(result.availableBalance).toBe(145);
   });

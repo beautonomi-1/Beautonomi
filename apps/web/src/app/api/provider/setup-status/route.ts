@@ -32,6 +32,8 @@ export interface SetupStatus {
   completionPercentage: number;
   missing_steps: string[];
   steps: SetupStatusStep[];
+  /** Current providers.status when a provider row exists. */
+  providerStatus?: string | null;
 }
 
 /**
@@ -343,7 +345,7 @@ export async function GET(request: NextRequest) {
                 "Add a short bio so customers know who they're booking with",
               completed: hasPersonalProfile,
               required: true,
-              link: "/profile/create-profile",
+              link: "/provider/account/personal-profile",
             },
           ]
         : []),
@@ -471,6 +473,7 @@ export async function GET(request: NextRequest) {
       completionPercentage: isComplete ? 100 : completionPercentage,
       missing_steps: missingSteps,
       steps: stepsWithNativeRoute,
+      providerStatus: (provider as { status?: string | null }).status ?? null,
     });
   } catch (error) {
     return handleApiError(error, "Failed to check setup status");

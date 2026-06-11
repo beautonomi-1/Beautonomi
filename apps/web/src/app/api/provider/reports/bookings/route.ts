@@ -4,12 +4,11 @@ import { createClient } from "@supabase/supabase-js";
 import { differenceInCalendarDays } from "date-fns";
 import { getDayInTz } from "@/lib/dates/provider-tz";
 import { getProviderReportContext, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
-import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
+import { getProviderNetAfterRefundsByBooking } from "@/lib/reports/revenue-helpers";
 import {
   CHANNEL_BASIS_NOTE,
   computeBookingChannelBreakdown,
 } from "@/lib/reports/booking-channel-breakdown";
-import { RECOGNIZED_REVENUE_TYPES } from "@/lib/reports/provider-revenue-semantics";
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -66,13 +65,12 @@ export async function GET(request: NextRequest) {
 
     const daysDiff = Math.max(1, differenceInCalendarDays(toDate, fromDate) + 1);
 
-    const { revenueByBooking } = await getProviderRevenue(
+    const revenueByBooking = await getProviderNetAfterRefundsByBooking(
       supabaseAdmin,
       providerId,
       fromDate,
       toDate,
       locationId || undefined,
-      { transactionTypes: RECOGNIZED_REVENUE_TYPES, timezone: reportContext.timezone },
     );
 
     const channel_breakdown = computeBookingChannelBreakdown({
@@ -94,7 +92,7 @@ export async function GET(request: NextRequest) {
       channel_breakdown,
       channelBasisNote: CHANNEL_BASIS_NOTE,
       basisNote:
-        "Counts use bookings.scheduled_at in the selected range. Channel revenue uses recognized ledger settlement dates (see channelBasisNote).",
+        "Counts use bookings.scheduled_at in the selected range. Channel revenue uses recognized provider revenue net of refund clawbacks per booking (see channelBasisNote).",
       reportBasis: "Appointment date window; all statuses included unless filtered in detail reports.",
     });
   } catch (error) {

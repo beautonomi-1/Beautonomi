@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import {
   View,
@@ -9,7 +10,7 @@ import {
   Alert,
   Switch,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import { useApi, useApiPost, useApiMutation } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -31,6 +32,7 @@ interface CancellationPolicy {
   hours_before: number;
   refund_percentage: number;
   is_default: boolean;
+  location_type: "at_salon" | "at_home" | "both" | null;
   provider_id: string;
   created_at: string;
   updated_at: string;
@@ -43,7 +45,14 @@ interface PolicyForm {
   hours_before: string;
   refund_percentage: string;
   is_default: boolean;
+  location_type: "at_salon" | "at_home" | "both" | null;
 }
+
+const LOCATION_LABELS: Record<string, string> = {
+  at_salon: "In-salon",
+  at_home: "At-home",
+  both: "All locations",
+};
 
 const EMPTY_FORM: PolicyForm = {
   name: "",
@@ -52,11 +61,13 @@ const EMPTY_FORM: PolicyForm = {
   hours_before: "24",
   refund_percentage: "0",
   is_default: false,
+  location_type: null,
 };
 
 /* ─── screen ─── */
 export default function CancellationPoliciesScreen() {
   useResponsive();
+  const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const [sheetVisible, setSheetVisible] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -105,6 +116,7 @@ export default function CancellationPoliciesScreen() {
       hours_before: policy.hours_before.toString(),
       refund_percentage: (policy.refund_percentage ?? 0).toString(),
       is_default: policy.is_default ?? false,
+      location_type: policy.location_type ?? null,
     });
     setSheetVisible(true);
   }
@@ -141,6 +153,7 @@ export default function CancellationPoliciesScreen() {
       hours_before: parseInt(form.hours_before, 10),
       refund_percentage: parseInt(form.refund_percentage, 10) || 0,
       is_default: form.is_default,
+      location_type: form.location_type,
     };
 
     if (editingId) {
@@ -164,6 +177,20 @@ export default function CancellationPoliciesScreen() {
       Alert.alert("Created", "New cancellation policy added.");
     }
     setSheetVisible(false);
+    refresh();
+  }
+
+  async function handleSetDefault(policy: CancellationPolicy) {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const { error } = await updatePolicy(
+      `/api/provider/cancellation-policies/${policy.id}/set-default`,
+      {},
+    );
+    if (error) {
+      Alert.alert("Error", error);
+      return;
+    }
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     refresh();
   }
 
@@ -211,6 +238,19 @@ export default function CancellationPoliciesScreen() {
           </TouchableOpacity>
         }
       />
+
+      <TouchableOpacity
+        style={twStyle("mx-4 mb-3 flex-row items-center rounded-xl border border-amber-100 bg-amber-50 px-4 py-3")}
+        onPress={() => router.push("/(app)/(tabs)/more/settings/payments" as never)}
+        accessibilityLabel="Configure no-show fees in payment settings"
+        accessibilityRole="button"
+      >
+        <Ionicons name="alert-circle-outline" size={18} color="#d97706" />
+        <Text style={twStyle("ml-2 flex-1 text-sm text-amber-900")}>
+          No-show fees are configured under Payment Settings.
+        </Text>
+        <Ionicons name="chevron-forward" size={16} color="#d97706" />
+      </TouchableOpacity>
 
       {loading && !policies ? (
         <LoadingState />
@@ -280,10 +320,31 @@ export default function CancellationPoliciesScreen() {
                     </Text>
                   </View>
                 )}
+                {policy.location_type ? (
+                  <View style={[twStyle("mt-1 flex-row items-center"), { marginRight: 16 }]}>
+                    <Ionicons name="location-outline" size={12} color="#9ca3af" />
+                    <Text style={twStyle("ml-1 text-xs text-gray-500")}>
+                      {LOCATION_LABELS[policy.location_type] ?? policy.location_type}
+                    </Text>
+                  </View>
+                ) : null}
               </View>
 
               {/* Actions */}
-              <View style={twStyle("mt-3 flex-row items-center border-t border-gray-50 pt-3")}>
+              <View style={twStyle("mt-3 flex-row flex-wrap items-center border-t border-gray-50 pt-3")}>
+                {!policy.is_default && (
+                  <TouchableOpacity
+                    style={[twStyle("mb-2 flex-row items-center justify-center rounded-lg bg-indigo-50 px-3 py-2"), { marginRight: 8 }]}
+                    onPress={() => handleSetDefault(policy)}
+                    accessibilityLabel={`Set ${policy.name} as default policy`}
+                    accessibilityRole="button"
+                  >
+                    <Ionicons name="star-outline" size={14} color="#4f46e5" />
+                    <Text style={twStyle("ml-1 text-xs font-medium text-indigo-700")}>
+                      Set default
+                    </Text>
+                  </TouchableOpacity>
+                )}
                 <TouchableOpacity
                   style={[twStyle("flex-1 flex-row items-center justify-center rounded-lg bg-gray-100 py-2"), { marginRight: 8 }]}
                   onPress={() => openEditSheet(policy)}
@@ -428,6 +489,41 @@ export default function CancellationPoliciesScreen() {
             </Text>
           </View>
           {formErrors.refund_percentage && <Text style={twStyle("mt-1 text-xs text-red-500")}>{formErrors.refund_percentage}</Text>}
+        </View>
+
+        {/* Location type */}
+        <View style={twStyle("mb-4")}>
+          <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Applies to</Text>
+          <View style={twStyle("flex-row flex-wrap")}>
+            {(
+              [
+                { value: null, label: "Any" },
+                { value: "at_salon", label: "In-salon" },
+                { value: "at_home", label: "At-home" },
+                { value: "both", label: "Both" },
+              ] as const
+            ).map((opt) => {
+              const selected = form.location_type === opt.value;
+              return (
+                <TouchableOpacity
+                  key={opt.label}
+                  style={[
+                    twStyle(`rounded-full px-3 py-2 ${selected ? "bg-indigo-600" : "border border-gray-200 bg-gray-50"}`),
+                    { marginRight: 8, marginBottom: 8 },
+                  ]}
+                  onPress={() => updateField("location_type", opt.value)}
+                  accessibilityLabel={`Location scope ${opt.label}`}
+                  accessibilityRole="button"
+                >
+                  <Text
+                    style={twStyle(`text-xs font-medium ${selected ? "text-white" : "text-gray-600"}`)}
+                  >
+                    {opt.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
         </View>
 
         {/* Default Toggle */}

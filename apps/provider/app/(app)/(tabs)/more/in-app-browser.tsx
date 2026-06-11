@@ -20,6 +20,7 @@ import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Colors } from "@/constants/colors";
+import { api } from "@/lib/api-client";
 
 export default function InAppBrowserScreen() {
   const router = useRouter();
@@ -47,6 +48,7 @@ export default function InAppBrowserScreen() {
         type?: string;
         status?: string;
         message?: string;
+        order_id?: string | null;
         return_to?: string;
       };
       // Ads budget: `/provider/settings/ads/payment-return` posts BEAUTONOMI_ADS_PAYMENT_DONE.
@@ -55,6 +57,9 @@ export default function InAppBrowserScreen() {
       // (see apps/web `provider/subscription/page.tsx`) so the shell can pop back to native UI.
       if (raw?.type === "BEAUTONOMI_ADS_PAYMENT_DONE") {
         const isCancelled = raw.status === "cancelled";
+        if (isCancelled && raw.order_id) {
+          void api.post(`/api/provider/ads/budget-orders/${encodeURIComponent(raw.order_id)}/abandon`, {});
+        }
         const status: "success" | "pending" | "failed" =
           raw.status === "pending"
             ? "pending"

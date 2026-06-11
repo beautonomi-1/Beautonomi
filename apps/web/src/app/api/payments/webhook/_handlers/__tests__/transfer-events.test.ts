@@ -11,6 +11,10 @@ vi.mock("@/lib/notifications/onesignal", () => ({
   sendToUser: vi.fn(async () => undefined),
 }));
 
+vi.mock("@/lib/audit/audit", () => ({
+  writeAuditLog: vi.fn(async () => undefined),
+}));
+
 function createTransferEventSupabase(options: {
   payout: Record<string, unknown> | null;
   updateError?: unknown;

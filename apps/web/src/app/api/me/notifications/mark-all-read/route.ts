@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { syncPushBadgeCountAllApps } from "@/lib/notifications/sync-push-badge-count";
+import { invalidateProviderNotificationsListCache } from "@/lib/notifications/provider-notifications-list-cache";
 
 /**
  * POST /api/me/notifications/mark-all-read
@@ -24,6 +25,7 @@ export async function POST(request: NextRequest) {
     }
 
     void syncPushBadgeCountAllApps(user.id, 0);
+    invalidateProviderNotificationsListCache(user.id);
 
     return successResponse({ success: true });
   } catch (error) {

@@ -206,6 +206,10 @@ export default function AdminPayouts() {
             title="Payout Management"
             description="Manage provider payout queue. Provider payouts are paid to their linked bank account. Customer refunds are processed via payments/refunds, not this queue."
           />
+          <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            This legacy page is deprecated. Use the admin Vite SPA <strong>Finance → Payouts</strong> for the
+            canonical payout workflow.
+          </div>
         </div>
 
         <AdminFilterBar className="mb-4 sm:mb-6">
@@ -315,17 +319,19 @@ export default function AdminPayouts() {
                                   <XCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
                                   Reject
                                 </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => handleInitiateTransfer(payout.id)}
-                                >
-                                  <Wallet className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
-                                  Initiate
-                                </Button>
                               </>
                             ) : payout.status === "processing" ? (
                               <>
+                                {!payout.transfer_code ? (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleInitiateTransfer(payout.id)}
+                                  >
+                                    <Wallet className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                                    Initiate
+                                  </Button>
+                                ) : null}
                                 <Button
                                   size="sm"
                                   variant="outline"
@@ -442,19 +448,21 @@ export default function AdminPayouts() {
                         <XCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-2" />
                         Reject
                       </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleInitiateTransfer(payout.id)}
-                        className="w-full text-xs sm:text-sm"
-                      >
-                        <Wallet className="w-3 h-3 sm:w-4 sm:h-4 mr-2" />
-                        Initiate Transfer
-                      </Button>
                     </div>
                   )}
                   {payout.status === "processing" && (
                     <div className="mt-3 pt-3 border-t space-y-2">
+                      {!payout.transfer_code ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleInitiateTransfer(payout.id)}
+                          className="w-full text-xs sm:text-sm"
+                        >
+                          <Wallet className="w-3 h-3 sm:w-4 sm:h-4 mr-2" />
+                          Initiate Transfer
+                        </Button>
+                      ) : null}
                       <div className="flex gap-2">
                         <Button
                           size="sm"

@@ -2,8 +2,12 @@ import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
 import { subDays } from "date-fns";
-import { getProviderRevenue, getPreviousPeriodRevenue } from "@/lib/reports/revenue-helpers";
-import { LEDGER_FULL_PROVIDER_NET_TYPES, MAX_REPORT_DAYS } from "@/lib/reports/constants";
+import {
+  getProviderNetAfterRefundsDetailed,
+  getPreviousPeriodNetAfterRefunds,
+} from "@/lib/reports/revenue-helpers";
+import { MAX_REPORT_DAYS } from "@/lib/reports/constants";
+import { RECOGNIZED_REVENUE_TYPES } from "@/lib/reports/provider-revenue-semantics";
 import { getProviderReportContext, reportDateRangeFromParams, reportDateKey } from "@/lib/reports/provider-report-utils";
 import { getRecordedTakingsForRange } from "@/lib/reports/recorded-takings";
 
@@ -105,21 +109,20 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    /** Full booking-linked provider net in ledger: earnings + travel + tips (see lib/reports/constants). */
-    const ledgerOpts = { transactionTypes: LEDGER_FULL_PROVIDER_NET_TYPES, timezone: reportContext.timezone };
+    const netOpts = { timezone: reportContext.timezone };
 
     const {
       totalRevenue,
       revenueByBooking,
       revenueByProductOrder,
       revenueByDate,
-    } = await getProviderRevenue(
+    } = await getProviderNetAfterRefundsDetailed(
       supabaseAdmin,
       providerId,
       fromDate,
       toDate,
       locationId || undefined,
-      ledgerOpts
+      netOpts,
     );
 
     let appointmentLedgerRevenue = 0;
@@ -139,13 +142,12 @@ export async function GET(request: NextRequest) {
       bookingsWithLedgerActivity > 0 ? appointmentLedgerRevenue / bookingsWithLedgerActivity : 0;
 
     // Get previous period for comparison
-    const prevRevenue = await getPreviousPeriodRevenue(
+    const prevRevenue = await getPreviousPeriodNetAfterRefunds(
       supabaseAdmin,
       providerId,
       fromDate,
       toDate,
       locationId || undefined,
-      ledgerOpts
     );
 
     const periodDays = Math.ceil(
@@ -302,7 +304,7 @@ export async function GET(request: NextRequest) {
       revenueByDay,
       revenueByService,
       revenueByStaff,
-      ledgerTransactionTypes: [...LEDGER_FULL_PROVIDER_NET_TYPES],
+      ledgerTransactionTypes: [...RECOGNIZED_REVENUE_TYPES, "refund"],
       recordedTakings: {
         total: recorded.totalRecorded,
         byPaymentMethod: recorded.byPaymentMethod,

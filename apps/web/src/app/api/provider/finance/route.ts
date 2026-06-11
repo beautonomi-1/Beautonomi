@@ -547,8 +547,7 @@ export async function GET(request: NextRequest) {
          * Bridge from recognized payoutable earnings to the withdrawable figure so the UI can
          * explain why "available to withdraw" differs from headline recognized-revenue reports:
          *   recognized_payoutable_earnings − on_hold − pending_payouts − already_paid_out = available_balance
-         * `excluded_provider_collected` is the cash/Yoco/EFT the provider already took directly
-         * (never platform-held, so never withdrawable) — the main reason reports read higher.
+         * `excluded_provider_collected` is informational — cash/Yoco/EFT never platform-held.
          */
         payout_reconciliation: {
           recognized_payoutable_earnings: payoutBreakdown.recognizedPayoutableEarnings,

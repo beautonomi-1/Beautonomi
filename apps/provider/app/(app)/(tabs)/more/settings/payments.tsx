@@ -40,6 +40,8 @@ interface PaymentSettings {
   tips_enabled: boolean;
   tip_presets: number[];
   tips_distribution: string;
+  no_show_fee_enabled: boolean;
+  no_show_fee_amount: number;
 }
 
 /** GET /api/provider/settings/payments — camelCase fields from web API. */
@@ -57,6 +59,8 @@ type PaymentsSettingsApi = Partial<PaymentSettings> & {
   tipPresets?: number[];
   tipsDistribution?: string;
   taxInclusive?: boolean;
+  noShowFeeEnabled?: boolean;
+  noShowFeeAmount?: number;
 };
 
 const DEFAULT_SETTINGS: PaymentSettings = {
@@ -75,6 +79,8 @@ const DEFAULT_SETTINGS: PaymentSettings = {
   tips_enabled: true,
   tip_presets: [10, 15, 20, 25],
   tips_distribution: "staff",
+  no_show_fee_enabled: false,
+  no_show_fee_amount: 0,
 };
 
 const PRESET_OPTIONS = [10, 15, 20, 25, 30];
@@ -169,6 +175,8 @@ export default function PaymentSettingsScreen() {
         tip_presets: raw.tipPresets ?? DEFAULT_SETTINGS.tip_presets,
         tips_distribution: raw.tipsDistribution ?? DEFAULT_SETTINGS.tips_distribution,
         tax_inclusive: raw.taxInclusive ?? DEFAULT_SETTINGS.tax_inclusive,
+        no_show_fee_enabled: raw.noShowFeeEnabled ?? DEFAULT_SETTINGS.no_show_fee_enabled,
+        no_show_fee_amount: raw.noShowFeeAmount ?? DEFAULT_SETTINGS.no_show_fee_amount,
       });
     }
   }, [settings, yocoEnabled, paystackTerminalEnabled]);
@@ -208,6 +216,8 @@ export default function PaymentSettingsScreen() {
       tipPresets: form.tip_presets,
       receiptAutoSend: form.receipt_auto_send,
       tipsDistribution: form.tips_distribution,
+      noShowFeeEnabled: form.no_show_fee_enabled,
+      noShowFeeAmount: form.no_show_fee_amount,
     };
     const { error } = await saveSettings(
       "/api/provider/settings/payments",
@@ -432,6 +442,49 @@ export default function PaymentSettingsScreen() {
             />
           </View>
         </View>
+      </View>
+
+      {/* ─── No-show fees ─── */}
+      <SectionHeader title="No-show Fees" />
+      <View style={twStyle("rounded-2xl border border-gray-100 bg-white")}>
+        <ToggleRow
+          label="Charge no-show fee"
+          description="Retain a fee when a client no-shows a confirmed booking"
+          value={form.no_show_fee_enabled}
+          onValueChange={(v) => update("no_show_fee_enabled", v)}
+          accessibilityLabel="Toggle no-show fee"
+        />
+        {form.no_show_fee_enabled && (
+          <View style={twStyle("border-b border-gray-50 px-4 py-3.5")}>
+            <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>
+              No-show fee amount
+            </Text>
+            <TextInput
+              style={twStyle("rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900")}
+              value={String(form.no_show_fee_amount)}
+              onChangeText={(v) => {
+                const num = parseFloat(v.replace(/[^0-9.]/g, "")) || 0;
+                update("no_show_fee_amount", Math.max(0, num));
+              }}
+              keyboardType="decimal-pad"
+              placeholder="0.00"
+              placeholderTextColor="#9ca3af"
+              accessibilityLabel="No-show fee amount"
+            />
+          </View>
+        )}
+        <TouchableOpacity
+          style={twStyle("flex-row items-center px-4 py-3.5")}
+          onPress={() => router.push("/(app)/(tabs)/more/settings/cancellation-policies" as never)}
+          accessibilityLabel="Open cancellation policies"
+          accessibilityRole="button"
+        >
+          <Ionicons name="document-text-outline" size={18} color="#6366f1" />
+          <Text style={twStyle("ml-2 flex-1 text-sm text-indigo-700")}>
+            Manage late-cancel policies
+          </Text>
+          <Ionicons name="chevron-forward" size={16} color="#6366f1" />
+        </TouchableOpacity>
       </View>
 
       {/* ─── Tips ─── */}

@@ -141,6 +141,35 @@ export async function POST(
         provider_id: bookingData.provider_id,
       });
 
+      const { data: pendingRefund, error: pendingRefundError } = await supabase
+        .from("booking_refunds")
+        .insert({
+          booking_id: id,
+          amount: refundAmt,
+          reason: "Dispute resolution",
+          refund_method: "store_credit",
+          status: "pending",
+          created_by: user.id,
+        })
+        .select("id")
+        .single();
+
+      if (pendingRefundError || !pendingRefund) {
+        console.error("Failed to create pending dispute refund:", pendingRefundError);
+        return NextResponse.json(
+          {
+            data: null,
+            error: {
+              message: "Failed to create refund record",
+              code: "REFUND_CREATE_ERROR",
+            },
+          },
+          { status: 500 },
+        );
+      }
+
+      const disputeRefundId = (pendingRefund as { id: string }).id;
+
       const rpc = supabase.rpc as unknown as (name: string, args: Record<string, unknown>) => Promise<{ error: unknown }>;
       const { error: walletError } = await rpc("wallet_credit_admin", {
         p_user_id: bookingData.customer_id,
@@ -150,10 +179,12 @@ export async function POST(
         p_reference_id: (dispute as DisputeRow).id,
         p_reference_type: "booking_dispute",
         p_tenant_id: disputeWalletTenantId,
+        p_idempotency_key: `dispute_refund:${disputeRefundId}`,
       });
 
       if (walletError) {
         console.error("Wallet credit failed:", walletError);
+        await supabase.from("booking_refunds").delete().eq("id", disputeRefundId);
         return NextResponse.json(
           {
             data: null,
@@ -195,15 +226,10 @@ export async function POST(
           .eq("id", txData.id);
       }
 
-      // booking_refunds so update_booking_payment_status trigger keeps totals in sync
-      await supabase.from("booking_refunds").insert({
-        booking_id: id,
-        amount: refundAmt,
-        reason: "Dispute resolution",
-        refund_method: "store_credit",
-        status: "completed",
-        created_by: user.id,
-      });
+      await supabase
+        .from("booking_refunds")
+        .update({ status: "completed" })
+        .eq("id", disputeRefundId);
 
       // NOTE: finance_transactions row is written by trigger
       // `create_finance_ledger_from_booking_refund` (migration 490) via the
@@ -262,10 +288,10 @@ export async function POST(
       },
     });
 
-    // Send OneSignal notifications
+    // In-app rows + push via notification templates (customer + provider team)
     try {
-      const { sendToUser } = await import("@/lib/notifications/onesignal");
-      
+      const { notifyDisputeResolved } = await import("@/lib/notifications/notification-service");
+
       const resolutionMessage =
         resolution === "refund_full"
           ? "Your dispute has been resolved with a full refund. The amount has been added to your wallet—use it for your next booking or request a payout."
@@ -273,48 +299,12 @@ export async function POST(
           ? `Your dispute has been resolved with a partial refund of ${bookingData.currency || lastResortCurrency} ${refund_amount ?? 0}. The amount has been added to your wallet.`
           : "Your dispute has been reviewed and the decision is in favor of the provider.";
 
-      // Notify customer
-      await sendToUser(
-        bookingData.customer_id,
-        {
-          title: "Dispute Resolved",
-          message: resolutionMessage,
-          data: {
-            type: "dispute_resolved",
-            booking_id: id,
-            resolution,
-          },
-          url: `/account-settings/bookings/${id}`,
-        },
-        ["push"],
-        { appType: "customer" }
+      await notifyDisputeResolved(
+        id,
+        resolutionMessage,
+        resolution,
+        (dispute as DisputeRow).id,
       );
-
-      // Notify provider
-      const { data: providerRow } = await supabase
-        .from("providers")
-        .select("user_id")
-        .eq("id", bookingData.provider_id)
-        .single();
-
-      const providerUserId = (providerRow as { user_id?: string } | null)?.user_id;
-      if (providerUserId) {
-        await sendToUser(
-          providerUserId,
-          {
-            title: "Dispute Resolved",
-            message: `A dispute for booking ${bookingData.booking_number} has been resolved.`,
-            data: {
-              type: "dispute_resolved",
-              booking_id: id,
-              resolution,
-            },
-            url: `/provider/bookings/${id}`,
-          },
-          ["push"],
-          { appType: "provider" }
-        );
-      }
     } catch (notifError) {
       console.error("Error sending notifications:", notifError);
       // Don't fail the request if notifications fail
