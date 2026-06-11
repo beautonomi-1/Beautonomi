@@ -302,7 +302,13 @@ export async function PATCH(
     // single `refund` row keyed to the product order — matching the booking
     // refund trigger's shape — regardless of cash vs wallet, because the
     // recognised revenue is reversed either way.
-    if (parsed.status === "refunded") {
+    const shouldReversePlatformLedger =
+      parsed.status === "refunded" ||
+      (parsed.status === "cancelled" && order.payment_status === "paid");
+    const ledgerRefundAmount =
+      parsed.status === "refunded" ? refundAmount : Number(order.total_amount ?? 0);
+
+    if (shouldReversePlatformLedger) {
       const admin = getSupabaseAdmin();
       const { data: ledgerRows } = await (admin.from("finance_transactions") as any)
         .select("id, tenant_id")
@@ -327,15 +333,46 @@ export async function PATCH(
             tenant_id: ledgerTenantId,
             transaction_type: "refund",
             refund_component: "_legacy",
-            amount: refundAmount,
+            amount: ledgerRefundAmount,
             fees: 0,
             commission: 0,
-            net: -refundAmount,
+            net: -ledgerRefundAmount,
             currency: order.currency || LAST_RESORT_CURRENCY,
-            description: `Refund for product order ${order.order_number || id.slice(0, 8)}${parsed.refund_reason ? ` (${parsed.refund_reason})` : ""}`,
+            description: `Refund for product order ${order.order_number || id.slice(0, 8)}${
+              parsed.refund_reason
+                ? ` (${parsed.refund_reason})`
+                : parsed.cancellation_reason
+                  ? ` (cancelled: ${parsed.cancellation_reason})`
+                  : ""
+            }`,
             created_at: new Date().toISOString(),
           });
         }
+      }
+
+      if (
+        parsed.status === "cancelled" &&
+        order.payment_status === "paid" &&
+        order.customer_id &&
+        ledgerRefundAmount > 0
+      ) {
+        await (admin.rpc as any)("wallet_credit_admin", {
+          p_user_id: order.customer_id,
+          p_amount: ledgerRefundAmount,
+          p_currency: order.currency || LAST_RESORT_CURRENCY,
+          p_description: `Refund for cancelled order ${order.order_number || id.slice(0, 8)}`,
+          p_reference_id: id,
+          p_reference_type: "product_order_refund",
+          p_tenant_id: order.tenant_id ?? null,
+          p_idempotency_key: `product_order_cancel_refund:${id}`,
+        });
+        await (supabase.from("product_orders") as any)
+          .update({
+            payment_status: "refunded",
+            refunded_amount: ledgerRefundAmount,
+            refunded_at: new Date().toISOString(),
+          })
+          .eq("id", id);
       }
     }
 

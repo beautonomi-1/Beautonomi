@@ -76,7 +76,7 @@ export async function POST(
       );
     }
 
-    const pAny = payout as PayoutRow & { transfer_code?: string | null };
+    const pAny = payout as PayoutRow & { transfer_code?: string | null; payout_provider?: string | null };
     if (p.status === "processing" && pAny.transfer_code) {
       return NextResponse.json(
         {
@@ -84,6 +84,19 @@ export async function POST(
           error: {
             message: "A transfer was already initiated for this payout. Wait for Paystack or mark failed before retrying.",
             code: "TRANSFER_ALREADY_INITIATED",
+          },
+        },
+        { status: 409 }
+      );
+    }
+
+    if (p.status === "processing" && pAny.payout_provider && !pAny.transfer_code) {
+      return NextResponse.json(
+        {
+          data: null,
+          error: {
+            message: "Another admin is initiating a transfer for this payout. Please wait and refresh.",
+            code: "TRANSFER_CLAIM_IN_PROGRESS",
           },
         },
         { status: 409 }
@@ -128,6 +141,34 @@ export async function POST(
     const tenantRegion = await getTenantRegionConfig(tenantId);
     const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
+    // Claim payout before calling Paystack to prevent concurrent double-send.
+    const { data: claimedPayout, error: claimErr } = await supabase
+      .from("payouts")
+      .update({
+        payout_provider: "paystack",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id)
+      .eq("status", "processing")
+      .is("transfer_code", null)
+      .is("payout_provider", null)
+      .select("id")
+      .maybeSingle();
+
+    if (claimErr) throw claimErr;
+    if (!claimedPayout) {
+      return NextResponse.json(
+        {
+          data: null,
+          error: {
+            message: "Payout was already claimed or processed by another admin",
+            code: "STATE_CONFLICT",
+          },
+        },
+        { status: 409 }
+      );
+    }
+
     const transferRequest = {
       source: "balance" as const,
       amount: convertToSmallestUnit(Number(p.amount || 0)),
@@ -137,8 +178,28 @@ export async function POST(
       currency: p.currency || acct.currency || lastResortCurrency,
     };
 
-    const paystack = await createTransfer(transferRequest, { tenantId });
+    let paystack: Awaited<ReturnType<typeof createTransfer>>;
+    try {
+      paystack = await createTransfer(transferRequest, { tenantId });
+    } catch (transferErr) {
+      await supabase
+        .from("payouts")
+        .update({ payout_provider: null, updated_at: new Date().toISOString() })
+        .eq("id", id)
+        .eq("status", "processing")
+        .is("transfer_code", null)
+        .eq("payout_provider", "paystack");
+      throw transferErr;
+    }
+
     if (!paystack.status || !paystack.data?.transfer_code) {
+      await supabase
+        .from("payouts")
+        .update({ payout_provider: null, updated_at: new Date().toISOString() })
+        .eq("id", id)
+        .eq("status", "processing")
+        .is("transfer_code", null)
+        .eq("payout_provider", "paystack");
       return NextResponse.json(
         {
           data: null,
@@ -151,12 +212,11 @@ export async function POST(
       );
     }
 
-    // Update payout to record transfer details + mark as processing
+    // Record transfer details (claim already set payout_provider)
     const { data: updatedPayout, error: updateErr } = await supabase
       .from("payouts")
       .update({
         status: "processing",
-        payout_provider: "paystack",
         payout_provider_transaction_id: paystack.data.transfer_code,
         payout_provider_response: paystack,
         recipient_code: acct.recipient_code,
@@ -166,10 +226,29 @@ export async function POST(
         processed_by: user.id,
       })
       .eq("id", id)
+      .eq("status", "processing")
+      .eq("payout_provider", "paystack")
+      .is("transfer_code", null)
       .select()
-      .single();
+      .maybeSingle();
 
-    if (updateErr || !updatedPayout) throw updateErr || new Error("Failed to update payout");
+    if (updateErr || !updatedPayout) {
+      console.error(
+        "[admin/payouts/initiate-transfer] Paystack transfer succeeded but DB update failed",
+        { payoutId: id, transferCode: paystack.data.transfer_code, updateErr },
+      );
+      return NextResponse.json(
+        {
+          data: null,
+          error: {
+            message:
+              "Paystack transfer was initiated but recording it failed. Do not retry — contact engineering with the transfer code.",
+            code: "TRANSFER_RECORD_FAILED",
+          },
+        },
+        { status: 500 }
+      );
+    }
 
     await writeAuditLog({
       actor_user_id: user.id,

@@ -11,6 +11,7 @@ import { NextResponse } from "next/server";
 import type { PaystackEvent, SupabaseClient } from "./shared";
 import { formatCurrency } from "@/lib/utils";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { writeAuditLog } from "@/lib/audit/audit";
 
 // ─── Exported Handler ────────────────────────────────────────────────────────
 
@@ -103,6 +104,23 @@ export async function handleTransferEvent(
       throw updateError;
     }
 
+    await writeAuditLog({
+      actor_user_id: null,
+      actor_role: "system",
+      action: "webhook.payout.transfer_success",
+      entity_type: "payout",
+      entity_id: payoutData.id,
+      module: "finance",
+      risk_level: "high",
+      retention_tier: "financial",
+      metadata: {
+        provider_id: payoutData.provider_id,
+        amount: payoutData.amount ?? payoutData.net_amount,
+        transfer_code: transferCode || payoutData.transfer_code,
+        event: eventType,
+      },
+    });
+
     try {
       const { data: provider } = await supabase
         .from("providers")
@@ -173,6 +191,25 @@ export async function handleTransferEvent(
     if (updateError) {
       throw updateError;
     }
+
+    await writeAuditLog({
+      actor_user_id: null,
+      actor_role: "system",
+      action: `webhook.payout.${eventType === "transfer.reversed" ? "transfer_reversed" : "transfer_failed"}`,
+      entity_type: "payout",
+      entity_id: payoutData.id,
+      module: "finance",
+      risk_level: "high",
+      retention_tier: "financial",
+      metadata: {
+        provider_id: payoutData.provider_id,
+        amount: payoutData.amount ?? payoutData.net_amount,
+        transfer_code: transferCode || payoutData.transfer_code,
+        failure_reason: String(failureReason).slice(0, 500),
+        event: eventType,
+        prior_status: payoutData.status,
+      },
+    });
 
     try {
       const { data: provider } = await supabase

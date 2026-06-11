@@ -10,7 +10,11 @@ import {
   formatDateYmd,
   startOfWeekInTz,
 } from "@/lib/dates/provider-tz";
-import { getProviderRevenue, type ProviderRevenueResult } from "@/lib/reports/revenue-helpers";
+import {
+  getProviderNetAfterRefundsDetailed,
+  getProviderRevenue,
+  type ProviderRevenueResult,
+} from "@/lib/reports/revenue-helpers";
 import { DASHBOARD_REVENUE_TRANSACTION_TYPES } from "@/lib/reports/constants";
 import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
 
@@ -63,10 +67,38 @@ export async function GET(request: NextRequest) {
     const monthEnd = new Date(monthBounds.toIso);
 
     const dashOpts = { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES, timezone: tz };
+    const netOpts = { timezone: tz };
 
-    const todayResult = await getProviderRevenue(supabaseAdmin, providerId, startOfToday, endOfToday, locationId, dashOpts);
-    const weekResult = await getProviderRevenue(supabaseAdmin, providerId, weekStart, weekEnd, locationId, dashOpts);
-    const monthResult = await getProviderRevenue(supabaseAdmin, providerId, monthStart, monthEnd, locationId, dashOpts);
+    const [todayResult, weekResult, monthResult, todayService, weekService, monthService] =
+      await Promise.all([
+        getProviderNetAfterRefundsDetailed(
+          supabaseAdmin,
+          providerId,
+          startOfToday,
+          endOfToday,
+          locationId,
+          netOpts,
+        ),
+        getProviderNetAfterRefundsDetailed(
+          supabaseAdmin,
+          providerId,
+          weekStart,
+          weekEnd,
+          locationId,
+          netOpts,
+        ),
+        getProviderNetAfterRefundsDetailed(
+          supabaseAdmin,
+          providerId,
+          monthStart,
+          monthEnd,
+          locationId,
+          netOpts,
+        ),
+        getProviderRevenue(supabaseAdmin, providerId, startOfToday, endOfToday, locationId, dashOpts),
+        getProviderRevenue(supabaseAdmin, providerId, weekStart, weekEnd, locationId, dashOpts),
+        getProviderRevenue(supabaseAdmin, providerId, monthStart, monthEnd, locationId, dashOpts),
+      ]);
 
     const todaySplits = sumLedgerSplits(todayResult);
     const weekSplits = sumLedgerSplits(weekResult);
@@ -134,7 +166,8 @@ export async function GET(request: NextRequest) {
 
     const reportBasis =
       `Provider timezone ${tz}. ` +
-      `Ledger headline revenue sums finance_transactions with transaction_type provider_earnings and created_at in each window (platform-settled earnings; excludes tips/travel rows). ` +
+      `Headline revenue = recognized provider revenue net of refund clawbacks (provider_earnings + tips + travel + cancellation fees + walk-in add-ons) by finance_transactions.created_at. ` +
+      `service_earnings sub-line = provider_earnings only (excludes tips/travel/cancellation fees). ` +
       `Cash or unsupported terminal paths may not produce ledger rows. ` +
       `Booking counts use bookings.scheduled_at and exclude cancelled and no_show only (includes pending, confirmed, completed, etc.). ` +
       `Month distinct clients = unique customer_id on those month bookings. ` +
@@ -144,7 +177,9 @@ export async function GET(request: NextRequest) {
 
     const basis = {
       ledgerHeadline:
-        "Sum of net provider_earnings rows per window (finance_transactions.created_at). Product-order earnings included in headline.",
+        "Recognized provider revenue net of refund clawbacks per window (finance_transactions.created_at).",
+      serviceEarnings:
+        "provider_earnings only — sub-line for per-booking splits; not the headline total.",
       bookingCounts:
         "scheduled_at inside window; statuses cancelled and no_show excluded from counts.",
       todayWindow: "Calendar day bounds in provider TZ.",
@@ -164,6 +199,8 @@ export async function GET(request: NextRequest) {
       },
       today: {
         revenue: todayResult.totalRevenue,
+        recognized_revenue_net: todayResult.totalRevenue,
+        service_earnings: todayService.totalRevenue,
         ledgerFromBookings: todaySplits.ledgerFromBookings,
         ledgerFromProductOrders: todaySplits.ledgerFromProductOrders,
         bookings: todayBookingsCount,
@@ -171,12 +208,16 @@ export async function GET(request: NextRequest) {
       },
       week: {
         revenue: weekResult.totalRevenue,
+        recognized_revenue_net: weekResult.totalRevenue,
+        service_earnings: weekService.totalRevenue,
         ledgerFromBookings: weekSplits.ledgerFromBookings,
         ledgerFromProductOrders: weekSplits.ledgerFromProductOrders,
         bookings: weekBookingsCount,
       },
       month: {
         revenue: monthResult.totalRevenue,
+        recognized_revenue_net: monthResult.totalRevenue,
+        service_earnings: monthService.totalRevenue,
         ledgerFromBookings: monthSplits.ledgerFromBookings,
         ledgerFromProductOrders: monthSplits.ledgerFromProductOrders,
         bookings: monthBookingsCount,

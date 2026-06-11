@@ -107,6 +107,12 @@ interface Payout {
   requested_at: string;
   processed_at?: string;
   failure_reason?: string;
+  rejected_at?: string | null;
+}
+
+function formatPayoutDisplayStatus(payout: Pick<Payout, "status" | "rejected_at">): string {
+  if (payout.status === "failed" && payout.rejected_at) return "Rejected";
+  return formatStatusLabel(payout.status);
 }
 
 interface PayoutAccount {
@@ -855,18 +861,20 @@ export default function ProviderFinance() {
           <div className="bg-white border rounded-lg p-6 mb-8">
             <h3 className="text-sm font-semibold text-gray-900">How your available balance is calculated</h3>
             <p className="text-xs text-gray-500 mt-1 leading-relaxed">
-              Headline revenue reports can read higher than this because they include cash you collected
-              directly and ignore the hold period and pending requests. Here is the full bridge:
+              Headline revenue reports can read higher than withdrawable because they include cash you collected
+              directly. Here is the full bridge:
             </p>
             <dl className="mt-4 space-y-2 text-sm">
               <div className="flex items-center justify-between">
                 <dt className="text-gray-700">Recognized payoutable earnings (net of refunds)</dt>
                 <dd className="font-medium text-gray-900">{fmt(earnings.payout_reconciliation.recognized_payoutable_earnings)}</dd>
               </div>
-              <div className="flex items-center justify-between text-gray-500">
-                <dt>− Cash / Yoco / EFT you collected directly (not held by us)</dt>
-                <dd>{fmt(earnings.payout_reconciliation.excluded_provider_collected)}</dd>
-              </div>
+              {(earnings.payout_reconciliation.excluded_provider_collected ?? 0) > 0 ? (
+                <div className="flex items-center justify-between text-gray-500">
+                  <dt>Excluded: cash / Yoco / EFT you collected directly (not held by us)</dt>
+                  <dd>{fmt(earnings.payout_reconciliation.excluded_provider_collected)}</dd>
+                </div>
+              ) : null}
               <div className="flex items-center justify-between text-gray-500">
                 <dt>
                   − On hold
@@ -1100,6 +1108,9 @@ export default function ProviderFinance() {
                     {payout.notes && (
                       <p className="text-sm text-gray-500 mt-1">{payout.notes}</p>
                     )}
+                    {payout.status === "failed" && payout.rejected_at && payout.failure_reason ? (
+                      <p className="text-sm text-red-600 mt-1">Reason: {payout.failure_reason}</p>
+                    ) : null}
                   </div>
                   <span
                     className={`px-3 py-1 rounded text-sm font-medium ${
@@ -1107,12 +1118,14 @@ export default function ProviderFinance() {
                         ? "bg-green-100 text-green-800"
                         : payout.status === "pending" || payout.status === "processing"
                         ? "bg-yellow-100 text-yellow-800"
+                        : payout.status === "failed" && payout.rejected_at
+                        ? "bg-orange-100 text-orange-800"
                         : payout.status === "failed"
                         ? "bg-red-100 text-red-800"
                         : "bg-gray-100 text-gray-800"
                     }`}
                   >
-                    {formatStatusLabel(payout.status)}
+                    {formatPayoutDisplayStatus(payout)}
                   </span>
                 </div>
               ))}

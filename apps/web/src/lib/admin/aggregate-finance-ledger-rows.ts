@@ -1,5 +1,8 @@
 import type { FinanceLedgerRow } from "@/lib/admin/finance-ledger-tenant";
-import { isCashRefundComponent } from "@/lib/ledger/refund-components";
+import {
+  isCashRefundComponent,
+  isProviderEarningsRefundComponent,
+} from "@/lib/ledger/refund-components";
 
 /**
  * Single source of truth for admin money metrics from merged `finance_transactions` rows.
@@ -40,6 +43,16 @@ export type FinanceLedgerAggregate = {
   cancellation_fees_retained: number;
   /** Total discount value applied via promotion codes (reduces net revenue). */
   promotion_discounts: number;
+  /** Membership plan discount contra-revenue applied at checkout. */
+  membership_discounts: number;
+  /** Loyalty tier discount contra-revenue applied at checkout. */
+  loyalty_discounts: number;
+  /** Loyalty points redeemed as booking tender (contra-revenue). */
+  loyalty_redemptions: number;
+  /** Wallet top-up cash collected via ledger `wallet_topup` rows (custodial liability). */
+  wallet_topup_ledger: number;
+  /** Provider payouts disbursed (`payout` transaction_type net, typically negative). */
+  payouts_paid_total: number;
   /** Gift card liability reduced when gift cards are redeemed (offsets gift_card_sales on balance sheet). */
   gift_card_liability_reductions: number;
   /** Ecommerce product order platform fees (separate from booking platform fees). */
@@ -86,6 +99,10 @@ function isCashRefundRow(r: Row): boolean {
   return r.transaction_type === "refund" && isCashRefundComponent(r.refund_component);
 }
 
+function isProviderEarningsRefundRow(r: Row): boolean {
+  return r.transaction_type === "refund" && isProviderEarningsRefundComponent(r.refund_component);
+}
+
 export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLedgerAggregate {
   const tx = rows as Row[];
 
@@ -101,9 +118,9 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
     .filter((r) => r.transaction_type === "platform_fee" && !!r.product_order_id)
     .reduce((s, r) => s + Number(r.amount ?? 0), 0);
 
-  // bookingGmv: The full value of services rendered.
-  // The "payment" row now represents the TOTAL collected amount (gateway + wallet + gift card)
-  // for both split and gateway-less bookings.
+  // bookingGmv: Commissionable service base reconstructed from ledger legs.
+  // The "payment" row's `amount` is the commission base (post-ratio of collected funds),
+  // NOT the raw gateway charge or full customer checkout total — see charge-success / migration 662.
   // To support legacy split-payment rows where "payment" only contained the gateway portion,
   // we group by booking_id and take the MAX of (payment) or (payment + wallet + gift_card)
   // if payment was clearly only the gateway portion. Actually, the safest heuristic for legacy
@@ -167,6 +184,10 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
     cancellationFeesRetained +
     walkInAdditionalCharges;
   const promotionDiscounts = sum(tx, ["promotion_discount"], "amount");
+  const membershipDiscounts = sum(tx, ["membership_discount"], "amount");
+  const loyaltyDiscounts = sum(tx, ["loyalty_discount"], "amount");
+  const loyaltyRedemptions = sum(tx, ["loyalty_redemption"], "amount");
+  const walletTopupLedger = sum(tx, ["wallet_topup"], "amount");
   const giftCardLiabilityReductions = sum(tx, ["gift_card_liability_reduction"], "amount");
 
   const platformCommissionGross = sum(tx, ["payment", "additional_charge_payment"], "net");
@@ -177,8 +198,9 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
   // carry 0), so it is unaffected by the non-cash legs. totalRefundNet must exclude the
   // parallel discount/tender/liability reversals or it double-counts the same refund.
   const platformRefundContra = sum(tx, ["refund"], "commission");
-  const totalRefundNet = tx.filter(isCashRefundRow).reduce((s, r) => s + Number(r.net ?? 0), 0);
-  const providerRefundNetImpact = totalRefundNet - platformRefundContra;
+  const providerRefundNetImpact = tx
+    .filter(isProviderEarningsRefundRow)
+    .reduce((s, r) => s + Number(r.net ?? 0), 0);
   // Cancellation fees are provider-retained income (not platform commission).
   // They are tracked separately via `cancellation_fees_retained`.
   const platformCommissionNet = platformCommissionGross + platformRefundContra;
@@ -186,13 +208,18 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
 
   const platformTakeNet = platformCommissionNet - gatewayFeesServices + manualAdjustmentsNet;
 
-  const subscriptionNet = sum(tx, ["provider_subscription_payment"], "net");
+  const subscriptionNet =
+    sum(tx, ["provider_subscription_payment"], "net") +
+    sum(tx, ["provider_subscription_refund"], "net");
   const subscriptionGatewayFees = sumFees(tx, ["provider_subscription_payment"]);
   const subscriptionGross = subscriptionNet + subscriptionGatewayFees;
 
-  const adsNet = sum(tx, ["provider_ads_payment"], "net");
+  const adsNet =
+    sum(tx, ["provider_ads_payment"], "net") + sum(tx, ["provider_ads_refund"], "net");
   const adsGatewayFees = sumFees(tx, ["provider_ads_payment"]);
   const adsGross = adsNet + adsGatewayFees;
+
+  const payoutsPaidTotal = sum(tx, ["payout"], "net");
 
   return {
     service_collected_gross: serviceCollectedGross,
@@ -221,6 +248,11 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
     gift_card_collected: giftCardCollected,
     cancellation_fees_retained: cancellationFeesRetained,
     promotion_discounts: promotionDiscounts,
+    membership_discounts: membershipDiscounts,
+    loyalty_discounts: loyaltyDiscounts,
+    loyalty_redemptions: loyaltyRedemptions,
+    wallet_topup_ledger: walletTopupLedger,
+    payouts_paid_total: payoutsPaidTotal,
     gift_card_liability_reductions: giftCardLiabilityReductions,
     ecommerce_platform_fees: ecommercePlatformFees,
     platform_fee_revenue: bookingPlatformFees,

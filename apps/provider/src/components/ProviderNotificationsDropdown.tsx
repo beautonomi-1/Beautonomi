@@ -131,7 +131,12 @@ export function ProviderNotificationsDropdown({ visible, onClose, onSeeAll }: Pr
           total_unread: Math.max(0, (data.total_unread ?? 0) - 1),
         });
       }
-      navigateFromProviderNotification(router, n as ProviderNotificationNavPayload);
+      const navigated = navigateFromProviderNotification(router, n as ProviderNotificationNavPayload);
+      if (!navigated) {
+        // No deep link — land on the inbox so the full message is readable
+        // (same fallback as unknown push types).
+        router.push("/(app)/(tabs)/more/notifications" as never);
+      }
       onClose();
       if (wasUnread) {
         const res = await markReadOne(`/api/provider/notifications/${n.id}/read`, {});

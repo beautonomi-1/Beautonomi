@@ -486,7 +486,14 @@ export function CustomOfferSheet({
           {LOCATION_OPTIONS.map((opt, i) => (
             <TouchableOpacity
               key={opt.value}
-              onPress={() => setLocationType(opt.value)}
+              onPress={() => {
+                setLocationType(opt.value);
+                if (opt.value !== "at_home") {
+                  setTravelFee("");
+                  travelFeeUserLockedRef.current = false;
+                  setTravelPreviewMinutes(null);
+                }
+              }}
               style={[twStyle(`flex-1 items-center rounded-xl border py-2.5 ${
                 locationType === opt.value
                   ? "border-primary bg-primary/10"

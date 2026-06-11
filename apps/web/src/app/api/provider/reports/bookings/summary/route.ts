@@ -1,12 +1,8 @@
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
-import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
-import {
-  computeBookingChannelBreakdown,
-  normalizeBookingChannel,
-} from "@/lib/reports/booking-channel-breakdown";
-import { RECOGNIZED_REVENUE_TYPES } from "@/lib/reports/provider-revenue-semantics";
+import { getProviderNetAfterRefundsDetailed } from "@/lib/reports/revenue-helpers";
+import { normalizeBookingChannel } from "@/lib/reports/booking-channel-breakdown";
 import { MAX_REPORT_DAYS, MAX_BOOKINGS_FOR_REPORT } from "@/lib/reports/constants";
 import { getProviderReportContext, reportDateKey, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
 
@@ -66,9 +62,19 @@ export async function GET(request: NextRequest) {
       bookingsQuery = bookingsQuery.eq("location_id", locationId);
     }
     
-    const { data: bookings, error: bookingsError } = await bookingsQuery
-      .order("scheduled_at", { ascending: false })
-      .limit(MAX_BOOKINGS_FOR_REPORT);
+    let exactCountQuery = supabaseAdmin
+      .from("bookings")
+      .select("id", { count: "exact", head: true })
+      .eq("provider_id", providerId)
+      .gte("scheduled_at", fromDate.toISOString())
+      .lte("scheduled_at", toDate.toISOString());
+    if (locationId) exactCountQuery = exactCountQuery.eq("location_id", locationId);
+
+    const [{ data: bookings, error: bookingsError }, { count: exactBookingCount }] =
+      await Promise.all([
+        bookingsQuery.order("scheduled_at", { ascending: false }).limit(MAX_BOOKINGS_FOR_REPORT),
+        exactCountQuery,
+      ]);
 
     if (bookingsError) {
       return handleApiError(
@@ -78,21 +84,19 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const dashOpts = {
-      transactionTypes: RECOGNIZED_REVENUE_TYPES,
-      timezone: reportContext.timezone,
-    };
+    const { totalRevenue, revenueByBooking, revenueByDate } =
+      await getProviderNetAfterRefundsDetailed(
+        supabaseAdmin,
+        providerId,
+        fromDate,
+        toDate,
+        locationId || undefined,
+        { timezone: reportContext.timezone },
+      );
 
-    const { totalRevenue, revenueByBooking, revenueByDate } = await getProviderRevenue(
-      supabaseAdmin,
-      providerId,
-      fromDate,
-      toDate,
-      locationId || undefined,
-      dashOpts
-    );
-
-    const totalBookings = bookings?.length || 0;
+    const sampleBookings = bookings?.length || 0;
+    const totalBookings = exactBookingCount ?? sampleBookings;
+    const bookingsSampleTruncated = totalBookings > sampleBookings;
     const bookingsWithLedgerRevenue = [...revenueByBooking.values()].filter((v) => v > 0).length;
     const averageBookingValue =
       bookingsWithLedgerRevenue > 0 ? totalRevenue / bookingsWithLedgerRevenue : 0;
@@ -172,7 +176,15 @@ export async function GET(request: NextRequest) {
     return successResponse({
       totalBookings,
       totalRevenue,
+      recognized_revenue_net: totalRevenue,
       averageBookingValue,
+      bookingsSampleTruncated,
+      bookingsSampleSize: sampleBookings,
+      basisNote:
+        "Headline revenue = recognized provider revenue net of refund clawbacks. Status/source revenue uses the same net-after-refunds per booking. " +
+        (bookingsSampleTruncated
+          ? `Status/source breakdowns are based on the newest ${sampleBookings} of ${totalBookings} appointments; headline booking count is exact.`
+          : "All appointments in range are included in breakdowns."),
       statusBreakdown: Object.entries(statusCounts).map(([status, count]) => ({
         status,
         count,

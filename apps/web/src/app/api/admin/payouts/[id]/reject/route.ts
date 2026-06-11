@@ -55,7 +55,7 @@ export async function POST(
       return errorResponse("Payout is not pending", "INVALID_STATE", 400);
     }
 
-    // Update payout status
+    // Update payout status (optimistic lock: only pending → failed)
     const { data: updatedPayout, error: updateError } = await supabase
       .from("payouts")
       .update({
@@ -66,14 +66,22 @@ export async function POST(
         updated_at: new Date().toISOString(),
       })
       .eq("id", id)
+      .eq("status", "pending")
       .select(`
         *,
         provider:providers!payouts_provider_id_fkey(id, business_name, slug, user_id)
       `)
-      .single();
+      .maybeSingle();
 
-    if (updateError || !updatedPayout) {
+    if (updateError) {
       return handleApiError(updateError, "Failed to reject payout");
+    }
+    if (!updatedPayout) {
+      return errorResponse(
+        "Payout was already processed by another admin",
+        "STATE_CONFLICT",
+        409,
+      );
     }
 
     // Notify provider

@@ -48,6 +48,46 @@ describe("financial reporting audit — admin provider recognized earnings", () 
     );
     expect(providerNetAfterRefunds(withRefund)).toBe(100);
   });
+
+  it("split-refund components: provider impact counts only provider-earnings legs", () => {
+    const withSplitRefund = [
+      ...recognizedRows,
+      {
+        transaction_type: "refund",
+        net: -50,
+        amount: -50,
+        refund_component: "provider_earnings",
+      },
+      {
+        transaction_type: "refund",
+        net: -20,
+        amount: -20,
+        commission: -4,
+        refund_component: "platform_fee",
+      },
+      {
+        transaction_type: "refund",
+        net: -10,
+        amount: -10,
+        refund_component: "wallet_payment",
+      },
+      {
+        transaction_type: "refund",
+        net: -15,
+        amount: -15,
+        refund_component: "promotion_discount",
+      },
+    ];
+    const agg = aggregateFinanceLedgerRows(withSplitRefund);
+    expect(agg.provider_refund_net_impact).toBe(-50);
+    expect(agg.platform_refund_contra).toBe(-4);
+    expect(agg.refunds_gross).toBe(70);
+    const providerRefundImpact = Math.abs(agg.provider_refund_net_impact);
+    expect(agg.provider_recognized_revenue_gross - providerRefundImpact).toBe(
+      providerNetAfterRefunds(withSplitRefund),
+    );
+    expect(providerNetAfterRefunds(withSplitRefund)).toBe(80);
+  });
 });
 
 describe("financial reporting audit — admin bookings list stats", () => {

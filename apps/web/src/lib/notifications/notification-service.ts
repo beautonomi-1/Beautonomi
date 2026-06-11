@@ -465,8 +465,10 @@ export async function notifyBookingCancelled(
     appType: "customer",
   });
 
-  // If cancelled by customer, notify provider team (owner + active staff).
-  if (cancelledBy === "customer" && booking.provider?.user_id) {
+  // Notify provider team (owner + active staff) unless the provider initiated
+  // the cancellation themselves. Covers customer cancels and admin/system
+  // cancels — the provider must learn their slot was freed.
+  if (cancelledBy !== "provider" && booking.provider?.user_id) {
     const recipients = await resolveProviderRecipients(
       booking.provider_id,
       booking.provider.user_id,

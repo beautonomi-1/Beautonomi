@@ -18,6 +18,8 @@ export const PROVIDER_ONBOARDING_ROUTE_PREFIXES = [
   "/provider/settings/payments",
   "/provider/settings/payout-accounts",
   "/provider/catalogue/services",
+  "/provider/account/personal-profile",
+  "/provider/settings/verification",
 ] as const;
 
 export function isProviderOnboardingRouteAllowed(pathname: string): boolean {

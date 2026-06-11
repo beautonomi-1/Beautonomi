@@ -22,6 +22,7 @@ interface SetupStatus {
   isComplete: boolean;
   completionPercentage: number;
   steps: SetupStep[];
+  providerStatus?: string | null;
 }
 
 export default function GetStartedPage() {
@@ -179,6 +180,9 @@ export default function GetStartedPage() {
 
   // ── All done ──────────────────────────────────────────────────────────────
   if (setupStatus.isComplete) {
+    const isPendingApproval = setupStatus.providerStatus === "pending_approval";
+    const isSuspended = setupStatus.providerStatus === "suspended";
+
     return (
       <SettingsDetailLayout
         title="Get Started"
@@ -192,11 +196,14 @@ export default function GetStartedPage() {
             <Check className="h-8 w-8 text-green-600" />
           </div>
           <h1 className="text-2xl font-bold text-gray-900 mb-2">
-            You're all set!
+            {isSuspended ? "Account suspended" : "You're all set!"}
           </h1>
           <p className="text-gray-500 mb-8">
-            Your profile is ready. You can now accept bookings and start
-            earning.
+            {isSuspended
+              ? "Your provider account is suspended. Contact support to restore access before accepting new bookings."
+              : isPendingApproval
+                ? "Your setup checklist is complete. Your profile is under review — you can explore the portal while we approve your listing. Public bookings open once you're approved."
+                : "Your profile is ready. You can now accept bookings and start earning."}
           </p>
           <div className="flex flex-col sm:flex-row justify-center gap-3 w-full sm:w-auto">
             <Button

@@ -32,11 +32,11 @@ export type GetAvailablePayoutBalanceOptions = {
  *
  * Also returns a `breakdown` that reconciles recognized payoutable earnings to the final
  * available figure (recognized − onHold − completedPayouts − pending = available), plus the
- * provider-collected cash that was excluded, so the UI can explain why "available to
- * withdraw" differs from headline recognized-revenue reports.
+ * provider-collected cash that was excluded (informational — never platform-held), so the UI
+ * can explain why "available to withdraw" differs from headline recognized-revenue reports.
  */
 export type PayoutBalanceBreakdown = {
-  /** Released, payout-eligible platform-held earnings net of refunds (= the figure paid out from). */
+  /** Released + on-hold platform-held earnings net of refunds (before hold/payout deductions). */
   recognizedPayoutableEarnings: number;
   /** provider_earnings/tip/travel still inside the payout hold window (will release later). */
   onHold: number;
@@ -236,7 +236,7 @@ export async function getAvailablePayoutBalance(
   const roundedPending = round2(pendingPayoutsSum);
 
   const breakdown: PayoutBalanceBreakdown = {
-    recognizedPayoutableEarnings: round2(onlineEarnings),
+    recognizedPayoutableEarnings: round2(onlineEarnings + onHoldAmount),
     onHold: round2(onHoldAmount),
     excludedProviderCollected: round2(excludedProviderCollectedAmount),
     completedPayouts: round2(completedPayouts),

@@ -16,6 +16,7 @@ import {
   checkNewGateFeatureAccess,
   SUBSCRIPTION_FEATURE_KEYS,
 } from "@/lib/subscriptions/feature-access";
+import { reverseAdsBudgetOrderPayment } from "@/lib/ads/ads-budget-order-payment";
 
 async function getProviderId(userId: string, request: NextRequest): Promise<string | null> {
   const supabase = getSupabaseAdmin();
@@ -51,6 +52,19 @@ type BudgetOrderRow = {
 
 type CampaignPaymentState = "none" | "unpaid" | "pending" | "failed" | "paid";
 
+export type CampaignLifecycle =
+  | "awaiting_payment"
+  | "confirming"
+  | "payment_failed"
+  | "active"
+  | "paused"
+  | "budget_exhausted"
+  | "expired"
+  | "delivered"
+  | "cancelled";
+
+const PENDING_ORDER_TTL_MS = 30 * 60 * 1000;
+
 /**
  * §Provider-paystack-audit 2026-05: Derive the payment state shown on each
  * campaign card from the campaign + its most recent `ads_budget_orders` row.
@@ -75,10 +89,84 @@ function deriveCampaignPaymentState(
     if (latestOrder.status === "pending") return "pending";
     if (latestOrder.status === "failed" || latestOrder.status === "refunded") return "failed";
   }
-  if (budget <= 0 && (status === "draft" || status === "paused")) {
-    return "unpaid";
+  if (status === "draft" || status === "paused") {
+    if (isTime || isPack) return "unpaid";
+    if (budget > 0) return "unpaid";
+    return "none";
   }
   return "none";
+}
+
+/**
+ * Server-derived lifecycle sub-state so web + mobile render identical badges
+ * and action rows without re-implementing payment / exhaustion heuristics.
+ */
+function deriveCampaignLifecycle(
+  campaign: CampaignRow,
+  paymentState: CampaignPaymentState,
+  latestOrder: BudgetOrderRow | null,
+  nowIso: string,
+): CampaignLifecycle {
+  if (paymentState === "pending") return "confirming";
+  if (paymentState === "failed") return "payment_failed";
+  if (paymentState === "unpaid") return "awaiting_payment";
+
+  const status = String(campaign.status ?? "");
+  if (status === "active") return "active";
+  if (status === "paused") return "paused";
+
+  if (status === "ended") {
+    const budget = Number(campaign.budget ?? 0);
+    const spent = Number(campaign.spent ?? 0);
+    const billingModel = String(campaign.billing_model ?? "cpc_budget");
+
+    if (budget <= 0 && spent <= 0 && paymentState !== "paid") {
+      return "cancelled";
+    }
+
+    if (billingModel === "time_based") {
+      const endAt = campaign.end_at;
+      if (typeof endAt === "string" && endAt.length > 0 && endAt <= nowIso) {
+        return "expired";
+      }
+      return "cancelled";
+    }
+
+    if (campaign.pack_impressions != null) {
+      if (budget > 0 && spent >= budget) return "delivered";
+      return "cancelled";
+    }
+
+    if (billingModel === "cpc_budget" && budget > 0 && spent >= budget) {
+      return "budget_exhausted";
+    }
+
+    return "cancelled";
+  }
+
+  return "paused";
+}
+
+async function expireStalePendingOrders(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  providerId: string,
+): Promise<void> {
+  const cutoffIso = new Date(Date.now() - PENDING_ORDER_TTL_MS).toISOString();
+  const { data: staleRows } = await supabase
+    .from("ads_budget_orders")
+    .select("id")
+    .eq("provider_id", providerId)
+    .eq("status", "pending")
+    .lt("created_at", cutoffIso);
+
+  for (const row of (staleRows as { id: string }[] | null) ?? []) {
+    await reverseAdsBudgetOrderPayment({
+      supabase,
+      orderId: row.id,
+      finalOrderStatus: "failed",
+      reason: "payment_timeout",
+    });
+  }
 }
 
 export async function GET(request: NextRequest) {
@@ -89,6 +177,9 @@ export async function GET(request: NextRequest) {
 
     const supabase = getSupabaseAdmin();
     const nowIso = new Date().toISOString();
+
+    await expireStalePendingOrders(supabase, providerId);
+
     const { data, error } = await supabase
       .from("ads_campaigns")
       .select("id, status, budget, spent, daily_budget, bid_cpc, start_at, end_at, targeting, bid_settings, pack_impressions, billing_model, duration_days, created_at, updated_at")
@@ -155,15 +246,17 @@ export async function GET(request: NextRequest) {
     const enriched = rows.map((c) => {
       const order = latestOrderByCampaign.get(c.id) ?? null;
       const payment_state = deriveCampaignPaymentState(c, order);
+      const lifecycle = deriveCampaignLifecycle(c, payment_state, order, nowIso);
       const latest_budget_order = order
         ? {
             id: order.id,
             status: order.status,
             amount: Number(order.amount ?? 0),
             currency: order.currency ?? null,
+            created_at: order.created_at,
           }
         : null;
-      return { ...c, payment_state, latest_budget_order };
+      return { ...c, payment_state, lifecycle, latest_budget_order };
     });
     return successResponse(enriched);
   } catch (error) {

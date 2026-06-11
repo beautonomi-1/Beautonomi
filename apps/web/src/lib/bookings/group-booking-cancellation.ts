@@ -5,6 +5,7 @@
 
 import { SupabaseClient } from '@supabase/supabase-js';
 import { getGroupBooking } from './group-booking';
+import type { CancellationSettledBy } from './settle-booking-cancellation';
 
 /**
  * Cancel entire group booking (all participants)
@@ -13,8 +14,10 @@ export async function cancelGroupBooking(
   supabase: SupabaseClient,
   groupBookingId: string,
   cancelledBy: string,
-  reason?: string
+  reason?: string,
+  options?: { settleFinance?: boolean; financeActor?: CancellationSettledBy },
 ): Promise<void> {
+  const { settleBookingFinanceById } = await import("./settle-booking-cancellation");
   const groupBooking = await getGroupBooking(supabase, groupBookingId);
   if (!groupBooking) {
     throw new Error('Group booking not found');
@@ -32,7 +35,20 @@ export async function cancelGroupBooking(
         cancellation_reason: reason || 'Group booking cancelled',
       })
       .eq('id', booking.id);
-    if (!error) cancelledBookingIds.push(booking.id);
+    if (!error) {
+      cancelledBookingIds.push(booking.id);
+      if (options?.settleFinance) {
+        try {
+          await settleBookingFinanceById(
+            supabase,
+            booking.id,
+            options.financeActor ?? "customer",
+          );
+        } catch (settleErr) {
+          console.error("[group cancel] finance settlement failed for", booking.id, settleErr);
+        }
+      }
+    }
   }
 
   // Notify waitlist for freed slots
@@ -92,17 +108,16 @@ export async function cancelGroupBookingParticipant(
   const groupBookingId = participant.group_booking_id as string | null;
 
   if (participant.is_primary_contact && groupBookingId) {
-    // Primary contact leaving cancels the entire group session.
-    await cancelGroupBooking(supabase, groupBookingId, cancelledBy, reason);
+    await cancelGroupBooking(supabase, groupBookingId, cancelledBy, reason, {
+      settleFinance: true,
+      financeActor: "provider",
+    });
     return;
   }
 
   const linkedBookingId = (participant.booking_id ?? bookingId) as string | null;
 
   if (linkedBookingId) {
-    // Cancel the child booking and unlink it from the group.
-    // Do NOT delete the booking_participants row — it is the historical record
-    // of who was in the group.
     const now = new Date().toISOString();
     await supabase
       .from('bookings')
@@ -116,6 +131,13 @@ export async function cancelGroupBookingParticipant(
       })
       .eq('id', linkedBookingId)
       .not('status', 'in', '(completed,no_show,cancelled)');
+
+    try {
+      const { settleBookingFinanceById } = await import("./settle-booking-cancellation");
+      await settleBookingFinanceById(supabase, linkedBookingId, "provider");
+    } catch (settleErr) {
+      console.error("[group participant cancel] finance settlement failed:", settleErr);
+    }
 
     try {
       const { matchWaitlistOnCancellation } = await import("@/lib/waitlist/matching");

@@ -7,9 +7,9 @@ import {
   handleApiError,
 } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { startOfWeek, startOfMonth, startOfQuarter, startOfYear } from "date-fns";
+import { startOfMonth, startOfQuarter, startOfYear } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
-import { formatDateYmd, dateRangeBoundsUtc } from "@/lib/dates/provider-tz";
+import { formatDateYmd, dateRangeBoundsUtc, startOfWeekInTz } from "@/lib/dates/provider-tz";
 import {
   filterLedgerRowsForLocation,
   getProviderReportContext,
@@ -76,7 +76,7 @@ export async function GET(request: NextRequest) {
     let fromYmd: string;
     switch (period) {
       case "week":
-        fromYmd = formatDateYmd(startOfWeek(zNow, { weekStartsOn: 1 }), timezone);
+        fromYmd = formatDateYmd(startOfWeekInTz(new Date(), timezone, 1), timezone);
         break;
       case "month":
         fromYmd = formatDateYmd(startOfMonth(zNow), timezone);

@@ -20,6 +20,18 @@ let mockSupabase: ReturnType<typeof createMockSupabase>;
 
 const getProviderRevenueMock = vi.fn();
 const getPreviousPeriodRevenueMock = vi.fn();
+const getProviderNetAfterRefundsDetailedMock = vi.fn();
+const getProviderNetAfterRefundsByBookingMock = vi.fn();
+const getPreviousPeriodNetAfterRefundsMock = vi.fn();
+
+const defaultRevenueResult = () => ({
+  totalRevenue: 122,
+  revenueByBooking: new Map([["booking-loc-a", 90]]),
+  revenueByProductOrder: new Map([["order-loc-a", 32]]),
+  revenueByDate: new Map([["2026-05-02", 122]]),
+  latestSettlementAtByBooking: new Map([["booking-loc-a", "2026-05-02T12:00:00.000Z"]]),
+  latestSettlementAtByProductOrder: new Map([["order-loc-a", "2026-05-02T11:00:00.000Z"]]),
+});
 
 vi.mock("@supabase/supabase-js", () => ({
   createClient: vi.fn(() => mockSupabase),
@@ -45,6 +57,12 @@ vi.mock("@/lib/supabase/api-helpers", () => ({
 vi.mock("@/lib/reports/revenue-helpers", () => ({
   getProviderRevenue: (...args: unknown[]) => getProviderRevenueMock(...args),
   getPreviousPeriodRevenue: (...args: unknown[]) => getPreviousPeriodRevenueMock(...args),
+  getProviderNetAfterRefundsDetailed: (...args: unknown[]) =>
+    getProviderNetAfterRefundsDetailedMock(...args),
+  getProviderNetAfterRefundsByBooking: (...args: unknown[]) =>
+    getProviderNetAfterRefundsByBookingMock(...args),
+  getPreviousPeriodNetAfterRefunds: (...args: unknown[]) =>
+    getPreviousPeriodNetAfterRefundsMock(...args),
 }));
 
 function request(path: string) {
@@ -395,29 +413,22 @@ describe("provider report routes sign-off coverage", () => {
     vi.clearAllMocks();
     seedDb();
     mockSupabase = createMockSupabase();
-    getProviderRevenueMock.mockResolvedValue({
-      totalRevenue: 122,
-      revenueByBooking: new Map([["booking-loc-a", 90]]),
-      revenueByProductOrder: new Map([["order-loc-a", 32]]),
-      revenueByDate: new Map([["2026-05-02", 122]]),
-      latestSettlementAtByBooking: new Map([["booking-loc-a", "2026-05-02T12:00:00.000Z"]]),
-      latestSettlementAtByProductOrder: new Map([["order-loc-a", "2026-05-02T11:00:00.000Z"]]),
-    });
+    getProviderRevenueMock.mockResolvedValue(defaultRevenueResult());
+    getProviderNetAfterRefundsDetailedMock.mockResolvedValue(defaultRevenueResult());
+    getProviderNetAfterRefundsByBookingMock.mockResolvedValue(
+      new Map([["booking-loc-a", 90]]),
+    );
     getPreviousPeriodRevenueMock.mockResolvedValue(50);
+    getPreviousPeriodNetAfterRefundsMock.mockResolvedValue(50);
   });
 
   it("bookings report exposes channel_breakdown with recognized revenue", async () => {
-    getProviderRevenueMock.mockResolvedValue({
-      totalRevenue: 122,
-      revenueByBooking: new Map([
+    getProviderNetAfterRefundsByBookingMock.mockResolvedValue(
+      new Map([
         ["booking-loc-a", 90],
         ["wallet-booking", 0],
       ]),
-      revenueByProductOrder: new Map(),
-      revenueByDate: new Map(),
-      latestSettlementAtByBooking: new Map(),
-      latestSettlementAtByProductOrder: new Map(),
-    });
+    );
 
     const data = await json(
       await bookingsReportGET(
@@ -441,7 +452,7 @@ describe("provider report routes sign-off coverage", () => {
 
     expect(data.totalBookings).toBe(2);
     expect(data.dailyBookings).toEqual([{ date: "2026-05-02", count: 2, revenue: 122 }]);
-    expect(getProviderRevenueMock).toHaveBeenCalledWith(
+    expect(getProviderNetAfterRefundsDetailedMock).toHaveBeenCalledWith(
       expect.anything(),
       providerId,
       expect.any(Date),

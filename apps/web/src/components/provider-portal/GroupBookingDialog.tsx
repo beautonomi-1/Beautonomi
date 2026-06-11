@@ -44,6 +44,7 @@ import type {
 } from "@/lib/provider-portal/types";
 import type { AppointmentService, AppointmentProduct } from "@/components/appointments/types";
 import { calculateBookingPricing } from "@/components/appointments/pricing";
+import { effectiveTravelFee } from "@beautonomi/utils";
 import { providerApi } from "@/lib/provider-portal/api";
 import { FetchError, fetcher, providerPortalFetch } from "@/lib/http/fetcher";
 import { toast } from "sonner";
@@ -738,8 +739,16 @@ export function GroupBookingDialog({
   [participants]);
 
   const pricing = useMemo(() =>
-    calculateBookingPricing(participantServices, groupProducts, formData.travel_fee, 0, 0, 0, 0),
-  [participantServices, groupProducts, formData.travel_fee]);
+    calculateBookingPricing(
+      participantServices,
+      groupProducts,
+      effectiveTravelFee(formData.location_type, formData.travel_fee),
+      0,
+      0,
+      0,
+      0,
+    ),
+  [participantServices, groupProducts, formData.travel_fee, formData.location_type]);
 
   const totalDuration = useMemo(() =>
     Math.max(formData.duration_minutes, ...participants.map(p =>
@@ -1091,7 +1100,7 @@ export function GroupBookingDialog({
                 <MapPin className="w-4 h-4 text-gray-400" />Location
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => setFormData({ ...formData, location_type: "at_salon" })}
+                <button type="button" onClick={() => setFormData({ ...formData, location_type: "at_salon", travel_fee: 0 })}
                   className={cn("p-3 border-2 rounded-xl text-left transition-all", formData.location_type === "at_salon" ? "border-primary bg-primary/5" : "border-gray-200 hover:border-gray-300")}>
                   <div className="flex items-center gap-2">
                     <Building2 className={cn("w-4 h-4", formData.location_type === "at_salon" ? "text-primary" : "text-gray-400")} />

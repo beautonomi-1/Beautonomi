@@ -4,7 +4,7 @@ import { requireAdminSection } from "@/lib/supabase/api-helpers";
 import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit/audit";
-import { sendToUser } from "@/lib/notifications/onesignal";
+import { notifyDisputeOpened } from "@/lib/notifications/notification-service";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchBookingInAdminTenant } from "@/lib/tenant/admin-booking-tenant";
@@ -147,31 +147,9 @@ export async function POST(
       metadata: { booking_id: id, reason, opened_by },
     });
 
-    // Notify customer + provider owner (best-effort)
+    // Notify customer + provider team (in-app rows + push via templates)
     try {
-      const bookingData = booking as BookingRow;
-      const { data: provider } = await supabase
-        .from("providers")
-        .select("user_id")
-        .eq("id", bookingData.provider_id)
-        .single();
-
-      const payload = {
-        title: "Dispute opened",
-        message: "A dispute has been opened for a booking. Our team will review and follow up.",
-        data: {
-          type: "booking_dispute_opened",
-          bookingId: id,
-          disputeId: (dispute as DisputeRow).id,
-        },
-      };
-      if (bookingData.customer_id) {
-        await sendToUser(bookingData.customer_id, payload, ["push"], { appType: "customer" });
-      }
-      const providerUserId = (provider as { user_id?: string } | null)?.user_id;
-      if (providerUserId) {
-        await sendToUser(providerUserId, payload, ["push"], { appType: "provider" });
-      }
+      await notifyDisputeOpened(id, reason, (dispute as DisputeRow).id);
     } catch (e) {
       console.warn("Failed to send dispute opened notifications:", e);
     }

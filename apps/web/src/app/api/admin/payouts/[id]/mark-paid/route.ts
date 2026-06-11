@@ -77,6 +77,7 @@ export async function POST(
       net_amount?: number;
       payout_number?: string;
       currency?: string | null;
+      transfer_code?: string | null;
       payout_provider_response?: unknown;
     };
     const payoutData = payout as PayoutRow;
@@ -131,7 +132,8 @@ export async function POST(
       );
     }
 
-    if (getPaystackTransferStatus(payoutData.payout_provider_response) === "otp") {
+    const transferStatus = getPaystackTransferStatus(payoutData.payout_provider_response);
+    if (transferStatus === "otp") {
       return NextResponse.json(
         {
           data: null,
@@ -139,6 +141,23 @@ export async function POST(
             message:
               "This Paystack transfer is still waiting for OTP finalization. Finalize the transfer before marking the payout as paid.",
             code: "TRANSFER_OTP_REQUIRED",
+          },
+        },
+        { status: 409 }
+      );
+    }
+
+    if (
+      payoutData.transfer_code &&
+      transferStatus !== "success"
+    ) {
+      return NextResponse.json(
+        {
+          data: null,
+          error: {
+            message:
+              "A Paystack transfer is actively in flight for this payout. Wait for Paystack to settle or fail before marking it paid here.",
+            code: "TRANSFER_IN_FLIGHT",
           },
         },
         { status: 409 }
@@ -203,7 +222,7 @@ export async function POST(
       );
     }
 
-    // Update payout status
+    // Update payout status (optimistic lock: only processing → completed)
     const { data: updatedPayout, error } = await supabase
       .from("payouts")
       .update({
@@ -213,10 +232,11 @@ export async function POST(
         processed_by: user.id,
       })
       .eq("id", id)
+      .eq("status", "processing")
       .select()
-      .single();
+      .maybeSingle();
 
-    if (error || !updatedPayout) {
+    if (error) {
       console.error("Error updating payout:", error);
       return NextResponse.json(
         {
@@ -227,6 +247,18 @@ export async function POST(
           },
         },
         { status: 500 }
+      );
+    }
+    if (!updatedPayout) {
+      return NextResponse.json(
+        {
+          data: null,
+          error: {
+            message: "Payout was already processed by another admin",
+            code: "STATE_CONFLICT",
+          },
+        },
+        { status: 409 }
       );
     }
 

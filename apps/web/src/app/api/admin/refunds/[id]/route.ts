@@ -171,6 +171,26 @@ export async function POST(
     const lockGuard = await enforcePeriodLock(supabase, financeTenantId, new Date().toISOString());
     if (lockGuard) return lockGuard;
 
+    const { data: pendingRefund, error: pendingRefundError } = await supabase
+      .from("booking_refunds")
+      .insert({
+        booking_id: transaction.booking_id,
+        amount: refund_amount,
+        reason: refund_reason,
+        refund_method: "store_credit",
+        status: "pending",
+        created_by: user.id,
+        notes: notes ?? null,
+      })
+      .select("id")
+      .single();
+
+    if (pendingRefundError || !pendingRefund) {
+      return errorResponse("Failed to create refund record", "REFUND_CREATE_ERROR", 500);
+    }
+
+    const pendingRefundId = (pendingRefund as { id: string }).id;
+
     const rpc = supabase.rpc.bind(supabase) as unknown as (name: string, args: Record<string, unknown>) => Promise<{ error: unknown }>;
     const { error: walletError } = await rpc("wallet_credit_admin", {
       p_user_id: customerId,
@@ -180,10 +200,12 @@ export async function POST(
       p_reference_id: id,
       p_reference_type: "refund",
       p_tenant_id: financeTenantId,
+      p_idempotency_key: `admin_payment_refund:${pendingRefundId}`,
     });
 
     if (walletError) {
       console.error("Wallet credit failed:", walletError);
+      await supabase.from("booking_refunds").delete().eq("id", pendingRefundId);
       return errorResponse(
         "Failed to credit customer wallet",
         "WALLET_ERROR",
@@ -210,16 +232,15 @@ export async function POST(
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      await supabase.from("booking_refunds").delete().eq("id", pendingRefundId);
+      throw error;
+    }
 
-    await supabase.from("booking_refunds").insert({
-      booking_id: transaction.booking_id,
-      amount: refund_amount,
-      reason: refund_reason,
-      refund_method: "store_credit",
-      status: "completed",
-      created_by: user.id,
-    });
+    await supabase
+      .from("booking_refunds")
+      .update({ status: "completed" })
+      .eq("id", pendingRefundId);
 
     // NOTE: finance_transactions row is written by trigger
     // `create_finance_ledger_from_booking_refund` (migration 490) via the

@@ -11,6 +11,7 @@ import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { getUserRowIfAccessibleToAdminTenant } from "@/lib/tenant/admin-user-tenant-access";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
+import { resolveTeamSizeFromOnboardingDraft } from "@/lib/provider-ops/resolve-team-size-from-draft";
 
 export async function POST(
   request: NextRequest,
@@ -82,7 +83,7 @@ export async function POST(
         // salon/both -> salon.
         business_type:
           (draftData.business_type as string) === "mobile" ? "freelancer" : "salon",
-        team_size: (draftData.team_size as string) || "just_me",
+        team_size: resolveTeamSizeFromOnboardingDraft(draftData),
         status: "pending_approval",
         onboarding_state: "ready_for_activation",
         billing_email: typeof targetUser.email === "string" ? targetUser.email : "",
@@ -95,6 +96,18 @@ export async function POST(
       .select()
       .single();
     if (providerErr) throw providerErr;
+
+    // Upgrade user role to provider_owner (mirrors self-serve onboarding POST).
+    const userRole = typeof targetUser.role === "string" ? targetUser.role : null;
+    if (userRole === "customer" || userRole === "provider_onboarding") {
+      const { error: roleErr } = await supabase
+        .from("users")
+        .update({ role: "provider_owner" })
+        .eq("id", userId);
+      if (roleErr) {
+        console.error("[admin tracker submit] role upgrade failed:", roleErr);
+      }
+    }
 
     // Create provider location if address data exists.
     // The draft stores address keys as `line1`/`line2` (matching the self-serve

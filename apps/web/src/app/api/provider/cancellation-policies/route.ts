@@ -31,6 +31,7 @@ const createPolicySchema = z.object({
   fee_amount: z.number().min(0).optional(),
   fee_type: z.enum(["fixed", "percentage"]).optional(),
   is_default: z.boolean().optional(),
+  location_type: z.enum(["at_salon", "at_home", "both"]).nullable().optional(),
 });
 
 /**
@@ -82,6 +83,7 @@ export async function GET(request: NextRequest) {
         fee_amount: p.fee_amount ?? 0,
         fee_type: p.fee_type || 'fixed',
         is_default: p.is_default ?? false,
+        location_type: p.location_type ?? null,
         provider_id: p.provider_id,
         created_at: p.created_at,
         updated_at: p.updated_at,
@@ -160,7 +162,7 @@ export async function POST(request: NextRequest) {
       late_cancellation_type: enforcement.late_cancellation_type,
       policy_text: enforcement.policy_text,
       grace_window_minutes: 15,
-      location_type: null,
+      location_type: data.location_type ?? null,
       is_active: true,
     };
 
@@ -183,6 +185,7 @@ export async function POST(request: NextRequest) {
       fee_amount: policy.fee_amount ?? 0,
       fee_type: policy.fee_type || 'fixed',
       is_default: policy.is_default ?? false,
+      location_type: policy.location_type ?? null,
       provider_id: policy.provider_id,
       created_at: policy.created_at,
       updated_at: policy.updated_at,

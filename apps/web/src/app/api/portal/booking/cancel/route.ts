@@ -4,11 +4,13 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { validatePortalToken } from "@/lib/portal/token";
 import { getCancellationPolicy, canCancelBooking } from "@/lib/bookings/cancellation-policy";
+import { describeCancellationRefund, roundCurrency2 } from "@/lib/bookings/refund-processing";
 import {
-  computeCancellationRefundAmount,
-  describeCancellationRefund,
-  roundCurrency2,
-} from "@/lib/bookings/refund-processing";
+  computeCancellationFeeForSettlement,
+  computeEffectiveCollectedAmount,
+  settleBookingCancellation,
+  type BookingFinancialSnapshot,
+} from "@/lib/bookings/settle-booking-cancellation";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
@@ -47,7 +49,7 @@ export async function POST(request: NextRequest) {
     const { data: booking, error: bookingError } = await supabase
       .from("bookings")
       .select(
-        "id, provider_id, location_type, scheduled_at, created_at, status, booking_number, subtotal, discount_amount, tax_amount, service_fee_amount, travel_fee, tip_amount, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, currency"
+        "id, provider_id, tenant_id, customer_id, location_type, scheduled_at, created_at, status, booking_number, subtotal, discount_amount, tax_amount, service_fee_amount, travel_fee, tip_amount, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, currency, loyalty_points_used, loyalty_points_redeemed, loyalty_points_earned"
       )
       .eq("id", validation.bookingId)
       .single();
@@ -135,33 +137,43 @@ export async function POST(request: NextRequest) {
       (bFin.currency as string) || tenantRegionForCancel?.defaultCurrency || LAST_RESORT_CURRENCY;
     const bookingTotal = Number(bFin.total_amount ?? 0);
     const isLate = checkResult.isLateCancellation === true;
-    const policyRefundAmount = computeCancellationRefundAmount(bookingTotal, policy, isLate);
-    const totalPaid = roundCurrency2(
-      Math.max(0, Number((booking as { total_paid?: number | null }).total_paid ?? 0))
-    );
-    const walletCollected = roundCurrency2(
-      Math.max(0, Number((booking as { wallet_amount?: number | null }).wallet_amount ?? 0))
-    );
-    const giftCardCollected = roundCurrency2(
-      Math.max(0, Number((booking as { gift_card_amount?: number | null }).gift_card_amount ?? 0))
-    );
-    const effectiveCollectedAmount = roundCurrency2(
-      Math.max(
-        0,
-        Math.max(totalPaid, walletCollected + giftCardCollected) -
-          Number((booking as { total_refunded?: number | null }).total_refunded ?? 0),
-      )
-    );
-    const walletRefundAmount = roundCurrency2(Math.min(policyRefundAmount, effectiveCollectedAmount));
-    const cancellationFeeApplied = roundCurrency2(Math.max(0, bookingTotal - policyRefundAmount));
-    const newTotalAmount = roundCurrency2(
-      Number(bFin.subtotal ?? 0) -
-        Number(bFin.discount_amount ?? 0) +
-        Number(bFin.tax_amount ?? 0) +
-        Number(bFin.service_fee_amount ?? 0) +
-        Number(bFin.travel_fee ?? 0) +
-        Number(bFin.tip_amount ?? 0) -
-        cancellationFeeApplied
+
+    const financialSnapshot: BookingFinancialSnapshot = {
+      id: validation.bookingId,
+      provider_id: booking.provider_id,
+      customer_id: booking.customer_id,
+      booking_number: (booking as { booking_number?: string | null }).booking_number,
+      tenant_id:
+        (booking as { tenant_id?: string | null }).tenant_id ??
+        provForCurrency?.tenant_id ??
+        null,
+      subtotal: bFin.subtotal,
+      discount_amount: bFin.discount_amount,
+      tax_amount: bFin.tax_amount,
+      service_fee_amount: bFin.service_fee_amount,
+      travel_fee: bFin.travel_fee,
+      tip_amount: bFin.tip_amount,
+      total_amount: bookingTotal,
+      total_paid: (booking as { total_paid?: number | null }).total_paid,
+      total_refunded: (booking as { total_refunded?: number | null }).total_refunded,
+      wallet_amount: (booking as { wallet_amount?: number | null }).wallet_amount,
+      gift_card_amount: (booking as { gift_card_amount?: number | null }).gift_card_amount,
+      loyalty_points_used: (booking as { loyalty_points_used?: number | null }).loyalty_points_used,
+      loyalty_points_redeemed: (booking as { loyalty_points_redeemed?: number | null })
+        .loyalty_points_redeemed,
+      loyalty_points_earned: (booking as { loyalty_points_earned?: number | null }).loyalty_points_earned,
+    };
+
+    const { cancellationFeeApplied, policyRefundAmount } = computeCancellationFeeForSettlement({
+      booking: financialSnapshot,
+      cancelledBy: "portal",
+      currency: cancelCurrency,
+      policy,
+      isLateCancellation: isLate,
+      refundBookingTotal: bookingTotal,
+    });
+    const walletRefundAmount = roundCurrency2(
+      Math.min(policyRefundAmount, computeEffectiveCollectedAmount(financialSnapshot)),
     );
 
     const { data: updatedBooking, error: updateError } = await adminSupabase
@@ -171,7 +183,6 @@ export async function POST(request: NextRequest) {
         cancelled_at: new Date().toISOString(),
         cancellation_reason: "Customer cancellation via portal",
         cancellation_fee: cancellationFeeApplied,
-        total_amount: newTotalAmount,
         updated_at: new Date().toISOString(),
       })
       .eq("id", validation.bookingId)
@@ -196,51 +207,16 @@ export async function POST(request: NextRequest) {
 
     if (checkResult.allowed) {
       try {
-        const { processBookingRefund } = await import("@/lib/bookings/refund-processing");
-        await processBookingRefund(
-          validation.bookingId,
-          bookingTotal,
-          cancelCurrency,
+        await settleBookingCancellation({
+          booking: financialSnapshot,
+          cancelledBy: "portal",
+          currency: cancelCurrency,
           policy,
-          { isLateCancellation: isLate, maxWalletCredit: effectiveCollectedAmount }
-        );
-      } catch (refundErr) {
-        console.error("Error processing refund during portal cancellation:", refundErr);
-      }
-    }
-
-    // Record cancellation fee in the finance ledger (provider-retained income)
-    if (cancellationFeeApplied > 0) {
-      try {
-        const { resolveTenantIdForFinanceLedger } = await import("@/lib/finance/resolve-tenant-id-for-ledger");
-        const cancelFeeTenantId = await resolveTenantIdForFinanceLedger(adminSupabase, {
-          tenant_id: provForCurrency?.tenant_id ?? null,
-          provider_id: booking.provider_id,
+          isLateCancellation: isLate,
+          refundBookingTotal: bookingTotal,
         });
-        const bookingRef = (booking as { booking_number?: string }).booking_number || validation.bookingId.slice(0, 8);
-        // Idempotent: only insert if no existing cancellation_fee row for this booking
-        const { data: existingRow } = await adminSupabase
-          .from("finance_transactions")
-          .select("id")
-          .eq("booking_id", validation.bookingId)
-          .eq("transaction_type", "cancellation_fee")
-          .maybeSingle();
-        if (!existingRow) {
-          await adminSupabase.from("finance_transactions").insert({
-            tenant_id: cancelFeeTenantId,
-            booking_id: validation.bookingId,
-            provider_id: booking.provider_id,
-            transaction_type: "cancellation_fee",
-            amount: cancellationFeeApplied,
-            fees: 0,
-            commission: 0,
-            net: cancellationFeeApplied,
-            description: `Cancellation fee for booking ${bookingRef} — provider-retained (portal cancellation)`,
-            created_at: new Date().toISOString(),
-          });
-        }
-      } catch (feeErr) {
-        console.error("[portal cancel] cancellation_fee ledger insert failed:", feeErr);
+      } catch (settleErr) {
+        console.error("Error processing portal cancellation settlement:", settleErr);
       }
     }
 

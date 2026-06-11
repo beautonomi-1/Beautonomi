@@ -70,7 +70,7 @@ async function notifyProviderSafe(
 ): Promise<void> {
   try {
     const { notifyProviderTeamUsers } = await import("@/lib/notifications/notify-provider-team");
-    await notifyProviderTeamUsers(providerId, payload);
+    await notifyProviderTeamUsers(providerId, payload, { push: true });
   } catch (notificationError) {
     console.warn("[ads_budget_order] notification failed:", notificationError);
   }

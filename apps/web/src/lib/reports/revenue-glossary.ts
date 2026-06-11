@@ -12,13 +12,19 @@ export const REVENUE_GLOSSARY = {
     label: "Recognized revenue",
     short: "What you earned in the period",
     definition:
-      "Service earnings plus tips, travel fees, cancellation fees and walk-in add-ons recognised in the selected period (net of refunds). This is the headline 'what you earned' figure.",
+      "Service earnings plus tips, travel fees, cancellation fees and walk-in add-ons recognised in the selected period (gross of refunds). Use net-after-refunds for the headline 'what you earned' figure.",
   },
   ledgerNet: {
     label: "Ledger net",
     short: "Net of platform commission",
     definition:
       "The net amount posted to your ledger after platform commission and gateway fees, summed across booking-linked transactions in the period.",
+  },
+  netAfterRefunds: {
+    label: "Net after refunds",
+    short: "What you earned (headline)",
+    definition:
+      "Recognized revenue minus provider refund clawbacks in the selected period. This is the headline earnings figure across dashboard, analytics, and business overview.",
   },
   serviceEarnings: {
     label: "Service earnings",

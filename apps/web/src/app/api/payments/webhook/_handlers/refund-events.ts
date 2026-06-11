@@ -157,6 +157,10 @@ async function handleRefundProcessed(data: Record<string, unknown>, supabase: Su
     // Non-booking refund: check if this is a product order refund via metadata
     const metadata = (txn as any)?.metadata ?? {};
     const productOrderId = metadata?.product_order_id ?? null;
+    const giftCardOrderId =
+      metadata?.kind === "gift_card_order" ? (metadata?.gift_card_order_id ?? null) : null;
+    const membershipOrderId =
+      metadata?.kind === "membership_order" ? (metadata?.membership_order_id ?? null) : null;
     const adsBudgetOrderId =
       metadata?.kind === "ads_budget_order" ? (metadata?.ads_budget_order_id ?? null) : null;
     const subscriptionKind = [
@@ -208,26 +212,117 @@ async function handleRefundProcessed(data: Record<string, unknown>, supabase: Su
             ? -Math.min(orderPlatformFee, (refundAmount / orderTotal) * orderPlatformFee)
             : 0;
 
-        await (supabase.from("product_orders") as any)
-          .update({
-            payment_status: "refunded",
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", productOrderId);
+        const { data: existingProductRefund } = await supabase
+          .from("finance_transactions")
+          .select("id")
+          .eq("product_order_id", productOrderId)
+          .eq("transaction_type", "refund")
+          .limit(1);
 
-        await supabase.from("finance_transactions").insert({
-          booking_id: null,
-          product_order_id: productOrderId,
+        if (!Array.isArray(existingProductRefund) || existingProductRefund.length === 0) {
+          await (supabase.from("product_orders") as any)
+            .update({
+              payment_status: "refunded",
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", productOrderId);
+
+          await supabase.from("finance_transactions").insert({
+            booking_id: null,
+            product_order_id: productOrderId,
+            provider_id: providerId,
+            tenant_id: refundLedgerTenantId,
+            transaction_type: "refund",
+            amount: refundAmount,
+            fees: 0,
+            commission: platformRefundContra,
+            net: -refundAmount,
+            description: `Product order refund (${(orderRow as any).order_number ?? productOrderId})`,
+            created_at: new Date().toISOString(),
+          });
+        }
+      }
+    } else if (giftCardOrderId) {
+      const { data: orderRow } = await supabase
+        .from("gift_card_orders")
+        .select("id, provider_id, tenant_id, total_amount, status")
+        .eq("id", giftCardOrderId)
+        .maybeSingle();
+
+      if (orderRow) {
+        const providerId = (orderRow as { provider_id?: string | null }).provider_id ?? null;
+        const refundLedgerTenantId = await resolveTenantIdForFinanceLedger(supabase, {
+          tenant_id: (orderRow as { tenant_id?: string | null }).tenant_id ?? null,
           provider_id: providerId,
-          tenant_id: refundLedgerTenantId,
-          transaction_type: "refund",
-          amount: refundAmount,
-          fees: 0,
-          commission: platformRefundContra,
-          net: -refundAmount,
-          description: `Product order refund (${(orderRow as any).order_number ?? productOrderId})`,
-          created_at: new Date().toISOString(),
         });
+        const { data: existingRefund } = await supabase
+          .from("finance_transactions")
+          .select("id")
+          .eq("transaction_type", "refund")
+          .ilike("description", `%gift card order ${giftCardOrderId}%`)
+          .limit(1);
+
+        if (!Array.isArray(existingRefund) || existingRefund.length === 0) {
+          await supabase
+            .from("gift_card_orders")
+            .update({ status: "refunded", updated_at: new Date().toISOString() })
+            .eq("id", giftCardOrderId);
+
+          await supabase.from("finance_transactions").insert({
+            booking_id: null,
+            provider_id: providerId,
+            tenant_id: refundLedgerTenantId,
+            transaction_type: "refund",
+            refund_component: "_legacy",
+            amount: refundAmount,
+            fees: 0,
+            commission: 0,
+            net: -refundAmount,
+            description: `Gift card order refund (${giftCardOrderId}) — liability reversed`,
+            created_at: new Date().toISOString(),
+          });
+        }
+      }
+    } else if (membershipOrderId) {
+      const { data: orderRow } = await supabase
+        .from("membership_orders")
+        .select("id, provider_id, tenant_id, total_amount, status")
+        .eq("id", membershipOrderId)
+        .maybeSingle();
+
+      if (orderRow) {
+        const providerId = (orderRow as { provider_id?: string | null }).provider_id ?? null;
+        const refundLedgerTenantId = await resolveTenantIdForFinanceLedger(supabase, {
+          tenant_id: (orderRow as { tenant_id?: string | null }).tenant_id ?? null,
+          provider_id: providerId,
+        });
+        const { data: existingRefund } = await supabase
+          .from("finance_transactions")
+          .select("id")
+          .eq("transaction_type", "refund")
+          .ilike("description", `%membership order ${membershipOrderId}%`)
+          .limit(1);
+
+        if (!Array.isArray(existingRefund) || existingRefund.length === 0) {
+          await supabase
+            .from("membership_orders")
+            .update({ status: "refunded", updated_at: new Date().toISOString() })
+            .eq("id", membershipOrderId);
+
+          await supabase.from("finance_transactions").insert({
+            booking_id: null,
+            provider_id: providerId,
+            tenant_id: refundLedgerTenantId,
+            transaction_type: "refund",
+            refund_component: "provider_earnings",
+            amount: refundAmount,
+            fees: 0,
+            commission: 0,
+            net: -refundAmount,
+            description: `Membership order refund (${membershipOrderId}) — provider earnings reversed`,
+            created_at: new Date().toISOString(),
+          });
+        }
       }
     } else if (txn) {
       // Generic non-booking, non-product-order refund: still record ledger for completeness

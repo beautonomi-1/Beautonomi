@@ -188,6 +188,7 @@ const MENU_SECTIONS: { title: string; items: MenuItem[] }[] = [
       { icon: "language-outline", label: "Language & region", subtitle: "App language & market entry point", route: "/(app)/(tabs)/more/settings/language", color: "#0ea5e9", bg: "#e0f2fe" },
       { icon: "storefront-outline", label: "Locations & operating hours", subtitle: "Branches, addresses & opening times", route: "/(app)/(tabs)/more/locations-operating-hub", color: "#059669", bg: "#ecfdf5" },
       { icon: "car-outline", label: "Travel fees", subtitle: "At-home travel fees", route: "/(app)/(tabs)/more/settings/travel-fees", color: "#f59e0b", bg: "#fef3c7" },
+      { icon: "close-circle-outline", label: "Cancellation policies & fees", subtitle: "Late cancel & no-show fees", route: "/(app)/(tabs)/more/settings/cancellation-policies", color: "#ef4444", bg: "#fee2e2" },
       { icon: "ribbon-outline", label: "Rewards & badges", subtitle: "Points, milestones & badge progress", route: "/(app)/(tabs)/more/rewards-hub", color: "#059669", bg: "#d1fae5" },
       { icon: "ticket-outline", label: "Support tickets", subtitle: "All tickets, replies & status", route: "/(app)/(tabs)/more/support-tickets", color: "#0ea5e9", bg: "#e0f2fe" },
       { icon: "settings-outline", label: "Settings & account", subtitle: "Business, team & account", route: "/(app)/(tabs)/more/settings-account-hub", color: "#6b7280", bg: Colors.gray[100] },

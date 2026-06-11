@@ -130,6 +130,44 @@ export async function POST(request: NextRequest) {
           currency: payout.currency,
         },
       });
+
+      try {
+        const { sendToUser } = await import("@/lib/notifications/onesignal");
+        const { formatCurrency } = await import("@/lib/utils");
+        const { LAST_RESORT_CURRENCY } = await import("@/lib/regions/last-resort-currency");
+        const { data: providerRow } = await admin
+          .from("providers")
+          .select("user_id")
+          .eq("id", payout.provider_id)
+          .single();
+        const providerUserId = (providerRow as { user_id?: string } | null)?.user_id;
+        if (providerUserId) {
+          const payoutCurrency = payout.currency?.trim() || LAST_RESORT_CURRENCY;
+          const amountFormatted = formatCurrency(Number(payout.amount), payoutCurrency);
+          await sendToUser(
+            providerUserId,
+            {
+              title: "Payout Approved",
+              message: `Your payout request of ${amountFormatted} has been approved and is being processed.`,
+              data: { type: "payout_approved", payout_id: id },
+              url: "/provider/finance",
+            },
+            ["push"],
+            { appType: "provider" },
+          );
+          await admin.from("notifications").insert({
+            user_id: providerUserId,
+            type: "system",
+            title: "Payout Approved",
+            message: `Your payout request of ${amountFormatted} has been approved and is being processed.`,
+            data: { payout_id: id, amount: payout.amount },
+            action_url: "/provider/payouts",
+          });
+        }
+      } catch (notifError) {
+        console.error("Error sending bulk-approve notification:", notifError);
+      }
+
       approved.push(id);
     }
 

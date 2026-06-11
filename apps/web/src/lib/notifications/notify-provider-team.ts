@@ -34,10 +34,16 @@ export type ProviderTeamNotificationRow = {
   action_url?: string | null;
 };
 
+export type NotifyProviderTeamOptions = {
+  /** When true, also send a push to each team member's provider app devices. */
+  push?: boolean;
+};
+
 /** Insert the same in-app notification for each team member (service role; bypasses per-user RLS). */
 export async function notifyProviderTeamUsers(
   providerId: string,
   payload: ProviderTeamNotificationRow,
+  options?: NotifyProviderTeamOptions,
 ): Promise<void> {
   const userIds = await getProviderTeamUserIds(providerId);
   if (userIds.length === 0) return;
@@ -52,4 +58,28 @@ export async function notifyProviderTeamUsers(
       action_url: payload.action_url ?? payload.link ?? undefined,
     }))
   );
+
+  if (options?.push) {
+    try {
+      const { sendToUsers } = await import("@/lib/notifications/onesignal");
+      const actionUrl = payload.action_url ?? payload.link ?? undefined;
+      await sendToUsers(
+        userIds,
+        {
+          title: payload.title,
+          message: payload.message,
+          data: {
+            type: payload.type,
+            ...(payload.data ?? {}),
+            ...(payload.metadata ?? {}),
+          },
+          ...(actionUrl ? { url: actionUrl } : {}),
+        },
+        ["push"],
+        { appType: "provider" },
+      );
+    } catch (pushError) {
+      console.warn("[notifyProviderTeamUsers] push failed:", pushError);
+    }
+  }
 }

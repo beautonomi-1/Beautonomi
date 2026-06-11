@@ -52,7 +52,7 @@ describe("aggregateFinanceLedgerRows", () => {
 
     expect(agg.platform_refund_contra).toBe(-10);
     expect(agg.platform_commission_net).toBe(-10);
-    expect(agg.provider_refund_net_impact).toBe(-90);
+    expect(agg.provider_refund_net_impact).toBe(-100);
     expect(agg.refunds_gross).toBe(100);
   });
 

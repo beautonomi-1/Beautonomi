@@ -7,7 +7,7 @@ import {
   handleApiError,
 } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
-import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
+import { getProviderRevenue, getProviderNetAfterRefundsByBooking } from "@/lib/reports/revenue-helpers";
 import { LEDGER_FULL_PROVIDER_NET_TYPES, MAX_REPORT_DAYS } from "@/lib/reports/constants";
 import { getProviderReportContext, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
 
@@ -94,6 +94,19 @@ export async function GET(request: NextRequest) {
       ledgerOpts,
     );
 
+    const bookingIds = (bookings || []).map((b) => (b as { id: string }).id);
+    const netAfterRefundsByBooking =
+      bookingIds.length > 0
+        ? await getProviderNetAfterRefundsByBooking(
+            supabaseAdmin,
+            providerId,
+            fromDate,
+            toDate,
+            locationId || undefined,
+            { bookingIds },
+          )
+        : new Map<string, number>();
+
     const countByStatus = new Map<string, number>();
     const revenueByStatus = new Map<string, number>();
 
@@ -103,7 +116,10 @@ export async function GET(request: NextRequest) {
       countByStatus.set(statusKey, (countByStatus.get(statusKey) || 0) + 1);
 
       const bookingId = (booking as { id: string }).id;
-      const bookingRev = revenueByBooking.get(bookingId) || 0;
+      const useNetSemantics = statusKey === "cancelled" || statusKey === "no_show";
+      const bookingRev = useNetSemantics
+        ? netAfterRefundsByBooking.get(bookingId) || 0
+        : revenueByBooking.get(bookingId) || 0;
       revenueByStatus.set(statusKey, (revenueByStatus.get(statusKey) || 0) + bookingRev);
     }
 

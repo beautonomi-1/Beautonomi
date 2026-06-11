@@ -36,13 +36,14 @@ type Summary = {
   dayCount?: number;
 };
 
+/** Fallback only when API omits `summary` — mirrors server `occupancyPercentOf`. */
 function buildSummaryFromByDate(byDate: OccDay[]): Summary | null {
   if (!byDate.length) return null;
   let a = 0;
   let b = 0;
   for (const row of byDate) {
-    a += Number(row.totalAvailable ?? 0);
-    b += Number(row.totalBooked ?? 0);
+    a += Number(row.availableMinutes ?? row.totalAvailable ?? 0);
+    b += Number(row.bookedMinutes ?? row.totalBooked ?? 0);
   }
   const occupancyPercent =
     a > 0 ? Math.round((b / a) * 1000) / 10 : b > 0 ? null : 0;

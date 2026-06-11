@@ -28,24 +28,47 @@ function AdsPaymentReturnInner() {
   // gracefully with a result card instead of leaving the provider stranded.
   useEffect(() => {
     if (success) return;
-    if (context !== "app" && context !== "provider_inapp") return;
-    if (typeof window === "undefined") return;
-    try {
-      const w = window as Window & { ReactNativeWebView?: { postMessage: (msg: string) => void } };
-      if (!w.ReactNativeWebView?.postMessage) return;
-      w.ReactNativeWebView.postMessage(
-        JSON.stringify({
-          type: "BEAUTONOMI_ADS_PAYMENT_DONE",
-          status: cancelled ? "cancelled" : "failed",
-          order_id: orderId || null,
-          message: cancelled
-            ? "You cancelled the payment. No charge was made. You can try again from your Ads dashboard."
-            : "This payment return link is invalid or incomplete. Open Ads and pull to refresh.",
-        }),
-      );
-    } catch {
-      // ignore
-    }
+
+    let cancelledEffect = false;
+
+    const run = async () => {
+      if (cancelled && orderId) {
+        try {
+          await fetch("/api/provider/ads/budget-orders/" + encodeURIComponent(orderId) + "/abandon", {
+            method: "POST",
+            credentials: "include",
+          });
+        } catch {
+          // Non-blocking — list GET also auto-expires stale pending orders.
+        }
+      }
+
+      if (cancelledEffect) return;
+      if (context !== "app" && context !== "provider_inapp") return;
+      if (typeof window === "undefined") return;
+      try {
+        const w = window as Window & { ReactNativeWebView?: { postMessage: (msg: string) => void } };
+        if (!w.ReactNativeWebView?.postMessage) return;
+        w.ReactNativeWebView.postMessage(
+          JSON.stringify({
+            type: "BEAUTONOMI_ADS_PAYMENT_DONE",
+            status: cancelled ? "cancelled" : "failed",
+            order_id: orderId || null,
+            message: cancelled
+              ? "You cancelled the payment. No charge was made. You can try again from your Ads dashboard."
+              : "This payment return link is invalid or incomplete. Open Ads and pull to refresh.",
+          }),
+        );
+      } catch {
+        // ignore
+      }
+    };
+
+    void run();
+
+    return () => {
+      cancelledEffect = true;
+    };
   }, [success, cancelled, context, orderId]);
 
   useEffect(() => {

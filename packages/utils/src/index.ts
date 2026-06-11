@@ -143,8 +143,10 @@ export {
 export { getCustomerEtaUiParts } from "./customer-tracking-eta";
 export {
   calculateBookingTotals,
+  effectiveTravelFee,
   type BookingPricingInput,
   type BookingPricingResult,
+  type BookingTravelLocationType,
 } from "./booking/calculateBookingPricing";
 export {
   normalizePlatformFeeFields,

@@ -5,6 +5,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
+import { requestOneSignalPushPermission } from "@/lib/onesignal-client";
+import * as Notifications from "expo-notifications";
 import { ScreenFrame } from "@/components/ScreenFrame";
 import { Colors } from "@/constants/colors";
 import { STACK_CONTENT_PADDING_BOTTOM } from "@/constants/layout";
@@ -118,6 +120,7 @@ export default function NotificationsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [pushPermissionStatus, setPushPermissionStatus] = useState<string | null>(null);
   // Keep a ref to the latest prefs so toggle callbacks don't close over stale state
   const prefsRef = useRef(prefs);
   useEffect(() => { prefsRef.current = prefs; }, [prefs]);
@@ -142,6 +145,45 @@ export default function NotificationsScreen() {
   }, [np]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    void Notifications.getPermissionsAsync().then(({ status }) => setPushPermissionStatus(status));
+  }, []);
+
+  const handleEnablePushNotifications = useCallback(async () => {
+    if (Platform.OS === "web") return;
+    const current = await Notifications.getPermissionsAsync();
+    setPushPermissionStatus(current.status);
+    if (current.status === "granted") {
+      Alert.alert("Push enabled", "Notifications are already allowed for this device.");
+      return;
+    }
+    if (current.status === "undetermined" || current.canAskAgain) {
+      const accepted = await requestOneSignalPushPermission(false);
+      const next = await Notifications.getPermissionsAsync();
+      setPushPermissionStatus(next.status);
+      if (!accepted && next.status !== "granted") {
+        Alert.alert(
+          "Enable notifications",
+          "Allow notifications in system settings to receive push alerts.",
+          [
+            { text: "Not now", style: "cancel" },
+            { text: "Open Settings", onPress: () => void Linking.openSettings() },
+          ],
+        );
+      }
+      return;
+    }
+    Alert.alert(
+      "Enable notifications",
+      "Push was blocked for Beautonomi. Open system settings to turn notifications on.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Open Settings", onPress: () => void Linking.openSettings() },
+      ],
+    );
+  }, []);
 
   const toggle = useCallback(async (key: string, value: boolean) => {
     const previous = prefsRef.current;
@@ -343,7 +385,46 @@ export default function NotificationsScreen() {
           />
 
           {Platform.OS !== "web" && (
-            <TouchableOpacity
+            <>
+              <TouchableOpacity
+                onPress={() => void handleEnablePushNotifications()}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  pushPermissionStatus === "granted"
+                    ? "Push notifications enabled on this device"
+                    : "Enable push notifications on this device"
+                }
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  backgroundColor: Colors.white,
+                  borderRadius: 12,
+                  padding: 16,
+                  borderWidth: 1,
+                  borderColor: Colors.gray[100],
+                  marginBottom: 12,
+                }}
+              >
+                <View style={{ flex: 1, marginRight: 12 }}>
+                  <Text style={{ fontWeight: "500", color: Colors.gray[900] }}>
+                    {pushPermissionStatus === "granted"
+                      ? "Push notifications enabled"
+                      : "Enable push notifications"}
+                  </Text>
+                  <Text style={{ fontSize: 13, color: Colors.gray[500], marginTop: 2 }}>
+                    {pushPermissionStatus === "granted"
+                      ? "This device can receive push alerts"
+                      : "Request permission if you skipped push during setup"}
+                  </Text>
+                </View>
+                <Ionicons
+                  name={pushPermissionStatus === "granted" ? "notifications" : "notifications-outline"}
+                  size={20}
+                  color={Colors.primary}
+                />
+              </TouchableOpacity>
+              <TouchableOpacity
               onPress={() => {
                 void Linking.openSettings().catch(() => {
                   Alert.alert(
@@ -376,6 +457,7 @@ export default function NotificationsScreen() {
               </View>
               <Ionicons name="open-outline" size={20} color={Colors.primary} />
             </TouchableOpacity>
+            </>
           )}
         </View>
       </ScrollView>

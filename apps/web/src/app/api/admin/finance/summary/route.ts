@@ -213,6 +213,13 @@ export async function GET(request: Request) {
         provider_refund_net_impact: agg.provider_refund_net_impact,
         gift_card_sales: agg.gift_card_sales,
         membership_sales: agg.membership_sales,
+        promotion_discounts: agg.promotion_discounts,
+        membership_discounts: agg.membership_discounts,
+        loyalty_discounts: agg.loyalty_discounts,
+        loyalty_redemptions: agg.loyalty_redemptions,
+        wallet_topup_ledger: agg.wallet_topup_ledger,
+        payouts_paid_total: agg.payouts_paid_total,
+        walk_in_additional_charges: agg.walk_in_additional_charges,
 
         service_fee_revenue: customerPaidPlatformFees,
         platform_fee_revenue: customerPaidPlatformFees,
@@ -244,10 +251,13 @@ export async function GET(request: Request) {
           provider_earnings: agg.provider_earnings_net,
           cancellation_fees: cancellationFeesRetained,
           tips: agg.tips_gross,
+          travel_fees: agg.travel_fees,
+          walk_in_additional_charges: agg.walk_in_additional_charges,
           taxes_collected: agg.taxes_gross,
           refunds: agg.refunds_gross,
           refund_impact_net: agg.provider_refund_net_impact,
           net_after_refunds: providerNetAfterRefunds,
+          payouts_paid_total: agg.payouts_paid_total,
         },
 
         revenue_streams: {

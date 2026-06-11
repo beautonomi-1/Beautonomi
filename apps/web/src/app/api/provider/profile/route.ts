@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
     );
     const supabase = await getSupabaseServer(request);
 
-    let providerId = await getProviderIdForUser(user.id, supabase);
+    let providerId = await getProviderIdForUser(user.id, supabase, { request });
     if (!providerId && user.role === "superadmin") {
       const qp = request.nextUrl.searchParams.get("provider_id");
       if (qp && isValidUUID(qp)) {
@@ -103,7 +103,7 @@ export async function PATCH(request: NextRequest) {
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
-    const providerId = await getProviderIdForUser(user.id, supabase);
+    const providerId = await getProviderIdForUser(user.id, supabase, { request });
     if (!providerId) {
       return handleApiError(
         new Error("Provider not found"),

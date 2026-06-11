@@ -3,13 +3,8 @@
  */
 
 import { NextRequest } from "next/server";
-import { requireRoleInApi, successResponse, handleApiError, errorResponse, getProviderIdForUser } from "@/lib/supabase/api-helpers";
+import { requireRoleInApi, successResponse, handleApiError, errorResponse, userHasProviderAccessAdmin } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-
-async function getProviderId(userId: string, request: NextRequest): Promise<string | null> {
-  const supabase = getSupabaseAdmin();
-  return getProviderIdForUser(userId, supabase as never, { request });
-}
 
 export async function PATCH(
   request: NextRequest,
@@ -17,8 +12,7 @@ export async function PATCH(
 ) {
   try {
     const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
-    const providerId = await getProviderId(user.id, request);
-    if (!providerId) return errorResponse("Provider not found", "NOT_FOUND", 404);
+    const supabase = getSupabaseAdmin();
     const { id: campaignId } = await params;
 
     const body = await request.json();
@@ -30,14 +24,17 @@ export async function PATCH(
       }
       updates.status = status;
     }
-    const supabase = getSupabaseAdmin();
     const { data: existing } = await supabase
       .from("ads_campaigns")
       .select("id, provider_id, pack_impressions, budget, spent, billing_model, start_at, end_at, funded_at")
       .eq("id", campaignId)
-      .single();
-    if (!existing || existing.provider_id !== providerId) {
+      .maybeSingle();
+    if (!existing) {
       return errorResponse("Campaign not found", "NOT_FOUND", 404);
+    }
+    const campaignProviderId = String((existing as { provider_id?: string }).provider_id ?? "");
+    if (!campaignProviderId || !(await userHasProviderAccessAdmin(supabase, user.id, campaignProviderId))) {
+      return errorResponse("You do not have access to this campaign", "FORBIDDEN", 403);
     }
     const billingModel = (existing as any).billing_model ?? "cpc_budget";
     const isPackCampaign = (existing as any).pack_impressions != null;
@@ -114,7 +111,7 @@ export async function PATCH(
       .from("ads_campaigns")
       .update(updates)
       .eq("id", campaignId)
-      .eq("provider_id", providerId)
+      .eq("provider_id", campaignProviderId)
       .select()
       .single();
 

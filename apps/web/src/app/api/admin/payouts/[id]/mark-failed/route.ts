@@ -155,7 +155,7 @@ export async function POST(
       );
     }
 
-    // Update payout status
+    // Update payout status (optimistic lock: only if status unchanged since read)
     const { data: updatedPayout, error } = await supabase
       .from("payouts")
       .update({
@@ -166,10 +166,11 @@ export async function POST(
         processed_by: user.id,
       })
       .eq("id", id)
+      .eq("status", payoutData.status)
       .select()
-      .single();
+      .maybeSingle();
 
-    if (error || !updatedPayout) {
+    if (error) {
       console.error("Error updating payout:", error);
       return NextResponse.json(
         {
@@ -180,6 +181,18 @@ export async function POST(
           },
         },
         { status: 500 }
+      );
+    }
+    if (!updatedPayout) {
+      return NextResponse.json(
+        {
+          data: null,
+          error: {
+            message: "Payout was already processed by another admin",
+            code: "STATE_CONFLICT",
+          },
+        },
+        { status: 409 }
       );
     }
 

@@ -1,7 +1,10 @@
 import { NextRequest } from "next/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
+import {
+  getProviderNetAfterRefundsTotal,
+  getProviderRevenue,
+} from "@/lib/reports/revenue-helpers";
 import { DASHBOARD_REVENUE_TRANSACTION_TYPES } from "@/lib/reports/constants";
 import {
   sumTipNet,
@@ -117,8 +120,6 @@ export async function GET(request: NextRequest) {
     // Ensure current period query only includes up to now (not future)
     const thisMonthEndDate = now < thisMonthEnd ? now : thisMonthEnd;
 
-    const dashOpts = { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES, timezone: tz };
-
     // Parallel queries for better performance
     const [
       revenueResult,
@@ -126,17 +127,29 @@ export async function GET(request: NextRequest) {
       upcomingBookingsResult,
       customerDataResult,
     ] = await Promise.all([
-      // Revenue — same net as main provider dashboard revenue cards
+      // Headline revenue — recognized provider revenue net of refund clawbacks (matches business overview)
       Promise.all([
-        getProviderRevenue(supabaseAdmin, providerId, new Date(0), now, locationId, dashOpts),
-        getProviderRevenue(supabaseAdmin, providerId, thisMonthStart, thisMonthEndDate, locationId, dashOpts),
-        getProviderRevenue(supabaseAdmin, providerId, lastMonthStart, lastMonthEnd, locationId, dashOpts),
+        getProviderNetAfterRefundsTotal(supabaseAdmin, providerId, new Date(0), now, locationId),
+        getProviderNetAfterRefundsTotal(
+          supabaseAdmin,
+          providerId,
+          thisMonthStart,
+          thisMonthEndDate,
+          locationId,
+        ),
+        getProviderNetAfterRefundsTotal(
+          supabaseAdmin,
+          providerId,
+          lastMonthStart,
+          lastMonthEnd,
+          locationId,
+        ),
       ]),
       // Booking counts (parallel queries)
       Promise.all([
         (() => { let q = supabaseAdmin.from("bookings").select("id", { count: "exact", head: true }).eq("provider_id", providerId); if (locationId) q = q.eq("location_id", locationId); return q; })(),
-        (() => { let q = supabaseAdmin.from("bookings").select("id", { count: "exact", head: true }).eq("provider_id", providerId).gte("created_at", thisMonthStart.toISOString()).lte("created_at", thisMonthEndDate.toISOString()); if (locationId) q = q.eq("location_id", locationId); return q; })(),
-        (() => { let q = supabaseAdmin.from("bookings").select("id", { count: "exact", head: true }).eq("provider_id", providerId).gte("created_at", lastMonthStart.toISOString()).lte("created_at", lastMonthEnd.toISOString()); if (locationId) q = q.eq("location_id", locationId); return q; })(),
+        (() => { let q = supabaseAdmin.from("bookings").select("id", { count: "exact", head: true }).eq("provider_id", providerId).gte("scheduled_at", thisMonthStart.toISOString()).lte("scheduled_at", thisMonthEndDate.toISOString()); if (locationId) q = q.eq("location_id", locationId); return q; })(),
+        (() => { let q = supabaseAdmin.from("bookings").select("id", { count: "exact", head: true }).eq("provider_id", providerId).gte("scheduled_at", lastMonthStart.toISOString()).lte("scheduled_at", lastMonthEnd.toISOString()); if (locationId) q = q.eq("location_id", locationId); return q; })(),
       ]),
       // Upcoming bookings
       (() => { let q = supabaseAdmin.from("bookings").select("id", { count: "exact", head: true }).eq("provider_id", providerId).eq("status", "confirmed").gt("scheduled_at", now.toISOString()); if (locationId) q = q.eq("location_id", locationId); return q; })(),
@@ -145,10 +158,8 @@ export async function GET(request: NextRequest) {
     ]);
 
     // Extract revenue data
-    const [allTimeRevenue, thisMonthRevenueData, lastMonthRevenueData] = revenueResult;
-    const totalRevenue = allTimeRevenue.totalRevenue;
-    const thisMonthRevenue = thisMonthRevenueData.totalRevenue;
-    const lastMonthRevenue = lastMonthRevenueData.totalRevenue;
+    const [allTimeRevenue, thisMonthRevenue, lastMonthRevenue] = revenueResult;
+    const totalRevenue = allTimeRevenue;
 
     // Extract booking counts
     const [totalBookingsCount, thisMonthBookingsCount, lastMonthBookingsCount] = bookingsResult;
@@ -220,15 +231,21 @@ export async function GET(request: NextRequest) {
     for (const bucket of trendBuckets) {
       trendPromises.push(
         Promise.all([
-          getProviderRevenue(supabaseAdmin, providerId, bucket.start, bucket.end, locationId, dashOpts),
+          getProviderNetAfterRefundsTotal(
+            supabaseAdmin,
+            providerId,
+            bucket.start,
+            bucket.end,
+            locationId,
+          ),
           (() => {
-            let q = supabaseAdmin.from("bookings").select("id", { count: "exact", head: true }).eq("provider_id", providerId).gte("created_at", bucket.start.toISOString()).lte("created_at", bucket.end.toISOString());
+            let q = supabaseAdmin.from("bookings").select("id", { count: "exact", head: true }).eq("provider_id", providerId).gte("scheduled_at", bucket.start.toISOString()).lte("scheduled_at", bucket.end.toISOString());
             if (locationId) q = q.eq("location_id", locationId);
             return q;
           })(),
         ]).then(([revenueData, bookingsData]) => ({
           month: bucket.label,
-          revenue: revenueData.totalRevenue,
+          revenue: revenueData,
           bookings: bookingsData.count || 0,
         }))
       );
@@ -265,6 +282,21 @@ export async function GET(request: NextRequest) {
     }
 
     const currentRange = { from: thisMonthStart, to: thisMonthEndDate };
+    const dashOpts = {
+      transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES,
+      timezone: tz,
+    };
+    const [allTimeServiceEarnings, currentServiceEarnings] = await Promise.all([
+      getProviderRevenue(supabaseAdmin, providerId, new Date(0), now, locationId, dashOpts),
+      getProviderRevenue(
+        supabaseAdmin,
+        providerId,
+        thisMonthStart,
+        thisMonthEndDate,
+        locationId,
+        dashOpts,
+      ),
+    ]);
 
     let allTimeLB = {
       tips_net: 0,
@@ -308,9 +340,9 @@ export async function GET(request: NextRequest) {
     }
 
     const earningsBasis =
-      "Headline service revenue = sum of net `provider_earnings` in range (platform-settled; may exclude direct walk-in cash). " +
-      "Tips are separate `tip` rows (net). Platform retained = `service_fee` + `platform_fee` (absolute). " +
-      "Refunds = `refund` rows + negative `provider_earnings`, aligned with the finance page.";
+      "Headline recognized revenue = sum of provider_earnings, tip, travel_fee, cancellation_fee, and walk-in add-ons net of provider refund clawbacks (matches business overview). " +
+      "Tips are also broken out separately. Platform retained = `service_fee` + `platform_fee` (absolute). " +
+      "Refunds = provider-money `refund` rows + negative `provider_earnings`, aligned with the finance page.";
 
     const curFromYmd = formatDateYmd(thisMonthStart, tz);
     const curToYmd = formatDateYmd(thisMonthEndDate, tz);
@@ -326,18 +358,18 @@ export async function GET(request: NextRequest) {
 
     const basis = {
       ledger_period:
-        "`provider_earnings` net by `finance_transactions.created_at` — same as dashboard revenue cards (platform-settled; direct cash walk-ins often absent).",
+        "Recognized provider revenue net of refund clawbacks by `finance_transactions.created_at` — aligned with business overview (platform-settled; direct cash walk-ins often absent).",
       ledger_all_time: "All-time sum of the same ledger rows through now.",
       period_window: `${curFromYmd}–${curToYmd} (${tz.replace(/_/g, " ")}) vs prior ${prevFromYmd}–${prevToYmd}.`,
       bookings_in_period:
-        "Period totals and chart buckets count bookings whose `created_at` falls in the window (not appointment date).",
+        "Period totals and chart buckets count appointments whose `scheduled_at` falls in the window (aligned with booking reports).",
       upcoming_bookings: "`confirmed` with `scheduled_at` in the future (any creation date).",
       customers:
         "Distinct customers from bookings (scoped to location when filtered). Repeat = 2+ bookings ever with you; single-booking = exactly one — not the same as marketing “new”.",
       top_services:
         "Per-offering ledger net for completed appointments scheduled in the current period, allocated by line price share (same as Sales by service / top-services report).",
       trends_revenue: `Chart revenue per bucket: same ledger rule as period headline. ${trendBucketDescription}`,
-      trends_bookings: `Chart bookings per bucket: same created_at rule as period counts. ${trendBucketDescription}`,
+      trends_bookings: `Chart bookings per bucket: same scheduled_at rule as period counts. ${trendBucketDescription}`,
     };
 
     return successResponse({
@@ -367,6 +399,9 @@ export async function GET(request: NextRequest) {
       earnings_breakdown: {
         basis: earningsBasis,
         all_time: {
+          recognized_revenue_net: totalRevenue,
+          service_earnings: allTimeServiceEarnings.totalRevenue,
+          /** @deprecated use recognized_revenue_net */
           service_earnings_net: totalRevenue,
           tips_net: allTimeLB.tips_net,
           cancellation_fees: allTimeLB.cancellation_fees,
@@ -377,6 +412,9 @@ export async function GET(request: NextRequest) {
           start: thisMonthStart.toISOString(),
           end: thisMonthEndDate.toISOString(),
           period,
+          recognized_revenue_net: thisMonthRevenue,
+          service_earnings: currentServiceEarnings.totalRevenue,
+          /** @deprecated use recognized_revenue_net */
           service_earnings_net: thisMonthRevenue,
           tips_net: currentLB.tips_net,
           cancellation_fees: currentLB.cancellation_fees,
@@ -384,7 +422,8 @@ export async function GET(request: NextRequest) {
           platform_fees_retained: currentLB.platform_fees_retained,
         },
         // Legacy flat keys (prefer all_time / current_period)
-        service_earnings: totalRevenue,
+        recognized_revenue_net: totalRevenue,
+        service_earnings: allTimeServiceEarnings.totalRevenue,
         cancellation_fees: allTimeLB.cancellation_fees,
         cancellation_fees_this_month: currentLB.cancellation_fees,
         tips: allTimeLB.tips_net,
@@ -412,6 +451,7 @@ export async function GET(request: NextRequest) {
         total: uniqueCustomers.size,
         repeat: repeatCustomers,
         single_booking: uniqueCustomers.size - repeatCustomers,
+        /** @deprecated misleading — use single_booking (not new-this-period) */
         new: uniqueCustomers.size - repeatCustomers,
       },
       services: serviceRows
