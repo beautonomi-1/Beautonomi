@@ -2,7 +2,7 @@
  * Push the exact OS app-icon badge to a user's devices via OneSignal (SetTo).
  * Used after mark-all-read so killed/background apps clear stale badge counts.
  */
-import { getUnreadNotificationCount } from "@/lib/notifications/insert-notification";
+import { getTotalUnreadBadgeCount } from "@/lib/notifications/total-unread-badge";
 import { exactIosBadgeCount } from "@/lib/notifications/exact-ios-badge-count";
 import { sendToUser } from "@/lib/notifications/onesignal";
 import type { OneSignalAppType } from "@/lib/platform/secrets";
@@ -26,7 +26,9 @@ export async function syncPushBadgeCount(
     const unread =
       typeof options?.unreadCount === "number"
         ? exactIosBadgeCount(options.unreadCount)
-        : exactIosBadgeCount(await getUnreadNotificationCount(userId));
+        : exactIosBadgeCount(
+            await getTotalUnreadBadgeCount(userId, options?.appType ?? "customer"),
+          );
 
     await sendToUser(
       userId,
@@ -62,12 +64,17 @@ export async function syncPushBadgeCountAllApps(
   userId: string,
   unreadCount?: number,
 ): Promise<void> {
-  const unread =
+  const [customerUnread, providerUnread] = await Promise.all([
     typeof unreadCount === "number"
       ? exactIosBadgeCount(unreadCount)
-      : exactIosBadgeCount(await getUnreadNotificationCount(userId));
+      : exactIosBadgeCount(await getTotalUnreadBadgeCount(userId, "customer")),
+    typeof unreadCount === "number"
+      ? exactIosBadgeCount(unreadCount)
+      : exactIosBadgeCount(await getTotalUnreadBadgeCount(userId, "provider")),
+  ]);
+
   await Promise.all([
-    syncPushBadgeCount(userId, { appType: "customer", unreadCount: unread }),
-    syncPushBadgeCount(userId, { appType: "provider", unreadCount: unread }),
+    syncPushBadgeCount(userId, { appType: "customer", unreadCount: customerUnread }),
+    syncPushBadgeCount(userId, { appType: "provider", unreadCount: providerUnread }),
   ]);
 }

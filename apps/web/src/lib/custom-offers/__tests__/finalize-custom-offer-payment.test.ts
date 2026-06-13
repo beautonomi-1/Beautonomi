@@ -423,4 +423,39 @@ describe("finalizeCustomOfferPayment idempotency", () => {
     expect(financeInserts.length).toBeGreaterThan(2);
     expect(financeInserts.every((row) => String(row.description).includes("[custom_offer:offer-1]"))).toBe(true);
   });
+
+  it("scales commission ledger to collected cash on deposit payments", async () => {
+    const { admin, financeInserts } = makeAdminMockForSuccessfulFinalize();
+
+    const res = await finalizeCustomOfferPayment(admin, {
+      offerId: "offer-1",
+      reference: "co_deposit_ref",
+      paystackAmountMajor: 30,
+      paystackFeesMajor: 1,
+      walletAmountApplied: 0,
+      giftCardAmountApplied: 0,
+      pricingMetadata: {
+        total_amount: 100,
+        commission_base: 80,
+        payment_option: "deposit",
+        deposit_amount: 30,
+        tip_amount: 0,
+        tax_amount: 0,
+        travel_fee: 20,
+        service_fee_amount: 0,
+      },
+      customerEmail: "customer@example.com",
+      paymentProvider: "paystack",
+    });
+
+    expect(res).toEqual({ ok: true, bookingId: "booking-1" });
+    const paymentRow = financeInserts.find((row) => row.transaction_type === "payment");
+    const earningsRow = financeInserts.find((row) => row.transaction_type === "provider_earnings");
+    expect(paymentRow).toBeTruthy();
+    expect(earningsRow).toBeTruthy();
+    const commission = Number(paymentRow?.commission ?? 0);
+    const earnings = Number(earningsRow?.net_amount ?? earningsRow?.amount ?? 0);
+    expect(Number(paymentRow?.amount)).toBeLessThan(80);
+    expect(commission + earnings).toBeCloseTo(Number(paymentRow?.amount), 2);
+  });
 });

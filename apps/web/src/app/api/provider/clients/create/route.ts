@@ -21,13 +21,8 @@ import {
 import {
   hasProviderCustomerActivityRelationship,
 } from "@/lib/provider/client-access";
-
-/**
- * Helper function to create a walk-in email
- */
-function createWalkInEmail(): string {
-  return `walkin-${Date.now()}-${Math.random().toString(36).substring(2, 9)}@beautonomi.invalid`;
-}
+import { createOrResolveShadowCustomer } from "@/lib/users/create-shadow-customer";
+import { createWalkInEmail } from "@/lib/users/shadow-email";
 
 /**
  * Helper function to wait for user profile row to be created by trigger
@@ -163,188 +158,38 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // If user doesn't exist, create new user
     if (!customerId) {
-      let authUserId: string | undefined;
-      
-      // OPTION 1: Try to create auth user using Supabase Admin SDK
-      try {
-        const { data: createdUser, error: createUserError } = await supabaseAdmin.auth.admin.createUser({
-          email: email,
-          email_confirm: true,
-          user_metadata: {
-            full_name: full_name,
-            phone: phone || body.phone || null,
-            role: "customer",
-          },
-        });
+      const shadowResult = await createOrResolveShadowCustomer({
+        supabaseAdmin,
+        fullName: full_name,
+        email: providerSuppliedEmail || null,
+        phone: body.phone,
+        phoneCountryCode: body.countryCode,
+        providerId,
+        shadowSource: "provider_client_create",
+        createdByUserId: user.id,
+      });
 
-        if (createdUser?.user?.id) {
-          authUserId = createdUser.user.id;
-          console.log(`✓ Created auth user via SDK: ${authUserId}`);
-        } else if (createUserError) {
-          console.warn("Auth SDK creation failed:", createUserError.message);
-        }
-      } catch (authError: any) {
-        console.error("Exception during auth SDK creation:", authError.message);
+      if (shadowResult.ok === false) {
+        return handleApiError(new Error(shadowResult.message), "Failed to create client", 500);
       }
 
-      // OPTION 2: If SDK failed, try direct database query to find existing user
-      if (!authUserId) {
-        try {
-          console.log("Attempting to find existing auth user by email...");
-          const { data: existingUsers, error: queryError } = await supabaseAdmin
-            .from("users")
-            .select("id")
-            .eq("email", email)
-            .limit(1);
-          
-          if (existingUsers && existingUsers.length > 0) {
-            authUserId = existingUsers[0].id;
-            matchedExistingCustomer = true;
-            matchedOn = "email";
-            console.log(`✓ Found existing user in public.users: ${authUserId}`);
-          } else if (queryError) {
-            console.error("Error querying existing users:", queryError);
-          }
-        } catch (lookupError) {
-          console.error("Exception looking up existing user:", lookupError);
-        }
-      }
+      customerId = shadowResult.customerId;
+      matchedExistingCustomer = shadowResult.matchedExisting;
+      matchedOn = shadowResult.matchedOn;
 
-      // OPTION 3: If still no user, use bypass function to insert directly (NUCLEAR OPTION)
-      if (!authUserId) {
-        try {
-          console.log("Attempting direct user creation via bypass function...");
-          
-          // Call the bypass function that creates both auth.users and public.users
-          const { data: bypassResult, error: bypassError } = await supabaseAdmin
-            .rpc('create_user_bypass_trigger', {
-              p_email: email,
-              p_full_name: full_name,
-              p_phone: phone || body.phone || null,
-              p_role: 'customer'
-            });
-          
-          if (bypassResult && bypassResult.success && bypassResult.user_id) {
-            authUserId = bypassResult.user_id;
-            customerId = authUserId;
-            console.log(`✓ Created user via bypass function: ${authUserId}`);
-            
-            // User and wallet already created by the function, skip manual creation below
-            // Jump directly to client creation
-            const { error: clientError } = await supabaseAdmin
-              .from("provider_clients")
-              .insert({
-                provider_id: providerId,
-                customer_id: customerId,
-                notes: body.notes || "",
-                relationship_source: "manual_new_customer",
-                privacy_level: "standard",
-                source_metadata: {
-                  matched_on: null,
-                  provider_supplied_name: full_name,
-                  provider_supplied_email: providerSuppliedEmail || null,
-                  provider_supplied_phone: phone || body.phone || null,
-                  linked_via: "provider_client_create_bypass",
-                },
-                linked_existing_platform_user: false,
-                created_by_user_id: user.id,
-              });
-
-            if (clientError) {
-              throw clientError;
-            }
-
-            // Fetch the created user details
-            const { data: userData } = await supabaseAdmin
-              .from("users")
-              .select("id, email, full_name, phone, created_at")
-              .eq("id", customerId)
-              .single();
-
-            return NextResponse.json({
-              success: true,
-              data: userData,
-            });
-          } else {
-            console.error("Bypass function failed:", bypassResult?.error || bypassError);
-          }
-        } catch (sqlError: any) {
-          console.error("Exception during bypass function:", sqlError.message);
-        }
-      }
-
-      // FINAL FALLBACK: If all methods failed, return error
-      if (!authUserId) {
-        console.error("All auth creation methods failed. Cannot proceed without auth user.");
-        return handleApiError(
-          new Error("Failed to create user account. Please apply migration 200 (create_user_bypass_trigger function) or contact support."),
-          "Failed to create client",
-          500
-        );
-      }
-
-      customerId = authUserId;
-
-      // If we reach here, customerId should be set (either from successful creation or from error recovery)
-      if (!customerId) {
-        return handleApiError(
-          new Error("User ID not available after creation attempt"),
-          "Failed to create client",
-          500
-        );
-      }
-      
-      // Manually create user profile (bypass trigger completely)
       if (!matchedExistingCustomer) {
-      console.log(`Creating user profile for ${customerId} (bypassing trigger)`);
-      
-      const { data: _manualUser, error: manualError } = await supabaseAdmin
-        .from("users")
-        .insert({
-          id: customerId,
-          email: email,
-          full_name: full_name,
-          phone: phone || body.phone || null,
-          role: "customer",
-        })
-        .select()
-        .single();
-      
-      if (manualError && manualError.code !== '23505') { // Ignore duplicate key errors
-        console.error("Error creating user profile:", manualError);
-        
-        // If user already exists, just update it
-        const { error: updateError } = await supabaseAdmin
-          .from("users")
-          .update({
-            email: email,
-            full_name: full_name,
-            phone: phone || body.phone || null,
-          })
-          .eq("id", customerId);
-        
-        if (updateError) {
-          console.error("Error updating existing user profile:", updateError);
-        }
-      }
-      
-      // Create wallet for new user
       try {
-        await supabaseAdmin
-          .from("user_wallets")
-          .insert({
-            user_id: customerId,
-            currency: walletCurrency,
-          });
-      } catch (walletError: any) {
-        if (walletError?.code !== '23505') { // Ignore duplicate key errors
+        await supabaseAdmin.from("user_wallets").insert({
+          user_id: customerId,
+          currency: walletCurrency,
+        });
+      } catch (walletError: unknown) {
+        const code = (walletError as { code?: string })?.code;
+        if (code !== "23505") {
           console.warn("Error creating wallet:", walletError);
         }
       }
-      
-      console.log("Successfully created user profile manually");
 
       // Update user profile with all additional fields
       const userUpdates: Record<string, any> = {

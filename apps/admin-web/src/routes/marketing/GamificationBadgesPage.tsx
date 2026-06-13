@@ -21,6 +21,9 @@ import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { adminToast } from "@/lib/adminToast";
 
+const BADGE_REQUIREMENT_HINT =
+  "Supported requirement keys: points, min_rating, min_reviews, min_bookings (non-negative numbers). Missing keys mean no minimum.";
+
 type BadgeRow = Record<string, unknown> & {
   id?: string;
   name?: string;
@@ -78,6 +81,8 @@ export function GamificationBadgesPage() {
   const [eReq, setEReq] = useState("");
   const [eBen, setEBen] = useState("");
   const [eIconUrl, setEIconUrl] = useState("");
+  const [eDesc, setEDesc] = useState("");
+  const [eActive, setEActive] = useState(true);
 
   const invalidate = () => void qc.invalidateQueries({ queryKey: [...adminQueryKeys.root, "gamification", "badges"] });
 
@@ -142,6 +147,8 @@ export function GamificationBadgesPage() {
     setETier(String(row.tier ?? ""));
     setEColor(String(row.color ?? ""));
     setEIconUrl(String(row.icon_url ?? ""));
+    setEDesc(String(row.description ?? ""));
+    setEActive(row.is_active !== false);
     setEReq(JSON.stringify(row.requirements ?? {}, null, 2));
     setEBen(JSON.stringify(row.benefits ?? {}, null, 2));
   }
@@ -149,15 +156,19 @@ export function GamificationBadgesPage() {
   function submitEdit() {
     if (!editId) return;
     const tier = parseInt(eTier, 10);
+    if (!eName.trim() || !eSlug.trim()) return;
+    if (Number.isNaN(tier) || tier < 1 || tier > 10) return;
     const patch: Record<string, unknown> = {
       name: eName.trim(),
-      slug: eSlug.trim(),
+      slug: eSlug.trim().toLowerCase().replace(/\s+/g, "-"),
       color: eColor.trim(),
+      description: eDesc.trim() || null,
       icon_url: eIconUrl.trim() || null,
+      is_active: eActive,
       requirements: parseJsonObject(eReq, "Requirements"),
       benefits: parseJsonObject(eBen, "Benefits"),
+      tier,
     };
-    if (!Number.isNaN(tier)) patch.tier = tier;
     patchBadge.mutate({ id: editId, patch });
   }
 
@@ -211,7 +222,7 @@ export function GamificationBadgesPage() {
 
       {creating ? (
         <AdminPanel>
-          <p className="mb-3 text-sm text-gray-600">POST /api/admin/gamification/badges</p>
+          <p className="mb-3 text-sm text-gray-600">{BADGE_REQUIREMENT_HINT}</p>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="text-sm">
               Name
@@ -261,6 +272,7 @@ export function GamificationBadgesPage() {
       {editId ? (
         <AdminPanel>
           <p className="mb-2 text-sm font-medium text-gray-900">Edit badge</p>
+          <p className="mb-3 text-sm text-gray-600">{BADGE_REQUIREMENT_HINT}</p>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="text-sm">
               Name
@@ -271,7 +283,7 @@ export function GamificationBadgesPage() {
               <input className="mt-1 w-full rounded border border-gray-300 px-2 py-1" value={eSlug} onChange={(e) => setESlug(e.target.value)} />
             </label>
             <label className="text-sm">
-              Tier
+              Tier (1–10)
               <input className="mt-1 w-full rounded border border-gray-300 px-2 py-1" value={eTier} onChange={(e) => setETier(e.target.value)} />
             </label>
             <label className="text-sm">
@@ -279,8 +291,16 @@ export function GamificationBadgesPage() {
               <input className="mt-1 w-full rounded border border-gray-300 px-2 py-1" value={eColor} onChange={(e) => setEColor(e.target.value)} />
             </label>
             <label className="text-sm sm:col-span-2">
+              Description
+              <input className="mt-1 w-full rounded border border-gray-300 px-2 py-1" value={eDesc} onChange={(e) => setEDesc(e.target.value)} />
+            </label>
+            <label className="text-sm sm:col-span-2">
               Icon URL
               <input className="mt-1 w-full rounded border border-gray-300 px-2 py-1" value={eIconUrl} onChange={(e) => setEIconUrl(e.target.value)} />
+            </label>
+            <label className="flex items-center gap-2 text-sm sm:col-span-2">
+              <input type="checkbox" checked={eActive} onChange={(e) => setEActive(e.target.checked)} />
+              Active
             </label>
             <label className="text-sm sm:col-span-2">
               Requirements
@@ -295,7 +315,14 @@ export function GamificationBadgesPage() {
             <button
               type="button"
               className="rounded-lg bg-gray-900 px-3 py-2 text-sm text-white disabled:opacity-50"
-              disabled={patchBadge.isPending}
+              disabled={
+                patchBadge.isPending ||
+                !eName.trim() ||
+                !eSlug.trim() ||
+                Number.isNaN(parseInt(eTier, 10)) ||
+                parseInt(eTier, 10) < 1 ||
+                parseInt(eTier, 10) > 10
+              }
               onClick={() => submitEdit()}
             >
               Save

@@ -10,6 +10,7 @@ import {
   resolveBroadcastCustomerUserIds,
   resolveBroadcastProviderUserIds,
 } from "@/lib/admin/broadcast-recipient-resolution";
+import { resolveResendCredentials } from "@/lib/integrations/resend";
 
 const broadcastEmailSchema = z
   .object({
@@ -124,20 +125,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const apiKey =
-      process.env.RESEND_API_KEY?.trim() ||
-      process.env.EMAIL_PROVIDER_API_KEY?.trim() ||
-      "";
-    if (!apiKey) {
+    const resendCreds = await resolveResendCredentials(admin, tenantId);
+    if (!resendCreds?.apiKey) {
       return errorResponse(
-        "Email provider not configured (RESEND_API_KEY missing)",
+        "Email provider not configured (Resend API key missing — set in Admin → Integrations → Resend or RESEND_API_KEY)",
         "EMAIL_PROVIDER_NOT_CONFIGURED",
         503,
       );
     }
-    const fromAddress =
-      process.env.EMAIL_FROM_ADDRESS?.trim() ||
-      "Beautonomi <notifications@beautonomi.app>";
+    const apiKey = resendCreds.apiKey;
+    const fromAddress = resendCreds.fromAddress;
 
     const subject = b.subject.trim();
     const text = b.message.trim();

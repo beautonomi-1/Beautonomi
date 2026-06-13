@@ -240,27 +240,37 @@ export async function GET(request: NextRequest) {
         if (stats.remaining > 0) allProcessed = false;
       }
       if (!allStatsOk || !allProcessed) continue;
-      if (maxDelivered > 0) continue; // delivered to at least one device — nothing to do
+
+      let deviceCountByUser = new Map<string, number>();
+      for (const uid of group.userIds) {
+        let deviceQuery = supabase
+          .from("user_devices")
+          .select("user_id")
+          .eq("user_id", uid);
+        if (group.meta.app_type) deviceQuery = deviceQuery.eq("app_type", group.meta.app_type);
+        const { data: userDevices } = await deviceQuery;
+        const count = (userDevices ?? []).filter(
+          (d) => typeof (d as { user_id?: string }).user_id === "string",
+        ).length;
+        if (count > 0) deviceCountByUser.set(uid, count);
+      }
+
+      const needsPartialRetry =
+        group.userIds.length === 1
+          ? (() => {
+              const uid = group.userIds[0];
+              const expected = deviceCountByUser.get(uid) ?? 0;
+              return expected > 0 && maxDelivered < expected;
+            })()
+          : maxDelivered === 0;
+
+      if (!needsPartialRetry) continue;
 
       undelivered++;
 
-      // Re-enqueue only for recipients that currently have a registered device
-      // for the relevant app, so we don't burn retries on users with no device.
-      let deviceQuery = supabase
-        .from("user_devices")
-        .select("user_id")
-        .in("user_id", group.userIds);
-      if (group.meta.app_type) deviceQuery = deviceQuery.eq("app_type", group.meta.app_type);
-      const { data: devices } = await deviceQuery;
-      const withDevice = new Set(
-        (devices ?? [])
-          .map((d) => (d as { user_id?: string }).user_id)
-          .filter((x): x is string => typeof x === "string"),
-      );
-
       for (const uid of group.userIds) {
         if (reEnqueued >= MAX_REENQUEUE) break;
-        if (!withDevice.has(uid)) continue;
+        if ((deviceCountByUser.get(uid) ?? 0) === 0) continue;
         const res = await enqueueNotification({
           channel: "push",
           templateKey: group.meta.template_key ?? "notification",

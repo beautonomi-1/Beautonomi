@@ -19,7 +19,7 @@ import { getReportDateRange } from "@/lib/reportDateRanges";
 import { useApi, useApiPost } from "@/hooks/useApi";
 import { useFocusedApi } from "@/hooks/useFocusedApi";
 import { useResponsive } from "@/hooks/useResponsive";
-import { useModuleConfig, useFeatureFlag } from "@/providers/ConfigBundleProvider";
+import { useConfigBundle, useModuleConfig, useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { useProvider } from "@/providers/ProviderContext";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -224,6 +224,15 @@ export default function SalesScreen() {
   const adsFeatureOn = useFeatureFlag("ads.enabled");
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
   const yocoEnabled = useFeatureFlag("payment_yoco");
+  const { isLoading: configLoading } = useConfigBundle();
+  const unifiedPosEnabled = useFeatureFlag("provider.unified_pos_checkout");
+
+  useEffect(() => {
+    if (!configLoading && !unifiedPosEnabled) {
+      router.replace("/(app)/(tabs)/dashboard" as never);
+    }
+  }, [configLoading, unifiedPosEnabled, router]);
+
   const paymentMethodOptions = useMemo(() => {
     const base: { label: string; value: PaymentMethod; icon: keyof typeof Ionicons.glyphMap }[] = [
       { label: "Cash", value: "cash", icon: "cash-outline" },
@@ -1442,6 +1451,10 @@ export default function SalesScreen() {
         </View>
       </BottomSheet>
     );
+  }
+
+  if (!unifiedPosEnabled) {
+    return null;
   }
 
   return (

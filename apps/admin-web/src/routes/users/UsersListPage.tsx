@@ -72,6 +72,8 @@ type UserRow = Record<string, unknown> & {
   last_sign_in_at?: string | null;
   last_login_at?: string | null;
   stats?: { booking_count?: number; provider_count?: number };
+  is_shadow?: boolean;
+  claimed_at?: string | null;
   verification?: {
     email_verified?: boolean;
     phone_verified?: boolean;
@@ -129,9 +131,21 @@ function VerificationBadges({ v }: { v: UserRow["verification"] }) {
   );
 }
 
+type ShadowStats = {
+  shadow_unclaimed?: number;
+  claimed_total?: number;
+  claimed_last_30d?: number;
+};
+
 type UsersPayload = {
   data: UserRow[];
-  meta: { page: number; limit: number; total: number; has_more: boolean };
+  meta: {
+    page: number;
+    limit: number;
+    total: number;
+    has_more: boolean;
+    shadow_stats?: ShadowStats | null;
+  };
 };
 
 function str(v: unknown): string {
@@ -149,6 +163,7 @@ export function UsersListPage() {
   const search = sp.get("search") || "";
   const role = sp.get("role") || "";
   const signupSource = sp.get("signup_source") || "";
+  const isShadow = sp.get("is_shadow") || "";
   const [draftSearch, setDraftSearch] = useDebouncedUrlParam(search, setSp, { param: "search" });
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [purgeUser, setPurgeUser] = useState<{ id: string; email: string } | null>(null);
@@ -161,7 +176,10 @@ export function UsersListPage() {
     role: "customer" as (typeof MANAGEABLE_USER_ROLES)[number],
   });
 
-  const qk = useMemo(() => `${page}|${search}|${role}|${signupSource}`, [page, search, role, signupSource]);
+  const qk = useMemo(
+    () => `${page}|${search}|${role}|${signupSource}|${isShadow}`,
+    [page, search, role, signupSource, isShadow],
+  );
 
   const q = useQuery({
     queryKey: adminQueryKeys.users.list(qk),
@@ -172,6 +190,7 @@ export function UsersListPage() {
       if (search) p.set("search", search);
       if (role) p.set("role", role);
       if (signupSource) p.set("signup_source", signupSource);
+      if (isShadow) p.set("is_shadow", isShadow);
       return adminApi.getJson<UsersPayload>(`/api/admin/users?${p}`, { timeoutMs: 60_000 });
     },
     enabled: allowed,
@@ -462,11 +481,56 @@ export function UsersListPage() {
               ))}
             </select>
           </label>
+          <label className="block w-full min-w-[160px] text-sm lg:w-auto">
+            <span className="text-gray-600">Guest accounts</span>
+            <select
+              className="mt-1 min-h-11 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm shadow-sm lg:w-52"
+              value={isShadow}
+              onChange={(e) => updateParams({ is_shadow: e.target.value || null, page: "1" })}
+            >
+              <option value="">All</option>
+              <option value="true">Guest (unclaimed)</option>
+              <option value="false">Registered</option>
+            </select>
+          </label>
         </div>
         {meta ? (
           <p className="mt-3 text-sm text-gray-600">
             Page {meta.page} of {Math.max(1, Math.ceil(meta.total / meta.limit))} · {meta.total} users
           </p>
+        ) : null}
+        {meta?.shadow_stats ? (
+          <div className="mt-4 grid gap-3 border-t border-gray-100 pt-4 sm:grid-cols-3">
+            <button
+              type="button"
+              className="rounded-xl border border-amber-100 bg-amber-50/70 p-3 text-left transition hover:bg-amber-50"
+              title="Show only unclaimed guest accounts"
+              onClick={() => updateParams({ is_shadow: "true", page: "1" })}
+            >
+              <div className="text-xs font-medium uppercase tracking-wide text-amber-800">
+                Guest accounts (unclaimed)
+              </div>
+              <div className="mt-1 text-2xl font-semibold tabular-nums text-amber-900">
+                {Number(meta.shadow_stats.shadow_unclaimed ?? 0)}
+              </div>
+            </button>
+            <div className="rounded-xl border border-gray-100 bg-gray-50/80 p-3">
+              <div className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                Claimed (all time)
+              </div>
+              <div className="mt-1 text-2xl font-semibold tabular-nums text-gray-900">
+                {Number(meta.shadow_stats.claimed_total ?? 0)}
+              </div>
+            </div>
+            <div className="rounded-xl border border-gray-100 bg-gray-50/80 p-3">
+              <div className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                Claimed (last 30 days)
+              </div>
+              <div className="mt-1 text-2xl font-semibold tabular-nums text-gray-900">
+                {Number(meta.shadow_stats.claimed_last_30d ?? 0)}
+              </div>
+            </div>
+          </div>
         ) : null}
       </AdminPanel>
 
@@ -579,6 +643,11 @@ export function UsersListPage() {
                       </span>
                       {suspended ? (
                         <span className="w-fit rounded-md bg-red-100 px-2 py-0.5 text-xs text-red-800">Suspended</span>
+                      ) : null}
+                      {u.is_shadow ? (
+                        <span className="w-fit rounded-md bg-amber-100 px-2 py-0.5 text-xs text-amber-900">
+                          Guest (unclaimed)
+                        </span>
                       ) : null}
                     </div>
                   </AdminTd>

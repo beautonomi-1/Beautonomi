@@ -25,6 +25,15 @@ describe("enrichAdminUserListRows", () => {
             }),
           };
         }
+        if (table === "users") {
+          return {
+            select: () => ({
+              in: async () => ({
+                data: [{ id: "u1", is_shadow: false, claimed_at: null }],
+              }),
+            }),
+          };
+        }
         return {};
       }),
       rpc: vi.fn(async () => ({

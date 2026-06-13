@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import { adminApi } from "@/lib/adminClient";
+import { AdminApiError } from "@beautonomi/admin-api-client";
 import { AdminModal } from "@/components/admin/AdminModal";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
 
@@ -76,7 +77,11 @@ export function CompliancePurgeUserModal(props: {
         compliance_audit_write_error: payload?.compliance_audit_write_error ?? null,
       });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Purge failed");
+      if (e instanceof AdminApiError) {
+        setError(e.code ? `[${e.code}] ${e.message}` : e.message);
+      } else {
+        setError(e instanceof Error ? e.message : "Purge failed");
+      }
     } finally {
       setBusy(false);
     }

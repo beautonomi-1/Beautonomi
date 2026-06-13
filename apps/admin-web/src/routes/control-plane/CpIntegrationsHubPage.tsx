@@ -7,6 +7,7 @@ import {
   Shield,
   UserCheck,
   MessageCircle,
+  Mail,
   Radio,
   Smartphone,
 } from "lucide-react";
@@ -28,6 +29,12 @@ const cards: { title: string; description: string; to: string; icon: typeof BarC
     description: "Workspace alerts for Support & Provider Ops",
     to: adminSpaTo("/admin/integrations/slack"),
     icon: Radio,
+  },
+  {
+    title: "Resend",
+    description: "Transactional email (queue, broadcasts, guest links)",
+    to: adminSpaTo("/admin/integrations/resend"),
+    icon: Mail,
   },
   {
     title: "Mapbox",

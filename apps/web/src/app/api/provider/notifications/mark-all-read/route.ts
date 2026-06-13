@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
     }
 
     invalidateProviderNotificationsListCache(user.id);
-    void syncPushBadgeCountAllApps(user.id, 0);
+    void syncPushBadgeCountAllApps(user.id);
 
     return successResponse({ message: "All notifications marked as read" });
   } catch (error) {

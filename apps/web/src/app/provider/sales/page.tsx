@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { providerApi } from "@/lib/provider-portal/api";
 import type { Sale, FilterParams, PaginationParams } from "@/lib/provider-portal/types";
 import { PageHeader } from "@/components/provider/PageHeader";
@@ -20,9 +21,13 @@ import { SectionCard } from "@/components/provider/SectionCard";
 import type { YocoPayment } from "@/lib/provider-portal/types";
 import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
 import { ProtectedPage } from "@/components/provider/ProtectedPage";
-import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
+import { useConfigBundle, useFeatureFlag } from "@/providers/ConfigBundleProvider";
+import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
 
 function ProviderSalesContent() {
+  const router = useRouter();
+  const { isLoading: configLoading } = useConfigBundle();
+  const unifiedPosEnabled = useFeatureFlag(FEATURE_FLAG_KEYS.PROVIDER_UNIFIED_POS);
   const { selectedLocationId } = useProviderPortal();
   const yocoEnabled = useFeatureFlag("payment_yoco");
   const [sales, setSales] = useState<Sale[]>([]);
@@ -34,6 +39,12 @@ function ProviderSalesContent() {
   const [yocoDialogOpen, setYocoDialogOpen] = useState(false);
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
   const [isNewSaleDialogOpen, setIsNewSaleDialogOpen] = useState(false);
+
+  useEffect(() => {
+    if (!configLoading && !unifiedPosEnabled) {
+      router.replace("/provider/dashboard");
+    }
+  }, [configLoading, unifiedPosEnabled, router]);
 
   useEffect(() => {
     loadSales();
@@ -109,6 +120,10 @@ function ProviderSalesContent() {
     // Reload sales to reflect payment status
     loadSales();
   };
+
+  if (configLoading || !unifiedPosEnabled) {
+    return <LoadingTimeout loadingMessage="Loading sales..." />;
+  }
 
   if (isLoading) {
     return <LoadingTimeout loadingMessage="Loading sales..." />;

@@ -49,6 +49,19 @@ const PROVIDER_RELATIONSHIP_BADGE: Record<string, string> = {
   staff: "bg-zinc-100 text-zinc-700",
 };
 
+/** Country may be a 2-letter ISO code (new submissions) or legacy free text. */
+function formatCountryDisplay(raw: string): string {
+  const value = raw.trim();
+  if (!/^[A-Za-z]{2}$/.test(value)) return value;
+  const iso = value.toUpperCase();
+  try {
+    const name = new Intl.DisplayNames(["en"], { type: "region" }).of(iso);
+    return name && name !== iso ? `${name} (${iso})` : iso;
+  } catch {
+    return iso;
+  }
+}
+
 export function VerificationDetailPage() {
   const { id = "" } = useParams<{ id: string }>();
   const qc = useQueryClient();
@@ -176,7 +189,7 @@ export function VerificationDetailPage() {
           ) : null}
           {row?.country ? (
             <p>
-              <span className="text-gray-500">Country:</span> {String(row.country)}
+              <span className="text-gray-500">Country:</span> {formatCountryDisplay(String(row.country))}
             </p>
           ) : null}
           {row?.submitted_at ? (

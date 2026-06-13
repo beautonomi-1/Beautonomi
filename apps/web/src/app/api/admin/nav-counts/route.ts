@@ -174,7 +174,7 @@ export async function GET(request: NextRequest) {
             .from("provider_onboarding_tracking")
             .select("id", { count: "exact", head: true })
             .eq("tenant_id", tenantId)
-            .in("status", ["in_progress", "stalled"])
+            .in("wizard_status", ["in_progress", "stalled"])
             .lt("last_progress_at", cutoff);
           if (error) return { count: 0 };
           return { count: count ?? 0 };
@@ -186,7 +186,7 @@ export async function GET(request: NextRequest) {
       supabase
         .from("providers")
         .select("id", { count: "exact", head: true })
-        .eq("status", "pending_approval")
+        .in("status", ["draft", "pending_approval"])
         .eq("tenant_id", tenantId),
       (async () => {
         if (!isSuperadmin) return { count: 0 };

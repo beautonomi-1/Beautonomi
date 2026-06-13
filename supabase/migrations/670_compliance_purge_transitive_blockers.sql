@@ -121,7 +121,7 @@ BEGIN
     id_text TEXT NOT NULL,
     PRIMARY KEY (rel_oid, id_text)
   ) ON COMMIT DROP;
-  DELETE FROM _compliance_doomed;
+  TRUNCATE _compliance_doomed;
 
   -- Seed both the auth and public rows: public.users.id == auth.users.id, but FKs
   -- target one OID or the other, so both must be present for child matching.
@@ -281,7 +281,7 @@ BEGIN
     id_text TEXT NOT NULL,
     PRIMARY KEY (rel_oid, id_text)
   ) ON COMMIT DROP;
-  DELETE FROM _compliance_doomed_dx;
+  TRUNCATE _compliance_doomed_dx;
 
   INSERT INTO _compliance_doomed_dx (rel_oid, id_text)
   VALUES

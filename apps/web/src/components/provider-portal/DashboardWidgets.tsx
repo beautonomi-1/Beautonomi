@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useMemo } from "react";
 import { cn } from "@/lib/utils";
 import {
   Calendar,
@@ -23,6 +23,8 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { isToday, parseISO } from "date-fns";
 import Link from "next/link";
+import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
+import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { useTenantLocaleTag } from "@/hooks/useTenantLocaleTag";
 
@@ -274,36 +276,45 @@ export function QuickActionsWidget({
   onNewSale,
   onMessages,
 }: QuickActionsWidgetProps) {
-  const actions = [
-    {
-      label: "New Appointment",
-      icon: CalendarPlus,
-      color: "bg-primary hover:bg-primary-hover",
-      onClick: onNewAppointment,
-      href: "/provider/calendar",
-    },
-    {
-      label: "Add Client",
-      icon: UserPlus,
-      color: "bg-blue-500 hover:bg-blue-600",
-      onClick: onNewClient,
-      href: "/provider/clients",
-    },
-    {
-      label: "New Sale",
-      icon: DollarSign,
-      color: "bg-green-500 hover:bg-green-600",
-      onClick: onNewSale,
-      href: "/provider/sales",
-    },
-    {
-      label: "Messages",
-      icon: MessageSquare,
-      color: "bg-purple-500 hover:bg-purple-600",
-      onClick: onMessages,
-      href: "/provider/messaging",
-    },
-  ];
+  const unifiedPosEnabled = useFeatureFlag(FEATURE_FLAG_KEYS.PROVIDER_UNIFIED_POS);
+  const actions = useMemo(
+    () =>
+      [
+        {
+          label: "New Appointment",
+          icon: CalendarPlus,
+          color: "bg-primary hover:bg-primary-hover",
+          onClick: onNewAppointment,
+          href: "/provider/calendar",
+        },
+        {
+          label: "Add Client",
+          icon: UserPlus,
+          color: "bg-blue-500 hover:bg-blue-600",
+          onClick: onNewClient,
+          href: "/provider/clients",
+        },
+        ...(unifiedPosEnabled
+          ? [
+              {
+                label: "New Sale",
+                icon: DollarSign,
+                color: "bg-green-500 hover:bg-green-600",
+                onClick: onNewSale,
+                href: "/provider/sales",
+              },
+            ]
+          : []),
+        {
+          label: "Messages",
+          icon: MessageSquare,
+          color: "bg-purple-500 hover:bg-purple-600",
+          onClick: onMessages,
+          href: "/provider/messaging",
+        },
+      ] as const,
+    [onNewAppointment, onNewClient, onNewSale, onMessages, unifiedPosEnabled],
+  );
 
   return (
     <div className="bg-white rounded-xl border p-4 sm:p-5">
@@ -418,6 +429,7 @@ export function TodaySummaryWidget({
   revenueToday,
   pendingCheckouts,
 }: TodaySummaryProps) {
+  const unifiedPosEnabled = useFeatureFlag(FEATURE_FLAG_KEYS.PROVIDER_UNIFIED_POS);
   const locale = useTenantLocaleTag();
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat(locale, {
@@ -457,7 +469,7 @@ export function TodaySummaryWidget({
         </div>
       </div>
 
-      {pendingCheckouts > 0 && (
+      {pendingCheckouts > 0 && unifiedPosEnabled ? (
         <Link href="/provider/sales">
           <Button
             variant="secondary"
@@ -467,7 +479,7 @@ export function TodaySummaryWidget({
             <ArrowRight className="w-4 h-4 ml-2" />
           </Button>
         </Link>
-      )}
+      ) : null}
     </div>
   );
 }

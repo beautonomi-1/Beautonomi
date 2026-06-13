@@ -3,6 +3,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderIdForUser, successResponse, handleApiError, notFoundResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { syncPushBadgeCountAllApps } from "@/lib/notifications/sync-push-badge-count";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -52,6 +53,8 @@ export async function POST(request: NextRequest, { params }: Params) {
       .from("conversations")
       .update({ unread_count_provider: 0 })
       .eq("id", conversationId);
+
+    void syncPushBadgeCountAllApps(user.id);
 
     return successResponse({ marked_read: true });
   } catch (error) {

@@ -82,6 +82,7 @@ type OfferDetailData = {
   notes?: string | null;
   travel_fee?: number | null;
   booking_id?: string | null;
+  payment_reference?: string | null;
   request?: {
     service_name?: string | null;
     description?: string | null;
@@ -152,6 +153,8 @@ function canAcceptOffer(offer: CustomRequestOffer): boolean {
     offer.status === "paid" ||
     offer.status === "expired" ||
     offer.status === "withdrawn" ||
+    offer.status === "declined" ||
+    offer.status === "finalize_failed" ||
     offer.status === "payment_pending"
   )
     return false;
@@ -187,18 +190,22 @@ function requestAllowsOfferActions(item: CustomRequest): boolean {
 function RequestCard({
   item,
   onPayOffer,
+  onDeclineOffer,
   onPressProvider,
   onCancel,
   onViewOfferDetail,
   cancellingRequestId,
+  decliningOfferId,
 }: {
   item: CustomRequest;
   /** Opens canonical checkout (Bearer verify + Paystack return), same as chat. */
   onPayOffer: (offerId: string) => void;
+  onDeclineOffer: (offerId: string) => void;
   onPressProvider: () => void;
   onCancel: (requestId: string) => void;
   onViewOfferDetail: (offerId: string) => void;
   cancellingRequestId: string | null;
+  decliningOfferId: string | null;
 }) {
   const locationLabel = formatLocationLabel(item.location_type);
   const budget = formatBudget(item.budget_min, item.budget_max);
@@ -342,6 +349,10 @@ function RequestCard({
                     <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Expired</Text>
                   ) : o.status === "withdrawn" ? (
                     <Text style={{ fontSize: 14, color: Colors.gray[400] }}>Withdrawn</Text>
+                  ) : o.status === "declined" ? (
+                    <Text style={{ fontSize: 14, color: Colors.gray[400] }}>Declined</Text>
+                  ) : o.status === "finalize_failed" ? (
+                    <Text style={{ fontSize: 14, color: "#B91C1C", fontWeight: "600" }}>Needs support</Text>
                   ) : canPayContinue ? (
                     <TouchableOpacity
                       onPress={() => onPayOffer(o.id)}
@@ -350,9 +361,20 @@ function RequestCard({
                       <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.white }}>Continue Payment</Text>
                     </TouchableOpacity>
                   ) : canAccept ? (
-                    <TouchableOpacity onPress={() => onPayOffer(o.id)} style={{ backgroundColor: Colors.primary, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12 }}>
-                      <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.white }}>Accept & Pay</Text>
-                    </TouchableOpacity>
+                    <View style={{ flexDirection: "row", gap: 8 }}>
+                      <TouchableOpacity
+                        onPress={() => onDeclineOffer(o.id)}
+                        disabled={decliningOfferId === o.id}
+                        style={{ borderWidth: 1, borderColor: Colors.gray[300], paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, opacity: decliningOfferId === o.id ? 0.6 : 1 }}
+                      >
+                        <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[700] }}>
+                          {decliningOfferId === o.id ? "…" : "Decline"}
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => onPayOffer(o.id)} style={{ backgroundColor: Colors.primary, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12 }}>
+                        <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.white }}>Accept & Pay</Text>
+                      </TouchableOpacity>
+                    </View>
                   ) : !actionsAllowed && o.status !== "paid" ? (
                     <Text style={{ fontSize: 13, fontWeight: "500", color: Colors.gray[500] }}>Closed</Text>
                   ) : null}
@@ -388,6 +410,7 @@ export default function CustomRequestsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cancellingRequestId, setCancellingRequestId] = useState<string | null>(null);
+  const [decliningOfferId, setDecliningOfferId] = useState<string | null>(null);
   const [offerDetailVisible, setOfferDetailVisible] = useState(false);
   const [offerDetailLoading, setOfferDetailLoading] = useState(false);
   const [offerDetailData, setOfferDetailData] = useState<OfferDetailData | null>(null);
@@ -464,6 +487,36 @@ export default function CustomRequestsScreen() {
     }
   }, []);
 
+  const handleDeclineOffer = useCallback(
+    (offerId: string) => {
+      Alert.alert("Decline offer?", "The provider will be notified that you declined this custom offer.", [
+        { text: "Keep offer", style: "cancel" },
+        {
+          text: "Decline",
+          style: "destructive",
+          onPress: async () => {
+            setDecliningOfferId(offerId);
+            try {
+              const res = await api.post(`/api/me/custom-offers/${offerId}/decline`, {});
+              if (res.error) {
+                Alert.alert(errTitle, (res.error as { message?: string })?.message ?? "Failed to decline offer");
+                return;
+              }
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              setOfferDetailVisible(false);
+              await load(true);
+            } catch (e) {
+              Alert.alert(errTitle, e instanceof Error ? e.message : "Failed to decline offer");
+            } finally {
+              setDecliningOfferId(null);
+            }
+          },
+        },
+      ]);
+    },
+    [errTitle, load],
+  );
+
   const handleCancelRequest = useCallback(
     (requestId: string) => {
       Alert.alert(crl("cancelRequestTitle"), crl("cancelRequestBody"), [
@@ -526,10 +579,12 @@ export default function CustomRequestsScreen() {
           <RequestCard
             item={item}
             onPayOffer={openCustomOfferCheckout}
+            onDeclineOffer={handleDeclineOffer}
             onPressProvider={() => handlePressProvider(item)}
             onCancel={handleCancelRequest}
             onViewOfferDetail={openOfferDetail}
             cancellingRequestId={cancellingRequestId}
+            decliningOfferId={decliningOfferId}
           />
         )}
         contentContainerStyle={{ padding: contentPadding, paddingBottom: 48, ...constraint }}
@@ -584,6 +639,8 @@ export default function CustomRequestsScreen() {
               const req = d.request;
               const isExpired = d.status === "expired";
               const isWithdrawn = d.status === "withdrawn";
+              const isDeclined = d.status === "declined";
+              const isFinalizeFailed = d.status === "finalize_failed";
               const isPaid = d.status === "paid";
               const isPending = d.status === "pending";
 
@@ -595,7 +652,11 @@ export default function CustomRequestsScreen() {
                 });
               };
 
-              const statusBadge = isWithdrawn
+              const statusBadge = isFinalizeFailed
+                ? { label: "Needs support", bg: "#FEE2E2", text: "#B91C1C" }
+                : isDeclined
+                  ? { label: "Declined", bg: "#F3F4F6", text: "#6B7280" }
+                  : isWithdrawn
                 ? { label: "Withdrawn", bg: "#FEF3C7", text: "#92400E" }
                 : isExpired
                 ? { label: "Expired", bg: "#F3F4F6", text: "#6B7280" }
@@ -647,16 +708,33 @@ export default function CustomRequestsScreen() {
                       <Text style={{ color: Colors.gray[700], fontSize: 14, lineHeight: 20 }}>📝 {d.notes}</Text>
                     ) : null}
                   </View>
+                  {isFinalizeFailed ? (
+                    <Text style={{ marginTop: 16, color: "#B91C1C", fontSize: 14, lineHeight: 20 }}>
+                      Payment was received but booking setup failed. Please contact support
+                      {d.payment_reference ? ` and quote reference ${d.payment_reference}` : ""}.
+                    </Text>
+                  ) : null}
                   {isPending && d.id ? (
-                    <TouchableOpacity
-                      onPress={() => {
-                        setOfferDetailVisible(false);
-                        setTimeout(() => openCustomOfferCheckout(d.id), 300);
-                      }}
-                      style={{ marginTop: 24, borderRadius: 12, backgroundColor: Colors.primary, alignItems: "center", paddingVertical: 14 }}
-                    >
-                      <Text style={{ color: Colors.white, fontSize: 15, fontWeight: "700" }}>Accept & Pay</Text>
-                    </TouchableOpacity>
+                    <View style={{ marginTop: 24, gap: 10 }}>
+                      <TouchableOpacity
+                        onPress={() => {
+                          setOfferDetailVisible(false);
+                          setTimeout(() => openCustomOfferCheckout(d.id), 300);
+                        }}
+                        style={{ borderRadius: 12, backgroundColor: Colors.primary, alignItems: "center", paddingVertical: 14 }}
+                      >
+                        <Text style={{ color: Colors.white, fontSize: 15, fontWeight: "700" }}>Accept & Pay</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => handleDeclineOffer(d.id)}
+                        disabled={decliningOfferId === d.id}
+                        style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[300], alignItems: "center", paddingVertical: 14, opacity: decliningOfferId === d.id ? 0.6 : 1 }}
+                      >
+                        <Text style={{ color: Colors.gray[700], fontSize: 15, fontWeight: "600" }}>
+                          {decliningOfferId === d.id ? "Declining…" : "Decline offer"}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
                   ) : d.status === "payment_pending" && d.id ? (
                     <TouchableOpacity
                       onPress={() => {

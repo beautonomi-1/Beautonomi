@@ -47,6 +47,7 @@ interface Notification {
 
 function deriveNotificationUrl(notification: Notification): string | undefined {
   return deriveProviderPortalNotificationUrl({
+    type: notification.type,
     link: notification.link,
     data: notification.data,
     metadata: notification.metadata,

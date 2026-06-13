@@ -21,6 +21,7 @@ import {
   XCircle,
 } from "lucide-react";
 import LoadingTimeout from "@/components/ui/loading-timeout";
+import { CountryOfIssueSelect } from "@/components/verification/CountryOfIssueSelect";
 
 type VerificationStatus = "pending" | "in_progress" | "approved" | "rejected" | "reset";
 
@@ -155,8 +156,8 @@ export default function VerificationPage() {
   };
 
   const submitManual = async () => {
-    if (!file || !country.trim()) {
-      toast.error("Please select a document photo and enter the country of issue.");
+    if (!file || !country) {
+      toast.error("Please select a document photo and choose the country of issue.");
       return;
     }
     setUploading(true);
@@ -164,7 +165,7 @@ export default function VerificationPage() {
       const form = new FormData();
       form.append("file", file);
       form.append("document_type", docType);
-      form.append("country", country.trim());
+      form.append("country", country);
 
       const res = await fetcher.post<{ data: { status: string } }>("/api/me/verification", form);
       if ((res as any).error) {
@@ -311,13 +312,14 @@ export default function VerificationPage() {
 
             {/* Country */}
             <div>
-              <label className="block text-sm font-medium mb-1">Country of issue</label>
-              <input
-                type="text"
-                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF0077]"
-                placeholder="e.g. South Africa"
+              <label htmlFor="country-of-issue" className="block text-sm font-medium mb-1">
+                Country of issue
+              </label>
+              <CountryOfIssueSelect
+                id="country-of-issue"
                 value={country}
-                onChange={(e) => setCountry(e.target.value)}
+                onChange={setCountry}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF0077]"
               />
             </div>
 

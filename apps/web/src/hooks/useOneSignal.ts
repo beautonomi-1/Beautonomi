@@ -8,6 +8,7 @@ interface OneSignalSDK {
   init?(opts: { appId: string; notifyButton?: { enable: boolean }; allowLocalhostAsSecureOrigin?: boolean }): void;
   getUserId?(): Promise<string | null>;
   on?(event: string, cb: (v: boolean) => void): void;
+  logout?(): void;
 }
 
 declare global {
@@ -20,7 +21,7 @@ let hasWarnedAboutSdkNotLoaded = false;
 
 /**
  * Hook to register device with OneSignal
- * 
+ *
  * Call this in customer/provider/admin layouts to register devices
  */
 export function useOneSignal() {
@@ -29,6 +30,8 @@ export function useOneSignal() {
   const [isRegistered, setIsRegistered] = useState(false);
   const [isOneSignalReady, setIsOneSignalReady] = useState(false);
   const hasWarnedRef = useRef(false);
+  const prevUserIdRef = useRef<string | null>(null);
+  const registeredPlayerIdRef = useRef<string | null>(null);
 
   // Wait for OneSignal to be available
   useEffect(() => {
@@ -36,13 +39,11 @@ export function useOneSignal() {
     if (!consentReady || !allowsFunctional) return;
 
     const appId = process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID;
-    
-    // Only check for OneSignal if App ID is configured
+
     if (!appId) {
       return;
     }
 
-    // Check if OneSignal is already loaded
     if (window.OneSignal) {
       queueMicrotask(() => setIsOneSignalReady(true));
       return;
@@ -55,7 +56,6 @@ export function useOneSignal() {
       }
     }, 100);
 
-    // Cleanup after 10 seconds if OneSignal still isn't loaded
     const timeout = setTimeout(() => {
       clearInterval(checkInterval);
       if (!window.OneSignal && !hasWarnedAboutSdkNotLoaded && !hasWarnedRef.current && process.env.NODE_ENV === "development") {
@@ -79,36 +79,31 @@ export function useOneSignal() {
     const appId = process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID;
 
     if (!appId) {
-      // App ID warning is handled in OneSignalProvider, so we just return silently here
       return;
     }
 
-    // Initialize OneSignal if not already initialized
     try {
-      OneSignal.init({
+      OneSignal?.init?.({
         appId: appId,
         notifyButton: {
-          enable: false, // We'll handle notifications in-app
+          enable: false,
         },
         allowLocalhostAsSecureOrigin: true,
       });
     } catch (error) {
-      // OneSignal might already be initialized
       if (process.env.NODE_ENV === "development") {
         console.log("OneSignal already initialized or initialization error:", error);
       }
     }
 
-    // Register device when user is logged in
-    OneSignal.getUserId()
+    OneSignal?.getUserId?.()
       .then((playerId: string | null) => {
         if (playerId) {
           registerDevice(playerId);
         } else {
-          // Wait for user ID to be available
-          OneSignal.on("subscriptionChange", (isSubscribed: boolean) => {
+          OneSignal?.on?.("subscriptionChange", (isSubscribed: boolean) => {
             if (isSubscribed) {
-              OneSignal.getUserId().then((pid: string | null) => {
+              OneSignal?.getUserId?.().then((pid: string | null) => {
                 if (pid) {
                   registerDevice(pid);
                 }
@@ -124,17 +119,15 @@ export function useOneSignal() {
       });
 
     async function registerDevice(playerId: string) {
-      if (isRegistered) return;
+      if (isRegistered && registeredPlayerIdRef.current === playerId) return;
 
       try {
-        // Determine platform
         const platform = /iPhone|iPad|iPod/.test(navigator.userAgent)
           ? "ios"
           : /Android/.test(navigator.userAgent)
           ? "android"
           : "web";
 
-        // Register with backend
         const response = await fetch("/api/me/devices", {
           method: "POST",
           headers: {
@@ -148,6 +141,7 @@ export function useOneSignal() {
         });
 
         if (response.ok) {
+          registeredPlayerIdRef.current = playerId;
           setIsRegistered(true);
           if (process.env.NODE_ENV === "development") {
             console.log("Device registered with OneSignal");
@@ -162,6 +156,35 @@ export function useOneSignal() {
       }
     }
   }, [user, isOneSignalReady, isRegistered, consentReady, allowsFunctional]);
+
+  useEffect(() => {
+    const prevUserId = prevUserIdRef.current;
+    prevUserIdRef.current = user?.id ?? null;
+
+    if (prevUserId && !user?.id) {
+      const playerId = registeredPlayerIdRef.current;
+      setIsRegistered(false);
+      registeredPlayerIdRef.current = null;
+
+      void (async () => {
+        try {
+          window.OneSignal?.logout?.();
+        } catch {
+          // SDK may be unavailable
+        }
+        if (!playerId) return;
+        try {
+          await fetch("/api/me/devices", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ player_id: playerId }),
+          });
+        } catch {
+          // best-effort cleanup
+        }
+      })();
+    }
+  }, [user?.id]);
 
   return { isRegistered };
 }

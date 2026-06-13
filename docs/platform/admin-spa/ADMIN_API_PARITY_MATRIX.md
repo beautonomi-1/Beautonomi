@@ -10,7 +10,7 @@
 
 **Status key:** `Draft` | `In review` | `Reviewed` | `Deprecated (product approved)`
 
-**Seed:** Generated from `apps/web/src/components/admin/AdminShell.tsx` (`navGroups`), `apps/web/src/app/admin/**/page.tsx` (108 routes, 2026-04-11), and targeted greps for `"/api/admin` usage. For the **Vite admin SPA**, use [`ADMIN_SPA_AUDIT_INVENTORY.md`](./ADMIN_SPA_AUDIT_INVENTORY.md) (route inverse map + page→API summary). Reconcile with `docs/admin-api-route-taxonomy.csv` after `node docs/scripts/generate-admin-route-taxonomy.mjs` (latest regen: **363** API rows, 2026-05-28 — see §8 Implementation Delta).
+**Seed:** Generated from `apps/web/src/components/admin/AdminShell.tsx` (`navGroups`), `apps/web/src/app/admin/**/page.tsx` (108 routes, 2026-04-11), and targeted greps for `"/api/admin` usage. For the **Vite admin SPA**, use [`ADMIN_SPA_AUDIT_INVENTORY.md`](./ADMIN_SPA_AUDIT_INVENTORY.md) (route inverse map + page→API summary). Reconcile with `docs/admin-api-route-taxonomy.csv` after `node docs/scripts/generate-admin-route-taxonomy.mjs` (latest regen: **371** API rows, 2026-06-13 — see §8 Implementation Delta).
 
 ---
 
@@ -26,7 +26,7 @@
 
 | Theme | Finding | Target (see contract guidelines) |
 |-------|---------|-----------------------------------|
-| **Inventory** | **363** admin `route.ts` handlers; full list in `docs/admin-api-route-taxonomy.csv` | Regenerate CSV when adding routes; CI blocks orphan files. |
+| **Inventory** | **371** admin `route.ts` handlers; full list in `docs/admin-api-route-taxonomy.csv` | Regenerate CSV when adding routes; CI blocks orphan files. |
 | **Response envelope** | Mix of `{ data, error }` (`successResponse` / `errorResponse`) and **raw** `NextResponse.json` (`{ tickets }`, `{ error: string }`, `{ success: true }`, etc.) | New/changed handlers use standard envelope; migrate legacy when touching. |
 | **List shape** | Some lists nest `{ data: rows, meta }` **inside** envelope `data` (e.g. users); others return domain keys at root **without** envelope | Standard: `data: { items, meta }` + outer envelope. |
 | **Pagination** | `page`+`limit` (`getPaginationParams`) vs `offset`+`limit`; default limits vary (20–100) | Standard query params + `meta`; document per row until migrated. |
@@ -120,7 +120,7 @@ Use this table as the **index** for deep-dive sub-tables (§5). **AuthZ column**
 | 35b | `/admin/reports/support-workload` | W2 | finance | N | `GET /api/admin/reports/support-workload`, export | Same SPA/component pattern as 35a (`support-workload`). |
 | 35 | `/admin/reports/yoco-reconciliation` | W2 | finance | N | `GET /api/admin/reports/yoco-reconciliation` | |
 | 36 | `/admin/users` | W3 | users_trust | Y | `GET /api/admin/users`, `POST .../bulk`, `PUT .../role`, `PATCH ...`, `DELETE ...`, export | |
-| 37 | `/admin/users/[id]` | W3 | users_trust | N | `GET .../users/:id`, bookings, password, impersonate, export, `GET .../wallet-transactions` | Modal + page variants |
+| 37 | `/admin/users/[id]` | W3 | users_trust | N | `GET .../users/:id`, bookings, password, impersonate, export, `GET .../wallet-transactions`, `POST .../guest-booking-link`, `POST .../send-claim-invite` | Modal + page variants; shadow-account claim invite + guest portal link mint |
 | 38 | `/admin/verifications` | W3 | users_trust | Y | `GET /api/admin/verifications` (+ actions); detail: `GET/PATCH .../verifications/:id`, `GET .../view`, `POST /api/admin/users/:id/identity-verification/reset` ([`VerificationDetailPage`](../../apps/admin-web/src/routes/users/VerificationDetailPage.tsx)) | |
 | 39 | `/admin/audit-logs` | W3 | users_trust | Y | `GET /api/admin/audit-logs`, export | |
 | 40 | `/admin/content` | W3 | content_catalog | Y | Broad: catalog/content endpoints (many `GET/POST/PATCH/DELETE` under `/api/admin/content`, `/api/admin/catalog`, media) | Highest API surface area |
@@ -132,7 +132,7 @@ Use this table as the **index** for deep-dive sub-tables (§5). **AuthZ column**
 | 46 | `/admin/ecommerce/returns` | W3 | ecommerce | Y | `GET /api/admin/ecommerce/returns` | |
 | 47 | `/admin/ecommerce/products` | W3 | ecommerce | Y | `GET /api/admin/ecommerce/products` | |
 | 48 | `/admin/promotions` | W4 | marketing_comms | Y | `GET/POST/PATCH/DELETE /api/admin/promotions` | |
-| 49 | `/admin/loyalty` | W4 | marketing_comms | Y | `GET/POST/PUT/DELETE /api/admin/loyalty/rules`, `.../milestones` | |
+| 49 | `/admin/loyalty` | W4 | marketing_comms | Y | `GET/POST/PUT/DELETE /api/admin/loyalty/rules`, `.../milestones`, `GET/PATCH /api/admin/loyalty/config` | SPA: [`LoyaltyRulesPage`](../../apps/admin-web/src/routes/marketing/LoyaltyRulesPage.tsx) — checkout redemption config + rules/milestones |
 | 50 | `/admin/gamification/point-rules` | W4 | marketing_comms | Y | `GET/PATCH /api/admin/gamification/point-rules` | |
 | 51 | `/admin/gamification/badges` | W4 | marketing_comms | Y | `GET/POST/PATCH/DELETE .../gamification/badges`, `PUT .../gamification/backfill/initialize` | |
 | 52 | `/admin/gift-cards` | W4 | marketing_comms | Y | `GET/POST/PATCH /api/admin/gift-cards` | |
@@ -146,6 +146,7 @@ Use this table as the **index** for deep-dive sub-tables (§5). **AuthZ column**
 | 60 | `/admin/api-keys` | W4 | integrations_dev | Y | `GET/POST/DELETE /api/admin/api-keys` | |
 | 61 | `/admin/integrations/amplitude` | W4 | integrations_dev | Y | `GET/PUT /api/admin/integrations/amplitude` | |
 | 61a | `/admin/integrations/slack` | W4 | integrations_dev | Y | `GET/PUT /api/admin/integrations/slack`; `GET .../channels`; `GET .../logs`; `POST .../test`; browser `GET .../oauth/install` + Slack redirect `GET .../oauth/callback` | **SPA:** [`SlackIntegrationPage`](../../apps/admin-web/src/routes/integrations/SlackIntegrationPage.tsx). AuthZ `ADMIN_SECTION_INTEGRATIONS_DEV` (`requireAdminSection` on APIs). |
+| 61c | `/admin/integrations/resend` | W4 | integrations_dev | Y | `GET/PATCH /api/admin/integrations/resend`; `POST .../resend/test` | **SPA:** [`ResendIntegrationPage`](../../apps/admin-web/src/routes/integrations/ResendIntegrationPage.tsx). Tenant/global `platform_secrets` Resend credentials + transactional email toggle. |
 | 61b | `/admin/integrations/yoco` | W4 | integrations_dev | Y (superadmin only) | `GET /api/admin/integrations/yoco` | **SPA:** [`YocoIntegrationPage`](../../apps/admin-web/src/routes/integrations/YocoIntegrationPage.tsx). Non-secret OAuth v2 / `tenant_yoco_oauth_apps` / feature-flag snapshot per tenant scope. |
 | 62 | `/admin/mapbox` | W4 | integrations_dev | Y | `GET/PUT /api/admin/mapbox/config`, legacy zones tab | |
 | 63 | `/admin/iso-codes` | W4 | integrations_dev | Y | `GET/PUT/POST/DELETE /api/admin/iso-codes/*` | |
@@ -270,6 +271,7 @@ Record the test **id** in the **Client method** column. **Envelope:** fixtures M
 | 2026-05-26 | **Taxonomy / CI:** Regenerated `docs/admin-api-route-taxonomy.csv` (**362** rows) to add Paystack Terminal admin APIs: `/api/admin/paystack-terminal/payments`, `.../payments/[id]`, `.../payments/sync`, `.../setup-requests`, `.../terminals`, `.../terminals/[id]/assets`, `.../terminals/[id]/poster`. SPA: [`PaystackTerminalOperationsPage`](../../apps/admin-web/src/routes/finance/PaystackTerminalOperationsPage.tsx) at `/admin/paystack-terminal`. §4 row **29a**. |
 | 2026-05-28 | **Taxonomy / CI:** Added `GET /api/admin/compliance/lookup-user/[id]` (**363** rows) — superadmin platform-wide user lookup for compliance purge email confirmation. SPA: [`CompliancePurgePage`](../../apps/admin-web/src/routes/control-plane/CompliancePurgePage.tsx) `loadUserHint`. |
 | 2026-05-29 | **Taxonomy / CI:** Added `POST /api/admin/payouts/bulk-approve` (**364** rows) — batch approve pending payouts with readiness checks and audit trail. SPA: [`PayoutsPage`](../../apps/admin-web/src/routes/finance/PayoutsPage.tsx) bulk approve selection. §4 row **20** updated. |
+| 2026-06-13 | **Taxonomy / CI:** Added **5** rows for Resend integration (`/api/admin/integrations/resend`, `.../test`), loyalty checkout config (`GET/PATCH /api/admin/loyalty/config`), and shadow/guest user actions (`POST .../users/[id]/guest-booking-link`, `POST .../send-claim-invite`). SPA: [`ResendIntegrationPage`](../../apps/admin-web/src/routes/integrations/ResendIntegrationPage.tsx), [`LoyaltyRulesPage`](../../apps/admin-web/src/routes/marketing/LoyaltyRulesPage.tsx), [`UserDetailPage`](../../apps/admin-web/src/routes/users/UserDetailPage.tsx). §1.1 inventory **371**; §4 rows **37**, **49**, **61c**. |
 
 ---
 
@@ -306,3 +308,4 @@ Record the test **id** in the **Client method** column. **Envelope:** fixtures M
 | 2026-05-19 | Taxonomy: `+1` route (`GET /api/admin/integrations/yoco`); §4 row **61b**; SPA [`YocoIntegrationPage`](../../apps/admin-web/src/routes/integrations/YocoIntegrationPage.tsx) at `/admin/integrations/yoco`. §1.1 inventory **350**. |
 | 2026-05-26 | Taxonomy: `+7` Paystack Terminal admin routes (`/api/admin/paystack-terminal/payments`, `.../[id]`, `.../sync`, `.../setup-requests`, `.../terminals`, `.../terminals/[id]/assets`, `.../terminals/[id]/poster`); §4 row **29a**; §1.1 inventory **362**. |
 | 2026-05-28 | Taxonomy: `+1` route (`GET /api/admin/compliance/lookup-user/[id]`); SPA [`CompliancePurgePage`](../../apps/admin-web/src/routes/control-plane/CompliancePurgePage.tsx) user purge email hint; §1.1 inventory **363**. |
+| 2026-06-13 | Taxonomy: `+5` routes (`/api/admin/integrations/resend`, `.../test`, `GET/PATCH /api/admin/loyalty/config`, `POST .../users/[id]/guest-booking-link`, `POST .../send-claim-invite`); §4 rows **37**, **49**, **61c**; SPA Resend, loyalty config, user detail shadow/guest actions. §1.1 inventory **371**. |

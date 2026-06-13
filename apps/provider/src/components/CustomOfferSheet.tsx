@@ -41,6 +41,9 @@ interface GlobalCategory {
 
 const EMPTY_GLOBAL_CATEGORIES: GlobalCategory[] = [];
 
+/** Matches API + web provider modal minimum. */
+const MIN_DESC = 5;
+
 interface AvailableSlotRow {
   time: string;
   available?: boolean;
@@ -301,14 +304,27 @@ export function CustomOfferSheet({
     addressLongitude,
   ]);
 
-  const isValid =
-    description.trim().length >= 10 &&
-    description.trim().length <= 4000 &&
-    price !== "" &&
-    Number(price) >= 0 &&
-    Number(duration) >= 15 &&
-    Number(duration) <= 480 &&
-    Number(expirationDays) >= 1;
+  const validationHint = useMemo(() => {
+    const d = description.trim();
+    if (d.length > 0 && d.length < MIN_DESC) {
+      return `Add at least ${MIN_DESC - d.length} more character(s) to the description.`;
+    }
+    if (d.length > 4000) return "Description must be 4000 characters or fewer.";
+    if (price.trim() === "" || Number.isNaN(Number(price)) || Number(price) < 0) {
+      return "Enter a valid price (0 or more).";
+    }
+    if (duration.trim() === "") return "Enter duration in minutes (15–480).";
+    const dm = Number(duration);
+    if (!Number.isFinite(dm) || dm < 15 || dm > 480) {
+      return "Duration must be between 15 and 480 minutes.";
+    }
+    if (expirationDays.trim() === "") return "Enter how many days until the offer expires (at least 1).";
+    const ex = Number(expirationDays);
+    if (!Number.isFinite(ex) || ex < 1) return "Expiration must be at least 1 day.";
+    return null;
+  }, [description, price, duration, expirationDays]);
+
+  const isValid = validationHint === null;
 
   const handleSubmit = async () => {
     if (!isValid || !customerId) return;
@@ -435,13 +451,21 @@ export function CustomOfferSheet({
           style={twStyle("mb-3 min-h-[100px] rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
           value={description}
           onChangeText={setDescription}
-          placeholder="Describe the service (10–4000 characters)"
+          placeholder={`Describe the service (${MIN_DESC}–4000 characters)`}
           placeholderTextColor="#9ca3af"
           multiline
           textAlignVertical="top"
         />
-        <Text style={twStyle("mb-1 text-xs text-gray-500")}>
-          {description.trim().length} / 10–4000 characters
+        <Text
+          style={twStyle(
+            `mb-1 text-xs ${
+              description.trim().length > 0 && description.trim().length < MIN_DESC
+                ? "text-red-600 font-medium"
+                : "text-gray-500"
+            }`,
+          )}
+        >
+          {description.trim().length} / {MIN_DESC}–4000 characters
         </Text>
 
         <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
@@ -720,6 +744,10 @@ export function CustomOfferSheet({
           multiline
           textAlignVertical="top"
         />
+
+        {validationHint ? (
+          <Text style={twStyle("mb-3 text-sm text-amber-700")}>{validationHint}</Text>
+        ) : null}
 
         <ActionButton
           label="Send offer"

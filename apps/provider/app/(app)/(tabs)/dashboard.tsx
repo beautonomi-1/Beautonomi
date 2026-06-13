@@ -10,6 +10,7 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { supabase } from "@/lib/supabase/client";
 import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
 import { useProvider } from "@/providers/ProviderContext";
+import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ActiveLocationChip } from "@/components/reports/ActiveLocationChip";
@@ -432,6 +433,7 @@ export default function DashboardScreen() {
   );
   const [isFocused, setIsFocused] = useState(true);
   const { provider, selectedLocationId } = useProvider();
+  const unifiedPosEnabled = useFeatureFlag("provider.unified_pos_checkout");
   const { isTablet, columns } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
   const [dateRange, setDateRange] = useState("today");
@@ -1052,6 +1054,7 @@ export default function DashboardScreen() {
         </TouchableOpacity>
       </View>
 
+      {unifiedPosEnabled ? (
       <TouchableOpacity
         style={{
           minHeight: 48,
@@ -1075,6 +1078,7 @@ export default function DashboardScreen() {
         <Ionicons name="card-outline" size={18} color={Colors.primary} />
         <Text style={{ marginLeft: 8, fontWeight: "700", color: Colors.primary }}>Sell / POS</Text>
       </TouchableOpacity>
+      ) : null}
 
       {/* Date Range Selector */}
       <View style={{ marginBottom: 8 }}>

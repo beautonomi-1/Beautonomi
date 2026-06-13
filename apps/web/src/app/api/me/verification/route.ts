@@ -5,6 +5,12 @@ import { requireRoleInApi, successResponse, handleApiError, getProviderIdForUser
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { slackNotifyVerificationNeedsReview } from "@/lib/integrations/slack/ops-triggers";
 import { resolveSumsubConfig } from "@/lib/verification/sumsub-token";
+import {
+  buildManualVerificationUpsertRow,
+  getManualVerificationSubmitBlock,
+  mapVerificationUploadError,
+} from "@/lib/verification/manual-verification-submit";
+import { resolveVerificationCountry } from "@/lib/verification/resolve-verification-country";
 
 /**
  * GET /api/me/verification
@@ -130,10 +136,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!documentType || !country) {
+    if (!documentType) {
       return NextResponse.json(
-        { error: "Document type and country are required" },
+        { error: "Document type is required" },
         { status: 400 }
+      );
+    }
+
+    const countryResult = await resolveVerificationCountry(getSupabaseAdmin(), country);
+    const resolvedCountry = countryResult.country;
+    if (!resolvedCountry) {
+      return NextResponse.json(
+        { error: countryResult.message ?? "Select a valid country of issue from the list." },
+        { status: 400 },
       );
     }
 
@@ -143,6 +158,34 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: "Invalid document type" },
         { status: 400 }
+      );
+    }
+
+    const { data: userData, error: userGuardError } = await supabase
+      .from("users")
+      .select("identity_verified, identity_verification_status")
+      .eq("id", user.id)
+      .single();
+
+    if (userGuardError) throw userGuardError;
+
+    const { data: existingVerifications, error: existingVerificationsError } = await supabase
+      .from("user_verifications")
+      .select("status, document_type")
+      .eq("user_id", user.id);
+
+    if (existingVerificationsError) throw existingVerificationsError;
+
+    const submitBlock = getManualVerificationSubmitBlock({
+      identityVerified: userData.identity_verified ?? false,
+      userStatus: userData.identity_verification_status ?? "none",
+      verificationRecords: existingVerifications ?? [],
+    });
+
+    if (submitBlock) {
+      return NextResponse.json(
+        { error: submitBlock.reason },
+        { status: submitBlock.status },
       );
     }
 
@@ -192,22 +235,32 @@ export async function POST(request: NextRequest) {
       .getPublicUrl(filePath);
 
     const tenantId = await resolveTenantIdWithZaFallback(request);
+    const submittedAt = new Date().toISOString();
 
-    // Create verification record
-    const { data: verification, error: verificationError } = await supabase
+    // Upsert so rejected users can resubmit the same document type (unique on user_id + document_type).
+    const { data: verification, error: verificationError } = await getSupabaseAdmin()
       .from("user_verifications")
-      .insert({
-        user_id: user.id,
-        document_type: documentType,
-        country: country,
-        document_url: publicUrl,
-        status: 'pending',
-        tenant_id: tenantId,
-      })
+      .upsert(
+        buildManualVerificationUpsertRow({
+          userId: user.id,
+          documentType,
+          country: resolvedCountry.code,
+          documentUrl: publicUrl,
+          tenantId,
+          submittedAt,
+        }),
+        { onConflict: "user_id,document_type" },
+      )
       .select()
       .single();
 
-    if (verificationError) throw verificationError;
+    if (verificationError) {
+      const mapped = mapVerificationUploadError(verificationError);
+      if (mapped) {
+        return NextResponse.json({ error: mapped.message }, { status: mapped.status });
+      }
+      throw verificationError;
+    }
 
     // Update user's verification status
     const { error: updateError } = await supabase
@@ -233,7 +286,7 @@ export async function POST(request: NextRequest) {
                 metadata: {
                   manual_verification_id: verification.id,
                   manual_document_type: documentType,
-                  manual_country: country,
+                  manual_country: resolvedCountry.code,
                   manual_submitted_by_user_id: user.id,
                   manual_submitted_at: verification.submitted_at,
                 },
@@ -260,6 +313,10 @@ export async function POST(request: NextRequest) {
       status: 'pending',
     });
   } catch (error) {
+    const mapped = mapVerificationUploadError(error);
+    if (mapped) {
+      return NextResponse.json({ error: mapped.message }, { status: mapped.status });
+    }
     return handleApiError(error, "Failed to upload verification document");
   }
 }

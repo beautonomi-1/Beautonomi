@@ -41,8 +41,19 @@ interface Booking {
   customer: {
     name: string;
     email: string;
+    is_shadow?: boolean;
   };
   total_duration_minutes?: number;
+  current_stage?: string | null;
+  provider_en_route_at?: string | null;
+  provider_arrived_at?: string | null;
+  estimated_arrival?: string | null;
+  arrival_otp?: string;
+  arrival_otp_expires_at?: string | null;
+  arrival_otp_verified?: boolean;
+  qr_code_data?: Record<string, unknown>;
+  qr_code_expires_at?: string | null;
+  qr_code_verified?: boolean;
 }
 
 export default function PortalBookingPage() {
@@ -79,6 +90,14 @@ export default function PortalBookingPage() {
     loadBooking();
   }, [token]);
 
+  useEffect(() => {
+    if (!token || !booking) return;
+    const stage = booking.current_stage;
+    if (stage !== "provider_on_way" && stage !== "provider_arrived") return;
+    const interval = setInterval(() => loadBooking(), 15000);
+    return () => clearInterval(interval);
+  }, [token, booking?.current_stage, booking?.id]);
+
   const loadBooking = async () => {
     try {
       const response = await fetcher.get<{ data: Booking }>(
@@ -112,8 +131,22 @@ export default function PortalBookingPage() {
   };
 
   const handleReschedule = () => {
-    // Navigate to reschedule page with token
     router.push(`/portal/booking/reschedule?token=${token}`);
+  };
+
+  const handleResendArrivalCode = async () => {
+    if (!token) return;
+    setActionLoading("resend_otp");
+    try {
+      await fetcher.post(`/api/portal/booking/resend-arrival-otp?token=${token}`);
+      toast.success("Verification code refreshed.");
+      await loadBooking();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to refresh code";
+      toast.error(message);
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   if (loading) {
@@ -246,6 +279,69 @@ export default function PortalBookingPage() {
               </div>
             </div>
           </div>
+
+          {booking.location_type === "at_home" &&
+            (booking.current_stage === "provider_on_way" || booking.current_stage === "provider_arrived") && (
+              <div className="rounded-lg border border-pink-200 bg-pink-50 p-4 space-y-3">
+                <p className="text-sm font-semibold text-pink-900">
+                  {booking.current_stage === "provider_on_way"
+                    ? `${booking.provider.name} is on the way`
+                    : `${booking.provider.name} has arrived`}
+                </p>
+                {booking.estimated_arrival && booking.current_stage === "provider_on_way" && (
+                  <p className="text-sm text-pink-800">
+                    Estimated arrival: {formatTime(booking.estimated_arrival)}
+                  </p>
+                )}
+                {booking.current_stage === "provider_arrived" &&
+                  !booking.arrival_otp_verified &&
+                  !booking.qr_code_verified &&
+                  booking.arrival_otp && (
+                    <div className="space-y-2">
+                      <p className="text-sm text-pink-900">Show this code to your provider:</p>
+                      <p className="text-3xl font-bold tracking-[0.3em] text-pink-950">{booking.arrival_otp}</p>
+                      {booking.arrival_otp_expires_at && (
+                        <p className="text-xs text-pink-800">
+                          Expires {formatTime(booking.arrival_otp_expires_at)}
+                        </p>
+                      )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleResendArrivalCode}
+                        disabled={actionLoading === "resend_otp"}
+                      >
+                        {actionLoading === "resend_otp" ? "Refreshing…" : "Refresh code"}
+                      </Button>
+                    </div>
+                  )}
+                {booking.qr_code_data && booking.current_stage === "provider_arrived" && (
+                  <p className="text-xs text-pink-800">
+                    Your provider can also scan your QR code from this page if enabled.
+                  </p>
+                )}
+              </div>
+            )}
+
+          {booking.customer?.is_shadow && (
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <p className="text-sm font-medium text-gray-900">Create your account</p>
+              <p className="text-sm text-gray-600 mt-1">
+                Claim this booking and manage future appointments in the Beautonomi app.
+              </p>
+              <Button
+                className="mt-3"
+                variant="outline"
+                onClick={() =>
+                  router.push(
+                    `/signup?claim_email=${encodeURIComponent(booking.customer.email || "")}`,
+                  )
+                }
+              >
+                Create account
+              </Button>
+            </div>
+          )}
 
           {/* Services */}
           <div className="border-t pt-4">

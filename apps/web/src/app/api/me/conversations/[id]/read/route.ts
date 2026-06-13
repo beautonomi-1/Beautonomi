@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { syncPushBadgeCountAllApps } from "@/lib/notifications/sync-push-badge-count";
 
 /**
  * Verify the caller has access to the conversation (conversations table: customer_id or provider).
@@ -74,6 +75,8 @@ export async function POST(
     } else {
       await admin.from("conversations").update({ unread_count_provider: 0 }).eq("id", conversationId);
     }
+
+    void syncPushBadgeCountAllApps(user.id);
 
     return successResponse({ success: true });
   } catch (error: unknown) {

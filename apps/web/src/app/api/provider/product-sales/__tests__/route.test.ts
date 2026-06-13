@@ -221,7 +221,15 @@ describe("POST /api/provider/product-sales", () => {
   it("persists customer_id when walk-in customer name creates CRM link (users + provider_clients)", async () => {
     const newCustomerId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
     mockGetSupabaseAdmin.mockReturnValue({
-      rpc: vi.fn().mockResolvedValue({ data: { success: true, user_id: newCustomerId }, error: null }),
+      auth: {
+        admin: {
+          createUser: vi.fn(async () => ({
+            data: { user: { id: newCustomerId } },
+            error: null,
+          })),
+        },
+      },
+      rpc: vi.fn(),
       from: vi.fn((table: string) => {
         if (table === "users") {
           return {
@@ -229,6 +237,21 @@ describe("POST /api/provider/product-sales", () => {
               in: vi.fn(() => ({
                 limit: vi.fn(async () => ({ data: [], error: null })),
               })),
+              eq: vi.fn((_col: string, val: string) => ({
+                maybeSingle: vi.fn(async () => ({
+                  data: {
+                    id: val,
+                    email: `walkin+${val}@shadow.beautonomi.test`,
+                    phone: null,
+                    is_shadow: true,
+                  },
+                  error: null,
+                })),
+              })),
+            })),
+            insert: vi.fn(async () => ({ error: null })),
+            update: vi.fn(() => ({
+              eq: vi.fn(async () => ({ error: null })),
             })),
           };
         }

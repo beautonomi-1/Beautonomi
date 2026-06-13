@@ -47,6 +47,7 @@ import {
 } from "@/lib/bookings/provider-booking-finance";
 import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
 import { validateProviderBookingProducts } from "@/lib/bookings/validate-provider-booking-products";
+import { createOrResolveShadowCustomer } from "@/lib/users/create-shadow-customer";
 
 function sumUnpaidAdditionalCharges(charges: unknown): number {
   if (!Array.isArray(charges)) return 0;
@@ -96,24 +97,6 @@ function parseProviderFormResponses(raw: unknown): Record<string, unknown> | nul
     return null;
   }
   return raw as Record<string, unknown>;
-}
-
-function createWalkInEmail() {
-  // Ensure we always have a valid, unique email for walk-in customers
-  // since `public.users.email` is NOT NULL + UNIQUE and mirrors `auth.users.email`.
-  const uuid =
-    globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  return `walkin+${uuid}@beautonomi.invalid`;
-}
-
-async function waitForUserProfileRow(supabaseAdmin: any, userId: string) {
-  // The `auth.users` insert triggers `public.users` insert. In practice it's fast,
-  // but we retry a few times to avoid a race when we immediately reference `public.users`.
-  for (let i = 0; i < 5; i++) {
-    const { data } = await supabaseAdmin.from("users").select("id").eq("id", userId).maybeSingle();
-    if (data?.id) return;
-    await new Promise((r) => setTimeout(r, 80));
-  }
 }
 
 /**
@@ -1001,7 +984,6 @@ async function handleCreateProviderBooking(request: NextRequest) {
         }
       }
 
-      // If still no customer, create a new one for walk-in (use admin client)
       if (!customerId) {
         if (!body.customer_name) {
           return errorResponse(
@@ -1011,84 +993,25 @@ async function handleCreateProviderBooking(request: NextRequest) {
           );
         }
 
-        // IMPORTANT:
-        // `public.users.id` references `auth.users.id` and has no default.
-        // So we must create the Auth user first; a trigger will create `public.users`.
-        const walkInEmail = body.customer_email || createWalkInEmail();
-        // Normalize phone to E.164 format if provided
-        const normalizedPhone = normalizePhoneToE164(body.customer_phone);
-        const { data: createdUser, error: createUserError } =
-          await supabaseAdmin.auth.admin.createUser({
-            email: walkInEmail,
-            phone: normalizedPhone,
-            email_confirm: true,
-            user_metadata: {
-              full_name: body.customer_name,
-              phone: body.customer_phone || null, // Store original phone in metadata
-              role: "customer",
-            },
-          });
+        const shadowResult = await createOrResolveShadowCustomer({
+          supabaseAdmin,
+          fullName: body.customer_name,
+          email: body.customer_email,
+          phone: body.customer_phone,
+          providerId,
+          shadowSource: "provider_booking",
+          createdByUserId: user.id,
+        });
 
-        if (createUserError || !createdUser?.user?.id) {
-          console.error("Error creating auth user for walk-in:", createUserError);
+        if (shadowResult.ok === false) {
           return errorResponse(
-            createUserError?.message
-              ? `Could not create walk-in customer: ${createUserError.message}`
-              : "Could not create walk-in customer. Check email/phone and try again.",
-            "WALK_IN_AUTH_FAILED",
-            422,
-            createUserError ? { auth: createUserError } : undefined
+            shadowResult.message,
+            shadowResult.code === "USER_CREATE_ERROR" ? "WALK_IN_AUTH_FAILED" : shadowResult.code,
+            422
           );
         }
 
-        customerId = createdUser.user.id;
-
-        // Wait for trigger to create public.users record
-        await waitForUserProfileRow(supabaseAdmin, customerId);
-
-        // Ensure user record exists - if trigger failed, create it manually
-        const { data: userProfile, error: _profileError } = await supabaseAdmin
-          .from("users")
-          .select("id, full_name, phone")
-          .eq("id", customerId)
-          .maybeSingle();
-
-        if (!userProfile) {
-          console.warn(
-            "User profile not created by trigger, creating manually for walk-in customer"
-          );
-          // Manually create the user record if trigger didn't fire
-          const { error: insertError } = await supabaseAdmin.from("users").insert({
-            id: customerId,
-            email: walkInEmail,
-            full_name: body.customer_name,
-            phone: body.customer_phone || null,
-            role: "customer",
-          });
-
-          if (insertError) {
-            console.error("Error manually creating user profile:", insertError);
-            return errorResponse(
-              `Failed to create customer profile: ${insertError.message ?? "unknown error"}`,
-              "WALK_IN_PROFILE_FAILED",
-              422,
-              { db: insertError }
-            );
-          }
-        } else {
-          // Update user profile with any additional info if needed
-          const updateData: any = {};
-          if (body.customer_name && !userProfile.full_name) {
-            updateData.full_name = body.customer_name;
-          }
-          if (body.customer_phone && !userProfile.phone) {
-            updateData.phone = body.customer_phone;
-          }
-
-          if (Object.keys(updateData).length > 0) {
-            await supabaseAdmin.from("users").update(updateData).eq("id", customerId);
-          }
-        }
+        customerId = shadowResult.customerId;
       }
     }
 
@@ -2318,6 +2241,41 @@ async function handleCreateProviderBooking(request: NextRequest) {
           console.warn("Booking confirmation notification:", e)
         )
       );
+
+      void (async () => {
+        try {
+          const { shouldDeliverGuestLinkForCustomer, deliverGuestBookingLink } = await import(
+            "@/lib/portal/guest-booking-link-delivery"
+          );
+          if (!(await shouldDeliverGuestLinkForCustomer(supabaseAdmin, customerId))) return;
+
+          const { data: customerRow } = await supabaseAdmin
+            .from("users")
+            .select("full_name, email, phone")
+            .eq("id", customerId)
+            .maybeSingle();
+          const { data: providerRow } = await supabaseAdmin
+            .from("providers")
+            .select("business_name")
+            .eq("id", providerId)
+            .maybeSingle();
+
+          await deliverGuestBookingLink({
+            supabaseAdmin,
+            bookingId: booking.id,
+            bookingNumber: booking.booking_number || booking.id.slice(0, 8),
+            scheduledAt: booking.scheduled_at,
+            customerId,
+            customerName: (customerRow?.full_name as string) || body.customer_name || "Guest",
+            customerEmail: (customerRow?.email as string) || body.customer_email || null,
+            customerPhone: (customerRow?.phone as string) || body.customer_phone || null,
+            providerName: (providerRow?.business_name as string) || "Your provider",
+            tenantId: (booking as { tenant_id?: string | null }).tenant_id ?? tenantId,
+          });
+        } catch (guestLinkErr) {
+          console.warn("Guest booking link delivery:", guestLinkErr);
+        }
+      })();
     }
 
     const paymentLinkWarnings: string[] = [];

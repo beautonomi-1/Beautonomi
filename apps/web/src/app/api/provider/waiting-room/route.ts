@@ -11,6 +11,7 @@ import {
   WAITING_ROOM_BOOKING_SELECT,
   type WaitingRoomBookingEmbedRow,
 } from "@/lib/provider-waiting-room/booking-to-waiting-room-entry";
+import { createOrResolveShadowCustomer } from "@/lib/users/create-shadow-customer";
 
 const createWaitingRoomEntrySchema = z.object({
   client_name: z.string().min(1),
@@ -33,38 +34,25 @@ type WaitingRoomServiceRow = {
   title?: string | null;
 };
 
-function createWalkInEmail() {
-  const uuid =
-    globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  return `walkin+${uuid}@beautonomi.invalid`;
-}
-
 async function ensureWaitingRoomCustomer(
   supabase: ReturnType<typeof getSupabaseAdmin>,
+  providerId: string,
+  staffUserId: string,
   data: z.infer<typeof createWaitingRoomEntrySchema>,
 ) {
-  const email = data.client_email?.trim().toLowerCase();
-  if (email) {
-    const { data: existing } = await supabase
-      .from("users")
-      .select("id")
-      .eq("email", email)
-      .maybeSingle();
-    if (existing?.id) return existing.id as string;
+  const result = await createOrResolveShadowCustomer({
+    supabaseAdmin: supabase,
+    fullName: data.client_name,
+    email: data.client_email,
+    phone: data.client_phone,
+    providerId,
+    shadowSource: "waiting_room",
+    createdByUserId: staffUserId,
+  });
+  if (result.ok === false) {
+    throw new Error(result.message);
   }
-
-  const { data: created, error } = await supabase
-    .from("users")
-    .insert({
-      email: email || createWalkInEmail(),
-      full_name: data.client_name,
-      phone: data.client_phone || null,
-      role: "customer",
-    })
-    .select("id")
-    .single();
-  if (error || !created?.id) throw error || new Error("Failed to create waiting-room customer");
-  return created.id as string;
+  return result.customerId;
 }
 
 /**
@@ -208,7 +196,7 @@ export async function POST(request: NextRequest) {
 
     // If no appointment_id, create a new booking for walk-in
     // This is for walk-in clients who don't have a pre-existing appointment
-    const customerId = await ensureWaitingRoomCustomer(supabase, data);
+    const customerId = await ensureWaitingRoomCustomer(supabase, providerId, user.id, data);
     const walkInRef =
       globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const bookingNumber = `WI-${walkInRef.slice(0, 8).toUpperCase()}`;

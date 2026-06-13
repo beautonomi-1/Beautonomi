@@ -1,6 +1,6 @@
 {
   "name": "provider",
-  "version": "1.0.56",
+  "version": "1.0.57",
   "main": "index.ts",
   "scripts": {
     "dev": "node ../../tooling/expo-dev/port-safe-expo-dev.js 8082 8084",

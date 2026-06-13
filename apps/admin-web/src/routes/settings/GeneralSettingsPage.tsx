@@ -65,6 +65,15 @@ type FeaturesForm = {
   auto_approve_providers: boolean;
 };
 
+type VerificationForm = {
+  otp_enabled: boolean;
+  qr_code_enabled: boolean;
+  require_verification: boolean;
+  allow_provider_override: boolean;
+  guest_link_email_enabled: boolean;
+  guest_link_sms_enabled: boolean;
+};
+
 type SocialAuthForm = {
   google: boolean;
   apple: boolean;
@@ -206,6 +215,14 @@ export function GeneralSettingsPage() {
   const [features, setFeatures] = useState<FeaturesForm>({
     auto_approve_providers: false,
   });
+  const [verification, setVerification] = useState<VerificationForm>({
+    otp_enabled: true,
+    qr_code_enabled: true,
+    require_verification: true,
+    allow_provider_override: true,
+    guest_link_email_enabled: true,
+    guest_link_sms_enabled: true,
+  });
   const [socialAuth, setSocialAuth] = useState<SocialAuthForm>({
     google: true,
     apple: true,
@@ -269,6 +286,15 @@ export function GeneralSettingsPage() {
     });
     setFeatures({
       auto_approve_providers: f.auto_approve_providers ?? false,
+    });
+    const v = (q.data.verification ?? {}) as Partial<VerificationForm>;
+    setVerification({
+      otp_enabled: v.otp_enabled !== false,
+      qr_code_enabled: v.qr_code_enabled !== false,
+      require_verification: v.require_verification !== false,
+      allow_provider_override: v.allow_provider_override !== false,
+      guest_link_email_enabled: v.guest_link_email_enabled !== false,
+      guest_link_sms_enabled: v.guest_link_sms_enabled !== false,
     });
     const sa = (q.data.social_auth ?? {}) as Partial<SocialAuthForm>;
     setSocialAuth({
@@ -394,6 +420,10 @@ export function GeneralSettingsPage() {
           ...locSaved,
         },
         features: { ...((existing.features as Record<string, unknown>) ?? {}), ...features },
+        verification: {
+          ...((existing.verification as Record<string, unknown>) ?? {}),
+          ...verification,
+        },
         social_auth: {
           ...((existing.social_auth as Record<string, unknown>) ?? {}),
           google: socialAuth.google,
@@ -833,6 +863,36 @@ export function GeneralSettingsPage() {
       </AdminPanel>
 
       <AdminPanel>
+        <h3 className="mb-4 text-sm font-semibold text-gray-900">At-home arrival verification</h3>
+        <p className="mb-4 text-xs text-gray-600">
+          House-call PIN/QR verification, provider override escape hatch, and guest portal link delivery for shadow
+          customers.
+        </p>
+        <div className="space-y-3">
+          {(
+            [
+              ["otp_enabled", "Enable arrival PIN (customer shows code to provider)"],
+              ["qr_code_enabled", "Enable arrival QR verification"],
+              ["require_verification", "Require verification before service start"],
+              ["allow_provider_override", "Allow provider manual override when customer cannot verify"],
+              ["guest_link_email_enabled", "Email guest portal links to shadow customers"],
+              ["guest_link_sms_enabled", "SMS guest portal links when no real email"],
+            ] as const
+          ).map(([key, label]) => (
+            <label key={key} className="flex cursor-pointer items-center gap-3">
+              <input
+                type="checkbox"
+                checked={verification[key]}
+                onChange={(e) => setVerification((p) => ({ ...p, [key]: e.target.checked }))}
+                className="h-4 w-4 rounded border-gray-300 text-indigo-600"
+              />
+              <span className="text-sm text-gray-700">{label}</span>
+            </label>
+          ))}
+        </div>
+      </AdminPanel>
+
+      <AdminPanel>
         <h3 className="mb-4 text-sm font-semibold text-gray-900">Provider features</h3>
         <label className="flex cursor-pointer items-center gap-3">
           <input
@@ -1128,6 +1188,10 @@ export function GeneralSettingsPage() {
           channel toggles and tests, also use{" "}
           <Link to={adminSpaTo("/admin/notifications")} className="font-medium text-indigo-700 underline">
             Notifications
+          </Link>
+          . Transactional email (queue, guest links) is configured under{" "}
+          <Link to={adminSpaTo("/admin/integrations/resend")} className="font-medium text-indigo-700 underline">
+            Resend
           </Link>
           .
         </p>

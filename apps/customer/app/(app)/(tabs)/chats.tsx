@@ -18,6 +18,7 @@ import { api } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase/client";
 import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
 import { getApiErrorMessage } from "@/lib/api-error";
+import { emitChatBadgeRefresh } from "@/lib/notification-badge-events";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
 import { Colors } from "@/constants/colors";
@@ -193,6 +194,8 @@ export default function ChatsScreen() {
     if (res.error) {
       setError(getApiErrorMessage(res.error, "Failed to mark conversation as read"));
       void load(true);
+    } else {
+      emitChatBadgeRefresh();
     }
   }, [load]);
 

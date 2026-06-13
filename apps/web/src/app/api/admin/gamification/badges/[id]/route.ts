@@ -1,8 +1,17 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import {
+  requireAdminSection,
+  successResponse,
+  handleApiError,
+  errorResponse,
+} from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
+import {
+  validateBadgeBenefits,
+  validateBadgeRequirements,
+} from "@/lib/gamification/validate-badge-payload";
 
 /**
  * GET /api/admin/gamification/badges/[id]
@@ -65,17 +74,29 @@ export async function PATCH(
     if (body.icon_url !== undefined) updateData.icon_url = body.icon_url;
     if (body.tier !== undefined) {
       if (body.tier < 1 || body.tier > 10) {
-        return handleApiError(
-          new Error('Tier must be between 1 and 10'),
-          'VALIDATION_ERROR',
-          400
-        );
+        return errorResponse("Tier must be between 1 and 10", "VALIDATION_ERROR", 400);
       }
       updateData.tier = body.tier;
     }
     if (body.color !== undefined) updateData.color = body.color;
-    if (body.requirements !== undefined) updateData.requirements = body.requirements;
-    if (body.benefits !== undefined) updateData.benefits = body.benefits;
+    if (body.requirements !== undefined) {
+      try {
+        updateData.requirements = validateBadgeRequirements(body.requirements);
+      } catch (validationError) {
+        const message =
+          validationError instanceof Error ? validationError.message : "Invalid requirements";
+        return errorResponse(message, "VALIDATION_ERROR", 400);
+      }
+    }
+    if (body.benefits !== undefined) {
+      try {
+        updateData.benefits = validateBadgeBenefits(body.benefits);
+      } catch (validationError) {
+        const message =
+          validationError instanceof Error ? validationError.message : "Invalid benefits";
+        return errorResponse(message, "VALIDATION_ERROR", 400);
+      }
+    }
     if (body.is_active !== undefined) updateData.is_active = body.is_active;
     if (body.display_order !== undefined) updateData.display_order = body.display_order;
 

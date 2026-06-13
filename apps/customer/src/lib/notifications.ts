@@ -120,8 +120,21 @@ export function navigateFromNotification(n: Notification): void {
     return;
   }
 
-  // ── Membership win-back (provider invited a cancelled member to rejoin) ──
+  // ── Identity verification outcomes ───────────────────────────────────────
   const templateKey = typeof data.template_key === "string" ? data.template_key.toLowerCase() : "";
+  if (
+    nType === "identity_verification_approved" ||
+    nType === "identity_verification_rejected" ||
+    nType === "account_verification" ||
+    templateKey === "identity_verification_approved" ||
+    templateKey === "identity_verification_rejected" ||
+    link.includes("/account-settings/identity-verification")
+  ) {
+    router.push("/(app)/account-settings/identity-verification" as never);
+    return;
+  }
+
+  // ── Membership win-back (provider invited a cancelled member to rejoin) ──
   if (
     nType === "membership_win_back" ||
     dataType === "membership_win_back" ||

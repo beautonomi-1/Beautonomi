@@ -9,6 +9,7 @@ import {
   resolveProviderIdForUser,
   syncProviderVerificationState,
 } from "@/lib/verification/sync-provider-verification";
+import { notifyIdentityVerificationReviewed } from "@/lib/verification/notify-identity-verification-reviewed";
 
 /**
  * POST /api/admin/users/[id]/identity-verification/reset
@@ -71,11 +72,12 @@ export async function POST(
     // verified badge and the provider KYC row too, otherwise an old
     // `approved` KYC entry would silently re-grant the badge on the next
     // setup-status fetch.
+    let linkedProviderId: string | null = null;
     try {
-      const providerId = await resolveProviderIdForUser(admin, id);
-      if (providerId) {
+      linkedProviderId = await resolveProviderIdForUser(admin, id);
+      if (linkedProviderId) {
         await syncProviderVerificationState(admin, {
-          providerId,
+          providerId: linkedProviderId,
           userId: id,
           status: "reset",
           source: "admin_reset",
@@ -88,6 +90,16 @@ export async function POST(
     } catch (syncErr) {
       console.error("Failed to sync provider verification on reset:", syncErr);
     }
+
+    // Awaited so serverless doesn't freeze before the send completes;
+    // the helper never throws (errors are logged and swallowed).
+    await notifyIdentityVerificationReviewed({
+      userId: id,
+      outcome: "rejected",
+      rejectionReason: supersedeReason,
+      isProvider: Boolean(linkedProviderId),
+      tenantId,
+    });
 
     await writeAuditLog({
       actor_user_id: user.id,

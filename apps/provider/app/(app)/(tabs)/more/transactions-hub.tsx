@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useState, useMemo } from "react";
 import { View, Text, ScrollView, RefreshControl, TouchableOpacity, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -14,6 +14,7 @@ import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { formatCurrency } from "@/lib/format";
 import { hubTransactionTypeTitle, ledgerRowDisplaySign } from "@/lib/providerLedgerDisplay";
 import { HUB_RETURN_SUFFIX, useProviderStackBack } from "@/lib/provider-tab-navigation";
+import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 
 const FINANCE_RANGE_OPTIONS: { label: string; value: "week" | "month" | "year" | "all" }[] = [
   { label: "Week", value: "week" },
@@ -50,6 +51,15 @@ type ShortcutRow = {
   bg: string;
 };
 
+const POS_SHORTCUT: ShortcutRow = {
+  icon: "card-outline",
+  label: "Walk-in & POS sales",
+  subtitle: "Appointments, products & add-ons",
+  route: `/(app)/(tabs)/sales${HUB_RETURN_SUFFIX}`,
+  color: "#0d9488",
+  bg: "#ccfbf1",
+};
+
 const SHORTCUTS: ShortcutRow[] = [
   {
     icon: "list-outline",
@@ -58,14 +68,6 @@ const SHORTCUTS: ShortcutRow[] = [
     route: `/(app)/(tabs)/more/transactions${HUB_RETURN_SUFFIX}`,
     color: "#2563eb",
     bg: "#dbeafe",
-  },
-  {
-    icon: "card-outline",
-    label: "Walk-in & POS sales",
-    subtitle: "Appointments, products & add-ons",
-    route: `/(app)/(tabs)/sales${HUB_RETURN_SUFFIX}`,
-    color: "#0d9488",
-    bg: "#ccfbf1",
   },
   {
     icon: "storefront-outline",
@@ -122,6 +124,11 @@ export default function TransactionsHubScreen() {
   const handleBack = useProviderStackBack();
   const tenantCurrency = getTenantDefaultCurrency();
   const { provider } = useProvider();
+  const unifiedPosEnabled = useFeatureFlag("provider.unified_pos_checkout");
+  const shortcuts = useMemo(
+    () => (unifiedPosEnabled ? [SHORTCUTS[0], POS_SHORTCUT, ...SHORTCUTS.slice(1)] : SHORTCUTS),
+    [unifiedPosEnabled],
+  );
   const [refreshing, setRefreshing] = useState(false);
   const [range, setRange] = useState<"week" | "month" | "year" | "all">("month");
   const [txLimit, setTxLimit] = useState(50);
@@ -181,7 +188,7 @@ export default function TransactionsHubScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8, gap: 10 }}>
-          {SHORTCUTS.map((s) => (
+          {shortcuts.map((s) => (
             <TouchableOpacity
               key={s.route}
               onPress={() => router.navigate(s.route as never)}

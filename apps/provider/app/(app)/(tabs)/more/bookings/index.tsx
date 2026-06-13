@@ -45,6 +45,7 @@ import { twStyle } from "@/lib/twStyle";
 import { horizontalFlatListPerf } from "@/lib/flatListPerformance";
 import { Colors } from "@/constants/colors";
 import { tabScreenScrollBottomPadding } from "@/constants/layout";
+import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { AnnouncementBanner } from "@/components/AnnouncementBanner";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { SegmentTabs } from "@/components/ui/SegmentTabs";
@@ -281,6 +282,7 @@ export default function BookingsListScreen() {
   const { screenPadding } = useResponsive();
   const { provider, selectedLocationId } = useProvider();
   const currency = getTenantDefaultCurrency();
+  const unifiedPosEnabled = useFeatureFlag("provider.unified_pos_checkout");
 
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
@@ -1027,7 +1029,9 @@ export default function BookingsListScreen() {
             horizontal
             data={[
               { label: "New", sub: "Booking", icon: "calendar-outline", route: "/(app)/(tabs)/bookings/new", accent: true },
-              { label: "Sell", sub: "POS", icon: "card-outline", route: "/(app)/(tabs)/sales" },
+              ...(unifiedPosEnabled
+                ? [{ label: "Sell", sub: "POS", icon: "card-outline", route: "/(app)/(tabs)/sales" } satisfies QuickActionTile]
+                : []),
               { label: "Front", sub: "Desk queue", icon: "people-circle-outline", route: "/(app)/(tabs)/more/waiting-room" },
               { label: "Walk-in", sub: "Appointment", icon: "walk-outline", route: "/(app)/(tabs)/bookings/new?walk_in=true" },
               { label: "Retail", sub: "Product sale", icon: "bag-handle-outline", route: "/(app)/(tabs)/more/walk-in-sale" },
@@ -1381,6 +1385,7 @@ export default function BookingsListScreen() {
       flashAnimStyle,
       provider?.offers_mobile_services,
       router,
+      unifiedPosEnabled,
       viewMode,
       stripDays,
       dateStripInfo,

@@ -150,6 +150,10 @@ export async function POST(request: NextRequest) {
           error: {
             message: purgeResult.message || "Failed to purge user",
             code: purgeResult.code ?? "DELETE_ERROR",
+            details:
+              purgeResult.blockers && purgeResult.blockers.length > 0
+                ? { blockers: purgeResult.blockers }
+                : undefined,
           },
         },
         { status: 500 },

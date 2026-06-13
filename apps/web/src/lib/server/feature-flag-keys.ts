@@ -23,6 +23,14 @@ export const FEATURE_FLAG_KEYS = {
    * Web POS terminals cannot be provisioned.
    */
   YOCO_OAUTH_V2: "yoco_oauth_v2",
+  /** Auto-send signed portal links to shadow/guest customers (email + SMS). */
+  GUEST_BOOKING_PORTAL: "guest_booking_portal",
+  /**
+   * Unified provider POS checkout (services + products without a booking).
+   * Disabled by default — use bookings for service sales and walk-in retail for products.
+   * Booking card payments still use `/api/provider/sales` regardless of this flag.
+   */
+  PROVIDER_UNIFIED_POS: "provider.unified_pos_checkout",
 } as const;
 
 export type PaymentRelatedFeatureKey =

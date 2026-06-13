@@ -1,58 +1,107 @@
 /**
  * Notifications count for the header badge.
- * Shared so the notifications screen can trigger a refresh after mark read/delete.
- * Subscribes to notifications table changes so the badge updates in real time.
+ * Unified WhatsApp-style total = in-app notifications + unread chat messages.
  */
 import { createContext, useContext, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { AppState, DeviceEventEmitter, Platform } from "react-native";
-import { NOTIFICATION_BADGE_REFRESH_EVENT } from "@/lib/notification-badge-events";
+import { AppState, DeviceEventEmitter, InteractionManager, Platform } from "react-native";
+import {
+  CHAT_BADGE_REFRESH_EVENT,
+  NOTIFICATION_BADGE_REFRESH_EVENT,
+} from "@/lib/notification-badge-events";
+import { syncOsBadgeCount } from "@/lib/sync-os-badge-count";
+import { computeUnifiedUnread } from "@/lib/unified-unread-badge";
 import { useApi } from "@/hooks/useApi";
 import { useAuth } from "@/providers/AuthProvider";
 import { supabase } from "@/lib/supabase/client";
 import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
+import { useProvider } from "@/providers/ProviderContext";
 
 interface NotificationsCountResponse {
   notifications: unknown[];
   total_unread: number;
 }
 
+interface ProviderNavCounts {
+  unread_messages?: number;
+}
+
 interface NotificationsCountContextValue {
+  /** In-app notification rows unread (not including chat). */
+  notificationUnread: number;
+  /** Unread chat messages. */
+  chatUnreadCount: number;
+  /** Unified total for bell + OS badge. */
   totalUnread: number;
   refresh: () => Promise<void>;
   adjustUnreadCount: (delta: number) => void;
   replaceUnreadCount: (count: number) => void;
+  adjustChatUnreadCount: (delta: number) => void;
 }
 
 const NotificationsCountContext = createContext<NotificationsCountContextValue | null>(null);
 
+const FOREGROUND_REFETCH_DELAY_MS = 220;
+const REALTIME_REFETCH_DEBOUNCE_MS = 120;
+
 export function NotificationsCountProvider({ children }: { children: ReactNode }) {
   const { session, user } = useAuth();
+  const { provider } = useProvider();
   const { data, refresh } = useApi<NotificationsCountResponse>(
     "/api/provider/notifications?counts_only=1",
     {
-    enabled: !!session,
-    /** Bell badge must track server unread immediately after read/delete (no stale GET cache). */
+      enabled: !!session,
       staleTimeMs: 0,
     },
   );
-  /** Shifts badge immediately; resets when `data.total_unread` changes from the server. */
+  const { data: navCounts, refresh: refreshNavCounts } = useApi<ProviderNavCounts>(
+    "/api/provider/nav-counts",
+    {
+      enabled: !!session,
+      staleTimeMs: 0,
+    },
+  );
+
   const [countBias, setCountBias] = useState(0);
+  const [chatBias, setChatBias] = useState(0);
+  const [serverSynced, setServerSynced] = useState(false);
+  const [chatServerSynced, setChatServerSynced] = useState(false);
+
   useEffect(() => {
     setCountBias(0);
   }, [data?.total_unread]);
 
-  // Clear any optimistic bias the instant the authenticated user changes
-  // (sign-out, or A→B account switch) so user B's badge never inherits user A's
-  // optimistic offset before the user-keyed server count loads.
   useEffect(() => {
-    setCountBias(0);
+    setChatBias(0);
+  }, [navCounts?.unread_messages]);
+
+  const lastUserIdRef = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (lastUserIdRef.current !== undefined && lastUserIdRef.current !== (user?.id ?? null)) {
+      setCountBias(0);
+      setChatBias(0);
+      setServerSynced(false);
+      setChatServerSynced(false);
+    }
+    lastUserIdRef.current = user?.id ?? null;
   }, [user?.id]);
 
+  useEffect(() => {
+    if (typeof data?.total_unread === "number") setServerSynced(true);
+  }, [data?.total_unread]);
+
+  useEffect(() => {
+    if (typeof navCounts?.unread_messages === "number") setChatServerSynced(true);
+  }, [navCounts?.unread_messages]);
+
   const baseUnread = data?.total_unread ?? 0;
-  const totalUnread = Math.max(0, baseUnread + countBias);
-  /** True once the server has returned a real count. Until then we must not
-   * overwrite an OS badge that a push set while the app was killed. */
-  const hasServerCount = typeof data?.total_unread === "number";
+  const baseChatUnread = navCounts?.unread_messages ?? 0;
+  const notificationUnread = Math.max(0, baseUnread + countBias);
+  const chatUnreadCount = Math.max(0, baseChatUnread + chatBias);
+  const totalUnread = useMemo(
+    () => computeUnifiedUnread(notificationUnread, chatUnreadCount),
+    [notificationUnread, chatUnreadCount],
+  );
+  const badgeReady = serverSynced && chatServerSynced;
 
   const adjustUnreadCount = useCallback((delta: number) => {
     setCountBias((b) => b + delta);
@@ -65,32 +114,22 @@ export function NotificationsCountProvider({ children }: { children: ReactNode }
     [baseUnread],
   );
 
-  useEffect(() => {
-    if (Platform.OS === "web") return;
-    // Wait for the first server count before touching the OS badge — otherwise
-    // a cold start would briefly set it to 0 and wipe a push-delivered badge.
-    if (!hasServerCount) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const Notifications = await import("expo-notifications");
-        if (cancelled) return;
-        const n = Math.min(999_999, Math.max(0, Math.floor(totalUnread)));
-        await Notifications.setBadgeCountAsync(n);
-      } catch {
-        // Native module unavailable until dev client rebuild
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [totalUnread, hasServerCount]);
+  const adjustChatUnreadCount = useCallback((delta: number) => {
+    setChatBias((b) => b + delta);
+  }, []);
 
   const refreshRef = useRef(refresh);
   refreshRef.current = refresh;
-  const refreshCount = useCallback(async () => {
-    await refreshRef.current();
+  const refreshNavRef = useRef(refreshNavCounts);
+  refreshNavRef.current = refreshNavCounts;
+
+  const refreshAll = useCallback(async () => {
+    await Promise.all([refreshRef.current(), refreshNavRef.current()]);
   }, []);
+
+  const refreshCount = useCallback(async () => {
+    await refreshAll();
+  }, [refreshAll]);
 
   useEffect(() => {
     let debounce: ReturnType<typeof setTimeout> | undefined;
@@ -99,7 +138,7 @@ export function NotificationsCountProvider({ children }: { children: ReactNode }
       debounce = setTimeout(() => {
         debounce = undefined;
         void refreshRef.current();
-      }, 120);
+      }, REALTIME_REFETCH_DEBOUNCE_MS);
     });
     return () => {
       sub.remove();
@@ -108,16 +147,53 @@ export function NotificationsCountProvider({ children }: { children: ReactNode }
   }, []);
 
   useEffect(() => {
-    const sub = AppState.addEventListener("change", (next) => {
-      if (next === "active") {
-        // Stagger 200 ms behind the AuthProvider and TabsLayout AppState
-        // handlers so all three don't hit the JS thread in the same tick,
-        // reducing the risk of ANR on foreground.
-        setTimeout(() => void refreshRef.current(), 200);
-      }
+    let debounce: ReturnType<typeof setTimeout> | undefined;
+    const sub = DeviceEventEmitter.addListener(CHAT_BADGE_REFRESH_EVENT, () => {
+      if (debounce) clearTimeout(debounce);
+      debounce = setTimeout(() => {
+        debounce = undefined;
+        void refreshNavRef.current();
+      }, REALTIME_REFETCH_DEBOUNCE_MS);
     });
-    return () => sub.remove();
+    return () => {
+      sub.remove();
+      if (debounce) clearTimeout(debounce);
+    };
   }, []);
+
+  const foregroundTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (next) => {
+      if (next !== "active") return;
+      if (foregroundTimerRef.current) clearTimeout(foregroundTimerRef.current);
+      foregroundTimerRef.current = setTimeout(() => {
+        foregroundTimerRef.current = null;
+        InteractionManager.runAfterInteractions(() => {
+          void refreshAll();
+        });
+      }, FOREGROUND_REFETCH_DELAY_MS);
+    });
+    return () => {
+      sub.remove();
+      if (foregroundTimerRef.current) {
+        clearTimeout(foregroundTimerRef.current);
+        foregroundTimerRef.current = null;
+      }
+    };
+  }, [refreshAll]);
+
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    if (!badgeReady) return;
+    let cancelled = false;
+    void (async () => {
+      if (cancelled) return;
+      await syncOsBadgeCount(totalUnread);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [totalUnread, badgeReady]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -135,7 +211,7 @@ export function NotificationsCountProvider({ children }: { children: ReactNode }
             if (debounce) clearTimeout(debounce);
             debounce = setTimeout(() => {
               void refreshRef.current();
-            }, 120);
+            }, REALTIME_REFETCH_DEBOUNCE_MS);
           },
         )
         .subscribe();
@@ -154,14 +230,61 @@ export function NotificationsCountProvider({ children }: { children: ReactNode }
     };
   }, [user?.id]);
 
+  useEffect(() => {
+    const providerId = provider?.id;
+    if (!providerId) return;
+    let debounce: ReturnType<typeof setTimeout> | undefined;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+
+    try {
+      const topic = nextRealtimeTopic(`provider-chat-unread:${providerId}`);
+      channel = supabase
+        .channel(topic)
+        .on(
+          "postgres_changes" as never,
+          { event: "*", schema: "public", table: "conversations", filter: `provider_id=eq.${providerId}` },
+          () => {
+            if (debounce) clearTimeout(debounce);
+            debounce = setTimeout(() => {
+              void refreshNavRef.current();
+            }, REALTIME_REFETCH_DEBOUNCE_MS);
+          },
+        )
+        .subscribe();
+    } catch {
+      // Non-fatal
+    }
+
+    return () => {
+      if (debounce) clearTimeout(debounce);
+      if (!channel) return;
+      try {
+        supabase.removeChannel(channel);
+      } catch {
+        // ignore
+      }
+    };
+  }, [provider?.id]);
+
   const contextValue = useMemo<NotificationsCountContextValue>(
     () => ({
+      notificationUnread,
+      chatUnreadCount,
       totalUnread,
       refresh: refreshCount,
       adjustUnreadCount,
       replaceUnreadCount,
+      adjustChatUnreadCount,
     }),
-    [totalUnread, refreshCount, adjustUnreadCount, replaceUnreadCount],
+    [
+      notificationUnread,
+      chatUnreadCount,
+      totalUnread,
+      refreshCount,
+      adjustUnreadCount,
+      replaceUnreadCount,
+      adjustChatUnreadCount,
+    ],
   );
 
   return (
@@ -175,10 +298,13 @@ export function useNotificationsCount(): NotificationsCountContextValue {
   const ctx = useContext(NotificationsCountContext);
   if (!ctx) {
     return {
+      notificationUnread: 0,
+      chatUnreadCount: 0,
       totalUnread: 0,
       refresh: async () => {},
       adjustUnreadCount: () => {},
       replaceUnreadCount: () => {},
+      adjustChatUnreadCount: () => {},
     };
   }
   return ctx;

@@ -8,7 +8,7 @@
  *   → Shows a manual document-upload form (POST /api/me/verification).
  *     Admin reviews the document and approves manually.
  */
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useTranslation } from "@beautonomi/i18n";
 import {
   View,
@@ -17,7 +17,6 @@ import {
   Alert,
   ActivityIndicator,
   ScrollView,
-  TextInput,
   RefreshControl,
   AppState,
 } from "react-native";
@@ -35,6 +34,8 @@ import { haptic } from "@/lib/haptics";
 import { launchImageLibraryWithPermission } from "@/lib/native-permissions";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { getBackendUrl } from "@/config/public-env";
+import { CountryOfIssuePicker } from "@/components/CountryOfIssuePicker";
+import { formatVerificationCountryDisplay } from "@beautonomi/utils";
 
 const DOCUMENT_TYPE_OPTIONS = [
   { value: "license", labelKey: "docTypeLicense" },
@@ -81,13 +82,6 @@ export default function IdentityVerificationScreen() {
   const errTitle = t("customer.mobile.screens.authLogin.errorTitle");
   const { bundle } = useConfigBundle();
   const env = bundle?.meta?.env ?? "production";
-  const countryPlaceholder = useMemo(() => {
-    const regionName = bundle?.meta?.tenant_region?.name?.trim();
-    return regionName
-      ? iv("countryPlaceholderRegion", { region: regionName })
-      : iv("countryPlaceholderDefault");
-  }, [bundle, iv]);
-
   const [statusData, setStatusData] = useState<VerificationStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -231,7 +225,7 @@ export default function IdentityVerificationScreen() {
   };
 
   const submitManual = async () => {
-    if (!selectedFile || !country.trim()) {
+    if (!selectedFile || !country) {
       Alert.alert(iv("missingInfoTitle"), iv("missingInfoBody"));
       return;
     }
@@ -244,7 +238,7 @@ export default function IdentityVerificationScreen() {
         type: selectedFile.mimeType || "image/jpeg",
       });
       formData.append("document_type", documentType);
-      formData.append("country", country.trim());
+      formData.append("country", country);
 
       const res = await api.post<{ verification_id?: string; status?: string }>(
         "/api/me/verification",
@@ -496,7 +490,7 @@ export default function IdentityVerificationScreen() {
                 <Text style={{ fontSize: 13, color: Colors.gray[700], lineHeight: 20 }}>
                   {iv("submissionMeta", {
                     type: docTypeLabel(row.document_type),
-                    country: row.country || "—",
+                    country: formatVerificationCountryDisplay(row.country),
                     when: formatWhen(row.submitted_at),
                   })}
                 </Text>
@@ -618,24 +612,12 @@ export default function IdentityVerificationScreen() {
               })}
             </View>
 
-            <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>{iv("countryOfIssue")}</Text>
-            <TextInput
-              style={{
-                borderRadius: RADIUS_INPUT,
-                borderWidth: 1,
-                borderColor: Colors.gray[200],
-                backgroundColor: Colors.white,
-                paddingHorizontal: 16,
-                paddingVertical: 14,
-                fontSize: 16,
-                color: Colors.gray[900],
-                marginBottom: 16,
-              }}
+            <CountryOfIssuePicker
               value={country}
-              onChangeText={setCountry}
-              placeholder={countryPlaceholder}
-              placeholderTextColor={Colors.gray[400]}
-              autoCapitalize="words"
+              onChange={setCountry}
+              label={iv("countryOfIssue")}
+              tenantRegionCode={bundle?.meta?.tenant_region?.code}
+              tenantRegionName={bundle?.meta?.tenant_region?.name}
             />
 
             <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>{iv("documentPhoto")}</Text>
@@ -678,10 +660,10 @@ export default function IdentityVerificationScreen() {
 
             <TouchableOpacity
               onPress={submitManual}
-              disabled={uploading || !selectedFile || !country.trim()}
+              disabled={uploading || !selectedFile || !country}
               style={{
                 backgroundColor:
-                  uploading || !selectedFile || !country.trim()
+                  uploading || !selectedFile || !country
                     ? Colors.gray[300]
                     : Colors.primary,
                 paddingVertical: 16,

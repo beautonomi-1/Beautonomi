@@ -47,6 +47,18 @@ interface NotificationsConfig {
     broadcast_note?: string;
   };
   twilio?: { account_sid_set?: boolean; auth_token_set?: boolean; from_number?: string; enabled?: boolean };
+  resend?: {
+    enabled?: boolean;
+    api_key_set?: boolean;
+    from?: string;
+    settings_enabled?: boolean;
+  };
+  transactional_email?: {
+    enabled?: boolean;
+    provider?: string;
+    api_key_set?: boolean;
+    from?: string;
+  };
   [key: string]: unknown;
 }
 
@@ -193,6 +205,7 @@ export function NotificationsConfigPage() {
 
   const onesignal = cfg?.onesignal;
   const twilio = cfg?.twilio;
+  const resend = cfg?.resend;
 
   return (
     <div className="space-y-6">
@@ -319,10 +332,10 @@ export function NotificationsConfigPage() {
       </AdminPanel>
 
       {/* Integration status */}
-      {(onesignal || twilio) && (
+      {(onesignal || twilio || resend) && (
         <AdminPanel>
           <h2 className="mb-4 text-sm font-semibold text-gray-900">Integration credentials</h2>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {onesignal && (
               <div className="rounded-lg border border-blue-100 bg-blue-50 p-4">
                 <h3 className="font-semibold text-blue-900">OneSignal (Push)</h3>
@@ -346,6 +359,37 @@ export function NotificationsConfigPage() {
                     </dd>
                   </div>
                 </dl>
+              </div>
+            )}
+            {resend && (
+              <div className="rounded-lg border border-indigo-100 bg-indigo-50 p-4">
+                <h3 className="font-semibold text-indigo-900">Resend (transactional email)</h3>
+                <dl className="mt-2 space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <dt className="text-indigo-700">Status</dt>
+                    <dd className={resend.enabled ? "text-green-700 font-medium" : "text-gray-600"}>
+                      {resend.enabled ? "Active" : "Inactive"}
+                    </dd>
+                  </div>
+                  <div className="flex justify-between">
+                    <dt className="text-indigo-700">API Key</dt>
+                    <dd className={resend.api_key_set ? "text-green-700 font-medium" : "text-red-600 font-medium"}>
+                      {resend.api_key_set ? "✓ Set" : "✗ Missing"}
+                    </dd>
+                  </div>
+                  {resend.from && (
+                    <div className="flex justify-between">
+                      <dt className="text-indigo-700">From</dt>
+                      <dd className="font-mono text-xs text-indigo-900">{resend.from}</dd>
+                    </div>
+                  )}
+                </dl>
+                <Link
+                  to={adminSpaTo("/admin/integrations/resend")}
+                  className="mt-3 inline-block text-xs font-medium text-indigo-800 underline"
+                >
+                  Configure Resend →
+                </Link>
               </div>
             )}
             {twilio && (
@@ -417,8 +461,13 @@ export function NotificationsConfigPage() {
 
       <AdminPanel>
         <p className="text-xs text-gray-500">
-          <strong>Note:</strong> Expo / mobile push credentials are managed via OneSignal. Customer broadcast campaigns are under
-          Marketing → Broadcast. In-app alerts for ops work appear in the header bell.
+          <strong>Note:</strong> Expo / mobile push credentials are managed via OneSignal. Transactional email (queue,
+          guest links, claim invites) uses{" "}
+          <Link to={adminSpaTo("/admin/integrations/resend")} className="font-medium text-indigo-700 underline">
+            Resend
+          </Link>
+          . Customer broadcast campaigns are under Marketing → Broadcast. In-app alerts for ops work appear in the header
+          bell.
         </p>
       </AdminPanel>
 

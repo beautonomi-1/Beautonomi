@@ -367,6 +367,19 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
                  lowerErrorMessage.includes("invalid credentials")) {
         setError("Invalid login credentials. Please check your email and password.");
         setShowResendVerification(true);
+      } else if (
+        lowerErrorMessage.includes("already registered") ||
+        lowerErrorMessage.includes("user already") ||
+        lowerErrorMessage.includes("already exists")
+      ) {
+        try {
+          await fetcher.post("/api/auth/claim/start", { email: trimmedEmail });
+          setError("We found bookings under this email. Check your inbox to claim your account.");
+          toast.success("Check your email to claim your account.");
+        } catch {
+          setError(errorMessage);
+          toast.error(errorMessage);
+        }
       } else {
         setError(errorMessage);
         if (lowerErrorMessage.includes("email")) {

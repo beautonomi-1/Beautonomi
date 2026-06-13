@@ -90,7 +90,7 @@ export default function TabsLayout() {
   const { isTablet } = useResponsive();
   const { t } = useTranslation();
   const { provider } = useProvider();
-  const { totalUnread: unreadNotifications, refresh: refreshUnreadCount } = useNotificationsCount();
+  const { notificationUnread, chatUnreadCount, refresh: refreshUnreadCount } = useNotificationsCount();
   const { data: navCounts, refresh: refreshNavCounts } = useApi<ProviderNavCounts>(
     "/api/provider/nav-counts",
     { staleTimeMs: 15_000 },
@@ -99,14 +99,14 @@ export default function TabsLayout() {
   const bookingsBadge = formatTabBadge(
     Number(navCounts?.pending_bookings ?? 0) + Number(navCounts?.waiting_room ?? 0),
   );
-  const chatsBadge = formatTabBadge(Number(navCounts?.unread_messages ?? 0));
+  const chatsBadge = formatTabBadge(chatUnreadCount);
   const moreCriticalCount = Math.max(
     Number(navCounts?.active_product_orders ?? 0),
     Number(navCounts?.critical_total ?? 0) -
       Number(navCounts?.pending_bookings ?? 0) -
       Number(navCounts?.waiting_room ?? 0) -
       Number(navCounts?.unread_messages ?? 0),
-    Number(unreadNotifications ?? 0),
+    notificationUnread,
   );
   const moreBadge = formatTabBadge(moreCriticalCount);
 
