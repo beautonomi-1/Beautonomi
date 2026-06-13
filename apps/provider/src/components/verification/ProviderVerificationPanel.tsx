@@ -19,7 +19,6 @@ import {
   RefreshControl,
   Alert,
   TouchableOpacity,
-  TextInput,
   ActivityIndicator,
 } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
@@ -38,6 +37,7 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { twStyle } from "@/lib/twStyle";
 import { Colors } from "@/constants/colors";
+import { CountryOfIssuePicker } from "@/components/CountryOfIssuePicker";
 
 export type VerificationStatus = "pending" | "in_progress" | "approved" | "rejected" | "reset";
 
@@ -182,8 +182,8 @@ export function ProviderVerificationPanel({ footer, env: envProp, onStatusChange
   };
 
   const submitManual = async () => {
-    if (!selectedFile || !country.trim()) {
-      Alert.alert("Missing info", "Please select a document photo and enter the country of issue.");
+    if (!selectedFile || !country) {
+      Alert.alert("Missing info", "Please select a document photo and choose the country of issue.");
       return;
     }
     setUploading(true);
@@ -195,7 +195,7 @@ export function ProviderVerificationPanel({ footer, env: envProp, onStatusChange
         type: "image/jpeg",
       });
       formData.append("document_type", docType);
-      formData.append("country", country.trim());
+      formData.append("country", country);
 
       const res = await api.post<{ verification_id?: string }>("/api/me/verification", formData);
       if (res.error) {
@@ -349,28 +349,11 @@ export function ProviderVerificationPanel({ footer, env: envProp, onStatusChange
               ))}
             </View>
 
-            {/* Country */}
-            <Text style={twStyle("text-sm font-semibold text-gray-700 mb-2")}>Country of issue</Text>
-            <TextInput
-              style={{
-                borderRadius: 12,
-                borderWidth: 1,
-                borderColor: Colors.gray[200],
-                backgroundColor: "#fff",
-                paddingHorizontal: 16,
-                paddingVertical: 14,
-                fontSize: 16,
-                color: Colors.gray[900],
-                marginBottom: 16,
-              }}
+            <CountryOfIssuePicker
               value={country}
-              onChangeText={setCountry}
-              placeholder="e.g. South Africa"
-              placeholderTextColor={Colors.gray[400]}
-              autoCapitalize="words"
-              accessibilityLabel="Country of issue"
-              accessibilityHint="Enter the country that issued your identity document"
-              returnKeyType="done"
+              onChange={setCountry}
+              tenantRegionCode={bundle?.meta?.tenant_region?.code}
+              tenantRegionName={bundle?.meta?.tenant_region?.name}
             />
 
             {/* File picker */}
@@ -414,12 +397,12 @@ export function ProviderVerificationPanel({ footer, env: envProp, onStatusChange
             {/* Submit */}
             <TouchableOpacity
               onPress={submitManual}
-              disabled={uploading || !selectedFile || !country.trim()}
+              disabled={uploading || !selectedFile || !country}
               accessibilityRole="button"
               accessibilityLabel="Submit for verification"
               style={{
                 backgroundColor:
-                  uploading || !selectedFile || !country.trim() ? Colors.gray[300] : Colors.primary,
+                  uploading || !selectedFile || !country ? Colors.gray[300] : Colors.primary,
                 paddingVertical: 16,
                 borderRadius: 14,
                 alignItems: "center",

@@ -9,6 +9,7 @@ import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { chunkIds, unwrapEmbedded } from "@/lib/provider-ops/postgrest-unbounded";
 import { fetchProviderOnboardingDraftsForTenantScope } from "@/lib/provider-ops/scoped-onboarding-drafts";
+import { isOnboardingWizardUserRole } from "@/lib/provider-ops/onboarding-wizard-roles";
 
 export async function GET(request: NextRequest) {
   try {
@@ -27,7 +28,7 @@ export async function GET(request: NextRequest) {
 
     const drafts = rawDrafts.filter((d) => {
       const u = unwrapEmbedded<{ role?: string }>(d, "users");
-      return u?.role === "provider_owner";
+      return isOnboardingWizardUserRole(u?.role);
     });
 
     const userIds = drafts.map((d) => String(d.user_id));
@@ -53,6 +54,7 @@ export async function GET(request: NextRequest) {
     let stalledCount = 0;
     let droppedOffCount = 0;
     let activeCount = 0;
+    let slowingCount = 0;
     const byStep: Record<number, number> = {};
 
     for (const draft of inProgress) {
@@ -65,6 +67,7 @@ export async function GET(request: NextRequest) {
       const hours = diff / (1000 * 60 * 60);
       if (hours > dropOffThresholdHours) droppedOffCount++;
       else if (hours > stallThresholdHours) stalledCount++;
+      else if (hours > stallThresholdHours / 2) slowingCount++;
       else activeCount++;
     }
 
@@ -90,6 +93,7 @@ export async function GET(request: NextRequest) {
       stalled: stalledCount,
       dropped_off: droppedOffCount,
       active_in_wizard: activeCount,
+      slowing: slowingCount,
       by_step: byStep,
       total_providers: totalProviders || 0,
       active_providers: activeProviders || 0,

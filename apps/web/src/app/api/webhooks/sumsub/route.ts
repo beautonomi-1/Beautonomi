@@ -23,6 +23,11 @@ import {
 } from "@/lib/integrations/slack/ops-triggers";
 import { syncProviderVerificationState } from "@/lib/verification/sync-provider-verification";
 import { resolveSumsubConfig } from "@/lib/verification/sumsub-token";
+import {
+  extractSumsubRejectionReason,
+  notifyIdentityVerificationReviewed,
+  shouldNotifyIdentityVerificationTransition,
+} from "@/lib/verification/notify-identity-verification-reviewed";
 
 async function resolveTenantIdForExternalUserId(
   supabase: ReturnType<typeof getSupabaseAdmin>,
@@ -92,7 +97,12 @@ export async function POST(request: NextRequest) {
       applicantId?: string;
       externalUserId?: string;
       reviewStatus?: string;
-      reviewResult?: { reviewAnswer?: string };
+      reviewResult?: {
+        reviewAnswer?: string;
+        clientComment?: string;
+        moderationComment?: string;
+        rejectLabels?: string[];
+      };
     };
 
     const applicantId = payload.applicantId;
@@ -120,9 +130,12 @@ export async function POST(request: NextRequest) {
 
       const { data: userRow } = await supabase
         .from("users")
-        .select("preferred_home_tenant_id")
+        .select("preferred_home_tenant_id, identity_verification_status")
         .eq("id", userId)
         .maybeSingle();
+      const previousStatus =
+        (userRow as { identity_verification_status?: string | null } | null)
+          ?.identity_verification_status ?? null;
       const tenantIdForVerification =
         (userRow as { preferred_home_tenant_id?: string | null } | null)?.preferred_home_tenant_id ?? null;
 
@@ -179,6 +192,19 @@ export async function POST(request: NextRequest) {
           });
         }
       }
+
+      if (shouldNotifyIdentityVerificationTransition(previousStatus, status)) {
+        // Awaited so serverless doesn't freeze before the send completes;
+        // the helper never throws (errors are logged and swallowed).
+        await notifyIdentityVerificationReviewed({
+          userId,
+          outcome: status,
+          rejectionReason:
+            status === "rejected" ? extractSumsubRejectionReason(payload) : null,
+          isProvider: false,
+          tenantId: tenantIdForVerification,
+        });
+      }
     } else if (externalUserId) {
       // ── Provider ────────────────────────────────────────────────────────
       const providerId = externalUserId;
@@ -191,6 +217,18 @@ export async function POST(request: NextRequest) {
         (provRow as { tenant_id?: string | null; business_name?: string | null } | null)?.tenant_id ?? null;
       const providerOwnerUserId =
         (provRow as { user_id?: string | null } | null)?.user_id ?? null;
+
+      let previousProviderOwnerStatus: string | null = null;
+      if (providerOwnerUserId) {
+        const { data: ownerUserRow } = await supabase
+          .from("users")
+          .select("identity_verification_status")
+          .eq("id", providerOwnerUserId)
+          .maybeSingle();
+        previousProviderOwnerStatus =
+          (ownerUserRow as { identity_verification_status?: string | null } | null)
+            ?.identity_verification_status ?? null;
+      }
 
       // §provider-verification-sync 2026-05: Sumsub approval should also lift
       // the provider's identity badge AND the public marketplace verified
@@ -240,6 +278,20 @@ export async function POST(request: NextRequest) {
             entityType: "provider_verification",
           });
         }
+      }
+
+      if (
+        providerOwnerUserId &&
+        shouldNotifyIdentityVerificationTransition(previousProviderOwnerStatus, status)
+      ) {
+        await notifyIdentityVerificationReviewed({
+          userId: providerOwnerUserId,
+          outcome: status,
+          rejectionReason:
+            status === "rejected" ? extractSumsubRejectionReason(payload) : null,
+          isProvider: true,
+          tenantId: providerTenantId,
+        });
       }
     } else {
       console.warn("Sumsub webhook: no externalUserId — ignoring");

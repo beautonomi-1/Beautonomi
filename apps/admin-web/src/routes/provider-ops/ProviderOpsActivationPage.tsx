@@ -22,7 +22,12 @@ interface ActivationProvider {
   id: string; business_name: string; status: string; is_verified: boolean;
   created_at: string; owner_name: string | null; owner_email: string | null;
   days_waiting: number; ready_to_activate: boolean;
-  activation_gates: { has_location: boolean; has_business_name: boolean; is_verified: boolean };
+  activation_gates: {
+    has_location: boolean;
+    has_coordinates: boolean;
+    has_business_name: boolean;
+    is_verified: boolean;
+  };
 }
 
 export function ProviderOpsActivationPage() {
@@ -78,7 +83,7 @@ export function ProviderOpsActivationPage() {
     <div className="space-y-6">
       <AdminPageHeader
         title="Activation Queue"
-        description={`${total} providers awaiting approval. Activate only after business name, pinned location, and verification gates pass.`}
+        description={`${total} providers awaiting approval. Activate after business name, location, and verification gates pass.`}
       />
 
       <div className="flex items-center gap-3">
@@ -109,6 +114,9 @@ export function ProviderOpsActivationPage() {
                     <Gate label="Business Name" ok={p.activation_gates.has_business_name} />
                     <Gate label="Location" ok={p.activation_gates.has_location} />
                     <Gate label="Verified" ok={p.activation_gates.is_verified} />
+                    {p.activation_gates.has_location && !p.activation_gates.has_coordinates ? (
+                      <span className="flex items-center gap-1 text-xs text-amber-600">⚠ Coordinates not pinned</span>
+                    ) : null}
                   </div>
                   {!p.ready_to_activate && (
                     <p className="mt-2 text-xs text-amber-700">
@@ -161,7 +169,7 @@ function Gate({ label, ok }: { label: string; ok: boolean }) {
 function activationGateLabels(gates: ActivationProvider["activation_gates"]): string[] {
   const missing: string[] = [];
   if (!gates.has_business_name) missing.push("business name");
-  if (!gates.has_location) missing.push("pinned location");
+  if (!gates.has_location) missing.push("location");
   if (!gates.is_verified) missing.push("verification");
   return missing;
 }

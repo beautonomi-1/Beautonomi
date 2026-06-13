@@ -21,7 +21,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as DocumentPicker from "expo-document-picker";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
-import { emitNotificationBadgeRefresh } from "@/lib/notification-badge-events";
+import { emitChatBadgeRefresh, emitNotificationBadgeRefresh } from "@/lib/notification-badge-events";
 import { supabase } from "@/lib/supabase/client";
 import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
 import { Colors } from "@/constants/colors";
@@ -474,7 +474,7 @@ export default function ChatScreen() {
   // Mark conversation as read when viewing
   useEffect(() => {
     if (!id || !user) return;
-    api.post(`/api/me/conversations/${id}/read`).catch(() => {});
+    api.post(`/api/me/conversations/${id}/read`).then(() => emitChatBadgeRefresh()).catch(() => {});
     api
       .post("/api/me/notifications/mark-related-read", { conversation_id: id })
       .then(() => emitNotificationBadgeRefresh())

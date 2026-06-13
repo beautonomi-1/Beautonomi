@@ -40,7 +40,7 @@ import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import { api } from "@/lib/api-client";
-import { emitNotificationBadgeRefresh } from "@/lib/notification-badge-events";
+import { emitChatBadgeRefresh, emitNotificationBadgeRefresh } from "@/lib/notification-badge-events";
 import { appendFormDataFileNative } from "@beautonomi/utils";
 import { pushInAppBrowser } from "@/lib/in-app-web";
 import {
@@ -260,6 +260,7 @@ export default function ChatScreen() {
   useEffect(() => {
     if (!conversationId) return;
     markReadRef.current(`/api/provider/conversations/${conversationId}/mark-read`, {});
+    emitChatBadgeRefresh();
     api
       .post("/api/provider/notifications/mark-related-read", { conversation_id: conversationId })
       .then(() => emitNotificationBadgeRefresh())
@@ -861,7 +862,20 @@ export default function ChatScreen() {
                 >
                   <Ionicons name="pricetag-outline" size={20} color={Colors.primary} />
                 </TouchableOpacity>
-              ) : null}
+              ) : (
+                <TouchableOpacity
+                  onPress={() =>
+                    Alert.alert(
+                      "Custom offers unavailable",
+                      "This conversation is not linked to a customer profile yet. Custom offers can only be sent when chatting with a registered customer.",
+                    )
+                  }
+                  style={twStyle("p-2 rounded-full bg-gray-100 opacity-60")}
+                  accessibilityLabel="Send custom offer unavailable"
+                >
+                  <Ionicons name="pricetag-outline" size={20} color={Colors.gray[400]} />
+                </TouchableOpacity>
+              )}
             </View>
           }
         />

@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
         is_verified,
         onboarding_state,
         created_at,
-        provider_locations (id, city, country, latitude, longitude)
+        provider_locations (id, city, country, address_line1, latitude, longitude)
       `
       )
       .eq("tenant_id", tenantId)
@@ -63,15 +63,21 @@ export async function GET(request: NextRequest) {
       const locations = (p.provider_locations as Array<Record<string, unknown>>) || [];
       const owner = usersMap.get(p.user_id as string);
 
+      const firstLocation = locations[0];
+      const hasCoordinates =
+        firstLocation?.latitude != null && firstLocation?.longitude != null;
+      const hasAddressLine =
+        typeof firstLocation?.address_line1 === "string" &&
+        firstLocation.address_line1.trim().length > 0;
+
       const gates = {
-        has_location:
-          locations.length > 0 &&
-          locations[0]?.latitude != null &&
-          locations[0]?.longitude != null,
+        has_location: locations.length > 0 && (hasAddressLine || hasCoordinates),
+        has_coordinates: hasCoordinates,
         has_business_name: !!p.business_name,
         is_verified: !!p.is_verified,
       };
-      const allGatesPassed = Object.values(gates).every(Boolean);
+      const allGatesPassed =
+        gates.has_location && gates.has_business_name && gates.is_verified;
 
       return {
         ...p,

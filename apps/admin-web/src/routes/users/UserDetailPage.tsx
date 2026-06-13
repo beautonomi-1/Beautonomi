@@ -92,6 +92,8 @@ type UserDetail = Record<string, unknown> & {
   support_tickets?: Record<string, unknown>[];
   recent_product_orders?: Record<string, unknown>[];
   signup_source?: string | null;
+  is_shadow?: boolean;
+  claimed_at?: string | null;
   last_sign_in_at?: string | null;
   last_active_at?: string | null;
   verification?: {
@@ -209,6 +211,37 @@ export function UserDetailPage() {
       ),
     onSuccess: () => adminToast.info("Impersonation session started"),
     onError: (e: Error) => adminToast.error(`Impersonation failed: ${e.message}`),
+  });
+
+  const claimInvitePost = useMutation({
+    mutationFn: () =>
+      adminApi.postJson(`/api/admin/users/${encodeURIComponent(id)}/send-claim-invite`, {}),
+    onSuccess: () => adminToast.success("Claim invite sent"),
+    onError: (e: Error) => adminToast.error(`Failed to send claim invite: ${e.message}`),
+  });
+
+  const guestLinkPost = useMutation({
+    mutationFn: () =>
+      adminApi.postJson<{ portal_url?: string; booking_number?: string | null }>(
+        `/api/admin/users/${encodeURIComponent(id)}/guest-booking-link`,
+        {}
+      ),
+    onSuccess: async (res) => {
+      const url = res?.portal_url;
+      if (!url) {
+        adminToast.error("No portal link returned");
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(url);
+        adminToast.success(
+          `Guest booking link copied${res.booking_number ? ` (booking ${res.booking_number})` : ""}`
+        );
+      } catch {
+        window.prompt("Copy the guest booking link:", url);
+      }
+    },
+    onError: (e: Error) => adminToast.error(`Failed to create guest link: ${e.message}`),
   });
 
   const identityResetPost = useMutation({
@@ -539,7 +572,20 @@ export function UserDetailPage() {
       </AdminPanel>
 
       <AdminPanel>
-        <h2 className="text-lg font-semibold text-gray-900">Bookings</h2>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <h2 className="text-lg font-semibold text-gray-900">Bookings</h2>
+          {role === "customer" && (bookingsQ.data ?? []).length > 0 ? (
+            <button
+              type="button"
+              className={adminToolbarButtonClass(guestLinkPost.isPending)}
+              disabled={guestLinkPost.isPending}
+              title="Mints a tokenized guest portal link for the next upcoming (or most recent) booking and copies it. No login required to open it."
+              onClick={() => void guestLinkPost.mutateAsync()}
+            >
+              {guestLinkPost.isPending ? "Creating link…" : "Copy guest booking link"}
+            </button>
+          ) : null}
+        </div>
         <p className="mt-1 text-sm text-gray-600">
           Up to 100 bookings in the current tenant scope (customer or linked user id).
         </p>
@@ -680,6 +726,16 @@ export function UserDetailPage() {
             >
               {rolePut.isPending ? "Saving role…" : "Save role"}
             </button>
+            {data?.is_shadow ? (
+              <button
+                type="button"
+                className={`self-start ${adminToolbarButtonClass(claimInvitePost.isPending)}`}
+                disabled={claimInvitePost.isPending}
+                onClick={() => void claimInvitePost.mutateAsync()}
+              >
+                {claimInvitePost.isPending ? "Sending…" : "Send claim invite"}
+              </button>
+            ) : null}
           </div>
           <div className="mt-8 border-t border-gray-100 pt-6">
             <h3 className="text-sm font-semibold text-gray-900">Impersonate user</h3>

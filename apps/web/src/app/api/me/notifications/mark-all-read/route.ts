@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
       throw error;
     }
 
-    void syncPushBadgeCountAllApps(user.id, 0);
+    void syncPushBadgeCountAllApps(user.id);
     invalidateProviderNotificationsListCache(user.id);
 
     return successResponse({ success: true });

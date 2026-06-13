@@ -1,16 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { normalizePhoneToE164 } from "@/lib/phone";
 import { hasProviderCustomerActivityRelationship } from "@/lib/provider/client-access";
-
-function createWalkInEmail(): string {
-  return `walkin-${Date.now()}-${Math.random().toString(36).substring(2, 9)}@beautonomi.invalid`;
-}
-
-type BypassRpcResult = {
-  success?: boolean;
-  user_id?: string;
-  error?: string;
-};
+import { createOrResolveShadowCustomer } from "@/lib/users/create-shadow-customer";
 
 export type EnsureWalkInCustomerForProductSaleInput = {
   supabaseAdmin: SupabaseClient;
@@ -54,94 +44,24 @@ export async function ensureWalkInCustomerLinkedForProductSale(
   }
 
   const fullName = nameTrim.length > 0 ? nameTrim : "Walk-in customer";
-  const phoneNorm = phoneRaw
-    ? normalizePhoneToE164(phoneRaw, customerPhoneCountryCode ?? undefined) || phoneRaw
-    : null;
 
-  let customerId: string | null = null;
-  let matchedExisting = false;
-  let matchedOn: "phone" | null = null;
+  const shadowResult = await createOrResolveShadowCustomer({
+    supabaseAdmin,
+    fullName,
+    phone: phoneRaw || null,
+    phoneCountryCode: customerPhoneCountryCode,
+    providerId,
+    shadowSource: "product_sale",
+    createdByUserId: staffUserId,
+  });
 
-  if (phoneRaw || phoneNorm) {
-    const phoneCandidates = [...new Set([phoneRaw, phoneNorm].filter((v): v is string => Boolean(v && v.length > 0)))];
-    const { data: existingUsers, error: phoneLookupErr } = await supabaseAdmin
-      .from("users")
-      .select("id")
-      .in("phone", phoneCandidates)
-      .limit(1);
-    if (phoneLookupErr) {
-      return { ok: false, message: phoneLookupErr.message, code: "USER_LOOKUP_ERROR" };
-    }
-    if (existingUsers && existingUsers.length > 0 && existingUsers[0]?.id) {
-      customerId = existingUsers[0].id as string;
-      matchedExisting = true;
-      matchedOn = "phone";
-    }
+  if (shadowResult.ok === false) {
+    return { ok: false, message: shadowResult.message, code: shadowResult.code };
   }
 
-  if (!customerId) {
-    const email = createWalkInEmail();
-    const { data: rpcData, error: rpcErr } = await supabaseAdmin.rpc("create_user_bypass_trigger", {
-      p_email: email,
-      p_full_name: fullName,
-      p_phone: phoneNorm || phoneRaw || null,
-      p_role: "customer",
-    });
-
-    if (rpcErr) {
-      return { ok: false, message: rpcErr.message, code: "USER_CREATE_ERROR" };
-    }
-
-    const bypass = rpcData as BypassRpcResult | BypassRpcResult[] | null;
-    const payload = Array.isArray(bypass) ? bypass[0] : bypass;
-    if (payload?.success && payload.user_id) {
-      customerId = payload.user_id;
-    } else {
-      try {
-        const { data: createdUser, error: createUserError } = await supabaseAdmin.auth.admin.createUser({
-          email,
-          email_confirm: true,
-          user_metadata: {
-            full_name: fullName,
-            phone: phoneNorm || phoneRaw || null,
-            role: "customer",
-          },
-        });
-        if (createUserError || !createdUser?.user?.id) {
-          return {
-            ok: false,
-            message:
-              (payload?.error as string | undefined) ||
-              createUserError?.message ||
-              "Failed to create customer for walk-in sale.",
-            code: "USER_CREATE_ERROR",
-          };
-        }
-        customerId = createdUser.user.id;
-
-        const { error: profileErr } = await supabaseAdmin.from("users").upsert(
-          {
-            id: customerId,
-            email,
-            full_name: fullName,
-            phone: phoneNorm || phoneRaw || null,
-            role: "customer",
-          },
-          { onConflict: "id" },
-        );
-        if (profileErr && profileErr.code !== "23505") {
-          return { ok: false, message: profileErr.message, code: "USER_CREATE_ERROR" };
-        }
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        return { ok: false, message: msg, code: "USER_CREATE_ERROR" };
-      }
-    }
-  }
-
-  if (!customerId) {
-    return { ok: false, message: "Could not resolve customer id for walk-in sale.", code: "USER_CREATE_ERROR" };
-  }
+  const customerId = shadowResult.customerId;
+  const matchedExisting = shadowResult.matchedExisting;
+  const matchedOn = shadowResult.matchedOn;
 
   if (walletCurrency && walletCurrency !== "ZAR") {
     await supabaseAdmin.from("user_wallets").update({ currency: walletCurrency }).eq("user_id", customerId);
@@ -173,7 +93,7 @@ export async function ensureWalkInCustomerLinkedForProductSale(
   const sourceMetadata = {
     linked_via: "walk_in_product_sale",
     provider_supplied_name: fullName,
-    provider_supplied_phone: phoneNorm || phoneRaw || null,
+    provider_supplied_phone: shadowResult.phone,
     matched_on: matchedOn,
   };
 

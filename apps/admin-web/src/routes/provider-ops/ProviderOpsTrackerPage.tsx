@@ -34,7 +34,7 @@ interface TrackerRow {
   stall_status: string; has_provider: boolean; admin_assisted: boolean;
   draft_summary?: { business_name?: string | null; team_size?: string | null; has_address?: boolean; has_thumbnail?: boolean; has_services?: boolean; category_count?: number; selected_plan_id?: string | null };
 }
-interface TrackerStats { in_progress: number; stalled: number; dropped_off: number; active_in_wizard: number; by_step: Record<number, number>; pending_approval: number }
+interface TrackerStats { in_progress: number; stalled: number; dropped_off: number; active_in_wizard: number; slowing: number; by_step: Record<number, number>; pending_approval: number }
 
 export function ProviderOpsTrackerPage() {
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_PROVIDER_OPS, "Provider Ops access is required.");
@@ -92,15 +92,20 @@ export function ProviderOpsTrackerPage() {
     <div className="space-y-6">
       <AdminPageHeader title="Onboarding Tracker" description="Every provider signup, every step, every stall" />
 
-      {stats && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+      {statsQ.error ? (
+        <AdminRetryBlock message={`Stats unavailable: ${statsQ.error.message}`} onRetry={() => void statsQ.refetch()} />
+      ) : stats ? (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-6">
           <StatCard label="In Progress" value={stats.in_progress} highlight={false} />
           <StatCard label="Active" value={stats.active_in_wizard} highlight={false} />
+          <StatCard label="Slowing" value={stats.slowing} highlight={stats.slowing > 0} />
           <StatCard label="Stalled" value={stats.stalled} highlight={stats.stalled > 0} />
           <StatCard label="Dropped Off" value={stats.dropped_off} highlight={stats.dropped_off > 0} />
           <StatCard label="Pending Approval" value={stats.pending_approval} highlight={false} />
         </div>
-      )}
+      ) : statsQ.isLoading ? (
+        <AdminPanel><AdminPageSkeleton rows={1} /></AdminPanel>
+      ) : null}
 
       {stats && Object.keys(stats.by_step).length > 0 && (
         <AdminPanel>

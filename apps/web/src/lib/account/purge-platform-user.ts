@@ -3,7 +3,18 @@ import { purgeUserMessageAttachmentFiles } from "@/lib/account/purge-user-messag
 
 export type PurgeUserSuccess = { ok: true; storage_attachments_removed: number };
 
-export type PurgeUserResult = PurgeUserSuccess | { ok: false; message: string; code?: string };
+export type UserDeleteBlocker = {
+  table_schema: string | null;
+  table_name: string | null;
+  column_name: string | null;
+  constraint_name: string | null;
+  delete_action: string | null;
+  blocking_rows: number | null;
+};
+
+export type PurgeUserResult =
+  | PurgeUserSuccess
+  | { ok: false; message: string; code?: string; blockers?: UserDeleteBlocker[] };
 
 function authDeleteErrorCode(error: unknown): string | undefined {
   const code = (error as { code?: unknown } | null)?.code;
@@ -17,43 +28,32 @@ function authDeleteErrorCode(error: unknown): string | undefined {
   return undefined;
 }
 
-type ResidualBlockerRow = {
-  table_schema: string | null;
-  table_name: string | null;
-  column_name: string | null;
-  constraint_name: string | null;
-  delete_action: string | null;
-  blocking_rows: number | null;
-};
+function formatUserDeleteBlockers(rows: UserDeleteBlocker[]): string {
+  return rows
+    .map(
+      (r) =>
+        `${r.table_schema}.${r.table_name}.${r.column_name} (${r.constraint_name}, ${r.delete_action}, ${r.blocking_rows} row(s))`,
+    )
+    .join("; ");
+}
 
-/**
- * Calls the read-only diagnostic (migration 670) to translate the opaque
- * Supabase "Database error deleting user" into the exact tables/constraints
- * still referencing the user's auth-delete cascade closure.
- */
-async function describeResidualDeleteBlockers(
+/** Read-only diagnostic (migrations 670/675): FK rows still blocking auth delete. */
+export async function listUserDeleteBlockers(
   admin: SupabaseClient,
   userId: string,
-): Promise<string | null> {
+): Promise<UserDeleteBlocker[]> {
   try {
     const { data, error } = await admin.rpc("compliance_diagnose_user_delete_blockers", {
       p_user_id: userId,
     });
     if (error) {
       console.error("[purge-user] diagnose blockers RPC failed:", error.message);
-      return null;
+      return [];
     }
-    const rows = (data as ResidualBlockerRow[] | null) ?? [];
-    if (rows.length === 0) return null;
-    return rows
-      .map(
-        (r) =>
-          `${r.table_schema}.${r.table_name}.${r.column_name} (${r.constraint_name}, ${r.delete_action}, ${r.blocking_rows} row(s))`,
-      )
-      .join("; ");
+    return (data as UserDeleteBlocker[] | null) ?? [];
   } catch (e) {
     console.error("[purge-user] diagnose blockers threw:", e);
-    return null;
+    return [];
   }
 }
 
@@ -96,19 +96,40 @@ export async function purgePlatformUserAccountFully(
   const cleared = await complianceClearUserReferences(admin, userId);
   if (!cleared.ok) return cleared;
 
+  const blockersAfterClear = await listUserDeleteBlockers(admin, userId);
+  if (blockersAfterClear.length > 0) {
+    return {
+      ok: false,
+      code: "PURGE_FK_BLOCKERS_REMAIN",
+      message: `FK blockers remain after cleanup: ${formatUserDeleteBlockers(blockersAfterClear)}`,
+      blockers: blockersAfterClear,
+    };
+  }
+
   const { removed: storage_attachments_removed } = await purgeUserMessageAttachmentFiles(admin, userId);
+
+  // Remove public profile first (cascades most business data); auth delete then only clears auth.* rows.
+  const { error: publicProfileDelErr } = await admin.from("users").delete().eq("id", userId);
+  if (publicProfileDelErr) {
+    const blockers = await listUserDeleteBlockers(admin, userId);
+    const suffix = blockers.length > 0 ? ` — ${formatUserDeleteBlockers(blockers)}` : "";
+    return {
+      ok: false,
+      code: publicProfileDelErr.code ?? "PUBLIC_USERS_DELETE_FAILED",
+      message: `public.users delete failed: ${publicProfileDelErr.message}${suffix}`,
+      blockers: blockers.length > 0 ? blockers : undefined,
+    };
+  }
 
   const { error: delError } = await admin.auth.admin.deleteUser(userId);
   if (delError) {
     const code = authDeleteErrorCode(delError);
     let message = delError.message;
-    // The auth error ("Database error deleting user") never names the blocking
-    // table. Surface the precise residual FK blockers so the operator/dev can act.
-    if (code === "AUTH_DELETE_DATABASE_ERROR") {
-      const blockers = await describeResidualDeleteBlockers(admin, userId);
-      if (blockers) message = `${delError.message} — residual references: ${blockers}`;
+    const blockers = await listUserDeleteBlockers(admin, userId);
+    if (blockers.length > 0) {
+      message = `${delError.message} — residual references: ${formatUserDeleteBlockers(blockers)}`;
     }
-    return { ok: false, message, code };
+    return { ok: false, message, code, blockers: blockers.length > 0 ? blockers : undefined };
   }
   return { ok: true, storage_attachments_removed };
 }

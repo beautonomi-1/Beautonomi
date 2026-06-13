@@ -13,6 +13,7 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { sendToUser } from '@/lib/notifications/onesignal';
 import { getGroupBooking } from './group-booking';
 import { resolveTwilioCredentials, sendTwilioSMS } from '@/lib/integrations/twilio';
+import { sendResendEmail } from '@/lib/integrations/resend';
 
 type GroupNotificationParticipant = {
   participant_name: string;
@@ -186,32 +187,25 @@ Beautonomi Team
   return { title, message };
 }
 
-async function sendWalkInEmail(to: string, subject: string, body: string): Promise<void> {
-  const providerKey =
-    process.env.RESEND_API_KEY?.trim() ||
-    process.env.EMAIL_PROVIDER_API_KEY?.trim() ||
-    '';
-  if (!providerKey) {
-    console.warn('[group booking notifications] email provider not configured; skipping walk-in email');
-    return;
-  }
-  const fromAddress = process.env.EMAIL_FROM_ADDRESS || 'Beautonomi <notifications@beautonomi.app>';
-  const resp = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${providerKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      from: fromAddress,
+async function sendWalkInEmail(
+  supabase: SupabaseClient,
+  to: string,
+  subject: string,
+  body: string,
+): Promise<void> {
+  try {
+    await sendResendEmail({
+      supabase,
       to,
       subject,
       text: body,
-    }),
-  });
-  if (!resp.ok) {
-    const text = await resp.text().catch(() => '');
-    console.warn('[group booking notifications] walk-in email failed', resp.status, text.slice(0, 200));
+      html: `<p>${body.replace(/\n+/g, '</p><p>')}</p>`,
+    });
+  } catch (err) {
+    console.warn(
+      '[group booking notifications] walk-in email failed',
+      err instanceof Error ? err.message : err,
+    );
   }
 }
 
@@ -237,7 +231,7 @@ async function sendWalkInGroupBookingConfirmation(
 
   if (channels.email && participant.participant_email) {
     try {
-      await sendWalkInEmail(participant.participant_email, title, message);
+      await sendWalkInEmail(supabase, participant.participant_email, title, message);
     } catch (error) {
       console.warn('[group booking notifications] walk-in email error:', error);
     }

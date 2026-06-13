@@ -160,7 +160,7 @@ export default function NotificationsScreen() {
       return;
     }
     if (current.status === "undetermined" || current.canAskAgain) {
-      const accepted = await requestOneSignalPushPermission(false);
+      const accepted = await requestOneSignalPushPermission(true);
       const next = await Notifications.getPermissionsAsync();
       setPushPermissionStatus(next.status);
       if (!accepted && next.status !== "granted") {

@@ -54,6 +54,7 @@ import { useAuth } from "@/providers/AuthProvider";
 import { usePlatformSettings } from "@/providers/PlatformSettingsProvider";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
+import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
 import type { StaffPermissions } from "@/lib/auth/permissions";
 
 interface NavItem {
@@ -62,7 +63,7 @@ interface NavItem {
   href: string;
   badge?: string;
   permission?: keyof StaffPermissions;
-  featureFlag?: "payment_yoco" | "payment_paystack_virtual_terminal";
+  featureFlag?: "payment_yoco" | "payment_paystack_virtual_terminal" | typeof FEATURE_FLAG_KEYS.PROVIDER_UNIFIED_POS;
 }
 
 interface NavSection {
@@ -73,7 +74,7 @@ interface NavSection {
 const quickActions: NavItem[] = [
   { icon: Calendar, label: "New Appointment", href: "/provider/calendar" },
   { icon: UsersRound, label: "New Client", href: "/provider/clients" },
-  { icon: Wallet, label: "New Sale", href: "/provider/sales" },
+  { icon: Wallet, label: "New Sale", href: "/provider/sales", featureFlag: FEATURE_FLAG_KEYS.PROVIDER_UNIFIED_POS },
   { icon: Clock, label: "Add to Waitlist", href: "/provider/waitlist" },
 ];
 
@@ -126,7 +127,7 @@ const navigationSections: NavSection[] = [
   {
     title: "Business",
     items: [
-      { icon: Tag, label: "Sales", href: "/provider/sales", permission: "view_sales" },
+      { icon: Tag, label: "Sales", href: "/provider/sales", permission: "view_sales", featureFlag: FEATURE_FLAG_KEYS.PROVIDER_UNIFIED_POS },
       { icon: Wallet, label: "Finance", href: "/provider/finance", permission: "view_sales" },
       { icon: PiggyBank, label: "Bank Accounts", href: "/provider/settings/payout-accounts", permission: "view_sales" },
       { icon: CreditCard, label: "Payment Methods", href: "/provider/settings/payments", permission: "edit_settings" },
@@ -222,14 +223,19 @@ export function ProviderMobileNav() {
   const { hasPermission, isLoading: permissionsLoading } = usePermissions();
   const yocoEnabled = useFeatureFlag("payment_yoco");
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
+  const unifiedPosEnabled = useFeatureFlag(FEATURE_FLAG_KEYS.PROVIDER_UNIFIED_POS);
 
-  // Get platform colors with fallbacks
-  const primaryColor = branding?.primary_color || "#FF0077";
-  const secondaryColor = branding?.secondary_color || "#4fd1c5";
-  const platformName = branding?.site_name || "Beautonomi";
-  const portalNavSurfaceStyle = {
-    background: `linear-gradient(to bottom, color-mix(in srgb, ${primaryColor} 30%, #171216) 0%, color-mix(in srgb, ${secondaryColor} 22%, #100d10) 100%)`,
-  } as const;
+  const passesNavFeatureFlag = (item: NavItem) => {
+    if (item.featureFlag === "payment_yoco" && !yocoEnabled) return false;
+    if (item.featureFlag === "payment_paystack_virtual_terminal" && !paystackTerminalEnabled) return false;
+    if (item.featureFlag === FEATURE_FLAG_KEYS.PROVIDER_UNIFIED_POS && !unifiedPosEnabled) return false;
+    return true;
+  };
+
+  const filteredQuickActions = useMemo(
+    () => quickActions.filter((item) => passesNavFeatureFlag(item)),
+    [yocoEnabled, paystackTerminalEnabled, unifiedPosEnabled],
+  );
 
   const filteredNavigationSections = useMemo(
     () =>
@@ -237,16 +243,22 @@ export function ProviderMobileNav() {
         .map((section) => ({
           ...section,
           items: section.items.filter((item) => {
-            if (item.featureFlag === "payment_yoco" && !yocoEnabled) return false;
-            if (item.featureFlag === "payment_paystack_virtual_terminal" && !paystackTerminalEnabled) return false;
+            if (!passesNavFeatureFlag(item)) return false;
             if (!item.permission) return true;
             if (permissionsLoading) return true;
             return hasPermission(item.permission);
           }),
         }))
         .filter((section) => section.items.length > 0),
-    [permissionsLoading, hasPermission, yocoEnabled, paystackTerminalEnabled],
+    [permissionsLoading, hasPermission, yocoEnabled, paystackTerminalEnabled, unifiedPosEnabled],
   );
+
+  const primaryColor = branding?.primary_color || "#FF0077";
+  const secondaryColor = branding?.secondary_color || "#4fd1c5";
+  const platformName = branding?.site_name || "Beautonomi";
+  const portalNavSurfaceStyle = {
+    background: `linear-gradient(to bottom, color-mix(in srgb, ${primaryColor} 30%, #171216) 0%, color-mix(in srgb, ${secondaryColor} 22%, #100d10) 100%)`,
+  } as const;
 
   const handleLogout = async () => {
     try {
@@ -303,7 +315,7 @@ export function ProviderMobileNav() {
               Quick Actions
             </p>
             <div className="grid grid-cols-2 gap-2">
-              {quickActions.map((action) => {
+              {filteredQuickActions.map((action) => {
                 const Icon = action.icon;
                 return (
                   <Link

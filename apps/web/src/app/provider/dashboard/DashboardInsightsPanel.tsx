@@ -14,6 +14,8 @@ import {
   Activity,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
+import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
 import { formatCurrency } from "@/lib/utils";
 import type {
   ProviderDashboardStats,
@@ -109,6 +111,7 @@ export function DashboardInsightsPanel({
   tenantCurrency: string;
 }) {
   const router = useRouter();
+  const unifiedPosEnabled = useFeatureFlag(FEATURE_FLAG_KEYS.PROVIDER_UNIFIED_POS);
   const [periodChip, setPeriodChip] = useState<PeriodChip>("today");
 
   const periodKey = periodApiKey(periodChip);
@@ -248,15 +251,17 @@ export function DashboardInsightsPanel({
           <ShoppingBag className="h-4 w-4 mr-1.5" />
           Retail
         </Button>
+        {unifiedPosEnabled ? (
         <Button
           size="sm"
           variant="outline"
-          onClick={() => router.push("/provider/ecommerce/walk-in")}
+          onClick={() => router.push("/provider/sales")}
           aria-label="Open sell and point of sale"
         >
           <CreditCard className="h-4 w-4 mr-1.5" />
           Sell / POS
         </Button>
+        ) : null}
       </div>
 
       {insights?.weekly_revenue && insights.weekly_revenue.length > 0 ? (

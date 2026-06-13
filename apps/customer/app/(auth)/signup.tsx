@@ -324,7 +324,25 @@ export default function SignupScreen() {
     try {
       const result = await signUpWithEmail(email.trim(), password.trim(), fullName.trim());
       if (result.error) {
-        Alert.alert(as("signUpFailedTitle"), result.error.message);
+        const msg = result.error.message ?? "";
+        const lower = msg.toLowerCase();
+        if (
+          lower.includes("already registered") ||
+          lower.includes("user already") ||
+          lower.includes("already exists")
+        ) {
+          try {
+            await api.post("/api/auth/claim/start", { email: email.trim() });
+            Alert.alert(
+              as("signUpFailedTitle"),
+              "We found bookings under this email. Check your inbox to claim your account.",
+            );
+          } catch {
+            Alert.alert(as("signUpFailedTitle"), msg);
+          }
+        } else {
+          Alert.alert(as("signUpFailedTitle"), msg);
+        }
         return;
       }
 

@@ -30,7 +30,7 @@ import {
   SUPABASE_AUTH_OTP_LENGTH,
 } from "@/lib/supabase-sms-otp";
 import { clearApiCache } from "@/lib/api-response-cache";
-import { invalidateApiAccessTokenCache } from "@/lib/api-client";
+import { api, invalidateApiAccessTokenCache } from "@/lib/api-client";
 import { clearPortalCache } from "@/lib/portal-cache";
 import { clearBiometricPreference } from "@/hooks/useBiometricAuth";
 import {
@@ -140,6 +140,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const lastUserIdRef = useRef<string | null>(null);
   /** Always the latest signed-in user id — read inside `signOut` before clearing session. */
   const currentUserIdRef = useRef<string | null>(null);
+  /** Guard: auto shadow-claim completion is attempted at most once per user per mount. */
+  const claimCompletionAttemptedRef = useRef<string | null>(null);
 
   const updateSession = useCallback((newSession: Session | null) => {
     setSession(newSession);
@@ -243,6 +245,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       if (newSession?.user && (event === "INITIAL_SESSION" || event === "SIGNED_IN")) {
         scheduleRetentionSyncOnSession();
+      }
+      // Shadow account (provider-created walk-in) logging in for the first
+      // time: ownership is proven (phone/email OTP), so complete the claim.
+      // Server no-ops for non-shadow users and clears the metadata flag.
+      if (
+        newSession?.user &&
+        (event === "INITIAL_SESSION" || event === "SIGNED_IN") &&
+        newSession.user.user_metadata?.is_shadow === true &&
+        claimCompletionAttemptedRef.current !== newSession.user.id
+      ) {
+        claimCompletionAttemptedRef.current = newSession.user.id;
+        // Deferred: api.post resolves the access token via supabase.auth, which
+        // must not run synchronously inside onAuthStateChange (auth lock deadlock).
+        setTimeout(() => {
+          void api.post("/api/auth/claim/complete", {}).catch(() => {});
+        }, 0);
       }
     });
 

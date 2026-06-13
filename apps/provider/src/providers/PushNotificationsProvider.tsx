@@ -236,7 +236,9 @@ function handleNotificationRoute(data: Record<string, unknown>) {
     if (
       templateKey === "provider_onboarding_welcome" ||
       templateKey === "provider_profile_approved" ||
-      templateKey === "provider_profile_rejected"
+      templateKey === "provider_profile_rejected" ||
+      templateKey === "identity_verification_approved" ||
+      templateKey === "identity_verification_rejected"
     ) {
       router.push("/(app)/(tabs)/more/settings/verification");
       return;

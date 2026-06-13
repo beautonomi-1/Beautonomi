@@ -28,7 +28,7 @@ const createCustomOfferSchema = z.object({
   service_category_id: z.string().uuid().nullable().optional(),
   service_name: z.string().min(1).max(256).optional().nullable(),
   location_type: z.enum(["at_home", "at_salon"]).default("at_salon"),
-  description: z.string().min(10).max(4000),
+  description: z.string().min(5).max(4000),
   price: z.number().min(0),
   currency: z.string().min(3).max(5).optional(),
   duration_minutes: z.number().int().min(15).max(8 * 60),

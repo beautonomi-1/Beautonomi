@@ -1005,6 +1005,9 @@ export default function BookingDetailScreen() {
   const [arrivalPinInput, setArrivalPinInput] = useState("");
   const [isVerifyingArrival, setIsVerifyingArrival] = useState(false);
   const [isResendingArrivalOtp, setIsResendingArrivalOtp] = useState(false);
+  const [isOverridingArrival, setIsOverridingArrival] = useState(false);
+  const [showOverrideArrivalModal, setShowOverrideArrivalModal] = useState(false);
+  const [overrideArrivalReason, setOverrideArrivalReason] = useState("");
   const [qrArrivalCodeInput, setQrArrivalCodeInput] = useState("");
   const [qrPasteJson, setQrPasteJson] = useState("");
   const [isVerifyingQrArrival, setIsVerifyingQrArrival] = useState(false);
@@ -2245,6 +2248,33 @@ export default function BookingDetailScreen() {
     }
   };
 
+  const handleOverrideArrivalVerification = () => {
+    if (!id) return;
+    // Alert.prompt is iOS-only; use the cross-platform modal instead.
+    setOverrideArrivalReason("");
+    setShowOverrideArrivalModal(true);
+  };
+
+  const submitOverrideArrivalVerification = async () => {
+    if (!id || !overrideArrivalReason.trim()) return;
+    setIsOverridingArrival(true);
+    try {
+      const res = await postMutation(
+        `/api/provider/bookings/${id}/override-arrival-verification`,
+        { reason_code: "other", reason_text: overrideArrivalReason.trim() },
+      );
+      if (res.error) {
+        Alert.alert("Error", res.error);
+        return;
+      }
+      setShowOverrideArrivalModal(false);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      await refresh();
+    } finally {
+      setIsOverridingArrival(false);
+    }
+  };
+
   /**
    * §Provider-launch (audit 2026-04): manually fire provider→customer
    * notifications (re-send confirmation, send reminder, send cancellation
@@ -3198,6 +3228,17 @@ export default function BookingDetailScreen() {
                         )}
                       </TouchableOpacity>
                     </View>
+                    <TouchableOpacity
+                      onPress={handleOverrideArrivalVerification}
+                      disabled={isOverridingArrival}
+                      style={twStyle("mt-2 py-2")}
+                      accessibilityRole="button"
+                      accessibilityLabel="Customer cannot verify"
+                    >
+                      <Text style={twStyle("text-amber-800 font-medium text-sm text-center")}>
+                        {isOverridingArrival ? "Saving…" : "Customer can't verify?"}
+                      </Text>
+                    </TouchableOpacity>
                   </View>
                 )}
                 {isArrived && !arrivalVerified && qrArrivalPending && (
@@ -4567,6 +4608,61 @@ export default function BookingDetailScreen() {
             >
               <Text style={{ color: Colors.gray[600], fontWeight: "500", fontSize: 15 }}>Close</Text>
             </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Override arrival verification modal (cross-platform replacement for Alert.prompt) */}
+      <Modal
+        visible={showOverrideArrivalModal}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setShowOverrideArrivalModal(false)}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center", padding: 24 }}
+          onPress={() => setShowOverrideArrivalModal(false)}
+        >
+          <Pressable
+            style={{ backgroundColor: "#fff", borderRadius: 20, padding: 24, width: "100%", maxWidth: 360 }}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900], marginBottom: 8 }}>Customer can't verify</Text>
+            <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 16 }}>
+              Briefly describe why you're marking arrival as verified without the customer's code (required for audit):
+            </Text>
+            <TextInput
+              value={overrideArrivalReason}
+              onChangeText={setOverrideArrivalReason}
+              placeholder="e.g. Customer has no phone with them…"
+              placeholderTextColor={Colors.gray[400]}
+              multiline
+              numberOfLines={3}
+              style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, padding: 12, fontSize: 15, color: Colors.gray[900], backgroundColor: Colors.gray[50], textAlignVertical: "top", minHeight: 80 }}
+            />
+            <View style={{ flexDirection: "row", gap: 12, marginTop: 20 }}>
+              <TouchableOpacity
+                onPress={() => setShowOverrideArrivalModal(false)}
+                style={{ flex: 1, paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], alignItems: "center" }}
+              >
+                <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>Back</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                disabled={isOverridingArrival || !overrideArrivalReason.trim()}
+                onPress={submitOverrideArrivalVerification}
+                style={{
+                  flex: 1,
+                  paddingVertical: 14,
+                  borderRadius: 12,
+                  alignItems: "center",
+                  backgroundColor: isOverridingArrival || !overrideArrivalReason.trim() ? Colors.gray[300] : "#d97706",
+                }}
+              >
+                <Text style={{ fontWeight: "600", color: "#fff" }}>
+                  {isOverridingArrival ? "Saving…" : "Confirm override"}
+                </Text>
+              </TouchableOpacity>
+            </View>
           </Pressable>
         </Pressable>
       </Modal>

@@ -9,6 +9,7 @@ import {
 import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { getUserRowIfAccessibleToAdminTenant } from "@/lib/tenant/admin-user-tenant-access";
+import { draftHasAddressLine } from "@/lib/provider-ops/onboarding-wizard-roles";
 
 const STEP_NAMES: Record<number, string> = {
   1: "Team Size",
@@ -58,6 +59,7 @@ export async function GET(
         .from("provider_onboarding_tracking")
         .select("*")
         .eq("user_id", userId)
+        .eq("tenant_id", tenantId)
         .maybeSingle(),
     ]);
 
@@ -108,7 +110,7 @@ export async function GET(
     if (draftData.yoco_machine)
       stepCompletion[4].data_present.push("yoco_machine");
     const addr = draftData.address as Record<string, unknown> | undefined;
-    if (addr?.address_line1) stepCompletion[7].data_present.push("address");
+    if (draftHasAddressLine(addr)) stepCompletion[7].data_present.push("address");
     if (draftData.thumbnail_url)
       stepCompletion[8].data_present.push("thumbnail");
     if (

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_MARKETING_COMMS } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
@@ -41,6 +41,15 @@ type Milestone = {
   is_active?: boolean;
 };
 
+type LoyaltyPointConfig = {
+  id?: string;
+  name?: string;
+  redemption_rate?: number;
+  min_redemption_points?: number | null;
+  max_redemption_percentage?: number | null;
+  is_active?: boolean | null;
+};
+
 function fmtTs(iso: string | null | undefined): string {
   if (!iso) return "—";
   try {
@@ -66,6 +75,13 @@ export function LoyaltyRulesPage() {
     enabled: allowed,
   });
 
+  const configQ = useQuery({
+    queryKey: adminQueryKeys.loyaltyConfig(),
+    queryFn: () =>
+      adminApi.getJson<{ config: LoyaltyPointConfig | null }>("/api/admin/loyalty/config", { timeoutMs: 60_000 }),
+    enabled: allowed,
+  });
+
   const [ppu, setPpu] = useState("");
   const [redemption, setRedemption] = useState("");
   const [currency, setCurrency] = useState("");
@@ -74,6 +90,10 @@ export function LoyaltyRulesPage() {
   const [mThreshold, setMThreshold] = useState("");
   const [mReward, setMReward] = useState("");
   const [mCurrency, setMCurrency] = useState("");
+
+  const [cfgRedemption, setCfgRedemption] = useState("");
+  const [cfgMinPoints, setCfgMinPoints] = useState("");
+  const [cfgMaxPct, setCfgMaxPct] = useState("");
 
   const [editRule, setEditRule] = useState<LoyaltyRule | null>(null);
   const [ePpu, setEPpu] = useState("");
@@ -115,6 +135,16 @@ export function LoyaltyRulesPage() {
       adminToast.success("Loyalty rule updated");
     },
     onError: (e: Error) => adminToast.error(`Failed to update rule: ${e.message}`),
+  });
+
+  const patchConfig = useMutation({
+    mutationFn: (body: Record<string, unknown>) =>
+      adminApi.patchJson<unknown>("/api/admin/loyalty/config", body),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.loyaltyConfig() });
+      adminToast.success("Redemption settings saved");
+    },
+    onError: (e: Error) => adminToast.error(`Failed to save redemption settings: ${e.message}`),
   });
 
   const createMilestone = useMutation({
@@ -231,9 +261,29 @@ export function LoyaltyRulesPage() {
     });
   }
 
+  const loyaltyConfig = configQ.data?.config ?? null;
+
+  useEffect(() => {
+    if (!loyaltyConfig) return;
+    setCfgRedemption(String(loyaltyConfig.redemption_rate ?? ""));
+    setCfgMinPoints(String(loyaltyConfig.min_redemption_points ?? ""));
+    setCfgMaxPct(String(loyaltyConfig.max_redemption_percentage ?? ""));
+  }, [loyaltyConfig?.id, loyaltyConfig?.redemption_rate, loyaltyConfig?.min_redemption_points, loyaltyConfig?.max_redemption_percentage]);
+
+  function submitRedemptionConfig() {
+    const redemptionRate = parseFloat(cfgRedemption);
+    const minPoints = parseInt(cfgMinPoints, 10);
+    const maxPct = parseFloat(cfgMaxPct);
+    if (Number.isNaN(redemptionRate) || redemptionRate <= 0) return;
+    const body: Record<string, unknown> = { redemption_rate: redemptionRate };
+    if (!Number.isNaN(minPoints) && minPoints >= 0) body.min_redemption_points = minPoints;
+    if (!Number.isNaN(maxPct) && maxPct >= 0 && maxPct <= 100) body.max_redemption_percentage = maxPct;
+    patchConfig.mutate(body);
+  }
+
   if (denied) return denied;
 
-  if (rulesQ.isLoading || milesQ.isLoading) {
+  if (rulesQ.isLoading || milesQ.isLoading || configQ.isLoading) {
     return (
       <div className="space-y-6">
         <AdminPageHeader title="Loyalty" />
@@ -252,6 +302,10 @@ export function LoyaltyRulesPage() {
     if (isAdminApiAuthFailure(milesQ.error)) return <PermissionDenied />;
     return <AdminRetryBlock message={milesQ.error.message} onRetry={() => void milesQ.refetch()} />;
   }
+  if (configQ.error) {
+    if (isAdminApiAuthFailure(configQ.error)) return <PermissionDenied />;
+    return <AdminRetryBlock message={configQ.error.message} onRetry={() => void configQ.refetch()} />;
+  }
 
   const ruleRows = rulesQ.data ?? [];
   const mileRows = Array.isArray(milesQ.data) ? milesQ.data : [];
@@ -260,19 +314,74 @@ export function LoyaltyRulesPage() {
   const mileErr = createMilestone.error instanceof Error ? createMilestone.error.message : null;
   const patchRuleErr = patchRule.error instanceof Error ? patchRule.error.message : null;
   const patchMileErr = patchMilestone.error instanceof Error ? patchMilestone.error.message : null;
+  const patchConfigErr = patchConfig.error instanceof Error ? patchConfig.error.message : null;
+
+  const cfgRedemptionValid = cfgRedemption.trim() !== "" && !Number.isNaN(parseFloat(cfgRedemption)) && parseFloat(cfgRedemption) > 0;
 
   return (
     <div className="space-y-8">
       <AdminPageHeader
         title="Loyalty"
-        description="Earning rules are matched by currency (see booking completion logic). New rows create a new effective version; edit or deactivate existing rules instead of duplicating."
+        description="Earning rules control points on completed bookings. Checkout redemption uses the redemption settings below (loyalty_point_config); the redemption rate on earning rules is only a fallback when no active config exists."
       />
+
+      <section className="space-y-3">
+        <h2 className="text-base font-semibold text-gray-900">Redemption settings (checkout)</h2>
+        <AdminPanel>
+          <p className="mb-3 text-sm text-gray-600">
+            These values drive checkout redemption, balance previews, and redeem-to-wallet. Example: rate 10 means 10 points = 1 currency unit off.
+          </p>
+          {loyaltyConfig ? (
+            <div className="flex flex-wrap items-end gap-3">
+              <label className="text-sm">
+                <span className="text-gray-600">Redemption rate (points per 1 currency unit)</span>
+                <input
+                  className="ml-2 w-28 rounded border border-gray-300 px-2 py-1"
+                  value={cfgRedemption}
+                  onChange={(e) => setCfgRedemption(e.target.value)}
+                  inputMode="decimal"
+                />
+              </label>
+              <label className="text-sm">
+                <span className="text-gray-600">Min points to redeem</span>
+                <input
+                  className="ml-2 w-24 rounded border border-gray-300 px-2 py-1"
+                  value={cfgMinPoints}
+                  onChange={(e) => setCfgMinPoints(e.target.value)}
+                  inputMode="numeric"
+                />
+              </label>
+              <label className="text-sm">
+                <span className="text-gray-600">Max % of subtotal</span>
+                <input
+                  className="ml-2 w-20 rounded border border-gray-300 px-2 py-1"
+                  value={cfgMaxPct}
+                  onChange={(e) => setCfgMaxPct(e.target.value)}
+                  inputMode="decimal"
+                />
+              </label>
+              <button
+                type="button"
+                className="rounded-lg bg-gray-900 px-3 py-2 text-sm text-white disabled:opacity-50"
+                disabled={patchConfig.isPending || !cfgRedemptionValid}
+                onClick={() => submitRedemptionConfig()}
+              >
+                Save redemption settings
+              </button>
+            </div>
+          ) : (
+            <p className="text-sm text-amber-700">No active loyalty_point_config row found. Seed migration 124 should create one.</p>
+          )}
+          {patchConfigErr ? <p className="mt-2 text-sm text-red-600">{patchConfigErr}</p> : null}
+        </AdminPanel>
+      </section>
 
       <section className="space-y-3">
         <h2 className="text-base font-semibold text-gray-900">Earning rules</h2>
         <AdminPanel>
           <p className="mb-3 text-sm text-gray-600">
             POST adds a new rule with effective_from = now. Currency defaults from the current market when omitted.
+            Redemption rate here is a legacy fallback only — use redemption settings above for checkout.
           </p>
           <div className="flex flex-wrap items-end gap-3">
             <label className="text-sm">

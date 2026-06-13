@@ -333,7 +333,6 @@ export async function POST(
       throw updateError;
     }
 
-    // Notify customer of arrival — OTP path sends PIN wording; all other paths send generic arrived push
     const customer = bookingData.customers;
     if (customer) {
       if (otp_enabled && otp) {
@@ -352,13 +351,35 @@ export async function POST(
           console.error("Failed to send OTP, QR code available as fallback:", otpError);
         }
       } else {
-        // QR-only or no-code: still inform customer provider has arrived
         await sendProviderArrivedNotification(
           customer.id,
           bookingData.booking_number,
           providerData?.business_name || "Provider",
           id,
         );
+      }
+
+      try {
+        const { shouldDeliverGuestLinkForCustomer, deliverGuestBookingLink } = await import(
+          "@/lib/portal/guest-booking-link-delivery"
+        );
+        if (await shouldDeliverGuestLinkForCustomer(supabaseAdminArrive, customer.id)) {
+          await deliverGuestBookingLink({
+            supabaseAdmin: supabaseAdminArrive,
+            bookingId: id,
+            bookingNumber: bookingData.booking_number,
+            scheduledAt: bookingData.scheduled_at,
+            customerId: customer.id,
+            customerName: customer.full_name || "Guest",
+            customerEmail: customer.email || null,
+            customerPhone: customer.phone || null,
+            providerName: providerData?.business_name || "Provider",
+            tenantId: (bookingData as { tenant_id?: string | null }).tenant_id ?? null,
+            templateKey: "guest_arrival_verification",
+          });
+        }
+      } catch (guestArrivalErr) {
+        console.warn("Guest arrival portal link:", guestArrivalErr);
       }
     }
 

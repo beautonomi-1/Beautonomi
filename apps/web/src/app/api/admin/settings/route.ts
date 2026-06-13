@@ -71,6 +71,9 @@ interface PlatformSettings {
     otp_enabled: boolean; // Enable OTP verification for at-home bookings
     qr_code_enabled: boolean; // Enable QR code verification for at-home bookings
     require_verification: boolean; // If false, simple provider confirmation is enough
+    allow_provider_override: boolean;
+    guest_link_email_enabled: boolean;
+    guest_link_sms_enabled: boolean;
   };
   onesignal: {
     app_id: string;
@@ -263,9 +266,12 @@ function getDefaultPlatformSettings(): PlatformSettings {
         webhook_secret: process.env.PAYSTACK_WEBHOOK_SECRET || undefined,
       },
       verification: {
-        otp_enabled: true, // Default: OTP enabled
-        qr_code_enabled: true, // Default: QR code enabled
-        require_verification: true, // Default: Verification required (if both disabled, this should be false)
+        otp_enabled: true,
+        qr_code_enabled: true,
+        require_verification: true,
+        allow_provider_override: true,
+        guest_link_email_enabled: true,
+        guest_link_sms_enabled: true,
       },
       onesignal: {
         app_id: process.env.ONESIGNAL_APP_ID || "",

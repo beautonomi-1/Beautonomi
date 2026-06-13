@@ -215,7 +215,7 @@ export default function NotificationsScreen() {
   const [filter, setFilter] = useState<FilterValue>("all");
 
   const { session } = useAuth();
-  const { refresh: refreshCount, adjustUnreadCount, replaceUnreadCount, totalUnread } = useNotificationsCount();
+  const { refresh: refreshCount, adjustUnreadCount, replaceUnreadCount, notificationUnread } = useNotificationsCount();
   const {
     data: rawData,
     loading,
@@ -280,7 +280,7 @@ export default function NotificationsScreen() {
   }, [refresh, refreshCount]);
 
   const localUnreadCount = notifications?.filter((n) => isUnread(n)).length ?? 0;
-  const unreadCount = totalUnread > 0 ? totalUnread : localUnreadCount;
+  const unreadCount = notificationUnread > 0 ? notificationUnread : localUnreadCount;
 
   const filteredNotifications = useMemo(() => {
     if (!notifications) return [];

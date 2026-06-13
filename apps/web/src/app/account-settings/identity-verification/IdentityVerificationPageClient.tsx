@@ -11,6 +11,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { fetcher } from "@/lib/http/fetcher";
 import VerificationStatusCard from "@/components/profile/VerificationStatusCard";
+import { CountryOfIssueSelect } from "@/components/verification/CountryOfIssueSelect";
+import { formatVerificationCountryDisplay } from "@beautonomi/utils";
 
 type VerificationSubmission = {
   id: string;
@@ -137,7 +139,7 @@ export default function IdentityVerificationPageClient() {
 
   const submitManual = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!file || !country.trim()) {
+    if (!file || !country) {
       toast.error("Select a document and country");
       return;
     }
@@ -146,7 +148,7 @@ export default function IdentityVerificationPageClient() {
       const formData = new FormData();
       formData.append("file", file);
       formData.append("document_type", documentType);
-      formData.append("country", country.trim());
+      formData.append("country", country);
       await fetcher.post("/api/me/verification", formData);
       toast.success("Document submitted for review");
       setFile(null);
@@ -269,14 +271,11 @@ export default function IdentityVerificationPageClient() {
                     </select>
                   </div>
                   <div>
-                    <Label htmlFor="country">Country of issue</Label>
-                    <input
-                      id="country"
+                    <Label htmlFor="country-of-issue">Country of issue</Label>
+                    <CountryOfIssueSelect
+                      id="country-of-issue"
                       value={country}
-                      onChange={(e) => setCountry(e.target.value)}
-                      className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-                      placeholder="e.g. South Africa"
-                      required
+                      onChange={setCountry}
                     />
                   </div>
                   <div>
@@ -320,7 +319,8 @@ export default function IdentityVerificationPageClient() {
                     className="rounded-lg border border-gray-200 bg-white p-4 text-sm"
                   >
                     <p className="text-gray-800">
-                      {row.document_type} · {row.country || "—"} · {formatWhen(row.submitted_at)}
+                      {row.document_type} · {formatVerificationCountryDisplay(row.country)} ·{" "}
+                      {formatWhen(row.submitted_at)}
                     </p>
                     <p className="text-gray-500 mt-1 capitalize">{row.status.replace(/_/g, " ")}</p>
                     {row.rejection_reason ? (

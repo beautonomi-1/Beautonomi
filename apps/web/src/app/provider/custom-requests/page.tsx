@@ -192,8 +192,26 @@ export default function ProviderCustomRequestsPage() {
     };
   }, [durationMinutes, locationId, offerOpen, selected, selectedSlotParts.date, selectedSlotParts.time, staffId]);
 
+  const offerValidationHint = useMemo(() => {
+    if (price.trim() === "" || Number.isNaN(Number(price)) || Number(price) < 0) {
+      return "Enter a valid price (0 or more).";
+    }
+    const dm = Number(durationMinutes);
+    if (!Number.isFinite(dm) || dm < 15 || dm > 480) {
+      return "Duration must be between 15 and 480 minutes.";
+    }
+    if (!expirationAt.trim()) return "Select when this offer expires.";
+    const exp = new Date(expirationAt);
+    if (!Number.isFinite(exp.getTime()) || exp.getTime() <= Date.now()) {
+      return "Expiration must be in the future.";
+    }
+    return null;
+  }, [price, durationMinutes, expirationAt]);
+
+  const canSubmitOffer = offerValidationHint === null;
+
   const sendOffer = async () => {
-    if (!selected) return;
+    if (!selected || !canSubmitOffer) return;
     try {
       setIsSubmitting(true);
       const payload: Record<string, unknown> = {
@@ -440,13 +458,18 @@ export default function ProviderCustomRequestsPage() {
                 <Label>Notes (optional)</Label>
                 <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={4} />
               </div>
-              <div className="flex justify-end gap-2">
+              <div className="flex flex-col items-end gap-2">
+                {offerValidationHint ? (
+                  <p className="w-full text-sm text-amber-700">{offerValidationHint}</p>
+                ) : null}
+                <div className="flex justify-end gap-2">
                 <Button variant="outline" onClick={() => setOfferOpen(false)} disabled={isSubmitting}>
                   Cancel
                 </Button>
-                <Button onClick={sendOffer} disabled={isSubmitting || !price}>
+                <Button onClick={sendOffer} disabled={isSubmitting || !canSubmitOffer}>
                   {isSubmitting ? "Sending..." : "Send Offer"}
                 </Button>
+                </div>
               </div>
             </div>
           </DialogContent>

@@ -205,6 +205,7 @@ export default function ProviderBookingDetail() {
   const [arrivalPinInput, setArrivalPinInput] = useState("");
   const [isVerifyingArrival, setIsVerifyingArrival] = useState(false);
   const [isResendingArrivalOtp, setIsResendingArrivalOtp] = useState(false);
+  const [isOverridingArrival, setIsOverridingArrival] = useState(false);
   // P8 (audit 2026-04): tracks in-flight manual notification sends from
   // the provider detail page (see `handleResendNotification` /
   // `handleSendCancellationNotice`).
@@ -1001,6 +1002,26 @@ export default function ProviderBookingDetail() {
     }
   };
 
+  const handleOverrideArrivalVerification = async () => {
+    const reasonText = prompt(
+      "Customer can't verify — briefly describe why (required for audit):",
+    );
+    if (!reasonText?.trim()) return;
+    setIsOverridingArrival(true);
+    try {
+      await fetcher.post(`/api/provider/bookings/${bookingId}/override-arrival-verification`, {
+        reason_code: "other",
+        reason_text: reasonText.trim(),
+      });
+      toast.success("Arrival verified manually. You can start the service.");
+      loadBooking();
+    } catch (err) {
+      toast.error(err instanceof FetchError ? err.message : "Failed to override verification");
+    } finally {
+      setIsOverridingArrival(false);
+    }
+  };
+
   /**
    * P8 (audit 2026-04): manually fire provider → customer notifications
    * via the existing REST routes. These were previously only callable from
@@ -1625,6 +1646,14 @@ export default function ProviderBookingDetail() {
                               className="min-h-[44px]"
                             >
                               {isResendingArrivalOtp ? "Sending…" : "Resend code & QR"}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              onClick={handleOverrideArrivalVerification}
+                              disabled={isOverridingArrival}
+                              className="min-h-[44px] text-amber-800"
+                            >
+                              {isOverridingArrival ? "Saving…" : "Customer can't verify?"}
                             </Button>
                           </div>
                         </div>

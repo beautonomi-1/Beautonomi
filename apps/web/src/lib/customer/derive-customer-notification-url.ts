@@ -10,12 +10,26 @@ function isUuid(s: string): boolean {
 }
 
 export function deriveCustomerNotificationHref(notification: {
+  type?: string | null;
   link?: string | null;
   action_url?: string | null;
   data?: Record<string, unknown> | null;
   metadata?: Record<string, unknown> | null;
 }): string | undefined {
   const data = { ...(notification.data ?? {}), ...(notification.metadata ?? {}) };
+  const nType = (notification.type ?? "").toLowerCase();
+  const templateKey =
+    typeof data.template_key === "string" ? data.template_key.toLowerCase() : "";
+
+  if (
+    nType === "identity_verification_approved" ||
+    nType === "identity_verification_rejected" ||
+    nType === "account_verification" ||
+    templateKey === "identity_verification_approved" ||
+    templateKey === "identity_verification_rejected"
+  ) {
+    return "/account-settings/identity-verification";
+  }
   const bookingId =
     typeof data.booking_id === "string" && data.booking_id.trim()
       ? data.booking_id.trim()

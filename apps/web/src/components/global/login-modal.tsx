@@ -651,6 +651,27 @@ export default function LoginModal({
         // This helps users who might have unverified emails, but doesn't assume that's the issue
         setShowResendVerification(true);
       }
+      // Signup against an email that already exists: it may be a provider-created
+      // shadow account — offer the claim flow instead of a dead-end error.
+      else if (
+        isSignup &&
+        (lowerErrorMessage.includes("already registered") ||
+          lowerErrorMessage.includes("user already") ||
+          lowerErrorMessage.includes("already exists"))
+      ) {
+        try {
+          await fetcher.post("/api/auth/claim/start", { email: trimmedEmail });
+          setError(
+            "An account with this email already exists. If a provider booked for you, check your inbox for a link to claim your account — otherwise log in instead."
+          );
+          setShowResendVerification(false);
+          toast.success("Check your email to claim your account.");
+          return; // handled — skip the generic error toast below
+        } catch {
+          setError(errorMessage);
+        }
+        setShowResendVerification(false);
+      }
       // Other errors
       else {
         setError(errorMessage);

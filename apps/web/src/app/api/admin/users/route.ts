@@ -27,25 +27,37 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get("search");
     const role = searchParams.get("role");
     const signupSource = searchParams.get("signup_source");
+    const isShadowFilter = searchParams.get("is_shadow");
 
-    const { data: payload, error } = await admin.rpc("admin_users_list_for_tenant", {
-      p_tenant_id: tenantId,
-      p_limit: limit,
-      p_offset: offset,
-      p_search: search?.trim() || null,
-      p_role: role && role !== "all" ? role : null,
-      p_signup_source: signupSource && signupSource !== "all" ? signupSource : null,
-    });
+    // is_shadow is filtered in SQL so totals/pagination stay correct.
+    const [listResult, statsResult] = await Promise.all([
+      admin.rpc("admin_users_list_for_tenant", {
+        p_tenant_id: tenantId,
+        p_limit: limit,
+        p_offset: offset,
+        p_search: search?.trim() || null,
+        p_role: role && role !== "all" ? role : null,
+        p_signup_source: signupSource && signupSource !== "all" ? signupSource : null,
+        p_is_shadow:
+          isShadowFilter === "true" ? true : isShadowFilter === "false" ? false : null,
+      }),
+      admin.rpc("admin_users_shadow_stats_for_tenant", { p_tenant_id: tenantId }),
+    ]);
 
-    if (error) {
-      throw error;
+    if (listResult.error) {
+      throw listResult.error;
     }
 
-    const box = payload as { total?: unknown; data?: unknown } | null;
+    const box = listResult.data as { total?: unknown; data?: unknown } | null;
     const rawUsers = Array.isArray(box?.data) ? (box.data as Record<string, unknown>[]) : [];
     const users = await enrichAdminUserListRows(admin, tenantId, rawUsers);
     const total = typeof box?.total === "number" ? box.total : Number(box?.total ?? 0);
     const hasMore = total > page * limit;
+
+    const shadowStats =
+      !statsResult.error && statsResult.data && typeof statsResult.data === "object"
+        ? (statsResult.data as Record<string, unknown>)
+        : null;
 
     // Return in format expected by frontend
     return successResponse({
@@ -55,6 +67,7 @@ export async function GET(request: NextRequest) {
         limit,
         total,
         has_more: hasMore,
+        shadow_stats: shadowStats,
       },
     });
   } catch (error) {

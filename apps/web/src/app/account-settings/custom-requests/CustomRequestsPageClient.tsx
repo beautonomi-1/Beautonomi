@@ -4,6 +4,7 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { mergeCurrencyChoiceCodes, currencySelectLabel } from "@/lib/locale/currency";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import BackButton from "../components/back-button";
 import Breadcrumb from "../components/breadcrumb";
 import LoadingTimeout from "@/components/ui/loading-timeout";
@@ -94,6 +95,8 @@ export default function CustomRequestsPageClient({
 }) {
   const { role } = useAuth();
   const { bundle } = useConfigBundle();
+  const searchParams = useSearchParams();
+  const deeplinkHandledRef = useRef(false);
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const isProvider =
     role === "provider_owner" ||
@@ -335,6 +338,7 @@ export default function CustomRequestsPageClient({
   } | null>(null);
   const [depositQuoteLoading, setDepositQuoteLoading] = useState(false);
   const [depositOfferCurrency, setDepositOfferCurrency] = useState<string | undefined>(undefined);
+  const [decliningOfferId, setDecliningOfferId] = useState<string | null>(null);
 
   const openDepositDialog = async (offerId: string, currency?: string) => {
     setDepositChoiceOfferId(offerId);
@@ -397,6 +401,30 @@ export default function CustomRequestsPageClient({
       toast.error(e instanceof Error ? e.message : "Failed to start payment");
     }
   };
+
+  const declineOffer = async (offerId: string) => {
+    if (!window.confirm("Decline this custom offer? The provider will be notified.")) return;
+    setDecliningOfferId(offerId);
+    try {
+      await fetcher.post(`/api/me/custom-offers/${offerId}/decline`, {});
+      toast.success("Offer declined");
+      await load();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to decline offer");
+    } finally {
+      setDecliningOfferId(null);
+    }
+  };
+
+  useEffect(() => {
+    if (deeplinkHandledRef.current || isLoading || isProvider) return;
+    const offerId = searchParams.get("offer") ?? searchParams.get("offer_id");
+    if (!offerId) return;
+    const offerExists = items.some((r) => r.offers?.some((o) => o.id === offerId));
+    if (!offerExists && items.length === 0) return;
+    deeplinkHandledRef.current = true;
+    void openDepositDialog(offerId);
+  }, [isLoading, isProvider, items, searchParams]);
 
   const handleCreateOffer = async () => {
     if (!formData.customer_id || !formData.description || !formData.price) {
@@ -595,20 +623,38 @@ export default function CustomRequestsPageClient({
                       {r.offers.map((o) => {
                         const st = String(o.status || "pending").toLowerCase();
                         const isPaid = st === "paid";
-                        const isWithdrawn = st === "withdrawn" || st === "declined";
+                        const isDeclined = st === "declined";
+                        const isWithdrawn = st === "withdrawn";
                         const isExpired = st === "expired";
+                        const isFinalizeFailed = st === "finalize_failed";
                         const isPaymentPending = st === "payment_pending";
-                        const isInactive = isPaid || isWithdrawn || isExpired;
+                        const isInactive = isPaid || isWithdrawn || isExpired || isDeclined || isFinalizeFailed;
                         const badgeClass = isPaid
                           ? "bg-emerald-100 text-emerald-700 border border-emerald-200"
-                          : isWithdrawn
+                          : isFinalizeFailed
+                            ? "bg-red-100 text-red-700 border border-red-200"
+                            : isDeclined
+                              ? "bg-slate-100 text-slate-600 border border-slate-200"
+                              : isWithdrawn
                             ? "bg-slate-100 text-slate-500 border border-slate-200"
                             : isExpired
                               ? "bg-amber-100 text-amber-700 border border-amber-200"
                               : isPaymentPending
                                 ? "bg-yellow-100 text-yellow-700 border border-yellow-200"
                                 : "bg-blue-50 text-blue-700 border border-blue-200";
-                        const badgeLabel = isPaid ? "Booked ✓" : isWithdrawn ? "Withdrawn" : isExpired ? "Expired" : isPaymentPending ? "Processing…" : "Pending";
+                        const badgeLabel = isPaid
+                          ? "Booked ✓"
+                          : isFinalizeFailed
+                            ? "Needs support"
+                            : isDeclined
+                              ? "Declined"
+                              : isWithdrawn
+                                ? "Withdrawn"
+                                : isExpired
+                                  ? "Expired"
+                                  : isPaymentPending
+                                    ? "Processing…"
+                                    : "Pending";
                         return (
                           <div
                             key={o.id}
@@ -647,7 +693,17 @@ export default function CustomRequestsPageClient({
                                 ) : isPaymentPending ? (
                                   <Button variant="secondary" size="sm" disabled>Processing…</Button>
                                 ) : (
-                                  <Button size="sm" onClick={() => openDepositDialog(o.id, o.currency)}>Accept & Pay</Button>
+                                  <>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      disabled={decliningOfferId === o.id}
+                                      onClick={() => void declineOffer(o.id)}
+                                    >
+                                      {decliningOfferId === o.id ? "Declining…" : "Decline"}
+                                    </Button>
+                                    <Button size="sm" onClick={() => openDepositDialog(o.id, o.currency)}>Accept & Pay</Button>
+                                  </>
                                 )}
                               </div>
                             )}
@@ -1277,15 +1333,36 @@ export default function CustomRequestsPageClient({
             const rawStatus = String(d.status ?? "pending").toLowerCase();
             const isPaid = rawStatus === "paid" || !!d.booking_id;
             const isWithdrawn = rawStatus === "withdrawn";
+            const isDeclined = rawStatus === "declined";
             const isExpired = rawStatus === "expired";
+            const isFinalizeFailed = rawStatus === "finalize_failed";
             const isPaymentPending = rawStatus === "payment_pending";
-            const statusLabel = isPaid ? "Booked ✓" : isWithdrawn ? "Withdrawn" : isExpired ? "Expired" : isPaymentPending ? "Processing…" : "Pending";
+            const statusLabel = isPaid
+              ? "Booked ✓"
+              : isFinalizeFailed
+                ? "Needs support"
+                : isDeclined
+                  ? "Declined"
+                  : isWithdrawn
+                    ? "Withdrawn"
+                    : isExpired
+                      ? "Expired"
+                      : isPaymentPending
+                        ? "Processing…"
+                        : "Pending";
             const statusClass = isPaid
               ? "bg-emerald-100 text-emerald-700"
-              : isWithdrawn ? "bg-slate-100 text-slate-600"
-                : isExpired ? "bg-amber-100 text-amber-700"
-                  : isPaymentPending ? "bg-yellow-100 text-yellow-700"
-                    : "bg-blue-50 text-blue-700";
+              : isFinalizeFailed
+                ? "bg-red-100 text-red-700"
+                : isDeclined
+                  ? "bg-slate-100 text-slate-600"
+                  : isWithdrawn
+                    ? "bg-slate-100 text-slate-600"
+                    : isExpired
+                      ? "bg-amber-100 text-amber-700"
+                      : isPaymentPending
+                        ? "bg-yellow-100 text-yellow-700"
+                        : "bg-blue-50 text-blue-700";
             return (
               <div className="space-y-4 pb-2">
                 <div className="flex items-center gap-2">
@@ -1353,18 +1430,39 @@ export default function CustomRequestsPageClient({
                     This offer has been withdrawn. The provider may send a new one.
                   </div>
                 )}
+                {isDeclined && (
+                  <div className="text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded-lg p-3">
+                    You declined this offer. The provider may send a new one if your request is still open.
+                  </div>
+                )}
+                {isFinalizeFailed && (
+                  <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
+                    Payment was received but booking setup failed. Please contact support
+                    {d.payment_reference ? ` and quote reference ${d.payment_reference}` : ""}.
+                  </div>
+                )}
                 <div className="flex flex-col gap-2 pt-2 border-t border-gray-100">
-                  {!isProvider && !isPaid && !isWithdrawn && !isExpired && !isPaymentPending && d.id && (
-                    <Button
-                      className="w-full"
-                      disabled={isAcceptingDetail}
-                      onClick={() => {
-                        setOfferDetailOpen(false);
-                        void openDepositDialog(d.id, d.currency);
-                      }}
-                    >
-                      Accept & Pay
-                    </Button>
+                  {!isProvider && !isPaid && !isWithdrawn && !isExpired && !isDeclined && !isFinalizeFailed && !isPaymentPending && d.id && (
+                    <>
+                      <Button
+                        className="w-full"
+                        disabled={isAcceptingDetail}
+                        onClick={() => {
+                          setOfferDetailOpen(false);
+                          void openDepositDialog(d.id, d.currency);
+                        }}
+                      >
+                        Accept & Pay
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        disabled={decliningOfferId === d.id}
+                        onClick={() => void declineOffer(d.id)}
+                      >
+                        {decliningOfferId === d.id ? "Declining…" : "Decline offer"}
+                      </Button>
+                    </>
                   )}
                   {!isProvider && isPaid && d.booking_id && (
                     <Button

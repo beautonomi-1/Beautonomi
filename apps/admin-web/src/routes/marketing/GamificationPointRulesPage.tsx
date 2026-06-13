@@ -20,6 +20,7 @@ import {
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { adminSpaTo } from "@/lib/adminSpaPath";
+import { adminToast } from "@/lib/adminToast";
 
 type RuleRow = { source: string; points: number; label?: string; display_order?: number; id?: string };
 
@@ -37,6 +38,7 @@ export function GamificationPointRulesPage() {
 
   const rows = q.data?.rules ?? [];
   const [draft, setDraft] = useState<Record<string, string>>({});
+  const [inputErrors, setInputErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const next: Record<string, string> = {};
@@ -44,29 +46,60 @@ export function GamificationPointRulesPage() {
       if (r.source) next[r.source] = String(r.points ?? "");
     }
     setDraft(next);
+    setInputErrors({});
   }, [rows]);
 
   const dirty = useMemo(() => {
     for (const r of rows) {
       const s = r.source;
       if (!s) continue;
-      const cur = parseFloat(draft[s] ?? "");
+      if (inputErrors[s]) return false;
+      const cur = parseInt(draft[s] ?? "", 10);
       if (Number.isNaN(cur) || cur !== Number(r.points)) return true;
     }
     return false;
-  }, [rows, draft]);
+  }, [rows, draft, inputErrors]);
+
+  const hasInputErrors = Object.keys(inputErrors).length > 0;
+
+  function handlePointsChange(source: string, raw: string) {
+    setDraft((d) => ({ ...d, [source]: raw }));
+    if (raw.trim() === "") {
+      setInputErrors((e) => {
+        const next = { ...e };
+        delete next[source];
+        return next;
+      });
+      return;
+    }
+    if (!/^\d+$/.test(raw.trim())) {
+      setInputErrors((e) => ({ ...e, [source]: "Enter a whole number 0 or greater." }));
+    } else {
+      setInputErrors((e) => {
+        const next = { ...e };
+        delete next[source];
+        return next;
+      });
+    }
+  }
 
   const save = useMutation({
     mutationFn: () => {
       const rules = rows
         .filter((r) => r.source)
         .map((r) => {
-          const p = parseFloat(draft[r.source] ?? "");
-          return { source: r.source, points: Number.isNaN(p) ? r.points : p };
+          const p = parseInt(draft[r.source] ?? "", 10);
+          if (Number.isNaN(p) || p < 0) {
+            throw new Error(`Invalid points for ${r.source}`);
+          }
+          return { source: r.source, points: p };
         });
       return adminApi.patchJson<unknown>("/api/admin/gamification/point-rules", { rules });
     },
-    onSuccess: () => void qc.invalidateQueries({ queryKey: adminQueryKeys.gamificationPointRules() }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.gamificationPointRules() });
+      adminToast.success("Point rules saved");
+    },
   });
 
   if (denied) return denied;
@@ -106,7 +139,7 @@ export function GamificationPointRulesPage() {
           <button
             type="button"
             className="rounded-lg bg-gray-900 px-3 py-2 text-sm text-white disabled:opacity-50"
-            disabled={!dirty || save.isPending}
+            disabled={!dirty || save.isPending || hasInputErrors}
             onClick={() => save.mutate()}
           >
             Save changes
@@ -134,11 +167,16 @@ export function GamificationPointRulesPage() {
                   <AdminTd className="font-mono text-xs">{src}</AdminTd>
                   <AdminTd>
                     <input
-                      className="w-20 rounded border border-gray-300 px-2 py-1 text-sm tabular-nums"
+                      className={`w-20 rounded border px-2 py-1 text-sm tabular-nums ${
+                        inputErrors[src] ? "border-red-500" : "border-gray-300"
+                      }`}
                       value={draft[src] ?? ""}
-                      onChange={(e) => setDraft((d) => ({ ...d, [src]: e.target.value }))}
-                      inputMode="decimal"
+                      onChange={(e) => handlePointsChange(src, e.target.value)}
+                      inputMode="numeric"
                     />
+                    {inputErrors[src] ? (
+                      <p className="mt-1 text-xs text-red-600">{inputErrors[src]}</p>
+                    ) : null}
                   </AdminTd>
                   <AdminTd>{String(r.label ?? "")}</AdminTd>
                   <AdminTd>{String(r.display_order ?? "")}</AdminTd>

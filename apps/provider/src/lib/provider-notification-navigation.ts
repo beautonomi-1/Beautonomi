@@ -52,6 +52,22 @@ function getUuidAfterSegment(link: string, segment: string): string {
 export function navigateFromProviderNotification(router: Router, n: ProviderNotificationNavPayload): boolean {
   const link = n.link ?? n.action_url ?? "";
   const data = n.data ?? {};
+  const nTypeLc = (n.type ?? "").toLowerCase();
+  const templateKey =
+    typeof data.template_key === "string" ? data.template_key.toLowerCase() : "";
+
+  if (
+    nTypeLc === "identity_verification_approved" ||
+    nTypeLc === "identity_verification_rejected" ||
+    nTypeLc === "account_verification" ||
+    templateKey === "identity_verification_approved" ||
+    templateKey === "identity_verification_rejected" ||
+    link.includes("/provider/settings/verification") ||
+    link.includes("/settings/verification")
+  ) {
+    router.push("/(app)/(tabs)/more/settings/verification" as never);
+    return true;
+  }
 
   const productOrderIdFromData =
     typeof data.product_order_id === "string" && data.product_order_id.trim()
@@ -107,7 +123,6 @@ export function navigateFromProviderNotification(router: Router, n: ProviderNoti
     "";
   const dbStatus = String(data.db_status ?? data.status ?? "").toLowerCase();
   const linkLc = link.toLowerCase();
-  const nTypeLc = (n.type ?? "").toLowerCase();
   if (
     nTypeLc === "ads_payment_confirmed" ||
     linkLc.includes("/provider/settings/ads") ||

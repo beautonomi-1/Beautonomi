@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSectionAny, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { verifyOneSignalConfig } from "@/lib/notifications/onesignal";
 import { resolveOneSignalCredentials } from "@/lib/platform/secrets";
+import { resolveResendCredentials } from "@/lib/integrations/resend";
 import {
   ADMIN_SECTION_INTEGRATIONS_DEV,
   ADMIN_SECTION_MARKETING_COMMS,
@@ -99,6 +100,25 @@ export async function GET(request: NextRequest) {
 
     const osReady = appIdSet && apiKeySet && onesignalSectionEnabled;
 
+    const resendCreds = await resolveResendCredentials(supabase, tenantId);
+    const resendApiKeySet = !!resendCreds?.apiKey;
+    let resendSectionEnabled = true;
+    try {
+      const scoped = await fetchScopedSingle<{ settings?: Record<string, unknown> }>({
+        supabase,
+        table: "platform_settings",
+        tenantId,
+        select: "settings",
+        apply: (q) => q.eq("is_active", true),
+        orderBy: { column: "updated_at", ascending: false },
+      });
+      const resendSettings = (scoped.data?.settings?.resend as { enabled?: boolean } | undefined) ?? {};
+      if (typeof resendSettings.enabled === "boolean") resendSectionEnabled = resendSettings.enabled;
+    } catch {
+      // dev DB may be partial
+    }
+    const resendReady = resendApiKeySet && resendSectionEnabled;
+
     const custCreds = await resolveOneSignalCredentials("customer", { tenantId });
     const provCreds = await resolveOneSignalCredentials("provider", { tenantId });
 
@@ -161,6 +181,19 @@ export async function GET(request: NextRequest) {
         account_sid_set: twilioAccountSidSet,
         auth_token_set: twilioAuthTokenSet,
         from_number: twilioSmsFrom || undefined,
+      },
+      /** Transactional email (notification queue, broadcasts, guest links, claim invites). */
+      resend: {
+        enabled: resendReady,
+        api_key_set: resendApiKeySet,
+        from: resendCreds?.fromAddress || undefined,
+        settings_enabled: resendSectionEnabled,
+      },
+      transactional_email: {
+        enabled: resendReady,
+        provider: "resend",
+        api_key_set: resendApiKeySet,
+        from: resendCreds?.fromAddress || undefined,
       },
       diagnostics: {
         onesignal_configured: osVerify.configured,

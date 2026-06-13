@@ -10,6 +10,10 @@ import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { chunkIds, unwrapEmbedded } from "@/lib/provider-ops/postgrest-unbounded";
 import { fetchProviderOnboardingDraftsForTenantScope } from "@/lib/provider-ops/scoped-onboarding-drafts";
+import {
+  draftHasAddressLine,
+  isOnboardingWizardUserRole,
+} from "@/lib/provider-ops/onboarding-wizard-roles";
 
 const STEP_NAMES: Record<number, string> = {
   1: "Team Size",
@@ -53,8 +57,7 @@ function extractDraftSummary(
     owner_phone: draftData.owner_phone || null,
     team_size: draftData.team_size || null,
     business_type: draftData.business_type || null,
-    has_address:
-      !!(draftData.address as Record<string, unknown>)?.address_line1 || false,
+    has_address: draftHasAddressLine(draftData.address as Record<string, unknown> | undefined),
     has_thumbnail: !!draftData.thumbnail_url,
     has_services:
       Array.isArray(draftData.services) && draftData.services.length > 0,
@@ -120,7 +123,7 @@ export async function GET(request: NextRequest) {
           role: string;
           created_at: string;
         }>(row, "users");
-        if (!u || u.role !== "provider_owner") return null;
+        if (!u || !isOnboardingWizardUserRole(u.role)) return null;
         return {
           id: String(row.id),
           user_id: String(row.user_id),

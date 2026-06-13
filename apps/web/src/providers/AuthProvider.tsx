@@ -720,6 +720,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const visibilityCheckTimeout: NodeJS.Timeout | null = null;
     let lastTokenRefreshTime = 0;
     const TOKEN_REFRESH_DEBOUNCE = 5000; // 5 seconds debounce for token refresh
+    // Shadow accounts (provider-created walk-ins) are auto-claimed on first
+    // login; guard so we only call the endpoint once per user per mount.
+    let claimCompletionAttemptedFor: string | null = null;
     
     // Initial load with timeout fallback
     const loadAuth = async () => {
@@ -870,6 +873,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setUser(optimisticUser);
             setRole(optimisticRole);
             userRef.current = optimisticUser;
+            // Shadow account logging in for the first time (phone OTP / email OTP /
+            // recovery link): the user has proven ownership, so complete the claim.
+            // Server no-ops for non-shadow users; metadata flag is cleared on success.
+            if (
+              event === 'SIGNED_IN' &&
+              su.user_metadata?.is_shadow === true &&
+              claimCompletionAttemptedFor !== su.id
+            ) {
+              claimCompletionAttemptedFor = su.id;
+              void fetch('/api/auth/claim/complete', {
+                method: 'POST',
+                credentials: 'include',
+              }).catch(() => {});
+            }
             // Then load full profile from DB (will overwrite with real role/data)
             await refreshUser();
             scheduleRetentionSyncOnSession();

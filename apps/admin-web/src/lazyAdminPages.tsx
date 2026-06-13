@@ -123,6 +123,9 @@ export const PaystackConfigPage = lazy(() =>
 export const YocoIntegrationPage = lazy(() =>
   import("@/routes/integrations/YocoIntegrationPage").then((m) => ({ default: m.YocoIntegrationPage }))
 );
+export const ResendIntegrationPage = lazy(() =>
+  import("@/routes/integrations/ResendIntegrationPage").then((m) => ({ default: m.ResendIntegrationPage }))
+);
 export const PromotionsListPage = lazy(() =>
   import("@/routes/marketing/PromotionsListPage").then((m) => ({ default: m.PromotionsListPage }))
 );

@@ -200,7 +200,7 @@ export default function CustomRequestDetailScreen() {
     request &&
     canSendOffer &&
     Number.isFinite(priceNum) &&
-    priceNum > 0 &&
+    priceNum >= 0 &&
     Number.isFinite(durationNum) &&
     durationNum >= 15 &&
     durationNum <= 480 &&
@@ -807,7 +807,7 @@ export default function CustomRequestDetailScreen() {
 
             {!isValid ? (
               <Text style={twStyle("mb-2 text-xs text-amber-800")}>
-                Enter a price greater than 0, duration between 15 and 480 minutes, and offer expiry of at least 1 day
+                Enter a price (0 or more), duration between 15 and 480 minutes, and offer expiry of at least 1 day
                 to send an offer.
               </Text>
             ) : null}

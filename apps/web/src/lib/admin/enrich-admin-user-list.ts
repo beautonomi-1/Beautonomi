@@ -96,7 +96,9 @@ export async function enrichAdminUserListRows(
   const providerCounts = new Map<string, number>();
   const authByUserId = new Map<string, AuthSignInRow>();
 
-  const [bookingsRes, providersRes, authRes] = await Promise.all([
+  const shadowByUserId = new Map<string, { is_shadow?: boolean; claimed_at?: string | null }>();
+
+  const [bookingsRes, providersRes, authRes, shadowRes] = await Promise.all([
     userIds.length > 0
       ? admin
           .from("bookings")
@@ -116,7 +118,19 @@ export async function enrichAdminUserListRows(
     userIds.length > 0
       ? fetchAuthSignInBatch(admin, userIds)
       : Promise.resolve({ data: [] as AuthSignInRow[] }),
+    userIds.length > 0
+      ? admin.from("users").select("id, is_shadow, claimed_at").in("id", userIds)
+      : Promise.resolve({ data: [] as { id: string; is_shadow?: boolean; claimed_at?: string | null }[] }),
   ]);
+
+  for (const row of shadowRes.data ?? []) {
+    if (row.id) {
+      shadowByUserId.set(row.id, {
+        is_shadow: row.is_shadow,
+        claimed_at: row.claimed_at ?? null,
+      });
+    }
+  }
 
   for (const b of bookingsRes.data ?? []) {
     for (const uid of [b.customer_id, b.user_id]) {
@@ -142,8 +156,12 @@ export async function enrichAdminUserListRows(
       typeof u.last_login_at === "string" ? u.last_login_at : null;
     const lastSignInAt = authRow?.last_sign_in_at ?? null;
 
+    const shadow = id ? shadowByUserId.get(id) : undefined;
+
     return {
       ...u,
+      is_shadow: shadow?.is_shadow ?? u.is_shadow ?? false,
+      claimed_at: shadow?.claimed_at ?? u.claimed_at ?? null,
       last_sign_in_at: lastSignInAt,
       last_active_at: pickLatestIso(lastSignInAt, lastLoginAt),
       verification: buildVerificationSummary(u, authRow),

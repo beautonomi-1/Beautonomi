@@ -1,8 +1,17 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import {
+  requireAdminSection,
+  successResponse,
+  handleApiError,
+  errorResponse,
+} from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
+import {
+  validateBadgeBenefits,
+  validateBadgeRequirements,
+} from "@/lib/gamification/validate-badge-payload";
 
 /**
  * GET /api/admin/gamification/badges
@@ -66,22 +75,27 @@ export async function POST(request: NextRequest) {
       display_order = 0,
     } = body;
 
-    // Validate required fields
-    if (!name || !slug || !tier || !color || !requirements || !benefits) {
-      return handleApiError(
-        new Error('Missing required fields: name, slug, tier, color, requirements, benefits'),
-        'VALIDATION_ERROR',
+    if (!name || !slug || !tier || !color || requirements === undefined || benefits === undefined) {
+      return errorResponse(
+        "Missing required fields: name, slug, tier, color, requirements, benefits",
+        "VALIDATION_ERROR",
         400
       );
     }
 
-    // Validate tier
     if (tier < 1 || tier > 10) {
-      return handleApiError(
-        new Error('Tier must be between 1 and 10'),
-        'VALIDATION_ERROR',
-        400
-      );
+      return errorResponse("Tier must be between 1 and 10", "VALIDATION_ERROR", 400);
+    }
+
+    let validatedRequirements: Record<string, unknown>;
+    let validatedBenefits: Record<string, unknown>;
+    try {
+      validatedRequirements = validateBadgeRequirements(requirements);
+      validatedBenefits = validateBadgeBenefits(benefits);
+    } catch (validationError) {
+      const message =
+        validationError instanceof Error ? validationError.message : "Invalid badge payload";
+      return errorResponse(message, "VALIDATION_ERROR", 400);
     }
 
     const { data: badge, error } = await supabase
@@ -93,8 +107,8 @@ export async function POST(request: NextRequest) {
         icon_url: icon_url || null,
         tier,
         color,
-        requirements,
-        benefits,
+        requirements: validatedRequirements,
+        benefits: validatedBenefits,
         is_active,
         display_order,
       })

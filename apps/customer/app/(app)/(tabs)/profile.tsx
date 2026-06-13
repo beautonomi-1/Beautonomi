@@ -53,7 +53,7 @@ export default function ProfileScreen() {
   useScreenTracking("Profile");
   const { t } = useTranslation();
   const { user, signOut } = useAuth();
-  const { unreadCount } = useNotifications();
+  const { totalUnread } = useNotifications();
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const tabScrollPaddingBottom = useTabContentPaddingBottom(24);
   const contentContainerStyle = isTablet
@@ -655,7 +655,7 @@ export default function ProfileScreen() {
             icon="notifications-outline"
             label="Notifications"
             onPress={() => router.push("/(app)/notifications")}
-            badge={unreadCount > 0 ? unreadCount : undefined}
+            badge={totalUnread > 0 ? totalUnread : undefined}
           />
           <MenuItem
             icon="globe-outline"

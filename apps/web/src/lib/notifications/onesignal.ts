@@ -9,7 +9,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/database.types";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { getUnreadNotificationCount } from "@/lib/notifications/insert-notification";
+import { getTotalUnreadBadgeCount } from "@/lib/notifications/total-unread-badge";
 import { exactIosBadgeCount } from "@/lib/notifications/exact-ios-badge-count";
 import { z } from "zod";
 import {
@@ -988,7 +988,7 @@ export async function sendToUser(
     // §Badge-accuracy: exact unread (0 after mark-all-read). Works with alias-only targeting too.
     const passthroughBadge = (payload as Record<string, unknown>).ios_badgeCount;
     if (typeof passthroughBadge !== "number") {
-      const unread = await getUnreadNotificationCount(userId);
+      const unread = await getTotalUnreadBadgeCount(userId, options?.appType ?? "customer");
       notificationPayload.ios_badgeType = "SetTo";
       notificationPayload.ios_badgeCount = exactIosBadgeCount(unread);
     }
@@ -1090,7 +1090,7 @@ export async function sendToUsers(
     if (userIds.length === 1) {
       const passthroughBadge = (payload as Record<string, unknown>).ios_badgeCount;
       if (typeof passthroughBadge !== "number") {
-        const unread = await getUnreadNotificationCount(userIds[0]);
+        const unread = await getTotalUnreadBadgeCount(userIds[0], options?.appType ?? "customer");
         notificationPayload.ios_badgeType = "SetTo";
         notificationPayload.ios_badgeCount = exactIosBadgeCount(unread);
       }
@@ -1577,7 +1577,7 @@ export async function sendTemplateNotification(
       } catch {
         // best-effort; still send a badge below
       }
-      const unread = await getUnreadNotificationCount(userIds[0]);
+      const unread = await getTotalUnreadBadgeCount(userIds[0], options?.appType ?? "customer");
       notificationPayload.ios_badgeType = "SetTo";
       notificationPayload.ios_badgeCount = exactIosBadgeCount(unread);
     } else if (userIds.length > 1) {

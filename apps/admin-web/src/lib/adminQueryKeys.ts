@@ -76,6 +76,8 @@ export const adminQueryKeys = {
 
   loyaltyRules: () => [...adminQueryKeys.root, "loyalty", "rules"] as const,
 
+  loyaltyConfig: () => [...adminQueryKeys.root, "loyalty", "config"] as const,
+
   loyaltyMilestones: () => [...adminQueryKeys.root, "loyalty", "milestones"] as const,
 
   giftCardDetail: (id: string) => [...adminQueryKeys.root, "gift-cards", "detail", id] as const,
@@ -197,6 +199,7 @@ export const adminQueryKeys = {
   slack: (env: string) => [...adminQueryKeys.root, "integrations", "slack", env] as const,
 
   paystackConfig: () => [...adminQueryKeys.root, "integrations", "paystack"] as const,
+  resendConfig: () => [...adminQueryKeys.root, "integrations", "resend"] as const,
   yocoIntegrationStatus: () => [...adminQueryKeys.root, "integrations", "yoco"] as const,
 
   promotions: () => [...adminQueryKeys.root, "promotions"] as const,

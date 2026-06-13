@@ -13,6 +13,7 @@ import {
   syncProviderVerificationState,
 } from "@/lib/verification/sync-provider-verification";
 import { verificationAccessibleToAdminTenant } from "@/lib/admin/verification-tenant-access";
+import { notifyIdentityVerificationReviewed } from "@/lib/verification/notify-identity-verification-reviewed";
 import { z } from "zod";
 
 // Schema for verification review
@@ -259,14 +260,15 @@ export async function PATCH(
     // checklist, and provider KYC screen agree without a follow-up admin
     // action. §provider-verification-sync 2026-05.
     const verifiedUserId = (verification as { user_id?: string } | null)?.user_id;
+    let linkedProviderId: string | null = null;
     if (verifiedUserId && (status === "approved" || status === "rejected")) {
       try {
         const adminClient = getSupabaseAdmin();
-        const providerId = await resolveProviderIdForUser(adminClient, verifiedUserId);
+        linkedProviderId = await resolveProviderIdForUser(adminClient, verifiedUserId);
 
-        if (providerId) {
+        if (linkedProviderId) {
           const syncResult = await syncProviderVerificationState(adminClient, {
-            providerId,
+            providerId: linkedProviderId,
             userId: verifiedUserId,
             status,
             source: "manual_admin",
@@ -298,6 +300,16 @@ export async function PATCH(
         console.error("Failed to sync provider_verification_status after manual review:", syncErr);
         // Non-fatal — the user_verifications table was already updated correctly
       }
+
+      // Awaited so serverless doesn't freeze before the send completes;
+      // the helper never throws (errors are logged and swallowed).
+      await notifyIdentityVerificationReviewed({
+        userId: verifiedUserId,
+        outcome: status,
+        rejectionReason: status === "rejected" ? rejection_reason ?? null : null,
+        isProvider: Boolean(linkedProviderId),
+        tenantId,
+      });
     }
 
     return successResponse(verification);

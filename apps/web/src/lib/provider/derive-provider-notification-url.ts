@@ -11,6 +11,7 @@ export function isProviderNotificationUuid(value: unknown): value is string {
 }
 
 export type ProviderNotificationLinkInput = {
+  type?: string | null;
   link?: string | null;
   metadata?: Record<string, unknown> | null;
   data?: Record<string, unknown> | null;
@@ -43,6 +44,19 @@ export function deriveProviderPortalNotificationUrl(
   n: ProviderNotificationLinkInput,
 ): string | undefined {
   const d = { ...(n.data ?? {}), ...(n.metadata ?? {}) };
+  const nType = (n.type ?? "").toLowerCase();
+  const templateKey =
+    typeof d.template_key === "string" ? String(d.template_key).toLowerCase() : "";
+
+  if (
+    nType === "identity_verification_approved" ||
+    nType === "identity_verification_rejected" ||
+    nType === "account_verification" ||
+    templateKey === "identity_verification_approved" ||
+    templateKey === "identity_verification_rejected"
+  ) {
+    return "/provider/settings/verification";
+  }
 
   // Support ticket — check metadata first (most reliable)
   const rawTicketId = (d as { ticket_id?: unknown }).ticket_id;

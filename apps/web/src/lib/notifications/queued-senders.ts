@@ -1,17 +1,11 @@
 /**
  * §15.4-25 (audit 2026-04) — Channel-specific senders for the durable
  * notification retry queue (`notification_delivery_queue`).
- *
- * These are intentionally thin shims. The queue cron
- * (`/api/cron/process-notification-queue`) routes rows to the right
- * sender based on `channel`. Each sender resolves the recipient's
- * contact info, dispatches the actual message through whatever backend
- * is configured (Resend/SES for email, Twilio/Africa's Talking for SMS),
- * and throws on failure so the cron marks the row `failed` and schedules
- * a retry with backoff.
  */
 
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { resolveTwilioCredentials, sendTwilioSMS } from "@/lib/integrations/twilio";
+import { sendQueuedEmailViaProvider } from "@/lib/notifications/queued-email-provider";
 
 export interface QueuedNotificationRow {
   id: string;
@@ -47,17 +41,12 @@ async function resolveUserContact(
   };
 }
 
-export async function sendQueuedEmail(row: QueuedNotificationRow): Promise<void> {
-  const providerKey =
-    process.env.RESEND_API_KEY?.trim() ||
-    process.env.EMAIL_PROVIDER_API_KEY?.trim() ||
-    "";
-  if (!providerKey) {
-    // Missing provider → fail fast so the cron keeps the row in `failed`
-    // and doesn't fake delivery.
-    throw new Error("email provider not configured (RESEND_API_KEY missing)");
-  }
+function tenantIdFromPayload(row: QueuedNotificationRow): string {
+  const meta = row.payload?._queue_meta as { tenant_id?: string } | undefined;
+  return meta?.tenant_id?.trim() || "";
+}
 
+export async function sendQueuedEmail(row: QueuedNotificationRow): Promise<void> {
   let toEmail = (row.payload?.to as string | undefined) ?? null;
   if (!toEmail && row.recipient_user_id) {
     const contact = await resolveUserContact(row.recipient_user_id);
@@ -67,44 +56,21 @@ export async function sendQueuedEmail(row: QueuedNotificationRow): Promise<void>
     throw new Error("no email address available for recipient");
   }
 
-  const fromAddress =
-    (row.payload?.from as string | undefined) ??
-    process.env.EMAIL_FROM_ADDRESS ??
-    "Beautonomi <notifications@beautonomi.app>";
-
-  // Resend HTTP API — keeps this file free of hard SDK deps.
-  const resp = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${providerKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: fromAddress,
+  await sendQueuedEmailViaProvider(
+    {
       to: toEmail,
       subject: subjectOf(row),
       html: (row.payload?.html as string | undefined) ?? bodyOf(row),
       text: bodyOf(row),
-      headers: {
-        "X-Beautonomi-Template": row.template_key,
-        "X-Beautonomi-Queue-Row": row.id,
-      },
-    }),
-  });
-  if (!resp.ok) {
-    const text = await resp.text().catch(() => "");
-    throw new Error(`email send failed (${resp.status}): ${text.slice(0, 400)}`);
-  }
+      from: row.payload?.from as string | undefined,
+      templateKey: row.template_key,
+      queueRowId: row.id,
+    },
+    { tenantId: tenantIdFromPayload(row) || null },
+  );
 }
 
 export async function sendQueuedSms(row: QueuedNotificationRow): Promise<void> {
-  const accountSid = process.env.TWILIO_ACCOUNT_SID?.trim() || "";
-  const authToken = process.env.TWILIO_AUTH_TOKEN?.trim() || "";
-  const fromNumber = process.env.TWILIO_FROM_NUMBER?.trim() || "";
-  if (!accountSid || !authToken || !fromNumber) {
-    throw new Error("sms provider not configured (TWILIO_* missing)");
-  }
-
   let toNumber = (row.payload?.to as string | undefined) ?? null;
   if (!toNumber && row.recipient_user_id) {
     const contact = await resolveUserContact(row.recipient_user_id);
@@ -114,26 +80,12 @@ export async function sendQueuedSms(row: QueuedNotificationRow): Promise<void> {
     throw new Error("no phone number available for recipient");
   }
 
-  const form = new URLSearchParams();
-  form.set("To", toNumber);
-  form.set("From", fromNumber);
-  form.set("Body", bodyOf(row));
-
-  const resp = await fetch(
-    `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
-    {
-      method: "POST",
-      headers: {
-        Authorization:
-          "Basic " +
-          Buffer.from(`${accountSid}:${authToken}`).toString("base64"),
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: form,
-    },
-  );
-  if (!resp.ok) {
-    const text = await resp.text().catch(() => "");
-    throw new Error(`sms send failed (${resp.status}): ${text.slice(0, 400)}`);
+  const supabase = getSupabaseAdmin();
+  const tenantId = tenantIdFromPayload(row);
+  const creds = await resolveTwilioCredentials(supabase, tenantId);
+  if (!creds?.smsFrom) {
+    throw new Error("sms provider not configured (Twilio credentials or TWILIO_SMS_FROM missing)");
   }
+
+  await sendTwilioSMS(creds, toNumber, bodyOf(row));
 }

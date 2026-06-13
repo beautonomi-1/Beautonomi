@@ -89,7 +89,7 @@ export function ProviderOpsTrackerDetailPage() {
 
   const q = useQuery({
     queryKey: adminQueryKeys.providerOps.trackerDetail(userId!),
-    queryFn: () => adminApi.getJson<{ data: TrackerDetailPayload }>(`/api/admin/provider-ops/tracker/${userId}`, { timeoutMs: 60_000 }),
+    queryFn: () => adminApi.getJson<TrackerDetailPayload>(`/api/admin/provider-ops/tracker/${userId}`, { timeoutMs: 60_000 }),
     enabled: allowed && !!userId,
   });
 
@@ -122,8 +122,8 @@ export function ProviderOpsTrackerDetailPage() {
     return <AdminRetryBlock message={q.error.message} onRetry={() => void q.refetch()} />;
   }
 
-  const d = q.data?.data;
-  if (!d) return <AdminRetryBlock message="Not found" onRetry={() => void q.refetch()} />;
+  const d = q.data;
+  if (!d?.user) return <AdminRetryBlock message="Not found" onRetry={() => void q.refetch()} />;
 
   const user = d.user;
   const draft = d.draft;

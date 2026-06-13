@@ -69,6 +69,15 @@ export {
   type ParsedAddressFromMapboxFeature,
 } from "./mapbox/geocodeFeatureToAddressParts";
 export { countryFilterIso2FromStorage } from "./geo/countryFilterIso2";
+export type { VerificationCountryOption } from "./geo/verification-country";
+export {
+  STATIC_VERIFICATION_COUNTRIES,
+  filterVerificationCountries,
+  findVerificationCountry,
+  formatVerificationCountryDisplay,
+  mergeVerificationCountries,
+  resolveDefaultVerificationCountryIso,
+} from "./geo/verification-country";
 export {
   resolveGlobalCategoryIconUri,
   withGlobalCategoryIconCacheBust,
