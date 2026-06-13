@@ -18,7 +18,7 @@ import {
 } from "react-native";
 import { cacheDirectory, downloadAsync } from "expo-file-system/legacy";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { format, addDays, isSameDay, parseISO, startOfDay } from "date-fns";
+import { format, parseISO } from "date-fns";
 import * as Location from "expo-location";
 import { useApi, useApiMutation, useApiPost } from "@/hooks/useApi";
 import { useYocoIntegration } from "@/hooks/useYoco";
@@ -4627,9 +4627,11 @@ export default function BookingDetailScreen() {
             style={{ backgroundColor: "#fff", borderRadius: 20, padding: 24, width: "100%", maxWidth: 360 }}
             onPress={(e) => e.stopPropagation()}
           >
-            <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900], marginBottom: 8 }}>Customer can't verify</Text>
+            <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900], marginBottom: 8 }}>
+              {"Customer can't verify"}
+            </Text>
             <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 16 }}>
-              Briefly describe why you're marking arrival as verified without the customer's code (required for audit):
+              {"Briefly describe why you're marking arrival as verified without the customer's code (required for audit):"}
             </Text>
             <TextInput
               value={overrideArrivalReason}

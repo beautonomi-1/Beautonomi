@@ -92,7 +92,7 @@ export function mergeVerificationCountries(
   }
 
   if (!Array.isArray(fetched)) {
-    return sortByName([...byCode.values()]);
+    return sortByName(Array.from(byCode.values()));
   }
 
   for (const raw of fetched) {
@@ -106,7 +106,7 @@ export function mergeVerificationCountries(
     byCode.set(code, { code, name });
   }
 
-  return sortByName([...byCode.values()]);
+  return sortByName(Array.from(byCode.values()));
 }
 
 export function findVerificationCountry(
