@@ -10,7 +10,7 @@
 
 **Status key:** `Draft` | `In review` | `Reviewed` | `Deprecated (product approved)`
 
-**Seed:** Generated from `apps/web/src/components/admin/AdminShell.tsx` (`navGroups`), `apps/web/src/app/admin/**/page.tsx` (108 routes, 2026-04-11), and targeted greps for `"/api/admin` usage. For the **Vite admin SPA**, use [`ADMIN_SPA_AUDIT_INVENTORY.md`](./ADMIN_SPA_AUDIT_INVENTORY.md) (route inverse map + page→API summary). Reconcile with `docs/admin-api-route-taxonomy.csv` after `node docs/scripts/generate-admin-route-taxonomy.mjs` (latest regen: **371** API rows, 2026-06-13 — see §8 Implementation Delta).
+**Seed:** Generated from `apps/web/src/components/admin/AdminShell.tsx` (`navGroups`), `apps/web/src/app/admin/**/page.tsx` (108 routes, 2026-04-11), and targeted greps for `"/api/admin` usage. For the **Vite admin SPA**, use [`ADMIN_SPA_AUDIT_INVENTORY.md`](./ADMIN_SPA_AUDIT_INVENTORY.md) (route inverse map + page→API summary). Reconcile with `docs/admin-api-route-taxonomy.csv` after `node docs/scripts/generate-admin-route-taxonomy.mjs` (latest regen: **372** API rows, 2026-06-14 — see §8 Implementation Delta).
 
 ---
 
@@ -26,7 +26,7 @@
 
 | Theme | Finding | Target (see contract guidelines) |
 |-------|---------|-----------------------------------|
-| **Inventory** | **371** admin `route.ts` handlers; full list in `docs/admin-api-route-taxonomy.csv` | Regenerate CSV when adding routes; CI blocks orphan files. |
+| **Inventory** | **372** admin `route.ts` handlers; full list in `docs/admin-api-route-taxonomy.csv` | Regenerate CSV when adding routes; CI blocks orphan files. |
 | **Response envelope** | Mix of `{ data, error }` (`successResponse` / `errorResponse`) and **raw** `NextResponse.json` (`{ tickets }`, `{ error: string }`, `{ success: true }`, etc.) | New/changed handlers use standard envelope; migrate legacy when touching. |
 | **List shape** | Some lists nest `{ data: rows, meta }` **inside** envelope `data` (e.g. users); others return domain keys at root **without** envelope | Standard: `data: { items, meta }` + outer envelope. |
 | **Pagination** | `page`+`limit` (`getPaginationParams`) vs `offset`+`limit`; default limits vary (20–100) | Standard query params + `meta`; document per row until migrated. |
@@ -94,7 +94,7 @@ Use this table as the **index** for deep-dive sub-tables (§5). **AuthZ column**
 | 12 | `/admin/staff` | W1 | providers_operations | Y | `GET /api/admin/staff`, `PATCH .../:id`, `POST .../:id/reset-password` | |
 | 13 | `/admin/bookings` | W1 | providers_operations | Y | `GET /api/admin/bookings`, `POST .../bulk`, export | **SPA (pattern wave):** cards + tabs + bulk + CSV via **`adminApi.downloadBlob`** / `downloadAdminBlob`; RBAC via `ADMIN_SECTION_PROVIDERS_OPERATIONS` (legacy Next page used `superadmin`-only guard — SPA aligns with API). |
 | 13a | `/admin/group-bookings` | W1 | providers_operations | Y | `GET /api/admin/group-bookings`; detail: `GET/PATCH/POST/DELETE /api/admin/group-bookings/:id` (`?action=` lifecycle) | **SPA:** [`GroupBookingsPage`](../../apps/admin-web/src/routes/bookings/GroupBookingsPage.tsx). AuthZ `ADMIN_SECTION_PROVIDERS_OPERATIONS`, tenant via provider join + `resolveAdminApiTenantId`. |
-| 14 | `/admin/bookings/[id]` | W1 | providers_operations | N | `GET/PATCH /api/admin/bookings/:id`, `POST .../cancel`, `.../refund` | **SPA:** detail + PATCH + cancel/refund modals; customer/provider deep links → legacy until rows 9–10 / 36–37 migrate. |
+| 14 | `/admin/bookings/[id]` | W1 | providers_operations | N | `GET/PATCH /api/admin/bookings/:id`, `GET .../tracking`, `POST .../cancel`, `.../refund` | **SPA:** detail + PATCH + cancel/refund modals + arrival/tracking panel ([`BookingDetailPage`](../../apps/admin-web/src/routes/bookings/BookingDetailPage.tsx)); customer/provider deep links → legacy until rows 9–10 / 36–37 migrate. |
 | 15 | `/admin/reviews` | W1 | providers_operations | Y | `GET/PATCH/DELETE /api/admin/reviews`, `GET /api/admin/provider-client-ratings`, export | Provider→customer star ratings (`provider_client_ratings`); SPA Reviews tab uses both. |
 | 16 | `/admin/disputes` | W1 | providers_operations | Y | `GET /api/admin/disputes`, `PATCH .../:id` | **SPA (pattern wave):** list + client search + resolve modal; same RBAC note as bookings vs legacy `superadmin` guard. |
 | 17 | `/admin/user-reports` | W1 | providers_operations | Y | `GET /api/admin/user-reports`, `PATCH .../:id` | |
@@ -272,6 +272,7 @@ Record the test **id** in the **Client method** column. **Envelope:** fixtures M
 | 2026-05-28 | **Taxonomy / CI:** Added `GET /api/admin/compliance/lookup-user/[id]` (**363** rows) — superadmin platform-wide user lookup for compliance purge email confirmation. SPA: [`CompliancePurgePage`](../../apps/admin-web/src/routes/control-plane/CompliancePurgePage.tsx) `loadUserHint`. |
 | 2026-05-29 | **Taxonomy / CI:** Added `POST /api/admin/payouts/bulk-approve` (**364** rows) — batch approve pending payouts with readiness checks and audit trail. SPA: [`PayoutsPage`](../../apps/admin-web/src/routes/finance/PayoutsPage.tsx) bulk approve selection. §4 row **20** updated. |
 | 2026-06-13 | **Taxonomy / CI:** Added **5** rows for Resend integration (`/api/admin/integrations/resend`, `.../test`), loyalty checkout config (`GET/PATCH /api/admin/loyalty/config`), and shadow/guest user actions (`POST .../users/[id]/guest-booking-link`, `POST .../send-claim-invite`). SPA: [`ResendIntegrationPage`](../../apps/admin-web/src/routes/integrations/ResendIntegrationPage.tsx), [`LoyaltyRulesPage`](../../apps/admin-web/src/routes/marketing/LoyaltyRulesPage.tsx), [`UserDetailPage`](../../apps/admin-web/src/routes/users/UserDetailPage.tsx). §1.1 inventory **371**; §4 rows **37**, **49**, **61c**. |
+| 2026-06-14 | **Taxonomy / CI:** Added `GET /api/admin/bookings/[id]/tracking` (**372** rows) — arrival lifecycle, verification state, provider location, and activity timeline for ops admins. SPA: [`BookingDetailPage`](../../apps/admin-web/src/routes/bookings/BookingDetailPage.tsx) tracking panel. §4 row **14** updated. |
 
 ---
 
@@ -309,3 +310,4 @@ Record the test **id** in the **Client method** column. **Envelope:** fixtures M
 | 2026-05-26 | Taxonomy: `+7` Paystack Terminal admin routes (`/api/admin/paystack-terminal/payments`, `.../[id]`, `.../sync`, `.../setup-requests`, `.../terminals`, `.../terminals/[id]/assets`, `.../terminals/[id]/poster`); §4 row **29a**; §1.1 inventory **362**. |
 | 2026-05-28 | Taxonomy: `+1` route (`GET /api/admin/compliance/lookup-user/[id]`); SPA [`CompliancePurgePage`](../../apps/admin-web/src/routes/control-plane/CompliancePurgePage.tsx) user purge email hint; §1.1 inventory **363**. |
 | 2026-06-13 | Taxonomy: `+5` routes (`/api/admin/integrations/resend`, `.../test`, `GET/PATCH /api/admin/loyalty/config`, `POST .../users/[id]/guest-booking-link`, `POST .../send-claim-invite`); §4 rows **37**, **49**, **61c**; SPA Resend, loyalty config, user detail shadow/guest actions. §1.1 inventory **371**. |
+| 2026-06-14 | Taxonomy: `+1` route (`GET /api/admin/bookings/[id]/tracking`); §4 row **14**; SPA [`BookingDetailPage`](../../apps/admin-web/src/routes/bookings/BookingDetailPage.tsx) arrival/tracking panel. §1.1 inventory **372**. |

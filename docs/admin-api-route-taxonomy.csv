@@ -20,6 +20,7 @@ path,class,note
 /api/admin/bookings/[id]/dispute/resolve,T,"uses resolveAdminApiTenantId"
 /api/admin/bookings/[id]/dispute,T,"uses resolveAdminApiTenantId"
 /api/admin/bookings/[id]/refund,T,"uses resolveAdminApiTenantId"
+/api/admin/bookings/[id]/tracking,T,"uses resolveAdminApiTenantId"
 /api/admin/bookings/[id],T,"uses resolveAdminApiTenantId"
 /api/admin/bookings/bulk,T,"uses resolveAdminApiTenantId"
 /api/admin/bookings,T,"uses resolveAdminApiTenantId"
